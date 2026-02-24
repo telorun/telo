@@ -48,7 +48,6 @@ export const ResourceDefinitionSchema = Type.Object(
     metadata: Type.Object(
       {
         name: Type.String(),
-        resourceKind: Type.String(),
         module: Type.Optional(Type.String()),
       },
       { additionalProperties: true },

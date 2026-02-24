@@ -1,7 +1,6 @@
 kind: "Runtime.Definition"
 metadata:
-  name: "FileExporterDefinition"
-  resourceKind: "FileExporter"
+  name: "FileExporter"
   module: "Tracing"
 controllers:
   - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#file-exporter

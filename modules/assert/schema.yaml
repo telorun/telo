@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: SchemaDefinition
-  resourceKind: Schema
+  name: Schema
   module: Assert
 controllers:
   - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#schema

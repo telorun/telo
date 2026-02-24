@@ -29,7 +29,7 @@ export interface ResourceContext extends ControllerContext {
   lookupSchema(name: string): object | undefined;
   registerController(
     moduleName: string,
-    resourceKind: string,
+    kindName: string,
     controllerInstance: any,
   ): Promise<void>;
   registerDefinition(definition: any): void;

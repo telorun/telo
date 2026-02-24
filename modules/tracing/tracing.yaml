@@ -1,7 +1,6 @@
 kind: "Runtime.Definition"
 metadata:
-  name: "TracingProviderDefinition"
-  resourceKind: "Provider"
+  name: "Provider"
   module: "Tracing"
 controllers:
   - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#provider

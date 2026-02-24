@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: FlowDefinition
-  resourceKind: Flow
+  name: Flow
   module: Runtime
 controllers:
   - pkg:npm/@telorun/flow@>=1.0.0?local_path=./nodejs#flow

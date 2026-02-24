@@ -12,7 +12,6 @@ type ResourceDefinitionResource = RuntimeResource & {
   metadata: {
     [key: string]: any;
     name: string;
-    resourceKind: string;
     module?: string;
   };
   schema: Record<string, any>;
@@ -40,7 +39,7 @@ class ResourceDefinition implements ResourceInstance {
     ctx.registerDefinition(this.resource);
     await ctx.registerController(
       this.resource.metadata.module,
-      this.resource.metadata.resourceKind,
+      this.resource.metadata.name,
       controllerInstance,
     );
   }

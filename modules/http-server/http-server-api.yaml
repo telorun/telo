@@ -1,7 +1,6 @@
 kind: "Runtime.Definition"
 metadata:
-  name: "HttpApiDefinition"
-  resourceKind: "Api"
+  name: "Api"
   module: "Http"
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api

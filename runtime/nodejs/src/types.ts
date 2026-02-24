@@ -26,7 +26,6 @@ export interface ResourceDefinition {
   kind: string;
   metadata: {
     name: string;
-    resourceKind: string;
     module: string;
   };
   schema: Record<string, any>; // JSON Schema

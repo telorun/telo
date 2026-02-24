@@ -36,8 +36,7 @@ export async function create(
       ctx.registerDefinition({
         kind: "Runtime.Definition",
         metadata: {
-          name: `${templateName}Definition`,
-          resourceKind: templateName,
+          name: templateName,
           module: moduleName,
         },
         schema: resource.schema || { type: "object" },

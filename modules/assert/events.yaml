@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: EventsDefinition
-  resourceKind: Events
+  name: Events
   module: Assert
 controllers:
   - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#events

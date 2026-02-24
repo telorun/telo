@@ -1,30 +1,52 @@
 kind: Runtime.Module
 metadata:
-  name: ConsoleConfigExample
+  name: Example
+  version: 1.0.0
 imports:
-  - ../modules/config
-  - ../modules/console
-  - ../modules/flow
+  - ../../modules/config
+  - ../../modules/data
+  - ../../modules/console
 ---
-kind: Runtime.Flow
+kind: Data.Type
 metadata:
-  name: ConsoleConfigExampleFlow
-  module: ConsoleConfigExample
-trigger:
-  event: Runtime.Started
-steps:
-  - invoke:
-      kind: Console.ReadLine
-      metadata:
-        name: ReadUsername
-      prompt: Username
-  - invoke:
-      kind: Console.ReadLine
-      metadata:
-        name: ReadPassword
-      prompt: Password
-  - invoke:
-      kind: Console.WriteLine
-      metadata:
-        name: Result
-      output: "Username: ${{ Console.ReadLine.ReadUsername.value }}, Password: ${{ Console.ReadLine.ReadPassword.value }}"
+  name: Product
+  module: Example
+schema:
+  type: object
+  properties:
+    id:
+      type: string
+      format: uuid
+    name:
+      type: string
+    price:
+      type: number
+    inStock:
+      type: boolean
+  required: ["id", "name", "price", "inStock"]
+---
+kind: Config.Variable
+metadata:
+  name: Mac123
+  module: Example
+value:
+  id: 123
+  name: Mac123
+  price: 1234.99
+  inStock: true
+---
+kind: Config.Secret
+metadata:
+  name: DbPass
+  module: Example
+value:
+  $eval: env.DB_PASSWORD
+---
+kind: Console.WriteLine
+metadata:
+  name: Result
+  module: Example
+inputSchema:
+  result:
+    type: number
+output: "Product name: {{ Mac123.name }}, Password: {{ DbPass }}"

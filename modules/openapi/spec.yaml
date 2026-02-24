@@ -1,7 +1,6 @@
 kind: "Runtime.Definition"
 metadata:
-  name: "OpenApiSpecDefinition"
-  resourceKind: "Spec"
+  name: "Spec"
   module: "OpenApi"
 controllers:
   - pkg:npm/@telorun/openapi@>=1.0.0?local_path=./nodejs#spec

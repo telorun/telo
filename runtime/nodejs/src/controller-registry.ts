@@ -19,13 +19,12 @@ export class ControllerRegistry {
     // baseDir?: string,
     // namespace?: string | null,
   ): void {
-    // Construct fully qualified kind: Namespace.ResourceKind
-    // Only add namespace if resourceKind is not already qualified (doesn't contain a dot)
+    // Construct fully qualified kind: Namespace.Name
+    // Only add namespace if name is not already qualified (doesn't contain a dot)
     const namespace = definition.metadata.module;
     const baseDir = null;
-    const resourceKind = definition.metadata.resourceKind;
-    const kind =
-      namespace && !resourceKind.includes(".") ? `${namespace}.${resourceKind}` : resourceKind;
+    const name = definition.metadata.name;
+    const kind = namespace && !name.includes(".") ? `${namespace}.${name}` : name;
 
     this.definitionsByKind.set(kind, definition);
 

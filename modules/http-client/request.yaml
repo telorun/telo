@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: RequestDefinition
-  resourceKind: Request
+  name: Request
   module: HttpClient
 controllers:
   - pkg:npm/@telorun/http-client@>=1.0.0?local_path=./nodejs#request

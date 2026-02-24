@@ -103,12 +103,12 @@ export class Kernel implements IKernel {
 
   async registerController(
     moduleName: string,
-    resourceKind: string,
+    kindName: string,
     controllerInstance: any,
   ): Promise<void> {
-    this.controllers.registerController(`${moduleName}.${resourceKind}`, controllerInstance);
+    this.controllers.registerController(`${moduleName}.${kindName}`, controllerInstance);
     await controllerInstance.register?.(
-      this.createControllerContext(`${moduleName}.${resourceKind}`),
+      this.createControllerContext(`${moduleName}.${kindName}`),
     );
   }
 
@@ -131,7 +131,6 @@ export class Kernel implements IKernel {
       kind: "Runtime.Definition",
       metadata: {
         name: "Definition",
-        resourceKind: "Definition",
         module: "Runtime",
       },
       schema: { type: "object" },
@@ -145,7 +144,7 @@ export class Kernel implements IKernel {
     });
     this.controllers.registerDefinition({
       kind: "Runtime.Definition",
-      metadata: { name: "Module", resourceKind: "Module", module: "Runtime" },
+      metadata: { name: "Module", module: "Runtime" },
       schema: moduleSchema,
     });
     this.controllers.registerController(

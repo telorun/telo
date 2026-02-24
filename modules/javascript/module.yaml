@@ -5,8 +5,7 @@ metadata:
 ---
 kind: "Runtime.Definition"
 metadata:
-  name: "JavaScriptDefinition"
-  resourceKind: "Script"
+  name: "Script"
   module: "JavaScript"
 controllers:
   - pkg:npm/@telorun/javascript@>=0.1.0?local_path=./nodejs#script

@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: DataTypeDefinition
-  resourceKind: Type
+  name: Type
   module: Data
 controllers:
   - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
@@ -21,9 +20,8 @@ schema:
 ---
 kind: Runtime.Definition
 metadata:
-  name: ObjectTypeDefinition
+  name: ObjectType
   module: Data
-  resourceKind: ObjectType
 controllers:
   - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
 schema:

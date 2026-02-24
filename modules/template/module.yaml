@@ -5,8 +5,7 @@ metadata:
 ---
 kind: Runtime.Definition
 metadata:
-  name: TemplateDefinition
-  resourceKind: Definition
+  name: Definition
   module: Template
 controllers:
   - pkg:npm/@telorun/template@>=1.0.0?local_path=./nodejs#template

@@ -237,7 +237,7 @@ interface ResourceContext extends ControllerContext {
 
   // Dynamically register resources during initialization (used by Runtime.Module)
   registerManifest(resource: any): void;
-  registerController(moduleName: string, resourceKind: string, controller: any): Promise<void>;
+  registerController(moduleName: string, kindName: string, controller: any): Promise<void>;
   registerDefinition(definition: any): void;
 
   // Schema helpers
@@ -369,8 +369,7 @@ Modules declare the resource kinds they handle using `Runtime.Definition`:
 ```yaml
 kind: Runtime.Definition
 metadata:
-  name: HttpServerDefinition
-  resourceKind: Server # becomes Http.Server when module namespace is Http
+  name: Server # becomes Http.Server when module namespace is Http
   module: Http
 schema: # JSON Schema — validated against each resource before create()
   type: object

@@ -11,3 +11,9 @@ Project uses pnpm, build packages with:
 ```sh
 pnpm run --filter <package> build
 ```
+
+Run examples with
+
+```sh
+pnpm run telo ./examples/file.yaml
+```

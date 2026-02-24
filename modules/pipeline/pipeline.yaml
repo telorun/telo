@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: JobDefinition
-  resourceKind: Job
+  name: Job
   module: Pipeline
 controllers:
   - pkg:npm/@telorun/pipeline@>=1.0.0?local_path=./nodejs#job

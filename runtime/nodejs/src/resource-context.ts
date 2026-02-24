@@ -85,10 +85,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   async registerController(
     moduleName: string,
-    resourceKind: string,
+    kindName: string,
     controllerInstance: any,
   ): Promise<void> {
-    await this.kernel.registerController(moduleName, resourceKind, controllerInstance);
+    await this.kernel.registerController(moduleName, kindName, controllerInstance);
   }
 
   registerDefinition(def: any) {

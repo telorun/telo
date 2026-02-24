@@ -1,7 +1,6 @@
 kind: Runtime.Definition
 metadata:
-  name: StarlarkScriptDefinition
-  resourceKind: Script
+  name: Script
   module: Starlark
 controllers:
   - pkg:npm/@telorun/starlark@>=1.0.0?local_path=./nodejs#script

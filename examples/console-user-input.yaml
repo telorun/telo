@@ -1,0 +1,30 @@
+kind: Runtime.Module
+metadata:
+  name: ConsoleConfigExample
+imports:
+  - ../modules/config
+  - ../modules/console
+  - ../modules/flow
+---
+kind: Runtime.Flow
+metadata:
+  name: ConsoleConfigExampleFlow
+  module: ConsoleConfigExample
+trigger:
+  event: Runtime.Started
+steps:
+  - invoke:
+      kind: Console.ReadLine
+      metadata:
+        name: ReadUsername
+      prompt: Username
+  - invoke:
+      kind: Console.ReadLine
+      metadata:
+        name: ReadPassword
+      prompt: Password
+  - invoke:
+      kind: Console.WriteLine
+      metadata:
+        name: Result
+      output: "Username: ${{ Console.ReadLine.ReadUsername.value }}, Password: ${{ Console.ReadLine.ReadPassword.value }}"
