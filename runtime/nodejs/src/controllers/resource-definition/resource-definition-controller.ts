@@ -15,6 +15,7 @@ type ResourceDefinitionResource = RuntimeResource & {
     module?: string;
   };
   schema: Record<string, any>;
+  capabilities: string[];
   events?: string[];
   controllers: Array<string>;
 };
@@ -32,6 +33,18 @@ class ResourceDefinition implements ResourceInstance {
   ) {}
 
   async init(ctx: ResourceContext) {
+    for (const cap of this.resource.capabilities) {
+      if (!ctx.isCapabilityRegistered(cap)) {
+        throw new Error(
+          `Capability "${cap}" is not registered. Declare it as a Runtime.Capability resource.`,
+        );
+      }
+      const capSchema = ctx.getCapabilitySchema(cap);
+      if (capSchema) {
+        ctx.validateSchema(this.resource, capSchema);
+      }
+    }
+
     const controllerInstance = await this.controllerLoader.load(
       this.resource.controllers,
       this.resource.metadata.source,

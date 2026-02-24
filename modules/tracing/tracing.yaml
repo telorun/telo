@@ -2,6 +2,8 @@ kind: "Runtime.Definition"
 metadata:
   name: "Provider"
   module: "Tracing"
+capabilities:
+  - provider
 controllers:
   - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#provider
 schema:

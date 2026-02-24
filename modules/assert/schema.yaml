@@ -2,6 +2,8 @@ kind: Runtime.Definition
 metadata:
   name: Schema
   module: Assert
+capabilities:
+  - executable
 controllers:
   - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#schema
   - runtime: nodejs

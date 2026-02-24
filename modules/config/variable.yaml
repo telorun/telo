@@ -2,6 +2,8 @@ kind: "Runtime.Definition"
 metadata:
   name: "Variable"
   module: "Config"
+capabilities:
+  - provider
 controllers:
   - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#variable-controller
 schema:

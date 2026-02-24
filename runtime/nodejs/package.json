@@ -16,9 +16,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/capabilities dist/capabilities",
     "dev": "tsc --watch",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc && cp -r src/capabilities dist/capabilities"
   },
   "keywords": [
     "digly",

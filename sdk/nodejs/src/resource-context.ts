@@ -33,5 +33,8 @@ export interface ResourceContext extends ControllerContext {
     controllerInstance: any,
   ): Promise<void>;
   registerDefinition(definition: any): void;
+  registerCapability(name: string, schema?: Record<string, any>): void;
+  isCapabilityRegistered(name: string): boolean;
+  getCapabilitySchema(name: string): Record<string, any> | null | undefined;
   teardownResource(kind: string, name: string): Promise<void>;
 }

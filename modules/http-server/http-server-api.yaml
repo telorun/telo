@@ -2,6 +2,8 @@ kind: "Runtime.Definition"
 metadata:
   name: "Api"
   module: "Http"
+capabilities:
+  - handler
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api
 schema:

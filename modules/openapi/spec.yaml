@@ -2,6 +2,8 @@ kind: "Runtime.Definition"
 metadata:
   name: "Spec"
   module: "OpenApi"
+capabilities:
+  - handler
 controllers:
   - pkg:npm/@telorun/openapi@>=1.0.0?local_path=./nodejs#spec
 schema:

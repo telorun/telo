@@ -53,6 +53,7 @@ export const ResourceDefinitionSchema = Type.Object(
       { additionalProperties: true },
     ),
     schema: Type.Object({}, { additionalProperties: true }),
+    capabilities: Type.Array(Type.String(), { minItems: 1 }),
     events: Type.Optional(Type.Array(Type.String())),
     controllers: Type.Optional(Type.Array(Type.String())),
   },

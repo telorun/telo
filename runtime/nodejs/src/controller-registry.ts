@@ -10,6 +10,19 @@ export class ControllerRegistry {
   private controllersByKind: Map<string, ControllerInstance> = new Map();
   private definitionsByKind: Map<string, ResourceDefinition> = new Map();
   private controllerLoaders: Map<string, () => Promise<ControllerInstance>> = new Map();
+  private capabilitySchemas: Map<string, Record<string, any> | null> = new Map();
+
+  registerCapability(name: string, schema?: Record<string, any>): void {
+    this.capabilitySchemas.set(name, schema ?? null);
+  }
+
+  isCapabilityRegistered(name: string): boolean {
+    return this.capabilitySchemas.has(name);
+  }
+
+  getCapabilitySchema(name: string): Record<string, any> | null | undefined {
+    return this.capabilitySchemas.get(name);
+  }
 
   /**
    * Register a controller definition

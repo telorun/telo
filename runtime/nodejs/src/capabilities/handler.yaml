@@ -1,0 +1,3 @@
+kind: Runtime.Capability
+metadata:
+  name: handler

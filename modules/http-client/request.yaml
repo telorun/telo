@@ -2,6 +2,8 @@ kind: Runtime.Definition
 metadata:
   name: Request
   module: HttpClient
+capabilities:
+  - executable
 controllers:
   - pkg:npm/@telorun/http-client@>=1.0.0?local_path=./nodejs#request
 schema:

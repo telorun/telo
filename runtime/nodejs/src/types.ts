@@ -22,6 +22,8 @@ export interface ExecContext {
   [key: string]: any;
 }
 
+export type ResourceCapability = string;
+
 export interface ResourceDefinition {
   kind: string;
   metadata: {
@@ -29,6 +31,7 @@ export interface ResourceDefinition {
     module: string;
   };
   schema: Record<string, any>; // JSON Schema
+  capabilities: ResourceCapability[];
   events?: string[];
   controllers?: Array<{
     runtime: string;

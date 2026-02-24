@@ -2,6 +2,8 @@ kind: Runtime.Definition
 metadata:
   name: Job
   module: Pipeline
+capabilities:
+  - executable
 controllers:
   - pkg:npm/@telorun/pipeline@>=1.0.0?local_path=./nodejs#job
 schema:

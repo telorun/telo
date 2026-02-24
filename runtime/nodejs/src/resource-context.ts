@@ -95,6 +95,18 @@ export class ResourceContextImpl implements ResourceContext {
     this.kernel.registerResourceDefinition(def);
   }
 
+  registerCapability(name: string, schema?: Record<string, any>): void {
+    this.kernel.registerCapability(name, schema);
+  }
+
+  isCapabilityRegistered(name: string): boolean {
+    return this.kernel.isCapabilityRegistered(name);
+  }
+
+  getCapabilitySchema(name: string): Record<string, any> | null | undefined {
+    return this.kernel.getCapabilitySchema(name);
+  }
+
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {
     this.kernel.on(event, handler);
   }

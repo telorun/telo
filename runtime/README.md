@@ -371,6 +371,9 @@ kind: Runtime.Definition
 metadata:
   name: Server # becomes Http.Server when module namespace is Http
   module: Http
+capabilities: # required — one or more of: provider, listener, handler, executable, type, template, component
+  - listener
+  - provider
 schema: # JSON Schema — validated against each resource before create()
   type: object
   properties:

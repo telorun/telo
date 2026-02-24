@@ -123,16 +123,26 @@ export class Kernel implements IKernel {
     this.controllers.registerDefinition(definition);
   }
 
+  registerCapability(name: string, schema?: Record<string, any>): void {
+    this.controllers.registerCapability(name, schema);
+  }
+
+  isCapabilityRegistered(name: string): boolean {
+    return this.controllers.isCapabilityRegistered(name);
+  }
+
+  getCapabilitySchema(name: string): Record<string, any> | null | undefined {
+    return this.controllers.getCapabilitySchema(name);
+  }
+
   /**
    * Load built-in Runtime definitions (e.g., Runtime.Module)
    */
   private async loadBuiltinDefinitions(): Promise<void> {
     this.controllers.registerDefinition({
       kind: "Runtime.Definition",
-      metadata: {
-        name: "Definition",
-        module: "Runtime",
-      },
+      metadata: { name: "Definition", module: "Runtime" },
+      capabilities: ["template"],
       schema: { type: "object" },
     });
     this.controllers.registerController(
@@ -145,11 +155,22 @@ export class Kernel implements IKernel {
     this.controllers.registerDefinition({
       kind: "Runtime.Definition",
       metadata: { name: "Module", module: "Runtime" },
+      capabilities: ["template"],
       schema: moduleSchema,
     });
     this.controllers.registerController(
       "Runtime.Module",
       await import("./controllers/module/module-controller.js"),
+    );
+    this.controllers.registerDefinition({
+      kind: "Runtime.Definition",
+      metadata: { name: "Capability", module: "Runtime" },
+      capabilities: ["template"],
+      schema: { type: "object" },
+    });
+    this.controllers.registerController(
+      "Runtime.Capability",
+      await import("./controllers/capability/capability-controller.js"),
     );
   }
 
@@ -160,8 +181,15 @@ export class Kernel implements IKernel {
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
 
+    // Load built-in capability manifests before user configuration so that
+    // capability resources are available in the first initialization pass
+    const { fileURLToPath } = await import("url");
+    const capabilitiesDir = fileURLToPath(new URL("./capabilities/", import.meta.url));
+    const capabilityManifests = await this.loader.loadDirectory(capabilitiesDir);
+
     // Load runtime configuration
-    this.initializationQueue = await this.loader.loadManifest(runtimeYamlPath);
+    const userManifests = await this.loader.loadManifest(runtimeYamlPath);
+    this.initializationQueue = [...capabilityManifests, ...userManifests];
   }
 
   /**

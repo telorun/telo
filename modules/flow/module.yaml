@@ -2,6 +2,8 @@ kind: Runtime.Definition
 metadata:
   name: Flow
   module: Runtime
+capabilities:
+  - executable
 controllers:
   - pkg:npm/@telorun/flow@>=1.0.0?local_path=./nodejs#flow
 schema:
