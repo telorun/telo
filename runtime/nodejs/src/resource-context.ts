@@ -22,6 +22,14 @@ export class ResourceContextImpl implements ResourceContext {
     return this.validator.compile(schema);
   }
 
+  registerSchema(name: string, schema: object): void {
+    this.validator.addSchema(name, schema);
+  }
+
+  lookupSchema(name: string): object | undefined {
+    return this.validator.getSchema(name);
+  }
+
   validateSchema(value: any, schema: any) {
     const ajv = new Ajv();
     const validate = ajv.compile(

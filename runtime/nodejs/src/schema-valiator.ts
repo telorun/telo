@@ -9,10 +9,20 @@ export class SchemaValidator {
 
   constructor() {
     this.ajv = new Ajv({
-      strict: true,
+      strict: false,
       removeAdditional: false,
       useDefaults: true,
     });
+  }
+
+  addSchema(name: string, schema: object): void {
+    if (!this.ajv.getSchema(name)) {
+      this.ajv.addSchema(schema, name);
+    }
+  }
+
+  getSchema(name: string): object | undefined {
+    return this.ajv.getSchema(name) as object | undefined;
   }
 
   compile(schema: any): DataValidator {

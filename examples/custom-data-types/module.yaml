@@ -3,6 +3,7 @@ metadata:
   name: Example
   version: 1.0.0
 imports:
+  - ../../modules/config
   - ../../modules/data
   - ../../modules/console
 ---
@@ -22,9 +23,9 @@ schema:
       type: number
     inStock:
       type: boolean
-  required: ['id', 'name', 'price', 'inStock']
+  required: ["id", "name", "price", "inStock"]
 ---
-kind: Data.Variable
+kind: Config.Variable
 metadata:
   name: Mac123
   module: Example
@@ -34,7 +35,7 @@ value:
   price: 1234.99
   inStock: true
 ---
-kind: Data.Secret
+kind: Config.Secret
 metadata:
   name: DbPass
   module: Example
@@ -48,4 +49,4 @@ metadata:
 inputSchema:
   result:
     type: number
-output: 'Product name: {{ Mac123.name }}, Password: {{ DbPass }}'
+output: "Product name: {{ Mac123.name }}, Password: {{ DbPass }}"

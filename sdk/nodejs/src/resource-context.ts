@@ -25,6 +25,8 @@ export interface ResourceContext extends ControllerContext {
   registerManifest(resource: any): void;
   validateSchema(value: any, schema: any): void;
   createSchemaValidator(schema: any): DataValidator;
+  registerSchema(name: string, schema: object): void;
+  lookupSchema(name: string): object | undefined;
   registerController(
     moduleName: string,
     resourceKind: string,

@@ -40,6 +40,7 @@ export class Kernel implements IKernel {
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
   private bootContextRegistry = new BootContextRegistry();
+  private readonly sharedSchemaValidator = new SchemaValidator();
 
   constructor() {
     this.setupEventStreaming();
@@ -317,7 +318,7 @@ export class Kernel implements IKernel {
       resource.kind,
       resource.metadata.name,
     );
-    return new ResourceContextImpl(this, resource.metadata, undefined, key);
+    return new ResourceContextImpl(this, resource.metadata, this.sharedSchemaValidator, key);
   }
 
   getResourcesByKind(kind: string): RuntimeResource[] {
@@ -422,7 +423,6 @@ export class Kernel implements IKernel {
     }> = [];
     // Track latest error for each resource
     const resourceErrors: Map<string, string> = new Map();
-    const schemaValidator = new SchemaValidator();
     // Multi-pass loop
     do {
       handledThisPass = [];
@@ -471,7 +471,7 @@ export class Kernel implements IKernel {
             resolvedResource = resolveManifestWithContext(resource, bootContext);
           }
 
-          schemaValidator.compile(controller.schema).validate(resolvedResource);
+          this.sharedSchemaValidator.compile(controller.schema).validate(resolvedResource);
           // Create resource instance using the resolved manifest
           const instance = await controller.create(
             resolvedResource,

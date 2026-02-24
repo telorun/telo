@@ -4,6 +4,10 @@ Before making any decisions or changes read [README.md](./README.md) for context
 
 Prefer clean code that is easy to read and maintain. Avoid clever or complex solutions unless absolutely necessary.
 
-Telo is in early development and breaking changes are acceptable and encouraged if they improve the project.
+Telo is in early development and breaking changes are acceptable and needed if they improve the project.
 
-When asked about YAML manifests, never consider controller changes unless explicitly asked to.
+Project uses pnpm, build packages with:
+
+```sh
+pnpm run --filter <package> build
+```

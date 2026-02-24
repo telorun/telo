@@ -8,15 +8,16 @@ controllers:
 schema:
   type: object
   properties:
-    metadata:
-      type: object
-      properties:
-        name:
-          type: string
-      required: ["name"]
     schema:
       type: object
-  required: ["metadata", "schema"]
+    extends:
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: string
+  required: ["schema"]
+  additionalProperties: true
 ---
 kind: Runtime.Definition
 metadata:
