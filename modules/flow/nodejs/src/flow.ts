@@ -21,15 +21,10 @@ class Flow {
 
   async init(): Promise<void> {
     for (const step of this.resource.steps) {
-      if (step.invoke.kind) {
-        // this.ctx.registerManifest({
-        //   ...step.invoke,
-        //   metadata: {
-        //     module: this.resource.metadata.module,
-        //     ...step.invoke.metadata,
-        //   },
-        // });
-        step.invoke = { kind: step.invoke.kind, name: step.invoke.name };
+      if (step.invoke) {
+        // Resolve children handles both inline definitions and references
+        // Returns normalized {kind, name} reference
+        step.invoke = this.ctx.resolveChildren(step.invoke, step.name);
       }
     }
     this.ctx.on(this.resource.trigger.event, async () => {

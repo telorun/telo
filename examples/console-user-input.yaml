@@ -15,16 +15,13 @@ trigger:
 steps:
   - invoke:
       kind: Console.ReadLine
-      metadata:
-        name: ReadUsername
+      name: ReadUsername
       prompt: Username
   - invoke:
       kind: Console.ReadLine
-      metadata:
-        name: ReadPassword
+      name: ReadPassword
       prompt: Password
   - invoke:
       kind: Console.WriteLine
-      metadata:
-        name: Result
+      name: Result
       output: "Username: ${{ Console.ReadLine.ReadUsername.value }}, Password: ${{ Console.ReadLine.ReadPassword.value }}"

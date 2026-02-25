@@ -23,6 +23,7 @@ export interface ResourceContext extends ControllerContext {
   getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;
   registerManifest(resource: any): void;
+  resolveChildren(resource: any, resourceName?: string): { kind: string; name: string };
   validateSchema(value: any, schema: any): void;
   createSchemaValidator(schema: any): DataValidator;
   registerSchema(name: string, schema: object): void;

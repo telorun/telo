@@ -1,0 +1,22 @@
+kind: Runtime.Module
+metadata:
+  name: TestStarlarkBasic
+  version: 1.0.0
+  description: Test for starlark-basic example
+imports:
+  - ../examples/starlark-basic.yaml
+  - ../modules/assert
+---
+kind: Assert.Events
+metadata:
+  module: TestStarlarkBasic
+  name: VerifyStarlarkBasicEvents
+filter:
+  - type: "*"
+expect:
+  - event: StarlarkDemo.Starlark.Script.*.Invoked
+    payload:
+      outputs:
+        result: 84
+  - event: StarlarkDemo.Console.WriteLine.*.Invoked
+    payload: {}

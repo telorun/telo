@@ -1,5 +1,5 @@
-import type { ResourceContext } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
+import type { ResourceContext } from "@telorun/sdk";
 
 export const schema = Type.Object({
   metadata: Type.Record(Type.String(), Type.String()),
@@ -24,20 +24,14 @@ class PipelineJob {
     public resource: PipelineJobManifest,
   ) {}
 
+  private resolvedInvokes: Array<{ kind: string; name: string }> = [];
+
   async init() {
     for (const step of this.resource.steps) {
-      if (step.invoke.kind && !step.invoke.name) {
-        const name = step.name ?? "Unnamed";
-        this.ctx.registerManifest({
-          ...step.invoke,
-          metadata: {
-            name,
-            module: this.resource.metadata.module,
-            ...step.invoke.metadata,
-          },
-        });
-        step.invoke = { kind: step.invoke.kind, name };
-      }
+      // Resolve children handles both inline definitions and references
+      // Returns normalized {kind, name} reference
+      const resolved = this.ctx.resolveChildren(step.invoke, step.name);
+      this.resolvedInvokes.push(resolved);
     }
   }
 
@@ -47,11 +41,13 @@ class PipelineJob {
 
   private async executeSteps(): Promise<void> {
     const context: any = {};
-    for (const step of this.resource.steps) {
+    for (let i = 0; i < this.resource.steps.length; i++) {
+      const step = this.resource.steps[i];
+      const invoke = this.resolvedInvokes[i];
       try {
         const result = await this.ctx.invoke(
-          step.invoke.kind,
-          step.invoke.name ?? step.name,
+          invoke.kind,
+          invoke.name,
           this.ctx.expandValue(step.inputs || {}, context),
         );
         context[step.name] = {

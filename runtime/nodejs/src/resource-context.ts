@@ -67,6 +67,53 @@ export class ResourceContextImpl implements ResourceContext {
     }
   }
 
+  /**
+   * Resolves a resource into a normalized {kind, name} reference.
+   * If the resource contains a definition (kind + properties), registers it as a manifest.
+   * Returns the normalized reference in all cases.
+   *
+   * @param resource Resource definition or reference object with 'kind' property
+   * @param resourceName Optional name to assign if not present in resource
+   * @returns Normalized {kind, name} reference
+   * @throws RuntimeError if 'kind' is missing
+   */
+  resolveChildren(resource: any, resourceName?: string): { kind: string; name: string } {
+    if (!resource || typeof resource !== "object") {
+      throw new RuntimeError(
+        "ERR_INVALID_VALUE",
+        `[${this.metadata.name}] Resource must be an object. Got: ${typeof resource}`,
+      );
+    }
+
+    if (!resource.kind) {
+      throw new RuntimeError(
+        "ERR_INVALID_VALUE",
+        `[${this.metadata.name}] Resource must have 'kind' property. Got: ${JSON.stringify(resource)}`,
+      );
+    }
+
+    const kind = resource.kind;
+    const name = resource.name ?? resourceName ?? "Unnamed";
+
+    // If resource has properties beyond kind/name, it's a definition - register it
+    const definitionKeys = Object.keys(resource).filter(
+      (k) => k !== "kind" && k !== "name" && k !== "metadata",
+    );
+
+    if (definitionKeys.length > 0) {
+      this.registerManifest({
+        ...resource,
+        metadata: {
+          name,
+          module: this.metadata.module,
+          ...resource.metadata,
+        },
+      });
+    }
+
+    return { kind, name };
+  }
+
   teardownResource(kind: string, name: string): Promise<void> {
     const parts = kind.split(".");
     if (parts.length > 2) {
