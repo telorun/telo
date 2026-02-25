@@ -3,9 +3,9 @@ metadata:
   name: Example
   version: 1.0.0
 imports:
-  - ../../modules/config
-  - ../../modules/data
-  - ../../modules/console
+  - ../modules/config
+  - ../modules/data
+  - ../modules/console
 ---
 kind: Data.Type
 metadata:

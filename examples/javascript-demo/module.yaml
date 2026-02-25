@@ -33,13 +33,13 @@ trigger:
   filter: "true"
 steps:
   - name: Step1
-    input:
+    inputs:
       value: 42
     invoke:
       kind: JavaScript.Script
       name: ExampleJavaScriptScript
-  - input:
-      result: ${{ Step1.output.result }}
+  - inputs:
+      result: ${{ Step1.outputs.result }}
     invoke:
       kind: Console.WriteLine
       inputSchema:

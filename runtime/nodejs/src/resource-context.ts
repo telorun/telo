@@ -46,7 +46,7 @@ export class ResourceContextImpl implements ResourceContext {
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
-        `Invalid value passed: ${JSON.stringify(value)}. Error: ${formatAjvErrors(validate.errors)}`,
+        `[${this.metadata.name}] Invalid value passed: ${JSON.stringify(value)}. Error: ${formatAjvErrors(validate.errors)}`,
       );
     }
   }

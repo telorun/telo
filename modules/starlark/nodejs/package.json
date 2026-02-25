@@ -2,10 +2,12 @@
   "name": "@telorun/starlark",
   "version": "0.1.2",
   "type": "module",
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    "./script": {
+      "bun": "./src/script.ts",
+      "import": "./dist/script.js",
+      "require": "./dist/script.js"
+    }
   },
   "dependencies": {
     "@telorun/sdk": "workspace:*",

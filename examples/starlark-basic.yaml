@@ -4,9 +4,9 @@ metadata:
   version: 1.0.0
   description: A demo module showcasing Starlark scripts
 imports:
-  - ../../modules/flow
-  - ../../modules/starlark
-  - ../../modules/console
+  - ../modules/flow
+  - ../modules/starlark
+  - ../modules/console
 ---
 kind: Starlark.Script
 metadata:
@@ -39,7 +39,7 @@ inputSchema:
     result:
       type: number
   required: [result]
-text: |
+output: |
   Evaluated starlark code.
   Result is: ${{ result }}
 ---
@@ -53,11 +53,13 @@ trigger:
   filter: "true"
 steps:
   - name: Step1
-    input:
+    inputs:
       value: 42
     invoke:
       kind: Starlark.Script
       name: ExampleStarlarkScript
-  - input:
-      result: ${{ Step1.output.result }}
-    invoke: Console.WriteLine.WriteResult
+  - inputs:
+      result: ${{ Step1.outputs.result }}
+    invoke:
+      kind: Console.WriteLine
+      name: WriteResult

@@ -83,7 +83,7 @@ export async function create(
 async function executeStarlark(code: string, input: any): Promise<any> {
   try {
     const result = globalThis.run_starlark_code(
-      `${code}\ndef main():\n  return run(${JSON.stringify(input)})\nmain()`,
+      `${code}\ndef main():\n  print(str(run(${JSON.stringify(input)})))`,
     );
     if (result.error) {
       throw new Error(result.error);

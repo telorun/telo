@@ -11,8 +11,8 @@ export const schema = Type.Object({
         name: Type.Optional(Type.String()),
         metadata: Type.Optional(Type.Record(Type.String(), Type.String())),
       }),
-      output: Type.Optional(Type.Record(Type.String(), Type.Any())),
-      input: Type.Record(Type.String(), Type.Any()),
+      outputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
+      inputs: Type.Record(Type.String(), Type.Any()),
     }),
   ),
 });
@@ -52,10 +52,10 @@ class PipelineJob {
         const result = await this.ctx.invoke(
           step.invoke.kind,
           step.invoke.name ?? step.name,
-          this.ctx.expandValue(step.input || {}, context),
+          this.ctx.expandValue(step.inputs || {}, context),
         );
         context[step.name] = {
-          output: result,
+          outputs: result,
         };
       } catch (error) {
         throw error;

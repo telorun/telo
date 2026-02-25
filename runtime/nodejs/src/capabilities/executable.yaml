@@ -1,3 +1,7 @@
 kind: Runtime.Capability
 metadata:
   name: executable
+schema:
+  type: object
+  properties:
+    foo: { type: string }
