@@ -1,0 +1,84 @@
+kind: Runtime.Module
+metadata:
+  name: Http
+  description: HTTP request client for testing and orchestration
+---
+kind: "Runtime.Definition"
+metadata:
+  name: "Client"
+  module: "Http"
+capabilities:
+  - provider
+controllers:
+  - pkg:npm/@telorun/http-client@>=0.1.0?local_path=./nodejs#http-client
+schema:
+  type: "object"
+  properties:
+    baseUrl:
+      type: "string"
+      format: "uri"
+      description: "Base URL for all requests using this client"
+    headers:
+      type: "object"
+      additionalProperties:
+        type: "string"
+      description: "Default headers applied to all requests (e.g., Authorization)"
+    timeout:
+      type: "integer"
+      minimum: 1
+      default: 10000
+      description: "Default timeout in milliseconds"
+    followRedirects:
+      type: "boolean"
+      default: true
+---
+kind: "Runtime.Definition"
+metadata:
+  name: "Request"
+  module: "Http"
+capabilities:
+  - handler
+controllers:
+  - pkg:npm/@telorun/http-client@>=0.1.0?local_path=./nodejs#http-request
+schema:
+  type: "object"
+  properties:
+    client:
+      type: "string"
+      description: "Reference to an Http.Client resource name"
+    url:
+      type: "string"
+      description: "Absolute URL, or relative path if 'client' is provided"
+    method:
+      type: "string"
+      enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+      default: "GET"
+    query:
+      type: "object"
+      description: "Query parameters to be appended to the URL"
+      additionalProperties:
+        type: "string"
+    headers:
+      type: "object"
+      description: "Request-specific headers (merges with client headers)"
+      additionalProperties:
+        type: "string"
+    body:
+      oneOf:
+        - type: "string"
+        - type: "object"
+      description: "Payload to send. Objects are automatically stringified to JSON."
+    timeout:
+      type: "integer"
+      minimum: 1
+      description: "Overrides the client or default timeout (in ms)"
+    throwOnHttpError:
+      type: "boolean"
+      default: false
+      description: "If true, HTTP 4xx and 5xx responses will throw a runtime error. If false, they return gracefully."
+    retries:
+      type: "integer"
+      minimum: 0
+      default: 0
+      description: "Number of times to retry on Network Errors (not HTTP errors)"
+  required: ["url"]
