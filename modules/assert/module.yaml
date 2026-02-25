@@ -3,5 +3,27 @@ metadata:
   name: Assert
   version: 1.0.0
   description: Assertion and value verification for testing
-definitions:
-  - schema.yaml
+---
+kind: Runtime.Definition
+metadata:
+  name: Schema
+  module: Assert
+capabilities:
+  - executable
+controllers:
+  - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#schema
+schema:
+  type: object
+  properties:
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    schema:
+      description: Value to assert (can be any type or expression)
+  required:
+    - metadata
+    - assertions

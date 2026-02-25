@@ -107,9 +107,7 @@ export class Kernel implements IKernel {
     controllerInstance: any,
   ): Promise<void> {
     this.controllers.registerController(`${moduleName}.${kindName}`, controllerInstance);
-    await controllerInstance.register?.(
-      this.createControllerContext(`${moduleName}.${kindName}`),
-    );
+    await controllerInstance.register?.(this.createControllerContext(`${moduleName}.${kindName}`));
   }
 
   /**
@@ -643,11 +641,11 @@ export class Kernel implements IKernel {
         `Resource ${kind}.${name} does not have an invoke method`,
       );
     }
-    const result = await instance["invoke"](...args);
+    const outputs = await instance["invoke"](...args);
     this.emitRuntimeEvent(`${module}.${kind}.${name}.Invoked`, {
-      result,
+      outputs,
     });
-    return result;
+    return outputs;
   }
 
   private getResourceKey(module: string, kind: string, name: string): string {
