@@ -26,9 +26,12 @@ const config: Config = {
           routeBasePath: "/",
           include: [
             "README.md",
+            "STYLEGUIDE.md",
             "cli/README.md",
             "kernel/README.md",
             "kernel/CONTROLLERS.md",
+            "kernel/EVALUATION_CONTEXT.md",
+            "kernel/MODULES.md",
             "yaml-cel-templating/README.md",
             "modules/README.md",
             "modules/http-server/README.md",

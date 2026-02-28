@@ -18,6 +18,6 @@ Use the SDK when building or extending Telo modules. It is not the kernel itself
 
 ## Related Docs
 
-- Kernel overview: `kernel/README.md`
-- Built‑in modules: `modiles/`
-- SDKs index: `sdk/README.md`
+- Kernel overview: [kernel/README.md](../../kernel/README.md)
+- Built‑in modules: [modules/](../../modules/)
+- SDKs index: [sdk/README.md](../README.md)

@@ -10,12 +10,14 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "kernel/README", label: "Specification" },
         { type: "doc", id: "kernel/CONTROLLERS", label: "Controllers" },
+        { type: "doc", id: "kernel/MODULES", label: "Module Specification" },
+        { type: "doc", id: "kernel/EVALUATION_CONTEXT", label: "Evaluation Context" },
         { type: "doc", id: "yaml-cel-templating/README", label: "CEL-YAML Specification" },
       ],
     },
     {
       type: "category",
-      label: "Modules",
+      label: "Standard Library",
       items: [
         { type: "doc", id: "modules/README", label: "Overview" },
         { type: "doc", id: "modules/http-server/README", label: "HTTP Server" },
@@ -31,6 +33,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "sdk/nodejs/README", label: "Node.js" },
       ],
     },
+    { type: "doc", id: "STYLEGUIDE", label: "Style Guide" },
   ],
 };
 

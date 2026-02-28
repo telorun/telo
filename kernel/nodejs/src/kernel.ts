@@ -93,10 +93,9 @@ export class Kernel implements IKernel {
     if (instance.teardown) {
       await instance.teardown();
     }
-    await this.eventBus.emit(
-      `${resource.metadata.module}.${resource.kind}.${resource.metadata.name}.Teardown`,
-      { resource: { kind: resource.kind, name: resource.metadata.name } },
-    );
+    await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
+      resource: { kind: resource.kind, name: resource.metadata.name },
+    });
     this.resourceInstances.delete(key);
     this.resourceEventBuses.delete(key);
   }
@@ -562,8 +561,15 @@ export class Kernel implements IKernel {
         .reverse() // Most relevant errors (root causes) are last in the list, so reverse to show them first
         .map(([resource, error]) => `- ${resource}: ${error}`)
         .join("\n");
+
+      for (const [resource, error] of unhandledResources.entries()) {
+        this.emitRuntimeEvent(`${resource}.Failed`, {
+          resource,
+          error,
+        });
+      }
       throw new RuntimeError(
-        "ERR_CONTROLLER_NOT_FOUND",
+        "ERR_RESOURCE_INITIALIZATION_FAILED",
         `Unable to process resources:\n\n${unhandledList}`,
       );
     }

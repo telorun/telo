@@ -51,8 +51,8 @@ kind: Kernel.Module
 metadata:
   name: Example
 imports:
-  - https://raw.githubusercontent.com/diglyai/telo/refs/heads/main/modules/http-server/module.yaml
-  - https://raw.githubusercontent.com/diglyai/telo/refs/heads/main/modules/javascript/module.yaml
+  - std/http-server@1.0.1
+  - std/javascript@1.0.0
 ---
 kind: Http.Server
 metadata:

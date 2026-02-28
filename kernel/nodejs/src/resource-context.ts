@@ -171,7 +171,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   async emit(event: string, payload?: any) {
-    await this.kernel.emitRuntimeEvent(event, payload);
+    await this.kernel.emitRuntimeEvent(`${this.metadata.name}.${event}`, payload);
   }
 
   acquireHold(reason?: string): () => void {

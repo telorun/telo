@@ -17,8 +17,11 @@ class ConsoleWriteLineResource implements ResourceInstance {
     if (this.manifest.inputSchema) {
       this.ctx.validateSchema(input, this.manifest.inputSchema);
     }
-    process.stdout.write(this.ctx.expandValue(this.manifest.output, input ?? {}));
+    const output = this.ctx.expandValue(this.manifest.output, input ?? {});
+    process.stdout.write(output);
     process.stdout.write("\n");
+    this.ctx.emit("StdOut.LineWritten", { line: output });
+    return output;
   }
 }
 

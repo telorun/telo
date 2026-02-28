@@ -1,4 +1,5 @@
 {
   "editor.formatOnSave": false,
-  "testing.automaticallyOpenTestResults": "neverOpen"
+  "testing.automaticallyOpenTestResults": "neverOpen",
+  "cSpell.words": ["Telo"]
 }

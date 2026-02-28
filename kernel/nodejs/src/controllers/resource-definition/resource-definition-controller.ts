@@ -44,17 +44,23 @@ class ResourceDefinition implements ResourceInstance {
         ctx.validateSchema(this.resource, capSchema);
       }
     }
-
-    const controllerInstance = await this.controllerLoader.load(
-      this.resource.controllers,
-      this.resource.metadata.source,
-    );
-    ctx.registerDefinition(this.resource);
-    await ctx.registerController(
-      this.resource.metadata.module,
-      this.resource.metadata.name,
-      controllerInstance,
-    );
+    ctx.emit("ControllerLoading", { controllers: this.resource.controllers });
+    try {
+      const controllerInstance = await this.controllerLoader.load(
+        this.resource.controllers,
+        this.resource.metadata.source,
+      );
+      ctx.emit("ControllerLoaded", { schema: controllerInstance.schema });
+      ctx.registerDefinition(this.resource);
+      await ctx.registerController(
+        this.resource.metadata.module,
+        this.resource.metadata.name,
+        controllerInstance,
+      );
+    } catch (err) {
+      ctx.emit("ControllerLoadFailed", { error: (err as Error).message });
+      throw err;
+    }
   }
 }
 
