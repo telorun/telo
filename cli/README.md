@@ -47,7 +47,7 @@ Load and run a Telo manifest.
 Create a file `server.yaml`:
 
 ```yaml
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: Example
 imports:

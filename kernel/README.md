@@ -27,7 +27,7 @@ interface RuntimeResource {
   kind: string; // e.g. "Http.Server", "JavaScript.Script"
   metadata: {
     name: string; // unique within kind + module
-    module: string; // which Runtime.Module declared this resource
+    module: string; // which Kernel.Module declared this resource
     [key: string]: any; // custom labels or annotations
   };
   [key: string]: any; // kind-specific configuration fields
@@ -77,29 +77,29 @@ When the entire string is a single interpolation, the result preserves the CEL t
 
 ```
 loadFromConfig(path)
-  └── loadBuiltinDefinitions()       # register Runtime.Definition + Runtime.Module controllers
+  └── loadBuiltinDefinitions()       # register Kernel.Definition + Kernel.Module controllers
   └── loader.loadManifest(path)      # yaml.loadAll → compile() → queue
 
 start()
   ├── register()                     # call register() on all known controllers
   ├── initializeResources()          # multi-pass create + init loop (max 10 passes)
-  ├── emit Runtime.Initialized
-  ├── emit Runtime.Starting
+  ├── emit Kernel.Initialized
+  ├── emit Kernel.Starting
   ├── runInstances()                 # call run() on all instances
-  ├── emit Runtime.Started
+  ├── emit Kernel.Started
   ├── waitForIdle()                  # block until hold count reaches 0
   └── [finally]
-      ├── emit Runtime.Stopping
+      ├── emit Kernel.Stopping
       ├── teardownResources()        # call teardown() on all instances
-      └── emit Runtime.Stopped
+      └── emit Kernel.Stopped
 ```
 
 ### 4.2 Step 1 — Load
 
 `loadFromConfig(path)` first registers two built-in controllers:
 
-- `Runtime.Definition` — handles resource type definitions that load and register controllers dynamically.
-- `Runtime.Module` — handles module manifests that import other modules and resources.
+- `Kernel.Definition` — handles resource type definitions that load and register controllers dynamically.
+- `Kernel.Module` — handles module manifests that import other modules and resources.
 
 It then calls `loader.loadManifest(path)`, which:
 
@@ -115,7 +115,7 @@ Before initializing any resource, `start()` calls `register(ctx)` on every contr
 
 ### 4.4 Step 3 — Multi-Pass Initialization (max 10 passes)
 
-Resources may depend on other resources being initialized first (e.g. `Runtime.Module` registers new kinds, which other resources need). The kernel resolves this with a multi-pass loop:
+Resources may depend on other resources being initialized first (e.g. `Kernel.Module` registers new kinds, which other resources need). The kernel resolves this with a multi-pass loop:
 
 ```
 unhandled = all resources in initialization queue
@@ -156,14 +156,14 @@ After all resources are initialized, the kernel calls `run()` on every instance 
 ### 4.6 Event Order Example
 
 ```
-Runtime.Initialized                            # all create()+init() done
-Runtime.Starting                               # about to call run()
-Runtime.Started                                # all run() called
-Runtime.Blocked                                # first hold acquired
+Kernel.Initialized                            # all create()+init() done
+Kernel.Starting                               # about to call run()
+Kernel.Started                                # all run() called
+Kernel.Blocked                                # first hold acquired
 ...
-Runtime.Unblocked                              # last hold released
-Runtime.Stopping
-Runtime.Stopped
+Kernel.Unblocked                              # last hold released
+Kernel.Stopping
+Kernel.Stopped
 ```
 
 ### 4.7 Error Scenarios
@@ -235,7 +235,7 @@ interface ResourceContext extends ControllerContext {
   getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;
 
-  // Dynamically register resources during initialization (used by Runtime.Module)
+  // Dynamically register resources during initialization (used by Kernel.Module)
   registerManifest(resource: any): void;
   registerController(moduleName: string, kindName: string, controller: any): Promise<void>;
   registerDefinition(definition: any): void;
@@ -269,15 +269,15 @@ All events are namespaced as `Module.Event` or `Module.Kind.Name.Event`.
 
 ### 7.1 Kernel Lifecycle Events
 
-| Event                 | When                                      |
-| --------------------- | ----------------------------------------- |
-| `Runtime.Initialized` | All `create()` + `init()` calls completed |
-| `Runtime.Starting`    | About to call `run()` on instances        |
-| `Runtime.Started`     | All `run()` calls completed               |
-| `Runtime.Blocked`     | Hold count went from 0 → 1                |
-| `Runtime.Unblocked`   | Hold count returned to 0                  |
-| `Runtime.Stopping`    | Teardown phase beginning                  |
-| `Runtime.Stopped`     | Teardown complete; process will exit      |
+| Event                | When                                      |
+| -------------------- | ----------------------------------------- |
+| `Kernel.Initialized` | All `create()` + `init()` calls completed |
+| `Kernel.Starting`    | About to call `run()` on instances        |
+| `Kernel.Started`     | All `run()` calls completed               |
+| `Kernel.Blocked`     | Hold count went from 0 → 1                |
+| `Kernel.Unblocked`   | Hold count returned to 0                  |
+| `Kernel.Stopping`    | Teardown phase beginning                  |
+| `Kernel.Stopped`     | Teardown complete; process will exit      |
 
 ### 7.2 Resource Events
 
@@ -299,8 +299,8 @@ const release = ctx.acquireHold("http-server");
 release();
 ```
 
-- First hold acquired → `Runtime.Blocked` emitted.
-- Last hold released → `Runtime.Unblocked` emitted; kernel proceeds to teardown.
+- First hold acquired → `Kernel.Blocked` emitted.
+- Last hold released → `Kernel.Unblocked` emitted; kernel proceeds to teardown.
 
 ### 7.4 Exit Codes
 
@@ -339,19 +339,19 @@ The expansion loop runs up to 10 iterations to support templates that instantiat
 
 ## 9. Module System
 
-### 9.1 Runtime.Module Resource
+### 9.1 Kernel.Module Resource
 
-A `Runtime.Module` resource declares a module's imports and resource files:
+A `Kernel.Module` resource declares a module's imports and resource files:
 
 ```yaml
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: MyApp # module namespace — propagated as metadata.module on all owned resources
   version: 1.0.0
 imports: # directories to load as sub-modules (via loadDirectory)
   - ./my-module
   - ../../shared/http-module
-definitions: # definition YAML files (Runtime.Definition resources)
+definitions: # definition YAML files (Kernel.Definition resources)
   - definitions/my-type.yaml
 resources: # resource YAML files
   - resources/config.yaml
@@ -360,14 +360,14 @@ resources: # resource YAML files
 
 `imports` are resolved with `loader.loadDirectory()` (walks for YAML files, expands templates). `definitions` and `resources` are resolved with `loader.loadManifest()` (compiles through yaml-cel-templating).
 
-The `Runtime.Module` controller itself returns `null` from `create()` — it has no runtime instance, only load-time side effects.
+The `Kernel.Module` controller itself returns `null` from `create()` — it has no runtime instance, only load-time side effects.
 
-### 9.2 Runtime.Definition Resource
+### 9.2 Kernel.Definition Resource
 
-Modules declare the resource kinds they handle using `Runtime.Definition`:
+Modules declare the resource kinds they handle using `Kernel.Definition`:
 
 ```yaml
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: Server # becomes Http.Server when module namespace is Http
   module: Http
@@ -387,14 +387,14 @@ controllers:
   - pkg:golang/github.com/telorun/pipeline@>=1.0.0?local_path=./go#job
 ```
 
-When a `Runtime.Definition` instance initializes, it resolves and loads the controller module
+When a `Kernel.Definition` instance initializes, it resolves and loads the controller module
 and registers it with the kernel. For the full resolution algorithm (local path, host
 node_modules, registry cache) and PURL format, see [CONTROLLERS.md](CONTROLLERS.md).
 
 ### 9.3 Module Loading Flow
 
 ```
-Runtime.Module resource initialized
+Kernel.Module resource initialized
   ├── imports:     loadDirectory(path) for each import path
   ├── definitions: loadManifest(path) for each definition file
   └── resources:   loadManifest(path) for each resource file
@@ -428,7 +428,7 @@ Additional metadata fields set by the Loader:
 ```typescript
 interface ResourceMetadata {
   name: string; // user-provided
-  module: string; // which Runtime.Module owns this resource
+  module: string; // which Kernel.Module owns this resource
   uri: string; // loader-assigned absolute URI
   generationDepth: number; // 0 = loaded from file; 1+ = template-generated
   source: string; // absolute path of the source file
@@ -455,7 +455,7 @@ telo [--verbose] [--debug] [--snapshot-on-exit] <module.yaml|directory>
 When `--debug` is set, every event is written as a JSONL line to `.digly-debug/events.jsonl`:
 
 ```json
-{ "timestamp": "2026-01-01T00:00:00.000Z", "event": "Runtime.Started", "payload": {} }
+{ "timestamp": "2026-01-01T00:00:00.000Z", "event": "Kernel.Started", "payload": {} }
 ```
 
 **Programmatic use:**
@@ -465,7 +465,7 @@ const kernel = new Kernel();
 await kernel.enableEventStream("./debug.jsonl");
 // ...
 const events = await kernel.getEventStream().readAll();
-const started = await kernel.getEventStream().getEventsByType("Runtime.Started");
+const started = await kernel.getEventStream().getEventsByType("Kernel.Started");
 ```
 
 ### 12.3 Custom Resource Snapshots

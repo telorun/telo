@@ -1,7 +1,7 @@
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
-  name: Flow
-  module: Runtime
+  name: Steps
+  module: Flow
   version: 1.0.0
 capabilities:
   - executable

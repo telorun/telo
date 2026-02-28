@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: TemplatingBasics
   version: 1.0.0

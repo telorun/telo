@@ -14,7 +14,11 @@ import { ResourceManifest } from "./types.js";
 export class Loader {
   private static projectRoot: string | null = null;
 
-  private readonly adapters: ManifestAdapter[] = [new HttpAdapter(), new RegistryAdapter(), new LocalFileAdapter()];
+  private readonly adapters: ManifestAdapter[] = [
+    new HttpAdapter(),
+    new RegistryAdapter(),
+    new LocalFileAdapter(),
+  ];
 
   private getAdapter(pathOrUrl: string): ManifestAdapter {
     const adapter = this.adapters.find((a) => a.supports(pathOrUrl));
@@ -44,8 +48,9 @@ export class Loader {
     return this.orderResourcesByKindDependencies(resources);
   }
 
-  async loadManifest(pathOrUrl: string): Promise<ResourceManifest[]> {
-    const file = await this.getAdapter(pathOrUrl).read(pathOrUrl);
+  async loadManifest(pathOrUrl: string, baseUrl: string): Promise<ResourceManifest[]> {
+    const url = new URL(pathOrUrl, baseUrl).toString();
+    const file = await this.getAdapter(url).read(url);
     if (!Loader.projectRoot) {
       Loader.ensureProjectRoot(file.baseDir);
     }

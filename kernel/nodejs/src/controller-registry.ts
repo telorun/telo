@@ -151,32 +151,32 @@ export class ControllerRegistry {
     this.controllerLoaders.set(kind, async () => {
       const modulePath = path.resolve(moduleDir, controllerDef.entry);
       const moduleRuntime = await import(modulePath);
-      const exported = moduleRuntime.default || moduleRuntime.Module || moduleRuntime;
+      const exported = moduleKernel.default || moduleKernel.Module || moduleRuntime;
 
       const registerFn =
-        typeof moduleRuntime.register === "function"
-          ? moduleRuntime.register
+        typeof moduleKernel.register === "function"
+          ? moduleKernel.register
           : typeof exported === "function" && !this.isModuleClass(exported)
             ? exported
             : null;
 
       const createFn =
-        typeof moduleRuntime.create === "function"
-          ? moduleRuntime.create
+        typeof moduleKernel.create === "function"
+          ? moduleKernel.create
           : typeof exported?.create === "function"
             ? exported.create
             : null;
 
       const executeFn =
-        typeof moduleRuntime.execute === "function"
-          ? moduleRuntime.execute
+        typeof moduleKernel.execute === "function"
+          ? moduleKernel.execute
           : typeof exported?.execute === "function"
             ? exported.execute
             : null;
 
       const compileFn =
-        typeof moduleRuntime.compile === "function"
-          ? moduleRuntime.compile
+        typeof moduleKernel.compile === "function"
+          ? moduleKernel.compile
           : typeof exported?.compile === "function"
             ? exported.compile
             : null;

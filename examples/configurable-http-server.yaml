@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: ConfigExample
 imports:

@@ -58,9 +58,7 @@ function setupWatchMode(kernel: Kernel, log: ReturnType<typeof createLogger>): W
       for (const f of kernel.getSourceFiles()) watchFile(f);
       log.info(log.ok(`[watch] complete`));
     } catch (err) {
-      log.info(
-        log.error(`[watch] error: ${err instanceof Error ? err.message : String(err)}`),
-      );
+      log.info(log.error(`[watch] error: ${err instanceof Error ? err.message : String(err)}`));
     }
     // Re-establish watcher regardless of outcome (handles atomic rename saves)
     setTimeout(() => {
@@ -113,7 +111,7 @@ async function run(argv: {
       // how many holds are active (e.g. Http.Server may hold its own).
       kernel.acquireHold("watch-mode");
 
-      kernel.on("Runtime.Started", () => {
+      kernel.on("Kernel.Started", () => {
         const files = kernel.getSourceFiles();
         log.info(`[watch] watching ${files.length} file(s)`);
         watchHandle = setupWatchMode(kernel, log);
@@ -135,7 +133,10 @@ async function run(argv: {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
-    console.error("Error loading runtime:", error instanceof Error ? error.stack : String(error));
+    console.error(
+      "Error loading runtime:",
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
+    );
     process.exit(1);
   }
 }

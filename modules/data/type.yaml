@@ -1,4 +1,4 @@
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: Type
   module: Data
@@ -20,7 +20,7 @@ schema:
   required: ["schema"]
   additionalProperties: true
 ---
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: ObjectType
   module: Data

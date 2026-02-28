@@ -38,9 +38,15 @@ class Flow {
     for (const step of this.resource.steps) {
       const { kind, name } = step.invoke;
       const input = this.ctx.expandValue(step.inputs || {}, context);
-      const result = await this.ctx.invoke(kind, name, input);
-      if (result != null && step.name) {
-        context[step.name] = { outputs: result };
+      const result = await this.ctx.invoke(kind, name, { ...context, ...input });
+      if (result != null && name) {
+        const parts = kind.split(".");
+        let cursor = context;
+        for (const part of parts) {
+          if (!cursor[part]) cursor[part] = {};
+          cursor = cursor[part];
+        }
+        cursor[name] = result;
       }
     }
   }

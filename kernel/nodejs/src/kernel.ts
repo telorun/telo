@@ -134,40 +134,40 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Load built-in Runtime definitions (e.g., Runtime.Module)
+   * Load built-in Runtime definitions (e.g., Kernel.Module)
    */
   private async loadBuiltinDefinitions(): Promise<void> {
     this.controllers.registerDefinition({
-      kind: "Runtime.Definition",
-      metadata: { name: "Definition", module: "Runtime" },
+      kind: "Kernel.Definition",
+      metadata: { name: "Definition", module: "Kernel" },
       capabilities: ["template"],
       schema: { type: "object" },
     });
     this.controllers.registerController(
-      "Runtime.Definition",
+      "Kernel.Definition",
       await import("./controllers/resource-definition/resource-definition-controller.js"),
     );
     const moduleSchema = await import("./controllers/module/module.json", {
       with: { type: "json" },
     });
     this.controllers.registerDefinition({
-      kind: "Runtime.Definition",
-      metadata: { name: "Module", module: "Runtime" },
+      kind: "Kernel.Definition",
+      metadata: { name: "Module", module: "Kernel" },
       capabilities: ["template"],
       schema: moduleSchema,
     });
     this.controllers.registerController(
-      "Runtime.Module",
+      "Kernel.Module",
       await import("./controllers/module/module-controller.js"),
     );
     this.controllers.registerDefinition({
-      kind: "Runtime.Definition",
-      metadata: { name: "Capability", module: "Runtime" },
+      kind: "Kernel.Definition",
+      metadata: { name: "Capability", module: "Kernel" },
       capabilities: ["template"],
       schema: { type: "object" },
     });
     this.controllers.registerController(
-      "Runtime.Capability",
+      "Kernel.Capability",
       await import("./controllers/capability/capability-controller.js"),
     );
   }
@@ -186,7 +186,10 @@ export class Kernel implements IKernel {
     const capabilityManifests = await this.loader.loadDirectory(capabilitiesDir);
 
     // Load runtime configuration
-    const userManifests = await this.loader.loadManifest(runtimeYamlPath);
+    const userManifests = await this.loader.loadManifest(
+      runtimeYamlPath,
+      `file://${process.cwd()}/`,
+    );
     this.initializationQueue = [...capabilityManifests, ...userManifests];
   }
 
@@ -215,15 +218,15 @@ export class Kernel implements IKernel {
     // Initialize resources
     try {
       await this.initializeResources();
-      await this.eventBus.emit("Runtime.Initialized", {});
-      await this.eventBus.emit("Runtime.Starting", {});
+      await this.eventBus.emit("Kernel.Initialized", {});
+      await this.eventBus.emit("Kernel.Starting", {});
       await this.runInstances();
-      await this.eventBus.emit("Runtime.Started", {});
+      await this.eventBus.emit("Kernel.Started", {});
       await this.waitForIdle();
     } finally {
-      await this.eventBus.emit("Runtime.Stopping", {});
+      await this.eventBus.emit("Kernel.Stopping", {});
       await this.teardownResources();
-      await this.eventBus.emit("Runtime.Stopped", { exitCode: this._exitCode });
+      await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
     }
   }
 
@@ -251,7 +254,7 @@ export class Kernel implements IKernel {
   acquireHold(reason?: string): () => void {
     this.holdCount += 1;
     if (this.holdCount === 1) {
-      void this.eventBus.emit("Runtime.Blocked", {
+      void this.eventBus.emit("Kernel.Blocked", {
         reason,
         count: this.holdCount,
       });
@@ -268,7 +271,7 @@ export class Kernel implements IKernel {
         for (const resolve of resolvers) {
           resolve();
         }
-        void this.eventBus.emit("Runtime.Unblocked", { count: this.holdCount });
+        void this.eventBus.emit("Kernel.Unblocked", { count: this.holdCount });
       }
     };
   }
@@ -357,9 +360,6 @@ export class Kernel implements IKernel {
   }
 
   getResourceByName(module: string, kind: string, name: string): RuntimeResource | null {
-    // const [declarationModule, knd] = kind.includes('.')
-    //   ? kind.split('.', 2)
-    //   : ['Runtime', kind];
     const key = this.getResourceKey(module, kind, name);
     const entry = this.resourceInstances.get(key);
     if (entry) {
@@ -389,7 +389,7 @@ export class Kernel implements IKernel {
    */
   async reloadSource(sourcePath: string): Promise<void> {
     // Parse first — bail before touching running resources if the file is invalid
-    const newManifests = await this.loader.loadManifest(sourcePath);
+    const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`);
 
     // Collect keys of resources loaded from this source (in insertion order)
     const keysFromSource: string[] = [];

@@ -2,7 +2,7 @@
 
 ## Overview
 
-When a `Runtime.Definition` resource is initialized, the kernel must locate and load the
+When a `Kernel.Definition` resource is initialized, the kernel must locate and load the
 controller module that implements that resource kind. Controllers are identified by
 **Package URLs (PURLs)** — a standard, registry-agnostic URI format.
 
@@ -22,18 +22,18 @@ pkg:<type>/<namespace>/<name>@<version-spec>[?<qualifiers>][#<entry>]
 
 | Component      | Description                                                                    |
 | -------------- | ------------------------------------------------------------------------------ |
-| `type`         | Package registry type: `npm`, `cargo`, `golang`, `pypi`, etc.                 |
+| `type`         | Package registry type: `npm`, `cargo`, `golang`, `pypi`, etc.                  |
 | `namespace`    | Registry namespace or scope (e.g. `@telorun` for npm, `github.com/org` for Go) |
 | `name`         | Package name within the namespace                                              |
-| `version-spec` | SemVer constraint (e.g. `>=0.1.0`, `^1.2.0`, `1.0.0`)                        |
+| `version-spec` | SemVer constraint (e.g. `>=0.1.0`, `^1.2.0`, `1.0.0`)                          |
 | `qualifiers`   | Key-value pairs; see [Section 2](#2-qualifiers)                                |
 | `entry`        | Export entry point within the package; see [Section 3](#3-entry-points)        |
 
-A `Runtime.Definition` lists one or more PURL candidates. The loader selects the first
+A `Kernel.Definition` lists one or more PURL candidates. The loader selects the first
 candidate whose `type` matches the current runtime (e.g. `npm` for Node.js/Bun).
 
 ```yaml
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: Server
   module: Http
@@ -51,7 +51,7 @@ Only one candidate is loaded per initialization — the first one the runtime ca
 
 ### `local_path`
 
-A relative path from the **definition file** (`Runtime.Definition` YAML) to the local
+A relative path from the **definition file** (`Kernel.Definition` YAML) to the local
 package directory.
 
 ```
@@ -160,9 +160,9 @@ already present inside the expected location, the download is skipped entirely.
 
 ## 8. Error Codes
 
-| Code                       | Condition                                                    |
-| -------------------------- | ------------------------------------------------------------ |
-| `ERR_CONTROLLER_NOT_FOUND` | No PURL candidates matched the current runtime, or the PURL  |
-|                            | list was empty                                               |
-| `ERR_CONTROLLER_INVALID`   | Module loaded successfully but exports neither `create` nor  |
-|                            | `register`                                                   |
+| Code                       | Condition                                                   |
+| -------------------------- | ----------------------------------------------------------- |
+| `ERR_CONTROLLER_NOT_FOUND` | No PURL candidates matched the current runtime, or the PURL |
+|                            | list was empty                                              |
+| `ERR_CONTROLLER_INVALID`   | Module loaded successfully but exports neither `create` nor |
+|                            | `register`                                                  |

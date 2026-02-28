@@ -1,7 +1,7 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
-  name: 'Config'
-  version: '0.1.0'
+  name: "Config"
+  version: "0.1.0"
 resources:
-  - 'variable.yaml'
-  - 'secret.yaml'
+  - "variable.yaml"
+  - "secret.yaml"

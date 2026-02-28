@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: JavaScriptDemo
   version: 1.0.0
@@ -23,12 +23,12 @@ outputSchema:
   result:
     type: number
 ---
-kind: Runtime.Flow
+kind: Flow.Steps
 metadata:
   name: RunScriptOnEvent
   module: JavaScriptDemo
 trigger:
-  event: Runtime.Started
+  event: Kernel.Started
   once: true
   filter: "true"
 steps:

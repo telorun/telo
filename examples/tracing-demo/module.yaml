@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   version: 1.0.0
   name: TracingDemo

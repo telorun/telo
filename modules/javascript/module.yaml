@@ -1,9 +1,9 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: "JavaScript"
   version: "1.0.0"
 ---
-kind: "Runtime.Definition"
+kind: "Kernel.Definition"
 metadata:
   name: "Script"
   module: "JavaScript"

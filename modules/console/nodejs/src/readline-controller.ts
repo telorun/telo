@@ -8,12 +8,15 @@ type ConsoleReadLineResource = RuntimeResource & {
 class ConsoleReadLine implements ResourceInstance {
   private value: string = "";
 
-  constructor(private readonly resource: ConsoleReadLineResource) {}
+  constructor(
+    private readonly resource: ConsoleReadLineResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(): Promise<{ value: string }> {
     const iface = rl.createInterface({
-      input: process.stdin,
-      output: process.stdout,
+      input: this.ctx.stdin,
+      output: this.ctx.stdout,
     });
     this.value = await new Promise<string>((resolve) => {
       iface.question(`${this.resource.prompt}: `, (answer) => {
@@ -29,7 +32,7 @@ export function register(): void {}
 
 export async function create(
   resource: ConsoleReadLineResource,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<ConsoleReadLine> {
-  return new ConsoleReadLine(resource);
+  return new ConsoleReadLine(resource, ctx);
 }

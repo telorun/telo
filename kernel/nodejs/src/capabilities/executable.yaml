@@ -1,4 +1,4 @@
-kind: Runtime.Capability
+kind: Kernel.Capability
 metadata:
   name: executable
 schema:

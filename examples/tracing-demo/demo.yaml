@@ -19,7 +19,7 @@ metadata:
 exporters:
   - Tracing.FileExporter.Traces
 events:
-  - Runtime.*
+  - Kernel.*
   - Http.Server.*
 filters:
   minLevel: debug

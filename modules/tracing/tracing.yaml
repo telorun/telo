@@ -1,4 +1,4 @@
-kind: "Runtime.Definition"
+kind: "Kernel.Definition"
 metadata:
   name: "Provider"
   module: "Tracing"
@@ -22,7 +22,7 @@ schema:
         type: "string"
     events:
       type: "array"
-      description: 'Event patterns to trace. Use "*" for all events, "Runtime.*" for all Runtime events, etc.'
+      description: 'Event patterns to trace. Use "*" for all events, "Kernel.*" for all Runtime events, etc.'
       items:
         type: "string"
       default: ["*"]

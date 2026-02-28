@@ -127,7 +127,7 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
     }
   });
 
-  ctx.on("Runtime.Stopping", () => {
+  ctx.on("Kernel.Stopping", () => {
     const report = buildReport(manifest.metadata.name, captured, manifest.expect);
     if (report) {
       if (report.passed) {

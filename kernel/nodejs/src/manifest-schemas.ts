@@ -44,7 +44,7 @@ export const RuntimeResourceSchema = Type.Object(
 
 export const ResourceDefinitionSchema = Type.Object(
   {
-    kind: Type.Literal("Runtime.Definition"),
+    kind: Type.Literal("Kernel.Definition"),
     metadata: Type.Object(
       {
         name: Type.String(),

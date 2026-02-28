@@ -36,7 +36,7 @@ class ResourceDefinition implements ResourceInstance {
     for (const cap of this.resource.capabilities) {
       if (!ctx.isCapabilityRegistered(cap)) {
         throw new Error(
-          `Capability "${cap}" is not registered. Declare it as a Runtime.Capability resource.`,
+          `Capability "${cap}" is not registered. Declare it as a Kernel.Capability resource.`,
         );
       }
       const capSchema = ctx.getCapabilitySchema(cap);

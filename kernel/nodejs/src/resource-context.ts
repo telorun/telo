@@ -15,6 +15,10 @@ export class ResourceContextImpl implements ResourceContext {
     private readonly resourceKey?: string,
   ) {}
 
+  stdin: NodeJS.ReadableStream = process.stdin;
+  stdout: NodeJS.WritableStream = process.stdout;
+  stderr: NodeJS.WritableStream = process.stderr;
+
   createSchemaValidator(schema: any) {
     if (!schema) {
       return new NoopValidator();

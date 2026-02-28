@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: TestStarlarkBasic
   version: 1.0.0

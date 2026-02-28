@@ -1,9 +1,9 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: Http
   description: HTTP request client for testing and orchestration
 ---
-kind: "Runtime.Definition"
+kind: "Kernel.Definition"
 metadata:
   name: "Client"
   module: "Http"
@@ -32,7 +32,7 @@ schema:
       type: "boolean"
       default: true
 ---
-kind: "Runtime.Definition"
+kind: "Kernel.Definition"
 metadata:
   name: "Request"
   module: "Http"

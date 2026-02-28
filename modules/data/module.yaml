@@ -1,6 +1,6 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: Data
-  version: '1.0.0'
+  version: "1.0.0"
 definitions:
-  - 'type.yaml'
+  - "type.yaml"

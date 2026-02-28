@@ -55,8 +55,8 @@ export class ManifestRegistry {
     }
     this.depthIndex.get(depth)!.push(resource);
 
-    // Check if this is a Runtime.KindDefinition that creates a new kind
-    // if (kind === 'Runtime.KindDefinition') {
+    // Check if this is a Kernel.KindDefinition that creates a new kind
+    // if (kind === 'Kernel.KindDefinition') {
     //   const newKind = name;
     //   const parentKind = resource?.extends;
     //   if (parentKind) {

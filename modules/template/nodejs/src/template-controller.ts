@@ -34,7 +34,7 @@ export async function create(
 
       // Register a new resource definition for this template
       ctx.registerDefinition({
-        kind: "Runtime.Definition",
+        kind: "Kernel.Definition",
         metadata: {
           name: templateName,
           module: moduleName,
@@ -45,10 +45,7 @@ export async function create(
       // Register a controller that expands template instances
       await ctx.registerController(moduleName, templateName, {
         schema: normalizeSchema(resource.schema),
-        create: (
-          instance: RuntimeResource,
-          instanceCtx: ResourceContext,
-        ): ResourceInstance => {
+        create: (instance: RuntimeResource, instanceCtx: ResourceContext): ResourceInstance => {
           // Extract parameters (everything except kind/metadata)
           const parameters: Record<string, any> = {};
           for (const [key, value] of Object.entries(instance)) {
@@ -88,18 +85,14 @@ export async function create(
   };
 }
 
-function normalizeSchema(
-  schema: Record<string, any> | undefined,
-): Record<string, any> {
+function normalizeSchema(schema: Record<string, any> | undefined): Record<string, any> {
   if (!schema) return { type: "object" };
   if (schema.type) return schema;
   // Shorthand: { port: { type: number }, ... } → { type: "object", properties: ... }
   return { type: "object", properties: schema };
 }
 
-function extractDefaults(
-  schema: Record<string, any> | undefined,
-): Record<string, any> {
+function extractDefaults(schema: Record<string, any> | undefined): Record<string, any> {
   const context: Record<string, any> = {};
   const normalized = normalizeSchema(schema);
   const properties = normalized.properties;

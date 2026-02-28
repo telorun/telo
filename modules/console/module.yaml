@@ -1,9 +1,9 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: Console
   version: 1.0.0
 ---
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: WriteLine
   module: Console
@@ -18,7 +18,7 @@ schema:
       type: string
   required: ["output"]
 ---
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: ReadLine
   module: Console

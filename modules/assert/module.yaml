@@ -1,10 +1,10 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: Assert
   version: 1.0.0
   description: Assertion and value verification for testing
 ---
-kind: Runtime.Definition
+kind: Kernel.Definition
 metadata:
   name: Schema
   module: Assert

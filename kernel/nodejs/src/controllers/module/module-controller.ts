@@ -41,8 +41,7 @@ export async function create(
     // Load and register resource definitions from imports
     if (resource.imports && Array.isArray(resource.imports)) {
       for (const importPath of resource.imports) {
-        // const resolvedPath = resolvePath(loader, moduleBasePath, importPath);
-        const defResources = await loader.loadManifest(importPath);
+        const defResources = await loader.loadManifest(importPath, resource.metadata.source);
         for (const defResource of defResources) {
           ctx.registerManifest(defResource);
         }

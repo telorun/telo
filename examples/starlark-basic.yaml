@@ -1,4 +1,4 @@
-kind: Runtime.Module
+kind: Kernel.Module
 metadata:
   name: StarlarkDemo
   version: 1.0.0
@@ -43,12 +43,12 @@ output: |
   Evaluated starlark code.
   Result is: ${{ result }}
 ---
-kind: Runtime.Flow
+kind: Flow.Steps
 metadata:
   name: RunScriptOnEvent
   module: StarlarkDemo
 trigger:
-  event: Runtime.Started
+  event: Kernel.Started
   once: true
   filter: "true"
 steps:

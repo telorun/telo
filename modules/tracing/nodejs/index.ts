@@ -262,7 +262,7 @@ export function create(
         let kind: string | undefined;
         let name: string | undefined;
 
-        if (eventName.startsWith("Runtime.")) {
+        if (eventName.startsWith("Kernel.")) {
           level = "info";
         } else if (payload?.error) {
           level = "error";
@@ -319,10 +319,10 @@ export function create(
 
         // Register listeners for Runtime events
         const runtimeEvents = [
-          "Runtime.Starting",
-          "Runtime.Started",
-          "Runtime.Blocked",
-          "Runtime.Unblocked",
+          "Kernel.Starting",
+          "Kernel.Started",
+          "Kernel.Blocked",
+          "Kernel.Unblocked",
         ];
 
         for (const eventName of runtimeEvents) {
