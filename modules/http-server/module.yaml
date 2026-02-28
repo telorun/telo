@@ -1,7 +1,7 @@
 kind: Runtime.Module
 metadata:
-  name: 'Http'
-  version: '1.0.0'
-resources:
-  - 'http-server-api.yaml'
-  - 'http-server.yaml'
+  name: "Http"
+  version: "1.0.1"
+imports:
+  - "http-server-api.yaml"
+  - "http-server.yaml"

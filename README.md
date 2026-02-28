@@ -32,6 +32,13 @@ Language Agnostic: Available as a Node.js runtime today, with a shared YAML runt
 Here is an example Telo application that defines a simple HTTP API:
 
 ```yaml
+kind: Runtime.Module
+metadata:
+  name: Example
+imports:
+  - std/http-server@1.0.1
+  - std/javascript@1.0.0
+---
 kind: Http.Server
 metadata:
   name: Example

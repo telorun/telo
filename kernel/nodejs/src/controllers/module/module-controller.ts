@@ -1,8 +1,4 @@
-import type {
-  ResourceContext,
-  ResourceInstance,
-  RuntimeResource
-} from "@telorun/sdk";
+import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import * as path from "path";
 import { Loader } from "../../loader.js";
 
@@ -45,34 +41,34 @@ export async function create(
     // Load and register resource definitions from imports
     if (resource.imports && Array.isArray(resource.imports)) {
       for (const importPath of resource.imports) {
-        const resolvedPath = resolvePath(loader, moduleBasePath, importPath);
-        const defResources = await loader.loadDirectory(resolvedPath);
+        // const resolvedPath = resolvePath(loader, moduleBasePath, importPath);
+        const defResources = await loader.loadManifest(importPath);
         for (const defResource of defResources) {
           ctx.registerManifest(defResource);
         }
       }
     }
     // Load and register resources from definitions and resources paths
-    if (resource.definitions && Array.isArray(resource.definitions)) {
-      for (const defPath of resource.definitions) {
-        const resolvedPath = resolvePath(loader, moduleBasePath, defPath);
-        const defResources = await loader.loadManifest(resolvedPath);
-        for (const defResource of defResources) {
-          ctx.registerManifest(defResource);
-        }
-      }
-    }
+    // if (resource.definitions && Array.isArray(resource.definitions)) {
+    //   for (const defPath of resource.definitions) {
+    //     const resolvedPath = resolvePath(loader, moduleBasePath, defPath);
+    //     const defResources = await loader.loadManifest(resolvedPath);
+    //     for (const defResource of defResources) {
+    //       ctx.registerManifest(defResource);
+    //     }
+    //   }
+    // }
 
-    if (resource.resources && Array.isArray(resource.resources)) {
-      for (const defPath of resource.resources) {
-        const rawPath = typeof defPath === "string" ? defPath : defPath.path;
-        const resolvedPath = resolvePath(loader, moduleBasePath, rawPath);
-        const defResources = await loader.loadManifest(resolvedPath);
-        for (const defResource of defResources) {
-          ctx.registerManifest(defResource);
-        }
-      }
-    }
+    // if (resource.resources && Array.isArray(resource.resources)) {
+    //   for (const defPath of resource.resources) {
+    //     const rawPath = typeof defPath === "string" ? defPath : defPath.path;
+    //     const resolvedPath = resolvePath(loader, moduleBasePath, rawPath);
+    //     const defResources = await loader.loadManifest(resolvedPath);
+    //     for (const defResource of defResources) {
+    //       ctx.registerManifest(defResource);
+    //     }
+    //   }
+    // }
 
     return {};
   } catch (error) {

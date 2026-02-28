@@ -24,14 +24,18 @@ jobs:
           aws configure set default.region auto
 
       - name: Publish module.yaml files
+        shell: bash
         env:
           R2_ENDPOINT: "${{ secrets.R2_ENDPOINT }}"
           R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+
+          failed=0
 
           for module_file in modules/*/module.yaml; do
-            module_name=$(basename "$(dirname "$module_file")")
+            module_dir=$(dirname "$module_file")
+            module_name=$(basename "$module_dir")
 
             # Extract version from first YAML document only (some files have multiple --- docs)
             version=$(yq 'select(di == 0) | .metadata.version' "$module_file")
@@ -41,27 +45,45 @@ jobs:
               continue
             fi
 
-            target_key="std/${module_name}/${version}/module.yaml"
-            echo "Processing: $module_file → s3://${R2_BUCKET}/${target_key}"
-
-            # Fail if file already exists in R2
-            if aws s3api head-object \
-                --endpoint-url "$R2_ENDPOINT" \
-                --bucket "$R2_BUCKET" \
-                --key "$target_key" \
-                2>/dev/null; then
-              echo "ERROR: $target_key already exists in R2. Refusing to overwrite."
-              exit 1
+            # Fail if any file already exists before uploading anything
+            conflict=0
+            for yaml_file in "$module_dir"/*.yaml; do
+              filename=$(basename "$yaml_file")
+              target_key="std/${module_name}/${version}/${filename}"
+              if aws s3api head-object \
+                  --endpoint-url "$R2_ENDPOINT" \
+                  --bucket "$R2_BUCKET" \
+                  --key "$target_key" \
+                  2>/dev/null; then
+                echo "ERROR: $target_key already exists in R2. Refusing to overwrite."
+                conflict=1
+              fi
+            done
+            if [[ "$conflict" -ne 0 ]]; then
+              failed=1
+              continue
             fi
 
-            # Upload
-            aws s3api put-object \
-              --endpoint-url "$R2_ENDPOINT" \
-              --bucket "$R2_BUCKET" \
-              --key "$target_key" \
-              --body "$module_file"
-
-            echo "Uploaded: $target_key"
+            # Upload all yaml files
+            for yaml_file in "$module_dir"/*.yaml; do
+              filename=$(basename "$yaml_file")
+              target_key="std/${module_name}/${version}/${filename}"
+              echo "Uploading: $yaml_file → s3://${R2_BUCKET}/${target_key}"
+              if aws s3api put-object \
+                  --endpoint-url "$R2_ENDPOINT" \
+                  --bucket "$R2_BUCKET" \
+                  --key "$target_key" \
+                  --body "$yaml_file"; then
+                echo "Uploaded: $target_key"
+              else
+                echo "ERROR: Failed to upload $target_key"
+                failed=1
+              fi
+            done
           done
 
+          if [[ "$failed" -ne 0 ]]; then
+            echo "One or more modules failed to publish."
+            exit 1
+          fi
           echo "All modules published successfully."
