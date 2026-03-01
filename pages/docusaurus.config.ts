@@ -40,6 +40,7 @@ const config: Config = {
             "modules/studio/README.md",
             "sdk/README.md",
             "sdk/nodejs/README.md",
+            "tests/README.md",
           ],
           sidebarPath: "./sidebars.ts",
         },

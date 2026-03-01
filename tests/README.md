@@ -88,7 +88,7 @@ Make HTTP requests:
 Wait for and capture async events:
 
 ```yaml
-- name: Wait for processing complete
+- name: WaitForProcessingComplete
   kind: Observe.Event
   event: ProcessingCompleted
   timeout: 5000
@@ -103,7 +103,7 @@ Wait for and capture async events:
 Verify values using CEL expressions:
 
 ```yaml
-- name: Verify result
+- name: VerifyResult
   kind: Assert.Value
   value: "${{ previousStepOutput }}"
   assertions:
@@ -117,8 +117,8 @@ Outputs from earlier steps are available via `${{ varName }}`:
 
 ```yaml
 steps:
-  - name: Get user
-    kind: Logic.JavaScript
+  - name: GetUser
+    kind: JavaScript.Script
     code: |
       function main({ userId }) {
         return { user: { id: userId, name: 'Alice' } }
@@ -128,8 +128,8 @@ steps:
     outputs:
       user: "payload.user"
 
-  - name: Get user email
-    kind: Logic.JavaScript
+  - name: GetUserEmail
+    kind: JavaScript.Script
     code: |
       function main({ name }) {
         return { email: name.toLowerCase() + '@example.com' }
@@ -139,7 +139,7 @@ steps:
     outputs:
       email: "payload.email"
 
-  - name: Send notification
+  - name: SendNotification
     kind: HttpClient.Request
     method: POST
     url: "http://api/notify"
@@ -147,7 +147,7 @@ steps:
       userId: "${{ user.id }}"
       email: "${{ email }}"
 
-  - name: Verify email
+  - name: VerifyEmail
     kind: Assert.Value
     value: "${{ email }}"
     assertions:

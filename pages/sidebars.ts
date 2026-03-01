@@ -28,10 +28,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "SDK",
+      label: "Module Development",
       items: [
-        { type: "doc", id: "sdk/README", label: "Overview" },
-        { type: "doc", id: "sdk/nodejs/README", label: "Node.js" },
+        { type: "doc", id: "sdk/README", label: "SDK" },
+        { type: "doc", id: "sdk/nodejs/README", label: "Node.js SDK" },
+        { type: "doc", id: "tests/README", label: "Testing" },
       ],
     },
     { type: "doc", id: "STYLEGUIDE", label: "Style Guide" },
