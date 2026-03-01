@@ -506,7 +506,15 @@ export class Kernel implements IKernel {
           // const evalCtx = moduleCtx.merge(bootCtx);
           // let resolvedResource = evalCtx.expand(resource) as ResourceManifest;
           const resolvedResource = resource; // Skip expansion for now - controllers can handle at runtime
-          this.sharedSchemaValidator.compile(controller.schema).validate(resolvedResource);
+
+          try {
+            this.sharedSchemaValidator.compile(controller.schema).validate(resolvedResource);
+          } catch (error) {
+            throw new RuntimeError(
+              "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+              `Resource does not match schema for kind ${kind}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
           // Create resource instance using the resolved manifest
           const instance = await controller.create(
             resolvedResource,

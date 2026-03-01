@@ -3,5 +3,5 @@ metadata:
   version: 1.0.0
   name: Starlark
   description: Execute Starlark code within workflows
-definitions:
+imports:
   - ./script.yaml

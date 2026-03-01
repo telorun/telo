@@ -59,7 +59,7 @@ steps:
       kind: Starlark.Script
       name: ExampleStarlarkScript
   - inputs:
-      result: ${{ outputs.Step1.result }}
+      result: ${{ outputs.ExampleStarlarkScript.result }}
     invoke:
       kind: Console.WriteLine
       name: WriteResult

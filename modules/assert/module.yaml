@@ -3,6 +3,8 @@ metadata:
   name: Assert
   version: 1.0.0
   description: Assertion and value verification for testing
+imports:
+  - events.yaml
 ---
 kind: Kernel.Definition
 metadata:
