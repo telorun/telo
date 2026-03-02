@@ -2,6 +2,6 @@ kind: Kernel.Module
 metadata:
   name: "Http"
   version: "1.0.1"
-imports:
+include:
   - "http-server-api.yaml"
   - "http-server.yaml"

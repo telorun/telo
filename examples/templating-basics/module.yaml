@@ -2,11 +2,26 @@ kind: Kernel.Module
 metadata:
   name: TemplatingBasics
   version: 1.0.0
-imports:
-  - ../../modules/template
-  - ../../modules/http-server
-  - ../../modules/data
-  - ../../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Template
+source: ../../modules/template
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../../modules/http-server
+---
+kind: Kernel.Import
+metadata:
+  name: Data
+source: ../../modules/data
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../../modules/javascript
 ---
 kind: Template.Definition
 metadata:

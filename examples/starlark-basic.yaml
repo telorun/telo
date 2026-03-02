@@ -3,10 +3,21 @@ metadata:
   name: StarlarkDemo
   version: 1.0.0
   description: A demo module showcasing Starlark scripts
-imports:
-  - ../modules/flow
-  - ../modules/starlark
-  - ../modules/console
+---
+kind: Kernel.Import
+metadata:
+  name: Flow
+source: ../modules/flow
+---
+kind: Kernel.Import
+metadata:
+  name: Starlark
+source: ../modules/starlark
+---
+kind: Kernel.Import
+metadata:
+  name: Console
+source: ../modules/console
 ---
 kind: Starlark.Script
 metadata:

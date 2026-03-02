@@ -3,9 +3,20 @@ metadata:
   version: 1.0.0
   name: TracingDemo
   description: Example demonstrating the Tracing module with file exporter
-imports:
-  - ../../modules/tracing
-  - ../../modules/http
-  - ../../modules/logic
-resources:
+include:
   - demo.yaml
+---
+kind: Kernel.Import
+metadata:
+  name: Tracing
+source: ../../modules/tracing
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../../modules/http
+---
+kind: Kernel.Import
+metadata:
+  name: Logic
+source: ../../modules/logic

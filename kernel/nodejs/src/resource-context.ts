@@ -195,4 +195,24 @@ export class ResourceContextImpl implements ResourceContext {
   async emitEvent(event: string, payload?: any) {
     await this.kernel.emitRuntimeEvent(event, payload);
   }
+
+  getModuleContext(moduleName: string): ModuleContext {
+    return this.kernel.getModuleContext(moduleName);
+  }
+
+  registerModuleImport(
+    declaringModule: string,
+    alias: string,
+    exports: Record<string, unknown>,
+  ): void {
+    this.kernel.registerModuleImportInContext(declaringModule, alias, exports);
+  }
+
+  registerModuleContext(
+    moduleName: string,
+    variables: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ): void {
+    this.kernel.registerModuleContext(moduleName, variables, secrets);
+  }
 }

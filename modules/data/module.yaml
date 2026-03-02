@@ -2,5 +2,5 @@ kind: Kernel.Module
 metadata:
   name: Data
   version: "1.0.0"
-imports:
+include:
   - "./type.yaml"

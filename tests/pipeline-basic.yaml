@@ -2,10 +2,21 @@ kind: Kernel.Module
 metadata:
   name: PipelineBasic
   version: 1.0.0
-imports:
-  - ../modules/pipeline
-  - ../modules/javascript
-  - ../modules/assert
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+source: ../modules/pipeline
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
 ---
 kind: Pipeline.Job
 metadata:

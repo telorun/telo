@@ -43,23 +43,24 @@ export class Loader {
     Loader.ensureProjectRoot(files[0]?.baseDir ?? process.cwd());
     const resources: RuntimeResource[] = [];
     for (const file of files) {
-      await this.processFile(file, resources);
+      await this.processFile(file, resources, { env: process.env });
     }
     return this.orderResourcesByKindDependencies(resources);
   }
 
-  async loadManifest(pathOrUrl: string, baseUrl: string): Promise<ResourceManifest[]> {
+  async loadManifest(
+    pathOrUrl: string,
+    baseUrl: string,
+    compileContext: Record<string, unknown> = {},
+  ): Promise<ResourceManifest[]> {
     const url = new URL(pathOrUrl, baseUrl).toString();
     const file = await this.getAdapter(url).read(url);
     if (!Loader.projectRoot) {
       Loader.ensureProjectRoot(file.baseDir);
     }
 
-    const rawDocs = file.documents;
-    const compileContext = { env: process.env };
-
     const resolved: ResourceManifest[] = [];
-    for (const rawDoc of rawDocs) {
+    for (const rawDoc of file.documents) {
       let compiled: any;
       try {
         compiled = compile(rawDoc, { context: compileContext });
@@ -83,9 +84,12 @@ export class Loader {
     return resolved;
   }
 
-  private async processFile(file: ManifestSourceData, resources: RuntimeResource[]): Promise<void> {
+  private async processFile(
+    file: ManifestSourceData,
+    resources: RuntimeResource[],
+    compileContext: Record<string, unknown> = {},
+  ): Promise<void> {
     const documents = file.documents;
-    const compileContext = { env: process.env };
 
     for (const rawDoc of documents) {
       let compiled: any;

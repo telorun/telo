@@ -2,6 +2,7 @@ import { ResourceContext, RuntimeEvent, RuntimeResource, isContextProvider } fro
 import * as path from "path";
 import { BootContextRegistry } from "./boot-context-registry.js";
 import { ControllerRegistry } from "./controller-registry.js";
+import { ModuleContext } from "./evaluation-context.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { Loader } from "./loader.js";
@@ -133,6 +134,18 @@ export class Kernel implements IKernel {
     this.moduleContextRegistry.setVariablesAndSecrets(moduleName, variables, secrets);
   }
 
+  getModuleContext(moduleName: string): ModuleContext {
+    return this.moduleContextRegistry.getContext(moduleName);
+  }
+
+  registerModuleImportInContext(
+    declaringModule: string,
+    alias: string,
+    exports: Record<string, unknown>,
+  ): void {
+    this.moduleContextRegistry.setImport(declaringModule, alias, exports);
+  }
+
   isCapabilityRegistered(name: string): boolean {
     return this.controllers.isCapabilityRegistered(name);
   }
@@ -155,18 +168,25 @@ export class Kernel implements IKernel {
       "Kernel.Definition",
       await import("./controllers/resource-definition/resource-definition-controller.js"),
     );
-    const moduleSchema = await import("./controllers/module/module.json", {
-      with: { type: "json" },
-    });
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
       metadata: { name: "Module", module: "Kernel" },
       capabilities: ["template"],
-      schema: moduleSchema,
+      schema: { type: "object" },
     });
     this.controllers.registerController(
       "Kernel.Module",
       await import("./controllers/module/module-controller.js"),
+    );
+    this.controllers.registerDefinition({
+      kind: "Kernel.Definition",
+      metadata: { name: "Import", module: "Kernel" },
+      capabilities: ["template"],
+      schema: { type: "object" },
+    });
+    this.controllers.registerController(
+      "Kernel.Import",
+      await import("./controllers/module/import-controller.js"),
     );
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
@@ -193,10 +213,11 @@ export class Kernel implements IKernel {
     const capabilitiesDir = fileURLToPath(new URL("./capabilities/", import.meta.url));
     const capabilityManifests = await this.loader.loadDirectory(capabilitiesDir);
 
-    // Load runtime configuration
+    // Load runtime configuration — root module gets access to host env
     const userManifests = await this.loader.loadManifest(
       runtimeYamlPath,
       `file://${process.cwd()}/`,
+      { env: process.env },
     );
     this.initializationQueue = [...capabilityManifests, ...userManifests];
   }
@@ -402,7 +423,9 @@ export class Kernel implements IKernel {
    */
   async reloadSource(sourcePath: string): Promise<void> {
     // Parse first — bail before touching running resources if the file is invalid
-    const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`);
+    const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`, {
+      env: process.env,
+    });
 
     // Collect keys of resources loaded from this source (in insertion order)
     const keysFromSource: string[] = [];
@@ -535,15 +558,15 @@ export class Kernel implements IKernel {
                 instance.provideContext(),
               );
             }
-            // Register module variables/secrets so child resources can use
-            // ${{ variables.X }} and ${{ secrets.X }} in subsequent passes.
-            if (resource.kind === "Kernel.Module") {
-              this.moduleContextRegistry.setVariablesAndSecrets(
-                resource.metadata.name,
-                extractFlatValues(resolvedResource.variables),
-                extractFlatValues(resolvedResource.secrets),
-              );
-            }
+            // Populate resources.<Name> namespace so CEL exports can reference it.
+            const snap = instance.snapshot
+              ? await Promise.resolve(instance.snapshot()).catch(() => ({}))
+              : {};
+            this.moduleContextRegistry.setResource(
+              resource.metadata.module ?? "default",
+              resource.metadata.name,
+              (snap as Record<string, unknown>) ?? {},
+            );
             this.resourceInstances.set(key, { resource: resolvedResource, instance });
             createdResources.push({ kind, resource: resolvedResource, instance });
             handledThisPass.push({ kind, resource });
@@ -603,65 +626,6 @@ export class Kernel implements IKernel {
     }
   }
 
-  // /**
-  //  * Execute - Dispatch execution request to appropriate controller
-  //  */
-  // async execute(urn: string, input: any, ctx?: any): Promise<any> {
-  //   const [kind, name] = this.parseUrn(urn);
-
-  //   // Lookup resource
-  //   const resource = this.manifests.get(kind, name);
-  //   if (!resource) {
-  //     throw new RuntimeError("ERR_RESOURCE_NOT_FOUND", `Resource not found: ${urn}`);
-  //   }
-
-  //   // Find controller for this Kind
-  //   const controller = await this.controllers.getController(kind);
-  //   if (!controller) {
-  //     throw new RuntimeError(
-  //       "ERR_CONTROLLER_NOT_FOUND",
-  //       `No controller registered for Kind: ${kind}`,
-  //     );
-  //   }
-
-  //   // Create execution context with recursive execute capability
-  //   const execContext: ExecContext = {
-  //     execute: (nestedUrn: string, nestedInput: any) => this.execute(nestedUrn, nestedInput, ctx),
-  //     ...ctx,
-  //   };
-
-  //   try {
-  //     await this.eventBus.emit(`${name}.ExecutionStarted`, { urn });
-  //     const result = await controller.execute?.(name, input, {
-  //       ...execContext,
-  //       resource,
-  //     });
-  //     await this.eventBus.emit(`${name}.ExecutionCompleted`, { urn });
-  //     return result;
-  //   } catch (error) {
-  //     await this.eventBus.emit(`${name}.ExecutionFailed`, {
-  //       urn,
-  //       error: error instanceof Error ? error.message : String(error),
-  //     });
-  //     throw new RuntimeError(
-  //       "ERR_EXECUTION_FAILED",
-  //       `Execution failed for ${urn}: ${error instanceof Error ? error.message : String(error)}`,
-  //     );
-  //   }
-  // }
-
-  // private parseUrn(urn: string): [string, string] {
-  //   const separator = urn.lastIndexOf(".");
-  //   if (separator <= 0 || separator === urn.length - 1) {
-  //     throw new Error(
-  //       `Invalid URN format: ${urn}. Expected "Kind.Name" where Kind can include dots`,
-  //     );
-  //   }
-  //   const kind = urn.slice(0, separator);
-  //   const name = urn.slice(separator + 1);
-  //   return [kind, name];
-  // }
-
   async invoke(module: string, kind: string, name: string, ...args: any[]): Promise<any> {
     const instance: any = this.getResourceByName(module, kind, name);
     if (!instance) {
@@ -690,14 +654,6 @@ export class Kernel implements IKernel {
     return `${module}.${kind}.${name}`;
   }
 
-  // private assertResourceEventAllowed(event: string): void {
-  //   const parts = event.split(".");
-  //   const leaf = parts[parts.length - 1];
-  //   if (leaf === "Initialized" || leaf === "Teardown") {
-  //     throw new Error(`Resource events cannot use reserved lifecycle event: ${leaf}`);
-  //   }
-  // }
-
   /**
    * Enable event streaming to a file (JSONL format)
    */
@@ -720,17 +676,6 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Take a snapshot of current runtime state
-   */
-  // async takeSnapshot(filePath?: string) {
-  //   return this.snapshotSerializer.takeSnapshot(
-  //     this.manifests.getAll(),
-  //     this.resourceInstances,
-  //     filePath,
-  //   );
-  // }
-
-  /**
    * Setup event streaming hook to capture all events
    */
   private setupEventStreaming(): void {
@@ -742,25 +687,4 @@ export class Kernel implements IKernel {
       return originalEmit(event, payload);
     };
   }
-}
-
-/**
- * Extract only primitive/scalar values from a manifest map.
- * Skips entries that look like JSON Schema property definitions (objects with a
- * "type" key) — those are schema declarations, not runtime values.
- * This is MVP behavior; once the Import controller injects actual values this
- * function becomes unnecessary.
- */
-function extractFlatValues(map: unknown): Record<string, unknown> {
-  if (!map || typeof map !== "object" || Array.isArray(map)) {
-    return {};
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(map as Record<string, unknown>)) {
-    if (value !== null && typeof value === "object" && "type" in (value as object)) {
-      continue;
-    }
-    result[key] = value;
-  }
-  return result;
 }

@@ -1,10 +1,21 @@
 kind: Kernel.Module
 metadata:
   name: ConsoleConfigExample
-imports:
-  - ../modules/config
-  - ../modules/console
-  - ../modules/flow
+---
+kind: Kernel.Import
+metadata:
+  name: Config
+source: ../modules/config
+---
+kind: Kernel.Import
+metadata:
+  name: Console
+source: ../modules/console
+---
+kind: Kernel.Import
+metadata:
+  name: Flow
+source: ../modules/flow
 ---
 kind: Flow.Steps
 metadata:

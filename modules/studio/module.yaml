@@ -2,7 +2,18 @@ kind: Kernel.Module
 metadata:
   name: DiglyAI
   version: "1.0.0"
-imports:
-  - ../http
-  - ../logic
-  - ../data
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../http
+---
+kind: Kernel.Import
+metadata:
+  name: Logic
+source: ../logic
+---
+kind: Kernel.Import
+metadata:
+  name: Data
+source: ../data

@@ -2,38 +2,6 @@ import { Type } from "@sinclair/typebox";
 import AjvModule, { ErrorObject } from "ajv";
 const Ajv = AjvModule.default ?? AjvModule;
 
-const EntrypointSchema = Type.Object(
-  {
-    runtime: Type.String(),
-    entry: Type.String(),
-  },
-  { additionalProperties: false },
-);
-
-const PackageControllerSchema = Type.Object(
-  {
-    runtime: Type.String(),
-    registry: Type.Optional(Type.String()),
-    package: Type.String(),
-    entry: Type.String(),
-  },
-  { additionalProperties: false },
-);
-
-export const ModuleManifestSchema = Type.Object(
-  {
-    kind: Type.Optional(Type.String()),
-    name: Type.String(),
-    version: Type.String(),
-    imports: Type.Optional(Type.Array(Type.String())),
-    definitions: Type.Optional(Type.Array(Type.String())),
-    entry: Type.Optional(Type.String()),
-    entries: Type.Optional(Type.Array(EntrypointSchema)),
-    importEntries: Type.Optional(Type.Record(Type.String(), Type.Array(EntrypointSchema))),
-  },
-  { additionalProperties: true },
-);
-
 export const RuntimeResourceSchema = Type.Object(
   {
     kind: Type.String(),
@@ -62,7 +30,6 @@ export const ResourceDefinitionSchema = Type.Object(
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
-export const validateModuleManifest = ajv.compile(ModuleManifestSchema);
 export const validateRuntimeResource = ajv.compile(RuntimeResourceSchema);
 export const validateResourceDefinition = ajv.compile(ResourceDefinitionSchema);
 

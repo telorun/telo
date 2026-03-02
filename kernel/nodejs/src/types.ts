@@ -6,6 +6,7 @@ import type {
     RuntimeErrorCode,
     RuntimeResource,
 } from "@telorun/sdk";
+import type { ModuleContext } from "./evaluation-context.js";
 export type {
     ControllerContext,
     ResourceContext,
@@ -83,6 +84,12 @@ export interface Kernel {
     moduleName: string,
     variables: Record<string, unknown>,
     secrets: Record<string, unknown>,
+  ): void;
+  getModuleContext(moduleName: string): ModuleContext;
+  registerModuleImportInContext(
+    declaringModule: string,
+    alias: string,
+    exports: Record<string, unknown>,
   ): void;
 }
 

@@ -2,9 +2,16 @@ kind: Kernel.Module
 metadata:
   name: Example
   version: 1.0.0
-imports:
-  - ../modules/http-server
-  - ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-server
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
 ---
 kind: Http.Server
 metadata:

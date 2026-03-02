@@ -1,8 +1,12 @@
+kind: Kernel.Module
+metadata:
+  name: Flow
+  version: 1.0.0
+---
 kind: Kernel.Definition
 metadata:
   name: Steps
   module: Flow
-  version: 1.0.0
 capabilities:
   - executable
 controllers:

@@ -1,9 +1,16 @@
 kind: Kernel.Module
 metadata:
   name: ConfigExample
-imports:
-  - ../modules/config
-  - ../modules/http-server
+---
+kind: Kernel.Import
+metadata:
+  name: Config
+source: ../modules/config
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-server
 ---
 # Declare the secret (env var must be set at boot time)
 kind: Config.Secret

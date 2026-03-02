@@ -28,7 +28,7 @@ metadata:
   name: user-service
   version: 1.0.0
 
-includes:
+include:
   - routes.yaml
   - repositories.yaml
 
@@ -163,7 +163,7 @@ The primary purpose of the Root Module is to bridge the host environment to its 
 # main.yaml (The Root Module)
 kind: Module
 metadata:
-  name: acme-backend-root
+  name: backend-root
   version: 1.0.0
 
 ---
