@@ -138,6 +138,10 @@ export class Kernel implements IKernel {
     return this.moduleContextRegistry.getContext(moduleName);
   }
 
+  declareModule(moduleName: string): void {
+    this.moduleContextRegistry.declareModule(moduleName);
+  }
+
   registerModuleImportInContext(
     declaringModule: string,
     alias: string,
@@ -158,6 +162,11 @@ export class Kernel implements IKernel {
    * Load built-in Runtime definitions (e.g., Kernel.Module)
    */
   private async loadBuiltinDefinitions(): Promise<void> {
+    // Declare built-in module namespaces upfront so getContext() can distinguish
+    // "not yet populated" from a completely unknown module name.
+    this.moduleContextRegistry.declareModule("Kernel");  // system resources
+    this.moduleContextRegistry.declareModule("default"); // user resources with no module field
+
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
       metadata: { name: "Definition", module: "Kernel" },
@@ -369,14 +378,15 @@ export class Kernel implements IKernel {
   }
 
   private createResourceContext(resource: ResourceManifest): ResourceContext {
+    const moduleName: string = resource.metadata.module ?? "default";
     const key = this.getResourceKey(
-      resource.metadata.module,
+      moduleName,
       resource.kind,
       resource.metadata.name,
     );
     return new ResourceContextImpl(
       this,
-      this.moduleContextRegistry.getContext(resource.metadata.module),
+      this.moduleContextRegistry.getContext(moduleName),
       resource.metadata,
       this.sharedSchemaValidator,
       key,

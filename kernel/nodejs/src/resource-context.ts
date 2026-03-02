@@ -215,4 +215,8 @@ export class ResourceContextImpl implements ResourceContext {
   ): void {
     this.kernel.registerModuleContext(moduleName, variables, secrets);
   }
+
+  declareModule(moduleName: string): void {
+    this.kernel.declareModule(moduleName);
+  }
 }

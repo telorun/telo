@@ -35,7 +35,7 @@ source: ../modules/console
 kind: Flow.Steps
 metadata:
   name: Main
-  module: Example
+  module: ExampleConsole
 trigger:
   event: Kernel.Started
 steps:
@@ -44,5 +44,5 @@ steps:
       kind: Console.WriteLine
       metadata:
         name: Result
-        module: Example
+        module: ExampleConsole
       output: "Product name: ${{ variables.product.name }}, Password: ${{ secrets.password }}"
