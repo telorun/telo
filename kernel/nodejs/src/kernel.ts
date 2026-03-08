@@ -15,7 +15,6 @@ import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { Loader } from "./loader.js";
-import { ModuleContextRegistry } from "./module-context-registry.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
@@ -40,15 +39,10 @@ export class Kernel implements IKernel {
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
   // private bootContextRegistry = new BootContextRegistry();
-  private moduleContextRegistry!: ModuleContextRegistry;
   private readonly sharedSchemaValidator = new SchemaValidator();
   private rootContext!: ModuleContext;
 
   constructor() {
-    this.moduleContextRegistry = new ModuleContextRegistry(
-      this._createInstance.bind(this),
-      (event, payload) => this.eventBus.emit(event, payload),
-    );
     this.setupEventStreaming();
   }
 
@@ -91,33 +85,21 @@ export class Kernel implements IKernel {
     this.controllers.registerCapability(name, schema);
   }
 
-  getModuleContext(moduleName: string): ModuleContext {
-    return this.moduleContextRegistry.getContext(moduleName);
+  getModuleContext(_moduleName: string): ModuleContext {
+    return this.rootContext;
   }
 
-  resolveModuleAlias(declaringModule: string, alias: string): string | undefined {
-    const ctx =
-      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
-        ? this.moduleContextRegistry.getContext(declaringModule)
-        : this.rootContext;
-    return ctx.importAliases.get(alias);
-  }
-
-  declareModule(moduleName: string): void {
-    this.moduleContextRegistry.declareModule(moduleName);
+  resolveModuleAlias(_declaringModule: string, alias: string): string | undefined {
+    return this.rootContext.importAliases.get(alias);
   }
 
   registerModuleImport(
-    declaringModule: string,
+    _declaringModule: string,
     alias: string,
     targetModule: string,
     kinds: string[],
   ): void {
-    const ctx =
-      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
-        ? this.moduleContextRegistry.getContext(declaringModule)
-        : this.rootContext;
-    ctx.registerImport(alias, targetModule, kinds);
+    this.rootContext.registerImport(alias, targetModule, kinds);
   }
 
   isCapabilityRegistered(name: string): boolean {
@@ -345,7 +327,7 @@ export class Kernel implements IKernel {
       },
       acquireHold: (reason?: string) => this.acquireHold(reason),
       expandValue: (value: any, context: Record<string, any>) =>
-        this.moduleContextRegistry.getContext(kind).merge(context).expand(value),
+        this.rootContext.merge(context).expand(value),
       requestExit: (code: number) => this.requestExit(code),
     };
   }
@@ -373,18 +355,10 @@ export class Kernel implements IKernel {
     resource: ResourceManifest,
   ): Promise<ResourceInstance | null> {
     const kind = resource.kind;
-    const declaringModule = resource.metadata.module;
-
-    // Use the registry context ONLY for kind resolution (alias→module lookup).
-    // Fall back to rootContext for built-ins (metadata.module: "Kernel") and root resources.
-    const kindResolveCtx =
-      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
-        ? this.moduleContextRegistry.getContext(declaringModule)
-        : this.rootContext;
 
     // Resolve the alias-prefixed kind to its real fully-qualified kind.
     // resolveKind() throws with a clear message if the alias or kind is not found.
-    const resolvedKind = kindResolveCtx.resolveKind(kind);
+    const resolvedKind = this.rootContext.resolveKind(kind);
 
     const controller = this.controllers.getControllerOrUndefined(resolvedKind);
     if (!controller) {
@@ -434,13 +408,6 @@ export class Kernel implements IKernel {
       const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
       if (evalContext instanceof ModuleContext) {
         evalContext.setResource(resource.metadata.name, (snap as Record<string, unknown>) ?? {});
-      }
-      if (declaringModule && this.moduleContextRegistry.isDeclared(declaringModule)) {
-        this.moduleContextRegistry.setResource(
-          declaringModule,
-          resource.metadata.name,
-          (snap as Record<string, unknown>) ?? {},
-        );
       }
     }
 

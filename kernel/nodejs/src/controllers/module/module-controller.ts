@@ -5,11 +5,6 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   const moduleName = resource.metadata.name as string;
   const loader = new Loader();
 
-  // Declare this module so the registry can distinguish "not yet populated"
-  // (valid during multi-pass init) from a completely unknown module name
-  // (which would otherwise surface only as a cryptic CEL error at runtime).
-  (ctx as any).declareModule(moduleName);
-
   for (const includePath of (resource.include as string[]) ?? []) {
     const manifests = await loader.loadManifest(
       includePath,

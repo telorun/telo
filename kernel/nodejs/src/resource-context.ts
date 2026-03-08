@@ -211,10 +211,6 @@ export class ResourceContextImpl implements ResourceContext {
     await this.kernel.emitRuntimeEvent(event, payload);
   }
 
-  declareModule(moduleName: string): void {
-    this.kernel.declareModule(moduleName);
-  }
-
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void {
     const declaringModule = (this.metadata as any).module as string | undefined;
     this.kernel.registerModuleImport(declaringModule ?? "", alias, targetModule, kinds);
