@@ -132,18 +132,17 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
     }
   });
 
-  ctx.on("Kernel.Stopping", () => {
-    if (!appStarted) return;
-    const report = buildReport(manifest.metadata.name, captured, manifest.expect);
-    if (report) {
-      if (report.passed) {
-        process.stdout.write(report.report);
-      } else {
-        process.stderr.write(report.report);
-        ctx.requestExit(1);
+  return {
+    run: async () => {
+      const report = buildReport(manifest.metadata.name, captured, manifest.expect);
+      if (report) {
+        if (report.passed) {
+          process.stdout.write(report.report);
+        } else {
+          process.stderr.write(report.report);
+          ctx.requestExit(1);
+        }
       }
-    }
-  });
-
-  return {};
+    },
+  };
 }

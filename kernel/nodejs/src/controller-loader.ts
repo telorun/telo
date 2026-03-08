@@ -1,3 +1,4 @@
+import { ControllerInstance, RuntimeError } from "@telorun/sdk";
 import { execFile } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs/promises";
@@ -5,7 +6,6 @@ import * as os from "os";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { promisify } from "util";
-import { ControllerInstance, RuntimeError } from "./types.js";
 
 const homedir = os.homedir();
 const cacheRoot = path.join(homedir, ".cache", "telo");
@@ -36,7 +36,8 @@ export class ControllerLoader {
     const installDir = path.join(npmCacheRoot, cacheKey);
 
     let packageRoot: string;
-    const isLocalManifest = baseUri && !baseUri.startsWith("http://") && !baseUri.startsWith("https://");
+    const isLocalManifest =
+      baseUri && !baseUri.startsWith("http://") && !baseUri.startsWith("https://");
     if (localPath && isLocalManifest) {
       const manifestDir = path.dirname(baseUri);
       const resolvedLocalPath = path.resolve(manifestDir, localPath);
@@ -231,7 +232,9 @@ export class ControllerLoader {
       return null;
     }
     if (typeof target === "object") {
-      const preferredKeys = isBun ? ["bun", "import", "default", "require"] : ["import", "default", "require"];
+      const preferredKeys = isBun
+        ? ["bun", "import", "default", "require"]
+        : ["import", "default", "require"];
       for (const key of preferredKeys) {
         if (target[key]) {
           const resolved = this.resolveExportTargetValue(target[key]);

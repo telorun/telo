@@ -1,4 +1,4 @@
-import { RuntimeResource } from "@telorun/sdk";
+import { ResourceManifest, RuntimeResource } from "@telorun/sdk";
 import { compile } from "@telorun/yaml-cel-templating";
 import * as path from "path";
 import { HttpAdapter } from "./manifest-adapters/http-adapter.js";
@@ -6,7 +6,6 @@ import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import type { ManifestAdapter, ManifestSourceData } from "./manifest-adapters/manifest-adapter.js";
 import { RegistryAdapter } from "./manifest-adapters/registry-adapter.js";
 import { formatAjvErrors, validateRuntimeResource } from "./manifest-schemas.js";
-import { ResourceManifest } from "./types.js";
 
 /**
  * Loader: Ingests resolved YAML manifests from disk or remote URLs into memory
@@ -53,6 +52,9 @@ export class Loader {
     baseUrl: string,
     compileContext: Record<string, unknown> = {},
   ): Promise<ResourceManifest[]> {
+    if (!baseUrl) {
+      throw new Error("Base URL is required to load target manifest");
+    }
     const url = new URL(pathOrUrl, baseUrl).toString();
     const file = await this.getAdapter(url).read(url);
     if (!Loader.projectRoot) {
@@ -85,6 +87,19 @@ export class Loader {
         resolved.push(resource);
       }
     }
+
+    // Auto-assign metadata.module from the file's Kernel.Module declaration to
+    // any resource that doesn't explicitly declare one. This matches the implicit
+    // convention that resources in the same file belong to the declared module.
+    const moduleName = resolved.find((m) => m.kind === "Kernel.Module")?.metadata?.name;
+    if (moduleName) {
+      for (const manifest of resolved) {
+        if (manifest.kind !== "Kernel.Module" && !manifest.metadata?.module) {
+          manifest.metadata = { ...manifest.metadata, module: moduleName };
+        }
+      }
+    }
+
     return resolved;
   }
 

@@ -19,6 +19,8 @@ variables:
 secrets:
   password:
     type: string
+targets:
+  - Main
 ---
 kind: Kernel.Import
 metadata:
@@ -40,7 +42,6 @@ trigger:
   event: Kernel.Started
 steps:
   - invoke:
-      name: Result
       kind: Console.WriteLine
       metadata:
         name: Result

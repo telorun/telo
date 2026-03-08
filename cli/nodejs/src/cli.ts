@@ -53,7 +53,9 @@ function setupWatchMode(kernel: Kernel, log: ReturnType<typeof createLogger>): W
       // OS invalidated the watch (e.g. file deleted). Remove and re-establish.
       if (watchers.get(filePath) === watcher) {
         watchers.delete(filePath);
-        setTimeout(() => { if (active) watchFile(filePath); }, 50);
+        setTimeout(() => {
+          if (active) watchFile(filePath);
+        }, 50);
       }
     });
     watchers.set(filePath, watcher);
@@ -65,9 +67,9 @@ function setupWatchMode(kernel: Kernel, log: ReturnType<typeof createLogger>): W
     reloading.add(filePath);
     log.info(`[watch] reloading ${filePath}`);
     try {
-      await kernel.reloadSource(filePath);
+      // await kernel.reloadSource(filePath);
       // Watch any new files that appeared after reload
-      for (const f of kernel.getSourceFiles()) watchFile(f);
+      // for (const f of kernel.getSourceFiles()) watchFile(f);
       log.info(log.ok(`[watch] complete`));
     } catch (err) {
       log.info(log.error(`[watch] error: ${err instanceof Error ? err.message : String(err)}`));
@@ -84,7 +86,7 @@ function setupWatchMode(kernel: Kernel, log: ReturnType<typeof createLogger>): W
     watchers.clear();
   }
 
-  for (const f of kernel.getSourceFiles()) watchFile(f);
+  // for (const f of kernel.getSourceFiles()) watchFile(f);
   return { cleanup };
 }
 
@@ -122,8 +124,8 @@ async function run(argv: {
       kernel.acquireHold("watch-mode");
 
       kernel.on("Kernel.Started", () => {
-        const files = kernel.getSourceFiles();
-        log.info(`[watch] watching ${files.length} file(s)`);
+        // const files = kernel.getSourceFiles();
+        // log.info(`[watch] watching ${files.length} file(s)`);
         watchHandle = setupWatchMode(kernel, log);
       });
 

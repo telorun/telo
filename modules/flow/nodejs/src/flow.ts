@@ -27,16 +27,19 @@ class Flow {
         step.invoke = this.ctx.resolveChildren(step.invoke, step.name);
       }
     }
-    this.ctx.on(this.resource.trigger.event, async () => {
-      // Trigger execution when the specified event occurs
-      await this.executeSteps();
-    });
+    // this.ctx.on(this.resource.trigger.event, async () => {
+    //   // Trigger execution when the specified event occurs
+    // });
+  }
+
+  async run(): Promise<void> {
+    await this.executeSteps();
   }
 
   private async executeSteps(): Promise<void> {
     const outputs: Record<string, any> = {};
     for (const step of this.resource.steps) {
-      const { kind, name } = step.invoke;
+      const { kind, name, metadata } = step.invoke;
       const input = this.ctx.expandValue(step.inputs || {}, { outputs });
       const result = await this.ctx.invoke(kind, name, input);
       outputs[name] = result;
@@ -46,6 +49,6 @@ class Flow {
 
 export function register() {}
 
-export function create(resource: any, ctx: ResourceContext) {
+export async function create(resource: any, ctx: ResourceContext) {
   return new Flow(resource, ctx);
 }

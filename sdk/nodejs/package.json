@@ -6,6 +6,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "source": "./src/index.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -17,6 +18,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json"
+  },
+  "dependencies": {
+    "cel-js": "^0.8.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

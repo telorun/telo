@@ -267,6 +267,10 @@ importers:
         version: 5.9.3
 
   sdk/nodejs:
+    dependencies:
+      cel-js:
+        specifier: ^0.8.2
+        version: 0.8.2
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

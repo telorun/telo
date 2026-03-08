@@ -3,8 +3,11 @@ metadata:
   name: Assert
   version: 1.0.0
   description: Assertion and value verification for testing
-include:
-  - events.yaml
+exports:
+  kinds:
+    - ModuleContext
+    - Schema
+    - Events
 ---
 kind: Kernel.Definition
 metadata:
@@ -59,3 +62,40 @@ schema:
   required:
     - metadata
     - assertions
+---
+kind: Kernel.Definition
+metadata:
+  name: Events
+  module: Assert
+capabilities:
+  - executable
+controllers:
+  - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#events
+schema:
+  type: object
+  properties:
+    filter:
+      type: array
+      items:
+        type: object
+        properties:
+          type:
+            type: string
+        required:
+          - type
+    expect:
+      type: array
+      description: Ordered sequence of events to assert
+      items:
+        type: object
+        properties:
+          event:
+            type: string
+            description: Event name or wildcard pattern (e.g. "JavaScript.Script.*.Invoked")
+          payload:
+            type: object
+            description: Partial payload to match against (only declared fields are checked)
+        required:
+          - event
+  required:
+    - expect

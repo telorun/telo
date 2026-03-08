@@ -84,10 +84,7 @@ async function executeRequest(
       });
 
       // Handle redirects manually (limit to MAX_REDIRECTS)
-      if (
-        (response.status === 301 || response.status === 302) &&
-        redirectsLeft > 0
-      ) {
+      if ((response.status === 301 || response.status === 302) && redirectsLeft > 0) {
         const location = response.headers.get("location");
         if (location) {
           currentUrl = location.startsWith("http")
@@ -175,15 +172,14 @@ class HttpRequestResource implements ResourceInstance {
 
     if (m.client) {
       const clientName = ctx.expandValue(m.client, input ?? {}) as string;
-      const clients = ctx.getResources("Http.Client") as any[];
-      const client = clients.find((c) => c.metadata?.name === clientName);
+      const client: any = ctx.getResourcesByName("Client", clientName);
       if (!client) {
         throw new Error(`Http.Client "${clientName}" not found`);
       }
-      const snap = client.snapshot();
-      clientBaseUrl = snap.baseUrl ?? "";
-      clientHeaders = normalizeHeaders(snap.headers ?? {});
-      clientTimeout = snap.timeout ?? DEFAULT_TIMEOUT;
+
+      clientBaseUrl = client.baseUrl ?? "";
+      clientHeaders = normalizeHeaders(client.headers ?? {});
+      clientTimeout = client.timeout ?? DEFAULT_TIMEOUT;
     }
 
     // Expand template fields
@@ -243,9 +239,7 @@ class HttpRequestResource implements ResourceInstance {
     );
 
     if (throwOnHttpError && response.status >= 400) {
-      throw new Error(
-        `HTTP ${response.status} error from ${fullUrl}`,
-      );
+      throw new Error(`HTTP ${response.status} error from ${fullUrl}`);
     }
 
     return response;

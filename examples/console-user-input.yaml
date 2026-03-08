@@ -1,6 +1,8 @@
 kind: Kernel.Module
 metadata:
   name: ConsoleConfigExample
+targets:
+  - ConsoleConfigExampleFlow
 ---
 kind: Kernel.Import
 metadata:
@@ -21,18 +23,19 @@ kind: Flow.Steps
 metadata:
   name: ConsoleConfigExampleFlow
   module: ConsoleConfigExample
-trigger:
-  event: Kernel.Started
 steps:
   - invoke:
       kind: Console.ReadLine
-      name: ReadUsername
+      metadata:
+        name: ReadUsername
       prompt: Username
   - invoke:
       kind: Console.ReadLine
-      name: ReadPassword
+      metadata:
+        name: ReadPassword
       prompt: Password
   - invoke:
       kind: Console.WriteLine
-      name: Result
-      output: "Username: ${{ Console.ReadLine.ReadUsername.value }}, Password: ${{ Console.ReadLine.ReadPassword.value }}"
+      metadata:
+        name: Result
+      output: "Username: ${{ resources.ReadUsername.value }}, Password: ${{ resources.ReadPassword.value }}"

@@ -2,6 +2,22 @@ kind: Kernel.Module
 metadata:
   name: CanImportModuleWithAlias
   version: 1.0.0
+targets:
+  - MyConsole
+  - VerifyConfigurableConsoleEvents
+  - VerifyConfigurableConsoleModuleContext
+---
+kind: Kernel.Import
+metadata:
+  name: MyAssert
+  module: CanImportModuleWithAlias
+source: ../modules/assert
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+  module: CanImportModuleWithAlias
+source: ../modules/pipeline
 ---
 kind: Kernel.Import
 metadata:
@@ -17,12 +33,6 @@ variables:
 secrets:
   password: "supersecret"
 ---
-kind: Kernel.Import
-metadata:
-  name: MyAssert
-  module: CanImportModuleWithAlias
-source: ../modules/assert
----
 kind: MyAssert.Events
 metadata:
   name: VerifyConfigurableConsoleEvents
@@ -30,7 +40,7 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: ExampleConsole.Console.WriteLine.*.Invoked
+  - event: Console.WriteLine.*.Invoked
     payload: {}
 ---
 kind: MyAssert.ModuleContext

@@ -2,6 +2,9 @@ kind: Kernel.Module
 metadata:
   name: Flow
   version: 1.0.0
+exports:
+  kinds:
+    - Steps
 ---
 kind: Kernel.Definition
 metadata:

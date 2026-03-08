@@ -1,0 +1,70 @@
+kind: Kernel.Module
+metadata:
+  name: PipelineWithResourcesBasic
+  version: 1.0.0
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+source: ../modules/pipeline
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Pipeline.Job
+metadata:
+  name: TestWithResources
+  module: PipelineWithResourcesBasic
+with:
+  - kind: JavaScript.Script
+    metadata:
+      name: SharedHelper
+    code: |
+      function main({ value }) {
+        return {
+          doubled: value * 2
+        }
+      };
+    inputSchema:
+      value:
+        type: number
+    outputSchema:
+      doubled:
+        type: number
+steps:
+  - name: UseHelper
+    inputs:
+      value: 5
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ sharedValue }) {
+          return {
+            result: sharedValue + 10
+          }
+        }
+      outputSchema:
+        result:
+          type: number
+      inputs:
+        sharedValue: "${{ resources.SharedHelper }}"
+
+  - name: VerifyResult
+    inputs:
+      result: "${{ UseHelper.outputs.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            type: object
+        required:
+          - result

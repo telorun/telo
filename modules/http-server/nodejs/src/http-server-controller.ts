@@ -138,8 +138,8 @@ class HttpServer implements ResourceInstance {
       const type = mount.type || "";
       const { kind, name } = parseType(type);
       const prefix = mount.path || "";
-      console.log("kind", kind, "name", name, "prefix", prefix);
-      const api: HttpServerApi = this.ctx.getResourcesByName(kind, name) as any;
+
+      const api = this.ctx.moduleContext.getInvokable(name) as unknown as HttpServerApi;
 
       if (!api) {
         throw new Error(`Failed to mount Http.Api at "${prefix}": ${type} not found`);

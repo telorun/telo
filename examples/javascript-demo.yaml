@@ -3,6 +3,8 @@ metadata:
   name: JavaScriptDemo
   version: 1.0.0
   description: A demo module showcasing JavaScript scripts
+targets:
+  - RunScript
 ---
 kind: Kernel.Import
 metadata:
@@ -36,7 +38,7 @@ outputSchema:
 ---
 kind: Flow.Steps
 metadata:
-  name: RunScriptOnEvent
+  name: RunScript
   module: JavaScriptDemo
 trigger:
   event: Kernel.Started

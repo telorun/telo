@@ -1,0 +1,118 @@
+kind: Kernel.Module
+metadata:
+  name: PipelineWithServer
+  version: 1.0.0
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-server
+---
+kind: Kernel.Import
+metadata:
+  name: HttpClient
+source: ../modules/http-client
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+source: ../modules/pipeline
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Pipeline.Job
+metadata:
+  name: TestServerWithLifecycle
+  module: PipelineWithServer
+with:
+  - kind: JavaScript.Script
+    metadata:
+      name: GreetingHandler
+    code: |
+      function main({ name }) {
+        return {
+          greeting: `Hello ${name}!`,
+        }
+      };
+    inputSchema:
+      name:
+        type: string
+    outputSchema:
+      greeting:
+        type: string
+  - kind: Http.Api
+    metadata:
+      name: TestApi
+    routes:
+      - request:
+          path: /hello
+          method: GET
+          schema:
+            query:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: ["name"]
+        handler:
+          kind: JavaScript.Script
+          name: GreetingHandler
+          inputs:
+            name: "${{ request.query.name }}"
+        response:
+          status: 200
+          statuses:
+            "200":
+              schema:
+                body:
+                  type: object
+                  properties:
+                    message:
+                      type: string
+                  required: ["message"]
+              headers:
+                Content-Type: application/json
+              body:
+                message: "${{ result.greeting }}"
+  - kind: Http.Server
+    metadata:
+      name: TestServer
+    port: 8845
+    baseUrl: http://localhost:8845
+    logger: false
+    openapi:
+      info:
+        title: Test Server
+        version: 1.0.0
+    mounts:
+      - path: /api
+        type: PipelineWithServer.TestApi
+steps:
+  - name: FetchGreeting
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8845/api/hello?name=World
+      method: GET
+
+  - name: VerifyResponse
+    inputs:
+      message: "${{ FetchGreeting.outputs.body.message }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
+            const: "Hello World!"
+        required:
+          - message

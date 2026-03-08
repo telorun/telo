@@ -1,18 +1,9 @@
-import type {
-    ControllerContext,
-    ResourceContext,
-    ResourceInstance,
-    ResourceManifest,
-    RuntimeErrorCode,
-    RuntimeResource,
-} from "@telorun/sdk";
-import type { ModuleContext } from "./evaluation-context.js";
-export type {
-    ControllerContext,
-    ResourceContext,
-    ResourceInstance,
-    ResourceManifest
-} from "@telorun/sdk";
+import { ControllerContext } from "./controller-context.js";
+import { ResourceContext } from "./resource-context.js";
+import { ResourceInstance } from "./resource-instance.js";
+import { ResourceManifest } from "./resource-manifest.js";
+import { RuntimeErrorCode } from "./runtime-error.js";
+import { RuntimeResource } from "./runtime-resource.js";
 
 export interface KernelContext {
   kernel: Kernel;
@@ -75,17 +66,10 @@ export interface Kernel {
   waitForIdle(): Promise<void>;
   requestExit(code: number): void;
   readonly exitCode: number;
-  teardownResource(module: string, kind: string, name: string): Promise<void>;
-  registerChildManifest(parentKey: string, resource: ResourceManifest): void;
-  getSourceFiles(): string[];
-  reloadSource(sourcePath: string): Promise<void>;
+  // teardownResource(module: string, kind: string, name: string): Promise<void>;
+  // getSourceFiles(): string[];
+  // reloadSource(sourcePath: string): Promise<void>;
   shutdown(): void;
-  registerModuleContext(
-    moduleName: string,
-    variables: Record<string, unknown>,
-    secrets: Record<string, unknown>,
-  ): void;
-  getModuleContext(moduleName: string): ModuleContext;
 }
 
 export class RuntimeError extends Error {

@@ -3,6 +3,8 @@ metadata:
   name: TestStarlarkBasic
   version: 1.0.0
   description: Test for starlark-basic example
+targets:
+  - StarlarkDemo
 ---
 kind: Kernel.Import
 metadata:
@@ -21,9 +23,9 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: StarlarkDemo.Starlark.Script.*.Invoked
+  - event: Starlark.Script.*.Invoked
     payload:
       outputs:
         result: 84
-  - event: StarlarkDemo.Console.WriteLine.*.Invoked
+  - event: Console.WriteLine.*.Invoked
     payload: {}

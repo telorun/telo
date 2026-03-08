@@ -36,7 +36,8 @@ export class LocalFileAdapter implements ManifestAdapter {
   }
 
   resolveRelative(base: string, relative: string): string {
-    return path.resolve(base, relative);
+    const basePath = base.startsWith("file://") ? base.slice("file://".length) : base;
+    return `file://${path.resolve(basePath, relative)}`;
   }
 
   private async readFile(filePath: string): Promise<ManifestSourceData> {

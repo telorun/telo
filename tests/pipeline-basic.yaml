@@ -2,20 +2,25 @@ kind: Kernel.Module
 metadata:
   name: PipelineBasic
   version: 1.0.0
+targets:
+  - TestBasicAddition
 ---
 kind: Kernel.Import
 metadata:
   name: Pipeline
+  module: PipelineBasic
 source: ../modules/pipeline
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
+  module: PipelineBasic
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
+  module: PipelineBasic
 source: ../modules/assert
 ---
 kind: Pipeline.Job
@@ -25,20 +30,20 @@ metadata:
   module: PipelineBasic
 steps:
   - name: AddTwoNumbers
+    inputs:
+      a: 5
+      b: 3
     invoke:
       kind: JavaScript.Script
+      outputSchema:
+        sum:
+          type: number
       code: |
         function main({ a, b }) {
           return {
             sum: a + b
           }
         }
-      outputSchema:
-        sum:
-          type: number
-    inputs:
-      a: 5
-      b: 3
 
   - name: VerifyResult
     inputs:
@@ -54,15 +59,15 @@ steps:
 ---
 kind: Assert.Events
 metadata:
-  module: PipelineBasic
   name: ExpectEvents
+  module: PipelineBasic
 filter:
   - type: "*"
 expect:
-  - event: PipelineBasic.JavaScript.Script.*.Invoked
+  - event: JavaScript.Script.*.Invoked
     payload:
       outputs:
         sum: 8
-  - event: PipelineBasic.Assert.Schema.*.Invoked
+  - event: Assert.Schema.*.Invoked
     payload:
       outputs: true

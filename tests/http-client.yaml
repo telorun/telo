@@ -2,6 +2,11 @@ kind: Kernel.Module
 metadata:
   name: HttpClientTest
   version: 1.0.0
+targets:
+  - TestGetAbsoluteUrl
+  - TestGetWithClient
+  - TestPostWithJsonBody
+  - TestNotFoundDoesNotThrow
 ---
 kind: Kernel.Import
 metadata:
@@ -161,19 +166,19 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: HttpClientTest.Http.Request.*.Invoked
+  - event: Http.Request.*.Invoked
     payload:
       outputs:
         status: 200
-  - event: HttpClientTest.Http.Request.*.Invoked
+  - event: Http.Request.*.Invoked
     payload:
       outputs:
         status: 200
-  - event: HttpClientTest.Http.Request.*.Invoked
+  - event: Http.Request.*.Invoked
     payload:
       outputs:
         status: 201
-  - event: HttpClientTest.Http.Request.*.Invoked
+  - event: Http.Request.*.Invoked
     payload:
       outputs:
         status: 404

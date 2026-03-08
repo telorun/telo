@@ -1,5 +1,5 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { ModuleContext } from "../../evaluation-context.js";
+import { EvaluationContext } from "@telorun/sdk";
 import { Loader } from "../../loader.js";
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
@@ -7,13 +7,14 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   const declaringModule: string = resource.metadata.module ?? "default";
   const loader = new Loader();
 
-  // Load target module manifests. No env — child modules are isolated from host environment.
-  const manifests = await loader.loadManifest(
-    resource.source as string,
-    resource.metadata.source as string,
-    {},
-  );
-
+  // Load target module manifests. Inject variables/secrets as compile context so that
+  // ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
+  // No env — child modules are isolated from host environment.
+  const manifests = await loader.loadManifest(resource.source as string, ctx.moduleContext.source, {
+    // Potentially not needed
+    variables: (resource.variables as Record<string, unknown>) ?? {},
+    secrets: (resource.secrets as Record<string, unknown>) ?? {},
+  });
   // Find the kind: Module manifest to learn the target module name and contract.
   const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Module");
   if (!moduleManifest) {
@@ -37,37 +38,72 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
     }
   }
 
-  // Record the alias → real module name mapping so the kernel can resolve
-  // alias-prefixed kinds (e.g. MyAssert.Events → Assert.Events).
-  (ctx as any).registerModuleAlias(declaringModule, alias, targetModule);
-
-  // Register all manifests (idempotent — kernel deduplicates by resource key).
-  for (const manifest of manifests) {
-    ctx.registerManifest(manifest);
-  }
-
   // Validate required inputs before injecting.
   validateRequiredInputs(moduleManifest.variables ?? {}, resource.variables ?? {}, "variables");
   validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");
 
-  // Inject variable/secret VALUES into the target module context.
-  // Idempotent: setVariablesAndSecrets overwrites with the same values each retry.
-  (ctx as any).registerModuleContext(
-    targetModule,
-    resource.variables ?? {},
-    resource.secrets ?? {},
+  // Create child context with the imported variables/secrets baked in, so that
+  // ${{ variables.x }} / ${{ secrets.y }} templates resolve correctly at runtime.
+  const child = ctx.moduleContext.spawnChild(
+    new EvaluationContext(
+      ctx.moduleContext.source,
+      {
+        variables: (resource.variables as Record<string, unknown>) ?? {},
+        secrets: (resource.secrets as Record<string, unknown>) ?? {},
+        resources: {},
+      },
+      ctx.moduleContext.createInstance,
+      ctx.moduleContext.secretValues,
+      ctx.moduleContext.emit,
+    ),
   );
+
+  for (const manifest of manifests) {
+    child.registerManifest(manifest);
+  }
+
+  // Link the target module context as a child of the declaring module context in
+  // the lifecycle tree. This enables cascading teardown (parent → child order)
+  // and makes the import hierarchy visible at runtime.
+  // const declaringCtx: ModuleContext = ctx.getModuleContext(declaringModule);
+  // const targetCtx: ModuleContext = (ctx as any).getModuleContext(targetModule);
+  // if (!targetCtx.parent) {
+  //   declaringCtx.spawnChild(targetCtx);
+  // }
 
   // Try to evaluate the target module's exports.
   // Throws if resources.X is not yet populated — the kernel retry loop catches this and retries.
-  const moduleCtx: ModuleContext = (ctx as any).getModuleContext(targetModule);
-  const evaluatedExports = evaluateExports(moduleManifest.exports ?? {}, moduleCtx);
+  // const evaluatedExports: any = child.expand(moduleManifest.exports ?? {});
 
+  const exportedKinds: string[] = moduleManifest.exports?.kinds ?? [];
+  ctx.registerModuleImport(alias, targetModule, exportedKinds);
   // Return a ResourceInstance whose snapshot() surfaces the exported values.
   // The kernel's generic setResource() call stores them under resources.<alias>
   // in the declaring module's evaluation context — no separate imports namespace needed.
   return {
-    snapshot: () => evaluatedExports,
+    snapshot: () => ({
+      variables: (resource.variables as Record<string, unknown>) ?? {},
+      secrets: (resource.secrets as Record<string, unknown>) ?? {},
+    }),
+    run: async () => {
+      // Proxy run to target module
+      for (const target of (moduleManifest.targets as string[]) ?? []) {
+        await child.run(target);
+      }
+    },
+    invoke: async () => {
+      // Proxy run to target module
+      // for (const target of (moduleManifest.targets as string[]) ?? []) {
+      //   child.invoke(target);
+      // }
+      console.log("invoking");
+    },
+    init: async () => {
+      await child.initializeResources();
+    },
+    teardown: async () => {
+      await child.teardownResources();
+    },
   };
 }
 
@@ -82,17 +118,6 @@ function validateRequiredInputs(
       throw new Error(`Required ${kind} input "${key}" not provided for module import`);
     }
   }
-}
-
-function evaluateExports(
-  exportDefs: Record<string, string>,
-  moduleCtx: ModuleContext,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [exportKey, expression] of Object.entries(exportDefs)) {
-    result[exportKey] = moduleCtx.expand(expression);
-  }
-  return result;
 }
 
 export const schema = {

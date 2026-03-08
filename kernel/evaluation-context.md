@@ -106,3 +106,128 @@ When an event occurs (e.g., a POST request to a route), the kernel injects the E
   }
 }
 ```
+
+---
+
+## 5. Resource Instantiation Architecture
+
+### 5.1 Overview
+
+Every `EvaluationContext` owns its full resource lifecycle. This is achieved by injecting an `InstanceFactory` function into the context at construction time, rather than passing it per-call to methods like `initializeResources()`.
+
+### 5.2 InstanceFactory Injection
+
+The `InstanceFactory` type is a simple async factory function:
+
+```typescript
+type InstanceFactory = (resource: ResourceManifest) => Promise<ResourceInstance | null>;
+```
+
+When the Kernel constructs a `ModuleContext`, it provides its internal `_createInstance` method:
+
+```typescript
+// In Kernel constructor
+this.moduleContextRegistry = new ModuleContextRegistry(this._createInstance.bind(this));
+
+// In ModuleContextRegistry.declareModule()
+this.store.set(moduleName, new ModuleContext({}, {}, {}, this.createInstance));
+```
+
+The `_createInstance` method handles:
+
+- Resolving alias-prefixed kinds (e.g., `MyImport.Http.Route` → `Http.Route`)
+- Looking up the appropriate controller
+- Validating the resource against the controller's schema
+- Creating and initializing the resource instance
+- Storing the instance in both the Kernel registry and the module context
+- Invoking post-initialization hooks (e.g., `isContextProvider`)
+
+### 5.3 Context Hierarchy
+
+The context hierarchy follows a simple pattern:
+
+```
+EvaluationContext(context, createInstance, secretValues)
+  ├── ModuleContext(variables, secrets, resources, createInstance)
+  │    ├── pendingResources: ResourceManifest[]
+  │    └── resourceInstances: Map<key, {resource, instance}>
+  │
+  └── ExecutionContext(moduleCtx, execProps)
+       ├── inherits createInstance from moduleCtx
+       └── merges moduleCtx.context with execProps (e.g., {request, inputs})
+```
+
+**Key properties:**
+
+- `ModuleContext` is stateful and mutable — it accumulates resources during multi-pass initialization as controllers register new kinds.
+- `ExecutionContext` is ephemeral and read-only — it merges the module context with per-execution properties and forwards the module's `createInstance` factory.
+- `EvaluationContext` can spawn child contexts via `spawnChild()`, forming a lifecycle tree. All children inherit the parent's `createInstance` factory.
+
+### 5.4 Multi-Pass Initialization
+
+When `initializeResources()` is called on any context, it performs a multi-pass loop:
+
+```typescript
+public async initializeResources(): Promise<void> {
+  const maxPasses = 10;
+  let pass = 0;
+  while (pass < maxPasses && this.pendingResources.length > 0) {
+    pass++;
+    const toProcess = [...this.pendingResources];
+    this.pendingResources.length = 0;
+
+    for (const resource of toProcess) {
+      const instance = await this._createInstance(resource);
+      if (!instance) {
+        // Dependency not yet ready — queue for next pass
+        this.pendingResources.push(resource);
+      } else {
+        // Resource created and stored by _createInstance
+        this.resourceInstances.set(resourceKey(resource), { resource, instance });
+      }
+    }
+  }
+}
+```
+
+**Why multiple passes?**
+
+Resources may depend on other resources being created first (e.g., a `Kernel.Module` resource registers new kinds that other resources need). Rather than requiring explicit topological sorting, the loop retries failed resources until all are resolved or the max passes are exhausted.
+
+### 5.5 Child Context Initialization
+
+The `ResourceContext` interface (implemented by `ResourceContextImpl`) provides methods for controllers that spawn child contexts:
+
+```typescript
+/**
+ * Create a child EvaluationContext attached to the current module context.
+ * The child inherits the module's createInstance factory.
+ */
+spawnChildContext(): EvaluationContext {
+  const child = new EvaluationContext(
+    this.moduleContext.context,
+    this.moduleContext.createInstance,   // ← inherited
+    this.moduleContext.secretValues,
+  );
+  return this.moduleContext.spawnChild(child);
+}
+
+/**
+ * Initialize pending resources on a child context.
+ * Uses the inherited createInstance factory.
+ */
+async initializeChildContext(ctx: EvaluationContext): Promise<void> {
+  await this.kernel.initializeContext(ctx);  // → ctx.initializeResources()
+}
+```
+
+### 5.6 Design Benefits
+
+1. **Eliminates `ResourceInstantiator` from the public API** — the kernel's factory is injected once, not passed per-call.
+2. **Simplifies Kernel internals** — the `initializationQueue` and private 177-line init loop are replaced by delegating to `ctx.initializeResources()`.
+3. **Uniform resource ownership** — every context type can initialize resources the same way.
+4. **Testability** — contexts can be constructed with mock `InstanceFactory` implementations for unit testing.
+
+```
+
+```

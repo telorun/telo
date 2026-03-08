@@ -3,6 +3,8 @@ metadata:
   name: StarlarkDemo
   version: 1.0.0
   description: A demo module showcasing Starlark scripts
+targets:
+  - RunScriptOnEvent
 ---
 kind: Kernel.Import
 metadata:
@@ -58,10 +60,6 @@ kind: Flow.Steps
 metadata:
   name: RunScriptOnEvent
   module: StarlarkDemo
-trigger:
-  event: Kernel.Started
-  once: true
-  filter: "true"
 steps:
   - name: Step1
     inputs:

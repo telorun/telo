@@ -1,6 +1,5 @@
-import { RuntimeResource } from "@telorun/sdk";
+import { ControllerInstance, ResourceDefinition, RuntimeResource } from "@telorun/sdk";
 import * as path from "path";
-import { ControllerInstance, ResourceDefinition } from "./types.js";
 
 /**
  * ControllerRegistry: Manages controller loading and dispatch

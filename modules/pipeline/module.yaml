@@ -2,6 +2,39 @@ kind: Kernel.Module
 metadata:
   name: Pipeline
   version: 1.0.0
-  description: Orchestration and testing framework using inline resource execution
-include:
-  - pipeline.yaml
+  description: Orchestration framework using inline resource execution
+---
+kind: Kernel.Definition
+metadata:
+  name: Job
+  module: Pipeline
+capabilities:
+  - executable
+controllers:
+  - pkg:npm/@telorun/pipeline@>=1.0.0?local_path=./nodejs#job
+schema:
+  type: object
+  properties:
+    with:
+      type: array
+      description: Resources to create at pipeline start and teardown at pipeline end
+      items:
+        type: object
+        properties:
+          kind:
+            type: string
+            description: Resource kind (e.g., Http.Server, Database.Connect)
+        required:
+          - kind
+    steps:
+      type: array
+      items:
+        type: object
+        properties:
+          kind:
+            type: string
+            description: Resource kind (e.g., Logic.JavaScript, HttpClient.Request)
+        required:
+          - kind
+  required:
+    - steps

@@ -1,8 +1,8 @@
-import { DataValidator } from "@telorun/sdk";
+import { DataValidator, RuntimeError } from "@telorun/sdk";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { formatAjvErrors } from "./manifest-schemas.js";
-import { RuntimeError } from "./types.js";
+
 const Ajv = AjvModule.default ?? AjvModule;
 
 export class SchemaValidator {

@@ -1,5 +1,5 @@
 import { Static, Type } from "@sinclair/typebox";
-import { ResourceContext } from "@telorun/sdk";
+import { ResourceContext, Runnable } from "@telorun/sdk";
 
 const ImportEntry = Type.Object({
   variables: Type.Optional(Type.Record(Type.String(), Type.Any())),
@@ -37,69 +37,70 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
-export async function create(manifest: ModuleContextManifest, ctx: ResourceContext) {
-  let appStarted = false;
-  ctx.on("Kernel.Started", () => {
-    appStarted = true;
-  });
+export async function create(
+  manifest: ModuleContextManifest,
+  ctx: ResourceContext,
+): Promise<Runnable> {
+  return {
+    run: async () => {
+      const declaringModule = manifest.metadata.module ?? "default";
+      const importsToCheck = manifest.imports ?? {};
+      const failures: string[] = [];
+      const passed: string[] = [];
 
-  ctx.on("Kernel.Stopping", () => {
-    if (!appStarted) return;
+      for (const [alias, expected] of Object.entries(importsToCheck)) {
+        const realModule = (ctx as any).resolveModuleAlias(declaringModule, alias) as
+          | string
+          | undefined;
+        if (!realModule) {
+          failures.push(`Import alias '${alias}' not found in module '${declaringModule}'`);
+          continue;
+        }
 
-    const declaringModule = manifest.metadata.module ?? "default";
-    const importsToCheck = manifest.imports ?? {};
-    const failures: string[] = [];
-    const passed: string[] = [];
+        const moduleCtx = ctx.moduleContext;
+        const importSnap = (moduleCtx.resources[alias] as any) ?? {};
+        const expectedVariables = expected.variables ?? {};
+        const expectedSecrets = expected.secrets ?? {};
 
-    for (const [alias, expected] of Object.entries(importsToCheck)) {
-      const realModule = (ctx as any).resolveModuleAlias(declaringModule, alias) as string | undefined;
-      if (!realModule) {
-        failures.push(`Import alias '${alias}' not found in module '${declaringModule}'`);
-        continue;
-      }
+        for (const [key, expectedValue] of Object.entries(expectedVariables)) {
+          const actualValue = importSnap?.variables?.[key];
+          if (!deepEqual(actualValue, expectedValue)) {
+            failures.push(
+              `imports.${alias}.variables.${key}: expected ${yellow(JSON.stringify(expectedValue))}, got ${red(JSON.stringify(actualValue))}`,
+            );
+          } else {
+            passed.push(`imports.${alias}.variables.${key}`);
+          }
+        }
 
-      const moduleCtx = (ctx as any).getModuleContext(realModule);
-      const expectedVariables = expected.variables ?? {};
-      const expectedSecrets = expected.secrets ?? {};
-
-      for (const [key, expectedValue] of Object.entries(expectedVariables)) {
-        if (!deepEqual(moduleCtx.variables[key], expectedValue)) {
-          failures.push(
-            `imports.${alias}.variables.${key}: expected ${yellow(JSON.stringify(expectedValue))}, got ${red(JSON.stringify(moduleCtx.variables[key]))}`,
-          );
-        } else {
-          passed.push(`imports.${alias}.variables.${key}`);
+        for (const [key] of Object.entries(expectedSecrets)) {
+          const actualSecret = importSnap?.secrets?.[key];
+          if (!deepEqual(actualSecret, expectedSecrets[key])) {
+            failures.push(`imports.${alias}.secrets.${key}: ${dim("value mismatch")}`);
+          } else {
+            passed.push(`imports.${alias}.secrets.${key}`);
+          }
         }
       }
 
-      for (const [key] of Object.entries(expectedSecrets)) {
-        if (!deepEqual(moduleCtx.secrets[key], expectedSecrets[key])) {
-          failures.push(`imports.${alias}.secrets.${key}: ${dim("value mismatch")}`);
-        } else {
-          passed.push(`imports.${alias}.secrets.${key}`);
+      const name = manifest.metadata.name;
+      if (failures.length > 0) {
+        let report = bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n";
+        for (const p of passed) {
+          report += `  ${green("✓")} ${dim(p)}\n`;
         }
+        for (const f of failures) {
+          report += `  ${red("✗")} ${f}\n`;
+        }
+        process.stderr.write(report);
+        ctx.requestExit(1);
+      } else {
+        let report = bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n";
+        for (const p of passed) {
+          report += `  ${green("✓")} ${dim(p)}\n`;
+        }
+        process.stdout.write(report);
       }
-    }
-
-    const name = manifest.metadata.name;
-    if (failures.length > 0) {
-      let report = bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n";
-      for (const p of passed) {
-        report += `  ${green("✓")} ${dim(p)}\n`;
-      }
-      for (const f of failures) {
-        report += `  ${red("✗")} ${f}\n`;
-      }
-      process.stderr.write(report);
-      ctx.requestExit(1);
-    } else {
-      let report = bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n";
-      for (const p of passed) {
-        report += `  ${green("✓")} ${dim(p)}\n`;
-      }
-      process.stdout.write(report);
-    }
-  });
-
-  return {};
+    },
+  };
 }

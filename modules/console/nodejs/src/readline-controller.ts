@@ -13,6 +13,10 @@ class ConsoleReadLine implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
+  snapshot(): { value: string } {
+    return { value: this.value };
+  }
+
   async invoke(): Promise<{ value: string }> {
     const iface = rl.createInterface({
       input: this.ctx.stdin,

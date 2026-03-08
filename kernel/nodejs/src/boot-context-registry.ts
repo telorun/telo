@@ -1,4 +1,4 @@
-import { RuntimeError } from './types.js';
+import { RuntimeError } from "@telorun/sdk";
 
 /** Stored entry for a single context provider */
 interface ProviderEntry {
@@ -81,14 +81,13 @@ export class BootContextRegistry {
     const manifestJson = JSON.stringify(rawManifest);
 
     for (const provider of this.providers) {
-      const isGranted =
-        provider.grants === undefined || provider.grants.includes(consumerKey);
+      const isGranted = provider.grants === undefined || provider.grants.includes(consumerKey);
 
       if (!isGranted) {
         const namespacePrefix = buildProviderNamespacePrefix(provider.kind, provider.name);
         if (manifestReferencesNamespace(manifestJson, namespacePrefix)) {
           throw new RuntimeError(
-            'ERR_VISIBILITY_DENIED',
+            "ERR_VISIBILITY_DENIED",
             `Resource "${consumerKind}/${consumerName}" references context from ` +
               `provider "${provider.kind}/${provider.name}" but is not listed in its grants. ` +
               `Add "${consumerKey}" to the provider's grants field to allow access.`,
@@ -129,9 +128,9 @@ function buildProviderNamespacePrefix(kind: string, name: string): string {
 function manifestReferencesNamespace(manifestJson: string, namespacePrefix: string): boolean {
   let searchFrom = 0;
   while (true) {
-    const start = manifestJson.indexOf('${{', searchFrom);
+    const start = manifestJson.indexOf("${{", searchFrom);
     if (start === -1) break;
-    const end = manifestJson.indexOf('}}', start + 3);
+    const end = manifestJson.indexOf("}}", start + 3);
     if (end === -1) break;
     const expression = manifestJson.slice(start + 3, end);
     if (expression.includes(namespacePrefix)) {
@@ -158,10 +157,10 @@ function mergeProviderIntoContext(
   name: string,
   providerData: Record<string, unknown>,
 ): void {
-  const kindSegments = kind.split('.');
+  const kindSegments = kind.split(".");
   let cursor = celContext;
   for (const segment of kindSegments) {
-    if (typeof cursor[segment] !== 'object' || cursor[segment] === null) {
+    if (typeof cursor[segment] !== "object" || cursor[segment] === null) {
       cursor[segment] = {};
     }
     cursor = cursor[segment] as Record<string, unknown>;

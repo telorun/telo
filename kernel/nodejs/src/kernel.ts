@@ -1,22 +1,23 @@
-import { ResourceContext, RuntimeEvent, RuntimeResource, isContextProvider } from "@telorun/sdk";
+import {
+  ControllerContext,
+  EvaluationContext,
+  Kernel as IKernel,
+  ModuleContext,
+  ResourceContext,
+  ResourceDefinition,
+  ResourceInstance,
+  ResourceManifest,
+  RuntimeError,
+  RuntimeEvent,
+} from "@telorun/sdk";
 import * as path from "path";
-import { BootContextRegistry } from "./boot-context-registry.js";
 import { ControllerRegistry } from "./controller-registry.js";
-import { ModuleContext } from "./evaluation-context.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { Loader } from "./loader.js";
 import { ModuleContextRegistry } from "./module-context-registry.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
-import {
-  ControllerContext,
-  Kernel as IKernel,
-  ResourceDefinition,
-  ResourceInstance,
-  ResourceManifest,
-  RuntimeError,
-} from "./types.js";
 
 /**
  * Kernel: Central orchestrator managing lifecycle and message bus
@@ -25,82 +26,46 @@ import {
 export class Kernel implements IKernel {
   private loader: Loader = new Loader();
   // private manifests: ManifestRegistry = new ManifestRegistry();
-  private initializationQueue: ResourceManifest[] = [];
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
   private eventStream: EventStream = new EventStream();
   // private snapshotSerializer: SnapshotSerializer = new SnapshotSerializer();
   // private runtimeManifests: ResourceManifest[] | null = null;
-  private resourceInstances: Map<
-    string,
-    { resource: ResourceManifest; instance: ResourceInstance }
-  > = new Map();
+  // private resourceInstances: Map<
+  //   string,
+  //   { resource: ResourceManifest; instance: ResourceInstance }
+  // > = new Map();
   private resourceEventBuses: Map<string, EventBus> = new Map();
-  private resourceChildren: Map<string, string[]> = new Map();
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
-  private bootContextRegistry = new BootContextRegistry();
-  private moduleContextRegistry = new ModuleContextRegistry();
+  // private bootContextRegistry = new BootContextRegistry();
+  private moduleContextRegistry!: ModuleContextRegistry;
   private readonly sharedSchemaValidator = new SchemaValidator();
+  private rootContext!: ModuleContext;
 
   constructor() {
+    this.moduleContextRegistry = new ModuleContextRegistry(
+      this._createInstance.bind(this),
+      (event, payload) => this.eventBus.emit(event, payload),
+    );
     this.setupEventStreaming();
   }
 
-  /**
-   * Register a resource dynamically during initialization
-   */
-  registerManifest(resource: ResourceManifest): void {
-    this.initializationQueue.push(resource);
-  }
-
-  /**
-   * Register a child resource and track the parent-child relationship for cascade teardown
-   */
-  registerChildManifest(parentKey: string, resource: ResourceManifest): void {
-    this.initializationQueue.push(resource);
-    const childKey = this.getResourceKey(
-      resource.metadata.module,
-      resource.kind,
-      resource.metadata.name,
-    );
-    const children = this.resourceChildren.get(parentKey) ?? [];
-    children.push(childKey);
-    this.resourceChildren.set(parentKey, children);
-  }
-
-  /**
-   * Tear down a single resource and cascade to its children first
-   */
-  async teardownResource(module: string, kind: string, name: string): Promise<void> {
-    const key = this.getResourceKey(module, kind, name);
-    // Cascade: tear down children in reverse registration order first
-    const childKeys = this.resourceChildren.get(key) ?? [];
-    for (const childKey of [...childKeys].reverse()) {
-      const childEntry = this.resourceInstances.get(childKey);
-      if (childEntry) {
-        await this.teardownResource(
-          childEntry.resource.metadata.module,
-          childEntry.resource.kind,
-          childEntry.resource.metadata.name,
-        );
-      }
-    }
-    this.resourceChildren.delete(key);
-    // Tear down self
-    const entry = this.resourceInstances.get(key);
-    if (!entry) return;
-    const { resource, instance } = entry;
-    if (instance.teardown) {
-      await instance.teardown();
-    }
-    await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
-      resource: { kind: resource.kind, name: resource.metadata.name },
-    });
-    this.resourceInstances.delete(key);
-    this.resourceEventBuses.delete(key);
-  }
+  // async teardownResource(module: string, kind: string, name: string): Promise<void> {
+  //   const key = this.getResourceKey(module, kind, name);
+  //   const entry = this.resourceInstances.get(key);
+  //   if (!entry) return;
+  //   const { resource, instance } = entry;
+  //   if (instance.teardown) {
+  //     await instance.teardown();
+  //   }
+  //   await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
+  //     resource: { kind: resource.kind, name: resource.metadata.name },
+  //   });
+  //   // this.resourceInstances.delete(key);
+  //   this.resourceEventBuses.delete(key);
+  // }
 
   async registerController(
     moduleName: string,
@@ -126,28 +91,33 @@ export class Kernel implements IKernel {
     this.controllers.registerCapability(name, schema);
   }
 
-  registerModuleContext(
-    moduleName: string,
-    variables: Record<string, unknown>,
-    secrets: Record<string, unknown>,
-  ): void {
-    this.moduleContextRegistry.setVariablesAndSecrets(moduleName, variables, secrets);
-  }
-
   getModuleContext(moduleName: string): ModuleContext {
     return this.moduleContextRegistry.getContext(moduleName);
   }
 
   resolveModuleAlias(declaringModule: string, alias: string): string | undefined {
-    return this.moduleContextRegistry.resolveAlias(declaringModule, alias);
+    const ctx =
+      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
+        ? this.moduleContextRegistry.getContext(declaringModule)
+        : this.rootContext;
+    return ctx.importAliases.get(alias);
   }
 
   declareModule(moduleName: string): void {
     this.moduleContextRegistry.declareModule(moduleName);
   }
 
-  registerModuleAlias(declaringModule: string, alias: string, targetModule: string): void {
-    this.moduleContextRegistry.setAliasModule(declaringModule, alias, targetModule);
+  registerModuleImport(
+    declaringModule: string,
+    alias: string,
+    targetModule: string,
+    kinds: string[],
+  ): void {
+    const ctx =
+      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
+        ? this.moduleContextRegistry.getContext(declaringModule)
+        : this.rootContext;
+    ctx.registerImport(alias, targetModule, kinds);
   }
 
   isCapabilityRegistered(name: string): boolean {
@@ -160,12 +130,15 @@ export class Kernel implements IKernel {
 
   /**
    * Load built-in Runtime definitions (e.g., Kernel.Module)
+   * Also declares all known module namespaces upfront so that resources can be
+   * registered to them. User-defined modules are declared explicitly by Kernel.Module
+   * resources during the initialization phase.
    */
   private async loadBuiltinDefinitions(): Promise<void> {
     // Declare built-in module namespaces upfront so getContext() can distinguish
     // "not yet populated" from a completely unknown module name.
-    this.moduleContextRegistry.declareModule("Kernel"); // system resources
-    this.moduleContextRegistry.declareModule("default"); // user resources with no module field
+    this.rootContext.registerImport("Kernel", "Kernel", []); // built-ins, unrestricted
+    // this.moduleContextRegistry.declareModule("default"); // user resources with no module field
 
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
@@ -213,6 +186,15 @@ export class Kernel implements IKernel {
    * Load from runtime configuration file
    */
   async loadFromConfig(runtimeYamlPath: string): Promise<void> {
+    this.rootContext = new ModuleContext(
+      this.loader.resolvePath(`file://${process.cwd()}/`, runtimeYamlPath),
+      {},
+      {},
+      {},
+      [],
+      this._createInstance.bind(this),
+      (event, payload) => this.eventBus.emit(event, payload),
+    );
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
 
@@ -228,7 +210,16 @@ export class Kernel implements IKernel {
       `file://${process.cwd()}/`,
       { env: process.env },
     );
-    this.initializationQueue = [...capabilityManifests, ...userManifests];
+    const allManifests = [...capabilityManifests, ...userManifests];
+
+    for (const manifest of allManifests) {
+      if (manifest.kind === "Kernel.Module") {
+        this.rootContext.setSecrets(manifest.secrets ?? {});
+        this.rootContext.setVariables(manifest.variables ?? {});
+        this.rootContext.setTargets(manifest.targets ?? []);
+      }
+      this.rootContext.registerManifest(manifest);
+    }
   }
 
   /**
@@ -247,7 +238,7 @@ export class Kernel implements IKernel {
   async start(): Promise<void> {
     // Call controller register hooks first (before any initialization)
     for (const kind of this.controllers.getKinds()) {
-      const controller = await this.controllers.getController(kind);
+      const controller = this.controllers.getController(kind);
       if (controller?.register) {
         await controller.register(this.createControllerContext(`controller:${kind}`));
       }
@@ -255,27 +246,26 @@ export class Kernel implements IKernel {
 
     // Initialize resources
     try {
-      await this.initializeResources();
+      await this.rootContext.initializeResources();
       await this.eventBus.emit("Kernel.Initialized", {});
       await this.eventBus.emit("Kernel.Starting", {});
-      await this.runInstances();
+      await this.rootContext.runTargets();
       await this.eventBus.emit("Kernel.Started", {});
       await this.waitForIdle();
     } finally {
       await this.eventBus.emit("Kernel.Stopping", {});
-      await this.teardownResources();
+      await this.rootContext.teardownResources();
       await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
     }
   }
 
-  async runInstances(): Promise<void> {
-    for (const entry of this.resourceInstances.values()) {
-      const { resource, instance } = entry;
-      if (instance.run) {
-        await instance.run();
-      }
-    }
-  }
+  // async runInstances(): Promise<void> {
+  //   for (const { instance } of this.resourceInstances.values()) {
+  //     if (instance.run) {
+  //       await instance.run();
+  //     }
+  //   }
+  // }
 
   async emitRuntimeEvent(event: string, payload?: any): Promise<void> {
     await this.eventBus.emit(event, payload);
@@ -337,23 +327,6 @@ export class Kernel implements IKernel {
     return this.eventBus.hasHandlers(event);
   }
 
-  hasResourceInstances(): boolean {
-    return this.resourceInstances.size > 0;
-  }
-
-  async teardownResources(): Promise<void> {
-    const keys = Array.from(this.resourceInstances.keys()).reverse();
-    for (const key of keys) {
-      const entry = this.resourceInstances.get(key);
-      if (!entry) continue; // already removed by a cascade
-      await this.teardownResource(
-        entry.resource.metadata.module,
-        entry.resource.kind,
-        entry.resource.metadata.name,
-      );
-    }
-  }
-
   on(event: string, handler: (event: RuntimeEvent) => void | Promise<void>): void {
     this.eventBus.on(event, handler);
   }
@@ -377,292 +350,203 @@ export class Kernel implements IKernel {
     };
   }
 
-  private createResourceContext(resource: ResourceManifest): ResourceContext {
-    const moduleName: string = resource.metadata.module ?? "default";
-    const key = this.getResourceKey(moduleName, resource.kind, resource.metadata.name);
+  private createResourceContext(
+    moduleContext: ModuleContext,
+    resource: ResourceManifest,
+  ): ResourceContext {
     return new ResourceContextImpl(
       this,
-      this.moduleContextRegistry.getContext(moduleName),
+      moduleContext,
       resource.metadata,
       this.sharedSchemaValidator,
-      key,
     );
   }
 
-  getResourcesByKind(kind: string): RuntimeResource[] {
-    const resources: RuntimeResource[] = [];
-    for (const entry of this.resourceInstances.values()) {
-      if (entry.resource.kind === kind) {
-        resources.push(entry.instance as any);
+  /**
+   * Create a resource instance: resolves the controller, validates the schema,
+   * calls create/init, registers context providers, stores the snapshot, and
+   * mirrors the instance into the Kernel-level and module-level registries.
+   * Returns null when the controller is not yet registered (retry signal).
+   */
+  private async _createInstance(
+    evalContext: ModuleContext,
+    resource: ResourceManifest,
+  ): Promise<ResourceInstance | null> {
+    const kind = resource.kind;
+    const declaringModule = resource.metadata.module;
+
+    // Use the registry context ONLY for kind resolution (alias→module lookup).
+    // Fall back to rootContext for built-ins (metadata.module: "Kernel") and root resources.
+    const kindResolveCtx =
+      declaringModule && this.moduleContextRegistry.hasModule(declaringModule)
+        ? this.moduleContextRegistry.getContext(declaringModule)
+        : this.rootContext;
+
+    // Resolve the alias-prefixed kind to its real fully-qualified kind.
+    // resolveKind() throws with a clear message if the alias or kind is not found.
+    const resolvedKind = kindResolveCtx.resolveKind(kind);
+
+    const controller = this.controllers.getControllerOrUndefined(resolvedKind);
+    if (!controller) {
+      const kindInfo =
+        resolvedKind !== kind ? `'${kind}' (resolved to '${resolvedKind}')` : `'${kind}'`;
+      throw new Error(
+        `No controller registered for kind ${kindInfo}, known controllers are: ${this.controllers.getKinds().join(", ")}`,
+      );
+    }
+
+    if (!controller.create) {
+      throw new RuntimeError(
+        "ERR_CONTROLLER_INVALID",
+        `Controller for ${kind} does not implement create method`,
+      );
+    }
+    if (!controller.schema?.type) {
+      throw new Error(`No schema defined for ${kind} controller`);
+    }
+
+    try {
+      this.sharedSchemaValidator.compile(controller.schema).validate(resource);
+    } catch (error) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+        `Resource does not match schema for kind ${kind}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const ctx = this.createResourceContext(evalContext, resource);
+    const instance = await controller.create(resource, ctx);
+    if (!instance) return null;
+
+    if (instance.init) await instance.init(ctx);
+
+    // if (isContextProvider(instance)) {
+    //   this.bootContextRegistry.register(
+    //     resource.kind,
+    //     resource.metadata.name,
+    //     resource.metadata.module,
+    //     resource.grants as string[] | undefined,
+    //     instance.provideContext(),
+    //   );
+    // }
+
+    if (instance.snapshot) {
+      const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
+      if (evalContext instanceof ModuleContext) {
+        evalContext.setResource(resource.metadata.name, (snap as Record<string, unknown>) ?? {});
+      }
+      if (declaringModule && this.moduleContextRegistry.isDeclared(declaringModule)) {
+        this.moduleContextRegistry.setResource(
+          declaringModule,
+          resource.metadata.name,
+          (snap as Record<string, unknown>) ?? {},
+        );
       }
     }
-    return resources;
+
+    return instance;
   }
 
-  getResourceByName(declaringModule: string, alias: string, name: string): RuntimeResource | null {
-    const realModule = this.moduleContextRegistry.resolveAlias(declaringModule, alias) ?? alias;
-    for (const { resource, instance } of this.resourceInstances.values()) {
-      if (resource.metadata.module === realModule && resource.metadata.name === name) {
-        return instance as RuntimeResource;
-      }
+  /**
+   * Tear down all resource instances owned by a dynamically-spawned context,
+   * cascading depth-first through its children. Removes entries from both
+   * ctx.resourceInstances and the Kernel-level resourceInstances map, and
+   * emits Teardown events (matching the behaviour of teardownResource()).
+   */
+  async teardownContext(ctx: EvaluationContext): Promise<void> {
+    for (const child of [...ctx.children].reverse()) {
+      await this.teardownContext(child);
     }
-    return null;
+    const entries = [...ctx.resourceInstances.entries()].reverse();
+    for (const [key, { resource, instance }] of entries) {
+      if (instance.teardown) await instance.teardown();
+      await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
+        resource: { kind: resource.kind, name: resource.metadata.name },
+      });
+      // this.resourceInstances.delete(key);
+      ctx.resourceInstances.delete(key);
+      this.resourceEventBuses.delete(key);
+    }
   }
+
+  // getResourcesByKind(kind: string): RuntimeResource[] {
+  //   const resources: RuntimeResource[] = [];
+  //   for (const entry of this.resourceInstances.values()) {
+  //     if (entry.resource.kind === kind) {
+  //       resources.push(entry.instance as any);
+  //     }
+  //   }
+  //   return resources;
+  // }
+
+  // getResourceByName(declaringModule: string, alias: string, name: string): RuntimeResource | null {
+  //   const realModule = this.moduleContextRegistry.resolveAlias(declaringModule, alias) ?? alias;
+  //   for (const { resource, instance } of this.resourceInstances.values()) {
+  //     if (resource.metadata.module === realModule && resource.metadata.name === name) {
+  //       return instance as RuntimeResource;
+  //     }
+  //   }
+  //   return null;
+  // }
 
   /**
    * Returns the unique set of local file paths from which resources were loaded.
    * HTTP/HTTPS sources are excluded — they cannot be watched on disk.
    */
-  getSourceFiles(): string[] {
-    const seen = new Set<string>();
-    for (const { resource } of this.resourceInstances.values()) {
-      const src = resource.metadata.source;
-      if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
-        seen.add(src);
-      }
-    }
-    return Array.from(seen);
-  }
+  // getSourceFiles(): string[] {
+  //   const seen = new Set<string>();
+  //   for (const { resource } of this.resourceInstances.values()) {
+  //     const src = resource.metadata.source;
+  //     if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
+  //       seen.add(src);
+  //     }
+  //   }
+  //   return Array.from(seen);
+  // }
 
   /**
    * Reload all resources that were loaded from the given source file.
    * Safe order: parse first → if parse succeeds, tear down old → init new → run new only.
    */
-  async reloadSource(sourcePath: string): Promise<void> {
-    // Parse first — bail before touching running resources if the file is invalid
-    const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`, {
-      env: process.env,
-    });
+  // async reloadSource(sourcePath: string): Promise<void> {
+  //   // Parse first — bail before touching running resources if the file is invalid
+  //   const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`, {
+  //     env: process.env,
+  //   });
 
-    // Collect keys of resources loaded from this source (in insertion order)
-    const keysFromSource: string[] = [];
-    for (const [key, { resource }] of this.resourceInstances.entries()) {
-      if (resource.metadata.source === sourcePath) {
-        keysFromSource.push(key);
-      }
-    }
-    // Tear down in reverse order (children first via cascade)
-    for (const key of [...keysFromSource].reverse()) {
-      const entry = this.resourceInstances.get(key);
-      if (!entry) continue; // already removed by a cascade
-      await this.teardownResource(
-        entry.resource.metadata.module,
-        entry.resource.kind,
-        entry.resource.metadata.name,
-      );
-    }
+  //   // Collect keys of resources loaded from this source (in insertion order)
+  //   const keysFromSource: string[] = [];
+  //   for (const [key, { resource }] of this.resourceInstances.entries()) {
+  //     if (resource.metadata.source === sourcePath) {
+  //       keysFromSource.push(key);
+  //     }
+  //   }
+  //   // Tear down in reverse order (children first via cascade)
+  //   for (const key of [...keysFromSource].reverse()) {
+  //     const entry = this.resourceInstances.get(key);
+  //     if (!entry) continue; // already removed by a cascade
+  //     await this.teardownResource(
+  //       entry.resource.metadata.module,
+  //       entry.resource.kind,
+  //       entry.resource.metadata.name,
+  //     );
+  //   }
 
-    // Queue new manifests and initialize them
-    for (const manifest of newManifests) {
-      this.initializationQueue.push(manifest);
-    }
-    const keysBefore = new Set(this.resourceInstances.keys());
-    await this.initializeResources();
+  //   for (const manifest of newManifests) {
+  //     this.rootContext.registerManifest(manifest);
+  //   }
+  //   const keysBefore = new Set(this.resourceInstances.keys());
+  //   await this.initializeResources();
 
-    // Run only newly created instances (not all instances — avoids double-run)
-    const newKeys = Array.from(this.resourceInstances.keys()).filter((k) => !keysBefore.has(k));
-    for (const key of newKeys) {
-      const entry = this.resourceInstances.get(key);
-      if (entry?.instance.run) {
-        await entry.instance.run();
-      }
-    }
-  }
-
-  private async initializeResources(): Promise<void> {
-    /**
-     * Step 4: Multi-Pass Controller Discovery Loop (Max 10 Passes)
-     * Loop up to 10 passes to discover controllers and create resource instances.
-     * Each pass removes handled resources from the list, making subsequent passes faster.
-     */
-
-    // Collect all resources from registry as a list
-
-    let passNumber = 1;
-    const MAX_PASSES = 10;
-    const createdResources: Array<{
-      kind: string;
-      resource: ResourceManifest;
-      instance: ResourceInstance;
-    }> = [];
-    let handledThisPass: Array<{
-      kind: string;
-      resource: ResourceManifest;
-    }> = [];
-    // Track latest error for each resource
-    const resourceErrors: Map<string, string> = new Map();
-    // Multi-pass loop
-    do {
-      handledThisPass = [];
-
-      for (const resource of this.initializationQueue) {
-        const kind = resource.kind;
-        const key = this.getResourceKey(resource.metadata.module, kind, resource.metadata.name);
-        const resourceId = `${kind}:${resource.metadata.name}`;
-
-        // Skip if already created
-        if (this.resourceInstances.has(key)) {
-          continue;
-        }
-
-        const declaringModule = resource.metadata.module ?? "default";
-        let resolvedKind = kind;
-        if (kind.includes(".")) {
-          const dotIdx = kind.indexOf(".");
-          const prefix = kind.slice(0, dotIdx);
-          const realModule = this.moduleContextRegistry.resolveAlias(declaringModule, prefix);
-          if (realModule) resolvedKind = `${realModule}.${kind.slice(dotIdx + 1)}`;
-        }
-
-        const controller = this.controllers.getControllerOrUndefined(resolvedKind);
-
-        if (!controller) {
-          // No controller and no definition - track error and skip for now
-          resourceErrors.set(resourceId, `No controller registered for kind: ${kind}`);
-          continue;
-        }
-
-        if (!controller.create) {
-          // Controller exists but has no create method, skip
-          throw new RuntimeError(
-            "ERR_CONTROLLER_INVALID",
-            `Controller for ${kind} does not implement create method`,
-          );
-        }
-
-        try {
-          if (!controller.schema || !controller.schema.type) {
-            throw new Error(`No schema defined for ${kind} controller`);
-          }
-
-          // AOT: resolve expressions against the merged module + boot context.
-          // Module context provides flat namespaces (variables, secrets, resources, imports).
-          // Boot context (ContextProvider instances) overlays on top.
-          // const moduleCtx = this.moduleContextRegistry.getContext(resource.metadata.module);
-          // const bootCtx = this.bootContextRegistry.hasProviders()
-          //   ? this.bootContextRegistry.buildContext(resource.kind, resource.metadata.name, resource)
-          //   : {};
-          // const evalCtx = moduleCtx.merge(bootCtx);
-          // let resolvedResource = evalCtx.expand(resource) as ResourceManifest;
-          const resolvedResource = resource; // Skip expansion for now - controllers can handle at runtime
-
-          try {
-            this.sharedSchemaValidator.compile(controller.schema).validate(resolvedResource);
-          } catch (error) {
-            throw new RuntimeError(
-              "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
-              `Resource does not match schema for kind ${kind}: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-          // Create resource instance using the resolved manifest
-          const instance = await controller.create(
-            resolvedResource,
-            this.createResourceContext(resolvedResource),
-          );
-
-          if (instance) {
-            if (instance.init) {
-              await instance.init(this.createResourceContext(resolvedResource));
-            }
-            // Register ContextProvider after init() — init may populate context state
-            if (isContextProvider(instance)) {
-              this.bootContextRegistry.register(
-                resource.kind,
-                resource.metadata.name,
-                resource.metadata.module,
-                resource.grants as string[] | undefined,
-                instance.provideContext(),
-              );
-            }
-            // Populate resources.<Name> namespace so CEL exports can reference it.
-            const snap = instance.snapshot
-              ? await Promise.resolve(instance.snapshot()).catch(() => ({}))
-              : {};
-            this.moduleContextRegistry.setResource(
-              resource.metadata.module ?? "default",
-              resource.metadata.name,
-              (snap as Record<string, unknown>) ?? {},
-            );
-            this.resourceInstances.set(key, { resource: resolvedResource, instance });
-            createdResources.push({ kind, resource: resolvedResource, instance });
-            handledThisPass.push({ kind, resource });
-            resourceErrors.delete(resourceId);
-          }
-          this.initializationQueue = this.initializationQueue.filter(
-            (r) =>
-              r.metadata.module !== resource.metadata.module ||
-              r.kind !== resource.kind ||
-              r.metadata.name !== resource.metadata.name,
-          );
-        } catch (error) {
-          // Security violations are fatal — never retry
-          if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") {
-            throw error;
-          }
-          // Creation failed - track latest error and retry later
-          resourceErrors.set(
-            resourceId,
-            error instanceof Error ? (error.stack ?? error.message) : String(error),
-          );
-        }
-      }
-
-      passNumber++;
-    } while (passNumber <= MAX_PASSES && handledThisPass.length > 0);
-
-    const unhandledResources: Map<string, string> = new Map();
-
-    // After loop, collect any resources that were never handled
-    for (const { kind, metadata } of this.initializationQueue) {
-      const key = this.getResourceKey(metadata.module, kind, metadata.name);
-      if (!this.resourceInstances.has(key)) {
-        const resourceId = `${kind}:${metadata.name}`;
-        const errorMessage = resourceErrors.get(resourceId) || "Unknown error";
-        unhandledResources.set(resourceId, errorMessage);
-      }
-    }
-
-    // After all passes complete, check for unhandled resources
-    if (unhandledResources.size > 0) {
-      const unhandledList = Array.from(unhandledResources.entries())
-        .reverse() // Most relevant errors (root causes) are last in the list, so reverse to show them first
-        .map(([resource, error]) => `- ${resource}: ${error}`)
-        .join("\n");
-
-      for (const [resource, error] of unhandledResources.entries()) {
-        this.emitRuntimeEvent(`${resource}.Failed`, {
-          resource,
-          error,
-        });
-      }
-      throw new RuntimeError(
-        "ERR_RESOURCE_INITIALIZATION_FAILED",
-        `Unable to process resources:\n\n${unhandledList}`,
-      );
-    }
-  }
-
-  async invoke(module: string, kind: string, name: string, ...args: any[]): Promise<any> {
-    const key = this.getResourceKey(module, kind, name);
-    const instance: any = this.resourceInstances.get(key)?.instance;
-    if (!instance) {
-      throw new RuntimeError(
-        "ERR_RESOURCE_NOT_FOUND",
-        `Resource not found for invocation: ${module}.${kind}.${name}`,
-      );
-    }
-    if (typeof instance !== "object" || typeof instance["invoke"] !== "function") {
-      throw new RuntimeError(
-        "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${kind}.${name} does not have an invoke method`,
-      );
-    }
-    const outputs = await instance["invoke"](...args);
-    this.emitRuntimeEvent(`${module}.${kind}.${name}.Invoked`, {
-      outputs,
-    });
-    return outputs;
-  }
+  //   // Run only newly created instances (not all instances — avoids double-run)
+  //   const newKeys = Array.from(this.resourceInstances.keys()).filter((k) => !keysBefore.has(k));
+  //   for (const key of newKeys) {
+  //     const entry = this.resourceInstances.get(key);
+  //     if (entry?.instance.run) {
+  //       await entry.instance.run();
+  //     }
+  //   }
+  // }
 
   private getResourceKey(module: string, kind: string, name: string): string {
     if (!kind.includes(".")) {

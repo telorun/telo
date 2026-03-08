@@ -26,6 +26,8 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "kernel/modules", label: "Module System" },
         { type: "doc", id: "kernel/module-grants", label: "Module Grants" },
         { type: "doc", id: "kernel/evaluation-context", label: "Evaluation Context" },
+        { type: "doc", id: "kernel/signals", label: "Signals" },
+        { type: "doc", id: "kernel/telemetry-and-observability", label: "Telemetry & Observability" },
         { type: "doc", id: "yaml-cel-templating/README", label: "CEL-YAML Reference" },
       ],
     },

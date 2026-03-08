@@ -1,0 +1,187 @@
+import { Invokable } from "./capabilities/invokable.js";
+import { EmitEvent, EvaluationContext, InstanceFactory } from "./evaluation-context.js";
+
+function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
+  const values = new Set<string>();
+  for (const value of Object.values(secrets)) {
+    if (typeof value === "string" && value.length > 0) {
+      values.add(value);
+    }
+  }
+  return values;
+}
+
+/**
+ * Persistent, module-scoped context. Three reserved CEL namespaces:
+ * variables, secrets, resources.
+ *
+ * Unlike the base EvaluationContext, ModuleContext is stateful and mutable:
+ * variables/secrets/resources accumulate during multi-pass initialization and
+ * the context record is rebuilt on each mutation. Import aliases are tracked
+ * here for alias-prefixed kind resolution (e.g. MyImport.Http.Route).
+ *
+ * Imported modules are surfaced under resources.<alias> alongside local
+ * resources — no separate imports namespace needed.
+ */
+export class ModuleContext extends EvaluationContext {
+  private _variables: Record<string, unknown>;
+  private _secrets: Record<string, unknown>;
+  private _resources: Record<string, unknown>;
+
+  /** Maps import alias → real module name for kind resolution. */
+  readonly importAliases = new Map<string, string>();
+
+  /** Maps import alias → allowed kind names. Absent entry = unrestricted (e.g. Kernel). */
+  private readonly importedKinds = new Map<string, Set<string>>();
+
+  constructor(
+    source: string,
+    variables: Record<string, unknown> = {},
+    secrets: Record<string, unknown> = {},
+    resources: Record<string, unknown> = {},
+    private targets: string[] = [],
+    createInstance: InstanceFactory = async () => null,
+    emit: EmitEvent,
+  ) {
+    super(source, {}, createInstance, new Set(), emit);
+    this._variables = variables;
+    this._secrets = secrets;
+    this._resources = resources;
+    this._rebuildContext();
+  }
+
+  get variables(): Record<string, unknown> {
+    return this._variables;
+  }
+
+  get secrets(): Record<string, unknown> {
+    return this._secrets;
+  }
+
+  get resources(): Record<string, unknown> {
+    return this._resources;
+  }
+
+  setVariables(vars: Record<string, unknown>): void {
+    this._variables = vars;
+    this._rebuildContext();
+  }
+
+  setTargets(vars: string[]): void {
+    this.targets = vars;
+  }
+
+  setSecrets(secrets: Record<string, unknown>): void {
+    this._secrets = secrets;
+    this._rebuildContext();
+  }
+
+  setResource(name: string, props: Record<string, unknown>): void {
+    this._resources = { ...this._resources, [name]: props };
+    this._rebuildContext();
+  }
+
+  /**
+   * Register an imported module under the given alias, with the list of kind names
+   * it exports. An empty kinds array means no restriction (used for built-ins like Kernel).
+   */
+  registerImport(alias: string, targetModule: string, kinds: string[]): void {
+    this.importAliases.set(alias, targetModule);
+    if (kinds.length > 0) {
+      this.importedKinds.set(alias, new Set(kinds));
+    }
+  }
+
+  getInstance(name: string): unknown {
+    const entry = this.resourceInstances.get(name);
+    if (!entry) {
+      throw new Error(
+        `Resource '${name}' not found in module context. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+      );
+    }
+    return entry?.instance;
+  }
+
+  getInvokable(name: string): Invokable {
+    const instance = this.getInstance(name);
+
+    if (
+      instance &&
+      typeof instance === "object" &&
+      "invoke" in instance &&
+      typeof instance.invoke !== "function"
+    ) {
+      throw new Error(`Resource '${name}' does not have an invoke() method.`);
+    }
+    return instance as Invokable;
+  }
+
+  /**
+   * Resolve a fully-qualified kind like "Http.Server" to its real kind "http-server.Server".
+   * Splits on the first dot, looks up the prefix in importAliases, validates against
+   * importedKinds (if set), and reconstructs the resolved kind.
+   * Throws with a clear message if the alias is unknown or the kind is not exported.
+   */
+  resolveKind(kind: string): string {
+    const dot = kind.indexOf(".");
+    if (dot === -1) {
+      throw new Error(`Kind '${kind}' must be fully qualified (e.g. 'Module.KindName')`);
+    }
+    const prefix = kind.slice(0, dot);
+    const suffix = kind.slice(dot + 1);
+    const realModule = this.importAliases.get(prefix);
+    if (!realModule) {
+      const known = [...this.importAliases.keys()].join(", ") || "(none)";
+      throw new Error(
+        `Kind '${kind}': no module imported with alias '${prefix}'. Known aliases: ${known}`,
+      );
+    }
+    const allowed = this.importedKinds.get(prefix);
+    if (allowed !== undefined && !allowed.has(suffix)) {
+      throw new Error(
+        `Kind '${suffix}' is not exported by module '${realModule}' (imported as '${prefix}'). ` +
+          `Exported kinds: ${[...allowed].join(", ")}`,
+      );
+    }
+    return `${realModule}.${suffix}`;
+  }
+
+  private _rebuildContext(): void {
+    this._context = {
+      variables: this._variables,
+      secrets: this._secrets,
+      resources: this._resources,
+    };
+    this._secretValues = collectSecretValues(this._secrets);
+  }
+
+  override async invoke(kind: string, name: string, ...args: any[]): Promise<any> {
+    const result = await super.invoke(kind, name, ...args);
+    const entry = this.resourceInstances.get(name);
+    if (entry && typeof (entry.instance as any).snapshot === "function") {
+      const snap = await Promise.resolve((entry.instance as any).snapshot());
+      this.setResource(name, snap as Record<string, unknown>);
+    }
+    return result;
+  }
+
+  async run(name: string) {
+    const resource = this.resourceInstances.get(name);
+    if (!resource) {
+      throw new Error(
+        `Target resource ${name} not found in module context. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+      );
+    }
+    if (typeof resource.instance.run === "function") {
+      await resource.instance.run();
+    } else {
+      throw new Error(`Target resource ${name} does not have a run() method.`);
+    }
+  }
+
+  async runTargets() {
+    for (const target of this.targets) {
+      await this.run(target);
+    }
+  }
+}

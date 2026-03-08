@@ -1,21 +1,25 @@
-import { NoopValidator, ResourceContext, RuntimeResource } from "@telorun/sdk";
+import {
+  EvaluationContext,
+  ModuleContext,
+  NoopValidator,
+  ResourceContext,
+  RuntimeError,
+  RuntimeResource,
+} from "@telorun/sdk";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { EvaluationContext, ModuleContext } from "./evaluation-context.js";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { SchemaValidator } from "./schema-valiator.js";
-import { RuntimeError } from "./types.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
 export class ResourceContextImpl implements ResourceContext {
   constructor(
     readonly kernel: Kernel,
-    private readonly moduleContext: ModuleContext,
+    readonly moduleContext: ModuleContext,
     private readonly metadata: Record<string, any>,
     private readonly validator: SchemaValidator = new SchemaValidator(),
-    private readonly resourceKey?: string,
   ) {}
 
   stdin: NodeJS.ReadableStream = process.stdin;
@@ -60,19 +64,15 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   invoke(kind: string, name: string, ...args: any[]): Promise<any> {
-    const parts = kind.split(".");
-    if (parts.length > 2) {
-      return this.kernel.invoke(parts[0], parts.slice(1).join("."), name, ...args);
-    }
-    return this.kernel.invoke(this.metadata.module, kind, name, ...args);
+    return this.moduleContext.invoke(kind, name, ...args);
+  }
+
+  async run(name: string) {
+    await this.moduleContext.run(name);
   }
 
   registerManifest(resource: any): void {
-    if (this.resourceKey) {
-      this.kernel.registerChildManifest(this.resourceKey, resource);
-    } else {
-      this.kernel.registerManifest(resource);
-    }
+    this.moduleContext.registerManifest(resource);
   }
 
   /**
@@ -101,7 +101,11 @@ export class ResourceContextImpl implements ResourceContext {
     }
 
     const kind = resource.kind;
-    const name = resource.name ?? resourceName ?? "Unnamed";
+    const name =
+      resource.name ??
+      resource.metadata?.name ??
+      resourceName ??
+      `Unnamed${Math.random().toString(16).slice(2, 8)}`;
 
     // If resource has properties beyond kind/name, it's a definition - register it
     const definitionKeys = Object.keys(resource).filter(
@@ -123,19 +127,22 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   teardownResource(kind: string, name: string): Promise<void> {
-    const parts = kind.split(".");
-    if (parts.length > 2) {
-      return this.kernel.teardownResource(parts[0], parts.slice(1).join("."), name);
-    }
-    return this.kernel.teardownResource(this.metadata.module, kind, name);
+    throw new Error("Method teardownResource not implemented.");
+    // const parts = kind.split(".");
+    // if (parts.length > 2) {
+    //   return this.kernel.teardownResource(parts[0], parts.slice(1).join("."), name);
+    // }
+    // return this.kernel.teardownResource(this.metadata.module, kind, name);
   }
 
   getResources(kind: string): RuntimeResource[] {
-    return this.kernel.getResourcesByKind(kind);
+    throw new Error("Method teardownResource not implemented.");
+    // return this.kernel.getResourcesByKind(kind);
   }
 
-  getResourcesByName(kind: string, name: string): RuntimeResource | null {
-    return this.kernel.getResourceByName(this.metadata.module, kind, name);
+  getResourcesByName(_kind: string, name: string): RuntimeResource | null {
+    const entry = this.moduleContext.resourceInstances.get(name);
+    return (entry?.resource ?? null) as RuntimeResource | null;
   }
 
   async registerController(
@@ -187,7 +194,13 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   evaluateCel(expression: string, context: Record<string, any>): unknown {
-    return new EvaluationContext(context).evaluate(expression);
+    return new EvaluationContext(
+      this.moduleContext.source,
+      context,
+      undefined,
+      new Set(),
+      this.emit,
+    ).evaluate(expression);
   }
 
   expandValue(value: any, context: Record<string, any>) {
@@ -198,27 +211,60 @@ export class ResourceContextImpl implements ResourceContext {
     await this.kernel.emitRuntimeEvent(event, payload);
   }
 
-  getModuleContext(moduleName: string): ModuleContext {
-    return this.kernel.getModuleContext(moduleName);
+  declareModule(moduleName: string): void {
+    this.kernel.declareModule(moduleName);
   }
 
-  registerModuleAlias(declaringModule: string, alias: string, targetModule: string): void {
-    this.kernel.registerModuleAlias(declaringModule, alias, targetModule);
-  }
-
-  registerModuleContext(
-    moduleName: string,
-    variables: Record<string, unknown>,
-    secrets: Record<string, unknown>,
-  ): void {
-    this.kernel.registerModuleContext(moduleName, variables, secrets);
+  registerModuleImport(alias: string, targetModule: string, kinds: string[]): void {
+    const declaringModule = (this.metadata as any).module as string | undefined;
+    this.kernel.registerModuleImport(declaringModule ?? "", alias, targetModule, kinds);
   }
 
   resolveModuleAlias(declaringModule: string, alias: string): string | undefined {
     return this.kernel.resolveModuleAlias(declaringModule, alias);
   }
 
-  declareModule(moduleName: string): void {
-    this.kernel.declareModule(moduleName);
+  getModuleContext(moduleName: string): ModuleContext {
+    return this.kernel.getModuleContext(moduleName);
+  }
+
+  /**
+   * Create a child EvaluationContext attached to the current module context.
+   * Queue resources on the returned context with pendingResources.push(), then
+   * call initializeChildContext() to initialize them in isolation.
+   */
+  spawnChildContext(): EvaluationContext {
+    const child = new EvaluationContext(
+      this.moduleContext.source,
+      this.moduleContext.context,
+      this.moduleContext.createInstance,
+      this.moduleContext.secretValues,
+      this.moduleContext.emit,
+    );
+    return this.moduleContext.spawnChild(child);
+  }
+
+  /**
+   * Create a temporary child context, queue manifests on it, run a function,
+   * then tear down the child context and its resources.
+   * Note: This always returns a Promise even though the interface signature
+   * suggests T. The callback can be sync or async (passed as async function).
+   */
+  withManifests<T>(manifests: any[], fn: () => T): T {
+    const child = this.spawnChildContext();
+    // Return a Promise cast as T - callers will use await
+    return (async () => {
+      try {
+        for (const manifest of manifests || []) {
+          if (manifest) {
+            child.registerManifest(manifest);
+          }
+        }
+        await child.initializeResources();
+        return await Promise.resolve(fn() as any);
+      } finally {
+        await this.kernel.teardownContext(child);
+      }
+    })() as unknown as T;
   }
 }

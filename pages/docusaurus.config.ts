@@ -35,6 +35,8 @@ const config: Config = {
             "kernel/evaluation-context.md",
             "kernel/modules.md",
             "kernel/module-grants.md",
+            "kernel/signals.md",
+            "kernel/telemetry-and-observability.md",
             "yaml-cel-templating/README.md",
             "modules/README.md",
             "modules/http-server/README.md",

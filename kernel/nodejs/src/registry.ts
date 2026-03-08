@@ -1,6 +1,5 @@
-import { RuntimeResource } from "@telorun/sdk";
+import { ResourceManifest, RuntimeError, RuntimeResource } from "@telorun/sdk";
 import { ResourceURI } from "./resource-uri.js";
-import { ResourceManifest, RuntimeError } from "./types.js";
 
 /**
  * Registry: Indexes resources by composite key of Kind and Name

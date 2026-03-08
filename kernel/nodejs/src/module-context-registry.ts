@@ -1,56 +1,49 @@
-import { ModuleContext } from "./evaluation-context.js";
-
-function emptyModuleContext(): ModuleContext {
-  return new ModuleContext({}, {}, {});
-}
+import { EmitEvent, InstanceFactory, ModuleContext } from "@telorun/sdk";
 
 /**
- * Per-module ModuleContext store, keyed by module name.
+ * Per-module ModuleContext registry, keyed by module name.
  *
- * Accumulates variables, secrets, and resources for each module during the
- * initialization phase. Imported modules are stored under resources.<alias>
- * alongside local resources. Used by the kernel to build the flat CEL
- * evaluation context for resources within a module.
+ * Stores persistent (stateful) ModuleContext instances that accumulate
+ * variables, secrets, and resources throughout the initialization phase.
+ * Each instance is created once and mutated in place — no ephemeral snapshots.
  */
 export class ModuleContextRegistry {
-  private readonly store = new Map<
-    string,
-    {
-      variables: Record<string, unknown>;
-      secrets: Record<string, unknown>;
-      resources: Record<string, unknown>;
-    }
-  >();
-
-  /** Module names explicitly declared via a kind: Kernel.Module manifest. */
+  private readonly store = new Map<string, ModuleContext>();
   private readonly declaredModules = new Set<string>();
 
-  /** Per-declaring-module map of import alias → real module name. */
-  private readonly aliasToModule = new Map<string, Map<string, string>>();
+  constructor(
+    private readonly createInstance: InstanceFactory = async () => null,
+    private readonly emitEvent: EmitEvent,
+  ) {}
 
   /**
-   * Mark a module name as declared. Called by the kernel whenever a
-   * kind: Kernel.Module manifest is registered so that getContext() can
-   * distinguish "not yet populated" (valid during multi-pass init) from
-   * "completely unknown module name" (always an error).
+   * Mark a module name as declared and ensure its persistent context exists.
+   * Called by the kernel whenever a kind: Kernel.Module manifest is registered
+   * so that getContext() can distinguish "not yet populated" from "unknown".
    */
   declareModule(moduleName: string): void {
-    this.declaredModules.add(moduleName);
+    // this.declaredModules.add(moduleName);
+    // // Idempotent: if the module context was already created (e.g. by a previous pass
+    // // of the multi-pass init loop that was retried), keep the existing context.
+    // if (this.store.has(moduleName)) return;
+    // const ctx = new ModuleContext({}, {}, {}, [], this.createInstance, this.emitEvent);
+    // // Every module automatically gets access to Kernel.* built-in kinds.
+    // ctx.registerImport("Kernel", "Kernel", []);
+    // this.store.set(moduleName, ctx);
   }
 
-  private getOrCreate(moduleName: string) {
+  private getOrCreate(moduleName: string): ModuleContext {
     if (!this.store.has(moduleName)) {
-      this.store.set(moduleName, {
-        variables: {},
-        secrets: {},
-        resources: {},
-      });
+      this.store.set(
+        moduleName,
+        new ModuleContext("", {}, {}, {}, [], this.createInstance, this.emitEvent),
+      );
     }
     return this.store.get(moduleName)!;
   }
 
   /**
-   * Register variables and secrets for a module.
+   * Set variables and secrets on the module's persistent context.
    * Called by the kernel after a Kernel.Module resource is created.
    */
   setVariablesAndSecrets(
@@ -58,78 +51,61 @@ export class ModuleContextRegistry {
     variables: Record<string, unknown>,
     secrets: Record<string, unknown>,
   ): void {
-    const entry = this.getOrCreate(moduleName);
-    entry.variables = { ...variables };
-    entry.secrets = { ...secrets };
+    const ctx = this.getOrCreate(moduleName);
+    ctx.setVariables(variables);
+    ctx.setSecrets(secrets);
   }
 
   /**
    * Register or update a single resource's exported properties in the
    * module's `resources` namespace.
    */
-  setResource(
-    moduleName: string,
-    resourceName: string,
-    props: Record<string, unknown>,
-  ): void {
-    const entry = this.getOrCreate(moduleName);
-    entry.resources = { ...entry.resources, [resourceName]: props };
+  setResource(moduleName: string, resourceName: string, props: Record<string, unknown>): void {
+    this.getOrCreate(moduleName).setResource(resourceName, props);
   }
 
   /**
-   * Record that `alias` in `declaringModule` refers to `targetModule`.
-   * Called by the Import controller so the kernel can resolve alias-prefixed kinds.
-   */
-  setAliasModule(declaringModule: string, alias: string, targetModule: string): void {
-    let aliases = this.aliasToModule.get(declaringModule);
-    if (!aliases) {
-      aliases = new Map();
-      this.aliasToModule.set(declaringModule, aliases);
-    }
-    aliases.set(alias, targetModule);
-  }
-
-  /**
-   * Return the real module name for `alias` in `declaringModule`, or undefined.
-   */
-  resolveAlias(declaringModule: string, alias: string): string | undefined {
-    return this.aliasToModule.get(declaringModule)?.get(alias);
-  }
-
-  /**
-   * Return a ModuleContext for the given module name.
+   * Return the persistent ModuleContext for the given module name.
    *
-   * If the module has been declared (a kind: Kernel.Module manifest was
-   * registered for it) but not yet populated, returns an empty context so
-   * the multi-pass init loop can retry once the import controller has
-   * injected the variables and secrets.
+   * If the module has been declared but not yet populated, returns the empty
+   * context so the multi-pass init loop can retry once the import controller
+   * has injected variables and secrets.
    *
-   * If the module name is completely unknown — i.e. no kind: Kernel.Module
-   * manifest was ever registered for it — throws immediately so the error
-   * surfaces as an init failure rather than a cryptic CEL "Identifier not
-   * found" message at runtime.
+   * If the module name is completely unknown throws immediately so the error
+   * surfaces as an init failure rather than a cryptic CEL runtime message.
    */
   getContext(moduleName: string): ModuleContext {
-    const entry = this.store.get(moduleName);
-    if (!entry) {
+    // throw new Error("asd");
+    const ctx = this.store.get(moduleName);
+    if (!ctx) {
       if (!this.declaredModules.has(moduleName)) {
         const known = [...this.declaredModules].join(", ") || "(none)";
         throw new Error(
           `Module '${moduleName}' not found. ` +
-          `Check that metadata.module matches a declared module name. ` +
-          `Known modules: ${known}.`,
+            `Check that metadata.module matches a declared module name. ` +
+            `Known modules: ${known}.`,
         );
       }
-      return emptyModuleContext();
+      // Declared but context not yet populated — return the empty context that
+      // declareModule() already created.
+      return (
+        this.store.get(moduleName) ??
+        new ModuleContext("", {}, {}, {}, [], this.createInstance, this.emitEvent)
+      );
     }
-    return new ModuleContext(
-      entry.variables,
-      entry.secrets,
-      entry.resources,
-    );
+    return ctx;
   }
 
   hasModule(moduleName: string): boolean {
     return this.store.has(moduleName);
+  }
+
+  isDeclared(moduleName: string): boolean {
+    return this.declaredModules.has(moduleName);
+  }
+
+  /** Iterate all registered module contexts (used for kernel-wide queries). */
+  allContexts(): IterableIterator<ModuleContext> {
+    return this.store.values();
   }
 }

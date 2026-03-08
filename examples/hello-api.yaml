@@ -2,6 +2,8 @@ kind: Kernel.Module
 metadata:
   name: Example
   version: 1.0.0
+targets:
+  - ExampleServer
 ---
 kind: Kernel.Import
 metadata:
@@ -15,10 +17,10 @@ source: ../modules/javascript
 ---
 kind: Http.Server
 metadata:
-  name: Example
+  name: ExampleServer
   module: Example
 baseUrl: http://localhost:8844
-port: 8844
+port: 8845
 logger: true
 openapi:
   info:

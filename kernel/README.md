@@ -121,6 +121,18 @@ if unhandled is not empty: FAIL boot with list of unresolved resources
 - `init()` is called immediately after `create()`, before the next resource in the same pass.
 - If any step throws, boot halts immediately with context.
 
+### 4.4.1 Resource Lifecycle Architecture
+
+The Kernel uses a centralized **`InstanceFactory`** pattern to manage resource creation. Instead of passing a factory function per-call, the Kernel injects its `_createInstance` method into the `ModuleContextRegistry` at construction. Every `ModuleContext` receives this factory and uses it uniformly across all initialization passes:
+
+**Benefits:**
+
+- The `ResourceInstantiator` type is removed from the public API (used only internally by `_createInstance`).
+- Eliminates duplicated initialization logic — the Kernel no longer maintains a separate `initializationQueue` and private loop.
+- Every context type (`ModuleContext`, `ExecutionContext`, child contexts spawned via `spawnChildContext()`) uses the same resource lifecycle pattern.
+
+For the complete architecture and design philosophy, see [evaluation-context.md](evaluation-context.md#5-resource-instantiation-architecture).
+
 ### 4.5 Step 4 — Run
 
 After all resources are initialized, the kernel calls `run()` on every instance that defines it. `run()` is where long-lived work starts (HTTP listeners, queue consumers, etc.).

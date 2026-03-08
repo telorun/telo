@@ -5,3 +5,7 @@ metadata:
 include:
   - "http-server-api.yaml"
   - "http-server.yaml"
+exports:
+  kinds:
+    - Server
+    - Api
