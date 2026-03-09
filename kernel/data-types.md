@@ -45,7 +45,7 @@ kind: Type.Cue
 metadata:
   name: BankAccount
 definition: |
-  #Account: {
+  #BankAccount: {
     id:      string
     balance: (>= 0    @code("ERR_NEGATIVE_BALANCE")) &
              (<= 1000 @code("ERR_BALANCE_LIMIT_EXCEEDED"))
@@ -64,7 +64,7 @@ When a module uses a `Kernel.Import`, the Kernel maps the external module's expo
 
 ## 4. Enforcing Types on Resources
 
-`Invokable` resources (like `Script.JS` or `Http.Call`) use `inputType` and `outputType` to declare the expected type. The value is either a **name reference** (string) or an **inline type definition**.
+`Invokable` resources (like `JavaScript.Script` or `Http.Request`) use `inputType` and `outputType` to declare the expected type. The value is either a **name reference** (string) or an **inline type definition**.
 
 ### Named Reference
 

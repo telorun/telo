@@ -5,7 +5,7 @@ metadata:
 capabilities:
   - executable
 controllers:
-  - pkg:npm/@telorun/starlark@>=1.0.0?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@>=1.1.0?local_path=./nodejs#script
 schema:
   type: object
   properties:

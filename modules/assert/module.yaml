@@ -1,7 +1,7 @@
 kind: Kernel.Module
 metadata:
   name: Assert
-  version: 1.0.0
+  version: 1.1.0
   description: Assertion and value verification for testing
 exports:
   kinds:
@@ -16,7 +16,7 @@ metadata:
 capabilities:
   - executable
 controllers:
-  - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#module-context
+  - pkg:npm/@telorun/assert@1.1.0?local_path=./nodejs#module-context
 schema:
   type: object
   properties:

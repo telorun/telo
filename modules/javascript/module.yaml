@@ -1,7 +1,7 @@
 kind: Kernel.Module
 metadata:
   name: "JavaScript"
-  version: "1.0.0"
+  version: "0.2.0"
 ---
 kind: "Kernel.Definition"
 metadata:
@@ -10,7 +10,7 @@ metadata:
 capabilities:
   - executable
 controllers:
-  - pkg:npm/@telorun/javascript@>=0.1.0?local_path=./nodejs#script
+  - pkg:npm/@telorun/javascript@>=0.2.0?local_path=./nodejs#script
 schema:
   type: "object"
   properties:

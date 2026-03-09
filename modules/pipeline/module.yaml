@@ -1,7 +1,7 @@
 kind: Kernel.Module
 metadata:
   name: Pipeline
-  version: 1.0.0
+  version: 0.2.0
   description: Orchestration framework using inline resource execution
 ---
 kind: Kernel.Definition
@@ -11,7 +11,7 @@ metadata:
 capabilities:
   - executable
 controllers:
-  - pkg:npm/@telorun/pipeline@>=1.0.0?local_path=./nodejs#job
+  - pkg:npm/@telorun/pipeline@>=1.1.0?local_path=./nodejs#job
 schema:
   type: object
   properties:
