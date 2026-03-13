@@ -35,13 +35,22 @@ Here is an example Telo application that defines a simple HTTP API:
 kind: Kernel.Module
 metadata:
   name: Example
-imports:
-  - std/http-server@1.0.1
-  - std/javascript@1.0.0
+targets:
+  - Server
+---
+kind: Kernel.Import
+metadata:
+  name: HttpServer
+source: std/http-server@1.0.1
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: std/javascript@1.0.0
 ---
 kind: Http.Server
 metadata:
-  name: Example
+  name: Server
   module: Example
 baseUrl: http://localhost:8844
 port: 8844

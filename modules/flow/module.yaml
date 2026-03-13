@@ -17,18 +17,33 @@ controllers:
 schema:
   type: object
   properties:
+    inputs:
+      type: object
+      description: Declared input schema for this flow (JSON Schema property definitions)
+      additionalProperties:
+        type: object
     steps:
       type: array
       items:
         type: object
         properties:
+          name:
+            type: string
+          when:
+            type: string
+            description: CEL expression; step is skipped when falsy
           invoke:
             type: object
             properties:
               kind:
                 type: string
-                description: Resource kind (e.g., Logic.JavaScript, HttpClient.Request)
+                description: Resource kind to invoke (e.g., D1.ReadOne, R2.Put)
         required:
+          - name
           - invoke
+    output:
+      type: object
+      description: CEL mapping producing the flow result (status, headers, body)
+      additionalProperties: true
   required:
     - steps

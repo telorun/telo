@@ -4,17 +4,20 @@ import { Loader } from "../../loader.js";
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
-  const declaringModule: string = resource.metadata.module ?? "default";
   const loader = new Loader();
 
   // Load target module manifests. Inject variables/secrets as compile context so that
   // ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
-  const manifests = await loader.loadManifest(resource.source as string, ctx.moduleContext.source, {
-    // Potentially not needed
-    variables: (resource.variables as Record<string, unknown>) ?? {},
-    secrets: (resource.secrets as Record<string, unknown>) ?? {},
-  });
+  const manifests = await loader.loadManifest(
+    resource.module ?? resource.source,
+    ctx.moduleContext.source,
+    {
+      // Potentially not needed
+      variables: (resource.variables as Record<string, unknown>) ?? {},
+      secrets: (resource.secrets as Record<string, unknown>) ?? {},
+    },
+  );
   // Find the kind: Module manifest to learn the target module name and contract.
   const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Module");
   if (!moduleManifest) {
@@ -82,8 +85,8 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // in the declaring module's evaluation context — no separate imports namespace needed.
   return {
     snapshot: () => ({
-      variables: (resource.variables as Record<string, unknown>) ?? {},
-      secrets: (resource.secrets as Record<string, unknown>) ?? {},
+      variables: ctx.expandValue(resource.variables, {}) ?? {},
+      secrets: ctx.expandValue(resource.secrets, {}) ?? {},
     }),
     run: async () => {
       // Proxy run to target module

@@ -1,0 +1,24 @@
+kind: "Kernel.Definition"
+metadata:
+  name: "Variables"
+  module: "Config"
+capabilities:
+  - provider
+controllers:
+  - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#variables-controller
+schema:
+  type: "object"
+  properties:
+    storeRef:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+      required: ["name"]
+      additionalProperties: false
+    keys:
+      type: "object"
+      additionalProperties:
+        type: "string"
+  required: ["storeRef", "keys"]
+  additionalProperties: true

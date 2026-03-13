@@ -81,6 +81,10 @@ export class ModuleContext extends EvaluationContext {
     this._rebuildContext();
   }
 
+  protected override onResourceSnapshotted(name: string, snap: Record<string, unknown>): void {
+    this.setResource(name, snap);
+  }
+
   /**
    * Register an imported module under the given alias, with the list of kind names
    * it exports. An empty kinds array means no restriction (used for built-ins like Kernel).
@@ -155,8 +159,8 @@ export class ModuleContext extends EvaluationContext {
     this._secretValues = collectSecretValues(this._secrets);
   }
 
-  override async invoke(kind: string, name: string, ...args: any[]): Promise<any> {
-    const result = await super.invoke(kind, name, ...args);
+  override async invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
+    const result = await super.invoke(kind, name, inputs);
     const entry = this.resourceInstances.get(name);
     if (entry && typeof (entry.instance as any).snapshot === "function") {
       const snap = await Promise.resolve((entry.instance as any).snapshot());

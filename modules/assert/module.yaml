@@ -27,15 +27,6 @@ schema:
           type: string
       required:
         - name
-    imports:
-      type: object
-      additionalProperties:
-        type: object
-        properties:
-          variables:
-            type: object
-          secrets:
-            type: object
   required:
     - metadata
 ---

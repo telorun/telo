@@ -26,4 +26,13 @@ schema:
             type: "string"
           type:
             type: "string"
+    notFoundHandler:
+      type: "object"
+      properties:
+        kind:
+          type: "string"
+        name:
+          type: "string"
+      required: ["kind"]
+      additionalProperties: true
   required: ["port", "mounts"]

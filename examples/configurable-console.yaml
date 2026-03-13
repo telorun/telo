@@ -41,7 +41,8 @@ metadata:
 trigger:
   event: Kernel.Started
 steps:
-  - invoke:
+  - name: WriteProductInfo
+    invoke:
       kind: Console.WriteLine
       metadata:
         name: Result

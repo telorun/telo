@@ -236,17 +236,6 @@ When a `Kernel.Definition` instance initializes, it resolves and loads the contr
 and registers it with the kernel. For the full resolution algorithm (local path, host
 node_modules, registry cache) and PURL format, see [controllers.md](controllers.md).
 
-### 9.3 Module Loading Flow
-
-```
-Kernel.Module resource initialized
-  ├── imports:     loadDirectory(path) for each import path
-  ├── definitions: loadManifest(path) for each definition file
-  └── resources:   loadManifest(path) for each resource file
-```
-
-All resulting resources are pushed into the initialization queue and picked up in subsequent passes of the multi-pass loop.
-
 ## 10. Error Codes
 
 | Code                         | Meaning                                           |

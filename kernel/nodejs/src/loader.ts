@@ -91,11 +91,31 @@ export class Loader {
     // Auto-assign metadata.module from the file's Kernel.Module declaration to
     // any resource that doesn't explicitly declare one. This matches the implicit
     // convention that resources in the same file belong to the declared module.
-    const moduleName = resolved.find((m) => m.kind === "Kernel.Module")?.metadata?.name;
+    const moduleManifest = resolved.find((m) => m.kind === "Kernel.Module");
+    const moduleName = moduleManifest?.metadata?.name;
     if (moduleName) {
       for (const manifest of resolved) {
         if (manifest.kind !== "Kernel.Module" && !manifest.metadata?.module) {
           manifest.metadata = { ...manifest.metadata, module: moduleName };
+        }
+      }
+    }
+
+    // Eagerly expand include files so all resources are available before the
+    // init loop starts. Inserted right after Kernel.Module so included resources
+    // are initialized before sibling resources that depend on them.
+    if (moduleManifest?.include) {
+      const insertAt = resolved.indexOf(moduleManifest) + 1;
+      let offset = 0;
+      for (const includePath of moduleManifest.include as string[]) {
+        const included = await this.loadManifest(includePath, file.source, compileContext);
+        for (const manifest of included) {
+          if (manifest.kind === "Kernel.Module") continue;
+          if (!manifest.metadata?.module) {
+            manifest.metadata = { ...manifest.metadata, module: moduleName };
+          }
+          resolved.splice(insertAt + offset, 0, manifest);
+          offset++;
         }
       }
     }

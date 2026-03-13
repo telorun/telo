@@ -1,0 +1,29 @@
+{
+  "name": "@telorun/s3",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./s3-bucket": {
+      "bun": "./src/s3-bucket-controller.ts",
+      "import": "./dist/s3-bucket-controller.js"
+    },
+    "./s3-list": {
+      "bun": "./src/s3-list-controller.ts",
+      "import": "./dist/s3-list-controller.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "files": [
+    "dist/**"
+  ],
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@telorun/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

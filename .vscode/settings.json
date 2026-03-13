@@ -1,5 +1,6 @@
 {
   "editor.formatOnSave": false,
   "testing.automaticallyOpenTestResults": "neverOpen",
-  "cSpell.words": ["Telo"]
+  "cSpell.words": ["Telo"],
+  "yaml.schemaStore.enable": false
 }

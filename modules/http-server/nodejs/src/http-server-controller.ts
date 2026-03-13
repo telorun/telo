@@ -5,19 +5,6 @@ import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
 import { HttpServerApi } from "./http-api-controller.js";
 
-type HttpRouteResource = RuntimeResource & {
-  metadata?: { path?: string; method?: string };
-  path?: string;
-  method?: string;
-  handler?: HttpHandlerSpec;
-  request?: HttpRequestSchema;
-  response?: {
-    status?: number;
-    headers?: Record<string, string>;
-    body?: any;
-  };
-};
-
 type HttpServerResource = RuntimeResource & {
   host?: string;
   port?: number;
@@ -32,41 +19,10 @@ type HttpServerResource = RuntimeResource & {
     path?: string;
     type?: string;
   }>;
+  notFoundHandler?: { kind: string; name?: string; [key: string]: any };
 };
 
-type HttpApiResource = RuntimeResource & {
-  routes?: Array<
-    | string
-    | {
-        request?: {
-          path?: string;
-          method?: string;
-          query?: Record<string, any>;
-          body?: Record<string, any>;
-          headers?: Record<string, any>;
-        };
-        handler?: HttpHandlerSpec;
-        response?: {
-          status?: number;
-          headers?: Record<string, string>;
-          body?: any;
-        };
-      }
-  >;
-};
-
-type HttpHandlerSpec =
-  | string
-  | {
-      name?: string;
-      inputs?: Record<string, any>;
-    };
-
-type HttpRequestSchema = {
-  query?: Record<string, any>;
-  body?: Record<string, any>;
-  headers?: Record<string, any>;
-};
+type ResolvedHandler = { kind: string; name: string; inputs: Record<string, any> };
 
 class HttpServer implements ResourceInstance {
   private releaseHold: (() => void) | null = null;
@@ -76,13 +32,19 @@ class HttpServer implements ResourceInstance {
   private readonly baseUrl: string;
   private readonly resource: HttpServerResource;
   private readonly ctx: ResourceContext;
+  private readonly resolvedNotFoundHandler: ResolvedHandler | null;
 
-  constructor(resource: HttpServerResource, ctx: ResourceContext) {
+  constructor(
+    resource: HttpServerResource,
+    ctx: ResourceContext,
+    resolvedNotFoundHandler: ResolvedHandler | null = null,
+  ) {
     this.resource = resource;
     this.ctx = ctx;
     this.host = resource.host || "0.0.0.0";
     this.port = Number(resource.port || 0);
     this.baseUrl = resource.baseUrl ?? `http://${this.host}:${this.port}`;
+    this.resolvedNotFoundHandler = resolvedNotFoundHandler;
 
     if (!this.port) {
       throw new Error("Http.Server port is required");
@@ -146,6 +108,34 @@ class HttpServer implements ResourceInstance {
       }
       api.register(this.app, prefix);
     }
+
+    if (this.resolvedNotFoundHandler) {
+      const handler = this.resolvedNotFoundHandler;
+      this.app.setNotFoundHandler(async (request, reply) => {
+        const normalizedHeaders: Record<string, any> = {};
+        for (const [key, value] of Object.entries(request.headers)) {
+          normalizedHeaders[key.toLowerCase()] = value;
+        }
+        const result = await this.ctx.invoke(handler.kind, handler.name, {
+          request: {
+            method: request.method,
+            path: request.url,
+            params: request.params || {},
+            query: request.query || {},
+            headers: normalizedHeaders,
+            body: request.body,
+          },
+        });
+        const status = result?.status ?? 200;
+        reply.code(status);
+        if (result?.headers) {
+          Object.entries(result.headers).forEach(([key, value]) =>
+            reply.header(key, value as string),
+          );
+        }
+        return reply.send(result?.body ?? result);
+      });
+    }
   }
 
   async run(): Promise<void> {
@@ -178,11 +168,20 @@ class HttpServer implements ResourceInstance {
   }
 }
 
-export function create(
+export async function create(
   resource: HttpServerResource,
   ctx: ResourceContext,
-): ResourceInstance | null {
-  return new HttpServer(resource, ctx);
+): Promise<ResourceInstance | null> {
+  let resolvedNotFoundHandler: ResolvedHandler | null = null;
+  if (resource.notFoundHandler) {
+    const resolved = ctx.resolveChildren(resource.notFoundHandler);
+    resolvedNotFoundHandler = {
+      kind: resolved.kind,
+      name: resolved.name,
+      inputs: resource.notFoundHandler.inputs ?? {},
+    };
+  }
+  return new HttpServer(resource, ctx, resolvedNotFoundHandler);
 }
 
 function parseType(type: string): { kind: string; name: string } {

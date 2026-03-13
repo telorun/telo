@@ -143,16 +143,20 @@ async function executeWithRetry(
   }
 }
 
-interface HttpRequestManifest {
-  client?: string;
+interface HttpRequestInputs {
   url: string;
   method?: string;
   query?: Record<string, string>;
   headers?: Record<string, string>;
   body?: string | Record<string, unknown>;
+}
+
+interface HttpRequestManifest extends HttpRequestInputs {
+  client?: string;
   timeout?: number;
   throwOnHttpError?: boolean;
   retries?: number;
+  inputs?: HttpRequestInputs;
 }
 
 class HttpRequestResource implements ResourceInstance {
@@ -182,16 +186,22 @@ class HttpRequestResource implements ResourceInstance {
       clientTimeout = client.timeout ?? DEFAULT_TIMEOUT;
     }
 
-    // Expand template fields
-    const rawUrl = ctx.expandValue(m.url, input ?? {}) as string;
-    const method = (
-      (ctx.expandValue(m.method ?? "GET", input ?? {}) as string) || "GET"
-    ).toUpperCase();
-    const requestHeaders = normalizeHeaders(
-      (ctx.expandValue(m.headers ?? {}, input ?? {}) as Record<string, string>) ?? {},
-    );
-    const query = (ctx.expandValue(m.query ?? {}, input ?? {}) as Record<string, string>) ?? {};
-    const body = m.body !== undefined ? ctx.expandValue(m.body, input ?? {}) : undefined;
+    // Expand template fields from manifest.inputs using runtime input as context
+    // Manifest-level fields (url, method, etc.) serve as defaults when inputs is absent
+    const manifestInputs: HttpRequestInputs = {
+      url: m.url,
+      method: m.method,
+      query: m.query,
+      headers: m.headers,
+      body: m.body,
+      ...m.inputs,
+    };
+    const resolved = ctx.expandValue(manifestInputs, input ?? {}) as HttpRequestInputs;
+    const rawUrl = resolved.url as string;
+    const method = ((resolved.method ?? "GET") || "GET").toUpperCase();
+    const requestHeaders = normalizeHeaders((resolved.headers ?? {}) as Record<string, string>);
+    const query = (resolved.query ?? {}) as Record<string, string>;
+    const body = resolved.body;
     const effectiveTimeout = m.timeout ?? clientTimeout;
     const retries = m.retries ?? 0;
     const throwOnHttpError = m.throwOnHttpError ?? false;

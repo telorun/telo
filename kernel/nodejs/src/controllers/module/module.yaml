@@ -1,32 +1,12 @@
-type: 'object'
+type: "object"
 properties:
   metadata:
-    type: 'object'
+    type: "object"
     properties:
       name:
-        type: 'string'
-    required: ['name']
+        type: "string"
+    required: ["name"]
   source:
-    type: 'string'
-    description: 'Path to module directory (relative to runtime root)'
-  imports:
-    type: 'array'
-    items:
-      type: 'string'
-    description: 'Paths to other modules to import'
-  definitions:
-    type: 'array'
-    items:
-      type: 'string'
-    description: 'Paths to ResourceDefinition files'
-  resources:
-    type: 'array'
-    items:
-      oneOf:
-        - type: 'string'
-        - type: 'object'
-          properties:
-            path:
-              type: 'string'
-    description: 'Paths to resource instance files to load'
-required: ['metadata', 'source']
+    type: "string"
+    description: "Path to module directory (relative to runtime root)"
+required: ["metadata", "source"]

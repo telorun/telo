@@ -1,6 +1,5 @@
 import {
   ControllerContext,
-  EvaluationContext,
   Kernel as IKernel,
   ModuleContext,
   ResourceContext,
@@ -34,7 +33,7 @@ export class Kernel implements IKernel {
   //   string,
   //   { resource: ResourceManifest; instance: ResourceInstance }
   // > = new Map();
-  private resourceEventBuses: Map<string, EventBus> = new Map();
+
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
@@ -327,7 +326,7 @@ export class Kernel implements IKernel {
       },
       acquireHold: (reason?: string) => this.acquireHold(reason),
       expandValue: (value: any, context: Record<string, any>) =>
-        this.rootContext.merge(context).expand(value),
+        this.rootContext.expandWith(value, context),
       requestExit: (code: number) => this.requestExit(code),
     };
   }
@@ -345,15 +344,15 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Create a resource instance: resolves the controller, validates the schema,
-   * calls create/init, registers context providers, stores the snapshot, and
-   * mirrors the instance into the Kernel-level and module-level registries.
-   * Returns null when the controller is not yet registered (retry signal).
+   * Create phase only: resolves the controller, validates the schema, and calls
+   * controller.create(). Returns { instance, ctx } so initializeResources can
+   * run init() separately in its second phase. Returns null when the controller
+   * is not yet registered (retry signal).
    */
   private async _createInstance(
     evalContext: ModuleContext,
     resource: ResourceManifest,
-  ): Promise<ResourceInstance | null> {
+  ): Promise<{ instance: ResourceInstance; ctx: ResourceContext } | null> {
     const kind = resource.kind;
 
     // Resolve the alias-prefixed kind to its real fully-qualified kind.
@@ -392,134 +391,7 @@ export class Kernel implements IKernel {
     const instance = await controller.create(resource, ctx);
     if (!instance) return null;
 
-    if (instance.init) await instance.init(ctx);
-
-    // if (isContextProvider(instance)) {
-    //   this.bootContextRegistry.register(
-    //     resource.kind,
-    //     resource.metadata.name,
-    //     resource.metadata.module,
-    //     resource.grants as string[] | undefined,
-    //     instance.provideContext(),
-    //   );
-    // }
-
-    if (instance.snapshot) {
-      const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
-      if (evalContext instanceof ModuleContext) {
-        evalContext.setResource(resource.metadata.name, (snap as Record<string, unknown>) ?? {});
-      }
-    }
-
-    return instance;
-  }
-
-  /**
-   * Tear down all resource instances owned by a dynamically-spawned context,
-   * cascading depth-first through its children. Removes entries from both
-   * ctx.resourceInstances and the Kernel-level resourceInstances map, and
-   * emits Teardown events (matching the behaviour of teardownResource()).
-   */
-  async teardownContext(ctx: EvaluationContext): Promise<void> {
-    for (const child of [...ctx.children].reverse()) {
-      await this.teardownContext(child);
-    }
-    const entries = [...ctx.resourceInstances.entries()].reverse();
-    for (const [key, { resource, instance }] of entries) {
-      if (instance.teardown) await instance.teardown();
-      await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
-        resource: { kind: resource.kind, name: resource.metadata.name },
-      });
-      // this.resourceInstances.delete(key);
-      ctx.resourceInstances.delete(key);
-      this.resourceEventBuses.delete(key);
-    }
-  }
-
-  // getResourcesByKind(kind: string): RuntimeResource[] {
-  //   const resources: RuntimeResource[] = [];
-  //   for (const entry of this.resourceInstances.values()) {
-  //     if (entry.resource.kind === kind) {
-  //       resources.push(entry.instance as any);
-  //     }
-  //   }
-  //   return resources;
-  // }
-
-  // getResourceByName(declaringModule: string, alias: string, name: string): RuntimeResource | null {
-  //   const realModule = this.moduleContextRegistry.resolveAlias(declaringModule, alias) ?? alias;
-  //   for (const { resource, instance } of this.resourceInstances.values()) {
-  //     if (resource.metadata.module === realModule && resource.metadata.name === name) {
-  //       return instance as RuntimeResource;
-  //     }
-  //   }
-  //   return null;
-  // }
-
-  /**
-   * Returns the unique set of local file paths from which resources were loaded.
-   * HTTP/HTTPS sources are excluded — they cannot be watched on disk.
-   */
-  // getSourceFiles(): string[] {
-  //   const seen = new Set<string>();
-  //   for (const { resource } of this.resourceInstances.values()) {
-  //     const src = resource.metadata.source;
-  //     if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
-  //       seen.add(src);
-  //     }
-  //   }
-  //   return Array.from(seen);
-  // }
-
-  /**
-   * Reload all resources that were loaded from the given source file.
-   * Safe order: parse first → if parse succeeds, tear down old → init new → run new only.
-   */
-  // async reloadSource(sourcePath: string): Promise<void> {
-  //   // Parse first — bail before touching running resources if the file is invalid
-  //   const newManifests = await this.loader.loadManifest(sourcePath, `file://${process.cwd()}/`, {
-  //     env: process.env,
-  //   });
-
-  //   // Collect keys of resources loaded from this source (in insertion order)
-  //   const keysFromSource: string[] = [];
-  //   for (const [key, { resource }] of this.resourceInstances.entries()) {
-  //     if (resource.metadata.source === sourcePath) {
-  //       keysFromSource.push(key);
-  //     }
-  //   }
-  //   // Tear down in reverse order (children first via cascade)
-  //   for (const key of [...keysFromSource].reverse()) {
-  //     const entry = this.resourceInstances.get(key);
-  //     if (!entry) continue; // already removed by a cascade
-  //     await this.teardownResource(
-  //       entry.resource.metadata.module,
-  //       entry.resource.kind,
-  //       entry.resource.metadata.name,
-  //     );
-  //   }
-
-  //   for (const manifest of newManifests) {
-  //     this.rootContext.registerManifest(manifest);
-  //   }
-  //   const keysBefore = new Set(this.resourceInstances.keys());
-  //   await this.initializeResources();
-
-  //   // Run only newly created instances (not all instances — avoids double-run)
-  //   const newKeys = Array.from(this.resourceInstances.keys()).filter((k) => !keysBefore.has(k));
-  //   for (const key of newKeys) {
-  //     const entry = this.resourceInstances.get(key);
-  //     if (entry?.instance.run) {
-  //       await entry.instance.run();
-  //     }
-  //   }
-  // }
-
-  private getResourceKey(module: string, kind: string, name: string): string {
-    if (!kind.includes(".")) {
-      throw new Error(`Resource kind must include module prefix: ${kind}`);
-    }
-    return `${module}.${kind}.${name}`;
+    return { instance, ctx };
   }
 
   /**

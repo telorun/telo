@@ -1,27 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { Loader } from "../../loader.js";
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
-  const moduleName = resource.metadata.name as string;
-  const loader = new Loader();
-
-  for (const includePath of (resource.include as string[]) ?? []) {
-    const manifests = await loader.loadManifest(
-      includePath,
-      resource.metadata.source as string,
-      {},
-    );
-    for (const manifest of manifests) {
-      if (manifest.kind === "Kernel.Module") {
-        throw new Error(`Included file "${includePath}" must not declare kind: Module`);
-      }
-      if (!manifest.metadata.module) {
-        manifest.metadata.module = moduleName;
-      }
-      ctx.registerManifest(manifest);
-    }
-  }
-
   return {
     run: async () => {
       for (const target of (resource.targets as string[]) ?? []) {
@@ -49,6 +28,19 @@ export const schema = {
       },
       required: ["name"],
       additionalProperties: true,
+    },
+    lifecycle: {
+      type: "string",
+      enum: ["shared", "isolated"],
+      default: "shared",
+      description:
+        "Whether the module should be loaded in a shared context (default) or an isolated context",
+    },
+    keepAlive: {
+      type: "boolean",
+      default: false,
+      description:
+        "Whether the module should keep running after all its imports are removed. Only applicable for shared lifecycle.",
     },
     include: { type: "array", items: { type: "string" } },
     variables: { type: "object" },

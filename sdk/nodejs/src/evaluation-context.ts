@@ -1,5 +1,5 @@
 import { evaluate } from "cel-js";
-import { ModuleContext } from "./module-context.js";
+import type { ModuleContext } from "./module-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeError } from "./types.js";
@@ -13,14 +13,22 @@ const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
 export type LifecycleState = "Pending" | "Validated" | "Initialized" | "Draining" | "Teardown";
 
 /**
+ * Result of the create phase: the instance and its bound ResourceContext.
+ * The ctx is typed as any to avoid a circular import with resource-context.ts.
+ */
+export type CreatedResource = { instance: ResourceInstance; ctx: any };
+
+/**
  * Creates a ResourceInstance for the given manifest, or returns null if not yet
  * ready (e.g. a dependency is still initializing). Injected at construction so
  * every EvaluationContext node owns its full resource lifecycle.
+ * Returns a CreatedResource (instance + ctx) so initializeResources can run
+ * init() separately in a second phase.
  */
 export type InstanceFactory = (
   moduleContext: ModuleContext,
   resource: ResourceManifest,
-) => Promise<ResourceInstance | null>;
+) => Promise<CreatedResource | null>;
 
 /** Canonical key for a resource instance: "<module>.<kind>.<name>" */
 export function resourceKey(r: ResourceManifest): string {
@@ -68,6 +76,12 @@ export class EvaluationContext {
     { resource: ResourceManifest; instance: ResourceInstance }
   >();
 
+  /** Resources that have been created but not yet initialized (between phases). */
+  protected readonly createdInstances = new Map<
+    string,
+    { resource: ResourceManifest; instance: ResourceInstance; ctx: any }
+  >();
+
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
 
@@ -88,6 +102,9 @@ export class EvaluationContext {
     return this._createInstance;
   }
 
+  /** Called after init() when a resource snapshot is available. Overridden by ModuleContext. */
+  protected onResourceSnapshotted(_name: string, _snap: Record<string, unknown>): void {}
+
   get context(): Record<string, unknown> {
     return this._context;
   }
@@ -103,6 +120,14 @@ export class EvaluationContext {
     if (!resource.metadata) {
       resource.metadata = { name: `__unnamed_${Math.random().toString(16).slice(2, 8)}` };
     }
+    const name = resource.metadata.name;
+    if (
+      this.resourceInstances.has(name) ||
+      this.createdInstances.has(name) ||
+      this.pendingResources.some((r) => r.metadata.name === name)
+    ) {
+      throw new RuntimeError("ERR_DUPLICATE_RESOURCE", `Resource '${name}' is already registered`);
+    }
     this.pendingResources.push(resource);
   }
 
@@ -117,33 +142,48 @@ export class EvaluationContext {
   }
 
   /**
-   * Multi-pass initialization loop. Processes pendingResources by calling the
-   * supplied instantiator for each resource, retrying failures across up to 10
-   * passes (handles dependency ordering without explicit topological sort).
+   * Interleaved create/init loop.
    *
-   * ERR_VISIBILITY_DENIED errors are fatal and re-thrown immediately.
+   * Each pass has two sub-phases run back-to-back:
+   *   1. Create sub-phase: call controller.create() for each pending resource that
+   *      hasn't been created yet. Successful results go into createdInstances.
+   *   2. Init sub-phase: call instance.init(ctx) for each created-but-not-inited
+   *      resource. Successful results go into resourceInstances.
+   *
+   * Interleaving is necessary because some resources' create() depends on effects
+   * produced by other resources' init() (e.g. Kernel.Import.init() runs
+   * child.initializeResources() which registers controllers needed by sibling
+   * resources' create()). Running both sub-phases each pass lets those effects
+   * propagate before the next create attempt.
+   *
+   * Each resource is created at most once and inited at most once.
+   * ERR_VISIBILITY_DENIED is fatal and re-thrown immediately.
    * All other errors are tracked and retried until no progress is made.
    */
   async initializeResources(): Promise<void> {
     const MAX_PASSES = 10;
-    let pass = 1;
     const errors = new Map<string, string>();
 
+    let pass = 1;
     do {
-      const handled: string[] = [];
+      let progress = false;
 
+      // Create sub-phase
       for (const resource of [...this.pendingResources]) {
-        // const rkey = resourceKey(resource);
-        // const displayKey = rkey;
         const name = resource.metadata.name;
-        if (this.resourceInstances.has(name)) continue;
-
+        if (this.createdInstances.has(name)) continue;
         try {
-          const instance = await this._createInstance(this as any, resource);
-          if (instance) {
-            this.resourceInstances.set(name, { resource, instance });
-            handled.push(name);
+          const created = await this._createInstance(this as any, resource);
+          if (created) {
+            this.createdInstances.set(name, {
+              resource,
+              instance: created.instance,
+              ctx: created.ctx,
+            });
+            const idx = this.pendingResources.findIndex((m) => m.metadata.name === name);
+            if (idx >= 0) this.pendingResources.splice(idx, 1);
             errors.delete(name);
+            progress = true;
           }
         } catch (error) {
           if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
@@ -151,22 +191,37 @@ export class EvaluationContext {
         }
       }
 
-      for (const name of handled) {
-        const resource = this.pendingResources.find((m) => m.metadata.name === name)!;
-        const idx = this.pendingResources.indexOf(resource);
-        if (idx >= 0) this.pendingResources.splice(idx, 1);
+      // Init sub-phase
+      for (const [name, { resource, instance, ctx }] of [...this.createdInstances]) {
+        if (this.resourceInstances.has(name)) continue;
+        try {
+          if (instance.init) await instance.init(ctx);
+          if (instance.snapshot) {
+            const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
+            this.onResourceSnapshotted(name, (snap as Record<string, unknown>) ?? {});
+          }
+          this.resourceInstances.set(name, { resource, instance });
+          this.createdInstances.delete(name);
+          errors.delete(name);
+          progress = true;
+        } catch (error) {
+          if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
+          errors.set(name, error instanceof Error ? (error.stack ?? error.message) : String(error));
+        }
       }
 
       pass++;
-      if (handled.length === 0) break;
+      if (!progress) break;
     } while (pass <= MAX_PASSES);
 
-    if (this.pendingResources.length > 0) {
-      const unhandledList = this.pendingResources
-        .reverse()
-        .map((r) => `- ${r.metadata.name}: ${errors.get(r.metadata.name) ?? "Unknown error"}`)
-        .join("\n");
-
+    if (this.pendingResources.length > 0 || this.createdInstances.size > 0) {
+      const pending = this.pendingResources.map(
+        (r) => `- ${r.metadata.name}: ${errors.get(r.metadata.name) ?? "Unknown error"}`,
+      );
+      const created = [...this.createdInstances.keys()].map(
+        (name) => `- ${name}: ${errors.get(name) ?? "Unknown error"}`,
+      );
+      const unhandledList = [...pending, ...created].join("\n");
       throw new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
         `Unable to process resources:\n\n${unhandledList}`,
@@ -202,10 +257,8 @@ export class EvaluationContext {
   /**
    * Cascade teardown depth-first through the tree:
    *   1. Tear down child contexts in reverse registration order.
-   *   2. Tear down own resource instances in reverse registration order.
-   *
-   * Note: Kernel-level events (e.g. Teardown events) are NOT emitted here —
-   * they remain the Kernel's responsibility.
+   *   2. Tear down own resource instances in reverse registration order,
+   *      emitting a Teardown event for each via the injected emit callback.
    */
   async teardownResources(): Promise<void> {
     this.state = "Draining";
@@ -213,18 +266,31 @@ export class EvaluationContext {
       await child.teardownResources();
     }
     const entries = [...this.resourceInstances.entries()].reverse();
-    for (const [key, { instance }] of entries) {
+    for (const [key, { resource, instance }] of entries) {
       if (instance.teardown) await instance.teardown();
+      await this.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
+        resource: { kind: resource.kind, name: resource.metadata.name },
+      });
       this.resourceInstances.delete(key);
     }
     this.state = "Teardown";
+  }
+
+  transientChild(context: Record<string, any>): EvaluationContext {
+    return new EvaluationContext(
+      this.source,
+      { ...this.context, ...context },
+      this._createInstance,
+      this._secretValues,
+      this.emit,
+    );
   }
 
   /**
    * Invoke a resource by kind and name within this context's resourceInstances.
    * Emits a scoped Invoked event via the injected emit callback after invocation.
    */
-  async invoke(kind: string, name: string, ...args: any[]): Promise<any> {
+  async invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
     const entry = this.resourceInstances.get(name);
 
     if (entry) {
@@ -234,7 +300,7 @@ export class EvaluationContext {
           `Resource ${kind}.${name} does not have an invoke method`,
         );
       }
-      const outputs = await entry.instance.invoke(args[0]);
+      const outputs = await entry.instance.invoke(inputs);
       await this.emit(`${kind}.${name}.Invoked`, { outputs });
       return outputs;
     }
@@ -295,25 +361,20 @@ export class EvaluationContext {
   }
 
   /**
-   * Merge another context on top of this one.
-   * Returns a new base EvaluationContext — 'other' wins on key conflict.
+   * Expand a value using this context merged with additional properties.
+   * Equivalent to merge(extraContext).expand(value) without allocating a context object.
    */
-  merge(other: EvaluationContext | Record<string, unknown>): EvaluationContext {
-    const otherCtx = other instanceof EvaluationContext ? other.context : other;
-    const otherSecrets =
-      other instanceof EvaluationContext ? other.secretValues : new Set<string>();
-    const merged = Object.assign(Object.create(null), this._context, otherCtx) as Record<
+  expandWith(value: unknown, extraContext: Record<string, unknown>): unknown {
+    const saved = this._context;
+    this._context = Object.assign(Object.create(null), saved, extraContext) as Record<
       string,
       unknown
     >;
-    const mergedSecrets = new Set<string>([...this._secretValues, ...otherSecrets]);
-    return new EvaluationContext(
-      this.source,
-      merged,
-      this._createInstance,
-      mergedSecrets,
-      this.emit,
-    );
+    try {
+      return this.expand(value);
+    } finally {
+      this._context = saved;
+    }
   }
 
   private expandString(value: string): unknown {

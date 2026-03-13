@@ -47,7 +47,7 @@ kind: MyAssert.ModuleContext
 metadata:
   name: VerifyConfigurableConsoleModuleContext
   module: CanImportModuleWithAlias
-imports:
+resources:
   MyConsole:
     variables:
       product:

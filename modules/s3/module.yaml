@@ -1,0 +1,58 @@
+kind: Kernel.Module
+metadata:
+  name: s3
+  version: 1.0.0
+secrets:
+  accessKeyId:
+    type: string
+    description: S3 access key ID
+  secretAccessKey:
+    type: string
+    description: S3 secret access key
+exports:
+  kinds:
+    - Bucket
+    - List
+---
+kind: Kernel.Definition
+metadata:
+  name: Bucket
+  module: s3
+capabilities:
+  - provider
+controllers:
+  - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-bucket
+schema:
+  type: object
+  properties:
+    bucketName:
+      type: string
+      description: Bucket name
+    endpoint:
+      type: string
+      description: S3-compatible endpoint URL (e.g. https://<accountId>.r2.cloudflarestorage.com)
+  required:
+    - bucketName
+    - endpoint
+---
+kind: Kernel.Definition
+metadata:
+  name: List
+  module: s3
+capabilities:
+  - handler
+controllers:
+  - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-list
+schema:
+  type: object
+  properties:
+    bucketRef:
+      type: object
+      description: Reference to an S3.Bucket resource by name
+      properties:
+        name:
+          type: string
+      required:
+        - name
+  required:
+    - bucketRef

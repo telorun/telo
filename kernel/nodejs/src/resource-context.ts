@@ -42,7 +42,9 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   validateSchema(value: any, schema: any) {
-    const ajv = new Ajv();
+    const ajv = new Ajv({
+      removeAdditional: true,
+    });
     addFormats.default(ajv);
     const validate = ajv.compile(
       "type" in schema && typeof schema.type === "string"
@@ -58,13 +60,13 @@ export class ResourceContextImpl implements ResourceContext {
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
-        `[${this.metadata.name}] Invalid value passed: ${JSON.stringify(value)}. Error: ${formatAjvErrors(validate.errors)}`,
+        `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(validate.errors)}`,
       );
     }
   }
 
-  invoke(kind: string, name: string, ...args: any[]): Promise<any> {
-    return this.moduleContext.invoke(kind, name, ...args);
+  invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
+    return this.moduleContext.invoke(kind, name, inputs);
   }
 
   async run(name: string) {
@@ -193,18 +195,8 @@ export class ResourceContextImpl implements ResourceContext {
     this.kernel.requestExit(code);
   }
 
-  evaluateCel(expression: string, context: Record<string, any>): unknown {
-    return new EvaluationContext(
-      this.moduleContext.source,
-      context,
-      undefined,
-      new Set(),
-      this.emit,
-    ).evaluate(expression);
-  }
-
   expandValue(value: any, context: Record<string, any>) {
-    return this.moduleContext.merge(context).expand(value);
+    return this.moduleContext.expandWith(value, context);
   }
 
   async emitEvent(event: string, payload?: any) {
@@ -240,6 +232,10 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.spawnChild(child);
   }
 
+  transientChild(context: Record<string, any>): EvaluationContext {
+    return this.moduleContext.transientChild(context);
+  }
+
   /**
    * Create a temporary child context, queue manifests on it, run a function,
    * then tear down the child context and its resources.
@@ -259,7 +255,7 @@ export class ResourceContextImpl implements ResourceContext {
         await child.initializeResources();
         return await Promise.resolve(fn() as any);
       } finally {
-        await this.kernel.teardownContext(child);
+        await child.teardownResources();
       }
     })() as unknown as T;
   }

@@ -3,6 +3,7 @@
 Thumbs.db
 .telo-debug/
 .cache
+.env.local
 
 # NodeJS
 node_modules/

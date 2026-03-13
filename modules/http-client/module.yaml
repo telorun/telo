@@ -46,28 +46,6 @@ schema:
     client:
       type: "string"
       description: "Reference to an Http.Client resource name"
-    url:
-      type: "string"
-      description: "Absolute URL, or relative path if 'client' is provided"
-    method:
-      type: "string"
-      enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-      default: "GET"
-    query:
-      type: "object"
-      description: "Query parameters to be appended to the URL"
-      additionalProperties:
-        type: "string"
-    headers:
-      type: "object"
-      description: "Request-specific headers (merges with client headers)"
-      additionalProperties:
-        type: "string"
-    body:
-      oneOf:
-        - type: "string"
-        - type: "object"
-      description: "Payload to send. Objects are automatically stringified to JSON."
     timeout:
       type: "integer"
       minimum: 1
@@ -81,4 +59,29 @@ schema:
       minimum: 0
       default: 0
       description: "Number of times to retry on Network Errors (not HTTP errors)"
-  required: ["url"]
+    inputs:
+      type: "object"
+      description: "Request parameters, resolved dynamically on each invocation"
+      properties:
+        url:
+          type: "string"
+          description: "Absolute URL, or relative path if 'client' is provided"
+        method:
+          type: "string"
+          default: "GET"
+        query:
+          type: "object"
+          description: "Query parameters to be appended to the URL"
+          additionalProperties:
+            type: "string"
+        headers:
+          type: "object"
+          description: "Request-specific headers (merges with client headers)"
+          additionalProperties:
+            type: "string"
+        body:
+          oneOf:
+            - type: "string"
+            - type: "object"
+          description: "Payload to send. Objects are automatically stringified to JSON."
+      required: ["url"]

@@ -50,13 +50,22 @@ Create a file `server.yaml`:
 kind: Kernel.Module
 metadata:
   name: Example
-imports:
-  - std/http-server@1.0.1
-  - std/javascript@1.0.0
+targets:
+  - Server
+---
+kind: Kernel.Import
+metadata:
+  name: HttpServer
+source: std/http-server@1.0.1
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: std/javascript@1.0.0
 ---
 kind: Http.Server
 metadata:
-  name: MyServer
+  name: Server
   module: Example
 baseUrl: http://localhost:8080
 port: 8080

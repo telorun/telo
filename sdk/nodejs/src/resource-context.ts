@@ -21,12 +21,13 @@ export class NoopValidator implements DataValidator {
 export interface ResourceContext extends ControllerContext {
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
-  invoke(kind: string, name: string, ...args: any[]): Promise<any>;
+  invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any>;
   run(kind: string, name: string): Promise<void>;
   getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;
   registerManifest(resource: any): void;
   spawnChildContext(): EvaluationContext;
+  transientChild(context: Record<string, any>): EvaluationContext;
   withManifests<T>(manifests: any[], fn: () => T): T;
   resolveChildren(resource: any, resourceName?: string): { kind: string; name: string };
   validateSchema(value: any, schema: any): void;

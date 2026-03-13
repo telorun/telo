@@ -1,0 +1,25 @@
+# Public read API — unauthenticated.
+# /{namespace}/{name} lists versions by reading the R2 directory prefix.
+# Everything else falls through to the server fallback (ForwardToR2).
+
+---
+kind: Http.Api
+metadata:
+  name: PublicApi
+  module: telo-registry
+routes:
+  - request:
+      path: /{namespace}/{name}
+      method: GET
+    handler:
+      kind: S3.List
+      bucketRef:
+        name: ModuleStore
+      inputs:
+        prefix: "${{ request.params.namespace + '/' + request.params.name + '/' }}"
+    response:
+      status: 200
+      statuses:
+        200:
+          body:
+            keys: "${{ result.keys }}"

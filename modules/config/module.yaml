@@ -3,5 +3,11 @@ metadata:
   name: "Config"
   version: "0.1.0"
 include:
-  - "variable.yaml"
-  - "secret.yaml"
+  - "env-variable-store.yaml"
+  - "variables.yaml"
+  - "secrets.yaml"
+exports:
+  kinds:
+    - EnvironmentVariableStore
+    - Variables
+    - Secrets

@@ -11,7 +11,9 @@ export const schema = Type.Object({
     name: Type.String(),
     module: Type.Optional(Type.String()),
   }),
-  imports: Type.Optional(Type.Record(Type.String(), ImportEntry)),
+  resources: Type.Optional(Type.Record(Type.String(), ImportEntry)),
+  variables: Type.Optional(Type.Record(Type.String(), Type.Any())),
+  secrets: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
 type ModuleContextManifest = Static<typeof schema>;
@@ -44,62 +46,46 @@ export async function create(
   return {
     run: async () => {
       const declaringModule = manifest.metadata.module ?? "default";
-      const importsToCheck = manifest.imports ?? {};
+      const resourcesToCheck = manifest.resources ?? {};
       const failures: string[] = [];
       const passed: string[] = [];
-
-      for (const [alias, expected] of Object.entries(importsToCheck)) {
-        const realModule = (ctx as any).resolveModuleAlias(declaringModule, alias) as
-          | string
-          | undefined;
-        if (!realModule) {
+      const { resources } = ctx.moduleContext;
+      for (const [alias, expected] of Object.entries(resourcesToCheck)) {
+        if (!(ctx as any).resolveModuleAlias(declaringModule, alias)) {
           failures.push(`Import alias '${alias}' not found in module '${declaringModule}'`);
           continue;
         }
 
-        const moduleCtx = ctx.moduleContext;
-        const importSnap = (moduleCtx.resources[alias] as any) ?? {};
-        const expectedVariables = expected.variables ?? {};
-        const expectedSecrets = expected.secrets ?? {};
+        const snap = (resources[alias] as any) ?? {};
+        const path = `resources.${alias}`;
 
-        for (const [key, expectedValue] of Object.entries(expectedVariables)) {
-          const actualValue = importSnap?.variables?.[key];
-          if (!deepEqual(actualValue, expectedValue)) {
-            failures.push(
-              `imports.${alias}.variables.${key}: expected ${yellow(JSON.stringify(expectedValue))}, got ${red(JSON.stringify(actualValue))}`,
-            );
+        for (const [key, expectedValue] of Object.entries(expected.variables ?? {})) {
+          const actual = snap?.variables?.[key];
+          if (deepEqual(actual, expectedValue)) {
+            passed.push(`${path}.variables.${key}`);
           } else {
-            passed.push(`imports.${alias}.variables.${key}`);
+            failures.push(`${path}.variables.${key}: expected ${yellow(JSON.stringify(expectedValue))}, got ${red(JSON.stringify(actual))}`);
           }
         }
 
-        for (const [key] of Object.entries(expectedSecrets)) {
-          const actualSecret = importSnap?.secrets?.[key];
-          if (!deepEqual(actualSecret, expectedSecrets[key])) {
-            failures.push(`imports.${alias}.secrets.${key}: ${dim("value mismatch")}`);
+        for (const [key, expectedValue] of Object.entries(expected.secrets ?? {})) {
+          const actual = snap?.secrets?.[key];
+          if (deepEqual(actual, expectedValue)) {
+            passed.push(`${path}.secrets.${key}`);
           } else {
-            passed.push(`imports.${alias}.secrets.${key}`);
+            failures.push(`${path}.secrets.${key}: ${dim("value mismatch")}`);
           }
         }
       }
 
       const name = manifest.metadata.name;
+      const passedLines = passed.map((p) => `  ${green("✓")} ${dim(p)}\n`).join("");
       if (failures.length > 0) {
-        let report = bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n";
-        for (const p of passed) {
-          report += `  ${green("✓")} ${dim(p)}\n`;
-        }
-        for (const f of failures) {
-          report += `  ${red("✗")} ${f}\n`;
-        }
-        process.stderr.write(report);
+        const failedLines = failures.map((f) => `  ${red("✗")} ${f}\n`).join("");
+        process.stderr.write(bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n" + passedLines + failedLines);
         ctx.requestExit(1);
       } else {
-        let report = bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n";
-        for (const p of passed) {
-          report += `  ${green("✓")} ${dim(p)}\n`;
-        }
-        process.stdout.write(report);
+        process.stdout.write(bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n" + passedLines);
       }
     },
   };

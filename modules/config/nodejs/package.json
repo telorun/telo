@@ -3,15 +3,20 @@
   "version": "0.1.2",
   "type": "module",
   "exports": {
-    "./variable-controller": {
-      "types": "./dist/variable-controller.d.ts",
-      "bun": "./src/variable-controller.ts",
-      "import": "./dist/variable-controller.js"
+    "./env-variable-store-controller": {
+      "types": "./dist/env-variable-store-controller.d.ts",
+      "bun": "./src/env-variable-store-controller.ts",
+      "import": "./dist/env-variable-store-controller.js"
     },
-    "./secret-controller": {
-      "types": "./dist/secret-controller.d.ts",
-      "bun": "./src/secret-controller.ts",
-      "import": "./dist/secret-controller.js"
+    "./variables-controller": {
+      "types": "./dist/variables-controller.d.ts",
+      "bun": "./src/variables-controller.ts",
+      "import": "./dist/variables-controller.js"
+    },
+    "./secrets-controller": {
+      "types": "./dist/secrets-controller.d.ts",
+      "bun": "./src/secrets-controller.ts",
+      "import": "./dist/secrets-controller.js"
     }
   },
   "files": [

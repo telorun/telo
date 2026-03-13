@@ -113,28 +113,17 @@ export class HttpServerApi implements ResourceInstance {
       schema,
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          // Normalize headers to lowercase
-          const normalizedHeaders = normalizeHeaders(request.headers);
-
-          // Construct standardized Telo request object
-          const requestPayload = {
-            method: request.method,
-            path: request.url,
-            params: request.params || {},
-            query: request.query || {},
-            headers: normalizedHeaders,
-            body: request.body,
-          };
-
-          // Wrap in "request" object as per spec
-          const teloRequestContext = { request: requestPayload };
-
           const result = handler
-            ? await this.ctx.invoke(
-                handler.kind,
-                handler.name,
-                resolveHandlerInputs(route.handler, teloRequestContext),
-              )
+            ? await this.ctx.invoke(handler.kind, handler.name, {
+                request: {
+                  method: request.method,
+                  path: request.url,
+                  params: request.params || {},
+                  query: request.query || {},
+                  headers: normalizeHeaders(request.headers),
+                  body: request.body,
+                },
+              })
             : undefined;
 
           const response = route.response;
@@ -142,7 +131,7 @@ export class HttpServerApi implements ResourceInstance {
           // Determine final status code
           let statusCode = response.status;
           if (typeof statusCode === "string") {
-            statusCode = this.ctx.expandValue(statusCode, { result }) as number;
+            statusCode = this.ctx.moduleContext.expandWith(statusCode, { result }) as number;
           }
 
           // Convert status to string for lookup
@@ -163,7 +152,7 @@ export class HttpServerApi implements ResourceInstance {
 
           // Map and set response headers if specified
           if (statusConfig.headers) {
-            const mappedHeaders = this.ctx.expandValue(statusConfig.headers, { result });
+            const mappedHeaders = this.ctx.moduleContext.expandWith(statusConfig.headers, { result }) as Record<string, unknown>;
             Object.entries(mappedHeaders).forEach(([key, value]) => {
               reply.header(key, value as string);
             });
@@ -171,7 +160,7 @@ export class HttpServerApi implements ResourceInstance {
 
           // Map and send response body if specified
           if (statusConfig.body !== undefined) {
-            const mappedBody = this.ctx.expandValue(statusConfig.body, { result });
+            const mappedBody = this.ctx.moduleContext.expandWith(statusConfig.body, { result });
 
             // Validate response body if schema is specified
             if (statusConfig.schema && statusConfig.schema.body) {
@@ -242,52 +231,6 @@ function resolveHandlerName(handler: any): { kind: string; name: string } {
     return { name, kind: handler.kind };
   }
   throw new Error("Unable to resolve handler - handler must have a 'kind' property");
-}
-
-function resolveHandlerInputs(handler: any, requestContext: Record<string, any>): any {
-  if (typeof handler === "string") {
-    return requestContext;
-  }
-  if (!handler || typeof handler !== "object") {
-    return requestContext;
-  }
-  if (!handler.inputs) {
-    return requestContext;
-  }
-  return resolveTemplateInputs(handler.inputs, requestContext);
-}
-
-function resolveTemplateInputs(value: any, context: Record<string, any>): any {
-  if (typeof value === "string") {
-    const match = value.match(/^\s*\$\{\{\s*([^}]+)\s*\}\}\s*$/);
-    if (match) {
-      return resolveTemplatePath(match[1], context);
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => resolveTemplateInputs(item, context));
-  }
-  if (value && typeof value === "object") {
-    const resolved: Record<string, any> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      resolved[key] = resolveTemplateInputs(entry, context);
-    }
-    return resolved;
-  }
-  return value;
-}
-
-function resolveTemplatePath(pathExpression: string, context: Record<string, any>): any {
-  const parts = pathExpression.trim().split(".").filter(Boolean);
-  let current: any = context;
-  for (const part of parts) {
-    if (!current || (typeof current !== "object" && typeof current !== "function")) {
-      return undefined;
-    }
-    current = current[part];
-  }
-  return current;
 }
 
 /**
