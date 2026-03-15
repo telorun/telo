@@ -40,7 +40,8 @@ steps:
     invoke:
       kind: Sql.Query
       connection: Db
-      sql: "SELECT 1 as result"
+      inputs:
+        sql: "SELECT 1 as result"
 
   - name: AssertResult
     inputs:

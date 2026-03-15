@@ -7,8 +7,10 @@ interface SqlQueryManifest {
   metadata: { name: string; module: string };
   connection?: string;
   transaction?: string;
-  sql: string;
-  bindings?: unknown[];
+  inputs: {
+    sql: string;
+    bindings?: unknown[];
+  };
 }
 
 export interface SqlResult {
@@ -25,8 +27,8 @@ class SqlQueryResource implements ResourceInstance {
   async invoke(input: unknown): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
-    const resolvedSql = ctx.expandValue(m.sql, input ?? {}) as string;
-    const params = ctx.expandValue(m.bindings ?? [], input ?? {}) as unknown[];
+    const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
+    const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
 
     return resolveClient(ctx, m.connection, m.transaction, (client, driver) =>
       runQuery(client, driver, resolvedSql, params),

@@ -40,21 +40,24 @@ steps:
     invoke:
       kind: Sql.Exec
       connection: Db
-      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
+      inputs:
+        sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
 
   - name: InsertRow
     inputs: {}
     invoke:
       kind: Sql.Exec
       connection: Db
-      sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
+      inputs:
+        sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
 
   - name: SelectRow
     inputs: {}
     invoke:
       kind: Sql.Query
       connection: Db
-      sql: "SELECT id, name, age FROM users WHERE id = 1"
+      inputs:
+        sql: "SELECT id, name, age FROM users WHERE id = 1"
 
   - name: AssertResult
     inputs:

@@ -43,14 +43,15 @@ steps:
     invoke:
       kind: Sql.Exec
       connection: Db
-      sql: |
-        CREATE TABLE IF NOT EXISTS feedback (
-          id        INTEGER PRIMARY KEY AUTOINCREMENT,
-          text      TEXT    NOT NULL,
-          source    TEXT,
-          score     INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
+      inputs:
+        sql: |
+          CREATE TABLE IF NOT EXISTS feedback (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            text      TEXT    NOT NULL,
+            source    TEXT,
+            score     INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
 ---
 kind: Http.Server
 metadata:
@@ -89,11 +90,12 @@ routes:
     handler:
       kind: Sql.Exec
       connection: Db
-      sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
-      bindings:
-        - "${{ request.body.text }}"
-        - "${{ request.body.source }}"
-        - "${{ size(request.body.text) }}"
+      inputs:
+        sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
+        bindings:
+          - "${{ request.body.text }}"
+          - "${{ request.body.source }}"
+          - "${{ size(request.body.text) }}"
     response:
       - status: 201
         headers:
@@ -109,7 +111,8 @@ routes:
     handler:
       kind: Sql.Query
       connection: Db
-      sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
+      inputs:
+        sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     response:
       - status: 200
         headers:
@@ -130,9 +133,10 @@ routes:
     handler:
       kind: Sql.Query
       connection: Db
-      sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
-      bindings:
-        - "${{ request.params.id }}"
+      inputs:
+        sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
+        bindings:
+          - "${{ request.params.id }}"
     response:
       - status: 200
         when: "size(result.rows) > 0"
