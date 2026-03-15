@@ -1,4 +1,5 @@
 import { ControllerContext } from "./controller-context.js";
+import { ModuleContext } from "./module-context.js";
 import { ResourceContext } from "./resource-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
@@ -15,6 +16,21 @@ export interface ExecContext {
 }
 
 export type ResourceCapability = string;
+
+export interface CapabilityDefinition {
+  name: string;
+  expand?: {
+    /** Dot-paths expanded strictly at creation time. '**' = entire manifest.
+     *  Paths also in `runtime` are excluded here (runtime takes precedence). */
+    compile?: string[];
+    /** Dot-paths expanded strictly at invoke time with invocation context. */
+    runtime?: string[];
+  };
+  onDefinition?(definition: ResourceDefinition, ctx: ResourceContext): void | Promise<void>;
+  onManifest?(manifest: ResourceManifest, ctx: ModuleContext): ResourceManifest | Promise<ResourceManifest>;
+  onInit?(instance: ResourceInstance, ctx: ResourceContext): Promise<void>;
+  onInvoke?(instance: ResourceInstance, inputs: any, ctx: ResourceContext): Promise<any>;
+}
 
 export interface ResourceDefinition {
   kind: string;

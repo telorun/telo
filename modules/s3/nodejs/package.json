@@ -20,6 +20,7 @@
   ],
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
+    "@sinclair/typebox": "^0.34.48",
     "@telorun/sdk": "workspace:*"
   },
   "devDependencies": {

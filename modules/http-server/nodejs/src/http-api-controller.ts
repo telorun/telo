@@ -1,6 +1,8 @@
 import { Static, Type } from "@sinclair/typebox";
 import { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { type Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 const HttpApiRouteManifest = Type.Object({
   request: Type.Object({
@@ -16,23 +18,22 @@ const HttpApiRouteManifest = Type.Object({
     ),
   }),
   handler: Type.Optional(Type.Any()), // Any handler shape is allowed - will be processed in create()
-  response: Type.Object({
-    status: Type.Union([Type.Number({ minimum: 100, maximum: 599 }), Type.String()]),
-    statuses: Type.Record(
-      Type.String(),
-      Type.Object({
-        schema: Type.Optional(
-          Type.Object({
-            query: Type.Optional(Type.Any()),
-            body: Type.Optional(Type.Any()),
-            headers: Type.Optional(Type.Any()),
-          }),
-        ),
-        headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-        body: Type.Optional(Type.Any()),
-      }),
-    ),
-  }),
+  response: Type.Array(
+    Type.Object({
+      status: Type.Integer({ minimum: 100, maximum: 599 }),
+      when: Type.Optional(Type.String()),
+      mode: Type.Optional(Type.Union([Type.Literal("buffer"), Type.Literal("stream")])),
+      schema: Type.Optional(
+        Type.Object({
+          query: Type.Optional(Type.Any()),
+          body: Type.Optional(Type.Any()),
+          headers: Type.Optional(Type.Any()),
+        }),
+      ),
+      headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+      body: Type.Optional(Type.Any()),
+    }),
+  ),
 });
 type HttpApiRouteManifest = Static<typeof HttpApiRouteManifest>;
 
@@ -41,7 +42,67 @@ const HttpApiManifest = Type.Object({
 });
 type HttpApiManifest = Static<typeof HttpApiManifest>;
 
-export async function register(ctx: ControllerContext): Promise<void> {}
+export async function register(_ctx: ControllerContext): Promise<void> {}
+
+export type ResponseEntry = Static<
+  (typeof HttpApiRouteManifest)["properties"]["response"]["items"]
+>;
+
+export async function dispatchResponse(
+  response: ResponseEntry[],
+  result: unknown,
+  requestContext: Record<string, unknown>,
+  moduleContext: { expandWith: (v: unknown, ctx: Record<string, unknown>) => unknown },
+  validateSchema: (value: unknown, schema: unknown) => void,
+  reply: FastifyReply,
+): Promise<void> {
+  let matched: ResponseEntry | undefined;
+  let fallback: ResponseEntry | undefined;
+
+  for (const entry of response) {
+    if (!entry.when) {
+      fallback ??= entry;
+      continue;
+    }
+    const condition = moduleContext.expandWith(entry.when, { result, ...requestContext });
+    if (condition === true) {
+      matched = entry;
+      break;
+    }
+  }
+
+  const statusEntry = matched ?? fallback;
+  if (!statusEntry) {
+    reply.code(500);
+    reply.send({ error: "InternalServerError", message: "No matching response status entry", status: 500 });
+    return;
+  }
+
+  reply.code(statusEntry.status);
+
+  if (statusEntry.headers) {
+    const mappedHeaders = moduleContext.expandWith(statusEntry.headers, { result, ...requestContext }) as Record<string, unknown>;
+    Object.entries(mappedHeaders).forEach(([key, value]) => reply.header(key, value as string));
+  }
+
+  if (statusEntry.mode === "stream") {
+    reply.hijack();
+    reply.raw.writeHead(statusEntry.status, reply.getHeaders() as Record<string, string>);
+    await pipeline(result as Readable, reply.raw);
+    return;
+  }
+
+  if (statusEntry.body !== undefined) {
+    const mappedBody = moduleContext.expandWith(statusEntry.body, { result, ...requestContext });
+    if (statusEntry.schema?.body) {
+      validateSchema(mappedBody, statusEntry.schema.body);
+    }
+    reply.send(mappedBody);
+    return;
+  }
+
+  reply.send(result);
+}
 
 export class HttpServerApi implements ResourceInstance {
   constructor(
@@ -72,7 +133,7 @@ export class HttpServerApi implements ResourceInstance {
   }
 
   private registerRoute(app: FastifyInstance, route: HttpApiRouteManifest) {
-    const handler = route.handler ? resolveHandlerName(route.handler) : null;
+    const handler = route.handler ? { ...resolveHandlerName(route.handler), inputs: (route.handler as any).inputs } : null;
     const translatedPath = translateOpenApiPath(route.request.path);
 
     const schema: any = {
@@ -92,19 +153,16 @@ export class HttpServerApi implements ResourceInstance {
       schema.headers = route.request.schema?.headers;
     }
 
-    schema.response = Object.keys(route.response.statuses).reduce(
-      (acc, status) => {
-        const statusConfig = route.response.statuses[status];
-        if (statusConfig.schema) {
-          if (statusConfig.schema.body) {
-            acc[status] = statusConfig.schema.body;
-          } else {
-            acc[status] = {};
-          }
+    schema.response = route.response.reduce(
+      (acc, entry) => {
+        if (entry.schema?.body) {
+          acc[entry.status] = entry.schema.body;
+        } else if (entry.schema) {
+          acc[entry.status] = {};
         }
         return acc;
       },
-      {} as Record<string, any>,
+      {} as Record<number, any>,
     );
 
     app.route({
@@ -113,65 +171,34 @@ export class HttpServerApi implements ResourceInstance {
       schema,
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
         try {
+          const requestContext = {
+            request: {
+              method: request.method,
+              path: request.url,
+              params: request.params || {},
+              query: request.query || {},
+              headers: normalizeHeaders(request.headers),
+              body: request.body,
+            },
+          };
+          const evaluatedInputs = handler?.inputs
+            ? (this.ctx.moduleContext.expandWith(handler.inputs, requestContext) as Record<string, unknown>)
+            : {};
           const result = handler
             ? await this.ctx.invoke(handler.kind, handler.name, {
-                request: {
-                  method: request.method,
-                  path: request.url,
-                  params: request.params || {},
-                  query: request.query || {},
-                  headers: normalizeHeaders(request.headers),
-                  body: request.body,
-                },
+                ...evaluatedInputs,
+                ...requestContext,
               })
             : undefined;
 
-          const response = route.response;
-
-          // Determine final status code
-          let statusCode = response.status;
-          if (typeof statusCode === "string") {
-            statusCode = this.ctx.moduleContext.expandWith(statusCode, { result }) as number;
-          }
-
-          // Convert status to string for lookup
-          const statusKey = String(statusCode);
-          const statusConfig = response.statuses[statusKey];
-
-          if (!statusConfig) {
-            reply.code(500);
-            return reply.send({
-              error: "InternalServerError",
-              message: "Response status configuration not found",
-              status: 500,
-            });
-          }
-
-          // Set HTTP status code
-          reply.code(statusCode as number);
-
-          // Map and set response headers if specified
-          if (statusConfig.headers) {
-            const mappedHeaders = this.ctx.moduleContext.expandWith(statusConfig.headers, { result }) as Record<string, unknown>;
-            Object.entries(mappedHeaders).forEach(([key, value]) => {
-              reply.header(key, value as string);
-            });
-          }
-
-          // Map and send response body if specified
-          if (statusConfig.body !== undefined) {
-            const mappedBody = this.ctx.moduleContext.expandWith(statusConfig.body, { result });
-
-            // Validate response body if schema is specified
-            if (statusConfig.schema && statusConfig.schema.body) {
-              this.ctx.validateSchema(mappedBody, statusConfig.schema.body);
-            }
-
-            return reply.send(mappedBody);
-          }
-
-          // No body mapping, send result as-is
-          return reply.send(result);
+          return dispatchResponse(
+            route.response,
+            result,
+            requestContext,
+            this.ctx.moduleContext,
+            this.ctx.validateSchema.bind(this.ctx),
+            reply,
+          );
         } catch (error) {
           // Let the error handler deal with all errors
           throw error;
@@ -250,60 +277,4 @@ function normalizeHeaders(headers: Record<string, any>): Record<string, any> {
     normalized[key.toLowerCase()] = value;
   }
   return normalized;
-}
-
-/**
- * Legacy function - kept for compatibility but not used
- * Converts framework-specific validation errors to standardized Telo format
- * Returns null if the error is not a validation error
- */
-function convertValidationError(error: any): Record<string, any> | null {
-  // Check if this is a Fastify/AJV validation error
-  if (!error || typeof error !== "object") {
-    return null;
-  }
-
-  // Fastify validation errors have a statusCode of 400 and validation array
-  if (error.statusCode === 400 && Array.isArray(error.validation)) {
-    const details = error.validation.map((err: any) => {
-      const path = err.instancePath ? err.instancePath.replace(/^\//, "").replace(/\//g, ".") : "";
-
-      // Determine location from keyword/message context
-      let location = "body"; // default
-      if (err.keyword === "required" && err.params?.missingProperty) {
-        location = determinLocationFromContext(err);
-      } else {
-        location = determinLocationFromContext(err);
-      }
-
-      return {
-        location,
-        path: path || err.params?.missingProperty || "",
-        message: err.message || "Validation failed",
-      };
-    });
-
-    return {
-      error: "ValidationError",
-      message: "Request validation failed",
-      status: 400,
-      details,
-    };
-  }
-
-  return null;
-}
-
-/**
- * Helper to determine the location (body, query, params, headers) from validation error context
- */
-function determinLocationFromContext(err: any): string {
-  // AJV validation errors in Fastify include parent keyword context
-  if (err.parentSchema && err.instancePath) {
-    const path = err.instancePath;
-    // This is a simplified check; in practice, Fastify provides better context
-    // For now, default to "body" for general validation errors
-    return "body";
-  }
-  return "body";
 }

@@ -1,4 +1,4 @@
-import { evaluate } from "cel-js";
+import { evaluate } from "@marcbachmann/cel-js";
 import type { ModuleContext } from "./module-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
@@ -173,6 +173,8 @@ export class EvaluationContext {
         const name = resource.metadata.name;
         if (this.createdInstances.has(name)) continue;
         try {
+          // const expanded = this.expand(resource) as ResourceManifest;
+          // FIXME: Cannot expand it for all resources, needs to be selective
           const created = await this._createInstance(this as any, resource);
           if (created) {
             this.createdInstances.set(name, {
@@ -339,9 +341,6 @@ export class EvaluationContext {
   /**
    * Expand a value that may contain ${{ }} templates.
    * Works recursively over strings, arrays, and objects.
-   * Templates whose identifiers are not present in the context are left
-   * unchanged (deferred) — they will be resolved at execution time when a
-   * richer ExecutionContext is available. All other CEL errors are propagated.
    */
   expand(value: unknown): unknown {
     if (typeof value === "string") {
@@ -395,4 +394,58 @@ export class EvaluationContext {
       return String(resolved);
     });
   }
+
+  /**
+   * Expand specific dot-paths within an object. '**' expands the entire object.
+   * Paths listed in excludePaths are left untouched (runtime takes precedence).
+   * Always throws if an expression cannot be resolved.
+   */
+  expandPaths(
+    value: Record<string, unknown>,
+    paths: string[],
+    excludePaths: string[] = [],
+  ): Record<string, unknown> {
+    if (paths.includes("**")) {
+      const result: Record<string, unknown> = {};
+      for (const [key, v] of Object.entries(value)) {
+        result[key] = isExcluded(key, excludePaths) ? v : this.expand(v);
+      }
+      return result;
+    }
+    const result = { ...value };
+    for (const path of paths) {
+      if (isExcluded(path, excludePaths)) continue;
+      const parts = path.split(".");
+      const current = getNestedValue(result, parts);
+      if (current !== undefined) {
+        setNestedValue(result, parts, this.expand(current));
+      }
+    }
+    return result;
+  }
+}
+
+function isExcluded(path: string, excludePaths: string[]): boolean {
+  return excludePaths.some(
+    (ep) => ep === path || ep === "**" || path.startsWith(ep + ".") || ep.startsWith(path + "."),
+  );
+}
+
+function getNestedValue(obj: Record<string, unknown>, parts: string[]): unknown {
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function setNestedValue(obj: Record<string, unknown>, parts: string[], value: unknown): void {
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const next = current[parts[i]];
+    if (next === null || typeof next !== "object") return;
+    current = next as Record<string, unknown>;
+  }
+  current[parts[parts.length - 1]] = value;
 }

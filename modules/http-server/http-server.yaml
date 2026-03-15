@@ -4,7 +4,6 @@ metadata:
   module: "Http"
 capabilities:
   - listener
-  - provider
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
 schema:
@@ -29,10 +28,33 @@ schema:
     notFoundHandler:
       type: "object"
       properties:
-        kind:
-          type: "string"
-        name:
-          type: "string"
-      required: ["kind"]
-      additionalProperties: true
+        invoke:
+          type: "object"
+          properties:
+            kind:
+              type: "string"
+          required: ["kind"]
+          additionalProperties: true
+        response:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              status:
+                type: "integer"
+                minimum: 100
+                maximum: 599
+              when:
+                type: "string"
+              mode:
+                type: "string"
+                enum: ["buffer", "stream"]
+              headers:
+                type: "object"
+                additionalProperties:
+                  type: "string"
+              body:
+                description: "CEL expression or object mapping for response body"
+            required: ["status"]
+      required: ["invoke"]
   required: ["port", "mounts"]

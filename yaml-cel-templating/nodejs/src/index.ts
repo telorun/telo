@@ -1,6 +1,6 @@
-import AjvModule from 'ajv';
+import { evaluate as evaluateCEL } from "@marcbachmann/cel-js";
+import AjvModule from "ajv";
 const Ajv = (AjvModule as any).default ?? AjvModule;
-import { evaluate as evaluateCEL } from 'cel-js';
 
 /**
  * Type definitions for the templating engine
@@ -24,20 +24,20 @@ export interface DirectiveMapping {
 }
 
 const DEFAULT_DIRECTIVES: DirectiveMapping = {
-  for: '$for',
-  do: '$do',
-  if: '$if',
-  then: '$then',
-  else: '$else',
-  let: '$let',
-  eval: '$eval',
-  schema: '$schema',
-  assert: '$assert',
-  msg: '$msg',
-  include: '$include',
-  with: '$with',
-  key: '$key',
-  value: '$value',
+  for: "$for",
+  do: "$do",
+  if: "$if",
+  then: "$then",
+  else: "$else",
+  let: "$let",
+  eval: "$eval",
+  schema: "$schema",
+  assert: "$assert",
+  msg: "$msg",
+  include: "$include",
+  with: "$with",
+  key: "$key",
+  value: "$value",
 };
 
 interface CompileContext {
@@ -67,7 +67,7 @@ export function compile(record: any, options?: CompileOptions): any {
     variables: new Map(Object.entries(options?.context || {})),
     directives,
     directiveValues,
-    parentPath: '$',
+    parentPath: "$",
     evaluateStringExpressions: options?.evaluateStringExpressions ?? false,
     lenientExpressions: options?.lenientExpressions ?? false,
   };
@@ -87,11 +87,11 @@ function compileValue(value: any, context: CompileContext): any {
     return compileArray(value, context);
   }
 
-  if (typeof value === 'object' && value !== null) {
+  if (typeof value === "object" && value !== null) {
     return compileObject(value, context);
   }
 
-  if (typeof value === 'string' && context.evaluateStringExpressions) {
+  if (typeof value === "string" && context.evaluateStringExpressions) {
     return compileString(value, context);
   }
 
@@ -107,7 +107,7 @@ function compileArray(arr: any[], context: CompileContext): any {
 
   for (const item of arr) {
     if (isDirectiveObject(item, context.directiveValues) && d.for in item) {
-      const forResults = handleForDirective(item, context, 'array');
+      const forResults = handleForDirective(item, context, "array");
       if (Array.isArray(forResults)) {
         result.push(...forResults);
       } else {
@@ -131,11 +131,7 @@ function compileObject(obj: any, parentContext: CompileContext): any {
   let schema: any = undefined;
   if (d.schema in obj) {
     schema = obj[d.schema];
-    validateAgainstSchema(
-      parentContext.variables,
-      schema,
-      parentContext.parentPath,
-    );
+    validateAgainstSchema(parentContext.variables, schema, parentContext.parentPath);
   }
 
   // Create child context with updated schema
@@ -165,10 +161,7 @@ function compileObject(obj: any, parentContext: CompileContext): any {
   if (d.assert in obj) {
     const assertion = obj[d.assert];
     try {
-      const result = evaluateCEL(
-        assertion,
-        Object.fromEntries(context.variables),
-      );
+      const result = evaluateCEL(assertion, Object.fromEntries(context.variables));
       if (!result) {
         const msg = obj[d.msg] || `Assertion failed: ${assertion}`;
         throw new Error(msg);
@@ -198,7 +191,7 @@ function compileObject(obj: any, parentContext: CompileContext): any {
       const conditionalResult = handleIfDirective(obj, context);
       if (
         conditionalResult &&
-        typeof conditionalResult === 'object' &&
+        typeof conditionalResult === "object" &&
         !Array.isArray(conditionalResult)
       ) {
         return { ...baseResult, ...conditionalResult };
@@ -216,13 +209,13 @@ function compileObject(obj: any, parentContext: CompileContext): any {
 
   // Step 5: Process for/do directives
   if (d.for in obj) {
-    return handleForDirective(obj, context, 'object');
+    return handleForDirective(obj, context, "object");
   }
 
   // Step 6: Process eval directive — explicit evaluation
   if (d.eval in obj) {
     const evalValue = obj[d.eval];
-    if (typeof evalValue === 'string') {
+    if (typeof evalValue === "string") {
       return compileString(evalValue, context);
     }
     return evalValue;
@@ -231,7 +224,10 @@ function compileObject(obj: any, parentContext: CompileContext): any {
   // Step 6b: Process key/value directives (used in for/do for dynamic keys)
   if (d.key in obj && d.value in obj) {
     const keyContext: CompileContext = { ...context, parentPath: `${context.parentPath}.${d.key}` };
-    const valueContext: CompileContext = { ...context, parentPath: `${context.parentPath}.${d.value}` };
+    const valueContext: CompileContext = {
+      ...context,
+      parentPath: `${context.parentPath}.${d.value}`,
+    };
     return {
       $key: compileValue(obj[d.key], keyContext),
       $value: compileValue(obj[d.value], valueContext),
@@ -321,10 +317,7 @@ function handleIfDirective(obj: any, context: CompileContext): any {
   const condition = obj[d.if];
 
   try {
-    const result = evaluateCEL(
-      condition,
-      Object.fromEntries(context.variables),
-    );
+    const result = evaluateCEL(condition, Object.fromEntries(context.variables));
 
     if (result && d.then in obj) {
       return compileValue(obj[d.then], context);
@@ -345,11 +338,7 @@ function handleIfDirective(obj: any, context: CompileContext): any {
 /**
  * Handle for/do directive
  */
-function handleForDirective(
-  obj: any,
-  context: CompileContext,
-  mode: 'array' | 'object',
-): any {
+function handleForDirective(obj: any, context: CompileContext, mode: "array" | "object"): any {
   const d = context.directives;
   const forExpr = obj[d.for];
   const doTemplate = obj[d.do];
@@ -369,10 +358,7 @@ function handleForDirective(
   const collectionExpr = forMatch[2].trim();
 
   try {
-    const collection = evaluateCEL(
-      collectionExpr,
-      Object.fromEntries(context.variables),
-    );
+    const collection = evaluateCEL(collectionExpr, Object.fromEntries(context.variables));
     const results: any[] = [];
 
     if (Array.isArray(collection)) {
@@ -385,10 +371,8 @@ function handleForDirective(
         itemContext.variables.set(itemName, item);
         results.push(compileValue(doTemplate, itemContext));
       }
-    } else if (typeof collection === 'object' && collection !== null) {
-      const [keyName, valName] = iteratorPart
-        .split(',')
-        .map((s: string) => s.trim());
+    } else if (typeof collection === "object" && collection !== null) {
+      const [keyName, valName] = iteratorPart.split(",").map((s: string) => s.trim());
       if (!valName) {
         throw new Error(
           `Invalid map iterator "${iteratorPart}" at "${context.parentPath}". Expected "key, val"`,
@@ -410,48 +394,38 @@ function handleForDirective(
       );
     }
 
-    if (mode === 'array') {
+    if (mode === "array") {
       return results;
     }
 
     const merged: Record<string, any> = {};
     for (const item of results) {
-      if (item && typeof item === 'object' && '$key' in item && '$value' in item) {
-        merged[item['$key']] = item['$value'];
-      } else if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-        throw new Error(
-          `Object-mode ${d.for} must produce objects at "${context.parentPath}"`,
-        );
+      if (item && typeof item === "object" && "$key" in item && "$value" in item) {
+        merged[item["$key"]] = item["$value"];
+      } else if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        throw new Error(`Object-mode ${d.for} must produce objects at "${context.parentPath}"`);
       } else {
         Object.assign(merged, item);
       }
     }
     return merged;
   } catch (error) {
-    throw new Error(
-      `Error in ${d.for} directive at "${context.parentPath}": ${error}`,
-    );
+    throw new Error(`Error in ${d.for} directive at "${context.parentPath}": ${error}`);
   }
 }
 
 /**
  * Validate object against schema
  */
-function validateAgainstSchema(
-  variables: Map<string, any>,
-  schema: any,
-  path: string,
-): void {
+function validateAgainstSchema(variables: Map<string, any>, schema: any, path: string): void {
   const ajv = new Ajv();
 
   const jsonSchema: any = {
-    type: 'object',
+    type: "object",
     properties: {},
   };
 
-  for (const [key, constraint] of Object.entries(
-    schema as Record<string, any>,
-  )) {
+  for (const [key, constraint] of Object.entries(schema as Record<string, any>)) {
     jsonSchema.properties[key] = normalizeSchemaConstraint(constraint);
   }
 
@@ -460,18 +434,18 @@ function validateAgainstSchema(
 
   if (!validate(data)) {
     const errors = validate.errors
-      ?.map((e: any) => `${e.instancePath || '/'}: ${e.message}`)
-      .join('; ');
+      ?.map((e: any) => `${e.instancePath || "/"}: ${e.message}`)
+      .join("; ");
     throw new Error(`Schema validation failed at "${path}": ${errors}`);
   }
 }
 
 function normalizeSchemaConstraint(constraint: any): any {
-  if (typeof constraint === 'string') {
+  if (typeof constraint === "string") {
     return { type: constraint };
   }
 
-  if (typeof constraint === 'object' && constraint !== null) {
+  if (typeof constraint === "object" && constraint !== null) {
     return constraint;
   }
 
@@ -482,7 +456,7 @@ function normalizeSchemaConstraint(constraint: any): any {
  * Check if an object contains directive keys
  */
 function isDirectiveObject(obj: any, directiveValues: Set<string>): boolean {
-  if (typeof obj !== 'object' || obj === null) {
+  if (typeof obj !== "object" || obj === null) {
     return false;
   }
 
@@ -492,23 +466,21 @@ function isDirectiveObject(obj: any, directiveValues: Set<string>): boolean {
 function evaluateExpression(expr: any, context: CompileContext): any {
   const d = context.directives;
   // Handle eval objects (e.g. from let values)
-  if (typeof expr === 'object' && expr !== null && d.eval in expr) {
+  if (typeof expr === "object" && expr !== null && d.eval in expr) {
     const evalValue = expr[d.eval];
-    if (typeof evalValue === 'string') {
+    if (typeof evalValue === "string") {
       return compileString(evalValue, context);
     }
     return evalValue;
   }
 
-  if (typeof expr !== 'string') {
+  if (typeof expr !== "string") {
     return expr;
   }
 
   const trimmed = expr.trim();
-  const isSingleQuoted =
-    trimmed.startsWith("'") && trimmed.endsWith("'");
-  const isDoubleQuoted =
-    trimmed.startsWith('"') && trimmed.endsWith('"');
+  const isSingleQuoted = trimmed.startsWith("'") && trimmed.endsWith("'");
+  const isDoubleQuoted = trimmed.startsWith('"') && trimmed.endsWith('"');
   const isQuoted = isSingleQuoted || isDoubleQuoted;
 
   if (isQuoted) {

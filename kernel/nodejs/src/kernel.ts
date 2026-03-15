@@ -1,4 +1,5 @@
 import {
+  CapabilityDefinition,
   ControllerContext,
   Kernel as IKernel,
   ModuleContext,
@@ -10,6 +11,14 @@ import {
   RuntimeEvent,
 } from "@telorun/sdk";
 import * as path from "path";
+import { component } from "./capabilities/component.js";
+import { executable } from "./capabilities/executable.js";
+import { handler } from "./capabilities/handler.js";
+import { invokable } from "./capabilities/invokable.js";
+import { listener } from "./capabilities/listener.js";
+import { provider } from "./capabilities/provider.js";
+import { template } from "./capabilities/template.js";
+import { typeCapability } from "./capabilities/type.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
@@ -80,8 +89,12 @@ export class Kernel implements IKernel {
     this.controllers.registerDefinition(definition);
   }
 
-  registerCapability(name: string, schema?: Record<string, any>): void {
-    this.controllers.registerCapability(name, schema);
+  registerCapability(name: string): void {
+    this.controllers.registerCapability(name);
+  }
+
+  registerCapabilityDefinition(cap: CapabilityDefinition): void {
+    this.controllers.registerCapabilityDefinition(cap);
   }
 
   getModuleContext(_moduleName: string): ModuleContext {
@@ -105,8 +118,8 @@ export class Kernel implements IKernel {
     return this.controllers.isCapabilityRegistered(name);
   }
 
-  getCapabilitySchema(name: string): Record<string, any> | null | undefined {
-    return this.controllers.getCapabilitySchema(name);
+  getCapabilityDefinition(name: string): CapabilityDefinition | undefined {
+    return this.controllers.getCapabilityDefinition(name);
   }
 
   /**
@@ -119,7 +132,16 @@ export class Kernel implements IKernel {
     // Declare built-in module namespaces upfront so getContext() can distinguish
     // "not yet populated" from a completely unknown module name.
     this.rootContext.registerImport("Kernel", "Kernel", []); // built-ins, unrestricted
-    // this.moduleContextRegistry.declareModule("default"); // user resources with no module field
+
+    // Register built-in capabilities as TypeScript objects (no YAML needed)
+    this.controllers.registerCapabilityDefinition(template);
+    this.controllers.registerCapabilityDefinition(provider);
+    this.controllers.registerCapabilityDefinition(invokable);
+    this.controllers.registerCapabilityDefinition(component);
+    this.controllers.registerCapabilityDefinition(handler);
+    this.controllers.registerCapabilityDefinition(listener);
+    this.controllers.registerCapabilityDefinition(typeCapability);
+    this.controllers.registerCapabilityDefinition(executable);
 
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
@@ -179,19 +201,12 @@ export class Kernel implements IKernel {
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
 
-    // Load built-in capability manifests before user configuration so that
-    // capability resources are available in the first initialization pass
-    const { fileURLToPath } = await import("url");
-    const capabilitiesDir = fileURLToPath(new URL("./capabilities/", import.meta.url));
-    const capabilityManifests = await this.loader.loadDirectory(capabilitiesDir);
-
     // Load runtime configuration — root module gets access to host env
-    const userManifests = await this.loader.loadManifest(
+    const allManifests = await this.loader.loadManifest(
       runtimeYamlPath,
       `file://${process.cwd()}/`,
       { env: process.env },
     );
-    const allManifests = [...capabilityManifests, ...userManifests];
 
     for (const manifest of allManifests) {
       if (manifest.kind === "Kernel.Module") {
@@ -378,8 +393,19 @@ export class Kernel implements IKernel {
       throw new Error(`No schema defined for ${kind} controller`);
     }
 
+    // Run capability onManifest hooks — expands and transforms the manifest
+    // before it reaches the controller (resolves the FIXME in evaluation-context.ts)
+    const definition = this.controllers.getDefinition(resolvedKind);
+    let processedResource = resource;
+    for (const capName of definition?.capabilities ?? []) {
+      const cap = this.controllers.getCapabilityDefinition(capName);
+      if (cap?.onManifest) {
+        processedResource = await cap.onManifest(processedResource, evalContext);
+      }
+    }
+
     try {
-      this.sharedSchemaValidator.compile(controller.schema).validate(resource);
+      this.sharedSchemaValidator.compile(controller.schema).validate(processedResource);
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
@@ -387,11 +413,47 @@ export class Kernel implements IKernel {
       );
     }
 
-    const ctx = this.createResourceContext(evalContext, resource);
-    const instance = await controller.create(resource, ctx);
+    const ctx = this.createResourceContext(evalContext, processedResource);
+    const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 
-    return { instance, ctx };
+    const wrapped = this.wrapWithCapabilityLifecycles(instance, definition?.capabilities ?? [], ctx);
+    return { instance: wrapped, ctx };
+  }
+
+  private wrapWithCapabilityLifecycles(
+    instance: ResourceInstance,
+    capabilities: string[],
+    ctx: ResourceContext,
+  ): ResourceInstance {
+    const initHooks = capabilities
+      .map((name) => this.controllers.getCapabilityDefinition(name)?.onInit)
+      .filter((h): h is NonNullable<typeof h> => !!h);
+    const invokeHooks = capabilities
+      .map((name) => this.controllers.getCapabilityDefinition(name)?.onInvoke)
+      .filter((h): h is NonNullable<typeof h> => !!h);
+
+    if (initHooks.length === 0 && invokeHooks.length === 0) return instance;
+
+    return {
+      ...instance,
+      ...(initHooks.length > 0 && {
+        init: async (initCtx?: ResourceContext) => {
+          for (const hook of initHooks) {
+            await hook(instance, initCtx ?? ctx);
+          }
+        },
+      }),
+      ...(invokeHooks.length > 0 && {
+        invoke: async (inputs: any) => {
+          let result = inputs;
+          for (const hook of invokeHooks) {
+            result = await hook(instance, result, ctx);
+          }
+          return result;
+        },
+      }),
+    };
   }
 
   /**

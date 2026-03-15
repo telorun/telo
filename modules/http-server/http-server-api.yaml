@@ -39,36 +39,28 @@ schema:
                   type:
                     type: "string"
           response:
-            type: "object"
-            properties:
-              status:
-                type: "integer"
-              headers:
-                type: "object"
-              body:
-                oneOf:
-                  - type: "string"
-                  - type: "object"
-              schema:
-                type: "object"
-                description: "Response schema definition"
-                properties:
-                  status:
-                    type: "integer"
-                  headers:
-                    type: "object"
-                  body:
-                    type: "object"
-              mapping:
-                type: "object"
-                description: "Response mapping expressions"
-                properties:
-                  status:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                status:
+                  type: "integer"
+                  minimum: 100
+                  maximum: 599
+                when:
+                  type: "string"
+                  description: "CEL expression; entry is selected if this evaluates to true"
+                mode:
+                  type: "string"
+                  enum: ["buffer", "stream"]
+                  description: "buffer (default): CEL body expansion + schema validation. stream: pipe result directly, skipping both"
+                schema:
+                  type: "object"
+                headers:
+                  type: "object"
+                  additionalProperties:
                     type: "string"
-                  headers:
-                    type: "object"
-                    additionalProperties:
-                      type: "string"
-                  body:
-                    type: "string"
+                body:
+                  description: "CEL expression or object mapping for response body"
+              required: ["status"]
   required: ["routes"]

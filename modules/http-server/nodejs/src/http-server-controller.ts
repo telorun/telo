@@ -3,7 +3,7 @@ import apiReference from "@scalar/fastify-api-reference";
 import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
-import { HttpServerApi } from "./http-api-controller.js";
+import { dispatchResponse, HttpServerApi, ResponseEntry } from "./http-api-controller.js";
 
 type HttpServerResource = RuntimeResource & {
   host?: string;
@@ -19,13 +19,17 @@ type HttpServerResource = RuntimeResource & {
     path?: string;
     type?: string;
   }>;
-  notFoundHandler?: { kind: string; name?: string; [key: string]: any };
+  notFoundHandler?: {
+    invoke: { kind: string; name?: string; [key: string]: any };
+    response?: ResponseEntry[];
+  };
 };
 
-type ResolvedHandler = { kind: string; name: string; inputs: Record<string, any> };
+type ResolvedHandler = { kind: string; name: string; inputs: Record<string, any>; response?: ResponseEntry[] };
 
 class HttpServer implements ResourceInstance {
   private releaseHold: (() => void) | null = null;
+  private pluginsInitialized = false;
   private readonly app: FastifyInstance;
   private readonly host: string;
   private readonly port: number;
@@ -53,7 +57,10 @@ class HttpServer implements ResourceInstance {
   }
 
   async init() {
-    await this.setupPlugins();
+    if (!this.pluginsInitialized) {
+      await this.setupPlugins();
+      this.pluginsInitialized = true;
+    }
     this.setupRoutes();
   }
 
@@ -116,7 +123,7 @@ class HttpServer implements ResourceInstance {
         for (const [key, value] of Object.entries(request.headers)) {
           normalizedHeaders[key.toLowerCase()] = value;
         }
-        const result = await this.ctx.invoke(handler.kind, handler.name, {
+        const requestContext = {
           request: {
             method: request.method,
             path: request.url,
@@ -125,7 +132,18 @@ class HttpServer implements ResourceInstance {
             headers: normalizedHeaders,
             body: request.body,
           },
-        });
+        };
+        const result = await this.ctx.invoke(handler.kind, handler.name, requestContext);
+        if (handler.response) {
+          return dispatchResponse(
+            handler.response,
+            result,
+            requestContext,
+            this.ctx.moduleContext,
+            this.ctx.validateSchema.bind(this.ctx),
+            reply,
+          );
+        }
         const status = result?.status ?? 200;
         reply.code(status);
         if (result?.headers) {
@@ -174,11 +192,12 @@ export async function create(
 ): Promise<ResourceInstance | null> {
   let resolvedNotFoundHandler: ResolvedHandler | null = null;
   if (resource.notFoundHandler) {
-    const resolved = ctx.resolveChildren(resource.notFoundHandler);
+    const resolved = ctx.resolveChildren(resource.notFoundHandler.invoke);
     resolvedNotFoundHandler = {
       kind: resolved.kind,
       name: resolved.name,
-      inputs: resource.notFoundHandler.inputs ?? {},
+      inputs: resource.notFoundHandler.invoke.inputs ?? {},
+      response: resource.notFoundHandler.response,
     };
   }
   return new HttpServer(resource, ctx, resolvedNotFoundHandler);

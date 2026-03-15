@@ -1,4 +1,4 @@
-import { ControllerInstance, ResourceDefinition, RuntimeResource } from "@telorun/sdk";
+import { CapabilityDefinition, ControllerInstance, ResourceDefinition, RuntimeResource } from "@telorun/sdk";
 import * as path from "path";
 
 /**
@@ -9,18 +9,24 @@ export class ControllerRegistry {
   private controllersByKind: Map<string, ControllerInstance> = new Map();
   private definitionsByKind: Map<string, ResourceDefinition> = new Map();
   private controllerLoaders: Map<string, () => Promise<ControllerInstance>> = new Map();
-  private capabilitySchemas: Map<string, Record<string, any> | null> = new Map();
+  private capabilities: Map<string, CapabilityDefinition> = new Map();
 
-  registerCapability(name: string, schema?: Record<string, any>): void {
-    this.capabilitySchemas.set(name, schema ?? null);
+  registerCapabilityDefinition(cap: CapabilityDefinition): void {
+    this.capabilities.set(cap.name, cap);
+  }
+
+  registerCapability(name: string): void {
+    if (!this.capabilities.has(name)) {
+      this.capabilities.set(name, { name });
+    }
   }
 
   isCapabilityRegistered(name: string): boolean {
-    return this.capabilitySchemas.has(name);
+    return this.capabilities.has(name);
   }
 
-  getCapabilitySchema(name: string): Record<string, any> | null | undefined {
-    return this.capabilitySchemas.get(name);
+  getCapabilityDefinition(name: string): CapabilityDefinition | undefined {
+    return this.capabilities.get(name);
   }
 
   /**

@@ -1,3 +1,4 @@
+import { PassThrough, Readable } from "stream";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 
 const MAX_REDIRECTS = 5;
@@ -66,6 +67,7 @@ async function executeRequest(
   headers: Record<string, string>,
   body: string | undefined,
   timeout: number,
+  stream = false,
 ): Promise<TeloResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -105,6 +107,32 @@ async function executeRequest(
         responseHeaders[key.toLowerCase()] = value;
       });
 
+      // Stream mode: pump body into a PassThrough eagerly so data flows immediately
+      if (stream) {
+        const webStream = response.body;
+        const body = new PassThrough();
+        (async () => {
+          if (!webStream) {
+            body.end();
+            return;
+          }
+          const reader = webStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              body.push(Buffer.from(value));
+            }
+            body.end();
+          } catch (err) {
+            body.destroy(err as Error);
+          } finally {
+            reader.releaseLock();
+          }
+        })();
+        return { status: response.status, headers: responseHeaders, body };
+      }
+
       // Deserialize body
       const contentType = responseHeaders["content-type"] ?? "";
       let responseBody: unknown;
@@ -132,12 +160,13 @@ async function executeWithRetry(
   body: string | undefined,
   timeout: number,
   retriesLeft: number,
+  stream = false,
 ): Promise<TeloResponse> {
   try {
-    return await executeRequest(url, method, headers, body, timeout);
+    return await executeRequest(url, method, headers, body, timeout, stream);
   } catch (err) {
     if (retriesLeft > 0 && (err as any).error === "NetworkError") {
-      return executeWithRetry(url, method, headers, body, timeout, retriesLeft - 1);
+      return executeWithRetry(url, method, headers, body, timeout, retriesLeft - 1, stream);
     }
     throw err;
   }
@@ -156,6 +185,7 @@ interface HttpRequestManifest extends HttpRequestInputs {
   timeout?: number;
   throwOnHttpError?: boolean;
   retries?: number;
+  mode?: "buffer" | "stream";
   inputs?: HttpRequestInputs;
 }
 
@@ -165,7 +195,7 @@ class HttpRequestResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: any): Promise<TeloResponse> {
+  async invoke(input: any): Promise<TeloResponse | Readable> {
     const ctx = this.ctx;
     const m = this.manifest;
 
@@ -246,10 +276,15 @@ class HttpRequestResource implements ResourceInstance {
       serializedBody,
       effectiveTimeout,
       retries,
+      m.mode === "stream",
     );
 
     if (throwOnHttpError && response.status >= 400) {
       throw new Error(`HTTP ${response.status} error from ${fullUrl}`);
+    }
+
+    if (m.mode === "stream") {
+      return response.body as Readable;
     }
 
     return response;

@@ -114,6 +114,8 @@ metadata:
   module: telo-registry
 bucketName: "${{ resources.AppConfig.bucketName }}"
 endpoint: "${{ resources.AppConfig.s3Endpoint }}"
+accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
+secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
 
 ---
 # ── HTTP Server ───────────────────────────────────────────────────────────────
@@ -136,10 +138,15 @@ mounts:
   - path: /
     type: Http.Api.PublicApi
 notFoundHandler:
-  kind: HttpClient.Request
-  metadata:
-    name: NotFoundHandler
-    module: telo-registry
-  inputs:
-    method: "${{ request.method }}"
-    url: "${{ resources.AppConfig.bucketUrl }}/${{ request.path }}"
+  invoke:
+    kind: HttpClient.Request
+    metadata:
+      name: NotFoundHandler
+      module: telo-registry
+    mode: stream
+    inputs:
+      method: "${{ request.method }}"
+      url: "${{ resources.AppConfig.bucketUrl }}/${{ request.path }}"
+  response:
+    - status: 200
+      mode: stream

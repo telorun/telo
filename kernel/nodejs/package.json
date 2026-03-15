@@ -18,9 +18,9 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc && cp -r src/capabilities dist/capabilities",
+    "build": "tsc",
     "dev": "tsc --watch",
-    "prepublishOnly": "tsc && cp -r src/capabilities dist/capabilities"
+    "prepublishOnly": "tsc"
   },
   "keywords": [
     "digly",
@@ -34,7 +34,7 @@
     "@telorun/yaml-cel-templating": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "cel-js": "^0.8.2",
+    "@marcbachmann/cel-js": "^7.5.3",
     "js-yaml": "^4.1.0",
     "packageurl-js": "^2.0.1"
   },

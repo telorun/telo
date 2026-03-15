@@ -1,4 +1,0 @@
-kind: Kernel.Capability
-metadata:
-  module: Kernel
-  name: listener

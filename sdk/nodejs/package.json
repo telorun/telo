@@ -20,7 +20,7 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
-    "cel-js": "^0.8.2"
+    "@marcbachmann/cel-js": "^7.5.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -6,14 +6,13 @@ type CapabilityResource = {
     name: string;
     [key: string]: any;
   };
-  schema?: Record<string, any>;
 };
 
 class Capability implements ResourceInstance {
   constructor(private readonly resource: CapabilityResource) {}
 
   async init(ctx: ResourceContext) {
-    ctx.registerCapability(this.resource.metadata.name, this.resource.schema);
+    ctx.registerCapability(this.resource.metadata.name);
   }
 }
 
@@ -30,10 +29,6 @@ export const schema = {
         name: { type: "string" },
       },
       required: ["name"],
-    },
-    schema: {
-      type: "object",
-      additionalProperties: true,
     },
   },
   required: ["metadata"],

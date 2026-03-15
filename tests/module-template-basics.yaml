@@ -30,10 +30,8 @@ routes:
       path: /status
       method: GET
     response:
-      status: 200
-      statuses:
-        "200":
-          headers:
-            Content-Type: application/json
-          body:
-            status: "ok"
+      - status: 200
+        headers:
+          Content-Type: application/json
+        body:
+          status: "ok"

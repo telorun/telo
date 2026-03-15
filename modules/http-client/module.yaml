@@ -59,6 +59,11 @@ schema:
       minimum: 0
       default: 0
       description: "Number of times to retry on Network Errors (not HTTP errors)"
+    mode:
+      type: "string"
+      enum: ["buffer", "stream"]
+      default: "buffer"
+      description: "buffer (default): read and deserialize the full response body. stream: return body as a readable stream without buffering."
     inputs:
       type: "object"
       description: "Request parameters, resolved dynamically on each invocation"

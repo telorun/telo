@@ -39,10 +39,7 @@ class ResourceDefinition implements ResourceInstance {
           `Capability "${cap}" is not registered. Declare it as a Kernel.Capability resource.`,
         );
       }
-      const capSchema = ctx.getCapabilitySchema(cap);
-      if (capSchema) {
-        ctx.validateSchema(this.resource, capSchema);
-      }
+      await ctx.getCapabilityDefinition(cap)?.onDefinition?.(this.resource as any, ctx);
     }
     ctx.emit("ControllerLoading", { controllers: this.resource.controllers });
     try {

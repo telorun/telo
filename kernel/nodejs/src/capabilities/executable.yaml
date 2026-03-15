@@ -1,8 +1,0 @@
-kind: Kernel.Capability
-metadata:
-  module: Kernel
-  name: executable
-schema:
-  type: object
-  properties:
-    foo: { type: string }
