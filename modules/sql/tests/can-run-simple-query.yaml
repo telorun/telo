@@ -1,0 +1,60 @@
+kind: Kernel.Module
+metadata:
+  name: CanRunSimpleQuery
+  version: 1.0.0
+targets:
+  - TestSimpleQuery
+---
+kind: Kernel.Import
+metadata:
+  name: Sql
+  module: CanRunSimpleQuery
+source: ../
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+  module: CanRunSimpleQuery
+source: ../../pipeline
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: CanRunSimpleQuery
+source: ../../assert
+---
+kind: Sql.Connection
+metadata:
+  name: Db
+  module: CanRunSimpleQuery
+driver: sqlite
+file: ":memory:"
+---
+kind: Pipeline.Job
+metadata:
+  name: TestSimpleQuery
+  module: CanRunSimpleQuery
+steps:
+  - name: RunQuery
+    inputs: {}
+    invoke:
+      kind: Sql.Query
+      connection: Db
+      sql: "SELECT 1 as result"
+
+  - name: AssertResult
+    inputs:
+      rows: "${{ RunQuery.outputs.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              properties:
+                result:
+                  const: 1

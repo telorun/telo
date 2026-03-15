@@ -34,91 +34,151 @@ Here is an example Telo application that defines a simple HTTP API:
 ```yaml
 kind: Kernel.Module
 metadata:
-  name: Example
+  name: FeedbackApi
+  version: 1.0.0
+  description: |
+    A complete feedback collection REST API — no code, pure YAML.
+    Persists entries to SQLite and serves them over HTTP.
 targets:
+  - SetupDb
   - Server
 ---
 kind: Kernel.Import
 metadata:
-  name: HttpServer
-source: std/http-server@1.0.1
+  name: Http
+source: ../modules/http-server
 ---
 kind: Kernel.Import
 metadata:
-  name: JavaScript
-source: std/javascript@1.0.0
+  name: Sql
+source: ../modules/sql
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+source: ../modules/pipeline
+---
+# SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
+kind: Sql.Connection
+metadata:
+  name: Db
+  module: FeedbackApi
+driver: sqlite
+file: ./tmp/feedback.db
+---
+# Startup migration: runs once before the server accepts requests
+kind: Pipeline.Job
+metadata:
+  name: SetupDb
+  module: FeedbackApi
+steps:
+  - name: CreateTable
+    inputs: {}
+    invoke:
+      kind: Sql.Exec
+      connection: Db
+      sql: |
+        CREATE TABLE IF NOT EXISTS feedback (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          text      TEXT    NOT NULL,
+          source    TEXT,
+          score     INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
 ---
 kind: Http.Server
 metadata:
   name: Server
-  module: Example
+  module: FeedbackApi
 baseUrl: http://localhost:8844
 port: 8844
 logger: true
 openapi:
   info:
-    title: Hello server
+    title: Feedback API
     version: 1.0.0
 mounts:
   - path: /v1
-    type: Http.Api.HelloApi
+    type: Http.Api.FeedbackRoutes
 ---
 kind: Http.Api
 metadata:
-  name: HelloApi
-  module: Example
+  name: FeedbackRoutes
+  module: FeedbackApi
 routes:
+  # POST /v1/feedback — insert a new entry, score derived from body length heuristic
   - request:
-      path: /hello
-      method: GET
+      path: /feedback
+      method: POST
       schema:
-        query:
+        body:
           type: object
           properties:
-            name:
+            text:
               type: string
-          required: ["name"]
+              minLength: 1
+            source:
+              type: string
+          required: [text]
     handler:
-      kind: JavaScript.Script
-      name: SayHello
+      kind: Sql.Exec
+      connection: Db
+      sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
       inputs:
-        name: "${{ request.query.name }}" # CEL expression
+        text: "${{ request.body.text }}"
+        source: "${{ request.body.source }}"
+        score: "${{ size(request.body.text) }}"
     response:
-      status: 200
-      statuses:
-        "200":
-          schema:
-            body:
-              type: object
-              properties:
-                greeting:
-                  type: string
-                nice:
-                  type: string
-              required: ["greeting", "nice"]
-              additionalProperties: false
-          headers:
-            Content-Type: application/json
-          body:
-            greeting: "${{ result.message }}!"
-            nice: "WOW"
----
-kind: JavaScript.Script
-metadata:
-  name: SayHello
-  module: Example
-code: |
-  function main({ name }) {
-    return {
-      message: `Hello ${name}!`,
-    }
-  };
-inputSchema:
-  name:
-    type: string
-outputSchema:
-  message:
-    type: string
+      - status: 201
+        headers:
+          Content-Type: application/json
+        body:
+          ok: true
+          message: Feedback received
+
+  # GET /v1/feedback — list all entries, newest first
+  - request:
+      path: /feedback
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: Db
+      sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
+    response:
+      - status: 200
+        headers:
+          Content-Type: application/json
+        body: "${{ result.rows }}"
+
+  # GET /v1/feedback/{id} — fetch a single entry
+  - request:
+      path: /feedback/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            id:
+              type: integer
+          required: [id]
+    handler:
+      kind: Sql.Query
+      connection: Db
+      sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
+      inputs:
+        id: "${{ request.params.id }}"
+    response:
+      - status: 200
+        when: "size(result.rows) > 0"
+        headers:
+          Content-Type: application/json
+        body: "${{ result.rows[0] }}"
+      - status: 404
+        headers:
+          Content-Type: application/json
+        body:
+          ok: false
+          message: Not found
 ```
 
 ## What It Does

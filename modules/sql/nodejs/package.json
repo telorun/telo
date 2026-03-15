@@ -1,0 +1,44 @@
+{
+  "name": "@telorun/sql",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./sql-connection": {
+      "bun": "./src/sql-connection-controller.ts",
+      "import": "./dist/sql-connection-controller.js"
+    },
+    "./sql-query": {
+      "bun": "./src/sql-query-controller.ts",
+      "import": "./dist/sql-query-controller.js"
+    },
+    "./sql-exec": {
+      "bun": "./src/sql-exec-controller.ts",
+      "import": "./dist/sql-exec-controller.js"
+    },
+    "./sql-transaction": {
+      "bun": "./src/sql-transaction-controller.ts",
+      "import": "./dist/sql-transaction-controller.js"
+    },
+    "./sqlite-driver": {
+      "bun": "./src/sqlite-driver-bun.ts",
+      "import": "./dist/sqlite-driver-node.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "files": [
+    "dist/**"
+  ],
+  "dependencies": {
+    "@telorun/sdk": "workspace:*",
+    "better-sqlite3": "^12.8.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.0.0",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}

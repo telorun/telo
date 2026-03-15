@@ -1,0 +1,79 @@
+kind: Kernel.Module
+metadata:
+  name: CanInsertAndSelect
+  version: 1.0.0
+targets:
+  - TestInsertAndSelect
+---
+kind: Kernel.Import
+metadata:
+  name: Sql
+  module: CanInsertAndSelect
+source: ../
+---
+kind: Kernel.Import
+metadata:
+  name: Pipeline
+  module: CanInsertAndSelect
+source: ../../pipeline
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: CanInsertAndSelect
+source: ../../assert
+---
+kind: Sql.Connection
+metadata:
+  name: Db
+  module: CanInsertAndSelect
+driver: sqlite
+file: ":memory:"
+---
+kind: Pipeline.Job
+metadata:
+  name: TestInsertAndSelect
+  module: CanInsertAndSelect
+steps:
+  - name: CreateTable
+    inputs: {}
+    invoke:
+      kind: Sql.Exec
+      connection: Db
+      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
+
+  - name: InsertRow
+    inputs: {}
+    invoke:
+      kind: Sql.Exec
+      connection: Db
+      sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
+
+  - name: SelectRow
+    inputs: {}
+    invoke:
+      kind: Sql.Query
+      connection: Db
+      sql: "SELECT id, name, age FROM users WHERE id = 1"
+
+  - name: AssertResult
+    inputs:
+      rows: "${{ SelectRow.outputs.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              properties:
+                id:
+                  const: 1
+                name:
+                  const: Alice
+                age:
+                  const: 30

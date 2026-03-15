@@ -1,0 +1,131 @@
+kind: Kernel.Module
+metadata:
+  name: Sql
+  version: 0.1.0
+  description: SQL database access — PostgreSQL and SQLite
+---
+kind: Kernel.Definition
+metadata:
+  name: Connection
+  module: Sql
+capabilities:
+  - provider
+controllers:
+  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-connection
+schema:
+  type: object
+  required:
+    - driver
+  properties:
+    driver:
+      type: string
+      enum: [postgres, sqlite]
+      description: Database driver
+    host:
+      type: string
+      description: PostgreSQL host
+    port:
+      type: integer
+      default: 5432
+      description: PostgreSQL port
+    database:
+      type: string
+      description: PostgreSQL database name
+    user:
+      type: string
+      description: PostgreSQL user
+    password:
+      type: string
+      description: PostgreSQL password
+    ssl:
+      type: boolean
+      default: false
+      description: Enable SSL for PostgreSQL
+    file:
+      type: string
+      description: SQLite file path or ':memory:'
+    pool:
+      type: object
+      properties:
+        min:
+          type: integer
+          default: 1
+        max:
+          type: integer
+          default: 10
+        idleTimeoutMs:
+          type: integer
+        connectionTimeoutMs:
+          type: integer
+---
+kind: Kernel.Definition
+metadata:
+  name: Query
+  module: Sql
+capabilities:
+  - handler
+controllers:
+  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-query
+schema:
+  type: object
+  properties:
+    connection:
+      type: string
+      description: Sql.Connection resource name
+    transaction:
+      type: string
+      description: Sql.Transaction resource name
+    sql:
+      type: string
+      description: SQL query text; may contain ${{ }} templates
+    inputs:
+      type: object
+      description: Runtime-resolved parameters (values passed as positional params in declaration order)
+---
+kind: Kernel.Definition
+metadata:
+  name: Exec
+  module: Sql
+capabilities:
+  - handler
+controllers:
+  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-exec
+schema:
+  type: object
+  properties:
+    connection:
+      type: string
+      description: Sql.Connection resource name
+    transaction:
+      type: string
+      description: Sql.Transaction resource name
+    sql:
+      type: string
+      description: SQL statement text; may contain ${{ }} templates
+    inputs:
+      type: object
+      description: Runtime-resolved parameters (values passed as positional params in declaration order)
+---
+kind: Kernel.Definition
+metadata:
+  name: Transaction
+  module: Sql
+capabilities:
+  - handler
+controllers:
+  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-transaction
+schema:
+  type: object
+  required:
+    - connection
+    - steps
+  properties:
+    connection:
+      type: string
+      description: Sql.Connection resource name providing the pool
+    steps:
+      type: string
+      description: Invokable resource name to execute inside the transaction (Flow.Steps, Pipeline.Job, etc.)
+    inputs:
+      type: object
+      description: Forwarded to the steps resource at invoke time; may contain ${{ }} templates

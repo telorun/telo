@@ -21,6 +21,7 @@ For a full explanation of how modules are defined, imported, and composed, see t
 | [**http-server/**](http-server/README.md) | HTTP server and routing via `Http.Server` and `Http.Api` |
 | [**javascript/**](javascript/) | Inline JavaScript execution via `JavaScript.Script` |
 | [**pipeline/**](pipeline/) | Orchestration and testing framework using inline resource execution |
+| [**sql/**](sql/) | SQL database access for PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Exec`, and `Sql.Transaction` |
 | [**starlark/**](starlark/) | Starlark scripting within workflows via `Starlark.Script` |
 | [**studio/**](studio/README.md) | Foundational resource kinds and definitions used by DiglyAI Studio |
 | [**template/**](template/) | Parameterized resource generation via `Template.Definition` |
