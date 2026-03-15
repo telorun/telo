@@ -78,9 +78,9 @@ schema:
     sql:
       type: string
       description: SQL query text; may contain ${{ }} templates
-    inputs:
-      type: object
-      description: Runtime-resolved parameters (values passed as positional params in declaration order)
+    bindings:
+      type: array
+      description: Positional parameters bound to ? placeholders in the SQL string
 ---
 kind: Kernel.Definition
 metadata:
@@ -102,9 +102,9 @@ schema:
     sql:
       type: string
       description: SQL statement text; may contain ${{ }} templates
-    inputs:
-      type: object
-      description: Runtime-resolved parameters (values passed as positional params in declaration order)
+    bindings:
+      type: array
+      description: Positional parameters bound to ? placeholders in the SQL string
 ---
 kind: Kernel.Definition
 metadata:
@@ -126,6 +126,6 @@ schema:
     steps:
       type: string
       description: Invokable resource name to execute inside the transaction (Flow.Steps, Pipeline.Job, etc.)
-    inputs:
+    bindings:
       type: object
       description: Forwarded to the steps resource at invoke time; may contain ${{ }} templates

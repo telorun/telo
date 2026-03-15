@@ -39,7 +39,8 @@ export class ControllerLoader {
     const isLocalManifest =
       baseUri && !baseUri.startsWith("http://") && !baseUri.startsWith("https://");
     if (localPath && isLocalManifest) {
-      const manifestDir = path.dirname(baseUri);
+      const baseUriPath = baseUri.startsWith("file://") ? baseUri.slice("file://".length) : baseUri;
+      const manifestDir = path.dirname(baseUriPath);
       const resolvedLocalPath = path.resolve(manifestDir, localPath);
       if (await this.pathExists(resolvedLocalPath)) {
         packageRoot = resolvedLocalPath;

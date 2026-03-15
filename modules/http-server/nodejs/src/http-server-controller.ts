@@ -9,6 +9,7 @@ type HttpServerResource = RuntimeResource & {
   host?: string;
   port?: number;
   baseUrl?: string;
+  logger?: boolean;
   openapi?: {
     info: {
       title: string;
@@ -25,7 +26,12 @@ type HttpServerResource = RuntimeResource & {
   };
 };
 
-type ResolvedHandler = { kind: string; name: string; inputs: Record<string, any>; response?: ResponseEntry[] };
+type ResolvedHandler = {
+  kind: string;
+  name: string;
+  inputs: Record<string, any>;
+  response?: ResponseEntry[];
+};
 
 class HttpServer implements ResourceInstance {
   private releaseHold: (() => void) | null = null;
@@ -53,7 +59,7 @@ class HttpServer implements ResourceInstance {
     if (!this.port) {
       throw new Error("Http.Server port is required");
     }
-    this.app = Fastify({ logger: true, ajv: { plugins: [addFormats.default as any] } });
+    this.app = Fastify({ logger: resource.logger, ajv: { plugins: [addFormats.default as any] } });
   }
 
   async init() {

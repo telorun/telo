@@ -1,0 +1,22 @@
+{
+  "name": "@telorun/benchmark",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./suite": "./src/suite.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "files": [
+    "dist/**"
+  ],
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "@telorun/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

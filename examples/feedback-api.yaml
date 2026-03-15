@@ -58,7 +58,7 @@ metadata:
   module: FeedbackApi
 baseUrl: http://localhost:8844
 port: 8844
-logger: true
+logger: false
 openapi:
   info:
     title: Feedback API
@@ -90,10 +90,10 @@ routes:
       kind: Sql.Exec
       connection: Db
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
-      inputs:
-        text: "${{ request.body.text }}"
-        source: "${{ request.body.source }}"
-        score: "${{ size(request.body.text) }}"
+      bindings:
+        - "${{ request.body.text }}"
+        - "${{ request.body.source }}"
+        - "${{ size(request.body.text) }}"
     response:
       - status: 201
         headers:
@@ -131,8 +131,8 @@ routes:
       kind: Sql.Query
       connection: Db
       sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
-      inputs:
-        id: "${{ request.params.id }}"
+      bindings:
+        - "${{ request.params.id }}"
     response:
       - status: 200
         when: "size(result.rows) > 0"

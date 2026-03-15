@@ -8,7 +8,7 @@ interface SqlQueryManifest {
   connection?: string;
   transaction?: string;
   sql: string;
-  inputs?: Record<string, unknown>;
+  bindings?: unknown[];
 }
 
 export interface SqlResult {
@@ -26,8 +26,7 @@ class SqlQueryResource implements ResourceInstance {
     const m = this.manifest;
     const ctx = this.ctx;
     const resolvedSql = ctx.expandValue(m.sql, input ?? {}) as string;
-    const resolvedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {}) as Record<string, unknown>;
-    const params = Object.values(resolvedInputs);
+    const params = ctx.expandValue(m.bindings ?? [], input ?? {}) as unknown[];
 
     return resolveClient(ctx, m.connection, m.transaction, (client, driver) =>
       runQuery(client, driver, resolvedSql, params),

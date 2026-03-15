@@ -1,0 +1,52 @@
+kind: Kernel.Module
+metadata:
+  name: FeedbackBenchmark
+  version: 1.0.0
+targets:
+  - FeedbackLoad
+---
+kind: Kernel.Import
+metadata:
+  name: Bench
+source: ../modules/benchmark
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: FeedbackLoad
+  module: FeedbackBenchmark
+duration: 30s
+concurrency: 10
+warmup: 3s
+report:
+  format: table
+  thresholds:
+    - scenario: PostFeedback
+      p99: 200
+      errorRate: 0.001
+scenarios:
+  - name: PostFeedback
+    weight: 3
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8844/v1/feedback
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          text: "Benchmark feedback"
+          source: bench
+    validate: "${{ result.status == 201 }}"
+  - name: GetAll
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8844/v1/feedback
+        method: GET
+    validate: "${{ result.status == 200 }}"

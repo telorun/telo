@@ -1,0 +1,80 @@
+kind: Kernel.Module
+metadata:
+  name: Benchmark
+  version: 1.0.0
+  description: Load benchmarking for any invokable Telo resource
+---
+kind: Kernel.Definition
+metadata:
+  name: Suite
+  module: Benchmark
+capabilities:
+  - executable
+controllers:
+  - pkg:npm/@telorun/benchmark@>=0.1.0?local_path=./nodejs#suite
+schema:
+  type: object
+  properties:
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+    duration:
+      type: string
+      description: "How long to run (e.g. 30s, 1m, 500ms). Mutually exclusive with requests."
+    requests:
+      type: integer
+      description: Total number of requests across all workers. Mutually exclusive with duration.
+    concurrency:
+      type: integer
+      default: 1
+      description: Number of parallel workers
+    warmup:
+      type: string
+      description: "Warm-up window excluded from metrics (e.g. 5s)"
+    report:
+      type: object
+      properties:
+        format:
+          type: string
+          enum: [table, json]
+          default: table
+        thresholds:
+          type: array
+          items:
+            type: object
+            properties:
+              scenario:
+                type: string
+              p99:
+                type: number
+              p95:
+                type: number
+              p50:
+                type: number
+              errorRate:
+                type: number
+    scenarios:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          weight:
+            type: integer
+            default: 1
+          invoke:
+            type: object
+            properties:
+              kind:
+                type: string
+            required: [kind]
+            additionalProperties: true
+          validate:
+            type: string
+            description: "CEL expression evaluated against `result`; false counts as error"
+        required: [name, invoke]
+  required: [metadata, scenarios]
