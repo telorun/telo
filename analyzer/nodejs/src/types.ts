@@ -1,0 +1,60 @@
+/** Matches LSP DiagnosticSeverity values exactly.
+ *  https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticSeverity */
+export const DiagnosticSeverity = {
+  Error: 1,
+  Warning: 2,
+  Information: 3,
+  Hint: 4,
+} as const;
+export type DiagnosticSeverity = typeof DiagnosticSeverity[keyof typeof DiagnosticSeverity];
+
+export interface Position {
+  /** 0-based line number */
+  line: number;
+  /** 0-based character offset */
+  character: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+/** LSP-compatible Diagnostic shape. range is optional because parsed YAML may not carry
+ *  position info when only the parsed object (not raw text) is available. */
+export interface AnalysisDiagnostic {
+  range?: Range;
+  severity?: DiagnosticSeverity;
+  code?: string | number;
+  /** e.g. "telo-analyzer" */
+  source?: string;
+  message: string;
+  /** Telo-specific extras such as { resource: { kind, name }, path } */
+  data?: unknown;
+}
+
+export interface ManifestAdapter {
+  supports(url: string): boolean;
+  read(url: string): Promise<{ text: string; source: string }>;
+  resolveRelative(base: string, relative: string): string;
+}
+
+export interface LoadOptions {
+  compile?: (doc: unknown, context: Record<string, unknown>) => unknown;
+  compileContext?: Record<string, unknown>;
+}
+
+export interface AnalysisOptions {
+  strictContexts?: boolean;
+}
+
+/** Pre-seeded state for incremental analysis. Passed to StaticAnalyzer.analyze() so it does
+ *  not rebuild from scratch on every call. The provided instances are mutated — new definitions
+ *  and aliases found in the analysed manifests are registered into them. A single context can
+ *  be reused across successive analyze() calls and accumulates state over time, which is the
+ *  intended pattern for browser editors (persistent state across edits) and the kernel (live
+ *  registry updated as resources are registered at runtime). */
+export interface AnalysisContext {
+  aliases?: import("./alias-resolver.js").AliasResolver;
+  definitions?: import("./definition-registry.js").DefinitionRegistry;
+}

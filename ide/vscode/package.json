@@ -1,0 +1,32 @@
+{
+  "name": "telo-kernel",
+  "displayName": "Telo Kernel",
+  "description": "YAML diagnostics for Telo manifests",
+  "version": "0.0.1",
+  "publisher": "telorun",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {},
+  "scripts": {
+    "build": "pnpm --filter @telorun/analyzer build && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch"
+  },
+  "dependencies": {
+    "@telorun/analyzer": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.110.0",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.9.3"
+  }
+}

@@ -31,10 +31,13 @@ schema:
       items:
         type: object
         properties:
-          kind:
-            type: string
-            description: Resource kind (e.g., Logic.JavaScript, HttpClient.Request)
-        required:
-          - kind
+          invoke:
+            type: object
+            properties:
+              kind:
+                type: string
+                description: Resource kind (e.g., Logic.JavaScript, HttpClient.Request)
+            required:
+              - kind
   required:
     - steps

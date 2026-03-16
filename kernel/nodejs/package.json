@@ -30,6 +30,7 @@
   ],
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
+    "@telorun/analyzer": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/yaml-cel-templating": "workspace:*",
     "ajv": "^8.17.1",

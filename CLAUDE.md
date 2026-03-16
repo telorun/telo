@@ -11,4 +11,5 @@ Follow this strictly:
 - never stash changes to investigate anything.
 - never fix linting problems.
 - never implement logic that swallows errors
-- kernel MUST be type sasfe
+- kernel MUST be type safe
+- never use `cat` nor `sed` to read files - read them directly.

@@ -6,6 +6,8 @@ packages:
   - kernel/*
   - sdk/*
   - yaml-cel-templating/*
+  - analyzer/*
+  - ide/*
 
 onlyBuiltDependencies:
   - better-sqlite3

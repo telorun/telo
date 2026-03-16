@@ -1,4 +1,6 @@
 export interface ManifestSourceData {
+  /** Raw YAML text */
+  text: string;
   /** Parsed YAML documents (result of yaml.loadAll) */
   documents: any[];
   /** Stored as metadata.source (file path or URL) */

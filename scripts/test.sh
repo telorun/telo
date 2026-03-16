@@ -17,13 +17,11 @@ fi
 FILTER="${1:-}"
 echo "🔍 Discovering tests in $TESTS_DIR/..."
 TEST_FILES=()
-for file in "$TESTS_DIR"/*.yaml; do
-    if [ -f "$file" ]; then
-        if [ -z "$FILTER" ] || [[ "$file" == *"$FILTER"* ]]; then
-            TEST_FILES+=("$file")
-        fi
+while IFS= read -r -d '' file; do
+    if [ -z "$FILTER" ] || [[ "$file" == *"$FILTER"* ]]; then
+        TEST_FILES+=("$file")
     fi
-done
+done < <(find . -path "*/$TESTS_DIR/*.yaml" -print0 | sort -z)
 
 if [ ${#TEST_FILES[@]} -eq 0 ]; then
     echo "⚠️  No test files found in $TESTS_DIR/"

@@ -7,10 +7,10 @@ export function openDatabase(file: string): SqliteDb {
     prepare(sql: string) {
       return {
         all(...params: unknown[]) {
-          return db.prepare(sql).all(...params) as Record<string, unknown>[];
+          return db.prepare(sql).all(...(params as any[])) as Record<string, unknown>[];
         },
         run(...params: unknown[]) {
-          const result = db.prepare(sql).run(...params);
+          const result = db.prepare(sql).run(...(params as any[]));
           return { changes: result.changes };
         },
       };

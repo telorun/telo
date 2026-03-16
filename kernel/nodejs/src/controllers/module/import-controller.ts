@@ -1,23 +1,36 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { EvaluationContext } from "@telorun/sdk";
+import { EvaluationContext, RuntimeError } from "@telorun/sdk";
+import { DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
 import { Loader } from "../../loader.js";
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
   const loader = new Loader();
 
-  // Load target module manifests. Inject variables/secrets as compile context so that
-  // ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
+  const moduleSource: string = resource.module ?? resource.source;
+
+  // Validate the imported module and all its transitive imports before loading for runtime.
+  // loadManifests() follows Kernel.Import chains so definitions from sub-imports are present,
+  // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
+  const resolvedUrl = new URL(moduleSource, ctx.moduleContext.source).toString();
+  const analysisManifests = await loader.loadManifests(resolvedUrl);
+  const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
+  const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+  if (errors.length > 0) {
+    throw new RuntimeError(
+      "ERR_MANIFEST_VALIDATION_FAILED",
+      errors.map((d) => d.message).join("\n"),
+    );
+  }
+
+  // Load target module manifests for runtime. Inject variables/secrets as compile context so
+  // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
-  const manifests = await loader.loadManifest(
-    resource.module ?? resource.source,
-    ctx.moduleContext.source,
-    {
-      // Potentially not needed
-      variables: (resource.variables as Record<string, unknown>) ?? {},
-      secrets: (resource.secrets as Record<string, unknown>) ?? {},
-    },
-  );
+  const manifests = await loader.loadManifest(moduleSource, ctx.moduleContext.source, {
+    // Potentially not needed
+    variables: (resource.variables as Record<string, unknown>) ?? {},
+    secrets: (resource.secrets as Record<string, unknown>) ?? {},
+  });
   // Find the kind: Module manifest to learn the target module name and contract.
   const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Module");
   if (!moduleManifest) {

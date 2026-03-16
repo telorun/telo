@@ -13,6 +13,7 @@ schema:
       type: "array"
       items:
         type: "object"
+        additionalProperties: false
         properties:
           request:
             type: "object"
@@ -42,6 +43,7 @@ schema:
             type: "array"
             items:
               type: "object"
+              additionalProperties: false
               properties:
                 status:
                   type: "integer"

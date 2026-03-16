@@ -22,6 +22,7 @@ import { typeCapability } from "./capabilities/type.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
+import { DiagnosticSeverity, StaticAnalyzer, AliasResolver, DefinitionRegistry, type AnalysisContext } from "@telorun/analyzer";
 import { Loader } from "./loader.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
@@ -49,6 +50,8 @@ export class Kernel implements IKernel {
   // private bootContextRegistry = new BootContextRegistry();
   private readonly sharedSchemaValidator = new SchemaValidator();
   private rootContext!: ModuleContext;
+  private readonly analyzerDefs = new DefinitionRegistry();
+  private readonly analyzerAliases = new AliasResolver();
 
   constructor() {
     this.setupEventStreaming();
@@ -87,6 +90,7 @@ export class Kernel implements IKernel {
     // namespace?: string | null,
   ): void {
     this.controllers.registerDefinition(definition);
+    this.analyzerDefs.register(definition);
   }
 
   registerCapability(name: string): void {
@@ -112,6 +116,14 @@ export class Kernel implements IKernel {
     kinds: string[],
   ): void {
     this.rootContext.registerImport(alias, targetModule, kinds);
+    this.analyzerAliases.registerImport(alias, targetModule, kinds);
+  }
+
+  /** Returns the live analysis context backed by this kernel's known definitions and aliases.
+   *  Passes to StaticAnalyzer.analyze() for incremental validation of new manifests against
+   *  already-registered types (e.g. front-end editor validating a manifest before submitting). */
+  getAnalysisContext(): AnalysisContext {
+    return { aliases: this.analyzerAliases, definitions: this.analyzerDefs };
   }
 
   isCapabilityRegistered(name: string): boolean {
@@ -200,6 +212,16 @@ export class Kernel implements IKernel {
     );
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
+
+    // Static analysis pre-flight: validates schemas and invocation context compatibility.
+    // All errors are fatal — kernel does not start if analysis fails.
+    const staticManifests = await this.loader.loadManifests(runtimeYamlPath);
+    const diagnostics = new StaticAnalyzer().analyze(staticManifests, {}, this.getAnalysisContext());
+    const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+    if (errors.length > 0) {
+      const summary = errors.map((d) => d.message).join("\n");
+      throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", summary);
+    }
 
     // Load runtime configuration — root module gets access to host env
     const allManifests = await this.loader.loadManifest(

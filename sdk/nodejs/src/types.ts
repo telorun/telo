@@ -32,6 +32,15 @@ export interface CapabilityDefinition {
   onInvoke?(instance: ResourceInstance, inputs: any, ctx: ResourceContext): Promise<any>;
 }
 
+export interface InvocationContext {
+  /** JSON Path (RFC 9535) expression into the resource config identifying the invocation field,
+   *  e.g. '$.routes[*].handler'. Used to locate the referenced invokable resource name(s). */
+  scope: string;
+  /** JSON Schema for the data shape provided to the invoked resource's invoke() inputs.
+   *  Validated statically by the analyzer at bootstrap. */
+  schema: Record<string, any>;
+}
+
 export interface ResourceDefinition {
   kind: string;
   metadata: {
@@ -44,6 +53,9 @@ export interface ResourceDefinition {
   inputs?: Record<string, any>;
   /** JSON Schema for invoke() outputs. Used for static analysis. */
   outputs?: Record<string, any>;
+  /** Invocation context declarations — what each call site provides to invoked resources.
+   *  Used for static analysis at bootstrap. */
+  contexts?: InvocationContext[];
   capabilities: ResourceCapability[];
   events?: string[];
   controllers?: Array<{

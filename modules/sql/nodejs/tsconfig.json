@@ -4,7 +4,8 @@
   "include": ["src/**/*.ts"],
   "compilerOptions": {
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "types": ["node", "bun"]
   },
   "references": [
     {

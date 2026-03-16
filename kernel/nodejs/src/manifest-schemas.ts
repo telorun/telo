@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import AjvModule, { ErrorObject } from "ajv";
+import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -24,6 +24,10 @@ export const ResourceDefinitionSchema = Type.Object(
     schema: Type.Object({}, { additionalProperties: true }),
     inputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
     outputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
+    contexts: Type.Optional(Type.Array(Type.Object({
+      scope: Type.String(),
+      schema: Type.Object({}, { additionalProperties: true }),
+    }))),
     capabilities: Type.Array(Type.String(), { minItems: 1 }),
     events: Type.Optional(Type.Array(Type.String())),
     controllers: Type.Optional(Type.Array(Type.String())),
@@ -37,15 +41,4 @@ addFormats.default(ajv);
 export const validateRuntimeResource = ajv.compile(RuntimeResourceSchema);
 export const validateResourceDefinition = ajv.compile(ResourceDefinitionSchema);
 
-export function formatAjvErrors(errors: ErrorObject[] | null | undefined): string {
-  if (!errors || errors.length === 0) {
-    return "Unknown schema error";
-  }
-  return errors
-    .map((err) => {
-      const path = err.instancePath && err.instancePath.length > 0 ? err.instancePath : "/";
-      const message = err.message || "is invalid";
-      return `${path} ${message}`;
-    })
-    .join("; ");
-}
+export { formatAjvErrors } from "@telorun/analyzer";

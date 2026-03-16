@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-telo-extension",
+      "type": "shell",
+      "command": "pnpm --filter telo-kernel build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    }
+  ]
+}

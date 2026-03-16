@@ -1,21 +1,23 @@
 import * as fs from "fs/promises";
 import * as yaml from "js-yaml";
 import * as path from "path";
+import type { ManifestAdapter as AnalyzerAdapter } from "@telorun/analyzer";
 import type { ManifestAdapter, ManifestSourceData } from "./manifest-adapter.js";
 
-export class LocalFileAdapter implements ManifestAdapter {
+export class LocalFileAdapter implements ManifestAdapter, AnalyzerAdapter {
   supports(pathOrUrl: string): boolean {
     return (
       pathOrUrl.startsWith("file://") ||
       pathOrUrl.startsWith("/") ||
       pathOrUrl.startsWith("./") ||
-      pathOrUrl.startsWith("../")
+      pathOrUrl.startsWith("../") ||
+      (!pathOrUrl.includes("://") && !pathOrUrl.includes("@"))
     );
   }
 
   async read(pathOrUrl: string): Promise<ManifestSourceData> {
     const normalizedPath = pathOrUrl.startsWith("file://")
-      ? pathOrUrl.replace("file://", "")
+      ? pathOrUrl.slice("file://".length)
       : pathOrUrl;
     const stat = await fs.stat(normalizedPath);
     const filePath = stat.isDirectory() ? path.join(normalizedPath, "module.yaml") : normalizedPath;
@@ -24,7 +26,7 @@ export class LocalFileAdapter implements ManifestAdapter {
 
   async readAll(pathOrUrl: string): Promise<ManifestSourceData[]> {
     const normalizedPath = pathOrUrl.startsWith("file://")
-      ? pathOrUrl.replace("file://", "")
+      ? pathOrUrl.slice("file://".length)
       : pathOrUrl;
     const stat = await fs.stat(normalizedPath);
     if (stat.isDirectory()) {
@@ -37,13 +39,14 @@ export class LocalFileAdapter implements ManifestAdapter {
 
   resolveRelative(base: string, relative: string): string {
     const basePath = base.startsWith("file://") ? base.slice("file://".length) : base;
-    return `file://${path.resolve(basePath, relative)}`;
+    const baseDir = basePath.endsWith("/") ? basePath : path.dirname(basePath);
+    return `file://${path.resolve(baseDir, relative)}`;
   }
 
   private async readFile(filePath: string): Promise<ManifestSourceData> {
     const content = await fs.readFile(filePath, "utf-8");
-
     return {
+      text: content,
       documents: yaml.loadAll(content),
       source: `file://${filePath}`,
       baseDir: path.dirname(filePath),

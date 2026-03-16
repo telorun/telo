@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Telo Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/ide/vscode",
+        "--disable-extensions"
+      ],
+      "outFiles": ["${workspaceFolder}/ide/vscode/dist/**/*.js"],
+      "preLaunchTask": "build-telo-extension"
+    }
+  ]
+}

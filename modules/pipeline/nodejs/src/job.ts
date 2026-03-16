@@ -2,7 +2,7 @@ import { Static, Type } from "@sinclair/typebox";
 import type { ResourceContext } from "@telorun/sdk";
 
 export const schema = Type.Object({
-  metadata: Type.Record(Type.String(), Type.String()),
+  metadata: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean()])),
   with: Type.Optional(
     Type.Array(
       Type.Object(
