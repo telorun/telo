@@ -1,15 +1,11 @@
-import { ResourceContext } from "./resource-context.js";
+import type { ResourceContext } from "./resource-context.js";
+import type { Invokable } from "./capabilities/invokable.js";
+import type { Runnable } from "./capabilities/runnable.js";
 
-export type ResourceInstance = {
-  init?(ctx?: ResourceContext): Promise<void>;
-  run?(): void | Promise<void>;
-  invoke?(input: any): any | Promise<any>;
-  teardown?(): void | Promise<void>;
-
-  /**
-   * Optional method for debugging/snapshots
-   * Called when taking runtime state snapshots
-   * Should return serializable state data specific to this resource
-   */
-  snapshot?(): Record<string, any> | Promise<Record<string, any>>;
-};
+export type ResourceInstance<TInput = Record<string, any>, TOutput = any> =
+  Partial<Invokable<TInput, TOutput>> &
+  Partial<Runnable> & {
+    init?(ctx?: ResourceContext): Promise<void>;
+    teardown?(): void | Promise<void>;
+    snapshot?(): Record<string, any> | Promise<Record<string, any>>;
+  };

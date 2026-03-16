@@ -106,7 +106,7 @@ export class ModuleContext extends EvaluationContext {
     return entry?.instance;
   }
 
-  getInvokable(name: string): Invokable {
+  getInvokable<TInput = Record<string, any>, TOutput = any>(name: string): Invokable<TInput, TOutput> {
     const instance = this.getInstance(name);
 
     if (
@@ -117,7 +117,7 @@ export class ModuleContext extends EvaluationContext {
     ) {
       throw new Error(`Resource '${name}' does not have an invoke() method.`);
     }
-    return instance as Invokable;
+    return instance as Invokable<TInput, TOutput>;
   }
 
   /**

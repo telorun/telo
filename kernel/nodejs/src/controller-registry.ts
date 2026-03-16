@@ -130,16 +130,13 @@ export class ControllerRegistry {
     }
     // Ensure controller has schema from definition
     const definition = this.definitionsByKind.get(kind);
-    if (definition?.schema && !controller.schema) {
-      // Wrap controller to add schema without mutating the original
-      const wrappedController: ControllerInstance = {
-        ...controller,
-        schema: definition.schema,
-      };
-      this.controllersByKind.set(kind, wrappedController);
-    } else {
-      this.controllersByKind.set(kind, controller);
-    }
+    const wrappedController: ControllerInstance = {
+      ...controller,
+      schema: controller.schema ?? definition?.schema,
+      inputSchema: controller.inputSchema ?? definition?.inputs,
+      outputSchema: controller.outputSchema ?? definition?.outputs,
+    };
+    this.controllersByKind.set(kind, wrappedController);
   }
 
   /**

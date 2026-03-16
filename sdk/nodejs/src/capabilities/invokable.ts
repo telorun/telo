@@ -1,3 +1,3 @@
-export interface Invokable {
-  invoke(inputs: Record<string, any>): Promise<any>;
+export interface Invokable<TInput = Record<string, any>, TOutput = any> {
+  invoke(inputs: TInput): Promise<TOutput>;
 }

@@ -38,7 +38,12 @@ export interface ResourceDefinition {
     name: string;
     module: string;
   };
-  schema: Record<string, any>; // JSON Schema
+  /** JSON Schema for the resource's compile-time configuration fields. */
+  schema: Record<string, any>;
+  /** JSON Schema for invoke() inputs. Used for runtime validation and static analysis. */
+  inputs?: Record<string, any>;
+  /** JSON Schema for invoke() outputs. Used for static analysis. */
+  outputs?: Record<string, any>;
   capabilities: ResourceCapability[];
   events?: string[];
   controllers?: Array<{
@@ -60,19 +65,31 @@ export interface ControllerDefinition {
 
 /**
  * Controller instance - runtime representation of a controller that handles resource instances.
+ *
+ * TResource - the typed shape of the resource manifest (compile-time config)
+ * TInput    - the typed shape of invoke() inputs (runtime)
+ * TOutput   - the typed shape of invoke() outputs (runtime)
  */
-export interface ControllerInstance {
+export interface ControllerInstance<
+  TResource extends ResourceManifest = ResourceManifest,
+  TInput = Record<string, any>,
+  TOutput = any,
+> {
   execute?(name: string, inputs: any, ctx: ExecContext): Promise<any>;
   compile?(
-    resource: ResourceManifest,
+    resource: TResource,
     ctx: ResourceContext,
   ): RuntimeResource | Promise<RuntimeResource>;
   register?(ctx: ControllerContext): void | Promise<void>;
   create?(
-    resource: ResourceManifest,
+    resource: TResource,
     ctx: ResourceContext,
-  ): ResourceInstance | null | Promise<ResourceInstance | null>;
+  ): ResourceInstance<TInput, TOutput> | null | Promise<ResourceInstance<TInput, TOutput> | null>;
   schema: any;
+  /** JSON Schema for invoke() inputs — used for runtime validation and static analysis. */
+  inputSchema?: Record<string, any>;
+  /** JSON Schema for invoke() outputs — used for documentation and static analysis. */
+  outputSchema?: Record<string, any>;
 }
 
 export interface Kernel {

@@ -5,6 +5,7 @@
     "module": "nodenext",
     "declaration": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["node"]
+    "types": ["node"],
+    "customConditions": ["source"]
   }
 }

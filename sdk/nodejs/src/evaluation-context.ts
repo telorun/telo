@@ -302,7 +302,7 @@ export class EvaluationContext {
           `Resource ${kind}.${name} does not have an invoke method`,
         );
       }
-      const outputs = await entry.instance.invoke(inputs);
+      const outputs = await entry.instance.invoke(inputs as any);
       await this.emit(`${kind}.${name}.Invoked`, { outputs });
       return outputs;
     }
