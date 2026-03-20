@@ -2,8 +2,7 @@ kind: Kernel.Definition
 metadata:
   name: Script
   module: Starlark
-capabilities:
-  - Runnable
+extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/starlark@>=1.1.0?local_path=./nodejs#script
 schema:

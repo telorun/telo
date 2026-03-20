@@ -1,5 +1,6 @@
-import type { CapabilityDefinition } from "@telorun/sdk";
+import type { ResourceDefinition } from "@telorun/sdk";
 
-export const invocable: CapabilityDefinition = {
-  name: "Invocable",
+export const invocable: ResourceDefinition = {
+  kind: "Kernel.Abstract",
+  metadata: { name: "Invocable", module: "Kernel" },
 };

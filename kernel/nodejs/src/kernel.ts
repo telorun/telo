@@ -1,28 +1,27 @@
 import {
-    AliasResolver,
-    DefinitionRegistry,
-    DiagnosticSeverity,
-    StaticAnalyzer,
-    type AnalysisContext,
+  AliasResolver,
+  DefinitionRegistry,
+  DiagnosticSeverity,
+  StaticAnalyzer,
+  type AnalysisContext,
 } from "@telorun/analyzer";
 import {
-    CapabilityDefinition,
-    ControllerContext,
-    Kernel as IKernel,
-    ModuleContext,
-    ResourceContext,
-    ResourceDefinition,
-    ResourceInstance,
-    ResourceManifest,
-    RuntimeError,
-    RuntimeEvent,
+  ControllerContext,
+  Kernel as IKernel,
+  ModuleContext,
+  ResourceContext,
+  ResourceDefinition,
+  ResourceInstance,
+  ResourceManifest,
+  RuntimeError,
+  RuntimeEvent,
 } from "@telorun/sdk";
 import * as path from "path";
-import { runnable } from "./capabilities/executable.js";
 import { invocable } from "./capabilities/invokable.js";
 import { service } from "./capabilities/listener.js";
 import { mount } from "./capabilities/mount.js";
 import { provider } from "./capabilities/provider.js";
+import { runnable } from "./capabilities/runnable.js";
 import { template } from "./capabilities/template.js";
 import { typeCapability } from "./capabilities/type.js";
 import { ControllerRegistry } from "./controller-registry.js";
@@ -98,14 +97,6 @@ export class Kernel implements IKernel {
     this.analyzerDefs.register(definition);
   }
 
-  registerCapability(name: string): void {
-    this.controllers.registerCapability(name);
-  }
-
-  registerCapabilityDefinition(cap: CapabilityDefinition): void {
-    this.controllers.registerCapabilityDefinition(cap);
-  }
-
   getModuleContext(_moduleName: string): ModuleContext {
     return this.rootContext;
   }
@@ -131,14 +122,6 @@ export class Kernel implements IKernel {
     return { aliases: this.analyzerAliases, definitions: this.analyzerDefs };
   }
 
-  isCapabilityRegistered(name: string): boolean {
-    return this.controllers.isCapabilityRegistered(name);
-  }
-
-  getCapabilityDefinition(name: string): CapabilityDefinition | undefined {
-    return this.controllers.getCapabilityDefinition(name);
-  }
-
   /**
    * Load built-in Runtime definitions (e.g., Kernel.Module)
    * Also declares all known module namespaces upfront so that resources can be
@@ -150,19 +133,19 @@ export class Kernel implements IKernel {
     // "not yet populated" from a completely unknown module name.
     this.rootContext.registerImport("Kernel", "Kernel", []); // built-ins, unrestricted
 
-    // Register built-in capabilities as TypeScript objects (no YAML needed)
-    this.controllers.registerCapabilityDefinition(template);
-    this.controllers.registerCapabilityDefinition(provider);
-    this.controllers.registerCapabilityDefinition(invocable);
-    this.controllers.registerCapabilityDefinition(service);
-    this.controllers.registerCapabilityDefinition(mount);
-    this.controllers.registerCapabilityDefinition(typeCapability);
-    this.controllers.registerCapabilityDefinition(runnable);
+    // Register built-in abstract definitions
+    this.controllers.registerDefinition(template);
+    this.controllers.registerDefinition(provider);
+    this.controllers.registerDefinition(invocable);
+    this.controllers.registerDefinition(service);
+    this.controllers.registerDefinition(mount);
+    this.controllers.registerDefinition(typeCapability);
+    this.controllers.registerDefinition(runnable);
 
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
       metadata: { name: "Definition", module: "Kernel" },
-      capabilities: ["Template"],
+      extends: "Kernel.Template",
       schema: { type: "object" },
     });
     this.controllers.registerController(
@@ -172,7 +155,7 @@ export class Kernel implements IKernel {
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
       metadata: { name: "Module", module: "Kernel" },
-      capabilities: ["Template"],
+      extends: "Kernel.Template",
       schema: { type: "object" },
     });
     this.controllers.registerController(
@@ -182,22 +165,12 @@ export class Kernel implements IKernel {
     this.controllers.registerDefinition({
       kind: "Kernel.Definition",
       metadata: { name: "Import", module: "Kernel" },
-      capabilities: ["Template"],
+      extends: "Kernel.Template",
       schema: { type: "object" },
     });
     this.controllers.registerController(
       "Kernel.Import",
       await import("./controllers/module/import-controller.js"),
-    );
-    this.controllers.registerDefinition({
-      kind: "Kernel.Definition",
-      metadata: { name: "Capability", module: "Kernel" },
-      capabilities: ["Template"],
-      schema: { type: "object" },
-    });
-    this.controllers.registerController(
-      "Kernel.Capability",
-      await import("./controllers/capability/capability-controller.js"),
     );
   }
 
@@ -423,15 +396,21 @@ export class Kernel implements IKernel {
       throw new Error(`No schema defined for ${kind} controller`);
     }
 
-    // Run capability onManifest hooks — expands and transforms the manifest
-    // before it reaches the controller (resolves the FIXME in evaluation-context.ts)
+    // Resolve expand paths from the parent base definition and the definition itself
     const definition = this.controllers.getDefinition(resolvedKind);
+    const parentDef = definition?.extends
+      ? this.controllers.getDefinition(definition.extends)
+      : undefined;
+    const compile = [...(parentDef?.expand?.compile ?? []), ...(definition?.expand?.compile ?? [])];
+    const runtime = [...(parentDef?.expand?.runtime ?? []), ...(definition?.expand?.runtime ?? [])];
+
     let processedResource = resource;
-    for (const capName of definition?.capabilities ?? []) {
-      const cap = this.controllers.getCapabilityDefinition(capName);
-      if (cap?.onManifest) {
-        processedResource = await cap.onManifest(processedResource, evalContext);
-      }
+    if (compile.length) {
+      processedResource = evalContext.expandPaths(
+        processedResource as Record<string, unknown>,
+        compile,
+        runtime,
+      ) as ResourceManifest;
     }
 
     try {
@@ -447,47 +426,16 @@ export class Kernel implements IKernel {
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 
-    const wrapped = this.wrapWithCapabilityLifecycles(
-      instance,
-      definition?.capabilities ?? [],
-      ctx,
-    );
-    return { instance: wrapped, ctx };
-  }
+    if (!runtime.length) return { instance, ctx };
 
-  private wrapWithCapabilityLifecycles(
-    instance: ResourceInstance,
-    capabilities: string[],
-    ctx: ResourceContext,
-  ): ResourceInstance {
-    const initHooks = capabilities
-      .map((name) => this.controllers.getCapabilityDefinition(name)?.onInit)
-      .filter((h): h is NonNullable<typeof h> => !!h);
-    const invokeHooks = capabilities
-      .map((name) => this.controllers.getCapabilityDefinition(name)?.onInvoke)
-      .filter((h): h is NonNullable<typeof h> => !!h);
-
-    if (initHooks.length === 0 && invokeHooks.length === 0) return instance;
-
-    return {
+    const wrapped: ResourceInstance = {
       ...instance,
-      ...(initHooks.length > 0 && {
-        init: async (initCtx?: ResourceContext) => {
-          for (const hook of initHooks) {
-            await hook(instance, initCtx ?? ctx);
-          }
-        },
-      }),
-      ...(invokeHooks.length > 0 && {
-        invoke: async (inputs: any) => {
-          let result = inputs;
-          for (const hook of invokeHooks) {
-            result = await hook(instance, result, ctx);
-          }
-          return result;
-        },
-      }),
+      invoke: async (inputs: any) => {
+        const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
+        return instance.invoke!(expanded);
+      },
     };
+    return { instance: wrapped, ctx };
   }
 
   /**

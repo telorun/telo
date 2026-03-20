@@ -37,9 +37,6 @@ export interface ResourceContext extends ControllerContext {
   registerController(moduleName: string, kindName: string, controllerInstance: any): Promise<void>;
   registerDefinition(definition: any): void;
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;
-  registerCapability(name: string): void;
-  isCapabilityRegistered(name: string): boolean;
-  getCapabilityDefinition(name: string): import("./types.js").CapabilityDefinition | undefined;
   teardownResource(kind: string, name: string): Promise<void>;
   moduleContext: ModuleContext;
   stdin: NodeJS.ReadableStream;

@@ -8,8 +8,7 @@ kind: Kernel.Definition
 metadata:
   name: Connection
   module: Sql
-capabilities:
-  - Provider
+extends: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-connection
 schema:
@@ -62,8 +61,7 @@ kind: Kernel.Definition
 metadata:
   name: Query
   module: Sql
-capabilities:
-  - Invocable
+extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-query
 schema:
@@ -89,8 +87,7 @@ kind: Kernel.Definition
 metadata:
   name: Exec
   module: Sql
-capabilities:
-  - Invocable
+extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-exec
 schema:
@@ -116,8 +113,7 @@ kind: Kernel.Definition
 metadata:
   name: Transaction
   module: Sql
-capabilities:
-  - Invocable
+extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-transaction
 schema:

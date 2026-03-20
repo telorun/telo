@@ -8,8 +8,7 @@ kind: Kernel.Definition
 metadata:
   name: Suite
   module: Benchmark
-capabilities:
-  - Runnable
+extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/benchmark@>=0.1.0?local_path=./nodejs#suite
 schema:

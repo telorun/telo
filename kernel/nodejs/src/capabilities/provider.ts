@@ -1,8 +1,9 @@
-import { createCapability } from "@telorun/sdk";
+import type { ResourceDefinition } from "@telorun/sdk";
 
-export const provider = createCapability({
-  name: "Provider",
+export const provider: ResourceDefinition = {
+  kind: "Kernel.Abstract",
+  metadata: { name: "Provider", module: "Kernel" },
   expand: {
     compile: ["**"],
   },
-});
+};

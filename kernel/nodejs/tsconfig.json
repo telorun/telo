@@ -17,11 +17,5 @@
     "customConditions": ["source"]
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/module-loader.ts",
-    "src/module-manifest-loader.ts",
-    "src/module-bootstrap.ts"
-  ]
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,5 +1,4 @@
 import {
-  CapabilityDefinition,
   EvaluationContext,
   ModuleContext,
   NoopValidator,
@@ -158,18 +157,6 @@ export class ResourceContextImpl implements ResourceContext {
 
   registerDefinition(def: any) {
     this.kernel.registerResourceDefinition(def);
-  }
-
-  registerCapability(name: string): void {
-    this.kernel.registerCapability(name);
-  }
-
-  isCapabilityRegistered(name: string): boolean {
-    return this.kernel.isCapabilityRegistered(name);
-  }
-
-  getCapabilityDefinition(name: string): CapabilityDefinition | undefined {
-    return this.kernel.getCapabilityDefinition(name);
   }
 
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {

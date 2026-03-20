@@ -8,7 +8,7 @@ kind: Kernel.Definition
 metadata:
   name: Read
   module: SqlRepository
-capabilities: [Invocable]
+extends: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -30,7 +30,7 @@ kind: Kernel.Definition
 metadata:
   name: Create
   module: SqlRepository
-capabilities: [Invocable]
+extends: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -52,7 +52,7 @@ kind: Kernel.Definition
 metadata:
   name: Delete
   module: SqlRepository
-capabilities: [Invocable]
+extends: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]

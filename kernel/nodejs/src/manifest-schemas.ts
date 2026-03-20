@@ -21,14 +21,24 @@ export const ResourceDefinitionSchema = Type.Object(
       },
       { additionalProperties: true },
     ),
-    schema: Type.Object({}, { additionalProperties: true }),
+    schema: Type.Optional(Type.Object({}, { additionalProperties: true })),
     inputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
     outputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
-    contexts: Type.Optional(Type.Array(Type.Object({
-      scope: Type.String(),
-      schema: Type.Object({}, { additionalProperties: true }),
-    }))),
-    capabilities: Type.Array(Type.String(), { minItems: 1 }),
+    contexts: Type.Optional(
+      Type.Array(
+        Type.Object({
+          scope: Type.String(),
+          schema: Type.Object({}, { additionalProperties: true }),
+        }),
+      ),
+    ),
+    extends: Type.Optional(Type.String()),
+    expand: Type.Optional(
+      Type.Object({
+        compile: Type.Optional(Type.Array(Type.String())),
+        runtime: Type.Optional(Type.Array(Type.String())),
+      }),
+    ),
     events: Type.Optional(Type.Array(Type.String())),
     controllers: Type.Optional(Type.Array(Type.String())),
   },

@@ -1,5 +1,4 @@
 export * from "./capabilities/invokable.js";
-export * from "./capability-definition.js";
 export * from "./capabilities/provider.js";
 export * from "./capabilities/runnable.js";
 export * from "./context-provider.js";

@@ -53,8 +53,7 @@ export class StaticAnalyzer {
       if (
         m.kind === "Kernel.Definition" ||
         m.kind === "Kernel.Module" ||
-        m.kind === "Kernel.Import" ||
-        m.kind === "Kernel.Capability"
+        m.kind === "Kernel.Import"
       ) {
         continue;
       }

@@ -8,8 +8,7 @@ kind: Kernel.Definition
 metadata:
   name: Job
   module: Pipeline
-capabilities:
-  - Runnable
+extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/pipeline@>=1.1.0?local_path=./nodejs#job
 schema:

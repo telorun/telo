@@ -7,8 +7,7 @@ kind: "Kernel.Definition"
 metadata:
   name: "Client"
   module: "Http"
-capabilities:
-  - Provider
+extends: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/http-client@>=0.2.0?local_path=./nodejs#http-client
 schema:
@@ -36,8 +35,7 @@ kind: "Kernel.Definition"
 metadata:
   name: "Request"
   module: "Http"
-capabilities:
-  - Invocable
+extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@>=0.2.0?local_path=./nodejs#http-request
 schema:

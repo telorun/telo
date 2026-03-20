@@ -1,5 +1,6 @@
-import type { CapabilityDefinition } from "@telorun/sdk";
+import type { ResourceDefinition } from "@telorun/sdk";
 
-export const mount: CapabilityDefinition = {
-  name: "Mount",
+export const mount: ResourceDefinition = {
+  kind: "Kernel.Abstract",
+  metadata: { name: "Mount", module: "Kernel" },
 };

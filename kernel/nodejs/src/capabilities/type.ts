@@ -1,5 +1,6 @@
-import type { CapabilityDefinition } from "@telorun/sdk";
+import type { ResourceDefinition } from "@telorun/sdk";
 
-export const typeCapability: CapabilityDefinition = {
-  name: "Type",
+export const typeCapability: ResourceDefinition = {
+  kind: "Kernel.Abstract",
+  metadata: { name: "Type", module: "Kernel" },
 };

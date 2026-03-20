@@ -1,5 +1,4 @@
 import { ControllerContext } from "./controller-context.js";
-import { ModuleContext } from "./module-context.js";
 import { ResourceContext } from "./resource-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
@@ -13,23 +12,6 @@ export interface KernelContext {
 export interface ExecContext {
   execute(urn: string, input: any): Promise<any>;
   [key: string]: any;
-}
-
-export type ResourceCapability = string;
-
-export interface CapabilityDefinition {
-  name: string;
-  expand?: {
-    /** Dot-paths expanded strictly at creation time. '**' = entire manifest.
-     *  Paths also in `runtime` are excluded here (runtime takes precedence). */
-    compile?: string[];
-    /** Dot-paths expanded strictly at invoke time with invocation context. */
-    runtime?: string[];
-  };
-  onDefinition?(definition: ResourceDefinition, ctx: ResourceContext): void | Promise<void>;
-  onManifest?(manifest: ResourceManifest, ctx: ModuleContext): ResourceManifest | Promise<ResourceManifest>;
-  onInit?(instance: ResourceInstance, ctx: ResourceContext): Promise<void>;
-  onInvoke?(instance: ResourceInstance, inputs: any, ctx: ResourceContext): Promise<any>;
 }
 
 export interface InvocationContext {
@@ -48,7 +30,7 @@ export interface ResourceDefinition {
     module: string;
   };
   /** JSON Schema for the resource's compile-time configuration fields. */
-  schema: Record<string, any>;
+  schema?: Record<string, any>;
   /** JSON Schema for invoke() inputs. Used for runtime validation and static analysis. */
   inputs?: Record<string, any>;
   /** JSON Schema for invoke() outputs. Used for static analysis. */
@@ -56,7 +38,13 @@ export interface ResourceDefinition {
   /** Invocation context declarations — what each call site provides to invoked resources.
    *  Used for static analysis at bootstrap. */
   contexts?: InvocationContext[];
-  capabilities: ResourceCapability[];
+  extends?: string;
+  /** CEL expression paths expanded at compile time and/or runtime.
+   *  '**' expands the entire manifest. Inherited from the parent base definition. */
+  expand?: {
+    compile?: string[];
+    runtime?: string[];
+  };
   events?: string[];
   controllers?: Array<{
     runtime: string;
@@ -88,10 +76,7 @@ export interface ControllerInstance<
   TOutput = any,
 > {
   execute?(name: string, inputs: any, ctx: ExecContext): Promise<any>;
-  compile?(
-    resource: TResource,
-    ctx: ResourceContext,
-  ): RuntimeResource | Promise<RuntimeResource>;
+  compile?(resource: TResource, ctx: ResourceContext): RuntimeResource | Promise<RuntimeResource>;
   register?(ctx: ControllerContext): void | Promise<void>;
   create?(
     resource: TResource,
