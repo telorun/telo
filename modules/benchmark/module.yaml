@@ -1,13 +1,13 @@
 kind: Kernel.Module
 metadata:
-  name: Benchmark
+  name: benchmark
+  namespace: std
   version: 1.0.0
   description: Load benchmarking for any invocable Telo resource
 ---
 kind: Kernel.Definition
 metadata:
   name: Suite
-  module: Benchmark
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/benchmark@>=0.1.0?local_path=./nodejs#suite

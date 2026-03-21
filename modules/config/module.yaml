@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
   name: "Config"
+  namespace: std
   version: "0.1.0"
 include:
   - "env-variable-store.yaml"

@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
-  name: "Http"
+  name: "http-server"
+  namespace: std
   version: "1.1.0"
 include:
   - "http-server-api.yaml"

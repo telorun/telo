@@ -38,22 +38,6 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   }
   const targetModule: string = moduleManifest.metadata.name;
 
-  // Validate that every non-module manifest's metadata.module (when explicitly set)
-  // matches the target module name.  A mismatch means the author put the wrong module
-  // name in a resource's metadata, which would silently give it an empty context and
-  // produce a confusing CEL "Identifier not found" error at runtime.
-  for (const manifest of manifests) {
-    if (manifest.kind === "Kernel.Module") continue;
-    const declaredModule: string | undefined = manifest.metadata?.module;
-    if (declaredModule && declaredModule !== targetModule) {
-      throw new Error(
-        `Resource '${manifest.metadata?.name ?? "(unnamed)"}' (kind: ${manifest.kind}) inside module '${targetModule}' ` +
-          `has metadata.module: '${declaredModule}', but the module is named '${targetModule}'. ` +
-          `Update metadata.module to '${targetModule}'.`,
-      );
-    }
-  }
-
   // Validate required inputs before injecting.
   validateRequiredInputs(moduleManifest.variables ?? {}, resource.variables ?? {}, "variables");
   validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");

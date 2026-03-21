@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
   name: s3
+  namespace: std
   version: 1.0.0
 secrets:
   accessKeyId:
@@ -17,7 +18,6 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: Bucket
-  module: s3
 extends: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-bucket
@@ -37,7 +37,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: List
-  module: s3
 extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-list

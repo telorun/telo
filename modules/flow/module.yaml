@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
-  name: Flow
+  name: flow
+  namespace: std
   version: 1.1.0
 exports:
   kinds:
@@ -9,7 +10,6 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: Steps
-  module: Flow
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/flow@>=1.1.0?local_path=./nodejs#flow

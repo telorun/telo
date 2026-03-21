@@ -1,13 +1,13 @@
 kind: Kernel.Module
 metadata:
-  name: SqlRepository
+  name: sql-repository
+  namespace: std
   version: 0.1.0
   description: Named CRUD handlers that generate SQL from domain operations
 ---
 kind: Kernel.Definition
 metadata:
   name: Read
-  module: SqlRepository
 extends: Kernel.Invocable
 schema:
   type: object
@@ -29,7 +29,6 @@ invoke: "${{ self.name }}-query"
 kind: Kernel.Definition
 metadata:
   name: Create
-  module: SqlRepository
 extends: Kernel.Invocable
 schema:
   type: object
@@ -51,7 +50,6 @@ invoke: "${{ self.name }}-exec"
 kind: Kernel.Definition
 metadata:
   name: Delete
-  module: SqlRepository
 extends: Kernel.Invocable
 schema:
   type: object

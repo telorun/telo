@@ -1,13 +1,13 @@
 kind: Kernel.Module
 metadata:
-  name: Sql
+  name: sql
+  namespace: std
   version: 0.1.0
   description: SQL database access — PostgreSQL and SQLite
 ---
 kind: Kernel.Definition
 metadata:
   name: Connection
-  module: Sql
 extends: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-connection
@@ -60,7 +60,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: Query
-  module: Sql
 extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-query
@@ -86,7 +85,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: Exec
-  module: Sql
 extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-exec
@@ -112,7 +110,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: Transaction
-  module: Sql
 extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-transaction

@@ -1,7 +1,6 @@
 kind: "Kernel.Definition"
 metadata:
   name: "Provider"
-  module: "Tracing"
 extends: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#provider

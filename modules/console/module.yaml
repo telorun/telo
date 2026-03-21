@@ -1,12 +1,12 @@
 kind: Kernel.Module
 metadata:
-  name: Console
+  name: console
+  namespace: std
   version: 1.1.0
 ---
 kind: Kernel.Definition
 metadata:
   name: WriteLine
-  module: Console
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#writeline
@@ -20,7 +20,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: ReadLine
-  module: Console
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#readline

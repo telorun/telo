@@ -1,7 +1,6 @@
 kind: "Kernel.Definition"
 metadata:
   name: "Api"
-  module: "Http"
 extends: Kernel.Mount
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api

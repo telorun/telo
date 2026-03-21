@@ -1,13 +1,13 @@
 kind: Kernel.Module
 metadata:
-  name: Pipeline
+  name: pipeline
+  namespace: std
   version: 0.2.0
   description: Orchestration framework using inline resource execution
 ---
 kind: Kernel.Definition
 metadata:
   name: Job
-  module: Pipeline
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/pipeline@>=1.1.0?local_path=./nodejs#job

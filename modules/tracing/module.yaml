@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
-  name: Tracing
+  name: tracing
+  namespace: std
   version: 1.0.0
 definitions:
   - tracing.yaml

@@ -57,7 +57,13 @@ export class Loader {
       }
     }
 
-    const moduleManifest = resolved.find((m) => m.kind === "Kernel.Module");
+    const moduleManifests = resolved.filter((m) => m.kind === "Kernel.Module");
+    if (moduleManifests.length > 1) {
+      throw new Error(
+        `File '${source}' contains ${moduleManifests.length} Kernel.Module declarations. Maximum one is allowed.`,
+      );
+    }
+    const moduleManifest = moduleManifests[0];
     const moduleName = moduleManifest?.metadata?.name as string | undefined;
     if (moduleName) {
       for (const manifest of resolved) {

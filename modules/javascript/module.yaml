@@ -1,12 +1,12 @@
 kind: Kernel.Module
 metadata:
-  name: "JavaScript"
+  name: "javascript"
+  namespace: std
   version: "0.2.0"
 ---
 kind: "Kernel.Definition"
 metadata:
   name: "Script"
-  module: "JavaScript"
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/javascript@>=0.2.0?local_path=./nodejs#script

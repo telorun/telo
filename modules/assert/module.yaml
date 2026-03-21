@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
-  name: Assert
+  name: assert
+  namespace: std
   version: 1.1.0
   description: Assertion and value verification for testing
 exports:
@@ -12,7 +13,6 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: ModuleContext
-  module: Assert
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/assert@1.1.0?local_path=./nodejs#module-context
@@ -32,7 +32,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: Schema
-  module: Assert
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#schema
@@ -55,7 +54,6 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: Events
-  module: Assert
 extends: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#events

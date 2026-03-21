@@ -1,6 +1,7 @@
 kind: Kernel.Module
 metadata:
-  name: Data
+  name: data
+  namespace: std
   version: "1.0.0"
 include:
   - "./type.yaml"

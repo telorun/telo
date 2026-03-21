@@ -1,7 +1,8 @@
 kind: Kernel.Module
 metadata:
   version: 0.2.0
-  name: Starlark
+  name: starlark
+  namespace: std
   description: Execute Starlark code within workflows
 include:
   - ./script.yaml
