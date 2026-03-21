@@ -1,5 +1,6 @@
 import { celEnvironment } from "./cel-environment.js";
 import type { ModuleContext } from "./module-context.js";
+import type { ScopeContext, ScopeHandle } from "./ref.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeError } from "./types.js";
@@ -29,6 +30,20 @@ export type InstanceFactory = (
   moduleContext: ModuleContext,
   resource: ResourceManifest,
 ) => Promise<CreatedResource | null>;
+
+/**
+ * Hook called after controller.create() and before controller.init() for each resource.
+ * Implementations (e.g. the kernel) use this to inject live instances into reference
+ * fields of the resource config before the controller sees them in init().
+ *
+ * @param resource  The resource manifest whose config fields may be mutated in-place.
+ * @param getInstance  Looks up an already-initialized instance by resource name.
+ *                     Returns undefined when the named resource is not yet initialized.
+ */
+export type PreInitHook = (
+  resource: ResourceManifest,
+  getInstance: (name: string) => ResourceInstance | undefined,
+) => void;
 
 /** Canonical key for a resource instance: "<module>.<kind>.<name>" */
 export function resourceKey(r: ResourceManifest): string {
@@ -85,6 +100,12 @@ export class EvaluationContext {
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
 
+  /**
+   * Optional hook called between create() and init() for each resource.
+   * Set by the kernel to inject live instances into reference fields.
+   */
+  preInitHook?: PreInitHook;
+
   constructor(
     readonly source: string,
     context: Record<string, unknown>,
@@ -114,6 +135,21 @@ export class EvaluationContext {
   }
 
   /**
+   * Reorder pending resources to match the given name sequence (topo order from Phase 4).
+   * Resources not present in `names` are left at the end in their original order.
+   * Call before initializeResources() so the create/init sub-phases run in dependency order,
+   * guaranteeing that Phase 5 injection always finds initialized dependencies.
+   */
+  setInitOrder(names: string[]): void {
+    const rank = new Map(names.map((n, i) => [n, i]));
+    this.pendingResources.sort((a, b) => {
+      const ra = rank.get(a.metadata.name as string) ?? Infinity;
+      const rb = rank.get(b.metadata.name as string) ?? Infinity;
+      return ra - rb;
+    });
+  }
+
+  /**
    * Queue a resource manifest for initialization on this context.
    */
   registerManifest(resource: ResourceManifest): void {
@@ -138,6 +174,11 @@ export class EvaluationContext {
   spawnChild<T extends EvaluationContext>(child: T): T {
     child.parent = this;
     this.children.push(child);
+    // Propagate injection hook so all child contexts (module imports, scopes) participate
+    // in Phase 5 injection. createScopeHandle overrides this with an extended version.
+    if (this.preInitHook && !child.preInitHook) {
+      child.preInitHook = this.preInitHook;
+    }
     return child;
   }
 
@@ -197,6 +238,9 @@ export class EvaluationContext {
       for (const [name, { resource, instance, ctx }] of [...this.createdInstances]) {
         if (this.resourceInstances.has(name)) continue;
         try {
+          if (this.preInitHook) {
+            this.preInitHook(resource, (n) => this.resourceInstances.get(n)?.instance);
+          }
           if (instance.init) await instance.init(ctx);
           if (instance.snapshot) {
             const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
@@ -254,6 +298,67 @@ export class EvaluationContext {
       // they remain the Kernel's responsibility.
       child.teardownResources();
     }
+  }
+
+  /**
+   * Returns a ScopeHandle that initializes `manifests` in a fresh child context each time
+   * `run()` is called, executes the callback with a ScopeContext, and tears down when done.
+   *
+   * The child inherits the parent's preInitHook (if any), extended so that `getInstance`
+   * also checks the parent's already-initialized singleton instances. This lets scoped
+   * resources hold x-telo-ref slots pointing to outer resources — those deps are already
+   * live when the scope opens.
+   */
+  createScopeHandle(manifests: ResourceManifest[]): ScopeHandle {
+    const parent = this;
+    return {
+      async run<T>(fn: (scope: ScopeContext) => Promise<T>): Promise<T> {
+        const child = parent.spawnChild(
+          new EvaluationContext(
+            parent.source,
+            parent._context,
+            parent._createInstance,
+            parent._secretValues,
+            parent.emit,
+          ),
+        );
+
+        // Propagate injection hook: extend getInstance to also resolve parent singleton instances.
+        if (parent.preInitHook) {
+          const parentHook = parent.preInitHook;
+          child.preInitHook = (resource, childGetInstance) => {
+            parentHook(
+              resource,
+              (name) => childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
+            );
+          };
+        }
+
+        try {
+          for (const manifest of manifests) {
+            child.registerManifest(manifest);
+          }
+          await child.initializeResources();
+          const scope: ScopeContext = {
+            getInstance(name: string): ResourceInstance {
+              const childEntry = child.resourceInstances.get(name);
+              if (childEntry) return childEntry.instance;
+              const parentEntry = parent.resourceInstances.get(name);
+              if (parentEntry) return parentEntry.instance;
+              throw new RuntimeError(
+                "ERR_SCOPE_RESOURCE_NOT_FOUND",
+                `Resource '${name}' not found in scope or outer context. Available scoped: ${[...child.resourceInstances.keys()].join(", ")}`,
+              );
+            },
+          };
+          return await fn(scope);
+        } finally {
+          await child.teardownResources();
+          const idx = parent.children.indexOf(child);
+          if (idx >= 0) parent.children.splice(idx, 1);
+        }
+      },
+    };
   }
 
   /**

@@ -3,6 +3,12 @@ import {
   DefinitionRegistry,
   DiagnosticSeverity,
   StaticAnalyzer,
+  buildDependencyGraph,
+  formatCycle,
+  isRefEntry,
+  isScopeEntry,
+  normalizeInlineResources,
+  validateReferences,
   type AnalysisContext,
 } from "@telorun/analyzer";
 import {
@@ -56,6 +62,7 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private readonly analyzerDefs = new DefinitionRegistry();
   private readonly analyzerAliases = new AliasResolver();
+  private staticManifests: ResourceManifest[] = [];
 
   constructor() {
     this.setupEventStreaming();
@@ -190,9 +197,27 @@ export class Kernel implements IKernel {
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
 
+    // Phase 5: attach injection hook — fires between create() and init() for every resource
+    this.rootContext.preInitHook = (resource, getInstance) =>
+      this._injectDependencies(resource, getInstance);
+
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
     const staticManifests = await this.loader.loadManifests(runtimeYamlPath);
+    this.staticManifests = staticManifests;
+
+    // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
+    // Kernel built-ins ("kernel" → "Kernel") are auto-registered when Kernel.Abstract
+    // definitions are registered in loadBuiltinDefinitions() above.
+    for (const m of staticManifests) {
+      if (m.kind === "Kernel.Module" && m.metadata?.name && m.metadata?.namespace) {
+        this.analyzerDefs.registerModuleIdentity(
+          m.metadata.namespace as string,
+          m.metadata.name as string,
+        );
+      }
+    }
+
     const diagnostics = new StaticAnalyzer().analyze(
       staticManifests,
       {},
@@ -211,7 +236,18 @@ export class Kernel implements IKernel {
       { env: process.env },
     );
 
-    for (const manifest of allManifests) {
+    // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots
+    // into first-class named manifests and replace them in-place with {kind, name} references.
+    // Update staticManifests so Phase 3 (validateReferences) and Phase 4 (DAG) see
+    // the same normalized structure.
+    const normalizedManifests = normalizeInlineResources(
+      allManifests,
+      this.analyzerDefs,
+      this.analyzerAliases,
+    );
+    this.staticManifests = normalizedManifests;
+
+    for (const manifest of normalizedManifests) {
       if (manifest.kind === "Kernel.Module") {
         this.rootContext.setSecrets(manifest.secrets ?? {});
         this.rootContext.setVariables(manifest.variables ?? {});
@@ -241,6 +277,28 @@ export class Kernel implements IKernel {
       if (controller?.register) {
         await controller.register(this.createControllerContext(`controller:${kind}`));
       }
+    }
+
+    // Phase 3: reference validation — kind and resolution checks
+    const refDiagnostics = validateReferences(this.staticManifests, this.getAnalysisContext());
+    const refErrors = refDiagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+    if (refErrors.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        refErrors.map((d) => d.message).join("\n"),
+      );
+    }
+
+    // Phase 4: dependency graph — cycle detection before any resource is initialized
+    const graph = buildDependencyGraph(this.staticManifests, this.analyzerDefs, this.analyzerAliases);
+    if (graph.cycle) {
+      throw new RuntimeError("ERR_CIRCULAR_DEPENDENCY", formatCycle(graph.cycle));
+    }
+
+    // Phase 5: sort pending resources into topo order so injection always finds
+    // initialized dependencies, then run the init loop.
+    if (graph.order) {
+      this.rootContext.setInitOrder(graph.order.map((n) => n.name));
     }
 
     // Initialize resources
@@ -439,6 +497,47 @@ export class Kernel implements IKernel {
   }
 
   /**
+   * Phase 5 — Inject live instances into reference fields of a resource config.
+   *
+   * Called between create() and init() for every resource. Walks the definition's
+   * field map and replaces each {kind, name} reference value (outside scope visibility
+   * paths) with the live ResourceInstance returned by getInstance(name). Fields within
+   * scope paths are left as {kind, name} — the controller resolves them at runtime.
+   */
+  private _injectDependencies(
+    resource: ResourceManifest,
+    getInstance: (name: string) => ResourceInstance | undefined,
+  ): void {
+    const resolvedKind =
+      this.analyzerAliases.resolveKind(resource.kind) ?? resource.kind;
+    const fieldMap =
+      this.analyzerDefs.getFieldMap(resource.kind) ??
+      this.analyzerDefs.getFieldMap(resolvedKind);
+    if (!fieldMap) return;
+
+    for (const [fieldPath, entry] of fieldMap) {
+      if (isScopeEntry(entry)) {
+        // Replace the raw manifest array with a ScopeHandle the controller calls at runtime.
+        const val = (resource as Record<string, unknown>)[fieldPath];
+        if (Array.isArray(val)) {
+          (resource as Record<string, unknown>)[fieldPath] = this.rootContext.createScopeHandle(
+            val as ResourceManifest[],
+          );
+        }
+        continue;
+      }
+
+      if (!isRefEntry(entry)) continue;
+
+      // Inject outer (singleton) instances. injectAtPath is a no-op when getInstance
+      // returns undefined — that is the case for resources declared inside a scope field
+      // (they are not initialized at boot), so they correctly stay as {kind, name} for the
+      // controller to resolve at runtime via ScopeContext.getInstance().
+      injectAtPath(resource, fieldPath, getInstance);
+    }
+  }
+
+  /**
    * Enable event streaming to a file (JSONL format)
    */
   async enableEventStream(filePath: string): Promise<void> {
@@ -471,4 +570,59 @@ export class Kernel implements IKernel {
       return originalEmit(event, payload);
     };
   }
+}
+
+/**
+ * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal).
+ * For each leaf value that looks like a {kind, name} reference, calls getInstance(name)
+ * and replaces the value in-place with the returned live ResourceInstance.
+ * Values where getInstance returns undefined are left unchanged.
+ */
+function injectAtPath(
+  resource: ResourceManifest,
+  fieldPath: string,
+  getInstance: (name: string) => ResourceInstance | undefined,
+): void {
+  const parts = fieldPath.split(".");
+
+  function traverse(obj: unknown, partsLeft: string[]): void {
+    if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
+    const [head, ...rest] = partsLeft;
+    const isArr = head.endsWith("[]");
+    const key = isArr ? head.slice(0, -2) : head;
+    const container = obj as Record<string, unknown>;
+    const val = container[key];
+    if (val == null) return;
+
+    if (isArr) {
+      if (!Array.isArray(val)) return;
+      for (let i = 0; i < val.length; i++) {
+        const elem = val[i];
+        if (!elem || typeof elem !== "object") continue;
+        if (rest.length === 0) {
+          const ref = elem as Record<string, unknown>;
+          if (typeof ref.kind === "string" && typeof ref.name === "string") {
+            const instance = getInstance(ref.name);
+            if (instance) val[i] = instance;
+          }
+        } else {
+          traverse(elem, rest);
+        }
+      }
+    } else {
+      if (rest.length === 0) {
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+          const ref = val as Record<string, unknown>;
+          if (typeof ref.kind === "string" && typeof ref.name === "string") {
+            const instance = getInstance(ref.name);
+            if (instance) container[key] = instance;
+          }
+        }
+      } else {
+        traverse(val, rest);
+      }
+    }
+  }
+
+  traverse(resource, parts);
 }

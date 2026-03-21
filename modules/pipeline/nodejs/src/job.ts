@@ -1,34 +1,19 @@
 import { Static, Type } from "@sinclair/typebox";
-import type { ResourceContext } from "@telorun/sdk";
+import type { Injected, Invocable, KindRef, ResourceContext, ScopeContext, ScopeRef } from "@telorun/sdk";
 
 export const schema = Type.Object({
   metadata: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean()])),
-  with: Type.Optional(
-    Type.Array(
-      Type.Object(
-        {
-          kind: Type.String(),
-          name: Type.Optional(Type.String()),
-          metadata: Type.Optional(Type.Record(Type.String(), Type.String())),
-        },
-        { additionalProperties: true },
-      ),
-    ),
-  ),
+  with: Type.Optional(Type.Unsafe<ScopeRef>({ "x-telo-scope": "/steps" })),
   steps: Type.Array(
     Type.Object({
       name: Type.String(),
-      invoke: Type.Object({
-        kind: Type.String(),
-        name: Type.Optional(Type.String()),
-        metadata: Type.Optional(Type.Record(Type.String(), Type.String())),
-      }),
+      invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "kernel#Invocable" }),
       outputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
       inputs: Type.Record(Type.String(), Type.Any()),
     }),
   ),
 });
-type PipelineJobManifest = Static<typeof schema>;
+type PipelineJobManifest = Injected<Static<typeof schema>>;
 
 class PipelineJob {
   constructor(
@@ -36,42 +21,30 @@ class PipelineJob {
     public resource: PipelineJobManifest,
   ) {}
 
-  private resolvedInvokes: Array<{ kind: string; name: string }> = [];
-
-  async init() {
-    for (const step of this.resource.steps) {
-      const resolved = this.ctx.resolveChildren(step.invoke, step.name);
-      this.resolvedInvokes.push(resolved);
-    }
-  }
-
   async run() {
-    // const toCreate = this.resource.steps
-    //   .map((step) => step.invoke)
-    //   .filter((invoke) => Object.keys(invoke).length !== 2);
-    // console.log("toCreate", toCreate, this.resolvedInvokes);
-
-    await this.ctx.withManifests([...(this.resource.with ?? [])], async () => {
+    const scopeHandle = this.resource.with;
+    if (scopeHandle) {
+      await scopeHandle.run(async (scope) => {
+        await this.executeSteps(scope);
+      });
+    } else {
       await this.executeSteps();
-    });
+    }
   }
 
   async teardown() {}
 
-  private async executeSteps(): Promise<void> {
+  private async executeSteps(scope?: ScopeContext): Promise<void> {
     const context: any = {};
-    for (let i = 0; i < this.resource.steps.length; i++) {
-      const step = this.resource.steps[i];
-      const invoke = this.resolvedInvokes[i];
-
-      const result = await this.ctx.invoke(
-        invoke.kind,
-        invoke.name,
-        this.ctx.expandValue(step.inputs || {}, context),
-      );
-      context[step.name] = {
-        outputs: result,
-      };
+    for (const step of this.resource.steps) {
+      const raw = step.invoke as unknown;
+      // After Phase 5: outer resources are live instances; scoped resources remain {kind,name}
+      const invocable: Invocable =
+        raw && typeof (raw as any).invoke === "function"
+          ? (raw as Invocable)
+          : scope!.getInstance((raw as KindRef<Invocable>).name) as unknown as Invocable;
+      const result = await invocable.invoke(this.ctx.expandValue(step.inputs || {}, context));
+      context[step.name] = { outputs: result };
     }
   }
 }

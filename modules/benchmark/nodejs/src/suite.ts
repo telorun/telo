@@ -1,5 +1,5 @@
 import { Static, Type } from "@sinclair/typebox";
-import type { ResourceContext } from "@telorun/sdk";
+import type { Invocable, KindRef, ResourceContext } from "@telorun/sdk";
 
 const ThresholdEntry = Type.Object({
   scenario: Type.Optional(Type.String()),
@@ -13,7 +13,7 @@ const ScenarioEntry = Type.Object(
   {
     name: Type.String(),
     weight: Type.Optional(Type.Integer()),
-    invoke: Type.Object({ kind: Type.String() }, { additionalProperties: true }),
+    invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "kernel#Invocable" }),
     validate: Type.Optional(Type.String()),
   },
   { additionalProperties: true },

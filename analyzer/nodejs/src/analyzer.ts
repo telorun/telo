@@ -4,6 +4,7 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import { resolveScope } from "./scope-resolver.js";
 import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions, type AnalysisContext } from "./types.js";
+import { validateReferences } from "./validate-references.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -140,6 +141,9 @@ export class StaticAnalyzer {
         }
       }
     }
+
+    // Validate resource references (Phase 3)
+    diagnostics.push(...validateReferences(manifests, { aliases, definitions: registry }));
 
     return diagnostics;
   }

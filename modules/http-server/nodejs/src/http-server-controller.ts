@@ -1,6 +1,6 @@
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
-import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
+import type { Invocable, KindRef, ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
 import { dispatchResponse, HttpServerApi, ResponseEntry } from "./http-api-controller.js";
@@ -21,7 +21,7 @@ type HttpServerResource = RuntimeResource & {
     type?: string;
   }>;
   notFoundHandler?: {
-    invoke: { kind: string; name?: string; [key: string]: any };
+    invoke: KindRef<Invocable>;
     response?: ResponseEntry[];
   };
 };
@@ -202,7 +202,7 @@ export async function create(
     resolvedNotFoundHandler = {
       kind: resolved.kind,
       name: resolved.name,
-      inputs: resource.notFoundHandler.invoke.inputs ?? {},
+      inputs: (resource.notFoundHandler.invoke as any).inputs ?? {},
       response: resource.notFoundHandler.response,
     };
   }

@@ -1,4 +1,4 @@
-import type { ResourceContext } from "@telorun/sdk";
+import type { Invocable, KindRef, ResourceContext } from "@telorun/sdk";
 
 interface Flow {
   metadata: {
@@ -6,8 +6,8 @@ interface Flow {
     description?: string;
   };
   steps: Array<{
-    kind: string;
-    metadata: { name: string; module: string };
+    name: string;
+    invoke?: KindRef<Invocable>;
     outputs?: Record<string, string>; // variable name to JSON path in result
     inputs?: Record<string, any>; // input parameters for the step
   }>;
@@ -39,7 +39,7 @@ class Flow {
   private async executeSteps(): Promise<void> {
     const outputs: Record<string, any> = {};
     for (const step of this.resource.steps) {
-      const { kind, name, metadata } = step.invoke;
+      const { kind, name } = step.invoke;
       const input = this.ctx.expandValue(step.inputs || {}, { outputs });
       const result = await this.ctx.invoke(kind, name, input);
       outputs[name] = result;

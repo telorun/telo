@@ -15,28 +15,14 @@ schema:
   type: object
   properties:
     with:
-      type: array
-      description: Resources to create at pipeline start and teardown at pipeline end
-      items:
-        type: object
-        properties:
-          kind:
-            type: string
-            description: Resource kind (e.g., Http.Server, Database.Connect)
-        required:
-          - kind
+      x-telo-scope: /steps
+      description: Resources available during pipeline execution; torn down when done
     steps:
       type: array
       items:
         type: object
         properties:
           invoke:
-            type: object
-            properties:
-              kind:
-                type: string
-                description: Resource kind (e.g., Logic.JavaScript, HttpClient.Request)
-            required:
-              - kind
+            x-telo-ref: "kernel#Invocable"
   required:
     - steps
