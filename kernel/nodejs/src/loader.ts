@@ -1,5 +1,5 @@
 import { ResourceManifest, RuntimeResource } from "@telorun/sdk";
-import { Loader as BaseLoader } from "@telorun/analyzer";
+import { Loader as BaseLoader, precompileDoc } from "@telorun/analyzer";
 import * as path from "path";
 import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import type { ManifestSourceData } from "./manifest-adapters/manifest-adapter.js";
@@ -48,7 +48,7 @@ export class Loader extends BaseLoader {
       const file = await this.localAdapter.read(url);
       Loader.ensureProjectRoot(file.baseDir);
     }
-    return this.loadModule(url);
+    return this.loadModule(url, { compile: (doc) => precompileDoc(doc) });
   }
 
   private async processFile(

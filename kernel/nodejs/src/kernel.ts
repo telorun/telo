@@ -13,6 +13,7 @@ import {
 } from "@telorun/analyzer";
 import {
   ControllerContext,
+  isCompiledValue,
   Kernel as IKernel,
   ModuleContext,
   ResourceContext,
@@ -462,23 +463,22 @@ export class Kernel implements IKernel {
     const compile = [...(parentDef?.expand?.compile ?? []), ...(definition?.expand?.compile ?? [])];
     const runtime = [...(parentDef?.expand?.runtime ?? []), ...(definition?.expand?.runtime ?? [])];
 
-    let processedResource = resource;
-    if (compile.length) {
-      processedResource = evalContext.expandPaths(
-        processedResource as Record<string, unknown>,
-        compile,
-        runtime,
-      ) as ResourceManifest;
-    }
-
+    // Schema validation runs before CEL evaluation so it sees the original manifest
+    // shape. CompiledValue wrappers (from load-time precompilation) are stripped,
+    // restoring the pre-CEL string view that the schema expects.
     try {
-      this.sharedSchemaValidator.compile(controller.schema).validate(processedResource);
+      this.sharedSchemaValidator.compile(controller.schema).validate(stripCompiledValues(resource));
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
         `Resource does not match schema for kind ${kind}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+
+    // Expand compile-time CEL fields before passing to the controller.
+    const processedResource = compile.length
+      ? (evalContext.expandPaths(resource as Record<string, unknown>, compile, runtime) as ResourceManifest)
+      : resource;
 
     const ctx = this.createResourceContext(evalContext, processedResource);
     const instance = await controller.create(processedResource, ctx);
@@ -570,6 +570,22 @@ export class Kernel implements IKernel {
       return originalEmit(event, payload);
     };
   }
+}
+
+/** Replaces CompiledValue wrappers with "" for schema validation.
+ *  Template strings were raw strings in YAML before precompilation and passed
+ *  string-type checks. This preserves that behavior without evaluating expressions. */
+function stripCompiledValues(v: unknown): unknown {
+  if (isCompiledValue(v)) return "";
+  if (Array.isArray(v)) return v.map(stripCompiledValues);
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = stripCompiledValues(val);
+    }
+    return out;
+  }
+  return v;
 }
 
 /**

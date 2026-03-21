@@ -1,4 +1,5 @@
 export { StaticAnalyzer } from "./analyzer.js";
+export { precompileDoc } from "./precompile.js";
 export { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 export { validateReferences } from "./validate-references.js";
 export { normalizeInlineResources } from "./normalize-inline-resources.js";

@@ -1,10 +1,27 @@
 import type { ResourceManifest, ResourceDefinition } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
+import { celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { resolveScope } from "./scope-resolver.js";
 import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions, type AnalysisContext } from "./types.js";
 import { validateReferences } from "./validate-references.js";
+
+const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
+
+function walkCelExpressions(value: unknown, path: string, cb: (expr: string, path: string) => void): void {
+  if (typeof value === "string") {
+    for (const m of value.matchAll(TEMPLATE_REGEX)) {
+      cb(m[1].trim(), path);
+    }
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => walkCelExpressions(v, `${path}[${i}]`, cb));
+  } else if (value !== null && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      walkCelExpressions(v, path ? `${path}.${k}` : k, cb);
+    }
+  }
+}
 
 const SOURCE = "telo-analyzer";
 
@@ -140,6 +157,24 @@ export class StaticAnalyzer {
           }
         }
       }
+    }
+
+    // Validate CEL syntax in all manifests
+    for (const m of manifests) {
+      const resource = { kind: m.kind, name: m.metadata?.name as string };
+      walkCelExpressions(m, "", (expr, path) => {
+        try {
+          celEnvironment.parse(expr);
+        } catch (e) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "CEL_SYNTAX_ERROR",
+            source: SOURCE,
+            message: `CEL syntax error at ${path}: ${e instanceof Error ? e.message : String(e)}`,
+            data: { resource, path },
+          });
+        }
+      });
     }
 
     // Validate resource references (Phase 3)

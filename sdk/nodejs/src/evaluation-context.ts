@@ -1,4 +1,4 @@
-import { celEnvironment } from "./cel-environment.js";
+import { isCompiledValue } from "./compiled-value.js";
 import type { ModuleContext } from "./module-context.js";
 import type { ScopeContext, ScopeHandle } from "./ref.js";
 import { ResourceInstance } from "./resource-instance.js";
@@ -6,9 +6,6 @@ import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeError } from "./types.js";
 
 export type EmitEvent = (event: string, payload?: any) => void | Promise<void>;
-
-const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
-const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
 
 /** Four-stage resource lifecycle defined in resource-lifecycle.md */
 export type LifecycleState = "Pending" | "Validated" | "Initialized" | "Draining" | "Teardown";
@@ -50,18 +47,8 @@ export function resourceKey(r: ResourceManifest): string {
   return `${r.kind}.${r.metadata.name}`;
 }
 
-function redactSecrets(message: string, secretValues: Set<string>): string {
-  if (secretValues.size === 0) return message;
-  const sorted = Array.from(secretValues).sort((a, b) => b.length - a.length);
-  let result = message;
-  for (const secret of sorted) {
-    result = result.split(secret).join("[REDACTED]");
-  }
-  return result;
-}
-
 /**
- * Base class for all evaluation contexts. Owns CEL evaluation, template
+ * Base class for all evaluation contexts. Owns template
  * expansion, secrets redaction, and the generic resource lifecycle tree.
  *
  * Every EvaluationContext node can:
@@ -430,26 +417,12 @@ export class EvaluationContext {
   }
 
   /**
-   * Evaluate a single CEL expression string against the context.
-   * Secret values are redacted from any thrown error message.
-   */
-  evaluate(expression: string): unknown {
-    try {
-      return celEnvironment.evaluate(expression, this._context);
-    } catch (error) {
-      const raw = error instanceof Error ? error.message : String(error);
-      const safe = redactSecrets(raw, this._secretValues);
-      throw new Error(`CEL evaluation failed: "${expression}": ${safe}`);
-    }
-  }
-
-  /**
-   * Expand a value that may contain ${{ }} templates.
-   * Works recursively over strings, arrays, and objects.
+   * Expand a value that may contain precompiled ${{ }} templates.
+   * Works recursively over CompiledValues, arrays, and objects.
    */
   expand(value: unknown): unknown {
-    if (typeof value === "string") {
-      return this.expandString(value);
+    if (isCompiledValue(value)) {
+      return value.call(this._context);
     }
     if (Array.isArray(value)) {
       return value.map((entry) => this.expand(entry));
@@ -481,26 +454,7 @@ export class EvaluationContext {
     }
   }
 
-  private expandString(value: string): unknown {
-    if (!value.includes("${{")) {
-      return value;
-    }
-
-    const exact = value.match(EXACT_TEMPLATE_REGEX);
-    if (exact) {
-      return this.evaluate(exact[1]);
-    }
-
-    return value.replace(TEMPLATE_REGEX, (_match, expr: string) => {
-      const resolved = this.evaluate(expr);
-      if (resolved === null || resolved === undefined) {
-        return "";
-      }
-      return String(resolved);
-    });
-  }
-
-  /**
+/**
    * Expand specific dot-paths within an object. '**' expands the entire object.
    * Paths listed in excludePaths are left untouched (runtime takes precedence).
    * Always throws if an expression cannot be resolved.

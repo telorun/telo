@@ -20,6 +20,7 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
+    "@marcbachmann/cel-js": "^7.5.3",
     "@telorun/sdk": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",

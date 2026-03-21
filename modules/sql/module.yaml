@@ -77,7 +77,7 @@ schema:
       properties:
         sql:
           type: string
-          description: SQL query text; may contain ${{ }} templates
+          description: SQL query text; may contain CEL template expressions
         bindings:
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
@@ -102,7 +102,7 @@ schema:
       properties:
         sql:
           type: string
-          description: SQL statement text; may contain ${{ }} templates
+          description: SQL statement text; may contain CEL template expressions
         bindings:
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
@@ -127,4 +127,4 @@ schema:
       description: Invocable resource name to execute inside the transaction (Flow.Steps, Pipeline.Job, etc.)
     bindings:
       type: object
-      description: Forwarded to the steps resource at invoke time; may contain ${{ }} templates
+      description: Forwarded to the steps resource at invoke time; may contain CEL template expressions

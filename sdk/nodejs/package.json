@@ -19,9 +19,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.lib.json"
   },
-  "dependencies": {
-    "@marcbachmann/cel-js": "^7.5.3"
-  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"

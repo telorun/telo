@@ -17,6 +17,9 @@ importers:
 
   analyzer/nodejs:
     dependencies:
+      '@marcbachmann/cel-js':
+        specifier: ^7.5.3
+        version: 7.5.3
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
@@ -380,10 +383,6 @@ importers:
         version: 5.9.3
 
   sdk/nodejs:
-    dependencies:
-      '@marcbachmann/cel-js':
-        specifier: ^7.5.3
-        version: 7.5.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

@@ -1,3 +1,4 @@
+export * from "./compiled-value.js";
 export * from "./capabilities/invokable.js";
 export * from "./ref.js";
 export * from "./capabilities/provider.js";
