@@ -41,7 +41,7 @@ with:
 steps:
   - name: UseHelper
     inputs:
-      value: 5
+      sharedValue: "${{ resources.SharedHelper }}"
     invoke:
       kind: JavaScript.Script
       code: |
@@ -53,8 +53,6 @@ steps:
       outputSchema:
         result:
           type: number
-      inputs:
-        sharedValue: "${{ resources.SharedHelper }}"
 
   - name: VerifyResult
     inputs:

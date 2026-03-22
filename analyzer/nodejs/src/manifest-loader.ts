@@ -112,12 +112,14 @@ export class Loader {
       let imported: ResourceManifest[];
       try {
         imported = await this.loadModule(importUrl);
-      } catch {
-        continue;
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
+        throw e;
       }
       const importedModule = imported.find((im) => im.kind === "Kernel.Module");
       if (importedModule?.metadata?.name) {
-        (m as any).resolvedModuleName = importedModule.metadata.name as string;
+        m.metadata = { ...m.metadata, resolvedModuleName: importedModule.metadata.name as string };
       }
       for (const im of imported) {
         if (im.kind === "Kernel.Definition") importedDefs.push(im);

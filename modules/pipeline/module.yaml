@@ -23,6 +23,8 @@ schema:
         type: object
         properties:
           invoke:
-            x-telo-ref: "kernel#Invocable"
+            anyOf:
+              - x-telo-ref: "kernel#Invocable"
+              - x-telo-ref: "kernel#Runnable"
   required:
     - steps

@@ -5,7 +5,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 const SOURCE = "telo-analyzer";
-const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Import"]);
+const SYSTEM_KINDS = new Set(["Kernel.Definition"]);
 
 /**
  * Checks whether `kind` satisfies the ref constraint in `entry`.
@@ -28,11 +28,12 @@ function checkKind(
     if (!targetDef) return [];
     if (targetDef.kind === "Kernel.Abstract") {
       const implementing = registry.getByExtends(targetKind);
+      if (implementing.length === 0) return []; // partial context — no implementations loaded yet
       const implementingKinds = new Set(
         implementing.map((d) => `${d.metadata.module}.${d.metadata.name}`),
       );
       if (implementingKinds.has(resolved)) return [];
-      const options = [...implementingKinds].join(", ") || "none registered";
+      const options = [...implementingKinds].join(", ");
       errors.push(
         `'${kind}' does not implement '${targetKind}' (known implementations: ${options})`,
       );

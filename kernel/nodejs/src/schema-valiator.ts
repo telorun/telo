@@ -28,7 +28,7 @@ export class SchemaValidator {
   }
 
   compile(schema: any): DataValidator {
-    const validate = this.ajv.compile(
+    const normalized =
       "type" in schema && typeof schema.type === "string"
         ? schema
         : {
@@ -36,8 +36,19 @@ export class SchemaValidator {
             properties: schema,
             required: Object.keys(schema),
             additionalProperties: false,
-          },
-    );
+          };
+    const injected =
+      normalized.additionalProperties === false
+        ? {
+            ...normalized,
+            properties: {
+              kind: { type: "string" },
+              metadata: { type: "object" },
+              ...normalized.properties,
+            },
+          }
+        : normalized;
+    const validate = this.ajv.compile(injected);
 
     return {
       validate: (data: any) => {

@@ -2,6 +2,7 @@ import type { ResourceManifest, ResourceDefinition } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { resolveScope } from "./scope-resolver.js";
 import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions, type AnalysisContext } from "./types.js";
@@ -43,7 +44,7 @@ export class StaticAnalyzer {
         const exportedKinds: string[] = (m as any).exports?.kinds ?? [];
         if (alias && source) {
           const targetModule =
-            (m as any).resolvedModuleName ??
+            (m.metadata as any).resolvedModuleName ??
             source.split("/").filter(Boolean).pop() ??
             source;
           aliases.registerImport(alias, targetModule, exportedKinds);
@@ -58,17 +59,20 @@ export class StaticAnalyzer {
       }
     }
 
+    // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
+    const allManifests = normalizeInlineResources(manifests, registry, aliases);
+
     // Build a name→manifest map for looking up referenced resources
     const byName = new Map<string, ResourceManifest>();
-    for (const m of manifests) {
+    for (const m of allManifests) {
       if (m.metadata?.name) {
         byName.set(m.metadata.name as string, m);
       }
     }
 
     // Validate each non-definition, non-system resource
-    for (const m of manifests) {
-      if (m.kind === "Kernel.Definition" || m.kind === "Kernel.Import") {
+    for (const m of allManifests) {
+      if (m.kind === "Kernel.Definition") {
         continue;
       }
 
@@ -100,9 +104,21 @@ export class StaticAnalyzer {
         continue;
       }
 
-      // Validate resource config against definition schema
+      // Validate resource config against definition schema.
+      // `kind` and `metadata` are implicit on every resource — inject them so module
+      // authors don't have to repeat them when using additionalProperties: false.
       if (definition.schema) {
-        const issues = validateAgainstSchema(m, definition.schema);
+        const schema = definition.schema.additionalProperties === false
+          ? {
+              ...definition.schema,
+              properties: {
+                kind: { type: "string" },
+                metadata: { type: "object" },
+                ...definition.schema.properties,
+              },
+            }
+          : definition.schema;
+        const issues = validateAgainstSchema(m, schema);
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -156,7 +172,7 @@ export class StaticAnalyzer {
     }
 
     // Validate CEL syntax in all manifests
-    for (const m of manifests) {
+    for (const m of allManifests) {
       const resource = { kind: m.kind, name: m.metadata?.name as string };
       walkCelExpressions(m, "", (expr, path) => {
         try {
@@ -174,7 +190,7 @@ export class StaticAnalyzer {
     }
 
     // Validate resource references (Phase 3)
-    diagnostics.push(...validateReferences(manifests, { aliases, definitions: registry }));
+    diagnostics.push(...validateReferences(allManifests, { aliases, definitions: registry }));
 
     return diagnostics;
   }

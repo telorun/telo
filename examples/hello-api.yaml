@@ -1,6 +1,6 @@
 kind: Kernel.Module
 metadata:
-  name: Example
+  name: example
   version: 1.0.0
 targets:
   - ExampleServer
@@ -12,7 +12,7 @@ source: ../modules/http-server
 ---
 kind: Kernel.Import
 metadata:
-  name: JavaScript
+  name: JS
 source: ../modules/javascript
 ---
 kind: Http.Server
@@ -68,7 +68,7 @@ routes:
           greeting: "${{ result.message }}!"
           nice: "WOW"
 ---
-kind: JavaScript.Script
+kind: JS.Script
 metadata:
   name: SayHello
   module: Example

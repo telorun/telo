@@ -1,5 +1,12 @@
 import { Static, Type } from "@sinclair/typebox";
-import type { Injected, Invocable, KindRef, ResourceContext, ScopeContext, ScopeRef } from "@telorun/sdk";
+import type {
+  Injected,
+  Invocable,
+  KindRef,
+  ResourceContext,
+  ScopeContext,
+  ScopeRef,
+} from "@telorun/sdk";
 
 export const schema = Type.Object({
   metadata: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean()])),
@@ -7,7 +14,9 @@ export const schema = Type.Object({
   steps: Type.Array(
     Type.Object({
       name: Type.String(),
-      invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "kernel#Invocable" }),
+      invoke: Type.Unsafe<KindRef<Invocable>>({
+        anyOf: [{ "x-telo-ref": "kernel#Invocable" }, { "x-telo-ref": "kernel#Runnable" }],
+      }),
       outputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
       inputs: Type.Record(Type.String(), Type.Any()),
     }),
@@ -42,7 +51,7 @@ class PipelineJob {
       const invocable: Invocable =
         raw && typeof (raw as any).invoke === "function"
           ? (raw as Invocable)
-          : scope!.getInstance((raw as KindRef<Invocable>).name) as unknown as Invocable;
+          : (scope!.getInstance((raw as KindRef<Invocable>).name) as unknown as Invocable);
       const result = await invocable.invoke(this.ctx.expandValue(step.inputs || {}, context));
       context[step.name] = { outputs: result };
     }

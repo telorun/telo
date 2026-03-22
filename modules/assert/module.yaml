@@ -49,7 +49,7 @@ schema:
       description: Value to assert (can be any type or expression)
   required:
     - metadata
-    - assertions
+    - schema
 ---
 kind: Kernel.Definition
 metadata:

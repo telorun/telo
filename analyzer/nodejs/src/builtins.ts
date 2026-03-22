@@ -20,6 +20,28 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   },
   {
     kind: "Kernel.Definition",
+    metadata: { name: "Import", module: "Kernel" },
+    extends: "Kernel.Template",
+    schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string" },
+        metadata: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+          additionalProperties: true,
+        },
+        source: { type: "string" },
+        variables: { type: "object" },
+        secrets: { type: "object" },
+      },
+      required: ["metadata", "source"],
+      additionalProperties: false,
+    },
+  },
+  {
+    kind: "Kernel.Definition",
     metadata: { name: "Module", module: "Kernel" },
     extends: "Kernel.Template",
     schema: {

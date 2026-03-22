@@ -7,22 +7,31 @@ metadata:
 kind: "Kernel.Definition"
 metadata:
   name: "Script"
-extends: Kernel.Runnable
+extends: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/javascript@>=0.2.0?local_path=./nodejs#script
 schema:
   type: "object"
   properties:
-    metadata:
-      type: "object"
-      properties:
-        name:
-          type: "string"
-      required: ["name"]
     code:
       type: "string"
     inputSchema:
       type: "object"
+      additionalProperties:
+        type: "object"
+        properties:
+          type:
+            type: "string"
+            enum: ["string", "number", "integer", "boolean", "array", "object", "null"]
+        additionalProperties: true
     outputSchema:
       type: "object"
+      additionalProperties:
+        type: "object"
+        properties:
+          type:
+            type: "string"
+            enum: ["string", "number", "integer", "boolean", "array", "object", "null"]
+        additionalProperties: true
   required: ["metadata", "code"]
+  additionalProperties: false

@@ -146,12 +146,6 @@ export class Kernel implements IKernel {
       "Kernel.Module",
       await import("./controllers/module/module-controller.js"),
     );
-    this.controllers.registerDefinition({
-      kind: "Kernel.Definition",
-      metadata: { name: "Import", module: "Kernel" },
-      extends: "Kernel.Template",
-      schema: { type: "object" },
-    });
     this.controllers.registerController(
       "Kernel.Import",
       await import("./controllers/module/import-controller.js"),

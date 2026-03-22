@@ -70,7 +70,15 @@ export function activate(context: vscode.ExtensionContext): void {
     let manifests: ResourceManifest[];
     try {
       manifests = await loader.loadManifests(filePath);
-    } catch {
+    } catch (err) {
+      collection.set(document.uri, [
+        {
+          severity: vscode.DiagnosticSeverity.Error,
+          range: new vscode.Range((err as any).sourceLine ?? 0, 0, (err as any).sourceLine ?? 0, 0),
+          message: err instanceof Error ? err.message : String(err),
+          source: "telo-analyzer",
+        },
+      ]);
       return;
     }
 
