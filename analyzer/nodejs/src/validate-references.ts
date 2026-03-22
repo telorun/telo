@@ -102,9 +102,11 @@ export function validateReferences(
   if (!aliases || !registry) return diagnostics;
 
   // Build outer resource lookup by name for resolution check.
+  // Exclude system kinds (Kernel.Definition) — they are type blueprints, not instances,
+  // and their names (e.g. "Server", "Job") would shadow user-defined resource instances.
   const byName = new Map<string, ResourceManifest>();
   for (const r of resources) {
-    if (r.metadata?.name) byName.set(r.metadata.name as string, r);
+    if (r.metadata?.name && !SYSTEM_KINDS.has(r.kind)) byName.set(r.metadata.name as string, r);
   }
 
   for (const r of resources) {

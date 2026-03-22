@@ -7,6 +7,7 @@ import { resolveScope } from "./scope-resolver.js";
 import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions, type AnalysisContext } from "./types.js";
 import { validateReferences } from "./validate-references.js";
+import { extractAccessChains, pathMatchesScope, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
@@ -171,12 +172,19 @@ export class StaticAnalyzer {
       }
     }
 
-    // Validate CEL syntax in all manifests
+    // Validate CEL syntax and context variable access in all manifests
     for (const m of allManifests) {
       const resource = { kind: m.kind, name: m.metadata?.name as string };
+
+      const resolvedKind = aliases.resolveKind(m.kind);
+      const mDefinition =
+        registry.resolve(m.kind) ??
+        (resolvedKind ? registry.resolve(resolvedKind) : undefined);
+
       walkCelExpressions(m, "", (expr, path) => {
+        let parsed: ReturnType<typeof celEnvironment.parse> | undefined;
         try {
-          celEnvironment.parse(expr);
+          parsed = celEnvironment.parse(expr);
         } catch (e) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -185,6 +193,23 @@ export class StaticAnalyzer {
             message: `CEL syntax error at ${path}: ${e instanceof Error ? e.message : String(e)}`,
             data: { resource, path },
           });
+          return;
+        }
+
+        if (!mDefinition?.contexts) return;
+        for (const ctx of mDefinition.contexts) {
+          if (!pathMatchesScope(path, ctx.scope)) continue;
+          for (const chain of extractAccessChains(parsed.ast)) {
+            const err = validateChainAgainstSchema(chain, ctx.schema);
+            if (!err) continue;
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_UNKNOWN_FIELD",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: CEL at '${path}': ${err}`,
+              data: { resource, path },
+            });
+          }
         }
       });
     }
