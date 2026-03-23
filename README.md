@@ -14,7 +14,7 @@ You define the end state. Telo makes it real.
 
 ```bash
 # Reconcile your manifest into a running backend
-$ telo https://raw.githubusercontent.com/diglyai/telo/refs/heads/main/examples/hello-api/module.yaml
+$ telo https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/hello-api/module.yaml
 
 {"level":30,"time":1771610393008,"pid":1310178,"hostname":"dev","msg":"Server listening at http://127.0.0.1:8844"}
 ```
@@ -256,7 +256,7 @@ Implementation details, loading rules, and the kernel manifest specification liv
 
 ## License
 
-See [LICENSE](https://github.com/diglyai/telo/blob/main/LICENSE).
+See [LICENSE](https://github.com/telorun/telo/blob/main/LICENSE).
 
 ## Contribution Note
 

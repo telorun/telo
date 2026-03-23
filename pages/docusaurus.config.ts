@@ -65,7 +65,7 @@ const config: Config = {
         { to: "/modules/", label: "Modules", position: "left" },
         { to: "/sdk/", label: "SDK", position: "left" },
         {
-          href: "https://github.com/diglyai/telo",
+          href: "https://github.com/telorun/telo",
           label: "GitHub",
           position: "right",
         },

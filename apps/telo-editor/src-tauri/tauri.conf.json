@@ -1,11 +1,11 @@
 {
   "productName": "telo-editor",
   "version": "0.1.0",
-  "identifier": "com.diglyai.telo", 
+  "identifier": "com.telo.editor",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../out" 
+    "frontendDist": "../out"
   },
   "app": {
     "windows": [

@@ -17,7 +17,7 @@ pnpm add -g @telorun/cli
 telo ./examples/hello-api/module.yaml
 
 # Run from a remote URL
-telo https://raw.githubusercontent.com/diglyai/telo/main/examples/hello-api/module.yaml
+telo https://raw.githubusercontent.com/telorun/telo/main/examples/hello-api/module.yaml
 
 # Watch mode - auto-restart on file changes
 telo --watch ./manifest.yaml
