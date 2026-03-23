@@ -1,0 +1,60 @@
+kind: Kernel.Module
+metadata:
+  name: TextBenchmark
+  version: 1.0.0
+targets:
+  - TextLoad
+---
+kind: Kernel.Import
+metadata:
+  name: Bench
+source: ../modules/benchmark
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: TextLoad
+  module: TextBenchmark
+duration: 30s
+concurrency: 10
+warmup: 3s
+report:
+  format: table
+scenarios:
+  - name: Analyze
+    weight: 2
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/analyze
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          text: "The quick brown fox jumps over the lazy dog. It was a bright cold day in April. The clocks were striking thirteen."
+    validate: "${{ result.status == 200 }}"
+  - name: Transform
+    weight: 2
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/transform
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          text: "Hello World from Telo Runtime"
+          op: slug
+    validate: "${{ result.status == 200 }}"
+  - name: Ping
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/ping
+        method: GET
+    validate: "${{ result.status == 200 }}"

@@ -2,6 +2,23 @@ import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 import { currentTxId, getTx } from "./transaction-store.js";
+import type { SqliteDb, SqliteStatement } from "./sqlite-driver-interface.js";
+
+const stmtCache = new WeakMap<SqliteDb, Map<string, SqliteStatement>>();
+
+export function cachedPrepare(db: SqliteDb, sql: string): SqliteStatement {
+  let cache = stmtCache.get(db);
+  if (!cache) {
+    cache = new Map();
+    stmtCache.set(db, cache);
+  }
+  let stmt = cache.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    cache.set(sql, stmt);
+  }
+  return stmt;
+}
 
 interface SqlQueryManifest {
   metadata: { name: string; module: string };
@@ -83,8 +100,8 @@ async function runQuery(
     const result = await pg.query(sql, params);
     return { rows: result.rows, rowCount: result.rowCount ?? result.rows.length };
   } else {
-    const db = client as import("./sqlite-driver-interface.js").SqliteDb;
-    const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+    const db = client as SqliteDb;
+    const rows = cachedPrepare(db, sql).all(...params) as Record<string, unknown>[];
     return { rows, rowCount: rows.length };
   }
 }

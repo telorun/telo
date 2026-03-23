@@ -1,8 +1,9 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
-import { resolveClient } from "./sql-query-controller.js";
+import { resolveClient, cachedPrepare } from "./sql-query-controller.js";
 import type { SqlResult } from "./sql-query-controller.js";
+import type { SqliteDb } from "./sqlite-driver-interface.js";
 
 interface SqlExecManifest {
   metadata: { name: string; module: string };
@@ -43,8 +44,8 @@ async function runExec(
     const result = await pg.query(sql, params);
     return { rows: result.rows ?? [], rowCount: result.rowCount ?? 0 };
   } else {
-    const db = client as import("./sqlite-driver-interface.js").SqliteDb;
-    const info = db.prepare(sql).run(...params);
+    const db = client as SqliteDb;
+    const info = cachedPrepare(db, sql).run(...params);
     return { rows: [], rowCount: info.changes };
   }
 }

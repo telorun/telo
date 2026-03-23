@@ -5,12 +5,13 @@ export function openDatabase(file: string): SqliteDb {
   const db = new Database(file);
   return {
     prepare(sql: string) {
+      const stmt = db.prepare(sql);
       return {
         all(...params: unknown[]) {
-          return db.prepare(sql).all(...(params as any[])) as Record<string, unknown>[];
+          return stmt.all(...(params as any[])) as Record<string, unknown>[];
         },
         run(...params: unknown[]) {
-          const result = db.prepare(sql).run(...(params as any[]));
+          const result = stmt.run(...(params as any[]));
           return { changes: result.changes };
         },
       };
