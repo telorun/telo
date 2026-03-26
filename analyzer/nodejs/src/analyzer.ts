@@ -37,26 +37,41 @@ export class StaticAnalyzer {
     const aliases = context?.aliases ?? new AliasResolver();
     const registry = context?.definitions ?? new DefinitionRegistry();
 
-    // Register aliases from Kernel.Import resources
+    // Register module identities and aliases.
+    // The root Kernel.Module provides its own identity; imported modules surface their
+    // identity via resolvedModuleName/resolvedNamespace stamped onto the Kernel.Import
+    // by the loader (so we don't need to include imported Kernel.Module manifests in
+    // the analysis set, avoiding false reference errors in the parent context).
     for (const m of manifests) {
+      if (m.kind === "Kernel.Module") {
+        const namespace = (m.metadata as any).namespace as string | undefined ?? null;
+        const moduleName = m.metadata.name as string;
+        if (moduleName) registry.registerModuleIdentity(namespace, moduleName);
+      }
       if (m.kind === "Kernel.Import") {
         const alias = m.metadata.name as string;
         const source = (m as any).source as string | undefined;
         const exportedKinds: string[] = (m as any).exports?.kinds ?? [];
+        const resolvedModuleName = (m.metadata as any).resolvedModuleName as string | undefined;
+        const resolvedNamespace = (m.metadata as any).resolvedNamespace as string | null | undefined;
         if (alias && source) {
-          const targetModule =
-            (m.metadata as any).resolvedModuleName ??
-            source.split("/").filter(Boolean).pop() ??
-            source;
+          const targetModule = resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;
           aliases.registerImport(alias, targetModule, exportedKinds);
+          if (resolvedModuleName) {
+            registry.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
+          }
         }
       }
     }
 
-    // Register definitions from Kernel.Definition resources
+    // Register definitions from Kernel.Definition resources.
+    // Normalize alias-prefixed `extends` to canonical form so extendedBy lookup works
+    // (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known alias).
     for (const m of manifests) {
       if (m.kind === "Kernel.Definition") {
-        registry.register(m as unknown as ResourceDefinition);
+        const def = m as unknown as ResourceDefinition;
+        const resolvedExtends = def.extends ? (aliases.resolveKind(def.extends) ?? def.extends) : def.extends;
+        registry.register(resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def);
       }
     }
 
@@ -73,7 +88,7 @@ export class StaticAnalyzer {
 
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
-      if (m.kind === "Kernel.Definition") {
+      if (m.kind === "Kernel.Definition" || m.kind === "Kernel.Abstract") {
         continue;
       }
 

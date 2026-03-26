@@ -1,11 +1,12 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefEntry, isScopeEntry, type RefFieldEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry, isSchemaFromEntry, type RefFieldEntry } from "./reference-field-map.js";
+import { navigateJsonPointer } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 const SOURCE = "telo-analyzer";
-const SYSTEM_KINDS = new Set(["Kernel.Definition"]);
+const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Abstract"]);
 
 /**
  * Checks whether `kind` satisfies the ref constraint in `entry`.
@@ -234,6 +235,109 @@ export function validateReferences(
             code: "UNRESOLVED_REFERENCE",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${fieldPath}' → resource '${refVal.name}' not found`,
+            data: { resource: resourceData, path: fieldPath },
+          });
+        }
+      }
+    }
+  }
+
+  // Phase 3b — x-telo-schema-from validation.
+  // For each field with a schemaFrom path expression, resolve the anchor ref to get the
+  // concrete kind, navigate the JSON Pointer into that kind's definition schema, and
+  // validate the field value against the resulting sub-schema.
+  for (const r of resources) {
+    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+
+    const resolvedKind = aliases.resolveKind(r.kind);
+    const fieldMap =
+      registry.getFieldMap(r.kind) ??
+      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    if (!fieldMap) continue;
+
+    const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
+    const resourceData = { kind: r.kind, name: r.metadata.name as string };
+
+    for (const [fieldPath, entry] of fieldMap) {
+      if (!isSchemaFromEntry(entry)) continue;
+
+      const { schemaFrom } = entry;
+      const isAbsolute = schemaFrom.startsWith("/");
+      const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
+      const slashIdx = expr.indexOf("/");
+      if (slashIdx === -1) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "INVALID_SCHEMA_FROM",
+          source: SOURCE,
+          message: `${resourceLabel}: x-telo-schema-from "${schemaFrom}" must contain at least one "/" to separate anchor from JSON Pointer`,
+          data: { resource: resourceData, path: fieldPath },
+        });
+        continue;
+      }
+
+      const anchorName = expr.slice(0, slashIdx);
+      const jsonPointer = "/" + expr.slice(slashIdx + 1);
+
+      // Derive the anchor path in the resource config.
+      let anchorPath: string;
+      if (isAbsolute) {
+        anchorPath = anchorName;
+      } else {
+        // Relative: replace the last dot-segment of fieldPath with anchorName.
+        // e.g. "nodes[].options" → "nodes[].backend"
+        const lastDot = fieldPath.lastIndexOf(".");
+        anchorPath = lastDot === -1 ? anchorName : fieldPath.slice(0, lastDot + 1) + anchorName;
+      }
+
+      const anchorValues = resolveFieldValues(r, anchorPath);
+      if (anchorValues.length === 0) continue; // anchor field not set — nothing to validate
+
+      const fieldValues = resolveFieldValues(r, fieldPath);
+
+      for (let i = 0; i < fieldValues.length; i++) {
+        const fieldValue = fieldValues[i];
+        if (fieldValue == null) continue;
+
+        // For absolute paths, the single anchor applies to all field values.
+        const anchorVal = isAbsolute ? anchorValues[0] : anchorValues[i];
+        if (!anchorVal || typeof anchorVal !== "object") continue;
+
+        const refVal = anchorVal as Record<string, unknown>;
+        if (typeof refVal.kind !== "string") continue;
+
+        const refResolvedKind = aliases.resolveKind(refVal.kind) ?? refVal.kind;
+        const refDef = registry.resolve(refVal.kind) ?? registry.resolve(refResolvedKind);
+        if (!refDef?.schema) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_FROM_MISSING_PATH",
+            source: SOURCE,
+            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema`,
+            data: { resource: resourceData, path: fieldPath },
+          });
+          continue;
+        }
+
+        const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
+        if (subSchema === undefined) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_FROM_MISSING_PATH",
+            source: SOURCE,
+            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
+            data: { resource: resourceData, path: fieldPath },
+          });
+          continue;
+        }
+
+        const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
+        for (const issue of issues) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "DEPENDENT_SCHEMA_MISMATCH",
+            source: SOURCE,
+            message: `${resourceLabel}: '${fieldPath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
             data: { resource: resourceData, path: fieldPath },
           });
         }

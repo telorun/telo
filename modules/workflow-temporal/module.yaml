@@ -1,0 +1,36 @@
+kind: Kernel.Module
+metadata:
+  name: workflow-temporal
+  namespace: std
+  version: 0.1.0
+  description: Temporal backend provider for Workflow.Graph
+exports:
+  kinds:
+    - Backend
+---
+kind: Kernel.Definition
+metadata:
+  name: Backend
+extends: Workflow.Backend
+schema:
+  type: object
+  properties:
+    namespace:
+      type: string
+    address:
+      type: string
+      description: Temporal server address (e.g. localhost:7233)
+  $defs:
+    NodeOptions:
+      type: object
+      properties:
+        scheduleToCloseTimeout:
+          type: string
+          description: Maximum time for the entire activity (e.g. 10m)
+        retryPolicy:
+          type: object
+          properties:
+            maxAttempts:
+              type: integer
+            initialInterval:
+              type: string

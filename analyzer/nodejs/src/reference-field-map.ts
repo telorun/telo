@@ -14,7 +14,16 @@ export interface ScopeFieldEntry {
   scope: string | string[];
 }
 
-export type FieldMapEntry = RefFieldEntry | ScopeFieldEntry;
+/** An entry for a field whose schema is resolved dynamically from a referenced resource's
+ *  definition schema (x-telo-schema-from). */
+export interface SchemaFromFieldEntry {
+  /** Full path expression as written in the schema, e.g.:
+   *  - "backend/$defs/NodeOptions"   (relative: sibling x-telo-ref property)
+   *  - "/backend/$defs/NodeOptions"  (absolute: root-level x-telo-ref property) */
+  schemaFrom: string;
+}
+
+export type FieldMapEntry = RefFieldEntry | ScopeFieldEntry | SchemaFromFieldEntry;
 
 /** Map from field path to its reference or scope metadata.
  *  Paths use dot notation; array traversal is denoted by `[]` (e.g. "steps[].invoke"). */
@@ -26,6 +35,10 @@ export function isRefEntry(entry: FieldMapEntry): entry is RefFieldEntry {
 
 export function isScopeEntry(entry: FieldMapEntry): entry is ScopeFieldEntry {
   return "scope" in entry;
+}
+
+export function isSchemaFromEntry(entry: FieldMapEntry): entry is SchemaFromFieldEntry {
+  return "schemaFrom" in entry;
 }
 
 /**
@@ -71,6 +84,12 @@ function traverseNode(
   // Scope slot — record and stop; do not recurse into scope contents
   if ("x-telo-scope" in node) {
     map.set(path, { scope: node["x-telo-scope"] });
+    return;
+  }
+
+  // Schema-from slot — record and stop; no further traversal needed
+  if ("x-telo-schema-from" in node) {
+    map.set(path, { schemaFrom: node["x-telo-schema-from"] });
     return;
   }
 

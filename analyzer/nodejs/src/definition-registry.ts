@@ -1,5 +1,6 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import { buildReferenceFieldMap, type ReferenceFieldMap } from "./reference-field-map.js";
+import { createAjv, formatSingleError } from "./schema-compat.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
@@ -8,6 +9,12 @@ export class DefinitionRegistry {
     for (const def of KERNEL_BUILTINS) this.register(def);
   }
 
+  /** Per-instance AJV for cross-module $ref resolution. Isolated so each registry
+   *  (and thus each AnalysisContext) has its own schema store — no stale schemas
+   *  across analyze() calls and no unbounded growth across the process lifetime. */
+  private readonly ajv = createAjv();
+  private readonly registeredSchemaIds = new Set<string>();
+
   private readonly defs = new Map<string, ResourceDefinition>();
   private readonly fieldMaps = new Map<string, ReferenceFieldMap>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
@@ -15,6 +22,10 @@ export class DefinitionRegistry {
   /** Module identity table: identity string → canonical module name.
    *  "kernel" → "Kernel", "std/pipeline" → "pipeline", etc. */
   private readonly identityMap = new Map<string, string>();
+  /** Reverse identity table: canonical module name → full identity string.
+   *  "Kernel" → "kernel", "pipeline" → "std/pipeline", etc.
+   *  Used to compute definition $id values for the AJV schema store. */
+  private readonly reverseIdentityMap = new Map<string, string>();
 
   register(definition: ResourceDefinition): void {
     const { name, module: mod } = definition.metadata;
@@ -32,6 +43,11 @@ export class DefinitionRegistry {
     // Auto-register the kernel identity when any Kernel built-in is registered.
     if (definition.kind === "Kernel.Abstract" && mod === "Kernel") {
       this.identityMap.set("kernel", "Kernel");
+      this.reverseIdentityMap.set("Kernel", "kernel");
+    }
+    // If identity is already known, register the schema in AJV immediately.
+    if (mod && definition.schema) {
+      this.tryRegisterSchema(mod, name as string, definition.schema as Record<string, any>);
     }
   }
 
@@ -42,6 +58,44 @@ export class DefinitionRegistry {
   registerModuleIdentity(namespace: string | null, moduleName: string): void {
     const identity = namespace ? `${namespace}/${moduleName}` : "kernel";
     this.identityMap.set(identity, moduleName);
+    this.reverseIdentityMap.set(moduleName, identity);
+    // Retroactively register AJV schemas for definitions of this module already in the registry.
+    for (const def of this.defs.values()) {
+      if (def.metadata.module === moduleName && def.schema) {
+        this.tryRegisterSchema(moduleName, def.metadata.name as string, def.schema as Record<string, any>);
+      }
+    }
+  }
+
+  /** Computes the $id for a definition schema: "<identity>/<TypeName>".
+   *  Returns undefined when the module identity is not yet registered. */
+  computeId(moduleName: string, typeName: string): string | undefined {
+    const identity = this.reverseIdentityMap.get(moduleName);
+    if (!identity) return undefined;
+    return `${identity}/${typeName}`;
+  }
+
+  /** Validates data against a schema using this registry's AJV instance, which has all
+   *  registered definition schemas loaded — enabling cross-module $ref resolution. */
+  validateWithRefs(data: unknown, schema: Record<string, any>): string[] {
+    let validate: ReturnType<typeof this.ajv.compile>;
+    try {
+      validate = this.ajv.compile(schema);
+    } catch {
+      return [];
+    }
+    if (validate(data)) return [];
+    return (validate.errors ?? []).map(formatSingleError);
+  }
+
+  private tryRegisterSchema(moduleName: string, typeName: string, schema: Record<string, any>): void {
+    const id = this.computeId(moduleName, typeName);
+    if (!id || this.registeredSchemaIds.has(id)) return;
+    if (this.ajv.getSchema(id)) {
+      throw new Error(`Duplicate definition schema $id: "${id}" is already registered`);
+    }
+    this.ajv.addSchema(schema, id);
+    this.registeredSchemaIds.add(id);
   }
 
   /** Resolves an x-telo-ref string to a canonical registry kind key.

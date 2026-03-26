@@ -119,7 +119,11 @@ export class Loader {
       }
       const importedModule = imported.find((im) => im.kind === "Kernel.Module");
       if (importedModule?.metadata?.name) {
-        m.metadata = { ...m.metadata, resolvedModuleName: importedModule.metadata.name as string };
+        m.metadata = {
+          ...m.metadata,
+          resolvedModuleName: importedModule.metadata.name as string,
+          resolvedNamespace: (importedModule.metadata as any).namespace ?? null,
+        };
       }
       for (const im of imported) {
         if (im.kind === "Kernel.Definition") importedDefs.push(im);

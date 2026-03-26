@@ -12,7 +12,7 @@ Every resource reference in a YAML manifest has the same structure:
 
 ```yaml
 kind: Module.KindName # alias-prefixed kind of the target resource
-name: ResourceName    # name of the target resource (metadata.name)
+name: ResourceName # name of the target resource (metadata.name)
 ```
 
 Both fields are required. The kind constraint is declared in the definition schema via `x-telo-ref`, not in the reference value itself — the constraint is kernel-enforced at startup, not structurally encoded in the YAML value.
@@ -65,11 +65,11 @@ schema:
       type: object
       properties:
         invoke:
-          x-telo-ref: "kernel#Invocable"           # any Kernel.Invocable resource
+          x-telo-ref: "kernel#Invocable" # any Kernel.Invocable resource
     middlewares:
       type: array
       items:
-        x-telo-ref: "std/http-server#Middleware"   # specifically Http.Middleware
+        x-telo-ref: "std/http-server#Middleware" # specifically Http.Middleware
     mounts:
       type: array
       items:
@@ -78,7 +78,7 @@ schema:
           path:
             type: string
           mount:
-            x-telo-ref: "kernel#Service"           # any Kernel.Service resource
+            x-telo-ref: "kernel#Service" # any Kernel.Service resource
 ```
 
 ```yaml
@@ -111,7 +111,122 @@ Phase 3 validates that the reference's resolved kind satisfies at least one bran
 
 ---
 
-## 5. Inline Resources
+## 5. Dependent Schema Typing
+
+Two mechanisms handle schema references across definitions. Which to use depends on whether the target type is known statically at definition authoring time.
+
+### Static cross-module references via `$ref` + `$id`
+
+Every `Kernel.Definition` schema is automatically assigned an `$id` by the analyzer when the definition is loaded — derived from the module's canonical identity and the type name. Authors never declare `$id` manually. This makes all definition schemas addressable by standard JSON Schema `$ref`:
+
+```yaml
+kind: Kernel.Definition
+metadata:
+  name: Backend
+  module: Temporal
+extends: Workflow.Backend
+schema:
+  # $id: "std/temporal/Backend" — assigned automatically by the analyzer
+  properties:
+    namespace: { type: string }
+  $defs:
+    NodeOptions:
+      type: object
+      properties:
+        scheduleToClose: { type: string }
+        retryPolicy:
+          type: object
+          properties:
+            maxAttempts: { type: integer }
+```
+
+`$defs` entries are type definitions, not instance properties — a `Temporal.Backend` resource instance only declares `namespace`. `NodeOptions` is exposed for consumers and never appears in instance data.
+
+Any definition schema can reference types from another module using a standard `$ref`:
+
+```yaml
+$ref: "std/temporal/Backend#/$defs/NodeOptions"
+$ref: "std/http-server/Server#/properties/headers"
+```
+
+The analyzer loads all definition schemas into AJV's schema store keyed by their implicit `$id`. Cross-module `$ref` resolution is handled by AJV directly.
+
+### Open-set dependent typing via `x-telo-schema-from`
+
+Static `$ref` requires the target type to be known at definition authoring time. This breaks when the schema must depend on which resource a field references at manifest authoring time — the set of valid kinds is open and extensible by third-party modules.
+
+`x-telo-schema-from` is a custom JSON Schema keyword that resolves a field's schema dynamically by following a property path to the referenced resource's definition schema:
+
+```yaml
+kind: Kernel.Definition
+metadata:
+  name: Graph
+  module: Workflow
+schema:
+  properties:
+    backend:
+      x-telo-ref: "std/workflow#Backend"
+    nodes:
+      type: array
+      items:
+        type: object
+        properties:
+          options:
+            x-telo-schema-from: "backend/$defs/NodeOptions"
+```
+
+`backend/$defs/NodeOptions` is a path expression: `backend` names an `x-telo-ref` property, `/$defs/NodeOptions` is a JSON Pointer into the resolved kind's schema. When `backend` references a `Temporal.Backend` resource, `options` validates against `Temporal.Backend`'s `NodeOptions`. When it references a `Prefect.Backend` resource — defined in a third-party module written after `Workflow.Graph` — it validates against `Prefect.Backend`'s `NodeOptions` instead.
+
+**Path scope:** the first segment is resolved relative to the schema location where `x-telo-schema-from` appears. A leading `/` makes the path absolute — resolved from the resource root. No leading `/` means relative — resolved from the nearest enclosing `properties` block (sibling).
+
+Relative — `x-telo-ref` is a sibling property at the same schema level:
+
+```yaml
+nodes:
+  type: array
+  items:
+    type: object
+    properties:
+      backend:
+        x-telo-ref: "std/workflow#Backend"
+      options:
+        x-telo-schema-from: "backend/$defs/NodeOptions"   # relative: sibling backend
+```
+
+Absolute — `x-telo-ref` is at the resource root:
+
+```yaml
+schema:
+  properties:
+    backend:
+      x-telo-ref: "std/workflow#Backend"
+    nodes:
+      type: array
+      items:
+        type: object
+        properties:
+          options:
+            x-telo-schema-from: "/backend/$defs/NodeOptions"   # absolute: root backend
+```
+
+AJV ignores this keyword during its standard validation pass — the dependent schema check is an explicit Phase 3 step run by the analyzer after all references are resolved (see Section 9).
+
+The abstract base kind acts as a nominal type tag — it constrains the `x-telo-ref` slot without declaring any schema contract:
+
+```yaml
+kind: Kernel.Definition
+metadata:
+  name: Backend
+  module: Workflow
+extends: Kernel.Provider
+# no controllers — cannot be instantiated directly
+```
+
+Concrete backends extend it and declare their `$defs` slots independently. If a backend does not declare the expected `$defs` path, `x-telo-schema-from` resolution fails at validation time.
+
+---
+
+## 6. Inline Resources
 
 A reference slot accepts two forms: a named reference or an inline resource definition.
 
@@ -152,7 +267,7 @@ Names must satisfy `^[a-zA-Z_][a-zA-Z0-9_]*$`.
 
 ---
 
-## 6. Scoped Resources
+## 7. Scoped Resources
 
 ### Concept
 
@@ -176,7 +291,7 @@ schema:
   type: object
   properties:
     with:
-      x-telo-scope: /steps     # resources in 'with' are visible to x-telo-ref fields within /steps
+      x-telo-scope: /steps # resources in 'with' are visible to x-telo-ref fields within /steps
     steps:
       type: array
       items:
@@ -197,7 +312,7 @@ steps:
   - name: Fetch
     invoke:
       kind: Http.Request
-      name: FetchData         # resolved against the 'with' scope
+      name: FetchData # resolved against the 'with' scope
 with:
   - kind: Kernel.Import
     metadata:
@@ -261,7 +376,7 @@ References from the parent's config into the scope (such as `steps[].invoke`) ar
 
 ---
 
-## 7. Package Responsibilities
+## 8. Package Responsibilities
 
 Reference injection spans two packages. The split follows a single rule: logic that does not require live `ResourceInstance` objects belongs in the analyzer.
 
@@ -269,12 +384,12 @@ Reference injection spans two packages. The split follows a single rule: logic t
 
 The analyzer owns all logic that both the kernel and IDE need:
 
-| Export | Used by |
-|--------|---------|
-| `buildReferenceFieldMap(schema)` | Kernel (Phase 1), IDE (Section 9 field index) |
-| `normalizeInlineResources(manifests, registry)` | Kernel (Phase 2) |
-| `validateReferences(resources, context)` | Kernel (Phase 3), IDE (diagnostics) |
-| `buildDependencyGraph(resources, registry)` | Kernel (Phase 4), IDE (cycle warnings) |
+| Export                                          | Used by                                        |
+| ----------------------------------------------- | ---------------------------------------------- |
+| `buildReferenceFieldMap(schema)`                | Kernel (Phase 1), IDE (Section 10 field index) |
+| `normalizeInlineResources(manifests, registry)` | Kernel (Phase 2)                               |
+| `validateReferences(resources, context)`        | Kernel (Phase 3), IDE (diagnostics)            |
+| `buildDependencyGraph(resources, registry)`     | Kernel (Phase 4), IDE (cycle warnings)         |
 
 `buildReferenceFieldMap` detects both `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots), recording them separately in the field map. The scope entry captures the JSON Pointer visibility path alongside the field path, so both the kernel (Phase 5) and the IDE know which fields carry scopes and where those scopes are visible.
 
@@ -302,13 +417,18 @@ export interface KindRef<T extends ResourceInstance = ResourceInstance> {
 
 /** Marker type for x-telo-scope fields. Has no runtime value — used only
  *  as a discriminant for Injected<T> to transform the field to ScopeHandle. */
-export interface ScopeRef { readonly __scope: true; }
+export interface ScopeRef {
+  readonly __scope: true;
+}
 
 export type Injected<T> = {
-  [K in keyof T]: T[K] extends KindRef<infer U> ? U
-                : T[K] extends KindRef<infer U>[] ? U[]
-                : T[K] extends ScopeRef ? ScopeHandle
-                : T[K];
+  [K in keyof T]: T[K] extends KindRef<infer U>
+    ? U
+    : T[K] extends KindRef<infer U>[]
+      ? U[]
+      : T[K] extends ScopeRef
+        ? ScopeHandle
+        : T[K];
 };
 ```
 
@@ -375,7 +495,7 @@ Both replacements happen before `init()` is called.
 
 ---
 
-## 8. Startup Phases
+## 9. Startup Phases
 
 Reference injection is implemented across five sequential phases that span `loadFromConfig` and `start()`.
 
@@ -442,6 +562,15 @@ For each reference field, the value must satisfy at least one `ref` entry in the
 
 Failures in any check halt boot immediately with a descriptive error identifying the field path, the reference value, and the violated constraint.
 
+**`x-telo-schema-from` validation** runs as a final step in Phase 3, after all references are resolved. At this point the concrete kind of every referenced resource is known. For each resource whose definition schema contains one or more `x-telo-schema-from` fields, the analyzer:
+
+1. Resolves the path's first segment to its `x-telo-ref` property value — already validated above, so the kind is known.
+2. Looks up the resolved kind's definition schema in the registry.
+3. Navigates the remainder of the path (a JSON Pointer) into that schema to obtain the target sub-schema.
+4. Re-validates the field's value in the resource config against the resolved sub-schema using AJV.
+
+AJV ignores `x-telo-schema-from` as an unknown keyword during the standard schema validation pass. The dependent schema check is a separate explicit validation step driven by the analyzer — not delegated to AJV's keyword processing. If the path does not resolve (the referenced definition has no `$defs` entry at the declared pointer), boot halts with an error identifying the backend kind and the missing path.
+
 ### Phase 4 — Dependency graph construction & cycle detection
 
 The kernel builds a directed acyclic graph (DAG) via `buildDependencyGraph`. Each resource is a node; each reference value becomes a directed edge from the referencing resource to the referenced resource. Scoped resources are included as nodes; edges from scoped resources to outer resources are included. Parent → scoped resource edges are not boot-time dependencies and are excluded from the DAG.
@@ -468,7 +597,7 @@ The controller receives a config object where singleton reference fields are liv
 
 ---
 
-## 9. Visual Editor Integration
+## 10. Visual Editor Integration
 
 The visual editor builds a field index once when a definition schema is loaded, reusing the same field map produced in Phase 1:
 
@@ -501,7 +630,7 @@ This is an O(1) registry lookup. No schema traversal happens at interaction time
 
 ---
 
-## 10. Notes on Existing Mechanisms
+## 11. Notes on Existing Mechanisms
 
 ### `contexts` / `InvocationContext`
 

@@ -1,0 +1,42 @@
+kind: Kernel.Module
+metadata:
+  name: workflow
+  namespace: std
+  version: 0.1.0
+  description: Workflow orchestration with pluggable backend providers
+exports:
+  kinds:
+    - Backend
+    - Graph
+---
+kind: Kernel.Abstract
+metadata:
+  name: Backend
+extends: Kernel.Provider
+---
+kind: Kernel.Definition
+metadata:
+  name: Graph
+extends: Kernel.Runnable
+schema:
+  type: object
+  properties:
+    backend:
+      x-telo-ref: "std/workflow#Backend"
+    nodes:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          invoke:
+            x-telo-ref: "kernel#Invocable"
+          options:
+            x-telo-schema-from: "backend/$defs/NodeOptions"
+        required:
+          - name
+          - invoke
+  required:
+    - backend
+    - nodes

@@ -2,8 +2,16 @@ import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
-const ajv = new Ajv({ allErrors: true, strict: false });
-(addFormats as any).default ? (addFormats as any).default(ajv) : (addFormats as any)(ajv);
+
+/** Creates a configured AJV instance (allErrors, strict: false, with formats).
+ *  Called once for the module-level instance and once per DefinitionRegistry instance. */
+export function createAjv(): InstanceType<typeof Ajv> {
+  const instance = new Ajv({ allErrors: true, strict: false });
+  (addFormats as any).default ? (addFormats as any).default(instance) : (addFormats as any)(instance);
+  return instance;
+}
+
+const ajv = createAjv();
 
 export interface CompatibilityResult {
   compatible: boolean;
@@ -69,7 +77,7 @@ function checkProperty(
   }
 }
 
-function formatSingleError(err: any): string {
+export function formatSingleError(err: any): string {
   const p = err.instancePath || "/";
   return `${p} ${err.message ?? "is invalid"}`;
 }
@@ -89,4 +97,16 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
   }
   if (validate(data)) return [];
   return (validate.errors ?? []).map(formatSingleError);
+}
+
+/** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.
+ *  Returns undefined when any segment along the path is missing or not an object. */
+export function navigateJsonPointer(schema: unknown, pointer: string): unknown {
+  const segments = pointer.split("/").slice(1); // drop leading empty string from "/"
+  let current: unknown = schema;
+  for (const seg of segments) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[seg];
+  }
+  return current;
 }

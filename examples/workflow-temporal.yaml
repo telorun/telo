@@ -1,0 +1,82 @@
+kind: Kernel.Module
+metadata:
+  name: example
+  version: 1.0.0
+targets:
+  - DataSyncWorkflow
+---
+kind: Kernel.Import
+metadata:
+  name: Workflow
+source: ../modules/workflow
+---
+kind: Kernel.Import
+metadata:
+  name: Temporal
+source: ../modules/workflow-temporal
+---
+kind: Kernel.Import
+metadata:
+  name: JS
+source: ../modules/javascript
+---
+kind: Temporal.Backend
+metadata:
+  name: TemporalProd
+  module: Example
+address: localhost:7233
+namespace: default
+---
+kind: JS.Script
+metadata:
+  name: FetchData
+  module: Example
+code: |
+  async function main({ url }) {
+    const res = await fetch(url);
+    return { data: await res.json() };
+  }
+inputSchema:
+  url:
+    type: string
+outputSchema:
+  data:
+    type: object
+---
+kind: JS.Script
+metadata:
+  name: TransformData
+  module: Example
+code: |
+  function main({ data }) {
+    return { result: data.items.map(i => i.id) };
+  }
+inputSchema:
+  data:
+    type: object
+outputSchema:
+  result:
+    type: array
+---
+kind: Workflow.Graph
+metadata:
+  name: DataSyncWorkflow
+  module: Example
+backend:
+  kind: Temporal.Backend
+  name: TemporalProd2
+nodes:
+  - name: Fetch
+    invoke:
+      kind: JS.Script
+      name: FetchData
+    options:
+      scheduleToCloseTimeout: 30s
+      retryPolicy:
+        maxAttempts: 3
+  - name: Transform
+    invoke:
+      kind: JS.Script
+      name: TransformData
+    options:
+      scheduleToCloseTimeout: 10s
