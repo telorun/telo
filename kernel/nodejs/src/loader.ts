@@ -1,8 +1,7 @@
+import { Loader as BaseLoader } from "@telorun/analyzer";
 import { ResourceManifest, RuntimeResource } from "@telorun/sdk";
-import { Loader as BaseLoader, precompileDoc } from "@telorun/analyzer";
 import * as path from "path";
 import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
-import type { ManifestSourceData } from "./manifest-adapters/manifest-adapter.js";
 import { formatAjvErrors, validateRuntimeResource } from "./manifest-schemas.js";
 
 export class Loader extends BaseLoader {
@@ -26,11 +25,26 @@ export class Loader extends BaseLoader {
   }
 
   async loadDirectory(pathOrUrl: string): Promise<ResourceManifest[]> {
-    const files = await this.localAdapter.readAll(pathOrUrl);
-    Loader.ensureProjectRoot(files[0]?.baseDir ?? process.cwd());
+    const sources = await this.localAdapter.readAll(pathOrUrl);
+    const firstPath = sources[0] ? new URL(sources[0]).pathname : process.cwd();
+    Loader.ensureProjectRoot(path.dirname(firstPath));
     const resources: RuntimeResource[] = [];
-    for (const file of files) {
-      await this.processFile(file, resources);
+    for (const source of sources) {
+      const manifests = await this.loadModule(source);
+      for (const m of manifests) {
+        if (!m.metadata?.name) continue;
+        const resource = m as RuntimeResource;
+        if (!validateRuntimeResource(resource)) {
+          throw new Error(
+            `Resource validation failed for ${m.kind}.${m.metadata.name}: ${formatAjvErrors(validateRuntimeResource.errors)}`,
+          );
+        }
+        const filePath = new URL(m.metadata.source as string).pathname;
+        const uriBase = `file://localhost${filePath.replace(/\\/g, "/")}`;
+        resource.metadata.uri = `${uriBase}#${m.kind}.${m.metadata.name as string}`;
+        resource.metadata.generationDepth = 0;
+        resources.push(resource);
+      }
     }
     return this.orderResourcesByKindDependencies(resources);
   }
@@ -45,40 +59,9 @@ export class Loader extends BaseLoader {
     }
     const url = new URL(pathOrUrl, baseUrl).toString();
     if (!Loader.projectRoot) {
-      const file = await this.localAdapter.read(url);
-      Loader.ensureProjectRoot(file.baseDir);
+      Loader.ensureProjectRoot(path.dirname(new URL(url).pathname));
     }
-    return this.loadModule(url, { compile: (doc) => precompileDoc(doc) });
-  }
-
-  private async processFile(
-    file: ManifestSourceData,
-    resources: RuntimeResource[],
-  ): Promise<void> {
-    for (const doc of file.documents) {
-      const resource = this.normalizeResource(doc);
-      if (!resource) continue;
-      if (!validateRuntimeResource(resource)) {
-        const kind = (resource as any).kind;
-        const name = (resource as any).metadata?.name;
-        throw new Error(
-          `Resource validation failed for ${kind}.${name}: ${formatAjvErrors(validateRuntimeResource.errors)}`,
-        );
-      }
-      const { kind, name } = resource.metadata;
-      resource.metadata.source = file.source;
-      resource.metadata.uri = `${file.uriBase}#${kind}.${name}`;
-      resource.metadata.generationDepth = 0;
-      resources.push(resource);
-    }
-  }
-
-  private normalizeResource(doc: any): RuntimeResource | null {
-    if (!doc || typeof doc !== "object" || typeof doc.kind !== "string") return null;
-    if (doc.metadata && typeof doc.metadata === "object" && typeof doc.metadata.name === "string") {
-      return doc as RuntimeResource;
-    }
-    return null;
+    return this.loadModule(url, { compile: true });
   }
 
   private orderResourcesByKindDependencies(resources: RuntimeResource[]): RuntimeResource[] {
@@ -105,7 +88,10 @@ export class Loader extends BaseLoader {
       for (const definerIndex of definers) {
         if (definerIndex === i) continue;
         let set = edges.get(definerIndex);
-        if (!set) { set = new Set(); edges.set(definerIndex, set); }
+        if (!set) {
+          set = new Set();
+          edges.set(definerIndex, set);
+        }
         if (!set.has(i)) {
           set.add(i);
           indegree.set(i, (indegree.get(i) || 0) + 1);

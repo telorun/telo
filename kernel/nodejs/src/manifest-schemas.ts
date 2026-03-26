@@ -51,4 +51,12 @@ addFormats.default(ajv);
 export const validateRuntimeResource = ajv.compile(RuntimeResourceSchema);
 export const validateResourceDefinition = ajv.compile(ResourceDefinitionSchema);
 
-export { formatAjvErrors } from "@telorun/analyzer";
+export function formatAjvErrors(errors: any[] | null | undefined): string {
+  if (!errors || errors.length === 0) return "Unknown schema error";
+  return errors
+    .map((err) => {
+      const p = err.instancePath || "/";
+      return `${p} ${err.message ?? "is invalid"}`;
+    })
+    .join("; ");
+}

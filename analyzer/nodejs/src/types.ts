@@ -6,7 +6,7 @@ export const DiagnosticSeverity = {
   Information: 3,
   Hint: 4,
 } as const;
-export type DiagnosticSeverity = typeof DiagnosticSeverity[keyof typeof DiagnosticSeverity];
+export type DiagnosticSeverity = (typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];
 
 export interface Position {
   /** 0-based line number */
@@ -40,8 +40,11 @@ export interface ManifestAdapter {
 }
 
 export interface LoadOptions {
-  compile?: (doc: unknown, context: Record<string, unknown>) => unknown;
-  compileContext?: Record<string, unknown>;
+  /** When true, each YAML document is passed through the CEL precompiler before being
+   *  returned. All `${{ expr }}` template strings are replaced with `CompiledValue` wrappers
+   *  so the kernel can evaluate them at runtime. Leave unset (false) for static analysis —
+   *  the analyzer works on raw strings and does not need compiled values. */
+  compile?: boolean;
 }
 
 export interface AnalysisOptions {

@@ -1,17 +1,4 @@
-import {
-  AliasResolver,
-  DefinitionRegistry,
-  DiagnosticSeverity,
-  KERNEL_BUILTINS,
-  StaticAnalyzer,
-  buildDependencyGraph,
-  formatCycle,
-  isRefEntry,
-  isScopeEntry,
-  normalizeInlineResources,
-  validateReferences,
-  type AnalysisContext,
-} from "@telorun/analyzer";
+import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
   ControllerContext,
   Kernel as IKernel,
@@ -28,7 +15,7 @@ import * as path from "path";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
-import { Loader } from "./loader.js";
+import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
@@ -37,7 +24,9 @@ import { SchemaValidator } from "./schema-valiator.js";
  * Handles resource loading, initialization, and execution through controllers
  */
 export class Kernel implements IKernel {
-  private loader: Loader = new Loader();
+  private readonly loader = new Loader([new LocalFileAdapter()]);
+  private readonly analyzer = new StaticAnalyzer();
+  private readonly registry = new AnalysisRegistry();
   // private manifests: ManifestRegistry = new ManifestRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
@@ -55,8 +44,6 @@ export class Kernel implements IKernel {
   // private bootContextRegistry = new BootContextRegistry();
   private readonly sharedSchemaValidator = new SchemaValidator();
   private rootContext!: ModuleContext;
-  private readonly analyzerDefs = new DefinitionRegistry();
-  private readonly analyzerAliases = new AliasResolver();
   private staticManifests: ResourceManifest[] = [];
 
   constructor() {
@@ -90,13 +77,9 @@ export class Kernel implements IKernel {
   /**
    * Register a resource definition with the controller registry
    */
-  registerResourceDefinition(
-    definition: ResourceDefinition,
-    // basePath?: string,
-    // namespace?: string | null,
-  ): void {
+  registerResourceDefinition(definition: ResourceDefinition): void {
     this.controllers.registerDefinition(definition);
-    this.analyzerDefs.register(definition);
+    this.registry.registerDefinition(definition);
   }
 
   getModuleContext(_moduleName: string): ModuleContext {
@@ -114,14 +97,14 @@ export class Kernel implements IKernel {
     kinds: string[],
   ): void {
     this.rootContext.registerImport(alias, targetModule, kinds);
-    this.analyzerAliases.registerImport(alias, targetModule, kinds);
+    this.registry.registerImport(alias, targetModule, kinds);
   }
 
-  /** Returns the live analysis context backed by this kernel's known definitions and aliases.
-   *  Passes to StaticAnalyzer.analyze() for incremental validation of new manifests against
+  /** Returns the live analysis registry backed by this kernel's known definitions and aliases.
+   *  Pass to StaticAnalyzer.analyze() for incremental validation of new manifests against
    *  already-registered types (e.g. front-end editor validating a manifest before submitting). */
-  getAnalysisContext(): AnalysisContext {
-    return { aliases: this.analyzerAliases, definitions: this.analyzerDefs };
+  getAnalysisRegistry(): AnalysisRegistry {
+    return this.registry;
   }
 
   /**
@@ -135,8 +118,9 @@ export class Kernel implements IKernel {
     // "not yet populated" from a completely unknown module name.
     this.rootContext.registerImport("Kernel", "Kernel", []); // built-ins, unrestricted
 
-    // Register built-in definitions (abstracts + Kernel.Definition + Kernel.Module)
-    for (const def of KERNEL_BUILTINS) this.registerResourceDefinition(def);
+    // Register built-in definitions with the controller registry.
+    // AnalysisRegistry's underlying DefinitionRegistry already seeds KERNEL_BUILTINS on construction.
+    for (const def of this.registry.builtinDefinitions()) this.controllers.registerDefinition(def);
 
     this.controllers.registerController(
       "Kernel.Definition",
@@ -157,7 +141,7 @@ export class Kernel implements IKernel {
    */
   async loadFromConfig(runtimeYamlPath: string): Promise<void> {
     this.rootContext = new ModuleContext(
-      this.loader.resolvePath(`file://${process.cwd()}/`, runtimeYamlPath),
+      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
       {},
       {},
       {},
@@ -174,7 +158,9 @@ export class Kernel implements IKernel {
 
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
-    const staticManifests = await this.loader.loadManifests(runtimeYamlPath);
+    const staticManifests = await this.loader.loadManifests(
+      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
+    );
     this.staticManifests = staticManifests;
 
     // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
@@ -182,40 +168,32 @@ export class Kernel implements IKernel {
     // definitions are registered in loadBuiltinDefinitions() above.
     for (const m of staticManifests) {
       if (m.kind === "Kernel.Module" && m.metadata?.name && m.metadata?.namespace) {
-        this.analyzerDefs.registerModuleIdentity(
+        this.registry.registerModuleIdentity(
           m.metadata.namespace as string,
           m.metadata.name as string,
         );
       }
     }
 
-    const diagnostics = new StaticAnalyzer().analyze(
-      staticManifests,
-      {},
-      this.getAnalysisContext(),
-    );
-    const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+    const errors = this.analyzer.analyzeErrors(staticManifests, {}, this.registry);
     if (errors.length > 0) {
-      const summary = errors.map((d) => d.message).join("\n");
-      throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", summary);
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        errors.map((d) => d.message).join("\n"),
+      );
     }
 
     // Load runtime configuration — root module gets access to host env
-    const allManifests = await this.loader.loadManifest(
-      runtimeYamlPath,
-      `file://${process.cwd()}/`,
-      { env: process.env },
+    const allManifests = await this.loader.loadModule(
+      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
+      { compile: true },
     );
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots
     // into first-class named manifests and replace them in-place with {kind, name} references.
     // Update staticManifests so Phase 3 (validateReferences) and Phase 4 (DAG) see
     // the same normalized structure.
-    const normalizedManifests = normalizeInlineResources(
-      allManifests,
-      this.analyzerDefs,
-      this.analyzerAliases,
-    );
+    const normalizedManifests = this.analyzer.normalize(allManifests, this.registry);
     this.staticManifests = normalizedManifests;
 
     for (const manifest of normalizedManifests) {
@@ -250,30 +228,26 @@ export class Kernel implements IKernel {
       }
     }
 
-    // Phase 3: reference validation — kind and resolution checks
-    const refDiagnostics = validateReferences(this.staticManifests, this.getAnalysisContext());
-    const refErrors = refDiagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+    // Phase 3+4: reference validation, cycle detection, and topo sort
+    const {
+      diagnostics: refErrors,
+      order,
+      cycleError,
+    } = this.analyzer.prepare(this.staticManifests, this.registry);
     if (refErrors.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
         refErrors.map((d) => d.message).join("\n"),
       );
     }
-
-    // Phase 4: dependency graph — cycle detection before any resource is initialized
-    const graph = buildDependencyGraph(
-      this.staticManifests,
-      this.analyzerDefs,
-      this.analyzerAliases,
-    );
-    if (graph.cycle) {
-      throw new RuntimeError("ERR_CIRCULAR_DEPENDENCY", formatCycle(graph.cycle));
+    if (cycleError) {
+      throw new RuntimeError("ERR_CIRCULAR_DEPENDENCY", cycleError);
     }
 
     // Phase 5: sort pending resources into topo order so injection always finds
     // initialized dependencies, then run the init loop.
-    if (graph.order) {
-      this.rootContext.setInitOrder(graph.order.map((n) => n.name));
+    if (order) {
+      this.rootContext.setInitOrder(order);
     }
 
     // Initialize resources
@@ -486,31 +460,18 @@ export class Kernel implements IKernel {
     resource: ResourceManifest,
     getInstance: (name: string) => ResourceInstance | undefined,
   ): void {
-    const resolvedKind = this.analyzerAliases.resolveKind(resource.kind) ?? resource.kind;
-    const fieldMap =
-      this.analyzerDefs.getFieldMap(resource.kind) ?? this.analyzerDefs.getFieldMap(resolvedKind);
-    if (!fieldMap) return;
-
-    for (const [fieldPath, entry] of fieldMap) {
-      if (isScopeEntry(entry)) {
-        // Replace the raw manifest array with a ScopeHandle the controller calls at runtime.
+    this.registry.iterateFieldEntries(
+      resource,
+      (fieldPath) => injectAtPath(resource, fieldPath, getInstance),
+      (fieldPath) => {
         const val = (resource as Record<string, unknown>)[fieldPath];
         if (Array.isArray(val)) {
           (resource as Record<string, unknown>)[fieldPath] = this.rootContext.createScopeHandle(
             val as ResourceManifest[],
           );
         }
-        continue;
-      }
-
-      if (!isRefEntry(entry)) continue;
-
-      // Inject outer (singleton) instances. injectAtPath is a no-op when getInstance
-      // returns undefined — that is the case for resources declared inside a scope field
-      // (they are not initialized at boot), so they correctly stay as {kind, name} for the
-      // controller to resolve at runtime via ScopeContext.getInstance().
-      injectAtPath(resource, fieldPath, getInstance);
-    }
+      },
+    );
   }
 
   /**

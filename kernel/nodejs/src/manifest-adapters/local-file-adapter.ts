@@ -1,10 +1,8 @@
+import type { ManifestAdapter } from "@telorun/analyzer";
 import * as fs from "fs/promises";
-import * as yaml from "js-yaml";
 import * as path from "path";
-import type { ManifestAdapter as AnalyzerAdapter } from "@telorun/analyzer";
-import type { ManifestAdapter, ManifestSourceData } from "./manifest-adapter.js";
 
-export class LocalFileAdapter implements ManifestAdapter, AnalyzerAdapter {
+export class LocalFileAdapter implements ManifestAdapter {
   supports(pathOrUrl: string): boolean {
     return (
       pathOrUrl.startsWith("file://") ||
@@ -15,55 +13,47 @@ export class LocalFileAdapter implements ManifestAdapter, AnalyzerAdapter {
     );
   }
 
-  async read(pathOrUrl: string): Promise<ManifestSourceData> {
+  async read(pathOrUrl: string): Promise<{ text: string; source: string }> {
     const normalizedPath = pathOrUrl.startsWith("file://")
-      ? pathOrUrl.slice("file://".length)
+      ? new URL(pathOrUrl).pathname
       : pathOrUrl;
-    const stat = await fs.stat(normalizedPath);
-    const filePath = stat.isDirectory() ? path.join(normalizedPath, "module.yaml") : normalizedPath;
-    return this.readFile(filePath);
+    const resolvedPath = path.resolve(normalizedPath);
+    const stat = await fs.stat(resolvedPath);
+    const filePath = stat.isDirectory() ? path.join(resolvedPath, "module.yaml") : resolvedPath;
+    const text = await fs.readFile(filePath, "utf-8");
+    return { text, source: `file://${filePath}` };
   }
 
-  async readAll(pathOrUrl: string): Promise<ManifestSourceData[]> {
+  async readAll(pathOrUrl: string): Promise<string[]> {
     const normalizedPath = pathOrUrl.startsWith("file://")
-      ? pathOrUrl.slice("file://".length)
+      ? new URL(pathOrUrl).pathname
       : pathOrUrl;
-    const stat = await fs.stat(normalizedPath);
+    const resolvedPath = path.resolve(normalizedPath);
+    const stat = await fs.stat(resolvedPath);
     if (stat.isDirectory()) {
-      const results: ManifestSourceData[] = [];
-      await this.collectYamlFiles(normalizedPath, results);
-      return results;
+      return this.collectYamlSources(resolvedPath);
     }
-    return [await this.readFile(normalizedPath)];
+    return [`file://${resolvedPath}`];
   }
 
   resolveRelative(base: string, relative: string): string {
-    const basePath = base.startsWith("file://") ? base.slice("file://".length) : base;
+    const basePath = base.startsWith("file://") ? new URL(base).pathname : base;
     const baseDir = basePath.endsWith("/") ? basePath : path.dirname(basePath);
     return `file://${path.resolve(baseDir, relative)}`;
   }
 
-  private async readFile(filePath: string): Promise<ManifestSourceData> {
-    const content = await fs.readFile(filePath, "utf-8");
-    return {
-      text: content,
-      documents: yaml.loadAll(content),
-      source: `file://${filePath}`,
-      baseDir: path.dirname(filePath),
-      uriBase: `file://localhost${filePath.replace(/\\/g, "/")}`,
-    };
-  }
-
-  private async collectYamlFiles(dirPath: string, results: ManifestSourceData[]): Promise<void> {
+  private async collectYamlSources(dirPath: string): Promise<string[]> {
+    const sources: string[] = [];
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
-        await this.collectYamlFiles(fullPath, results);
+        sources.push(...(await this.collectYamlSources(fullPath)));
       } else if (entry.isFile() && this.isYamlFile(entry.name)) {
-        results.push(await this.readFile(fullPath));
+        sources.push(`file://${fullPath}`);
       }
     }
+    return sources;
   }
 
   private isYamlFile(filename: string): boolean {

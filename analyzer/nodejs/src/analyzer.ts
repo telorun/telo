@@ -1,17 +1,27 @@
-import type { ResourceManifest, ResourceDefinition } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
+import { AnalysisRegistry } from "./analysis-registry.js";
 import { celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { resolveScope } from "./scope-resolver.js";
 import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
-import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions, type AnalysisContext } from "./types.js";
+import { resolveScope } from "./scope-resolver.js";
+import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
+import {
+  extractAccessChains,
+  pathMatchesScope,
+  validateChainAgainstSchema,
+} from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
-import { extractAccessChains, pathMatchesScope, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
-function walkCelExpressions(value: unknown, path: string, cb: (expr: string, path: string) => void): void {
+function walkCelExpressions(
+  value: unknown,
+  path: string,
+  cb: (expr: string, path: string) => void,
+): void {
   if (typeof value === "string") {
     for (const m of value.matchAll(TEMPLATE_REGEX)) {
       cb(m[1].trim(), path);
@@ -28,14 +38,19 @@ function walkCelExpressions(value: unknown, path: string, cb: (expr: string, pat
 const SOURCE = "telo-analyzer";
 
 export class StaticAnalyzer {
-  analyze(manifests: ResourceManifest[], options?: AnalysisOptions, context?: AnalysisContext): AnalysisDiagnostic[] {
+  analyze(
+    manifests: ResourceManifest[],
+    options?: AnalysisOptions,
+    registry?: AnalysisRegistry,
+  ): AnalysisDiagnostic[] {
     const diagnostics: AnalysisDiagnostic[] = [];
 
-    // Use pre-seeded registries from context, or create fresh ones.
-    // New aliases/definitions found in the manifests are registered into the provided instances
-    // so the context accumulates state across successive calls.
-    const aliases = context?.aliases ?? new AliasResolver();
-    const registry = context?.definitions ?? new DefinitionRegistry();
+    // Use pre-seeded registries from the provided AnalysisRegistry, or create fresh ones.
+    // New aliases/definitions found in the manifests are accumulated into the provided instance
+    // so state builds up across successive calls (e.g. incremental editor validation).
+    const ctx = registry?._context();
+    const aliases = ctx?.aliases ?? new AliasResolver();
+    const defs = ctx?.definitions ?? new DefinitionRegistry();
 
     // Register module identities and aliases.
     // The root Kernel.Module provides its own identity; imported modules surface their
@@ -44,21 +59,25 @@ export class StaticAnalyzer {
     // the analysis set, avoiding false reference errors in the parent context).
     for (const m of manifests) {
       if (m.kind === "Kernel.Module") {
-        const namespace = (m.metadata as any).namespace as string | undefined ?? null;
+        const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
         const moduleName = m.metadata.name as string;
-        if (moduleName) registry.registerModuleIdentity(namespace, moduleName);
+        if (moduleName) defs.registerModuleIdentity(namespace, moduleName);
       }
       if (m.kind === "Kernel.Import") {
         const alias = m.metadata.name as string;
         const source = (m as any).source as string | undefined;
         const exportedKinds: string[] = (m as any).exports?.kinds ?? [];
         const resolvedModuleName = (m.metadata as any).resolvedModuleName as string | undefined;
-        const resolvedNamespace = (m.metadata as any).resolvedNamespace as string | null | undefined;
+        const resolvedNamespace = (m.metadata as any).resolvedNamespace as
+          | string
+          | null
+          | undefined;
         if (alias && source) {
-          const targetModule = resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;
+          const targetModule =
+            resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;
           aliases.registerImport(alias, targetModule, exportedKinds);
           if (resolvedModuleName) {
-            registry.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
+            defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
           }
         }
       }
@@ -70,13 +89,15 @@ export class StaticAnalyzer {
     for (const m of manifests) {
       if (m.kind === "Kernel.Definition") {
         const def = m as unknown as ResourceDefinition;
-        const resolvedExtends = def.extends ? (aliases.resolveKind(def.extends) ?? def.extends) : def.extends;
-        registry.register(resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def);
+        const resolvedExtends = def.extends
+          ? (aliases.resolveKind(def.extends) ?? def.extends)
+          : def.extends;
+        defs.register(resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def);
       }
     }
 
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
-    const allManifests = normalizeInlineResources(manifests, registry, aliases);
+    const allManifests = normalizeInlineResources(manifests, defs, aliases);
 
     // Build a name→manifest map for looking up referenced resources
     const byName = new Map<string, ResourceManifest>();
@@ -99,16 +120,13 @@ export class StaticAnalyzer {
       // path-derived name mangling.
       const resolvedKind = aliases.resolveKind(m.kind);
       const definition =
-        registry.resolve(m.kind) ??
-        (resolvedKind ? registry.resolve(resolvedKind) : undefined);
+        defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
       if (!definition) {
         const knownAliases = aliases.knownAliases();
-        const knownKinds = registry.kinds();
+        const knownKinds = defs.kinds();
         const parts: string[] = [];
-        if (knownAliases.length > 0)
-          parts.push(`imports: ${knownAliases.join(", ")}`);
-        if (knownKinds.length > 0)
-          parts.push(`kinds: ${knownKinds.join(", ")}`);
+        if (knownAliases.length > 0) parts.push(`imports: ${knownAliases.join(", ")}`);
+        if (knownKinds.length > 0) parts.push(`kinds: ${knownKinds.join(", ")}`);
         const hint = parts.length > 0 ? ` Known ${parts.join(" | ")}` : "";
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
@@ -124,16 +142,17 @@ export class StaticAnalyzer {
       // `kind` and `metadata` are implicit on every resource — inject them so module
       // authors don't have to repeat them when using additionalProperties: false.
       if (definition.schema) {
-        const schema = definition.schema.additionalProperties === false
-          ? {
-              ...definition.schema,
-              properties: {
-                kind: { type: "string" },
-                metadata: { type: "object" },
-                ...definition.schema.properties,
-              },
-            }
-          : definition.schema;
+        const schema =
+          definition.schema.additionalProperties === false
+            ? {
+                ...definition.schema,
+                properties: {
+                  kind: { type: "string" },
+                  metadata: { type: "object" },
+                  ...definition.schema.properties,
+                },
+              }
+            : definition.schema;
         const issues = validateAgainstSchema(m, schema);
         for (const issue of issues) {
           diagnostics.push({
@@ -164,7 +183,7 @@ export class StaticAnalyzer {
             }
 
             const refKind = aliases.resolveKind(refManifest.kind) ?? refManifest.kind;
-            const refDefinition = registry.resolve(refKind);
+            const refDefinition = defs.resolve(refKind);
             if (!refDefinition?.inputs) continue;
 
             const result = checkSchemaCompatibility(ctx.schema, refDefinition.inputs);
@@ -193,8 +212,7 @@ export class StaticAnalyzer {
 
       const resolvedKind = aliases.resolveKind(m.kind);
       const mDefinition =
-        registry.resolve(m.kind) ??
-        (resolvedKind ? registry.resolve(resolvedKind) : undefined);
+        defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
 
       walkCelExpressions(m, "", (expr, path) => {
         let parsed: ReturnType<typeof celEnvironment.parse> | undefined;
@@ -230,8 +248,44 @@ export class StaticAnalyzer {
     }
 
     // Validate resource references (Phase 3)
-    diagnostics.push(...validateReferences(allManifests, { aliases, definitions: registry }));
+    diagnostics.push(...validateReferences(allManifests, { aliases, definitions: defs }));
 
     return diagnostics;
+  }
+
+  analyzeErrors(
+    manifests: ResourceManifest[],
+    options?: AnalysisOptions,
+    registry?: AnalysisRegistry,
+  ): AnalysisDiagnostic[] {
+    return this.analyze(manifests, options, registry).filter(
+      (d) => d.severity === DiagnosticSeverity.Error,
+    );
+  }
+
+  normalize(manifests: ResourceManifest[], registry: AnalysisRegistry): ResourceManifest[] {
+    const ctx = registry._context();
+    return normalizeInlineResources(manifests, ctx.definitions!, ctx.aliases);
+  }
+
+  prepare(
+    manifests: ResourceManifest[],
+    registry: AnalysisRegistry,
+  ): { diagnostics: AnalysisDiagnostic[]; order: string[] | null; cycleError: string | null } {
+    const ctx = registry._context();
+    const diagnostics = validateReferences(manifests, ctx);
+    const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+    if (errors.length > 0) {
+      return { diagnostics: errors, order: null, cycleError: null };
+    }
+    const graph = buildDependencyGraph(manifests, ctx.definitions!, ctx.aliases);
+    if (graph.cycle) {
+      return { diagnostics: [], order: null, cycleError: formatCycle(graph.cycle) };
+    }
+    return {
+      diagnostics: [],
+      order: graph.order ? graph.order.map((n) => n.name) : null,
+      cycleError: null,
+    };
   }
 }

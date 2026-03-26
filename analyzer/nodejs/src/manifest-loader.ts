@@ -1,8 +1,9 @@
-import * as yaml from "js-yaml";
 import type { ResourceManifest } from "@telorun/sdk";
-import type { ManifestAdapter, LoadOptions } from "./types.js";
+import { parseAllDocuments } from "yaml";
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
+import { precompileDoc } from "./precompile.js";
+import type { LoadOptions, ManifestAdapter } from "./types.js";
 
 export class Loader {
   protected adapters: ManifestAdapter[] = [new HttpAdapter(), new RegistryAdapter()];
@@ -24,7 +25,7 @@ export class Loader {
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
-    const rawDocs = yaml.loadAll(text) as unknown[];
+    const rawDocs = parseAllDocuments(text).map((d) => d.toJSON());
     const offsets = documentLineOffsets(text);
 
     const resolved: ResourceManifest[] = [];
@@ -36,7 +37,7 @@ export class Loader {
       let compiledDocs: unknown[];
       if (options?.compile) {
         try {
-          const result = options.compile(rawDoc, options.compileContext ?? {});
+          const result = precompileDoc(rawDoc);
           compiledDocs = Array.isArray(result) ? result : [result];
         } catch (error) {
           throw new Error(

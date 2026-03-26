@@ -24,11 +24,10 @@
     "@telorun/sdk": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "js-yaml": "^4.1.0",
+    "yaml": "^2.8.3",
     "jsonpath-plus": "^10.3.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }

@@ -26,7 +26,6 @@
     "manifest"
   ],
   "dependencies": {
-    "js-yaml": "^4.1.0",
     "@marcbachmann/cel-js": "^7.5.3",
     "chevrotain": "^11.1.1",
     "@sinclair/typebox": "^0.34.48",
@@ -34,7 +33,6 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",
-    "@types/js-yaml": "^4.0.5",
     "@types/node": "^20.0.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6",
