@@ -1,9 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { parseAllDocuments } from "yaml";
+import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
 import { precompileDoc } from "./precompile.js";
-import type { LoadOptions, ManifestAdapter } from "./types.js";
+import type { LoadOptions, ManifestAdapter, Position, PositionIndex } from "./types.js";
 
 export class Loader {
   protected adapters: ManifestAdapter[] = [new HttpAdapter(), new RegistryAdapter()];
@@ -25,13 +25,17 @@ export class Loader {
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
-    const rawDocs = parseAllDocuments(text).map((d) => d.toJSON());
+    const parsedDocuments = parseAllDocuments(text);
+    const rawDocs = parsedDocuments.map((d) => d.toJSON());
     const offsets = documentLineOffsets(text);
+    const lineOffsets = buildLineOffsets(text);
 
     const resolved: ResourceManifest[] = [];
     let docIdx = 0;
     for (const rawDoc of rawDocs) {
-      const sourceLine = offsets[docIdx++] ?? 0;
+      const currentDocIdx = docIdx++;
+      const sourceLine = offsets[currentDocIdx] ?? 0;
+      const positionIndex = buildPositionIndex(parsedDocuments[currentDocIdx], lineOffsets);
       if (rawDoc === null || rawDoc === undefined) continue;
 
       let compiledDocs: unknown[];
@@ -51,10 +55,16 @@ export class Loader {
       for (const doc of compiledDocs) {
         if (doc === null || doc === undefined) continue;
         const manifest = doc as ResourceManifest;
-        resolved.push({
-          ...manifest,
-          metadata: { ...manifest.metadata, source, sourceLine },
+        const metadata = { ...manifest.metadata, source, sourceLine };
+        // positionIndex is non-enumerable so it is invisible to spread, JSON.stringify,
+        // and schema validation — but still accessible via (m.metadata as any).positionIndex.
+        Object.defineProperty(metadata, "positionIndex", {
+          value: positionIndex,
+          enumerable: false,
+          writable: true,
+          configurable: true,
         });
+        resolved.push({ ...manifest, metadata });
       }
     }
 
@@ -144,4 +154,67 @@ function documentLineOffsets(text: string): number[] {
     if (t === "---" || t.startsWith("--- ")) offsets.push(i + 1);
   }
   return offsets;
+}
+
+/** Builds a byte-offset-to-line/character lookup table from raw text. */
+function buildLineOffsets(text: string): number[] {
+  const offsets: number[] = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") offsets.push(i + 1);
+  }
+  return offsets;
+}
+
+function offsetToPosition(offset: number, lineOffsets: number[]): Position {
+  let lo = 0;
+  let hi = lineOffsets.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (lineOffsets[mid] <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return { line: lo, character: offset - lineOffsets[lo] };
+}
+
+/** Walks the YAML AST and records source ranges for every field value, keyed by
+ *  dotted path (e.g. "kind", "config.handler", "config.routes[0].path"). */
+function buildPositionIndex(doc: Document, lineOffsets: number[]): PositionIndex {
+  const index: PositionIndex = new Map();
+
+  function recordNode(node: any, path: string): void {
+    if (!node || !node.range) return;
+    const [start, , end] = node.range as [number, number, number];
+    index.set(path, {
+      start: offsetToPosition(start, lineOffsets),
+      end: offsetToPosition(end, lineOffsets),
+    });
+  }
+
+  function walk(node: any, path: string): void {
+    if (isMap(node)) {
+      for (const pair of node.items) {
+        if (!isPair(pair)) continue;
+        const key = isScalar(pair.key) ? String(pair.key.value) : null;
+        if (key == null) continue;
+        const childPath = path ? `${path}.${key}` : key;
+        if (pair.value != null) {
+          recordNode(pair.value, childPath);
+          walk(pair.value, childPath);
+        }
+      }
+    } else if (isSeq(node)) {
+      for (let i = 0; i < node.items.length; i++) {
+        const item = node.items[i];
+        const childPath = `${path}[${i}]`;
+        recordNode(item, childPath);
+        walk(item, childPath);
+      }
+    }
+  }
+
+  if (doc.contents) {
+    walk(doc.contents, "");
+  }
+
+  return index;
 }

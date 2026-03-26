@@ -7,7 +7,9 @@ const Ajv = (AjvModule as any).default ?? AjvModule;
  *  Called once for the module-level instance and once per DefinitionRegistry instance. */
 export function createAjv(): InstanceType<typeof Ajv> {
   const instance = new Ajv({ allErrors: true, strict: false });
-  (addFormats as any).default ? (addFormats as any).default(instance) : (addFormats as any)(instance);
+  (addFormats as any).default
+    ? (addFormats as any).default(instance)
+    : (addFormats as any)(instance);
   return instance;
 }
 
@@ -87,8 +89,36 @@ export function formatAjvErrors(errors: any[] | null | undefined): string {
   return errors.map(formatSingleError).join("; ");
 }
 
-/** Validate actual data against a JSON Schema. Returns issues or empty array if valid. */
-export function validateAgainstSchema(data: unknown, schema: Record<string, any>): string[] {
+/** Converts an AJV error object to a dotted path string compatible with PositionIndex keys.
+ *  e.g. instancePath "/config/routes/0/handler" → "config.routes[0].handler"
+ *  For "required" keyword errors, appends the missing property to the parent path. */
+function ajvErrorToPath(err: any): string {
+  const instancePath = (err.instancePath ?? "") as string;
+  const parts = instancePath.split("/").filter((p) => p !== "");
+  let result = "";
+  for (const part of parts) {
+    if (/^\d+$/.test(part)) {
+      result += `[${part}]`;
+    } else {
+      result += result ? `.${part}` : part;
+    }
+  }
+  if (err.keyword === "required" && err.params?.missingProperty) {
+    const missing = err.params.missingProperty as string;
+    result += result ? `.${missing}` : missing;
+  }
+  return result;
+}
+
+/** A schema validation issue with a dotted-path pointer to the offending field. */
+export interface SchemaIssue {
+  message: string;
+  /** Dotted path to the field (e.g. "config.handler"). Empty string means root. */
+  path: string;
+}
+
+/** Validate actual data against a JSON Schema. Returns issues with path info, or empty array if valid. */
+export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaIssue[] {
   let validate: ReturnType<typeof ajv.compile>;
   try {
     validate = ajv.compile(schema);
@@ -96,7 +126,10 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
     return [];
   }
   if (validate(data)) return [];
-  return (validate.errors ?? []).map(formatSingleError);
+  return (validate.errors ?? []).map((err: any) => ({
+    message: formatSingleError(err),
+    path: ajvErrorToPath(err),
+  }));
 }
 
 /** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.

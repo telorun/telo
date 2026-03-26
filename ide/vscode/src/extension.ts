@@ -1,13 +1,8 @@
+import type { AnalysisDiagnostic, PositionIndex } from "@telorun/analyzer";
+import { DiagnosticSeverity, Loader, NodeAdapter, StaticAnalyzer } from "@telorun/analyzer";
+import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  DiagnosticSeverity,
-  StaticAnalyzer,
-  NodeAdapter,
-  Loader,
-} from "@telorun/analyzer";
-import type { AnalysisDiagnostic } from "@telorun/analyzer";
-import type { ResourceManifest } from "@telorun/sdk";
 
 const TELO_KIND_RE = /^kind:\s+Kernel\./m;
 
@@ -37,10 +32,7 @@ function toDiagnostic(d: AnalysisDiagnostic): vscode.Diagnostic {
   return diag;
 }
 
-function debounce<T extends unknown[]>(
-  fn: (...args: T) => void,
-  ms: number,
-): (...args: T) => void {
+function debounce<T extends unknown[]>(fn: (...args: T) => void, ms: number): (...args: T) => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return (...args) => {
     clearTimeout(timer);
@@ -102,21 +94,26 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     const diagnostics = analyzer.analyze(manifests).map((d) => {
-      const resource = (d.data as any)?.resource as
-        | { kind: string; name: string }
-        | undefined;
-      const m = resource
-        ? manifestByKey.get(`${resource.kind}.${resource.name}`)
-        : undefined;
+      const resource = (d.data as any)?.resource as { kind: string; name: string } | undefined;
+      const m = resource ? manifestByKey.get(`${resource.kind}.${resource.name}`) : undefined;
       const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
-      if (sourceLine !== undefined && !d.range) {
-        return toDiagnostic({
-          ...d,
-          range: {
-            start: { line: sourceLine, character: 0 },
-            end: { line: sourceLine, character: Number.MAX_SAFE_INTEGER },
-          },
-        });
+      const positionIndex = (m?.metadata as any)?.positionIndex as PositionIndex | undefined;
+      const path = (d.data as any)?.path as string | undefined;
+
+      if (!d.range) {
+        const fieldRange =
+          path !== undefined && positionIndex ? positionIndex.get(path) : undefined;
+        if (fieldRange) {
+          return toDiagnostic({ ...d, range: fieldRange });
+        } else if (sourceLine !== undefined) {
+          return toDiagnostic({
+            ...d,
+            range: {
+              start: { line: sourceLine, character: 0 },
+              end: { line: sourceLine, character: Number.MAX_SAFE_INTEGER },
+            },
+          });
+        }
       }
       return toDiagnostic(d);
     });
@@ -127,27 +124,20 @@ export function activate(context: vscode.ExtensionContext): void {
     const entries = includeMap.get(changedPath);
     if (!entries) return;
     for (const entryPath of entries) {
-      const doc = vscode.workspace.textDocuments.find(
-        (d) => d.uri.fsPath === entryPath,
-      );
+      const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === entryPath);
       if (doc) await analyzeDocument(doc);
     }
   }
 
-  const onChangedDebounced = debounce(
-    (e: vscode.TextDocumentChangeEvent) => {
-      analyzeDocument(e.document);
-      reanalyzeEntries(e.document.uri.fsPath);
-    },
-    500,
-  );
+  const onChangedDebounced = debounce((e: vscode.TextDocumentChangeEvent) => {
+    analyzeDocument(e.document);
+    reanalyzeEntries(e.document.uri.fsPath);
+  }, 500);
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(analyzeDocument),
     vscode.workspace.onDidChangeTextDocument(onChangedDebounced),
-    vscode.workspace.onDidCloseTextDocument((doc) =>
-      collection.delete(doc.uri),
-    ),
+    vscode.workspace.onDidCloseTextDocument((doc) => collection.delete(doc.uri)),
   );
 
   for (const doc of vscode.workspace.textDocuments) {

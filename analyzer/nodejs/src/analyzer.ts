@@ -9,9 +9,9 @@ import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat
 import { resolveScope } from "./scope-resolver.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
-  extractAccessChains,
-  pathMatchesScope,
-  validateChainAgainstSchema,
+    extractAccessChains,
+    pathMatchesScope,
+    validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
 
@@ -133,7 +133,7 @@ export class StaticAnalyzer {
           code: "UNDEFINED_KIND",
           source: SOURCE,
           message: `No Kernel.Definition found for kind '${m.kind}'.${hint}`,
-          data: { resource },
+          data: { resource, path: "kind" },
         });
         continue;
       }
@@ -159,8 +159,8 @@ export class StaticAnalyzer {
             severity: DiagnosticSeverity.Error,
             code: "SCHEMA_VIOLATION",
             source: SOURCE,
-            message: `${m.kind}/${resource.name}: ${issue}`,
-            data: { resource },
+            message: `${m.kind}/${resource.name}: ${issue.message}`,
+            data: { resource, path: issue.path },
           });
         }
       }

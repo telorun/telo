@@ -20,6 +20,11 @@ export interface Range {
   end: Position;
 }
 
+/** Maps a dotted field path (e.g. "config.handler", "kind") to its source Range.
+ *  Built from the YAML AST before conversion to plain objects, so positions reflect
+ *  the actual text locations in the source file. */
+export type PositionIndex = Map<string, Range>;
+
 /** LSP-compatible Diagnostic shape. range is optional because parsed YAML may not carry
  *  position info when only the parsed object (not raw text) is available. */
 export interface AnalysisDiagnostic {

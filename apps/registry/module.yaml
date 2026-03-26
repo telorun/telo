@@ -21,9 +21,6 @@ metadata:
   version: 1.0.0
 targets:
   - RegistryServer
-include:
-  - ./public.yaml
-
 ---
 # ── Imports ──────────────────────────────────────────────────────────────────
 
@@ -150,3 +147,34 @@ notFoundHandler:
   response:
     - status: 200
       mode: stream
+---
+# Public read API — unauthenticated.
+# /{namespace}/{name} lists versions by reading the R2 directory prefix.
+# Everything else falls through to the server fallback (ForwardToR2).
+
+---
+kind: Http.Api
+metadata:
+  name: PublicApi
+  module: telo-registry
+routes:
+  - request:
+      path: /{namespace}/{name}
+      method: GET
+    handler:
+      kind: S3.List
+      inputs:
+        prefix: "${{ request.params.namespace + '/' + request.params.name + '/' }}"
+      bucketRef:
+        name: ModuleStore
+    response:
+      - status: 200
+        when: "${{ result.keys.size() > 0 }}"
+        body:
+          name: "${{ request.params.namespace + '/' + request.params.name }}"
+          # Latest version
+          version: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]).sort().last() }}"
+          versions: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]) }}"
+      - status: 404
+        body:
+          error: "Module not found"

@@ -64,7 +64,7 @@ metadata:
   module: Example
 backend:
   kind: Temporal.Backend
-  name: TemporalProd2
+  name: TemporalProd
 nodes:
   - name: Fetch
     invoke:
