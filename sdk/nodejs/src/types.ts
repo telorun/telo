@@ -38,7 +38,7 @@ export interface ResourceDefinition {
   /** Invocation context declarations — what each call site provides to invoked resources.
    *  Used for static analysis at bootstrap. */
   contexts?: InvocationContext[];
-  extends?: string;
+  capability?: string;
   /** CEL expression paths expanded at compile time and/or runtime.
    *  '**' expands the entire manifest. Inherited from the parent base definition. */
   expand?: {

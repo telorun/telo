@@ -8,7 +8,7 @@ metadata:
 kind: Kernel.Definition
 metadata:
   name: Read
-extends: Kernel.Invocable
+capability: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -29,7 +29,7 @@ invoke: "${{ self.name }}-query"
 kind: Kernel.Definition
 metadata:
   name: Create
-extends: Kernel.Invocable
+capability: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -50,7 +50,7 @@ invoke: "${{ self.name }}-exec"
 kind: Kernel.Definition
 metadata:
   name: Delete
-extends: Kernel.Invocable
+capability: Kernel.Invocable
 schema:
   type: object
   required: [connection, table]

@@ -1,7 +1,7 @@
 kind: "Kernel.Definition"
 metadata:
   name: "Api"
-extends: Kernel.Mount
+capability: Kernel.Mount
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api
 contexts:
@@ -12,12 +12,12 @@ contexts:
         request:
           type: object
           properties:
-            query:   { type: object, additionalProperties: true }
-            body:    { type: object, additionalProperties: true }
+            query: { type: object, additionalProperties: true }
+            body: { type: object, additionalProperties: true }
             headers: { type: object, additionalProperties: true }
-            params:  { type: object, additionalProperties: true }
-            path:    { type: string }
-            method:  { type: string }
+            params: { type: object, additionalProperties: true }
+            path: { type: string }
+            method: { type: string }
         result:
           type: object
           additionalProperties: true

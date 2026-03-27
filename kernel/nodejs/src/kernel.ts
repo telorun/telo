@@ -405,8 +405,8 @@ export class Kernel implements IKernel {
 
     // Resolve expand paths from the parent base definition and the definition itself
     const definition = this.controllers.getDefinition(resolvedKind);
-    const parentDef = definition?.extends
-      ? this.controllers.getDefinition(definition.extends)
+    const parentDef = definition?.capability
+      ? this.controllers.getDefinition(definition.capability)
       : undefined;
     const compile = [...(parentDef?.expand?.compile ?? []), ...(definition?.expand?.compile ?? [])];
     const runtime = [...(parentDef?.expand?.runtime ?? []), ...(definition?.expand?.runtime ?? [])];

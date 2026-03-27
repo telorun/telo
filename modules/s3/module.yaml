@@ -18,7 +18,7 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: Bucket
-extends: Kernel.Provider
+capability: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-bucket
 schema:
@@ -37,7 +37,7 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: List
-extends: Kernel.Invocable
+capability: Kernel.Invocable
 controllers:
   - pkg:npm/@telorun/s3@>=1.0.0?local_path=./nodejs#s3-list
 schema:

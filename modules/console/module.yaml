@@ -7,7 +7,7 @@ metadata:
 kind: Kernel.Definition
 metadata:
   name: WriteLine
-extends: Kernel.Runnable
+capability: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#writeline
 schema:
@@ -20,7 +20,7 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: ReadLine
-extends: Kernel.Runnable
+capability: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#readline
 schema:

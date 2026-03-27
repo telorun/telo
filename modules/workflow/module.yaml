@@ -12,12 +12,12 @@ exports:
 kind: Kernel.Abstract
 metadata:
   name: Backend
-extends: Kernel.Provider
+capability: Kernel.Provider
 ---
 kind: Kernel.Definition
 metadata:
   name: Graph
-extends: Kernel.Runnable
+capability: Kernel.Runnable
 schema:
   type: object
   properties:

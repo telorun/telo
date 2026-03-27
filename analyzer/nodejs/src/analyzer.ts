@@ -9,9 +9,9 @@ import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat
 import { resolveScope } from "./scope-resolver.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
-    extractAccessChains,
-    pathMatchesScope,
-    validateChainAgainstSchema,
+  extractAccessChains,
+  pathMatchesScope,
+  validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
 
@@ -84,15 +84,17 @@ export class StaticAnalyzer {
     }
 
     // Register definitions from Kernel.Definition resources.
-    // Normalize alias-prefixed `extends` to canonical form so extendedBy lookup works
+    // Normalize alias-prefixed `capability` to canonical form so extendedBy lookup works
     // (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known alias).
     for (const m of manifests) {
       if (m.kind === "Kernel.Definition") {
         const def = m as unknown as ResourceDefinition;
-        const resolvedExtends = def.extends
-          ? (aliases.resolveKind(def.extends) ?? def.extends)
-          : def.extends;
-        defs.register(resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def);
+        const resolvedCapability = def.capability
+          ? (aliases.resolveKind(def.capability) ?? def.capability)
+          : def.capability;
+        defs.register(
+          resolvedCapability !== def.capability ? { ...def, capability: resolvedCapability } : def,
+        );
       }
     }
 

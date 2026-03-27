@@ -1,7 +1,7 @@
 import type { ResourceDefinition } from "@telorun/sdk";
+import { KERNEL_BUILTINS } from "./builtins.js";
 import { buildReferenceFieldMap, type ReferenceFieldMap } from "./reference-field-map.js";
 import { createAjv, formatSingleError } from "./schema-compat.js";
-import { KERNEL_BUILTINS } from "./builtins.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 export class DefinitionRegistry {
@@ -32,12 +32,12 @@ export class DefinitionRegistry {
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
     this.fieldMaps.set(key, buildReferenceFieldMap(definition.schema ?? {}));
-    if (definition.extends) {
-      const children = this.extendedBy.get(definition.extends);
+    if (definition.capability) {
+      const children = this.extendedBy.get(definition.capability);
       if (children) {
         children.push(key);
       } else {
-        this.extendedBy.set(definition.extends, [key]);
+        this.extendedBy.set(definition.capability, [key]);
       }
     }
     // Auto-register the kernel identity when any Kernel built-in is registered.
@@ -62,7 +62,11 @@ export class DefinitionRegistry {
     // Retroactively register AJV schemas for definitions of this module already in the registry.
     for (const def of this.defs.values()) {
       if (def.metadata.module === moduleName && def.schema) {
-        this.tryRegisterSchema(moduleName, def.metadata.name as string, def.schema as Record<string, any>);
+        this.tryRegisterSchema(
+          moduleName,
+          def.metadata.name as string,
+          def.schema as Record<string, any>,
+        );
       }
     }
   }
@@ -88,7 +92,11 @@ export class DefinitionRegistry {
     return (validate.errors ?? []).map(formatSingleError);
   }
 
-  private tryRegisterSchema(moduleName: string, typeName: string, schema: Record<string, any>): void {
+  private tryRegisterSchema(
+    moduleName: string,
+    typeName: string,
+    schema: Record<string, any>,
+  ): void {
     const id = this.computeId(moduleName, typeName);
     if (!id || this.registeredSchemaIds.has(id)) return;
     if (this.ajv.getSchema(id)) {
@@ -127,7 +135,7 @@ export class DefinitionRegistry {
   }
 
   /** Returns all definitions that transitively extend the given abstract kind.
-   *  Follows the extends chain to any depth (equivalent to instanceof in OOP).
+   *  Follows the capability chain to any depth (equivalent to instanceof in OOP).
    *  Definitions are included regardless of registration order. */
   getByExtends(abstractKind: string): ResourceDefinition[] {
     const result: ResourceDefinition[] = [];

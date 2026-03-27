@@ -11,7 +11,7 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: Backend
-extends: Workflow.Backend
+capability: Workflow.Backend
 schema:
   type: object
   properties:

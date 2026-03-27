@@ -8,7 +8,7 @@ metadata:
 kind: Kernel.Definition
 metadata:
   name: Suite
-extends: Kernel.Runnable
+capability: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/benchmark@>=0.1.0?local_path=./nodejs#suite
 schema:

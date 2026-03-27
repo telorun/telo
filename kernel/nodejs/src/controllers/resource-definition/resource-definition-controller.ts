@@ -18,7 +18,7 @@ type ResourceDefinitionResource = RuntimeResource & {
   schema: Record<string, any>;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  extends?: string;
+  capability?: string;
   events?: string[];
   controllers?: Array<string>;
 };

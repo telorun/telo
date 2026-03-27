@@ -32,7 +32,7 @@ export const ResourceDefinitionSchema = Type.Object(
         }),
       ),
     ),
-    extends: Type.Optional(Type.String()),
+    capability: Type.Optional(Type.String()),
     expand: Type.Optional(
       Type.Object({
         compile: Type.Optional(Type.Array(Type.String())),

@@ -15,7 +15,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   {
     kind: "Kernel.Definition",
     metadata: { name: "Abstract", module: "Kernel" },
-    extends: "Kernel.Template",
+    capability: "Kernel.Template",
     schema: {
       type: "object",
       properties: {
@@ -26,7 +26,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           required: ["name"],
           additionalProperties: true,
         },
-        extends: { type: "string" },
+        capability: { type: "string" },
       },
       required: ["metadata"],
       additionalProperties: false,
@@ -35,13 +35,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   {
     kind: "Kernel.Definition",
     metadata: { name: "Definition", module: "Kernel" },
-    extends: "Kernel.Template",
+    capability: "Kernel.Template",
     schema: { type: "object" },
   },
   {
     kind: "Kernel.Definition",
     metadata: { name: "Import", module: "Kernel" },
-    extends: "Kernel.Template",
+    capability: "Kernel.Template",
     schema: {
       type: "object",
       properties: {
@@ -63,7 +63,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   {
     kind: "Kernel.Definition",
     metadata: { name: "Module", module: "Kernel" },
-    extends: "Kernel.Template",
+    capability: "Kernel.Template",
     schema: {
       type: "object",
       properties: {

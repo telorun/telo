@@ -10,7 +10,7 @@ exports:
 kind: Kernel.Definition
 metadata:
   name: Steps
-extends: Kernel.Runnable
+capability: Kernel.Runnable
 controllers:
   - pkg:npm/@telorun/flow@>=1.1.0?local_path=./nodejs#flow
 schema:

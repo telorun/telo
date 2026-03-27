@@ -1,7 +1,7 @@
 kind: "Kernel.Definition"
 metadata:
   name: "Variables"
-extends: Kernel.Provider
+capability: Kernel.Provider
 controllers:
   - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#variables-controller
 schema:

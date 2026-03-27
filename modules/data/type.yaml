@@ -1,7 +1,7 @@
 kind: Kernel.Definition
 metadata:
   name: Type
-extends: Kernel.Type
+capability: Kernel.Type
 controllers:
   - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
 schema:
@@ -21,7 +21,7 @@ schema:
 kind: Kernel.Definition
 metadata:
   name: ObjectType
-extends: Kernel.Type
+capability: Kernel.Type
 controllers:
   - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
 schema:
