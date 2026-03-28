@@ -167,23 +167,38 @@ Lists all submodule imports (`kind: Kernel.Import` with a local-path `source`) o
   DatabaseModule
 ```
 
-The `+` affordance opens a prompt for a relative file path and an alias. If the file does not exist it is created with a minimal `Kernel.Module` document. The `Kernel.Import` is written with that path as `source` and the given alias as `metadata.name`. The new module is immediately added to the application graph.
+The `+` affordance adds a new submodule import. The flow differs by environment:
 
-A context menu on each entry provides a remove option. Removing a module import removes the `Kernel.Import` document from the active module's YAML but does not delete the submodule file.
+**In Tauri**: clicking `+` immediately opens a native file picker filtered to `.yaml`/`.yml`. The selected file is read to extract the module's `metadata.name`, which is converted to PascalCase and pre-filled as the alias. The `source` stored in `Kernel.Import` is a relative path from the active module's directory to the selected file's **directory** (e.g. `../auth` — the loader appends `/module.yaml` automatically). The user can edit the alias before confirming.
+
+**In browser with directory access**: clicking `+` shows an inline form with a text input for a relative path (e.g. `./auth`) and an alias field.
+
+**In browser without directory access** (single-file mode): adding submodules is not available.
+
+After confirmation, a `Kernel.Import` is added to the active module in memory and the referenced module is loaded into the application graph immediately.
+
+A context menu on each entry provides a remove option. Removing a module import removes the `Kernel.Import` from the active module in memory but does not delete the submodule file.
 
 ### 3.2 Imports Section
 
-Lists remote and external imports (`pkg:` URIs, registry references). These are resources of the module but are not navigable — the editor cannot follow them.
+Lists remote and external imports — resources of the module that are not navigable because the editor cannot follow their sources.
 
 ```
 ── Imports ──
-  Http               ← pkg: / registry — read-only alias
+  Http               ← registry reference — read-only alias
   Sql
 ```
 
 Their exported kinds appear in the definition registry and the kind picker. No enter affordance is shown.
 
-The `+` affordance prompts for a registry reference or `pkg:` URI and an alias. Writes a `Kernel.Import` with that source. The editor does not resolve or load this source.
+The `+` affordance shows an inline form accepting any of the following source formats:
+
+| Format | Example |
+| ------ | ------- |
+| Registry reference | `acme/user-service@1.0.0` |
+| Absolute URL | `https://cdn.example.com/lib/module.yaml` |
+
+The alias is derived from the module-name portion of the source (e.g. `user-service` → `UserService`) and is editable before confirming. The editor does not resolve or load these sources.
 
 ### 3.3 Resource Tree
 
@@ -541,6 +556,22 @@ The active manifest is always `application.modules.get(activeModulePath)`. The c
 When a `module` navigation entry's `filePath` differs from `activeModulePath`, `activeModulePath` is updated to match on push and restored to the previous value on pop.
 
 There is no separate dirty buffer. All edits are applied directly to the relevant `ParsedManifest` in `application.modules` in-place. Saving serializes the changed manifest back to its `.yaml` file. Only the edited file is written; other modules in the application are not touched.
+
+### Persistence Adapter
+
+All writes go through a `PersistenceAdapter` interface so the storage backend can be swapped without touching editor logic:
+
+```typescript
+interface PersistenceAdapter {
+  saveModule(filePath: string, manifest: ParsedManifest): Promise<void>
+}
+```
+
+| Adapter | Backend | Status |
+| ------- | ------- | ------ |
+| `InMemoryPersistenceAdapter` | no-op — `EditorState` auto-saves to `localStorage` via `saveState` | current |
+| `TauriWriteAdapter` | serializes `ParsedManifest` → YAML, calls `invoke('write_file')` | future |
+| `RemoteWriteAdapter` | HTTP PUT to a remote endpoint | future |
 
 **State transition rules:**
 

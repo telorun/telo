@@ -24,6 +24,16 @@ function pathResolve(base: string, rel: string): string {
   return normalizePath(combined)
 }
 
+function pathRelative(from: string, to: string): string {
+  const fromParts = from.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
+  let i = 0
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) i++
+  const ups = fromParts.length - i
+  const rel = [...Array(ups).fill('..'), ...toParts.slice(i)].join('/')
+  return rel || '.'
+}
+
 function normalizePath(p: string): string {
   const abs = p.startsWith('/')
   const parts = p.split('/')
@@ -33,6 +43,93 @@ function normalizePath(p: string): string {
     else if (seg !== '' && seg !== '.') stack.push(seg)
   }
   return (abs ? '/' : '') + stack.join('/')
+}
+
+// ---------------------------------------------------------------------------
+// Public path/string utilities
+// ---------------------------------------------------------------------------
+
+export function toPascalCase(s: string): string {
+  return s.split(/[-_\s]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+}
+
+// Returns the source string to store in Kernel.Import — relative path from
+// fromPath's directory to toPath's directory (directory form, no extension).
+export function toRelativeSource(fromPath: string, toPath: string): string {
+  const fromDir = pathDirname(fromPath)
+  const toDir = pathDirname(toPath)
+  const rel = pathRelative(fromDir, toDir)
+  return rel === '.' ? '.' : rel.startsWith('.') ? rel : './' + rel
+}
+
+// Reads a manifest file and returns the metadata.name from its Kernel.Module doc.
+export async function readModuleMetadata(
+  filePath: string,
+  adapter: ManifestAdapter
+): Promise<string | null> {
+  try {
+    const loader = new Loader([adapter])
+    const docs = await loader.loadModule(filePath) as ResourceManifest[]
+    const moduleDoc = docs.find(d => d.kind === 'Kernel.Module')
+    return (moduleDoc?.metadata.name as string | undefined) ?? null
+  } catch {
+    return null
+  }
+}
+
+// Adds a new import to a module in-memory and loads the submodule if local.
+export async function addModuleImport(
+  app: Application,
+  fromPath: string,
+  imp: ParsedImport,
+  adapter: ManifestAdapter
+): Promise<Application> {
+  const modules = new Map(app.modules)
+  const importGraph = new Map(app.importGraph)
+  const importedBy = new Map(app.importedBy)
+
+  // Update the importing module's import list
+  const fromModule = modules.get(fromPath)!
+  modules.set(fromPath, { ...fromModule, imports: [...fromModule.imports, imp] })
+
+  const deps = new Set(importGraph.get(fromPath) ?? [])
+
+  if (imp.importKind === 'submodule' && imp.resolvedPath) {
+    deps.add(imp.resolvedPath)
+    importGraph.set(fromPath, deps)
+
+    if (!importedBy.has(imp.resolvedPath)) importedBy.set(imp.resolvedPath, new Set())
+    importedBy.get(imp.resolvedPath)!.add(fromPath)
+
+    // Recursively load the new submodule and its dependencies
+    const loader = new Loader([adapter])
+    async function visit(filePath: string): Promise<void> {
+      if (modules.has(filePath)) return
+      const docs = await loader.loadModule(filePath) as ResourceManifest[]
+      const parsed = buildParsedManifest(filePath, docs)
+      modules.set(filePath, parsed)
+      const subDeps = new Set<string>()
+      importGraph.set(filePath, subDeps)
+      for (const subImp of parsed.imports) {
+        if (subImp.importKind !== 'submodule') continue
+        const depPath = resolveImportPath(adapter, filePath, subImp.source)
+        subImp.resolvedPath = depPath
+        subDeps.add(depPath)
+        if (!importedBy.has(depPath)) importedBy.set(depPath, new Set())
+        importedBy.get(depPath)!.add(filePath)
+        try { await visit(depPath) } catch (err) {
+          console.error(`Failed to load submodule ${depPath}:`, err)
+        }
+      }
+    }
+    try { await visit(imp.resolvedPath) } catch (err) {
+      console.error(`Failed to load submodule ${imp.resolvedPath}:`, err)
+    }
+  } else {
+    importGraph.set(fromPath, deps)
+  }
+
+  return { rootPath: app.rootPath, modules, importGraph, importedBy }
 }
 
 // ---------------------------------------------------------------------------

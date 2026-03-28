@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { openRootManifest, loadApplication, createApplication } from '../loader'
+import { openRootManifest, loadApplication, createApplication, addModuleImport, readModuleMetadata, toRelativeSource, toPascalCase, isInTauri } from '../loader'
+import type { ManifestAdapter } from '@telorun/analyzer'
 import type { EditorState } from '../model'
 import { saveState, loadState } from '../storage'
 import { TopBar } from './TopBar'
@@ -28,6 +29,7 @@ export function Editor() {
   // Effects run in definition order, so the save effect (defined second) checks
   // this flag and skips the initial render before the restore has happened.
   const isHydrated = useRef(false)
+  const adapterRef = useRef<ManifestAdapter | null>(null)
 
   useEffect(() => {
     if (isHydrated.current) saveState(state)
@@ -48,6 +50,7 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleCreate(name: string) {
+    adapterRef.current = null
     const application = createApplication(name)
     setCreating(false)
     setState({
@@ -64,6 +67,7 @@ export function Editor() {
     try {
       const opened = await openRootManifest()
       if (!opened) return
+      adapterRef.current = opened.adapter
       const application = await loadApplication(opened.rootPath, opened.adapter)
       setState({
         ...INITIAL_STATE,
@@ -76,6 +80,40 @@ export function Editor() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Import authoring
+  // ---------------------------------------------------------------------------
+
+  async function handleBrowseForModule(): Promise<{ source: string; suggestedAlias: string } | null> {
+    const adapter = adapterRef.current
+    if (!isInTauri() || !state.activeModulePath || !adapter) return null
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const result = await open({ filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }] })
+    if (!result || typeof result !== 'string') return null
+    const name = await readModuleMetadata(result, adapter)
+    const source = toRelativeSource(state.activeModulePath, result)
+    const suggestedAlias = toPascalCase(name ?? result.split('/').at(-2) ?? 'Module')
+    return { source, suggestedAlias }
+  }
+
+  async function handleAddModule(source: string, alias: string) {
+    const adapter = adapterRef.current
+    if (!state.application || !state.activeModulePath || !adapter) return
+    const resolvedPath = adapter.resolveRelative(state.activeModulePath, source)
+    const imp = { name: alias, source, importKind: 'submodule' as const, resolvedPath }
+    const updated = await addModuleImport(state.application, state.activeModulePath, imp, adapter)
+    setState(s => ({ ...s, application: updated }))
+  }
+
+  function handleAddImport(source: string, alias: string) {
+    if (!state.application || !state.activeModulePath) return
+    const imp = { name: alias, source, importKind: 'remote' as const }
+    const modules = new Map(state.application.modules)
+    const current = modules.get(state.activeModulePath)!
+    modules.set(state.activeModulePath, { ...current, imports: [...current.imports, imp] })
+    setState(s => ({ ...s, application: { ...s.application!, modules } }))
   }
 
   // ---------------------------------------------------------------------------
@@ -173,6 +211,9 @@ export function Editor() {
           onSelectResource={handleSelectResource}
           onClearSelection={handleClearSelection}
           onOpenModule={handleOpenModule}
+          onPickModuleFile={isInTauri() && adapterRef.current ? handleBrowseForModule : null}
+          onAddModule={handleAddModule}
+          onAddImport={handleAddImport}
         />
         <GraphCanvas
           hasApplication={state.application !== null}
