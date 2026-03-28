@@ -11,39 +11,81 @@ export const RuntimeResourceSchema = Type.Object(
   { additionalProperties: true },
 );
 
-export const ResourceDefinitionSchema = Type.Object(
-  {
-    kind: Type.Literal("Kernel.Definition"),
-    metadata: Type.Object(
-      {
-        name: Type.String(),
-        module: Type.Optional(Type.String()),
-      },
-      { additionalProperties: true },
-    ),
-    schema: Type.Optional(Type.Object({}, { additionalProperties: true })),
-    inputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
-    outputs: Type.Optional(Type.Object({}, { additionalProperties: true })),
-    contexts: Type.Optional(
-      Type.Array(
-        Type.Object({
-          scope: Type.String(),
-          schema: Type.Object({}, { additionalProperties: true }),
-        }),
-      ),
-    ),
-    capability: Type.Optional(Type.String()),
-    expand: Type.Optional(
-      Type.Object({
-        compile: Type.Optional(Type.Array(Type.String())),
-        runtime: Type.Optional(Type.Array(Type.String())),
-      }),
-    ),
-    events: Type.Optional(Type.Array(Type.String())),
-    controllers: Type.Optional(Type.Array(Type.String())),
+const metadataSchema = {
+  type: "object",
+  required: ["name"],
+  properties: {
+    name: { type: "string" },
+    module: { type: "string" },
   },
-  { additionalProperties: true },
-);
+  additionalProperties: true,
+};
+
+const contextSchema = {
+  type: "object",
+  required: ["scope", "schema"],
+  properties: {
+    scope: { type: "string" },
+    schema: { type: "object", additionalProperties: true },
+  },
+  additionalProperties: false,
+};
+
+const baseDefinition = {
+  type: "object",
+  required: ["kind", "metadata"],
+  properties: {
+    kind: { const: "Kernel.Definition" },
+    metadata: metadataSchema,
+    capability: { type: "string" },
+    schema: { type: "object", additionalProperties: true },
+    controllers: { type: "array", items: { type: "string" } },
+    expand: {
+      type: "object",
+      properties: {
+        compile: { type: "array", items: { type: "string" } },
+        runtime: { type: "array", items: { type: "string" } },
+      },
+      additionalProperties: false,
+    },
+  },
+  unevaluatedProperties: false,
+};
+
+const KNOWN_CAPABILITIES = [
+  "Kernel.Service",
+  "Kernel.Runnable",
+  "Kernel.Invocable",
+  "Kernel.Provider",
+  "Kernel.Type",
+  "Kernel.Mount",
+] as const;
+
+export const ResourceDefinitionSchema = {
+  ...baseDefinition,
+  oneOf: [
+    { required: ["capability"], properties: { capability: { const: "Kernel.Service" } } },
+    { required: ["capability"], properties: { capability: { const: "Kernel.Runnable" } } },
+    { required: ["capability"], properties: { capability: { const: "Kernel.Invocable" } } },
+    { required: ["capability"], properties: { capability: { const: "Kernel.Provider" } } },
+    { required: ["capability"], properties: { capability: { const: "Kernel.Type" } } },
+    {
+      required: ["capability"],
+      properties: {
+        capability: { const: "Kernel.Mount" },
+        contexts: { type: "array", items: contextSchema },
+      },
+    },
+    // Unknown/absent capability: open schema for third-party extensibility
+    {
+      not: {
+        required: ["capability"],
+        properties: { capability: { enum: KNOWN_CAPABILITIES } },
+      },
+      unevaluatedProperties: true,
+    },
+  ],
+};
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats.default(ajv);

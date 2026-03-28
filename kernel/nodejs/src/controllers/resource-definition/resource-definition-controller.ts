@@ -16,10 +16,7 @@ type ResourceDefinitionResource = RuntimeResource & {
     module?: string;
   };
   schema: Record<string, any>;
-  inputs?: Record<string, any>;
-  outputs?: Record<string, any>;
   capability?: string;
-  events?: string[];
   controllers?: Array<string>;
 };
 
@@ -79,7 +76,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   }
 
   // Return a fully-formed ResourceDefinition instance
-  const definition = resource as ResourceDefinitionResource;
+  const definition = resource as unknown as ResourceDefinitionResource;
   return new ResourceDefinition(definition, new ControllerLoader());
 }
 
