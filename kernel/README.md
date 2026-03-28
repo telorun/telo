@@ -90,9 +90,9 @@ schema: # JSON Schema — validated against each resource before create()
   required: [port]
 controllers:
   # Ordered list of Package URL (PURL) candidates — first match for the current runtime is used
-  - pkg:npm/@telorun/pipeline@>=1.0.0?local_path=./nodejs#job
-  - pkg:cargo/telorun-pipeline@>=1.0.0?local_path=./rust#job
-  - pkg:golang/github.com/telorun/pipeline@>=1.0.0?local_path=./go#job
+  - pkg:npm/@telorun/run@>=1.0.0?local_path=./nodejs#sequence
+  - pkg:cargo/telorun-run@>=1.0.0?local_path=./rust#sequence
+  - pkg:golang/github.com/telorun/run@>=1.0.0?local_path=./go#sequence
 ```
 
 When a `Kernel.Definition` instance initializes, it resolves and loads the controller module

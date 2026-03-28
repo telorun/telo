@@ -10,15 +10,15 @@ source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
-source: ../modules/pipeline
+  name: Run
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
 source: ../modules/assert
 ---
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestWithResources
   module: PipelineWithResourcesBasic
@@ -41,28 +41,21 @@ with:
 steps:
   - name: UseHelper
     inputs:
-      sharedValue: "${{ resources.SharedHelper }}"
+      value: 5
     invoke:
       kind: JavaScript.Script
-      code: |
-        function main({ sharedValue }) {
-          return {
-            result: sharedValue + 10
-          }
-        }
-      outputSchema:
-        result:
-          type: number
+      name: SharedHelper
 
   - name: VerifyResult
     inputs:
-      result: "${{ UseHelper.outputs.result }}"
+      doubled: "${{ steps.UseHelper.result.doubled }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties:
-          result:
-            type: object
+          doubled:
+            type: number
+            const: 10
         required:
-          - result
+          - doubled

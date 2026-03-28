@@ -13,9 +13,9 @@ source: ../
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
+  name: Run
   module: CanInsertAndSelect
-source: ../../pipeline
+source: ../../run
 ---
 kind: Kernel.Import
 metadata:
@@ -30,7 +30,7 @@ metadata:
 driver: sqlite
 file: ":memory:"
 ---
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestInsertAndSelect
   module: CanInsertAndSelect
@@ -61,7 +61,7 @@ steps:
 
   - name: AssertResult
     inputs:
-      rows: "${{ SelectRow.outputs.rows }}"
+      rows: "${{ steps.SelectRow.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

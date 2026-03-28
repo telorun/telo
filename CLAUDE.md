@@ -54,7 +54,7 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 
 Each module owns specific resource kinds. Structure: `module.yaml` (module def), `*.definition.yaml` (type defs), `src/` (TS controllers).
 
-Key modules: `http-server`, `http-client`, `sql`, `flow`, `javascript`, `config`, `pipeline`, `assert`, `console`.
+Key modules: `http-server`, `http-client`, `sql`, `flow`, `javascript`, `config`, `run`, `assert`, `console`.
 
 ## SDK vs Kernel
 

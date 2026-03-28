@@ -15,12 +15,6 @@ source: ../modules/assert
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
-  module: CanImportModuleWithAlias
-source: ../modules/pipeline
----
-kind: Kernel.Import
-metadata:
   name: MyConsole
   module: CanImportModuleWithAlias
 source: ../examples/configurable-console.yaml

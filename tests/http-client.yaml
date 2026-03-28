@@ -15,8 +15,8 @@ source: ../modules/http-client
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
-source: ../modules/pipeline
+  name: Run
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
@@ -32,7 +32,7 @@ baseUrl: https://jsonplaceholder.typicode.com
 timeout: 10000
 ---
 # Test 1: GET with absolute URL — verifies status + JSON body deserialization
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestGetAbsoluteUrl
   module: HttpClientTest
@@ -46,8 +46,8 @@ steps:
 
   - name: AssertGetResponse
     inputs:
-      status: "${{ FetchTodo.outputs.status }}"
-      id: "${{ FetchTodo.outputs.body.id }}"
+      status: "${{ steps.FetchTodo.result.status }}"
+      id: "${{ steps.FetchTodo.result.body.id }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,7 +64,7 @@ steps:
           - id
 ---
 # Test 2: GET with Http.Client (relative URL) — verifies baseUrl merging
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestGetWithClient
   module: HttpClientTest
@@ -79,8 +79,8 @@ steps:
 
   - name: AssertClientResponse
     inputs:
-      status: "${{ FetchUser.outputs.status }}"
-      id: "${{ FetchUser.outputs.body.id }}"
+      status: "${{ steps.FetchUser.result.status }}"
+      id: "${{ steps.FetchUser.result.body.id }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -97,7 +97,7 @@ steps:
           - id
 ---
 # Test 3: POST with JSON body — verifies serialization + 201 response
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestPostWithJsonBody
   module: HttpClientTest
@@ -115,8 +115,8 @@ steps:
 
   - name: AssertPostResponse
     inputs:
-      status: "${{ CreatePost.outputs.status }}"
-      title: "${{ CreatePost.outputs.body.title }}"
+      status: "${{ steps.CreatePost.result.status }}"
+      title: "${{ steps.CreatePost.result.body.title }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -133,7 +133,7 @@ steps:
           - title
 ---
 # Test 4: 4xx response must NOT throw — returns response object per spec section 3.1
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestNotFoundDoesNotThrow
   module: HttpClientTest
@@ -147,7 +147,7 @@ steps:
 
   - name: AssertNotFoundGraceful
     inputs:
-      status: "${{ FetchMissing.outputs.status }}"
+      status: "${{ steps.FetchMissing.result.status }}"
     invoke:
       kind: Assert.Schema
       schema:

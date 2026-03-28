@@ -13,9 +13,9 @@ source: ../
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
+  name: Run
   module: CanRunSimpleQuery
-source: ../../pipeline
+source: ../../run
 ---
 kind: Kernel.Import
 metadata:
@@ -30,7 +30,7 @@ metadata:
 driver: sqlite
 file: ":memory:"
 ---
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestSimpleQuery
   module: CanRunSimpleQuery
@@ -45,7 +45,7 @@ steps:
 
   - name: AssertResult
     inputs:
-      rows: "${{ RunQuery.outputs.rows }}"
+      rows: "${{ steps.RunQuery.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

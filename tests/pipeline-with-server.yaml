@@ -20,15 +20,15 @@ source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
-source: ../modules/pipeline
+  name: Run
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
 source: ../modules/assert
 ---
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestServerWithLifecycle
   module: PipelineWithServer
@@ -105,7 +105,7 @@ steps:
 
   - name: VerifyResponse
     inputs:
-      message: "${{ FetchGreeting.outputs.body.message }}"
+      message: "${{ steps.FetchGreeting.result.body.message }}"
     invoke:
       kind: Assert.Schema
       schema:

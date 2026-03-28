@@ -55,8 +55,8 @@ source: ../modules/sql
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
-source: ../modules/pipeline
+  name: Run
+source: ../modules/run
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection
@@ -67,7 +67,7 @@ driver: sqlite
 file: ./tmp/feedback.db
 ---
 # Startup migration: runs once before the server accepts requests
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: SetupDb
   module: FeedbackApi

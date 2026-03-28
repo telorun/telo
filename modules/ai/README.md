@@ -48,10 +48,10 @@ apiKey: "${{ secrets.OPENAI_API_KEY }}"
 
 A single-turn LLM call. Accepts a prompt or a messages array, returns the model's response text.
 
-### Inline usage (inside `Pipeline.Job`)
+### Inline usage (inside `Run.Sequence`)
 
 ```yaml
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: SummarizeText
   module: MyApp
@@ -69,7 +69,7 @@ steps:
 
   - name: SaveSummary
     inputs:
-      summary: "${{ Summarize.outputs.text }}"
+      summary: "${{ steps.Summarize.result.text }}"
     invoke:
       kind: Sql.Exec
       connection: Db
@@ -81,7 +81,7 @@ steps:
 
 ### Named resource usage
 
-Declare as a named resource to reuse across multiple pipeline steps or API handlers.
+Declare as a named resource to reuse across multiple sequence steps or API handlers.
 
 ```yaml
 kind: Ai.Completion
@@ -167,7 +167,7 @@ tools:
           - "%${{ inputs.keyword }}%"
 ```
 
-Invoking the agent from a pipeline step:
+Invoking the agent from a sequence step:
 
 ```yaml
 steps:
@@ -180,7 +180,7 @@ steps:
 
   - name: PrintAnswer
     inputs:
-      answer: "${{ AskAgent.outputs.text }}"
+      answer: "${{ steps.AskAgent.result.text }}"
     invoke:
       kind: Console.Log
       message: "${{ inputs.answer }}"

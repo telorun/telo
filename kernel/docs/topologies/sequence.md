@@ -254,7 +254,7 @@ schema:
 Covers all step types (`invoke`, `if`, `while`, `switch`) with `when` guards and three levels of nesting.
 
 ```yaml
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: ProcessOrder
   module: MyApp

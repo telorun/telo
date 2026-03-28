@@ -3,7 +3,7 @@ metadata:
   name: CanUseCrud
   version: 1.0.0
 targets:
-  - Run
+  - TestCrud
 ---
 kind: Kernel.Import
 metadata:
@@ -19,9 +19,9 @@ source: ../
 ---
 kind: Kernel.Import
 metadata:
-  name: Pipeline
+  name: Run
   module: CanUseCrud
-source: ../../pipeline
+source: ../../run
 ---
 kind: Kernel.Import
 metadata:
@@ -57,9 +57,9 @@ metadata:
 connection: Db
 table: users
 ---
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
-  name: Run
+  name: TestCrud
   module: CanUseCrud
 steps:
   - name: Setup
@@ -87,7 +87,7 @@ steps:
 
   - name: AssertRead
     inputs:
-      rows: "${{ Read.outputs.rows }}"
+      rows: "${{ steps.Read.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -119,7 +119,7 @@ steps:
 
   - name: AssertEmpty
     inputs:
-      rows: "${{ ReadAfterDelete.outputs.rows }}"
+      rows: "${{ steps.ReadAfterDelete.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

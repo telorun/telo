@@ -56,7 +56,9 @@ export function buildDependencyGraph(
 
     const sourceKey = nodeKey(r.kind, r.metadata.name as string);
     const resolvedKind = aliases?.resolveKind(r.kind);
-    const fieldMap = registry.getFieldMap(r.kind) ?? (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    const fieldMap =
+      registry.getFieldMap(r.kind) ??
+      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
     if (!fieldMap) continue;
 
     // Collect names of resources declared inside scope fields — these are initialized
@@ -129,9 +131,9 @@ export function buildDependencyGraph(
  * Formats a cycle result into a human-readable error string matching the spec:
  *
  *   Circular dependency detected:
- *     Pipeline.Job "DataSync"
+ *     Run.Sequence "DataSync"
  *       → Http.Server "Api"
- *       → Pipeline.Job "DataSync"
+ *       → Run.Sequence "DataSync"
  */
 export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
   const lines = ["Circular dependency detected:"];

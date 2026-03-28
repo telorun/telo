@@ -8,7 +8,7 @@ This allows tests to be defined once for every kernel implementation.
 ### Example: Simple Test
 
 ```yaml
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestAdd
 
@@ -190,7 +190,7 @@ assertions:
 ## Complete Example
 
 ````yaml
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: TestCalculator
   description: Verify calculator logic works correctly
@@ -261,16 +261,16 @@ steps:
 3. **Extract relevant outputs**: Only capture data needed for assertions
 4. **Separate logic and assertions**: Keep execution steps separate from verification
 5. **Test edge cases**: Empty inputs, null values, boundary conditions
-6. **Everything inline**: Define all logic and resources in the Pipeline.Job itself
+6. **Everything inline**: Define all logic and resources in the Run.Sequence itself
 
 ## Debugging
 
 ### View Step Execution
 
-Run the Pipeline.Job to see step outputs:
+Run the Run.Sequence to see step outputs:
 
 ```bash
-kernel.execute("Pipeline.Job.TestCalculator", {})
+kernel.execute("Run.Sequence.TestCalculator", {})
 ````
 
 ### Common Issues
