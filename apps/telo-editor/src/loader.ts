@@ -257,6 +257,7 @@ export async function loadApplication(rootPath: string, adapter: ManifestAdapter
     for (const imp of parsed.imports) {
       if (imp.importKind !== 'submodule') continue
       const depPath = resolveImportPath(adapter, filePath, imp.source)
+      imp.resolvedPath = depPath
       deps.add(depPath)
       if (!importedBy.has(depPath)) importedBy.set(depPath, new Set())
       importedBy.get(depPath)!.add(filePath)

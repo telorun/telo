@@ -14,6 +14,7 @@ export interface ParsedImport {
   name: string                        // metadata.name (alias)
   source: string                      // raw source field
   importKind: ImportKind
+  resolvedPath?: string               // absolute path, populated for submodule imports
   variables?: Record<string, unknown>
   secrets?: Record<string, unknown>
 }

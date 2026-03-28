@@ -9,9 +9,10 @@ interface GraphCanvasProps {
   onCancelCreate: () => void
   onNew: () => void
   onOpen: () => void
+  onClearSelection: () => void
 }
 
-export function GraphCanvas({ hasApplication, creating, onCreate, onCancelCreate, onNew, onOpen }: GraphCanvasProps) {
+export function GraphCanvas({ hasApplication, creating, onCreate, onCancelCreate, onNew, onOpen, onClearSelection }: GraphCanvasProps) {
   const [name, setName] = useState('')
 
   function handleCreate() {
@@ -82,8 +83,11 @@ export function GraphCanvas({ hasApplication, creating, onCreate, onCancelCreate
   }
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900">
-      <span className="text-sm text-zinc-400 dark:text-zinc-600">
+    <div
+      className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900"
+      onClick={onClearSelection}
+    >
+      <span className="text-sm text-zinc-400 dark:text-zinc-600 pointer-events-none">
         Graph canvas — coming in next step
       </span>
     </div>

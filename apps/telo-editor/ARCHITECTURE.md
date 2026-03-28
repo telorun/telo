@@ -8,7 +8,7 @@ The editor works with an **Application** — a root module and all the submodule
 
 The editor operates as a **three-panel layout**:
 
-- **Left sidebar** — four sections: Imports, Flow resource tree, Definitions, and Library
+- **Left sidebar** — Modules (submodule navigation), Imports (remote/external), Definitions, and Library
 - **Center canvas** — host for purpose-built sub-editors; content depends on the active paradigm
 - **Right detail panel** — field editor for the currently selected resource, with drill-down into nested collections
 
@@ -110,24 +110,22 @@ Three fixed panels:
 │                    │                                  │                              │
 │  Sidebar           │  Graph Canvas (React Flow)       │  Detail Panel                │
 │                    │                                  │  (opens on selection)        │
-│  ── Imports ──     │  Flow mode (default):            │                              │
-│    Http            │  root → runnable resources       │  Panel breadcrumb            │
-│    Sql             │         + target toggles         │  ──────────────────────      │
-│    Run        │  navigated → context + actual    │  Field list /                │
-│                    │         connections              │  nested item content         │
-│  ── Flow ──        │  selected → structurally         │                              │
-│  ▶ FeedbackApi     │         connectable resources    │                              │
-│    [HTTP]          │                                  │                              │
-│      Server        │  Definitions mode:               │                              │
-│      Routes (api)  │  type hierarchy + composition    │                              │
-│    [Run]      │                                  │                              │
-│      SetupDb       │  ○ = unselected node             │                              │
+│  ── Modules ──     │  Flow mode (default):            │                              │
+│    AuthModule      │  root → runnable resources       │  Panel breadcrumb            │
+│    DbModule        │         + target toggles         │  ──────────────────────      │
+│                    │  navigated → context + actual    │  Field list /                │
+│  ── Imports ──     │         connections              │  nested item content         │
+│    Http            │  selected → structurally         │                              │
+│    Sql             │         connectable resources    │                              │
+│    Run             │                                  │                              │
+│                    │  Definitions mode:               │                              │
+│                    │  type hierarchy + composition    │                              │
+│  ── Definitions ── │                                  │                              │
+│    CrudEndpoints   │  ○ = unselected node             │                              │
 │                    │  ● = selected node               │                              │
-│  ── Definitions ── │  ⊞ = context root node           │                              │
-│    CrudEndpoints   │  ★ = module target               │                              │
+│  ── Library ──     │  ⊞ = context root node           │                              │
+│    [Providers]     │  ★ = module target               │                              │
 │                    │                                  │                              │
-│  ── Library ──     │                                  │                              │
-│    [Providers]     │                                  │                              │
 │      Db            │                                  │                              │
 │    [Types]         │                                  │                              │
 │      Feedback      │                                  │                              │
@@ -157,36 +155,37 @@ See Section 5. Empty when nothing is selected.
 
 ## 3. Sidebar
 
-The sidebar has four sections: **Imports**, **Flow**, **Definitions**, and **Library**. Navigating within Flow or Definitions switches the canvas between the two corresponding modes — the active section drives what the canvas shows.
+The sidebar has four sections: **Modules**, **Imports**, **Definitions**, and **Library**. A module is a bag for resources — the sidebar is purely for navigating between modules and listing non-navigable imports. Resources belonging to the active module are shown on the canvas.
 
-### 3.1 Imports Section
+### 3.1 Modules Section
 
-Lists all `kind: Kernel.Import` documents in the active module. Imports are visually grouped by kind:
+Lists all submodule imports (`kind: Kernel.Import` with a local-path `source`) of the active module. Each entry is navigable — clicking it pushes a new `module` entry onto the navigation stack and opens that module in the editor.
+
+```
+── Modules ──
+  AuthModule         ← local .yaml import — part of this application
+  DatabaseModule
+```
+
+The `+` affordance opens a prompt for a relative file path and an alias. If the file does not exist it is created with a minimal `Kernel.Module` document. The `Kernel.Import` is written with that path as `source` and the given alias as `metadata.name`. The new module is immediately added to the application graph.
+
+A context menu on each entry provides a remove option. Removing a module import removes the `Kernel.Import` document from the active module's YAML but does not delete the submodule file.
+
+### 3.2 Imports Section
+
+Lists remote and external imports (`pkg:` URIs, registry references). These are resources of the module but are not navigable — the editor cannot follow them.
 
 ```
 ── Imports ──
-  [Submodules]
-    AuthModule         ← local .yaml import — part of this application
-    DatabaseModule
-  [Remote]
-    Http               ← pkg: / registry — read-only alias
-    Sql
+  Http               ← pkg: / registry — read-only alias
+  Sql
 ```
 
-**Submodule imports** show a module icon and are navigable — clicking one pushes a new `module` entry onto the navigation stack and opens that module in the editor, exactly as today. Submodule nodes are fully editable.
+Their exported kinds appear in the definition registry and the kind picker. No enter affordance is shown.
 
-**Remote imports** show only the alias. They are not navigable (the editor cannot follow `pkg:` or registry sources). Their exported kinds appear in the definition registry and the kind picker, but no enter affordance is shown.
+The `+` affordance prompts for a registry reference or `pkg:` URI and an alias. Writes a `Kernel.Import` with that source. The editor does not resolve or load this source.
 
-**External application imports** (future) are shown with a lock icon. Not navigable, not editable.
-
-The `+` affordance on the Imports section opens a two-option picker:
-
-- **Add submodule** — prompts for a relative file path and an alias. If the file does not exist it is created with a minimal `Kernel.Module` document. The `Kernel.Import` is written with that path as `source` and the given alias as `metadata.name`. The new module is immediately added to the application graph.
-- **Add remote import** — prompts for a registry reference or `pkg:` URI and an alias. Writes a `Kernel.Import` with that source. The editor does not resolve or load this source.
-
-A context menu on each import entry provides a remove option. Removing a submodule import removes the `Kernel.Import` document from the active module's YAML but does not delete the submodule file.
-
-### 3.2 Resource Tree
+### 3.3 Resource Tree
 
 Contains the module root and all resources except providers and types. This is the navigation control for the graph canvas.
 
