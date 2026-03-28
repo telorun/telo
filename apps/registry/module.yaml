@@ -12,7 +12,6 @@
 #                           R2.Get                   (executable step kind)
 #   - ../../http-server    →  Http.Server, Http.Api    (HTTP server + routing)
 #                           Http.Fetch               (executable step kind)
-#   - ../../flow           →  Flow.Steps               (already exists)
 #   - ../../config         →  Config.EnvironmentVariableStore, Config.Variables, Config.Secrets
 
 kind: Kernel.Module
@@ -35,13 +34,6 @@ metadata:
   name: HttpClient
   module: telo-registry
 source: ../../modules/http-client
-
----
-kind: Kernel.Import
-metadata:
-  name: Flow
-  module: telo-registry
-source: ../../modules/flow
 
 ---
 kind: Kernel.Import

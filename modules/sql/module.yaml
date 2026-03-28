@@ -124,7 +124,7 @@ schema:
       description: Sql.Connection resource name providing the pool
     steps:
       type: string
-      description: Invocable resource name to execute inside the transaction (Flow.Steps, Run.Sequence, etc.)
+      description: Invocable resource name to execute inside the transaction (Run.Sequence, etc.)
     bindings:
       type: object
       description: Forwarded to the steps resource at invoke time; may contain CEL template expressions

@@ -24,9 +24,9 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
-  name: Flow
+  name: Run
   module: ExampleConsole
-source: ../modules/flow
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
@@ -34,12 +34,10 @@ metadata:
   module: ExampleConsole
 source: ../modules/console
 ---
-kind: Flow.Steps
+kind: Run.Sequence
 metadata:
   name: Main
   module: ExampleConsole
-trigger:
-  event: Kernel.Started
 steps:
   - name: WriteProductInfo
     invoke:

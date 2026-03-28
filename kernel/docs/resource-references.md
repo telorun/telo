@@ -82,7 +82,7 @@ schema:
 ```
 
 ```yaml
-# modules/pipeline/module.yaml
+# modules/run/module.yaml
 schema:
   properties:
     steps:
@@ -304,7 +304,7 @@ schema:
 ### Example
 
 ```yaml
-kind: Pipeline.Job
+kind: Run.Sequence
 metadata:
   name: DataSync
   module: MyApp
@@ -579,9 +579,9 @@ If a topological sort of the DAG fails, a circular dependency exists. Boot halts
 
 ```text
 Circular dependency detected:
-  Pipeline.Job "DataSync"
+  Run.Sequence "DataSync"
     → Http.Server "Api"
-    → Pipeline.Job "DataSync"
+    → Run.Sequence "DataSync"
 ```
 
 ### Phase 5 — Ordered initialization & injection
@@ -624,7 +624,7 @@ for each ref in refs:
 
 For `x-telo-ref` slots, the editor also offers an inline definition form using the referenced definition's schema — the same slot accepts either a name picker or an inline config.
 
-For `x-telo-scope` fields, the editor renders a full inline manifest editor — supporting `Kernel.Import` declarations and resource definitions — with scope-aware autocomplete (only resources visible within the scope are offered as reference targets for x-telo-ref fields within the declared JSON Pointer path).
+For `x-telo-scope` fields, the editor renders a collapsed block in the detail panel showing the count of resources declared inside the scope, with an **Enter** affordance. Clicking **Enter** is a canvas-level navigation: the breadcrumb gains a new crumb for the scope, the entire canvas switches to show only the resources within that scope, and the sidebar resource tree shows the scope's own resource list. Reference autocomplete within the scope is restricted to resources declared inside the scope plus singleton resources from the outer manifest; resources from sibling scopes are not offered.
 
 This is an O(1) registry lookup. No schema traversal happens at interaction time.
 
@@ -642,6 +642,6 @@ The kernel maintains two parallel definition stores: `ControllerRegistry.definit
 
 ### `resolveChildren` and `withManifests`
 
-`ctx.resolveChildren()` handles inline resource registration at controller `init()` time — it inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference. `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down. Controllers like `Pipeline.Job` call both manually.
+`ctx.resolveChildren()` handles inline resource registration at controller `init()` time — it inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference. `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down. Controllers like `Run.Sequence` call both manually.
 
 Once Phase 2 normalization and `x-telo-scope` injection are in place, both are superseded by the kernel: inline resources are registered before `init()` is called, and scoped fields are injected as `ScopeHandle` objects. Both methods can be removed from the `ResourceContext` API.

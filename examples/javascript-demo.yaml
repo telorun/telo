@@ -8,8 +8,8 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
-  name: Flow
-source: ../modules/flow
+  name: Run
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
@@ -36,14 +36,10 @@ outputSchema:
   result:
     type: number
 ---
-kind: Flow.Steps
+kind: Run.Sequence
 metadata:
   name: RunScript
   module: JavaScriptDemo
-trigger:
-  event: Kernel.Started
-  once: true
-  filter: "true"
 steps:
   - name: Step1
     inputs:
@@ -51,8 +47,9 @@ steps:
     invoke:
       kind: JavaScript.Script
       name: MultiplyBy2
-  - inputs:
-      result: ${{ outputs.MultiplyBy2.result }}
+  - name: PrintResult
+    inputs:
+      result: "${{ steps.Step1.result.result }}"
     invoke:
       kind: Console.WriteLine
       inputSchema:

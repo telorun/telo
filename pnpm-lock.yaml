@@ -189,19 +189,6 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  modules/flow/nodejs:
-    dependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.30
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
   modules/http-client/nodejs:
     dependencies:
       '@telorun/sdk':

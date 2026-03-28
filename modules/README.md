@@ -16,7 +16,6 @@ For a full explanation of how modules are defined, imported, and composed, see t
 | [**config/**](config/) | Configuration injection via `Config.Variable` and `Config.Secret` resources |
 | [**console/**](console/) | Console I/O via `Console.WriteLine` and `Console.ReadLine` |
 | [**data/**](data/) | Shared data type definitions (`Data.Type`) |
-| [**flow/**](flow/) | Step-based orchestration via `Flow.Steps` |
 | [**http-client/**](http-client/README.md) | Outgoing HTTP calls via `Http.Request` and `Http.Client` |
 | [**http-server/**](http-server/README.md) | HTTP server and routing via `Http.Server` and `Http.Api` |
 | [**javascript/**](javascript/) | Inline JavaScript execution via `JavaScript.Script` |

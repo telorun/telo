@@ -16,26 +16,29 @@ source: ../modules/console
 ---
 kind: Kernel.Import
 metadata:
-  name: Flow
-source: ../modules/flow
+  name: Run
+source: ../modules/run
 ---
-kind: Flow.Steps
+kind: Run.Sequence
 metadata:
   name: ConsoleConfigExampleFlow
   module: ConsoleConfigExample
 steps:
-  - invoke:
+  - name: ReadUsername
+    invoke:
       kind: Console.ReadLine
       metadata:
         name: ReadUsername
       prompt: Username
-  - invoke:
+  - name: ReadPassword
+    invoke:
       kind: Console.ReadLine
       metadata:
         name: ReadPassword
       prompt: Password
-  - invoke:
+  - name: WriteResult
+    invoke:
       kind: Console.WriteLine
       metadata:
         name: Result
-      output: "Username: ${{ resources.ReadUsername.value }}, Password: ${{ resources.ReadPassword.value }}"
+      output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"

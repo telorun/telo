@@ -8,8 +8,8 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
-  name: Flow
-source: ../modules/flow
+  name: Run
+source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
@@ -56,7 +56,7 @@ output: |
   Evaluated starlark code.
   Result is: ${{ result }}
 ---
-kind: Flow.Steps
+kind: Run.Sequence
 metadata:
   name: RunScriptOnEvent
   module: StarlarkDemo
@@ -67,9 +67,9 @@ steps:
     invoke:
       kind: Starlark.Script
       name: ExampleStarlarkScript
-  - name: Step1
+  - name: Step2
     inputs:
-      result: ${{ outputs.ExampleStarlarkScript.result }}
+      result: "${{ steps.Step1.result.result }}"
     invoke:
       kind: Console.WriteLine
       name: WriteResult
