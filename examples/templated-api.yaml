@@ -3,7 +3,8 @@ metadata:
   name: templated-server
   version: 1.0.0
 exports:
-  HelloApi: "${{ resources.HelloApi }}"
+  kinds:
+    - HelloApi
 ---
 kind: Kernel.Import
 metadata:

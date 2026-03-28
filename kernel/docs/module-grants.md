@@ -89,7 +89,7 @@ The execution sandbox (e.g., `vm.Context`, V8 Isolate, or Wasm Guest) must not h
 ## 4. Manifest Example
 
 ```yaml
-kind: Import
+kind: Kernel.Import
 metadata:
   name: LegacyPostgresModule
 source: acme/postgres-driver@2.0.0

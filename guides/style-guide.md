@@ -55,7 +55,7 @@ Here is a perfect example of a Telo manifest utilizing the recommended style gui
 
 ```yaml
 # 1. Module Name: kebab-case
-kind: Module
+kind: Kernel.Module
 metadata:
   name: my-awesome-app
 
@@ -65,7 +65,7 @@ secrets:
 
 ---
 # 3. Resource Kind: PascalCase
-kind: Import
+kind: Kernel.Import
 metadata:
   # 4. Instance Name (Alias): camelCase
   name: prodApi

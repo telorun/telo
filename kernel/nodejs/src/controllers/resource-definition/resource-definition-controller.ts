@@ -9,7 +9,7 @@ import { formatAjvErrors, validateResourceDefinition } from "../../manifest-sche
 import { createTemplateController } from "./resource-template-controller.js";
 
 type ResourceDefinitionResource = RuntimeResource & {
-  kind: "Definition";
+  kind: "Kernel.Definition";
   metadata: {
     [key: string]: any;
     name: string;

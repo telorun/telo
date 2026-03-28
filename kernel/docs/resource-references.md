@@ -11,7 +11,7 @@ Resource references are the mechanism by which one resource declares a dependenc
 Every resource reference in a YAML manifest has the same structure:
 
 ```yaml
-kind: Module.KindName # alias-prefixed kind of the target resource
+kind: Alias.KindName # alias-prefixed kind of the target resource
 name: ResourceName # name of the target resource (metadata.name)
 ```
 
@@ -190,7 +190,7 @@ nodes:
       backend:
         x-telo-ref: "std/workflow#Backend"
       options:
-        x-telo-schema-from: "backend/$defs/NodeOptions"   # relative: sibling backend
+        x-telo-schema-from: "backend/$defs/NodeOptions" # relative: sibling backend
 ```
 
 Absolute — `x-telo-ref` is at the resource root:
@@ -206,7 +206,7 @@ schema:
         type: object
         properties:
           options:
-            x-telo-schema-from: "/backend/$defs/NodeOptions"   # absolute: root backend
+            x-telo-schema-from: "/backend/$defs/NodeOptions" # absolute: root backend
 ```
 
 AJV ignores this keyword during its standard validation pass — the dependent schema check is an explicit Phase 3 step run by the analyzer after all references are resolved (see Section 9).

@@ -17,7 +17,7 @@ The Telo engine detects the `Telemetry` trait of this Provider and automatically
 **Syntax (`root-module.yaml`):**
 
 ```yaml
-kind: Module
+kind: Kernel.Module
 metadata:
   name: main-application
 
@@ -34,7 +34,7 @@ config:
   protocol: grpc
 
 ---
-kind: Import
+kind: Kernel.Import
 metadata:
   name: Users
 source:

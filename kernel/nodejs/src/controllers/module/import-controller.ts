@@ -1,6 +1,6 @@
+import { DiagnosticSeverity, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { EvaluationContext, RuntimeError } from "@telorun/sdk";
-import { DiagnosticSeverity, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import { LocalFileAdapter } from "../../manifest-adapters/local-file-adapter.js";
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
@@ -26,9 +26,12 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Load target module manifests for runtime. Inject variables/secrets as compile context so
   // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
-  const manifests = await loader.loadModule(new URL(moduleSource, ctx.moduleContext.source).toString(), {
-    compile: true,
-  });
+  const manifests = await loader.loadModule(
+    new URL(moduleSource, ctx.moduleContext.source).toString(),
+    {
+      compile: true,
+    },
+  );
   // Find the kind: Module manifest to learn the target module name and contract.
   const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Module");
   if (!moduleManifest) {
@@ -126,7 +129,6 @@ export const schema = {
       type: "object",
       properties: {
         name: { type: "string" },
-        source: { type: "string" },
         module: { type: "string" },
       },
       required: ["name"],

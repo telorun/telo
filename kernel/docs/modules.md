@@ -6,15 +6,15 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 
 ---
 
-## 1. Module Contract (`kind: Module`)
+## 1. Module Contract (`kind: Kernel.Module`)
 
-The `Module` kind acts as the manifest and public interface for the package. It is the single source of truth for what the module needs to run and what it provides to the outside world. It utilizes JSON Schema validation for its inputs and Common Expression Language (CEL) for its outputs.
+The `Kernel.Module` kind acts as the manifest and public interface for the package. It is the single source of truth for what the module needs to run and what it provides to the outside world. It utilizes JSON Schema validation for its inputs and Common Expression Language (CEL) for its outputs.
 
 - **`metadata.name`**: This serves as the global identifier in the package registry. It should be a **kebab-case slug** (e.g., `user-service`) to remain URL-friendly and consistent with standard registry patterns.
 - **`variables`**: Defines the standard configuration properties required by the module. These are defined as **JSON Schema object properties**. Per the style guide, these should use **camelCase** (e.g., `dbConnectionString`).
 - **`secrets`**: Defines sensitive inputs. These are also defined as **JSON Schema object properties** but are handled separately to ensure secure injection and to prevent accidental exposure in logs.
 - **Optionality (No `required` block)**: Requirement validation is handled via defaults. If an input is mandatory, it is defined without a `default`. If it is optional, it must be explicitly defined with `default: null`.
-- **`exports`**: A dictionary defining the module's public API. Internal resources are private by default. To expose them, they must be mapped using CEL expressions (`${{ ... }}`). Exports should use **camelCase** for consistency with property access.
+- **`exports`**: Declares which resource kinds this module exposes to consumers. Kinds listed here become accessible to importers under the import alias.
 
 ---
 
@@ -23,7 +23,7 @@ The `Module` kind acts as the manifest and public interface for the package. It 
 A module can load additional manifests from other files into the same module scope using the `include` field. This allows splitting a large module definition across multiple files while keeping them logically united under one module.
 
 ```yaml
-kind: Module
+kind: Kernel.Module
 metadata:
   name: user-service
   version: 1.0.0
@@ -37,10 +37,11 @@ variables:
     type: string
 
 exports:
-  apiInstance: "${{ resources.UserApi }}"
+  kinds:
+    - UserApi
 ```
 
-All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, and `resources` context. Included files must not redeclare a `kind: Module` manifest.
+All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, and `resources` context. Included files must not redeclare a `kind: Kernel.Module` manifest.
 
 Resources in included files that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
 
@@ -73,7 +74,7 @@ This example demonstrates an application module requiring a connection string an
 ### Module File (The Contract)
 
 ```yaml
-kind: Module
+kind: Kernel.Module
 metadata:
   name: user-service
   version: 1.0.0
@@ -89,11 +90,6 @@ secrets:
   paymentProviderKey:
     type: string
     default: null
-
-exports:
-  # camelCase for exported properties
-  healthEndpoint: "${{ resources.UserApi.url }}/health"
-  apiInstance: "${{ resources.UserApi }}"
 ```
 
 ### Internal Resource Files (The Implementation)
@@ -147,7 +143,7 @@ A **Root Module** is the designated entry point of an application. It is the onl
 
 The `env` object represents the host process's environment variables and is **exclusively available** in Root Module documents. Child modules are deliberately isolated from the host environment — they can only receive values that are explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: Root Module documents only (`kind: Module` and `kind: Import` declared in the root module's files).
+- **Available in**: Root Module documents only (`kind: Kernel.Module` and `kind: Kernel.Import` declared in the root module's files).
 - **Unavailable in**: Any non-root module, regardless of nesting depth.
 - **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root module.
 
@@ -161,7 +157,7 @@ The primary purpose of the Root Module is to bridge the host environment to its 
 
 ```yaml
 # main.yaml (The Root Module)
-kind: Module
+kind: Kernel.Module
 metadata:
   name: backend-root
   version: 1.0.0
@@ -169,7 +165,7 @@ metadata:
 ---
 # The root module imports the payment gateway and injects host environment
 # variables into the child module's explicit contract.
-kind: Import
+kind: Kernel.Import
 metadata:
   name: PaymentGateway
 source: acme/payment-gateway@1.2.0
@@ -183,7 +179,7 @@ secrets:
   webhookSignature: "${{ env.STRIPE_WEBHOOK_SECRET }}"
 
 ---
-kind: Import
+kind: Kernel.Import
 metadata:
   name: UserService
 source: acme/user-service@1.0.0
@@ -195,18 +191,30 @@ The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or
 
 ---
 
-## 6. Import and Usage (`kind: Import`)
+## 6. Import and Usage (`kind: Kernel.Import`)
 
-To utilize an external package, a project declares a dependency using `kind: Import`. The import acts as a local proxy.
+To utilize an external package, a project declares a dependency using `kind: Kernel.Import`. The import acts as a local proxy.
 
 - **Instantiation**: The `Import` resource provides the required `variables` and `secrets`.
 - **Referencing**: Once imported, the module's exported properties are accessed directly through the import instance name. The `.exports` accessor is omitted for cleaner syntax.
 - **Syntax**: `${{ imports.<ImportName>.<exportProperty> }}`.
 
+### 6.1 Source Resolution
+
+The `source` field accepts three forms:
+
+| Form               | Example                                   | Resolved as                                       |
+| ------------------ | ----------------------------------------- | ------------------------------------------------- |
+| Registry reference | `acme/user-service@1.0.0`                 | Looked up in the configured module registry       |
+| Relative path      | `./payment/module.yaml`                   | Resolved relative to the importing manifest's URL |
+| Absolute URL       | `https://cdn.example.com/lib/module.yaml` | Fetched directly                                  |
+
+Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that contains the `Kernel.Import`, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
+
 ### Import Declaration
 
 ```yaml
-kind: Import
+kind: Kernel.Import
 metadata:
   name: UserService
   # Implicitly module: default
@@ -216,15 +224,4 @@ variables:
   enableDebug: true
 secrets:
   paymentProviderKey: "sk_live_12345"
-```
-
-### Export Usage in Local Resources
-
-```yaml
-kind: Order.Service
-metadata:
-  name: OrderProcessor
-inputs:
-  # Binding to the exported resource directly
-  userServiceRef: "${{ imports.UserService.apiInstance }}"
 ```

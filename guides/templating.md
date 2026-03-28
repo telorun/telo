@@ -2,9 +2,9 @@
 
 In Telo, a "template" is fundamentally a parameterized Module. By defining a strict contract and utilizing CEL-YAML directives, you can create reusable, encapsulated components that dynamically generate resources based on provided inputs.
 
-## 1. Creating the Template Contract (`kind: Module`)
+## 1. Creating the Template Contract (`kind: Kernel.Module`)
 
-The `kind: Module` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what outputs it exposes to the consumer.
+The `kind: Kernel.Module` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what outputs it exposes to the consumer.
 
 - **Naming:** The template's `metadata.name` must be a kebab-case slug.
 - **Inputs:** Define `variables` (standard configuration) and `secrets` (sensitive data) using JSON Schema object properties.
@@ -14,7 +14,7 @@ The `kind: Module` manifest acts as the public interface for your template. It d
 **Example: `template-contract.yaml`**
 
 ```yaml
-kind: Module
+kind: Kernel.Module
 metadata:
   name: secure-storage-template
 variables:
@@ -60,23 +60,23 @@ spec:
     replicationRegion: "eu-west-1"
 ```
 
-## 3. Using the Template (`kind: Import`)
+## 3. Using the Template (`kind: Kernel.Import`)
 
-To use the template in another module (like your application's Root Module), you instantiate it using the `kind: Import` resource. The import acts as a local proxy that fulfills the template's contract.
+To use the template in another module (like your application's Root Module), you instantiate it using the `kind: Kernel.Import` resource. The import acts as a local proxy that fulfills the template's contract.
 
-- **Instantiation:** The `kind: Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
+- **Instantiation:** The `kind: Kernel.Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
 - **Passing Environment Variables:** If you are instantiating the template within the **Root Module**, you can securely pass host environment variables to the template's secrets using the `env` object.
 - **Accessing Exports:** Once instantiated, you can access the template's exported properties in your local resources using the `${{ imports.<ImportName>.<exportProperty> }}` syntax.
 
 **Example: `main-app.yaml`**
 
 ```yaml
-kind: Module
+kind: Kernel.Module
 metadata:
   name: my-root-application
 
 ---
-kind: Import
+kind: Kernel.Import
 metadata:
   name: UserDataStorage
 spec:
