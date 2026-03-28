@@ -1,0 +1,194 @@
+kind: Kernel.Module
+metadata:
+  name: RunSequenceSwitch
+  version: 1.0.0
+targets:
+  - TestSwitch
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+  module: RunSequenceSwitch
+source: ../modules/run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+  module: RunSequenceSwitch
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: RunSequenceSwitch
+source: ../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestSwitch
+  module: RunSequenceSwitch
+steps:
+  # --- switch: matching case executes, others do not ---
+  - name: RouteToB
+    switch: "${{ 'b' }}"
+    cases:
+      a:
+        # Would fail if reached.
+        - name: BranchA
+          inputs:
+            x: 1
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                x:
+                  const: 0
+      b:
+        - name: BranchB
+          inputs:
+            matched: "b"
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                matched:
+                  const: "b"
+      c:
+        # Would fail if reached.
+        - name: BranchC
+          inputs:
+            x: 1
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                x:
+                  const: 0
+
+  - name: VerifyBranchB
+    inputs:
+      result: "${{ steps.BranchB.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- switch: no match falls through to default ---
+  - name: RouteToDefault
+    switch: "${{ 'unknown' }}"
+    cases:
+      known:
+        # Would fail if reached.
+        - name: KnownCase
+          inputs:
+            x: 1
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                x:
+                  const: 0
+    default:
+      - name: DefaultCase
+        inputs:
+          matched: "default"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              matched:
+                const: "default"
+
+  - name: VerifyDefault
+    inputs:
+      result: "${{ steps.DefaultCase.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- switch: data-driven dispatch ---
+  - name: ComputeRole
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main() { return { role: "admin" } }
+
+  - name: RouteByRole
+    switch: "${{ steps.ComputeRole.result.role }}"
+    cases:
+      admin:
+        - name: AdminAction
+          inputs:
+            role: "${{ steps.ComputeRole.result.role }}"
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                role:
+                  const: "admin"
+      viewer:
+        # Would fail if reached.
+        - name: ViewerAction
+          inputs:
+            x: 1
+          invoke:
+            kind: Assert.Schema
+            schema:
+              type: object
+              properties:
+                x:
+                  const: 0
+
+  - name: VerifyAdminAction
+    inputs:
+      result: "${{ steps.AdminAction.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- switch inside if: nesting ---
+  - name: Nested
+    if: "${{ true }}"
+    then:
+      - name: InnerSwitch
+        switch: "${{ 'x' }}"
+        cases:
+          x:
+            - name: NestedMatch
+              inputs:
+                val: "x"
+              invoke:
+                kind: Assert.Schema
+                schema:
+                  type: object
+                  properties:
+                    val:
+                      const: "x"
+
+  - name: VerifyNested
+    inputs:
+      result: "${{ steps.NestedMatch.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true

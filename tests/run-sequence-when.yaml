@@ -1,0 +1,88 @@
+kind: Kernel.Module
+metadata:
+  name: RunSequenceWhen
+  version: 1.0.0
+targets:
+  - TestWhenGuard
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+  module: RunSequenceWhen
+source: ../modules/run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+  module: RunSequenceWhen
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: RunSequenceWhen
+source: ../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestWhenGuard
+  module: RunSequenceWhen
+steps:
+  # Step with when:false is skipped. If it ran, its Assert.Schema would fail (const: 0 vs. 999).
+  - name: ShouldSkip
+    when: "${{ false }}"
+    inputs:
+      x: 999
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          x:
+            type: number
+            const: 0
+
+  # Step with when:true must run. If skipped, the outer assertion below would have no result.
+  - name: ShouldRun
+    when: "${{ true }}"
+    inputs:
+      flag: "yes"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          flag:
+            type: string
+            const: "yes"
+
+  # Data-driven guard: step only runs when a prior result satisfies the condition.
+  - name: Compute
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main() { return { ready: true } }
+
+  - name: DataDrivenStep
+    when: "${{ steps.Compute.result.ready == true }}"
+    inputs:
+      ready: "${{ steps.Compute.result.ready }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          ready:
+            const: true
+
+  # Verify ShouldRun actually ran by checking its result.
+  - name: VerifyRan
+    inputs:
+      result: "${{ steps.ShouldRun.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true

@@ -1,0 +1,117 @@
+kind: Kernel.Module
+metadata:
+  name: RunSequenceWhile
+  version: 1.0.0
+targets:
+  - TestWhileLoop
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+  module: RunSequenceWhile
+source: ../modules/run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+  module: RunSequenceWhile
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: RunSequenceWhile
+source: ../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestWhileLoop
+  module: RunSequenceWhile
+steps:
+  # --- while: basic counter loop ---
+  # Pre-initialize Counter at n=0. The while loop overwrites it each iteration.
+  - name: Counter
+    inputs:
+      n: 0
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ n }) { return { n } }
+
+  - name: Increment
+    while: "${{ steps.Counter.result.n < 3 }}"
+    do:
+      - name: Counter
+        inputs:
+          n: "${{ steps.Counter.result.n }}"
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main({ n }) { return { n: n + 1 } }
+
+  - name: AssertThreeIterations
+    inputs:
+      n: "${{ steps.Counter.result.n }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          n:
+            type: number
+            const: 3
+
+  # --- while: loop body can reference outer steps ---
+  - name: Multiplier
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main() { return { factor: 2 } }
+
+  - name: Accumulator
+    inputs:
+      total: 0
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ total }) { return { total } }
+
+  - name: Multiply
+    while: "${{ steps.Accumulator.result.total < 8 }}"
+    do:
+      - name: Accumulator
+        inputs:
+          total: "${{ steps.Accumulator.result.total }}"
+          factor: "${{ steps.Multiplier.result.factor }}"
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main({ total, factor }) { return { total: total + factor } }
+
+  - name: AssertAccumulated
+    inputs:
+      total: "${{ steps.Accumulator.result.total }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          total:
+            type: number
+            const: 8
+
+  # --- while: condition false from the start, body never runs ---
+  - name: NeverRuns
+    while: "${{ false }}"
+    do:
+      # Would fail if this ran.
+      - name: ShouldNotExecute
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 0

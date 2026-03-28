@@ -1,0 +1,198 @@
+kind: Kernel.Module
+metadata:
+  name: RunSequenceTry
+  version: 1.0.0
+targets:
+  - TestTryBlocks
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+  module: RunSequenceTry
+source: ../modules/run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+  module: RunSequenceTry
+source: ../modules/javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+  module: RunSequenceTry
+source: ../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestTryBlocks
+  module: RunSequenceTry
+steps:
+  # --- try/catch: error is thrown, caught, swallowed; sequence continues ---
+  - name: CatchError
+    try:
+      - name: Thrower
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { throw new Error("caught me") }
+    catch:
+      - name: CaughtMessage
+        inputs:
+          msg: "${{ error.message }}"
+          step: "${{ error.step }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+              step:
+                type: string
+
+  # Error was swallowed — sequence continues here.
+  - name: AfterCatch
+    inputs:
+      continued: true
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          continued:
+            const: true
+
+  # --- try/finally: success path, finally always runs with error==null ---
+  - name: TrySuccess
+    try:
+      - name: WorkDone
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { return { done: true } }
+    finally:
+      - name: FinallyOnSuccess
+        inputs:
+          done: "${{ steps.WorkDone.result.done }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              done:
+                const: true
+
+  - name: VerifyFinallyRan
+    inputs:
+      result: "${{ steps.FinallyOnSuccess.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- try/catch/finally: error thrown, catch runs, finally always runs ---
+  - name: FullTryCatchFinally
+    try:
+      - name: FailStep
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { throw new Error("boom") }
+    catch:
+      - name: CatchRan
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                const: "boom"
+    finally:
+      - name: FinallyRan
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 1
+
+  - name: VerifyCatchRan
+    inputs:
+      result: "${{ steps.CatchRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  - name: VerifyFinallyAfterCatch
+    inputs:
+      result: "${{ steps.FinallyRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- try: when guard skips entire block ---
+  - name: SkippedTry
+    when: "${{ false }}"
+    try:
+      # Would fail if reached.
+      - name: TryShouldNotRun
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 0
+
+  # --- try/catch nested inside if ---
+  - name: NestedTryCatch
+    if: "${{ true }}"
+    then:
+      - name: InnerTry
+        try:
+          - name: InnerFail
+            invoke:
+              kind: JavaScript.Script
+              code: |
+                function main() { throw new Error("inner") }
+        catch:
+          - name: InnerCaught
+            inputs:
+              msg: "${{ error.message }}"
+            invoke:
+              kind: Assert.Schema
+              schema:
+                type: object
+                properties:
+                  msg:
+                    const: "inner"
+
+  - name: VerifyNestedCatch
+    inputs:
+      result: "${{ steps.InnerCaught.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true

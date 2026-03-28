@@ -1,0 +1,81 @@
+kind: Kernel.Module
+metadata:
+  name: run
+  namespace: std
+  version: 0.1.0
+  description: Run sequence of invocable resources with if, while, switch, and try steps
+exports:
+  kinds:
+    - Sequence
+---
+kind: Kernel.Definition
+metadata:
+  name: Sequence
+capability: Kernel.Runnable
+controllers:
+  - pkg:npm/@telorun/run@>=1.0.0?local_path=./nodejs#sequence
+schema:
+  type: object
+  properties:
+    with:
+      x-telo-scope: /steps
+      description: Resources available during sequence execution; torn down when done
+    inputs:
+      type: object
+      description: Declared input schema (JSON Schema property definitions)
+      additionalProperties:
+        type: object
+    outputs:
+      type: object
+      description: CEL mapping producing the sequence result
+      additionalProperties: true
+    steps:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          when:
+            type: string
+            description: CEL boolean guard; step skipped when falsy
+          invoke:
+            anyOf:
+              - x-telo-ref: "kernel#Invocable"
+              - x-telo-ref: "kernel#Runnable"
+          inputs:
+            type: object
+            additionalProperties: true
+          retry:
+            type: object
+            properties:
+              attempts: { type: integer }
+              delay: { type: string }
+          if:
+            type: string
+          then:
+            $ref: "#/properties/steps"
+          else:
+            $ref: "#/properties/steps"
+          while:
+            type: string
+          do:
+            $ref: "#/properties/steps"
+          switch:
+            type: string
+          cases:
+            type: object
+            additionalProperties:
+              $ref: "#/properties/steps"
+          default:
+            $ref: "#/properties/steps"
+          try:
+            $ref: "#/properties/steps"
+          catch:
+            $ref: "#/properties/steps"
+          finally:
+            $ref: "#/properties/steps"
+        required:
+          - name
+  required:
+    - steps
