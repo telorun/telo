@@ -21,7 +21,7 @@ export class NoopValidator implements DataValidator {
 export interface ResourceContext extends ControllerContext {
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
-  invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any>;
+  invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
   run(kind: string, name: string): Promise<void>;
   getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;
