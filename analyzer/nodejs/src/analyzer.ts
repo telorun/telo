@@ -5,13 +5,12 @@ import { celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { checkSchemaCompatibility, validateAgainstSchema } from "./schema-compat.js";
-import { resolveScope } from "./scope-resolver.js";
+import { validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
-  extractAccessChains,
-  pathMatchesScope,
-  validateChainAgainstSchema,
+    extractAccessChains,
+    pathMatchesScope,
+    validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
 
@@ -36,6 +35,43 @@ function walkCelExpressions(
 }
 
 const SOURCE = "telo-analyzer";
+
+/**
+ * Walk a JSON Schema tree and collect all `x-telo-context` annotations,
+ * returning them as `{ scope, schema }` pairs using JSONPath-style scopes —
+ * the same format the analyzer uses for CEL context validation.
+ */
+function extractContextsFromSchema(
+  schema: Record<string, any>,
+  path = "$",
+): Array<{ scope: string; schema: Record<string, any> }> {
+  if (!schema || typeof schema !== "object") return [];
+  const results: Array<{ scope: string; schema: Record<string, any> }> = [];
+
+  if (schema["x-telo-context"]) {
+    results.push({ scope: path, schema: schema["x-telo-context"] });
+  }
+
+  if (schema.properties) {
+    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
+      results.push(...extractContextsFromSchema(value, `${path}.${key}`));
+    }
+  }
+
+  if (schema.items && typeof schema.items === "object") {
+    results.push(...extractContextsFromSchema(schema.items, `${path}[*]`));
+  }
+
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const subschema of schema[key]) {
+        results.push(...extractContextsFromSchema(subschema, path));
+      }
+    }
+  }
+
+  return results;
+}
 
 export class StaticAnalyzer {
   analyze(
@@ -167,45 +203,7 @@ export class StaticAnalyzer {
         }
       }
 
-      // Check invocation context compatibility
-      if (definition.contexts) {
-        for (const ctx of definition.contexts) {
-          const referencedNames = resolveScope(m as Record<string, any>, ctx.scope);
-          for (const refName of referencedNames) {
-            const refManifest = byName.get(refName);
-            if (!refManifest) {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Warning,
-                code: "UNRESOLVED_REFERENCE",
-                source: SOURCE,
-                message: `${m.kind}/${resource.name}: scope '${ctx.scope}' references '${refName}' which is not defined in this manifest`,
-                data: { resource, path: ctx.scope },
-              });
-              continue;
-            }
-
-            const refKind = aliases.resolveKind(refManifest.kind) ?? refManifest.kind;
-            const refDefinition = defs.resolve(refKind);
-            if (!refDefinition?.inputs) continue;
-
-            const result = checkSchemaCompatibility(ctx.schema, refDefinition.inputs);
-            if (!result.compatible) {
-              const severity = options?.strictContexts
-                ? DiagnosticSeverity.Error
-                : DiagnosticSeverity.Warning;
-              for (const issue of result.issues) {
-                diagnostics.push({
-                  severity,
-                  code: "CONTEXT_INCOMPATIBLE",
-                  source: SOURCE,
-                  message: `${m.kind}/${resource.name} → ${refManifest.kind}/${refName}: ${issue}`,
-                  data: { resource, path: ctx.scope },
-                });
-              }
-            }
-          }
-        }
-      }
+      // (Invocation context compatibility check is handled via x-telo-context in the CEL pass below)
     }
 
     // Validate CEL syntax and context variable access in all manifests
@@ -231,8 +229,10 @@ export class StaticAnalyzer {
           return;
         }
 
-        if (!mDefinition?.contexts) return;
-        for (const ctx of mDefinition.contexts) {
+        if (!mDefinition?.schema) return;
+        const contexts = extractContextsFromSchema(mDefinition.schema);
+        if (contexts.length === 0) return;
+        for (const ctx of contexts) {
           if (!pathMatchesScope(path, ctx.scope)) continue;
           for (const chain of extractAccessChains(parsed.ast)) {
             const err = validateChainAgainstSchema(chain, ctx.schema);

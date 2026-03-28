@@ -115,8 +115,8 @@ export class ControllerRegistry {
     const wrappedController: ControllerInstance = {
       ...controller,
       schema: controller.schema ?? definition?.schema,
-      inputSchema: controller.inputSchema ?? definition?.inputs,
-      outputSchema: controller.outputSchema ?? definition?.outputs,
+      inputSchema: controller.inputSchema,
+      outputSchema: controller.outputSchema,
     };
     this.controllersByKind.set(kind, wrappedController);
   }

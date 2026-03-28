@@ -14,15 +14,6 @@ export interface ExecContext {
   [key: string]: any;
 }
 
-export interface InvocationContext {
-  /** JSON Path (RFC 9535) expression into the resource config identifying the invocation field,
-   *  e.g. '$.routes[*].handler'. Used to locate the referenced invokable resource name(s). */
-  scope: string;
-  /** JSON Schema for the data shape provided to the invoked resource's invoke() inputs.
-   *  Validated statically by the analyzer at bootstrap. */
-  schema: Record<string, any>;
-}
-
 export interface ResourceDefinition {
   kind: string;
   metadata: {
@@ -31,13 +22,6 @@ export interface ResourceDefinition {
   };
   /** JSON Schema for the resource's compile-time configuration fields. */
   schema?: Record<string, any>;
-  /** JSON Schema for invoke() inputs. Used for runtime validation and static analysis. */
-  inputs?: Record<string, any>;
-  /** JSON Schema for invoke() outputs. Used for static analysis. */
-  outputs?: Record<string, any>;
-  /** Invocation context declarations — what each call site provides to invoked resources.
-   *  Used for static analysis at bootstrap. */
-  contexts?: InvocationContext[];
   capability?: string;
   /** CEL expression paths expanded at compile time and/or runtime.
    *  '**' expands the entire manifest. Inherited from the parent base definition. */
@@ -45,7 +29,6 @@ export interface ResourceDefinition {
     compile?: string[];
     runtime?: string[];
   };
-  events?: string[];
   controllers?: Array<{
     runtime: string;
     entry: string;

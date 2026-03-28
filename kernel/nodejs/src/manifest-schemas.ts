@@ -21,16 +21,6 @@ const metadataSchema = {
   additionalProperties: true,
 };
 
-const contextSchema = {
-  type: "object",
-  required: ["scope", "schema"],
-  properties: {
-    scope: { type: "string" },
-    schema: { type: "object", additionalProperties: true },
-  },
-  additionalProperties: false,
-};
-
 const baseDefinition = {
   type: "object",
   required: ["kind", "metadata"],
@@ -73,7 +63,6 @@ export const ResourceDefinitionSchema = {
       required: ["capability"],
       properties: {
         capability: { const: "Kernel.Mount" },
-        contexts: { type: "array", items: contextSchema },
       },
     },
     // Unknown/absent capability: open schema for third-party extensibility
