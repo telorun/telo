@@ -116,6 +116,14 @@ async function run(argv: {
 
     let watchHandle: WatchHandle | null = null;
 
+    const shutdown = () => {
+      if (argv.watch) log.info("\n[watch] stopping...");
+      watchHandle?.cleanup();
+      kernel.shutdown();
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+
     if (argv.watch) {
       // Acquire a hold BEFORE start() to keep the kernel alive for apps that
       // don't have their own holds (e.g. script-only manifests).
@@ -128,14 +136,6 @@ async function run(argv: {
         // log.info(`[watch] watching ${files.length} file(s)`);
         watchHandle = setupWatchMode(kernel, log);
       });
-
-      const shutdown = () => {
-        log.info("\n[watch] stopping...");
-        watchHandle?.cleanup();
-        kernel.shutdown();
-      };
-      process.once("SIGINT", shutdown);
-      process.once("SIGTERM", shutdown);
     }
 
     await kernel.loadFromConfig(argv.path);

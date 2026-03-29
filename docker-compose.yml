@@ -1,0 +1,11 @@
+services:
+  registry:
+    image: node:24
+    command: 'sh -c "corepack enable && pnpm run telo ./apps/registry"'
+    volumes:
+      - .:/telo
+    working_dir: /telo
+    env_file:
+      - ./apps/registry/.env.local
+    ports:
+      - "3000:3000"
