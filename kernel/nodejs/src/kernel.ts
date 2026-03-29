@@ -415,7 +415,7 @@ export class Kernel implements IKernel {
     // shape. CompiledValue wrappers (from load-time precompilation) are stripped,
     // restoring the pre-CEL string view that the schema expects.
     try {
-      this.sharedSchemaValidator.compile(controller.schema).validate(stripCompiledValues(resource));
+      this.sharedSchemaValidator.compile(controller.schema).validate(stripCompiledValues(resource, controller.schema as Record<string, unknown>));
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
@@ -509,16 +509,33 @@ export class Kernel implements IKernel {
   }
 }
 
-/** Replaces CompiledValue wrappers with "" for schema validation.
- *  Template strings were raw strings in YAML before precompilation and passed
- *  string-type checks. This preserves that behavior without evaluating expressions. */
-function stripCompiledValues(v: unknown): unknown {
-  if (isCompiledValue(v)) return "";
-  if (Array.isArray(v)) return v.map(stripCompiledValues);
+/** Returns a schema-appropriate placeholder value for a CompiledValue field. */
+function placeholderForSchema(schema: Record<string, unknown>): unknown {
+  if (schema.default !== undefined) return schema.default;
+  switch (schema.type) {
+    case "integer":
+    case "number": return (schema.minimum as number | undefined) ?? 0;
+    case "boolean": return false;
+    case "array": return [];
+    case "object": return {};
+    default: return "";
+  }
+}
+
+/** Replaces CompiledValue wrappers with schema-appropriate placeholders for schema validation.
+ *  Template strings were compiled from YAML at load time; this restores a shape
+ *  that AJV can validate without evaluating expressions. */
+function stripCompiledValues(v: unknown, schema: Record<string, unknown> = {}): unknown {
+  if (isCompiledValue(v)) return placeholderForSchema(schema);
+  if (Array.isArray(v)) {
+    const itemSchema = (schema.items ?? {}) as Record<string, unknown>;
+    return v.map((item) => stripCompiledValues(item, itemSchema));
+  }
   if (v !== null && typeof v === "object") {
+    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = stripCompiledValues(val);
+      out[k] = stripCompiledValues(val, props[k] ?? {});
     }
     return out;
   }

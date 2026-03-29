@@ -64,7 +64,7 @@ schema:
                   minimum: 100
                   maximum: 599
                 when:
-                  type: "string"
+                  type: "boolean"
                   description: "CEL expression; entry is selected if this evaluates to true"
                 mode:
                   type: "string"

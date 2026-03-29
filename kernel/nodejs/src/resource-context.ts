@@ -115,7 +115,7 @@ export class ResourceContextImpl implements ResourceContext {
       (k) => k !== "kind" && k !== "name" && k !== "metadata",
     );
 
-    if (definitionKeys.length > 0) {
+    if (definitionKeys.length > 0 && !this.moduleContext.hasManifest(name)) {
       this.registerManifest({
         ...resource,
         metadata: {

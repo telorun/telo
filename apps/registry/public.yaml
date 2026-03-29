@@ -23,7 +23,7 @@ routes:
         body:
           name: "${{ request.params.namespace + '/' + request.params.name }}"
           # Latest version
-          version: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]).sort().last() }}"
+          version: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]).last() }}"
           versions: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]) }}"
       - status: 404
         body:

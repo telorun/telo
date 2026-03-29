@@ -139,16 +139,20 @@ export class EvaluationContext {
   /**
    * Queue a resource manifest for initialization on this context.
    */
+  hasManifest(name: string): boolean {
+    return (
+      this.resourceInstances.has(name) ||
+      this.createdInstances.has(name) ||
+      this.pendingResources.some((r) => r.metadata.name === name)
+    );
+  }
+
   registerManifest(resource: ResourceManifest): void {
     if (!resource.metadata) {
       resource.metadata = { name: `__unnamed_${Math.random().toString(16).slice(2, 8)}` };
     }
     const name = resource.metadata.name;
-    if (
-      this.resourceInstances.has(name) ||
-      this.createdInstances.has(name) ||
-      this.pendingResources.some((r) => r.metadata.name === name)
-    ) {
+    if (this.hasManifest(name)) {
       throw new RuntimeError("ERR_DUPLICATE_RESOURCE", `Resource '${name}' is already registered`);
     }
     this.pendingResources.push(resource);

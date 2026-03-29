@@ -4,6 +4,14 @@ metadata:
 capability: Kernel.Service
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
+expand:
+  compile:
+    - host
+    - port
+    - baseUrl
+    - logger
+    - openapi
+    - mounts
 schema:
   type: "object"
   properties:
@@ -43,7 +51,7 @@ schema:
                 minimum: 100
                 maximum: 599
               when:
-                type: "string"
+                type: "boolean"
               mode:
                 type: "string"
                 enum: ["buffer", "stream"]

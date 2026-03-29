@@ -37,7 +37,7 @@ schema:
           name:
             type: string
           when:
-            type: string
+            type: boolean
             description: CEL boolean guard; step skipped when falsy
           invoke:
             anyOf:
@@ -52,29 +52,64 @@ schema:
               attempts: { type: integer }
               delay: { type: string }
           if:
-            type: string
+            type: boolean
           then:
-            $ref: "#/properties/steps"
+            type: array
+            items: &nested_step
+              type: object
+              properties:
+                name: { type: string }
+                when: { type: boolean }
+                invoke:
+                  anyOf:
+                    - x-telo-ref: "kernel#Invocable"
+                    - x-telo-ref: "kernel#Runnable"
+                inputs: { type: object, additionalProperties: true }
+                retry:
+                  type: object
+                  properties:
+                    attempts: { type: integer }
+                    delay: { type: string }
+                if: { type: boolean }
+                then: { type: array }
+                else: { type: array }
+                while: { type: boolean }
+                do: { type: array }
+                switch: { type: string }
+                cases: { type: object }
+                default: { type: array }
+                try: { type: array }
+                catch: { type: array }
+                finally: { type: array }
+              required:
+                - name
           else:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
           while:
-            type: string
+            type: boolean
           do:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
           switch:
             type: string
           cases:
             type: object
             additionalProperties:
-              $ref: "#/properties/steps"
+              type: array
+              items: *nested_step
           default:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
           try:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
           catch:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
           finally:
-            $ref: "#/properties/steps"
+            type: array
+            items: *nested_step
         required:
           - name
   required:

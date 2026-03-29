@@ -1,11 +1,16 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
-import { celEnvironment } from "./cel-environment.js";
+import { buildTypedCelEnvironment, celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { validateAgainstSchema } from "./schema-compat.js";
+import {
+  type SchemaIssue,
+  celTypeSatisfiesJsonSchema,
+  substituteCelFields,
+  validateAgainstSchema,
+} from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
   extractAccessChains,
@@ -71,6 +76,82 @@ function extractContextsFromSchema(
   }
 
   return results;
+}
+
+const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
+const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
+
+/** Recursively walk `data`+`schema` together, type-checking every pure CEL template
+ *  string via `env.check()`. Returns `SchemaIssue[]` for any type mismatches found. */
+function collectCelTypeIssues(
+  data: unknown,
+  schema: Record<string, any>,
+  path: string,
+  definition: { schema?: Record<string, any> },
+  manifest: ResourceManifest,
+  baseEnv: ReturnType<typeof buildTypedCelEnvironment>,
+): SchemaIssue[] {
+  const issues: SchemaIssue[] = [];
+
+  if (typeof data === "string" && CEL_PURE_RE.test(data)) {
+    const exprMatch = data.match(CEL_EXPR_RE);
+    if (exprMatch) {
+      const expr = exprMatch[1].trim();
+
+      // Merge x-telo-context variables for this path if applicable
+      let typedEnv = baseEnv;
+      if (definition.schema) {
+        for (const ctx of extractContextsFromSchema(definition.schema)) {
+          if (!pathMatchesScope(path, ctx.scope)) continue;
+          typedEnv = buildTypedCelEnvironment(manifest, ctx.schema);
+          break;
+        }
+      }
+
+      let checkResult: ReturnType<typeof typedEnv.check> | undefined;
+      try {
+        checkResult = typedEnv.check(expr);
+      } catch {
+        /* degrade gracefully */
+      }
+
+      if (checkResult?.valid && checkResult.type && schema) {
+        const celType = checkResult.type.split("<")[0]!;
+        if (!celTypeSatisfiesJsonSchema(celType, schema)) {
+          issues.push({
+            message: `CEL returns '${checkResult.type}' but field expects '${schema.type ?? "unknown"}'`,
+            path,
+          });
+        }
+      }
+    }
+    return issues;
+  }
+
+  if (Array.isArray(data)) {
+    const itemSchema = (schema.items ?? {}) as Record<string, any>;
+    for (let i = 0; i < data.length; i++) {
+      issues.push(
+        ...collectCelTypeIssues(data[i], itemSchema, `${path}[${i}]`, definition, manifest, baseEnv),
+      );
+    }
+  } else if (data !== null && typeof data === "object") {
+    const props = (schema.properties ?? {}) as Record<string, any>;
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      issues.push(
+        ...collectCelTypeIssues(
+          v,
+          (props[k] ?? {}) as Record<string, any>,
+          path ? `${path}.${k}` : k,
+          definition,
+          manifest,
+          baseEnv,
+        ),
+      );
+    }
+  }
+
+  return issues;
 }
 
 export class StaticAnalyzer {
@@ -201,7 +282,12 @@ export class StaticAnalyzer {
                 },
               }
             : definition.schema;
-        const issues = validateAgainstSchema(m, schema);
+        // Phase 1: CEL type checking — walk data+schema together, check env.check() return types
+        const baseEnv = buildTypedCelEnvironment(m);
+        const celIssues = collectCelTypeIssues(m, schema, "", definition, m, baseEnv);
+        // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
+        const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
+        const issues = [...celIssues, ...ajvIssues];
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
