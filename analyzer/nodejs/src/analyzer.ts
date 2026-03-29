@@ -8,9 +8,9 @@ import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { validateAgainstSchema } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
-    extractAccessChains,
-    pathMatchesScope,
-    validateChainAgainstSchema,
+  extractAccessChains,
+  pathMatchesScope,
+  validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
 
@@ -147,6 +147,16 @@ export class StaticAnalyzer {
 
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
+      if (!m.kind || !m.metadata?.name) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "MISSING_KIND_OR_NAME",
+          source: SOURCE,
+          message: "Resource is missing required 'kind' or 'metadata.name' field.",
+          data: { path: !m.kind ? "kind" : "metadata.name" },
+        });
+        continue;
+      }
       if (m.kind === "Kernel.Definition" || m.kind === "Kernel.Abstract") {
         continue;
       }

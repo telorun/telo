@@ -3,6 +3,6 @@ metadata:
   name: tracing
   namespace: std
   version: 1.0.0
-definitions:
+include:
   - tracing.yaml
   - tracing-exporters.yaml

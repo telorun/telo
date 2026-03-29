@@ -103,6 +103,9 @@ importers:
 
   cli/nodejs:
     dependencies:
+      '@telorun/analyzer':
+        specifier: workspace:*
+        version: link:../../analyzer/nodejs
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../kernel/nodejs

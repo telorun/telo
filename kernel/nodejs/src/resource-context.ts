@@ -5,6 +5,7 @@ import {
   ResourceContext,
   RuntimeError,
   RuntimeResource,
+  isCompiledValue,
 } from "@telorun/sdk";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
@@ -56,7 +57,7 @@ export class ResourceContextImpl implements ResourceContext {
             additionalProperties: false,
           },
     );
-    const isValid = validate(value);
+    const isValid = validate(stripCompiledValues(value));
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
@@ -247,4 +248,17 @@ export class ResourceContextImpl implements ResourceContext {
       }
     })() as unknown as T;
   }
+}
+
+function stripCompiledValues(v: unknown): unknown {
+  if (isCompiledValue(v)) return "";
+  if (Array.isArray(v)) return v.map(stripCompiledValues);
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = stripCompiledValues(val);
+    }
+    return out;
+  }
+  return v;
 }

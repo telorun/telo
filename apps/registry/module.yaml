@@ -60,11 +60,14 @@ metadata:
   name: Env
   module: telo-registry
 schema:
+  PORT:
+    type: string
+    default: "3000"
   S3_BUCKET_NAME:
     type: string
   S3_ENDPOINT:
     type: string
-  R2_BUCKET_URL:
+  S3_BUCKET_URL:
     type: string
   S3_ACCESS_KEY_ID:
     type: string
@@ -81,7 +84,8 @@ storeRef:
 keys:
   bucketName: S3_BUCKET_NAME
   s3Endpoint: S3_ENDPOINT
-  bucketUrl: R2_BUCKET_URL
+  bucketUrl: S3_BUCKET_URL
+  port: PORT
 
 ---
 kind: Config.Secrets
@@ -114,7 +118,7 @@ metadata:
   name: RegistryServer
   module: telo-registry
 host: "0.0.0.0"
-port: 3001
+port: "${{ resources.AppConfig.port }}"
 logger: true
 openapi:
   info:

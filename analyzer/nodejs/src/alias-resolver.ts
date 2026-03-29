@@ -13,6 +13,9 @@ export class AliasResolver {
 
   /** Resolves "Http.Api" → "http-server.Api". Returns undefined if alias is unknown. */
   resolveKind(kind: string): string | undefined {
+    if (!kind) {
+      return undefined;
+    }
     const dot = kind.indexOf(".");
     if (dot === -1) return undefined;
     const prefix = kind.slice(0, dot);

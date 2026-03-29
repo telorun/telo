@@ -38,16 +38,17 @@ routes:
     handler:
       name: Logic.InlineFunction.HelloHandler
     response:
-      status: 200
-      headers:
-        Content-Type: application/json
+      - status: 200
+        headers:
+          Content-Type: application/json
 ---
-kind: Logic.InlineFunction
+kind: Logic.Script
 metadata:
   name: HelloHandler
-language: javascript
 code: |
-  return {
-    greeting: "Hello from Tracing Example!",
-    timestamp: new Date().toISOString()
-  };
+  function main() {
+    return {
+      greeting: "Hello from Tracing Example!",
+      timestamp: new Date().toISOString()
+    };
+  }

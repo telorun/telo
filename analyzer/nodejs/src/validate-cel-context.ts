@@ -4,27 +4,59 @@ import type { ASTNode } from "@marcbachmann/cel-js";
  * Extract all member-access chains from a CEL AST.
  * Returns arrays like ["request", "query", "name"] for `request.query.name`.
  * Chains that start with a call or non-identifier root are ignored.
+ * Bound variables in comprehension macros (filter, map, exists, all, exists_one) are excluded.
  */
 export function extractAccessChains(node: ASTNode): string[][] {
   const chains: string[][] = [];
-  visitNode(node, chains);
+  visitNode(node, chains, new Set());
   return chains;
 }
 
-function visitNode(node: ASTNode, chains: string[][]): void {
-  const chain = extractChain(node);
+// CEL comprehension macros that bind a variable: list.filter(x, ...), list.map(x, ...), etc.
+const COMPREHENSION_METHODS = new Set(["filter", "map", "exists", "all", "exists_one"]);
+
+function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): void {
+  const chain = extractChain(node, boundVars);
   if (chain !== null) {
     chains.push(chain);
     return; // don't recurse into parts of an already-collected chain
   }
+
+  // Comprehension macros bind a variable in their body — handle them specially
+  // AST shape: { op: "rcall", args: [methodName, receiver, [boundVarId, body, ...]] }
+  if (
+    node.op === "rcall" &&
+    Array.isArray(node.args) &&
+    typeof node.args[0] === "string" &&
+    COMPREHENSION_METHODS.has(node.args[0])
+  ) {
+    const receiver = node.args[1];
+    const comprehensionArgs = node.args[2];
+    if (isASTNode(receiver)) visitNode(receiver, chains, boundVars);
+    if (
+      Array.isArray(comprehensionArgs) &&
+      comprehensionArgs.length >= 2 &&
+      isASTNode(comprehensionArgs[0]) &&
+      (comprehensionArgs[0] as ASTNode).op === "id"
+    ) {
+      const newBoundVars = new Set(boundVars);
+      newBoundVars.add((comprehensionArgs[0] as ASTNode).args as string);
+      for (let i = 1; i < comprehensionArgs.length; i++) {
+        const arg = comprehensionArgs[i];
+        if (isASTNode(arg)) visitNode(arg as ASTNode, chains, newBoundVars);
+      }
+    }
+    return;
+  }
+
   const args = node.args;
   if (Array.isArray(args)) {
     for (const arg of args) {
       if (isASTNode(arg)) {
-        visitNode(arg, chains);
+        visitNode(arg, chains, boundVars);
       } else if (Array.isArray(arg)) {
         for (const item of arg) {
-          if (isASTNode(item)) visitNode(item, chains);
+          if (isASTNode(item)) visitNode(item, chains, boundVars);
         }
       }
     }
@@ -36,11 +68,15 @@ function isASTNode(v: unknown): v is ASTNode {
 }
 
 /** Returns the member-access chain for a node if it is purely an id or "." chain; else null. */
-function extractChain(node: ASTNode): string[] | null {
-  if (node.op === "id") return [node.args as string];
+function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
+  if (node.op === "id") {
+    const name = node.args as string;
+    if (boundVars.has(name)) return null; // bound by a comprehension macro, not a free access
+    return [name];
+  }
   if (node.op === ".") {
     const [obj, field] = node.args as [ASTNode, string];
-    const parent = extractChain(obj);
+    const parent = extractChain(obj, boundVars);
     if (parent !== null) return [...parent, field];
   }
   return null;

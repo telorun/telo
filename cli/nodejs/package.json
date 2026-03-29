@@ -25,6 +25,7 @@
     "runtime"
   ],
   "dependencies": {
+    "@telorun/analyzer": "workspace:*",
     "@telorun/kernel": "workspace:*",
     "yargs": "^17.7.2"
   },

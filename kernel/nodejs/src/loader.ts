@@ -24,6 +24,15 @@ export class Loader extends BaseLoader {
     return this.localAdapter.resolveRelative(base, relative);
   }
 
+  /**
+   * Resolve a path-or-URL to its canonical file source URL.
+   * If the path refers to a directory, returns the URL of module.yaml inside it.
+   */
+  async resolveEntryPoint(pathOrUrl: string): Promise<string> {
+    const { source } = await this.localAdapter.read(pathOrUrl);
+    return source;
+  }
+
   async loadDirectory(pathOrUrl: string): Promise<ResourceManifest[]> {
     const sources = await this.localAdapter.readAll(pathOrUrl);
     const firstPath = sources[0] ? new URL(sources[0]).pathname : process.cwd();

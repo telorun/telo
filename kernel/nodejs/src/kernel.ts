@@ -1,4 +1,5 @@
-import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
+import { Loader } from "./loader.js";
 import {
   ControllerContext,
   Kernel as IKernel,
@@ -15,7 +16,6 @@ import * as path from "path";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
-import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
@@ -24,7 +24,7 @@ import { SchemaValidator } from "./schema-valiator.js";
  * Handles resource loading, initialization, and execution through controllers
  */
 export class Kernel implements IKernel {
-  private readonly loader = new Loader([new LocalFileAdapter()]);
+  private readonly loader = new Loader();
   private readonly analyzer = new StaticAnalyzer();
   private readonly registry = new AnalysisRegistry();
   // private manifests: ManifestRegistry = new ManifestRegistry();
@@ -140,8 +140,13 @@ export class Kernel implements IKernel {
    * Load from runtime configuration file
    */
   async loadFromConfig(runtimeYamlPath: string): Promise<void> {
-    this.rootContext = new ModuleContext(
+    // Resolve directory paths to their module.yaml so that relative imports
+    // (e.g. ../../modules/foo) use the correct base directory.
+    const sourceUrl = await this.loader.resolveEntryPoint(
       new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
+    );
+    this.rootContext = new ModuleContext(
+      sourceUrl,
       {},
       {},
       {},
@@ -158,9 +163,7 @@ export class Kernel implements IKernel {
 
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
-    const staticManifests = await this.loader.loadManifests(
-      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
-    );
+    const staticManifests = await this.loader.loadManifests(sourceUrl);
     this.staticManifests = staticManifests;
 
     // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
@@ -184,10 +187,7 @@ export class Kernel implements IKernel {
     }
 
     // Load runtime configuration — root module gets access to host env
-    const allManifests = await this.loader.loadModule(
-      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
-      { compile: true },
-    );
+    const allManifests = await this.loader.loadModule(sourceUrl, { compile: true });
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots
     // into first-class named manifests and replace them in-place with {kind, name} references.
