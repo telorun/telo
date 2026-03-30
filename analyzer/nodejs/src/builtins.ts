@@ -85,7 +85,6 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           default: "shared",
         },
         keepAlive: { type: "boolean", default: false },
-        include: { type: "array", items: { type: "string" } },
         variables: { type: "object" },
         secrets: { type: "object" },
         targets: {

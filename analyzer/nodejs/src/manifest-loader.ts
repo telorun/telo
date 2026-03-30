@@ -84,23 +84,6 @@ export class Loader {
       }
     }
 
-    if (moduleManifest && Array.isArray((moduleManifest as any).include)) {
-      const insertAt = resolved.indexOf(moduleManifest) + 1;
-      let offset = 0;
-      for (const includePath of (moduleManifest as any).include as string[]) {
-        const includeUrl = this.pick(source).resolveRelative(source, includePath);
-        const included = await this.loadModule(includeUrl, options);
-        for (const manifest of included) {
-          if (manifest.kind === "Kernel.Module") continue;
-          if (!manifest.metadata?.module) {
-            manifest.metadata = { ...manifest.metadata, module: moduleName };
-          }
-          resolved.splice(insertAt + offset, 0, manifest);
-          offset++;
-        }
-      }
-    }
-
     return resolved;
   }
 

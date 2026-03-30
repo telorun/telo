@@ -1,64 +1,5 @@
 # Telo Core Concepts — Architectural Problems
 
-## 1. `Kernel.Module` Has an Identity Crisis
-
-`Kernel.Module` is simultaneously two different things:
-
-- A **package descriptor** — `name`, `version`, `variables`, `secrets`, `exports`
-- A **runtime entrypoint** — `targets`, `include`
-
-`targets` is intentionally minimal — the equivalent of `main()` in imperative languages. It names the entry point; if startup logic requires ordering, conditionality, or error handling, the user points `targets` at a `Run.Sequence` (or any runnable). That is the designed escape hatch, not a limitation.
-
-The actual problem in `Kernel.Module` is `include`. `package.json` never says "pull these other package.json files into my scope" — Node.js uses `require`/`import` at code level. Telo's `include` is a metadata-level file assembly mechanism, which means the same resource file changes meaning depending on how it's loaded (included vs. standalone). A resource's module scope is no longer determinable from the resource itself; it depends on who includes the file.
-
-This also breaks the analyzer: because `include` assembles resources into a merged graph before analysis runs, errors can only be reported on the entry manifest. The analyzer has no reliable path back to the originating file. Source location is lost at the assembly seam.
-
-### Solution
-
-Invert ownership. Instead of a module claiming files via `include`, each resource declares its module:
-
-```yaml
-# server.yaml
-kind: Kernel.Definition
-metadata:
-  name: Server
-  module: http-server # scope declared on the resource, not assigned by loader
-capability: Service
-controllers:
-  - pkg:npm/...
-```
-
-The module descriptor becomes a pure contract — no file references, no scope assignment:
-
-```yaml
-kind: Kernel.Module
-metadata:
-  name: http-server
-  version: 1.1.0
-variables: ...
-exports:
-  kinds: [Server, Api]
-```
-
-File discovery becomes a separate, scope-free transport mechanism. The entry manifest can carry a `files:` list that tells the loader what URLs to fetch, resolved relative to the manifest's own URL — exactly how HTML resolves `<script src>`. Fetching `files:` entries has no effect on resource scope:
-
-```yaml
-kind: Kernel.Module
-name: http-server
-version: 1.1.0
-files: # transport manifest — fetch these, assign nothing
-  - server.yaml
-  - api.yaml
-exports:
-  kinds: [Server, Api]
-```
-
-This enables `telo https://example.com/myapp/module.yaml` to work as a clean fetch chain with no filesystem assumptions: entry manifest → `files:` entries resolved against base URL → `source:` imports resolved against their own base URLs. Scope is always read from the resource, never inferred from context.
-
-When `module:` is omitted, the resource belongs to the root/default module — the same ergonomic default Kubernetes uses for `namespace`.
-
-The analyzer benefit is immediate: each file is analyzed as a standalone document. Errors point to the correct file at the correct line with no source-location threading required.
-
 ## 2. `metadata` Has Naming Inconsistencies
 
 `metadata.module` on a resource is the correct place for a placement directive — Kubernetes does the same with `metadata.namespace` and it is a well-established pattern. That is not the problem.
@@ -146,7 +87,6 @@ Controllers import only `@telorun/sdk`. The kernel imports its own internal engi
 
 | Concept             | Core Problem                                                                              | Direction                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `Kernel.Module`     | Conflates descriptor + entrypoint + file loader                                           | Split into package manifest and startup plan                              |
 | `Kernel.Definition` | Capability mixes schema and controllers; `Kernel.Mount` is the odd one out                | Clarify whether `Kernel.Mount` warrants a distinct top-level kind         |
 | `metadata`          | `namespace` vs `module` naming split; can't use `metadata.namespace` (registry collision) | Flat top-level `module:` field on all resources                           |
 | `capability` values | Inconsistent prefix usage                                                                 | Drop `Kernel.` prefix inside Definition; use enum                         |

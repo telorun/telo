@@ -3,5 +3,33 @@ metadata:
   name: data
   namespace: std
   version: "1.0.0"
-include:
-  - "./type.yaml"
+---
+kind: Kernel.Definition
+metadata:
+  name: Type
+capability: Kernel.Type
+controllers:
+  - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
+schema:
+  type: object
+  properties:
+    schema:
+      type: object
+    extends:
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: string
+  required: ["schema"]
+  additionalProperties: true
+---
+kind: Kernel.Definition
+metadata:
+  name: ObjectType
+capability: Kernel.Type
+controllers:
+  - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
+schema:
+  type: object
+  additionalProperties: true

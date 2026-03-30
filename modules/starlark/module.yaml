@@ -4,5 +4,26 @@ metadata:
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows
-include:
-  - ./script.yaml
+---
+kind: Kernel.Definition
+metadata:
+  name: Script
+capability: Kernel.Runnable
+controllers:
+  - pkg:npm/@telorun/starlark@>=1.1.0?local_path=./nodejs#script
+schema:
+  type: object
+  properties:
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+    code:
+      type: string
+    inputSchema:
+      type: object
+    outputSchema:
+      type: object
+  required: [metadata, code]

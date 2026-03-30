@@ -3,12 +3,70 @@ metadata:
   name: "Config"
   namespace: std
   version: "0.1.0"
-include:
-  - "env-variable-store.yaml"
-  - "variables.yaml"
-  - "secrets.yaml"
 exports:
   kinds:
     - EnvironmentVariableStore
     - Variables
     - Secrets
+---
+kind: "Kernel.Definition"
+metadata:
+  name: "EnvironmentVariableStore"
+capability: Kernel.Provider
+controllers:
+  - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#env-variable-store-controller
+schema:
+  type: "object"
+  properties:
+    schema:
+      type: "object"
+      additionalProperties:
+        type: "object"
+  required: ["schema"]
+  additionalProperties: true
+---
+kind: "Kernel.Definition"
+metadata:
+  name: "Variables"
+capability: Kernel.Provider
+controllers:
+  - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#variables-controller
+schema:
+  type: "object"
+  properties:
+    storeRef:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+      required: ["name"]
+      additionalProperties: false
+    keys:
+      type: "object"
+      additionalProperties:
+        type: "string"
+  required: ["storeRef", "keys"]
+  additionalProperties: true
+---
+kind: "Kernel.Definition"
+metadata:
+  name: "Secrets"
+capability: Kernel.Provider
+controllers:
+  - pkg:npm/@telorun/config@>=0.1.0?local_path=./nodejs#secrets-controller
+schema:
+  type: "object"
+  properties:
+    storeRef:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+      required: ["name"]
+      additionalProperties: false
+    keys:
+      type: "object"
+      additionalProperties:
+        type: "string"
+  required: ["storeRef", "keys"]
+  additionalProperties: true

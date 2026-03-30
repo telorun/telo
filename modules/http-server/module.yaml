@@ -3,10 +3,158 @@ metadata:
   name: "http-server"
   namespace: std
   version: "1.1.0"
-include:
-  - "http-server-api.yaml"
-  - "http-server.yaml"
 exports:
   kinds:
     - Server
     - Api
+---
+kind: "Kernel.Definition"
+metadata:
+  name: "Server"
+capability: Kernel.Service
+controllers:
+  - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
+expand:
+  compile:
+    - host
+    - port
+    - baseUrl
+    - logger
+    - openapi
+    - mounts
+schema:
+  type: "object"
+  properties:
+    host:
+      type: "string"
+      default: "localhost"
+    port:
+      type: "integer"
+      minimum: 1
+      maximum: 65535
+    mounts:
+      type: "array"
+      items:
+        type: "object"
+        properties:
+          path:
+            type: "string"
+          type:
+            type: "string"
+    notFoundHandler:
+      type: "object"
+      properties:
+        invoke:
+          type: "object"
+          properties:
+            kind:
+              type: "string"
+          required: ["kind"]
+          additionalProperties: true
+        response:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              status:
+                type: "integer"
+                minimum: 100
+                maximum: 599
+              when:
+                type: "boolean"
+              mode:
+                type: "string"
+                enum: ["buffer", "stream"]
+              headers:
+                type: "object"
+                additionalProperties:
+                  type: "string"
+              body:
+                description: "CEL expression or object mapping for response body"
+            required: ["status"]
+      required: ["invoke"]
+  required: ["port", "mounts"]
+---
+kind: "Kernel.Definition"
+metadata:
+  name: "Api"
+capability: Kernel.Mount
+controllers:
+  - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api
+schema:
+  type: "object"
+  properties:
+    routes:
+      type: "array"
+      items:
+        type: "object"
+        additionalProperties: false
+        properties:
+          request:
+            type: "object"
+            properties:
+              path:
+                type: "string"
+              method:
+                type: "string"
+                enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+              query:
+                type: "object"
+              body:
+                type: "object"
+              headers:
+                type: "object"
+            required: ["path", "method"]
+          handler:
+            x-telo-ref: "kernel#Invocable"
+            x-telo-context:
+              type: object
+              properties:
+                request:
+                  type: object
+                  properties:
+                    query: { type: object, additionalProperties: true }
+                    body: { type: object, additionalProperties: true }
+                    headers: { type: object, additionalProperties: true }
+                    params: { type: object, additionalProperties: true }
+                    path: { type: string }
+                    method: { type: string }
+                result:
+                  type: object
+                  additionalProperties: true
+              additionalProperties: false
+            oneOf:
+              - type: "string"
+              - type: "object"
+                properties:
+                  kind:
+                    type: "string"
+                  type:
+                    type: "string"
+          response:
+            type: "array"
+            items:
+              type: "object"
+              additionalProperties: false
+              properties:
+                status:
+                  type: "integer"
+                  minimum: 100
+                  maximum: 599
+                when:
+                  type: "boolean"
+                  description: "CEL expression; entry is selected if this evaluates to true"
+                mode:
+                  type: "string"
+                  enum: ["buffer", "stream"]
+                  description: "buffer (default): CEL body expansion + schema validation. stream: pipe result directly, skipping both"
+                schema:
+                  type: "object"
+                headers:
+                  type: "object"
+                  additionalProperties:
+                    type: "string"
+                body:
+                  description: "CEL expression or object mapping for response body"
+              required: ["status"]
+  required: ["routes"]
