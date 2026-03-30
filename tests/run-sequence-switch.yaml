@@ -8,25 +8,21 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: RunSequenceSwitch
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: RunSequenceSwitch
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: RunSequenceSwitch
 source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
   name: TestSwitch
-  module: RunSequenceSwitch
 steps:
   # --- switch: matching case executes, others do not ---
   - name: RouteToB

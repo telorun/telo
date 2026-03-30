@@ -6,7 +6,6 @@ metadata:
 kind: Kernel.Import
 metadata:
   name: Flow
-  module: ExampleConsoleImport
 source: ./configurable-console.yaml
 variables:
   product:

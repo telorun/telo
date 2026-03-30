@@ -8,25 +8,21 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: RunSequenceBasic
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: RunSequenceBasic
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: RunSequenceBasic
 source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
   name: TestInvokeStep
-  module: RunSequenceBasic
 steps:
   - name: AddNumbers
     inputs:
@@ -56,7 +52,6 @@ steps:
 kind: Assert.Events
 metadata:
   name: ExpectEvents
-  module: RunSequenceBasic
 filter:
   - type: "*"
 expect:

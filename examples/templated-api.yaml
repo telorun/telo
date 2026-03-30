@@ -9,19 +9,16 @@ exports:
 kind: Kernel.Import
 metadata:
   name: Http
-  module: templated-server
 source: ../modules/http-server
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: templated-server
 source: ../modules/javascript
 ---
 kind: Http.Api
 metadata:
   name: HelloApi
-  module: templated-server
 routes:
   - request:
       path: /hello
@@ -59,7 +56,6 @@ routes:
 kind: JavaScript.Script
 metadata:
   name: SayHello
-  module: templated-server
 code: |
   function main({ name }) {
     return {

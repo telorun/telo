@@ -8,59 +8,50 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Sql
-  module: CanUseCrud
 source: ../../sql
 ---
 kind: Kernel.Import
 metadata:
   name: SqlRepository
-  module: CanUseCrud
 source: ../
 ---
 kind: Kernel.Import
 metadata:
   name: Run
-  module: CanUseCrud
 source: ../../run
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: CanUseCrud
 source: ../../assert
 ---
 kind: Sql.Connection
 metadata:
   name: Db
-  module: CanUseCrud
 driver: sqlite
 file: ":memory:"
 ---
 kind: SqlRepository.Create
 metadata:
   name: InsertUser
-  module: CanUseCrud
 connection: Db
 table: users
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetUsers
-  module: CanUseCrud
 connection: Db
 table: users
 ---
 kind: SqlRepository.Delete
 metadata:
   name: DeleteUser
-  module: CanUseCrud
 connection: Db
 table: users
 ---
 kind: Run.Sequence
 metadata:
   name: TestCrud
-  module: CanUseCrud
 steps:
   - name: Setup
     inputs: {}

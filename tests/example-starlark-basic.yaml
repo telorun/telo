@@ -18,7 +18,6 @@ source: ../modules/assert
 ---
 kind: Assert.Events
 metadata:
-  module: TestStarlarkBasic
   name: VerifyStarlarkBasicEvents
 filter:
   - type: "*"

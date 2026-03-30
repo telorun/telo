@@ -6,19 +6,16 @@ metadata:
 kind: Kernel.Import
 metadata:
   name: Http
-  module: templated-api-usage
 source: ../modules/http-server
 ---
 kind: Kernel.Import
 metadata:
   name: Templated
-  module: templated-api-usage
 source: ./templated-api.yaml
 ---
 kind: Http.Server
 metadata:
   name: TemplatedApiServer
-  module: templated-api-usage
 baseUrl: http://localhost:8845
 port: 8845
 logger: true

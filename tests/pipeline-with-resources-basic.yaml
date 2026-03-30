@@ -21,7 +21,6 @@ source: ../modules/assert
 kind: Run.Sequence
 metadata:
   name: TestWithResources
-  module: PipelineWithResourcesBasic
 with:
   - kind: JavaScript.Script
     metadata:

@@ -24,7 +24,6 @@ source: ../modules/console
 kind: Starlark.Script
 metadata:
   name: ExampleStarlarkScript
-  module: StarlarkDemo
 code: |
   def run(input):
     result = input["value"] * 2
@@ -45,7 +44,6 @@ outputSchema:
 kind: Console.WriteLine
 metadata:
   name: WriteResult
-  module: StarlarkDemo
 inputSchema:
   type: object
   properties:
@@ -59,7 +57,6 @@ output: |
 kind: Run.Sequence
 metadata:
   name: RunScriptOnEvent
-  module: StarlarkDemo
 steps:
   - name: Step1
     inputs:

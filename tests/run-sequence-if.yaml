@@ -8,25 +8,21 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: RunSequenceIf
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: RunSequenceIf
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: RunSequenceIf
 source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
   name: TestIfBranches
-  module: RunSequenceIf
 steps:
   # --- if/then: condition true, then branch executes ---
   - name: TrueCondition

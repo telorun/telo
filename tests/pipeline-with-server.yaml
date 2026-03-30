@@ -31,7 +31,6 @@ source: ../modules/assert
 kind: Run.Sequence
 metadata:
   name: TestServerWithLifecycle
-  module: PipelineWithServer
 with:
   - kind: JavaScript.Script
     metadata:

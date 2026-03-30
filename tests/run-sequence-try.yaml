@@ -8,25 +8,21 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: RunSequenceTry
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: RunSequenceTry
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: RunSequenceTry
 source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
   name: TestTryBlocks
-  module: RunSequenceTry
 steps:
   # --- try/catch: error is thrown, caught, swallowed; sequence continues ---
   - name: CatchError

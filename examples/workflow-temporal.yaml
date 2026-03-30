@@ -23,14 +23,12 @@ source: ../modules/javascript
 kind: Temporal.Backend
 metadata:
   name: TemporalProd
-  module: Example
 address: localhost:7233
 namespace: default
 ---
 kind: JS.Script
 metadata:
   name: FetchData
-  module: Example
 code: |
   async function main({ url }) {
     const res = await fetch(url);
@@ -46,7 +44,6 @@ outputSchema:
 kind: JS.Script
 metadata:
   name: TransformData
-  module: Example
 code: |
   function main({ data }) {
     return { result: data.items.map(i => i.id) };
@@ -61,7 +58,6 @@ outputSchema:
 kind: Workflow.Graph
 metadata:
   name: DataSyncWorkflow
-  module: Example
 backend:
   kind: Temporal.Backend
   name: TemporalProd

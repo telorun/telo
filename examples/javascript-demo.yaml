@@ -24,7 +24,6 @@ source: ../modules/console
 kind: JavaScript.Script
 metadata:
   name: MultiplyBy2
-  module: JavaScriptDemo
 code: |
   function main({ value }) {
     return { result: value * 2 }
@@ -39,7 +38,6 @@ outputSchema:
 kind: Run.Sequence
 metadata:
   name: RunScript
-  module: JavaScriptDemo
 steps:
   - name: Step1
     inputs:

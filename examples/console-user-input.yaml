@@ -22,7 +22,6 @@ source: ../modules/run
 kind: Run.Sequence
 metadata:
   name: ConsoleConfigExampleFlow
-  module: ConsoleConfigExample
 steps:
   - name: ReadUsername
     invoke:

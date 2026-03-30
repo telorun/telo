@@ -16,7 +16,6 @@ source: ../modules/http-server
 kind: Config.Secret
 metadata:
   name: StripeKey
-  module: ConfigExample
 source:
   env: STRIPE_SECRET_KEY
 grants:
@@ -26,7 +25,6 @@ grants:
 kind: Config.Variable
 metadata:
   name: ApiBaseUrl
-  module: ConfigExample
 source:
   env: API_BASE_URL
 ---
@@ -34,7 +32,6 @@ source:
 kind: Http.Api
 metadata:
   name: PaymentApi
-  module: ConfigExample
 routes:
   - request:
       path: /charge
@@ -55,7 +52,6 @@ routes:
 kind: Http.Server
 metadata:
   name: PaymentServer
-  module: ConfigExample
 openapi:
   info:
     title: Payment gateway

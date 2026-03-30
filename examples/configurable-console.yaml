@@ -25,19 +25,16 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: ExampleConsole
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: Console
-  module: ExampleConsole
 source: ../modules/console
 ---
 kind: Run.Sequence
 metadata:
   name: Main
-  module: ExampleConsole
 steps:
   - name: WriteProductInfo
     invoke:

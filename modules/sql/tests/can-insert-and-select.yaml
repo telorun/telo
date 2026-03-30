@@ -8,32 +8,27 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Sql
-  module: CanInsertAndSelect
 source: ../
 ---
 kind: Kernel.Import
 metadata:
   name: Run
-  module: CanInsertAndSelect
 source: ../../run
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: CanInsertAndSelect
 source: ../../assert
 ---
 kind: Sql.Connection
 metadata:
   name: Db
-  module: CanInsertAndSelect
 driver: sqlite
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
   name: TestInsertAndSelect
-  module: CanInsertAndSelect
 steps:
   - name: CreateTable
     inputs: {}

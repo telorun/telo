@@ -10,13 +10,11 @@ targets:
 kind: Kernel.Import
 metadata:
   name: MyAssert
-  module: CanImportModuleWithAlias
 source: ../modules/assert
 ---
 kind: Kernel.Import
 metadata:
   name: MyConsole
-  module: CanImportModuleWithAlias
 source: ../examples/configurable-console.yaml
 variables:
   product:
@@ -30,7 +28,6 @@ secrets:
 kind: MyAssert.Events
 metadata:
   name: VerifyConfigurableConsoleEvents
-  module: CanImportModuleWithAlias
 filter:
   - type: "*"
 expect:
@@ -40,7 +37,6 @@ expect:
 kind: MyAssert.ModuleContext
 metadata:
   name: VerifyConfigurableConsoleModuleContext
-  module: CanImportModuleWithAlias
 resources:
   MyConsole:
     variables:

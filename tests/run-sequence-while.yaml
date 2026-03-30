@@ -8,25 +8,21 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Run
-  module: RunSequenceWhile
 source: ../modules/run
 ---
 kind: Kernel.Import
 metadata:
   name: JavaScript
-  module: RunSequenceWhile
 source: ../modules/javascript
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: RunSequenceWhile
 source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
   name: TestWhileLoop
-  module: RunSequenceWhile
 steps:
   # --- while: basic counter loop ---
   # Pre-initialize Counter at n=0. The while loop overwrites it each iteration.

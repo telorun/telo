@@ -27,7 +27,6 @@ source: ../modules/assert
 kind: Http.Client
 metadata:
   name: PlaceholderApi
-  module: HttpClientTest
 baseUrl: https://jsonplaceholder.typicode.com
 timeout: 10000
 ---
@@ -35,7 +34,6 @@ timeout: 10000
 kind: Run.Sequence
 metadata:
   name: TestGetAbsoluteUrl
-  module: HttpClientTest
 steps:
   - name: FetchTodo
     inputs: {}
@@ -67,7 +65,6 @@ steps:
 kind: Run.Sequence
 metadata:
   name: TestGetWithClient
-  module: HttpClientTest
 steps:
   - name: FetchUser
     inputs: {}
@@ -100,7 +97,6 @@ steps:
 kind: Run.Sequence
 metadata:
   name: TestPostWithJsonBody
-  module: HttpClientTest
 steps:
   - name: CreatePost
     inputs: {}
@@ -136,7 +132,6 @@ steps:
 kind: Run.Sequence
 metadata:
   name: TestNotFoundDoesNotThrow
-  module: HttpClientTest
 steps:
   - name: FetchMissing
     inputs: {}
@@ -162,7 +157,6 @@ steps:
 kind: Assert.Events
 metadata:
   name: VerifyAllInvocations
-  module: HttpClientTest
 filter:
   - type: "*"
 expect:

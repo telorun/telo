@@ -31,35 +31,30 @@ source: ../modules/run
 kind: Sql.Connection
 metadata:
   name: Db
-  module: FeedbackApiRepo
 driver: sqlite
 file: ./tmp/feedback-repo.db
 ---
 kind: SqlRepository.Create
 metadata:
   name: InsertFeedback
-  module: FeedbackApiRepo
 connection: Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: ListFeedback
-  module: FeedbackApiRepo
 connection: Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetFeedback
-  module: FeedbackApiRepo
 connection: Db
 table: feedback
 ---
 kind: Run.Sequence
 metadata:
   name: SetupDb
-  module: FeedbackApiRepo
 steps:
   - name: CreateTable
     inputs: {}
@@ -79,7 +74,6 @@ steps:
 kind: Http.Server
 metadata:
   name: Server
-  module: FeedbackApiRepo
 baseUrl: http://localhost:8844
 port: 8844
 logger: false
@@ -94,7 +88,6 @@ mounts:
 kind: Http.Api
 metadata:
   name: FeedbackRoutes
-  module: FeedbackApiRepo
 routes:
   # POST /v1/feedback — insert a new entry
   - request:

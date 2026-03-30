@@ -1,33 +1,5 @@
 # Telo Core Concepts — Architectural Problems
 
-## 2. `metadata` Has Naming Inconsistencies
-
-`metadata.module` on a resource is the correct place for a placement directive — Kubernetes does the same with `metadata.namespace` and it is a well-established pattern. That is not the problem.
-
-The problem is a single naming inconsistency:
-
-- **Two names for the same concept.** `Kernel.Module` itself uses `metadata.namespace` (e.g. `namespace: std`) while every other resource uses `metadata.module` to declare its scope. The same concept — "which namespace does this belong to" — has two different field names depending on which `kind` you're writing.
-
-### Solution
-
-Use a flat top-level `module:` field on all resources, not `metadata.module` or `metadata.namespace`.
-
-`metadata.namespace` cannot be the answer because `namespace` in Telo is already a distinct concept: the registry org under which a module is published (equivalent to npm's `@org/package` scope). Reusing that field name for runtime placement would mean `metadata.namespace` has different semantics depending on which `kind` you're writing — registry scope on `Kernel.Module`, runtime placement on everything else.
-
-`metadata.module` works but buries a structural fact inside a bag of descriptive fields. The three most important facts about any resource are its type, its runtime placement, and its name. Placing two of those at the top level (`kind:`) and one inside `metadata` creates an asymmetry without a good reason.
-
-Flat `module:` at the top level makes placement explicit and structurally equivalent to `kind:`:
-
-```yaml
-kind: Http.Server
-module: my-app # runtime placement, first-class alongside kind
-metadata:
-  name: ExampleServer
-port: 8080
-```
-
-`metadata` then holds only what it should: identity (`name`) and descriptive annotations (`labels`, `description`). When `module:` is omitted the resource belongs to the root module, preserving the ergonomic default.
-
 ## 3. `Kernel.Definition` Is a God Object
 
 A single definition carries:
@@ -88,7 +60,6 @@ Controllers import only `@telorun/sdk`. The kernel imports its own internal engi
 | Concept             | Core Problem                                                                              | Direction                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `Kernel.Definition` | Capability mixes schema and controllers; `Kernel.Mount` is the odd one out                | Clarify whether `Kernel.Mount` warrants a distinct top-level kind         |
-| `metadata`          | `namespace` vs `module` naming split; can't use `metadata.namespace` (registry collision) | Flat top-level `module:` field on all resources                           |
 | `capability` values | Inconsistent prefix usage                                                                 | Drop `Kernel.` prefix inside Definition; use enum                         |
 | Type inheritance    | Missing entirely                                                                          | At minimum: `extends:` for schema composition                             |
 | `sdk` package       | Contains core runtime, not a public authoring API                                         | Move runtime internals back to kernel; SDK exposes only authoring surface |

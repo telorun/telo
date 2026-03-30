@@ -8,32 +8,27 @@ targets:
 kind: Kernel.Import
 metadata:
   name: Sql
-  module: CanRunSimpleQuery
 source: ../
 ---
 kind: Kernel.Import
 metadata:
   name: Run
-  module: CanRunSimpleQuery
 source: ../../run
 ---
 kind: Kernel.Import
 metadata:
   name: Assert
-  module: CanRunSimpleQuery
 source: ../../assert
 ---
 kind: Sql.Connection
 metadata:
   name: Db
-  module: CanRunSimpleQuery
 driver: sqlite
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
   name: TestSimpleQuery
-  module: CanRunSimpleQuery
 steps:
   - name: RunQuery
     inputs: {}
