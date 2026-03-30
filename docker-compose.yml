@@ -1,7 +1,8 @@
 services:
   registry:
     image: node:24
-    command: 'sh -c "corepack enable && pnpm run telo ./apps/registry"'
+    command: 'sh -c "corepack enable && exec pnpm run telo ./apps/registry"'
+    init: true
     volumes:
       - .:/telo
     working_dir: /telo
