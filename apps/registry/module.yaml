@@ -19,7 +19,10 @@ metadata:
   name: telo-registry
   version: 1.0.0
 targets:
+  - InitSchema
   - RegistryServer
+include:
+  - ./public.yaml
 ---
 # ── Imports ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +54,18 @@ source: ../../modules/s3
 secrets:
   accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
   secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
+---
+kind: Kernel.Import
+metadata:
+  name: Sql
+  module: telo-registry
+source: ../../modules/sql
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+  module: telo-registry
+source: ../../modules/run
 
 ---
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -73,6 +88,9 @@ schema:
     type: string
   S3_SECRET_ACCESS_KEY:
     type: string
+  DB_FILE:
+    type: string
+    default: "./registry.db"
 
 ---
 kind: Config.Variables
@@ -86,6 +104,7 @@ keys:
   s3Endpoint: S3_ENDPOINT
   bucketUrl: S3_BUCKET_URL
   port: PORT
+  dbFile: DB_FILE
 
 ---
 kind: Config.Secrets
@@ -109,6 +128,44 @@ bucketName: "${{ resources.AppConfig.bucketName }}"
 endpoint: "${{ resources.AppConfig.s3Endpoint }}"
 accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
 secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
+
+---
+# ── Database ──────────────────────────────────────────────────────────────────
+
+kind: Sql.Connection
+metadata:
+  name: Db
+  module: telo-registry
+driver: sqlite
+file: "${{ resources.AppConfig.dbFile }}"
+---
+kind: Sql.Exec
+metadata:
+  name: CreateSchema
+  module: telo-registry
+connection: Db
+inputs:
+  sql: |
+    CREATE TABLE IF NOT EXISTS modules (
+      namespace    TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      version      TEXT NOT NULL,
+      file_key     TEXT NOT NULL,
+      description  TEXT,
+      published_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (namespace, name, version)
+    )
+
+---
+kind: Run.Sequence
+metadata:
+  name: InitSchema
+  module: telo-registry
+steps:
+  - name: create_tables
+    invoke:
+      kind: Sql.Exec
+      name: CreateSchema
 
 ---
 # ── HTTP Server ───────────────────────────────────────────────────────────────
@@ -143,34 +200,3 @@ notFoundHandler:
   response:
     - status: 200
       mode: stream
----
-# Public read API — unauthenticated.
-# /{namespace}/{name} lists versions by reading the R2 directory prefix.
-# Everything else falls through to the server fallback (ForwardToR2).
-
----
-kind: Http.Api
-metadata:
-  name: PublicApi
-  module: telo-registry
-routes:
-  - request:
-      path: /{namespace}/{name}
-      method: GET
-    handler:
-      kind: S3.List
-      inputs:
-        prefix: "${{ request.params.namespace + '/' + request.params.name + '/' }}"
-      bucketRef:
-        name: ModuleStore
-    response:
-      - status: 200
-        when: "${{ result.keys.size() > 0 }}"
-        body:
-          name: "${{ request.params.namespace + '/' + request.params.name }}"
-          # Latest version
-          version: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]).sort().last() }}"
-          versions: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]) }}"
-      - status: 404
-        body:
-          error: "Module not found"

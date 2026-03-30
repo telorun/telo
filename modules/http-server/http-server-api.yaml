@@ -29,6 +29,7 @@ schema:
                 type: "object"
             required: ["path", "method"]
           handler:
+            x-telo-ref: "kernel#Invocable"
             x-telo-context:
               type: object
               properties:

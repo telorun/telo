@@ -188,6 +188,76 @@ function setupWatchMode(kernel: Kernel, log: ReturnType<typeof createLogger>): W
   return { cleanup };
 }
 
+async function publish(argv: { path: string; registry: string }) {
+  const log = createLogger(false);
+
+  const filePath = path.resolve(process.cwd(), argv.path);
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    console.error(log.error("error") + `  Cannot read file: ${argv.path}`);
+    process.exit(1);
+  }
+
+  // Parse first YAML document to extract metadata
+  const firstDoc =
+    content.split(/^---$/m)[0].trim() || content.split(/^---\n/m)[1]?.trim() || content;
+  let namespace: string | undefined;
+  let name: string | undefined;
+  let version: string | undefined;
+
+  const nsMatch = firstDoc.match(/^\s{2,4}namespace:\s*["']?([^\s"']+)["']?/m);
+  const nameMatch = firstDoc.match(/^\s{2,4}name:\s*["']?([^\s"']+)["']?/m);
+  const versionMatch = firstDoc.match(/^\s{2,4}version:\s*["']?([^\s"']+)["']?/m);
+
+  namespace = nsMatch?.[1];
+  name = nameMatch?.[1];
+  version = versionMatch?.[1];
+
+  if (!namespace || !name || !version) {
+    console.error(
+      log.error("error") +
+        "  Manifest metadata must include namespace, name, and version.\n" +
+        `  Found: namespace=${namespace ?? "(missing)"}, name=${name ?? "(missing)"}, version=${version ?? "(missing)"}`,
+    );
+    process.exit(1);
+  }
+
+  const url = `${argv.registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
+  console.log(log.dim(`Publishing ${namespace}/${name}@${version} → ${url}`));
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "PUT",
+      headers: { "content-type": "text/yaml" },
+      body: content,
+    });
+  } catch (err) {
+    console.error(
+      log.error("error") + `  Network error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+
+  let body: unknown;
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    body = await res.json();
+  } else {
+    body = await res.text();
+  }
+
+  if (!res.ok) {
+    console.error(log.error("error") + `  Publish failed (${res.status}): ${JSON.stringify(body)}`);
+    process.exit(1);
+  }
+
+  const published = (body as any)?.published ?? `${namespace}/${name}@${version}`;
+  console.log(log.ok("✓") + `  Published: ${published}`);
+}
+
 async function run(argv: {
   path: string;
   verbose: boolean;
@@ -266,6 +336,25 @@ yargs(hideBin(process.argv))
       }),
     async (argv) => {
       await check(argv as any);
+    },
+  )
+  .command(
+    "publish <path>",
+    "Publish a module manifest to the Telo registry",
+    (yargs) =>
+      yargs
+        .positional("path", {
+          describe: "Path to the module.yaml to publish",
+          type: "string",
+          demandOption: true,
+        })
+        .option("registry", {
+          type: "string",
+          default: "https://registry.telo.run",
+          describe: "Registry base URL",
+        }),
+    async (argv) => {
+      await publish(argv as any);
     },
   )
   .command(

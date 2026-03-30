@@ -22,9 +22,8 @@ schema:
       description: Resources available during sequence execution; torn down when done
     inputs:
       type: object
-      description: Declared input schema (JSON Schema property definitions)
-      additionalProperties:
-        type: object
+      description: Input values passed to the sequence when invoked
+      additionalProperties: true
     outputs:
       type: object
       description: CEL mapping producing the sequence result

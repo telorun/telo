@@ -1,5 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefEntry, isScopeEntry, isSchemaFromEntry, type RefFieldEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry, isSchemaFromEntry, isInlineResource, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -46,38 +46,6 @@ function checkKind(
   return errors;
 }
 
-/** Inline resource — has keys beyond kind/name/metadata. Phase 2 normalizes these before
- *  Phase 3 runs; until then we skip them rather than raise false errors. */
-function isInlineResource(val: Record<string, unknown>): boolean {
-  const known = new Set(["kind", "name", "metadata"]);
-  return Object.keys(val).some((k) => !known.has(k));
-}
-
-/** Resolves all values at a field map path in a resource config.
- *  `[]` in a path segment means "iterate array at this key". */
-function resolveFieldValues(obj: unknown, path: string): unknown[] {
-  const parts = path.split(".");
-  let current: unknown[] = [obj];
-
-  for (const part of parts) {
-    const isArray = part.endsWith("[]");
-    const key = isArray ? part.slice(0, -2) : part;
-    const next: unknown[] = [];
-
-    for (const item of current) {
-      if (!item || typeof item !== "object") continue;
-      const val = (item as Record<string, unknown>)[key];
-      if (val == null) continue;
-      if (isArray && Array.isArray(val)) next.push(...val);
-      else if (!isArray) next.push(val);
-    }
-
-    current = next;
-  }
-
-  return current;
-}
-
 /**
  * Phase 3 — Reference validation.
  *
@@ -113,10 +81,7 @@ export function validateReferences(
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
 
-    const resolvedKind = aliases.resolveKind(r.kind);
-    const fieldMap =
-      registry.getFieldMap(r.kind) ??
-      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
     if (!fieldMap) continue;
 
     const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
@@ -249,10 +214,7 @@ export function validateReferences(
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
 
-    const resolvedKind = aliases.resolveKind(r.kind);
-    const fieldMap =
-      registry.getFieldMap(r.kind) ??
-      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
     if (!fieldMap) continue;
 
     const resourceLabel = `${r.kind}/${r.metadata.name as string}`;

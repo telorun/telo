@@ -134,6 +134,17 @@ export class DefinitionRegistry {
     return this.fieldMaps.get(kind);
   }
 
+  /** Returns the field map for `kind`, falling back to the alias-resolved kind when not found. */
+  getFieldMapForKind(
+    kind: string,
+    aliases?: { resolveKind(k: string): string | undefined },
+  ): ReferenceFieldMap | undefined {
+    const fm = this.getFieldMap(kind);
+    if (fm) return fm;
+    const resolved = aliases?.resolveKind(kind);
+    return resolved ? this.getFieldMap(resolved) : undefined;
+  }
+
   /** Returns all definitions that transitively extend the given abstract kind.
    *  Follows the capability chain to any depth (equivalent to instanceof in OOP).
    *  Definitions are included regardless of registration order. */

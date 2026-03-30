@@ -39,8 +39,7 @@ export class AnalysisRegistry {
     onRef: (fieldPath: string) => void,
     onScope: (fieldPath: string) => void,
   ): void {
-    const resolvedKind = this.aliases.resolveKind(resource.kind) ?? resource.kind;
-    const fieldMap = this.defs.getFieldMap(resource.kind) ?? this.defs.getFieldMap(resolvedKind);
+    const fieldMap = this.defs.getFieldMapForKind(resource.kind, this.aliases);
     if (!fieldMap) return;
     for (const [fieldPath, entry] of fieldMap) {
       if (isScopeEntry(entry)) {

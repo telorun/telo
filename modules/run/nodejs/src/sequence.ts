@@ -57,11 +57,21 @@ interface SequenceError {
   step: string;
 }
 
-function isInvokeStep(step: Step): step is InvokeStep { return "invoke" in step; }
-function isIfStep(step: Step): step is IfStep         { return "if" in step; }
-function isWhileStep(step: Step): step is WhileStep   { return "while" in step; }
-function isSwitchStep(step: Step): step is SwitchStep { return "switch" in step; }
-function isTryStep(step: Step): step is TryStep       { return "try" in step; }
+function isInvokeStep(step: Step): step is InvokeStep {
+  return "invoke" in step;
+}
+function isIfStep(step: Step): step is IfStep {
+  return "if" in step;
+}
+function isWhileStep(step: Step): step is WhileStep {
+  return "while" in step;
+}
+function isSwitchStep(step: Step): step is SwitchStep {
+  return "switch" in step;
+}
+function isTryStep(step: Step): step is TryStep {
+  return "try" in step;
+}
 
 class RunSequence {
   constructor(
@@ -78,7 +88,10 @@ class RunSequence {
       if (isInvokeStep(step)) {
         const raw = step.invoke as unknown;
         if (!raw || typeof (raw as Invocable).invoke !== "function") {
-          (step as InvokeStep).invoke = this.ctx.resolveChildren(raw as any, step.name) as KindRef<Invocable>;
+          (step as InvokeStep).invoke = this.ctx.resolveChildren(
+            raw as any,
+            step.name,
+          ) as KindRef<Invocable>;
         }
       }
       if (isIfStep(step)) {
@@ -108,6 +121,24 @@ class RunSequence {
     }
   }
 
+  async invoke(inputs: Record<string, unknown>): Promise<unknown> {
+    const steps: Record<string, unknown> = {};
+    const extraCtx = { inputs: inputs ?? {} };
+
+    if (this.resource.with) {
+      await this.resource.with.run(async (scope) => {
+        await this.executeSteps(this.resource.steps, steps, scope, extraCtx);
+      });
+    } else {
+      await this.executeSteps(this.resource.steps, steps, undefined, extraCtx);
+    }
+
+    if (this.resource.outputs) {
+      return this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx });
+    }
+    return steps;
+  }
+
   async teardown(): Promise<void> {}
 
   private async executeSteps(
@@ -127,11 +158,11 @@ class RunSequence {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
   ): Promise<void> {
-    if (isInvokeStep(step))      await this.executeInvokeStep(step, steps, scope, extraCtx);
-    else if (isIfStep(step))     await this.executeIfStep(step, steps, scope, extraCtx);
-    else if (isWhileStep(step))  await this.executeWhileStep(step, steps, scope, extraCtx);
+    if (isInvokeStep(step)) await this.executeInvokeStep(step, steps, scope, extraCtx);
+    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx);
+    else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx);
     else if (isSwitchStep(step)) await this.executeSwitchStep(step, steps, scope, extraCtx);
-    else if (isTryStep(step))    await this.executeTryStep(step, steps, scope, extraCtx);
+    else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
   }
 
@@ -263,6 +294,9 @@ function toSequenceError(err: unknown, stepName: string): SequenceError {
 
 export function register(): void {}
 
-export async function create(resource: RunSequenceManifest, ctx: ResourceContext): Promise<RunSequence> {
+export async function create(
+  resource: RunSequenceManifest,
+  ctx: ResourceContext,
+): Promise<RunSequence> {
   return new RunSequence(ctx, resource);
 }

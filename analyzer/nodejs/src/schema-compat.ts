@@ -250,9 +250,13 @@ export function substituteCelFields(data: unknown, schema: Record<string, any>):
   }
   if (data !== null && typeof data === "object") {
     const props = (schema.properties ?? {}) as Record<string, any>;
+    const addlProps =
+      schema.additionalProperties && typeof schema.additionalProperties === "object"
+        ? (schema.additionalProperties as Record<string, any>)
+        : undefined;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(v, (props[k] ?? {}) as Record<string, any>);
+      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>);
     }
     return result;
   }

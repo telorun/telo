@@ -1,16 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry, isInlineResource } from "./reference-field-map.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { AliasResolver } from "./alias-resolver.js";
 
 const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Module", "Kernel.Import"]);
-const REFERENCE_KEYS = new Set(["kind", "name", "metadata"]);
-
-/** True when `val` has keys beyond kind/name/metadata — i.e. it is an inline resource
- *  rather than a named reference `{kind, name}`. */
-function isInline(val: Record<string, unknown>): boolean {
-  return Object.keys(val).some((k) => !REFERENCE_KEYS.has(k));
-}
 
 /** Replaces characters outside [a-zA-Z0-9_] with underscores. */
 function sanitizeName(raw: string): string {
@@ -50,10 +43,7 @@ export function normalizeInlineResources(
   let i = 0;
   while (i < queue.length) {
     const resource = queue[i++];
-    const resolvedKind = aliases?.resolveKind(resource.kind);
-    const fieldMap =
-      registry.getFieldMap(resource.kind) ??
-      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    const fieldMap = registry.getFieldMapForKind(resource.kind, aliases);
     if (!fieldMap) continue;
 
     const parentName = resource.metadata.name as string;
@@ -128,7 +118,7 @@ function extractInlinesAtPath(
 
         if (rest.length === 0) {
           // Array element itself is the ref slot
-          if (isInline(elem as Record<string, unknown>)) {
+          if (isInlineResource(elem as Record<string, unknown>)) {
             const name = sanitizeName([parentName, ...nameParts, key, elemId].join("_"));
             extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule));
             val[idx] = { kind: (elem as Record<string, unknown>).kind, name };
@@ -140,7 +130,7 @@ function extractInlinesAtPath(
     } else {
       if (rest.length === 0) {
         // val is the ref slot
-        if (val && typeof val === "object" && !Array.isArray(val) && isInline(val as Record<string, unknown>)) {
+        if (val && typeof val === "object" && !Array.isArray(val) && isInlineResource(val as Record<string, unknown>)) {
           const name = sanitizeName([parentName, ...nameParts, key].join("_"));
           extracted.push(buildManifest(val as Record<string, unknown>, name, parentModule));
           container[key] = { kind: (val as Record<string, unknown>).kind, name };

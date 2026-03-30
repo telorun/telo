@@ -41,6 +41,38 @@ export function isSchemaFromEntry(entry: FieldMapEntry): entry is SchemaFromFiel
   return "schemaFrom" in entry;
 }
 
+/** Keys that a named reference object may have. Values beyond these indicate an inline resource. */
+export const REFERENCE_KEYS = new Set(["kind", "name", "metadata"]);
+
+/** True when `val` is an inline resource definition rather than a named reference.
+ *  A named reference (has string `name`) may carry extra keys (e.g. `inputs`) that
+ *  are runtime call parameters — those are never inline resources. */
+export function isInlineResource(val: Record<string, unknown>): boolean {
+  if (typeof val.name === "string") return false;
+  return Object.keys(val).some((k) => !REFERENCE_KEYS.has(k));
+}
+
+/** Resolves all values at a field map path in a resource config.
+ *  `[]` in a path segment means "iterate array at this key". */
+export function resolveFieldValues(obj: unknown, path: string): unknown[] {
+  const parts = path.split(".");
+  let current: unknown[] = [obj];
+  for (const part of parts) {
+    const isArray = part.endsWith("[]");
+    const key = isArray ? part.slice(0, -2) : part;
+    const next: unknown[] = [];
+    for (const item of current) {
+      if (!item || typeof item !== "object") continue;
+      const val = (item as Record<string, unknown>)[key];
+      if (val == null) continue;
+      if (isArray && Array.isArray(val)) next.push(...val);
+      else if (!isArray) next.push(val);
+    }
+    current = next;
+  }
+  return current;
+}
+
 /**
  * Traverses a definition's JSON Schema once and returns a field map recording every
  * x-telo-ref slot and every x-telo-scope slot.
@@ -76,11 +108,7 @@ function collectRefs(node: Record<string, any>): string[] {
   return refs;
 }
 
-function traverseNode(
-  node: Record<string, any>,
-  path: string,
-  map: ReferenceFieldMap,
-): void {
+function traverseNode(node: Record<string, any>, path: string, map: ReferenceFieldMap): void {
   // Scope slot — record and stop; do not recurse into scope contents
   if ("x-telo-scope" in node) {
     map.set(path, { scope: node["x-telo-scope"] });

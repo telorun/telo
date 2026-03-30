@@ -1,7 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry, resolveFieldValues } from "./reference-field-map.js";
 
 export interface ResourceNode {
   kind: string;
@@ -55,10 +55,7 @@ export function buildDependencyGraph(
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
 
     const sourceKey = nodeKey(r.kind, r.metadata.name as string);
-    const resolvedKind = aliases?.resolveKind(r.kind);
-    const fieldMap =
-      registry.getFieldMap(r.kind) ??
-      (resolvedKind ? registry.getFieldMap(resolvedKind) : undefined);
+    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
     if (!fieldMap) continue;
 
     // Collect names of resources declared inside scope fields — these are initialized
@@ -78,10 +75,12 @@ export function buildDependencyGraph(
       if (!isRefEntry(entry)) continue;
 
       for (const val of resolveFieldValues(r, fieldPath)) {
-        if (!val || typeof val !== "object" || !val.kind || !val.name) continue;
+        if (!val || typeof val !== "object") continue;
+        const ref = val as Record<string, unknown>;
+        if (!ref.kind || !ref.name) continue;
         // Edges to scoped resources are runtime deps, not boot-time deps — exclude from DAG
-        if (scopedNames.has(val.name as string)) continue;
-        const targetKey = nodeKey(val.kind as string, val.name as string);
+        if (scopedNames.has(ref.name as string)) continue;
+        const targetKey = nodeKey(ref.kind as string, ref.name as string);
         if (nodes.has(targetKey)) {
           deps.get(sourceKey)!.add(targetKey);
         }
@@ -145,34 +144,6 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
 }
 
 // --- Internals ---
-
-/** Resolves all values at a field map path in a resource config.
- *  `[]` in a path segment means "iterate array at this key". */
-function resolveFieldValues(obj: any, path: string): any[] {
-  const parts = path.split(".");
-  let current: any[] = [obj];
-
-  for (const part of parts) {
-    const isArray = part.endsWith("[]");
-    const key = isArray ? part.slice(0, -2) : part;
-    const next: any[] = [];
-
-    for (const item of current) {
-      if (!item || typeof item !== "object") continue;
-      const val = item[key];
-      if (val == null) continue;
-      if (isArray && Array.isArray(val)) {
-        next.push(...val);
-      } else if (!isArray) {
-        next.push(val);
-      }
-    }
-
-    current = next;
-  }
-
-  return current;
-}
 
 /** DFS cycle detection — returns the cycle path with the repeated start node appended. */
 function findCycle(

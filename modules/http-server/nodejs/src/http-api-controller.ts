@@ -1,5 +1,5 @@
 import { Static, Type } from "@sinclair/typebox";
-import { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { ControllerContext, Invocable, KindRef, Ref, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -17,7 +17,7 @@ const HttpApiRouteManifest = Type.Object({
       }),
     ),
   }),
-  handler: Type.Optional(Type.Any()), // Any handler shape is allowed - will be processed in create()
+  handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("kernel#Invocable"))),
   response: Type.Array(
     Type.Object({
       status: Type.Integer({ minimum: 100, maximum: 599 }),
@@ -74,14 +74,21 @@ export async function dispatchResponse(
   const statusEntry = matched ?? fallback;
   if (!statusEntry) {
     reply.code(500);
-    reply.send({ error: "InternalServerError", message: "No matching response status entry", status: 500 });
+    reply.send({
+      error: "InternalServerError",
+      message: "No matching response status entry",
+      status: 500,
+    });
     return;
   }
 
   reply.code(statusEntry.status);
 
   if (statusEntry.headers) {
-    const mappedHeaders = moduleContext.expandWith(statusEntry.headers, { result, ...requestContext }) as Record<string, unknown>;
+    const mappedHeaders = moduleContext.expandWith(statusEntry.headers, {
+      result,
+      ...requestContext,
+    }) as Record<string, unknown>;
     Object.entries(mappedHeaders).forEach(([key, value]) => reply.header(key, value as string));
   }
 
@@ -133,7 +140,8 @@ export class HttpServerApi implements ResourceInstance {
   }
 
   private registerRoute(app: FastifyInstance, route: HttpApiRouteManifest) {
-    const handler = route.handler ? { ...resolveHandlerName(route.handler), inputs: (route.handler as any).inputs } : null;
+    // After Phase 5 injection, KindRef<Invocable> is replaced with the live Invocable instance.
+    const handler = route.handler as unknown as Invocable | undefined;
     const translatedPath = translateOpenApiPath(route.request.path);
 
     const schema: any = {
@@ -181,15 +189,7 @@ export class HttpServerApi implements ResourceInstance {
               body: request.body,
             },
           };
-          const evaluatedInputs = handler?.inputs
-            ? (this.ctx.moduleContext.expandWith(handler.inputs, requestContext) as Record<string, unknown>)
-            : {};
-          const result = handler
-            ? await this.ctx.invoke(handler.kind, handler.name, {
-                ...evaluatedInputs,
-                ...requestContext,
-              })
-            : undefined;
+          const result = handler ? await handler.invoke(requestContext) : undefined;
 
           return dispatchResponse(
             route.response,
@@ -209,55 +209,8 @@ export class HttpServerApi implements ResourceInstance {
 }
 
 export async function create(resource: any, ctx: ResourceContext): Promise<HttpServerApi> {
-  // First validate with a permissive schema (handler can be any shape)
   ctx.validateSchema(resource, HttpApiManifest);
-  // Process routes and register unnamed handlers as child resources
-  let handlerCounter = 0;
-  const processedRoutes = (resource.routes || []).map((route: any) => {
-    if (!route.handler) {
-      return route;
-    }
-
-    // Check if handler is unnamed (inline handler)
-    if (typeof route.handler === "object" && !route.handler.name) {
-      // Use resolveChildren to register the unnamed handler and get its normalized reference
-      const resolvedHandler = ctx.resolveChildren(route.handler, `__handler_${handlerCounter++}`);
-
-      // Return route with the resolved handler reference
-      return {
-        ...route,
-        handler: {
-          kind: resolvedHandler.kind,
-          name: resolvedHandler.name,
-          inputs: route.handler.inputs,
-        },
-      };
-    }
-
-    return route;
-  });
-
-  // Create the API instance with processed routes
-  const processedResource: HttpApiManifest = {
-    ...resource,
-    routes: processedRoutes,
-  };
-
-  return new HttpServerApi(ctx, processedResource);
-}
-
-function resolveHandlerName(handler: any): { kind: string; name: string } {
-  if (typeof handler === "string") {
-    const [kind, name] = handler.split("/");
-    return { kind, name };
-  }
-  if (handler && typeof handler === "object" && typeof handler.kind === "string") {
-    // name should always be present after create() processes the routes
-    // but fallback gracefully if it's not
-    const name = handler.name || `__unnamed_${Math.random().toString(36).slice(2, 9)}`;
-    return { name, kind: handler.kind };
-  }
-  throw new Error("Unable to resolve handler - handler must have a 'kind' property");
+  return new HttpServerApi(ctx, resource);
 }
 
 /**

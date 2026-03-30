@@ -47,6 +47,9 @@ export class ResourceContextImpl implements ResourceContext {
       removeAdditional: true,
     });
     addFormats.default(ajv);
+    for (const kw of ["x-telo-ref", "x-telo-scope", "x-telo-context", "x-telo-schema-from"]) {
+      ajv.addKeyword(kw);
+    }
     const validate = ajv.compile(
       "type" in schema && typeof schema.type === "string"
         ? schema

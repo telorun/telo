@@ -1,5 +1,6 @@
-# Public read API — unauthenticated.
-# /{namespace}/{name} lists versions by reading the R2 directory prefix.
+# Public API — unauthenticated.
+# GET /{namespace}/{name}          lists all versions from the SQL index.
+# PUT /{namespace}/{name}/{version} publishes a module.yaml (body) to S3 and records it in SQL.
 # Everything else falls through to the server fallback (ForwardToR2).
 
 ---
@@ -12,19 +13,67 @@ routes:
       path: /{namespace}/{name}
       method: GET
     handler:
-      kind: S3.List
+      kind: Sql.Query
+      connection: Db
       inputs:
-        prefix: "${{ request.params.namespace + '/' + request.params.name + '/' }}"
-      bucketRef:
-        name: ModuleStore
+        sql: >-
+          SELECT version, published_at FROM modules
+          WHERE namespace = ? AND name = ?
+          ORDER BY published_at ASC
+        bindings:
+          - "${{ request.params.namespace }}"
+          - "${{ request.params.name }}"
     response:
       - status: 200
-        when: "${{ result.keys.size() > 0 }}"
+        when: "${{ result.rows.size() > 0 }}"
         body:
           name: "${{ request.params.namespace + '/' + request.params.name }}"
-          # Latest version
-          version: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]).last() }}"
-          versions: "${{ result.keys.filter(k, k.endsWith('/module.yaml')).map(k, k.split('/')[2]) }}"
+          version: "${{ result.rows[result.rows.size() - 1].version }}"
+          versions: "${{ result.rows.map(r, r.version) }}"
       - status: 404
         body:
           error: "Module not found"
+
+  - request:
+      path: /{namespace}/{name}/{version}
+      method: PUT
+    handler:
+      kind: Run.Sequence
+      # inputs:
+      #   namespace: "${{ request.params.namespace }}"
+      #   name: "${{ request.params.name }}"
+      #   version: "${{ request.params.version }}"
+      #   body: "${{ request.body }}"
+      steps:
+        - name: upload
+          invoke:
+            kind: S3.Put
+            bucketRef:
+              name: ModuleStore
+          inputs:
+            namespace: "${{ request.params.namespace }}"
+            key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
+            body: "${{ request.body }}"
+            contentType: "text/yaml"
+        - name: record
+          invoke:
+            kind: Sql.Exec
+            connection: Db
+          inputs:
+            sql: >-
+              INSERT OR REPLACE INTO modules (namespace, name, version, file_key)
+              VALUES (?, ?, ?, ?)
+            bindings:
+              - "${{ request.params.namespace }}"
+              - "${{ request.params.name }}"
+              - "${{ request.params.version }}"
+              - "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
+      outputs:
+        published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
+    response:
+      - status: 201
+        body:
+          published: "${{ result.published }}"
+      - status: 500
+        body:
+          error: "Publish failed"
