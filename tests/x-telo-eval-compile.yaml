@@ -1,0 +1,78 @@
+kind: Kernel.Module
+metadata:
+  name: XTeloEvalCompile
+  version: 1.0.0
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../modules/http-server
+---
+kind: Kernel.Import
+metadata:
+  name: HttpClient
+source: ../modules/http-client
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+source: ../modules/run
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Http.Server declares x-telo-eval: compile on port, host, baseUrl, etc.
+# Using a CEL expression for port verifies compile expansion runs before the
+# controller's create() — without it, Fastify would receive a CompiledValue
+# object instead of a number and fail to start on the right port.
+kind: Run.Sequence
+metadata:
+  name: TestCompileEval
+with:
+  - kind: Http.Api
+    metadata:
+      name: TestApi
+    routes:
+      - request:
+          path: /ping
+          method: GET
+        response:
+          - status: 200
+            headers:
+              Content-Type: application/json
+            body:
+              pong: true
+  - kind: Http.Server
+    metadata:
+      name: TestServer
+    port: "${{ 8857 }}"
+    baseUrl: "${{ 'http://localhost:8857' }}"
+    host: "${{ 'localhost' }}"
+    logger: false
+    mounts:
+      - path: /api
+        type: XTeloEvalCompile.TestApi
+targets:
+  - TestServer
+steps:
+  - name: Ping
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8857/api/ping
+      method: GET
+
+  - name: AssertPong
+    inputs:
+      pong: "${{ steps.Ping.result.body.pong }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          pong:
+            type: boolean
+            const: true
+        required:
+          - pong

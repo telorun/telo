@@ -46,6 +46,7 @@ type Step = InvokeStep | IfStep | WhileStep | SwitchStep | TryStep;
 interface RunSequenceManifest {
   metadata: Record<string, string | number | boolean>;
   with?: ScopeHandle;
+  targets?: string[];
   inputs?: Record<string, Record<string, unknown>>;
   outputs?: Record<string, unknown>;
   steps: Step[];
@@ -114,6 +115,7 @@ class RunSequence {
   async run(): Promise<void> {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
+        await this.runScopeTargets(scope);
         await this.executeSteps(this.resource.steps, {}, scope, {});
       });
     } else {
@@ -127,6 +129,7 @@ class RunSequence {
 
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
+        await this.runScopeTargets(scope);
         await this.executeSteps(this.resource.steps, steps, scope, extraCtx);
       });
     } else {
@@ -137,6 +140,19 @@ class RunSequence {
       return this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx });
     }
     return steps;
+  }
+
+  private async runScopeTargets(scope: ScopeContext): Promise<void> {
+    if (!this.resource.targets?.length) return;
+    await Promise.all(
+      this.resource.targets.map((name) => {
+        const instance = scope.getInstance(name);
+        if (typeof instance.run !== "function") {
+          throw new Error(`Scope target '${name}' does not have a run() method`);
+        }
+        return instance.run();
+      }),
+    );
   }
 
   async teardown(): Promise<void> {}

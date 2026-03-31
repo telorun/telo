@@ -23,12 +23,6 @@ export interface ResourceDefinition {
   /** JSON Schema for the resource's compile-time configuration fields. */
   schema?: Record<string, any>;
   capability?: string;
-  /** CEL expression paths expanded at compile time and/or runtime.
-   *  '**' expands the entire manifest. Inherited from the parent base definition. */
-  expand?: {
-    compile?: string[];
-    runtime?: string[];
-  };
   controllers?: Array<{
     runtime: string;
     entry: string;

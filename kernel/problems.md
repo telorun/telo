@@ -1,18 +1,29 @@
 # Telo Core Concepts — Architectural Problems
 
-## 3. `Kernel.Definition` Is a God Object
+## 1. `Kernel.Definition` Is a God Object
 
 A single definition carries:
 
 - `capability` — lifecycle role
 - `schema` — instance shape
 - `controllers` — implementation binding
-- `expand` — compile/runtime hooks
 - `x-telo-*` extensions scattered in schema
 
-The structural concern that remains: does `Kernel.Mount`'s position as the only capability with extra framework-level semantics point toward a deeper split — or are all capabilities now structurally uniform since `x-telo-context` moved scope injection into the schema?
+**Current state:** The god-object structure is intact. Four `x-telo-*` variants exist
+(`x-telo-ref`, `x-telo-context`, `x-telo-scope`, `x-telo-schema-from`), all embedded
+inside `schema` property definitions. Capabilities are not structurally uniform:
 
-## 4. `capability` Values Have a Naming Inconsistency
+- `x-telo-context` appears only in `Kernel.Mount` definitions (`http-server` — injects
+  request context into handler invocations)
+- `x-telo-scope` appears only in `Kernel.Runnable` definitions (`run` — restricts CEL
+  scope to a sub-path)
+
+Each capability that needs framework-level semantics adds its own bespoke schema
+extension. The flat `Kernel.Definition` provides no structural slot for these — they
+accumulate as informal conventions inside `schema`. A split along capability lines (or a
+dedicated `hooks`/`extensions` field) would make these explicit.
+
+## 2. `capability` Values Have a Naming Inconsistency
 
 Inside a `Kernel.Definition`, `capability` values use the `Kernel.` prefix:
 
@@ -23,7 +34,7 @@ capability: Kernel.Service
 
 The `Kernel.` prefix appears redundantly — you're already inside a `Kernel.Definition`, so `Kernel.Service` ≡ `Service`. But current module definitions use `capability: Kernel.Service` (with prefix) vs some docs using `capability: Mount` (no prefix). This inconsistency bleeds into the analyzer and generates confusing error messages.
 
-## 5. No Type Inheritance or Interface Composition
+## 3. No Type Inheritance or Interface Composition
 
 If you want an `AuthenticatedApi` that extends `Http.Api` with auth middleware injected, there's no mechanism. Options are:
 
@@ -33,7 +44,7 @@ If you want an `AuthenticatedApi` that extends `Http.Api` with auth middleware i
 
 The `x-telo-ref: Kernel.Invocable` mechanism hints at interface-like contracts but it's read-only — you can say "this field must be Invocable" but you can't say "this type extends X and adds Y".
 
-## 6. `sdk` Package Contains the Core Runtime
+## 4. `sdk` Package Contains the Core Runtime
 
 `@telorun/sdk` is named as a public authoring API — the surface module authors use to write controllers. But it actually contains the core runtime engine:
 
@@ -59,7 +70,7 @@ Controllers import only `@telorun/sdk`. The kernel imports its own internal engi
 
 | Concept             | Core Problem                                                                              | Direction                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `Kernel.Definition` | Capability mixes schema and controllers; `Kernel.Mount` is the odd one out                | Clarify whether `Kernel.Mount` warrants a distinct top-level kind         |
+| `Kernel.Definition` | Capability-specific semantics (`x-telo-context`, `x-telo-scope`) accumulate as informal schema conventions; no structural slot for them | Split by capability or add a dedicated `hooks`/`extensions` field |
 | `capability` values | Inconsistent prefix usage                                                                 | Drop `Kernel.` prefix inside Definition; use enum                         |
 | Type inheritance    | Missing entirely                                                                          | At minimum: `extends:` for schema composition                             |
 | `sdk` package       | Contains core runtime, not a public authoring API                                         | Move runtime internals back to kernel; SDK exposes only authoring surface |

@@ -1,5 +1,4 @@
 import { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
-import { Loader } from "./loader.js";
 import {
   ControllerContext,
   Kernel as IKernel,
@@ -16,6 +15,7 @@ import * as path from "path";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
+import { Loader } from "./loader.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
@@ -49,21 +49,6 @@ export class Kernel implements IKernel {
   constructor() {
     this.setupEventStreaming();
   }
-
-  // async teardownResource(module: string, kind: string, name: string): Promise<void> {
-  //   const key = this.getResourceKey(module, kind, name);
-  //   const entry = this.resourceInstances.get(key);
-  //   if (!entry) return;
-  //   const { resource, instance } = entry;
-  //   if (instance.teardown) {
-  //     await instance.teardown();
-  //   }
-  //   await this.eventBus.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
-  //     resource: { kind: resource.kind, name: resource.metadata.name },
-  //   });
-  //   // this.resourceInstances.delete(key);
-  //   this.resourceEventBuses.delete(key);
-  // }
 
   async registerController(
     moduleName: string,
@@ -265,14 +250,6 @@ export class Kernel implements IKernel {
     }
   }
 
-  // async runInstances(): Promise<void> {
-  //   for (const { instance } of this.resourceInstances.values()) {
-  //     if (instance.run) {
-  //       await instance.run();
-  //     }
-  //   }
-  // }
-
   async emitRuntimeEvent(event: string, payload?: any): Promise<void> {
     await this.eventBus.emit(event, payload);
   }
@@ -403,19 +380,27 @@ export class Kernel implements IKernel {
       throw new Error(`No schema defined for ${kind} controller`);
     }
 
-    // Resolve expand paths from the parent base definition and the definition itself
+    // Resolve eval paths from x-telo-eval annotations in the parent and own schema
     const definition = this.controllers.getDefinition(resolvedKind);
     const parentDef = definition?.capability
       ? this.controllers.getDefinition(definition.capability)
       : undefined;
-    const compile = [...(parentDef?.expand?.compile ?? []), ...(definition?.expand?.compile ?? [])];
-    const runtime = [...(parentDef?.expand?.runtime ?? []), ...(definition?.expand?.runtime ?? [])];
+    const parentEval = parentDef?.schema
+      ? buildEvalPaths(parentDef.schema)
+      : { compile: [], runtime: [] };
+    const ownEval = definition?.schema
+      ? buildEvalPaths(definition.schema)
+      : { compile: [], runtime: [] };
+    const compile = [...parentEval.compile, ...ownEval.compile];
+    const runtime = [...parentEval.runtime, ...ownEval.runtime];
 
     // Schema validation runs before CEL evaluation so it sees the original manifest
     // shape. CompiledValue wrappers (from load-time precompilation) are stripped,
     // restoring the pre-CEL string view that the schema expects.
     try {
-      this.sharedSchemaValidator.compile(controller.schema).validate(stripCompiledValues(resource, controller.schema as Record<string, unknown>));
+      this.sharedSchemaValidator
+        .compile(controller.schema)
+        .validate(stripCompiledValues(resource, controller.schema as Record<string, unknown>));
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
@@ -514,11 +499,16 @@ function placeholderForSchema(schema: Record<string, unknown>): unknown {
   if (schema.default !== undefined) return schema.default;
   switch (schema.type) {
     case "integer":
-    case "number": return (schema.minimum as number | undefined) ?? 0;
-    case "boolean": return false;
-    case "array": return [];
-    case "object": return {};
-    default: return "";
+    case "number":
+      return (schema.minimum as number | undefined) ?? 0;
+    case "boolean":
+      return false;
+    case "array":
+      return [];
+    case "object":
+      return {};
+    default:
+      return "";
   }
 }
 
@@ -548,6 +538,48 @@ function stripCompiledValues(v: unknown, schema: Record<string, unknown> = {}): 
  * and replaces the value in-place with the returned live ResourceInstance.
  * Values where getInstance returns undefined are left unchanged.
  */
+/**
+ * Traverses a definition schema and collects all paths annotated with `x-telo-eval`.
+ * Root-level `x-telo-eval` produces the `"**"` wildcard (expand all fields).
+ * Property-level annotations produce the dot-notation path to that property.
+ */
+function buildEvalPaths(schema: Record<string, any>): { compile: string[]; runtime: string[] } {
+  const compile: string[] = [];
+  const runtime: string[] = [];
+
+  if (schema["x-telo-eval"] === "compile") compile.push("**");
+  else if (schema["x-telo-eval"] === "runtime") runtime.push("**");
+
+  if (schema.properties) {
+    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
+      collectEvalPathsNode(propSchema, key, compile, runtime);
+    }
+  }
+
+  return { compile, runtime };
+}
+
+function collectEvalPathsNode(
+  node: Record<string, any>,
+  path: string,
+  compile: string[],
+  runtime: string[],
+): void {
+  if (node["x-telo-eval"] === "compile") {
+    compile.push(path);
+    return;
+  }
+  if (node["x-telo-eval"] === "runtime") {
+    runtime.push(path);
+    return;
+  }
+  if (node.properties) {
+    for (const [key, propSchema] of Object.entries(node.properties as Record<string, any>)) {
+      collectEvalPathsNode(propSchema, `${path}.${key}`, compile, runtime);
+    }
+  }
+}
+
 function injectAtPath(
   resource: ResourceManifest,
   fieldPath: string,

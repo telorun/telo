@@ -10,7 +10,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   {
     kind: "Kernel.Abstract",
     metadata: { name: "Provider", module: "Kernel" },
-    expand: { compile: ["**"] },
+    schema: { "x-telo-eval": "compile" },
   },
   {
     kind: "Kernel.Definition",

@@ -30,14 +30,6 @@ const baseDefinition = {
     capability: { type: "string" },
     schema: { type: "object", additionalProperties: true },
     controllers: { type: "array", items: { type: "string" } },
-    expand: {
-      type: "object",
-      properties: {
-        compile: { type: "array", items: { type: "string" } },
-        runtime: { type: "array", items: { type: "string" } },
-      },
-      additionalProperties: false,
-    },
   },
   unevaluatedProperties: false,
 };

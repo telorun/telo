@@ -20,6 +20,11 @@ schema:
     with:
       x-telo-scope: /steps
       description: Resources available during sequence execution; torn down when done
+    targets:
+      type: array
+      items:
+        type: string
+      description: Names of with-resources to run() before executing steps; torn down when done
     inputs:
       type: object
       description: Input values passed to the sequence when invoked
