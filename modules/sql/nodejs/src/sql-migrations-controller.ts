@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import { resolveSqlConnection } from "./sql-connection-ref.js";
 
 interface SqlMigrationsManifest {
   metadata: { name: string; module: string };
@@ -18,7 +19,8 @@ class SqlMigrationsResource implements ResourceInstance {
   ) {}
 
   async run(): Promise<void> {
-    const conn = this.manifest.connection;
+    const conn =
+      resolveSqlConnection(this.manifest.connection, this.ctx) ?? failMissingConnection();
 
     const migrations: MigrationEntry[] = [];
     for (const [, { resource }] of this.ctx.moduleContext.resourceInstances) {
@@ -65,6 +67,10 @@ class SqlMigrationsResource implements ResourceInstance {
   private async applyMigrationSql(conn: SqlConnectionResource, migrationSql: string): Promise<void> {
     await conn.executeScript(migrationSql);
   }
+}
+
+function failMissingConnection(): never {
+  throw new Error("Sql.Migrations: missing connection");
 }
 
 export function register(): void {}

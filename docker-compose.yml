@@ -11,4 +11,20 @@ services:
     ports:
       - "8060:3000"
     environment:
-      DB_FILE: "/tmp/registry.db"
+      DB_CONNECTION: "postgres://postgres:postgres@db/registry"
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: registry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

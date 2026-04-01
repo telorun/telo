@@ -23,6 +23,7 @@ interface PoolConfig {
 interface SqlConnectionManifest {
   metadata: { name: string; module: string };
   driver: "postgres" | "sqlite";
+  connectionString?: string;
   host?: string;
   port?: number;
   database?: string;
@@ -47,11 +48,9 @@ export class SqlConnectionResource implements ResourceInstance {
       this.db = new Kysely({
         dialect: new PostgresDialect({
           pool: new Pool({
-            host: m.host,
-            port: m.port ?? 5432,
-            database: m.database,
-            user: m.user,
-            password: m.password,
+            ...(m.connectionString
+              ? { connectionString: m.connectionString }
+              : { host: m.host, port: m.port ?? 5432, database: m.database, user: m.user, password: m.password }),
             ssl: m.ssl ? { rejectUnauthorized: false } : false,
             min: m.pool?.min ?? 1,
             max: m.pool?.max ?? 10,

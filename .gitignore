@@ -6,6 +6,7 @@ tmp/
 Thumbs.db
 .telo-debug/
 .cache
+.env
 .env.local
 
 # NodeJS

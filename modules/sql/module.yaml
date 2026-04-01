@@ -20,6 +20,9 @@ schema:
       type: string
       enum: [postgres, sqlite]
       description: Database driver
+    connectionString:
+      type: string
+      description: PostgreSQL connection URL (e.g. postgres://user:pass@host/db)
     host:
       type: string
       description: PostgreSQL host

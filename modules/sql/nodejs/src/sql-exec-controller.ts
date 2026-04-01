@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlResult } from "./sql-query-controller.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
@@ -25,7 +26,7 @@ class SqlExecResource implements ResourceInstance {
     const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
     const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
 
-    const connection = m.connection ?? m.transaction?.getConnection();
+    const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
     if (!connection) {
       throw new Error("Sql: either 'connection' or 'transaction' must be set");
     }

@@ -79,9 +79,8 @@ schema:
     type: string
   S3_SECRET_ACCESS_KEY:
     type: string
-  DB_FILE:
+  DB_CONNECTION:
     type: string
-    default: "./registry.db"
 
 ---
 kind: Config.Variables
@@ -94,7 +93,7 @@ keys:
   s3Endpoint: S3_ENDPOINT
   bucketUrl: S3_BUCKET_URL
   port: PORT
-  dbFile: DB_FILE
+  dbConnection: DB_CONNECTION
 
 ---
 kind: Config.Secrets
@@ -123,8 +122,8 @@ secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
 kind: Sql.Connection
 metadata:
   name: Db
-driver: sqlite
-file: "${{ resources.AppConfig.dbFile }}"
+driver: postgres
+connectionString: "${{ resources.AppConfig.dbConnection }}"
 ---
 kind: Sql.Migrations
 metadata:
@@ -143,7 +142,7 @@ sql: |
     version      TEXT NOT NULL,
     file_key     TEXT NOT NULL,
     description  TEXT,
-    published_at TEXT NOT NULL DEFAULT (datetime('now')),
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (namespace, name, version)
   )
 
@@ -241,8 +240,9 @@ routes:
               name: Db
           inputs:
             sql: >-
-              INSERT OR REPLACE INTO modules (namespace, name, version, file_key)
+              INSERT INTO modules (namespace, name, version, file_key)
               VALUES (?, ?, ?, ?)
+              ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
             bindings:
               - "${{ request.params.namespace }}"
               - "${{ request.params.name }}"

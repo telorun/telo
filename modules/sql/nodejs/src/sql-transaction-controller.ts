@@ -1,5 +1,6 @@
 import type { Invocable, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import { resolveSqlConnection } from "./sql-connection-ref.js";
 import { currentTxId } from "./transaction-store.js";
 
 interface SqlTransactionManifest {
@@ -16,7 +17,10 @@ export class SqlTransactionResource implements ResourceInstance {
   ) {}
 
   getConnection(): SqlConnectionResource {
-    return this.manifest.connection;
+    return (
+      resolveSqlConnection(this.manifest.connection, this.ctx) ??
+      failMissingConnection(this.manifest.metadata.name)
+    );
   }
 
   assertActive(): void {
@@ -37,11 +41,15 @@ export class SqlTransactionResource implements ResourceInstance {
       return m.steps.invoke(expandedInputs);
     }
 
-    const conn = m.connection;
+    const conn = this.getConnection();
     const expandedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {});
 
     return conn.transaction(() => m.steps.invoke(expandedInputs));
   }
+}
+
+function failMissingConnection(name: string): never {
+  throw new Error(`Sql.Transaction '${name}': missing connection`);
 }
 
 export function register(): void {}

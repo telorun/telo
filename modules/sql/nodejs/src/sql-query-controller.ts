@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 interface SqlQueryManifest {
@@ -29,7 +30,7 @@ class SqlQueryResource implements ResourceInstance {
     const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
     const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
 
-    const connection = resolveConnection(m.connection, m.transaction);
+    const connection = resolveConnection(m.connection, m.transaction, ctx);
     return runQuery(connection, m.transaction, resolvedSql, params);
   }
 }
@@ -37,8 +38,13 @@ class SqlQueryResource implements ResourceInstance {
 function resolveConnection(
   connection: SqlConnectionResource | undefined,
   transaction: SqlTransactionResource | undefined,
+  ctx: ResourceContext,
 ): SqlConnectionResource {
-  return connection ?? transaction?.getConnection() ?? failMissingConnection();
+  return (
+    resolveSqlConnection(connection, ctx) ??
+    transaction?.getConnection() ??
+    failMissingConnection()
+  );
 }
 
 async function runQuery(
