@@ -28,10 +28,6 @@ metadata:
   name: user-service
   version: 1.0.0
 
-include:
-  - routes.yaml
-  - repositories.yaml
-
 variables:
   dbConnectionString:
     type: string

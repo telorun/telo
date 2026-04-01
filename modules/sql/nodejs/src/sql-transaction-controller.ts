@@ -1,12 +1,11 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { randomUUID } from "crypto";
+import type { Invocable, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
-import { currentTxId, deleteTx, getTx, setTx, txStorage } from "./transaction-store.js";
+import { currentTxId } from "./transaction-store.js";
 
 interface SqlTransactionManifest {
   metadata: { name: string; module: string };
-  connection: string;
-  steps: string;
+  connection: SqlConnectionResource;
+  steps: Invocable;
   inputs?: Record<string, unknown>;
 }
 
@@ -16,20 +15,16 @@ export class SqlTransactionResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  getClient(): { client: unknown; driver: "postgres" | "sqlite" } {
-    const txId = currentTxId();
-    if (!txId) {
+  getConnection(): SqlConnectionResource {
+    return this.manifest.connection;
+  }
+
+  assertActive(): void {
+    if (!currentTxId()) {
       throw new Error(
-        `Sql.Transaction '${this.manifest.metadata.name}': getClient() called outside an active transaction`,
+        `Sql.Transaction '${this.manifest.metadata.name}': used outside an active transaction`,
       );
     }
-    const entry = getTx(txId);
-    if (!entry) {
-      throw new Error(
-        `Sql.Transaction '${this.manifest.metadata.name}': no active transaction for id ${txId}`,
-      );
-    }
-    return entry;
   }
 
   async invoke(input: unknown): Promise<unknown> {
@@ -38,51 +33,14 @@ export class SqlTransactionResource implements ResourceInstance {
 
     // Flat nesting: if already inside a transaction, reuse it
     if (currentTxId()) {
-      const stepsInvocable = ctx.moduleContext.getInvocable(m.steps);
       const expandedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {});
-      return stepsInvocable.invoke(expandedInputs);
+      return m.steps.invoke(expandedInputs);
     }
 
-    const conn = ctx.moduleContext.getInstance(m.connection) as SqlConnectionResource;
-    const txId = randomUUID();
+    const conn = m.connection;
     const expandedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {});
-    const stepsInvocable = ctx.moduleContext.getInvocable(m.steps);
 
-    if (conn.driver === "postgres") {
-      const pgClient = await conn.getPool().connect();
-      try {
-        await pgClient.query("BEGIN");
-        setTx(txId, { client: pgClient, driver: "postgres" });
-        try {
-          const result = await txStorage.run(txId, () => stepsInvocable.invoke(expandedInputs));
-          await pgClient.query("COMMIT");
-          return result;
-        } catch (err) {
-          await pgClient.query("ROLLBACK");
-          throw err;
-        } finally {
-          deleteTx(txId);
-        }
-      } finally {
-        pgClient.release();
-      }
-    } else {
-      const db = conn.getDb();
-      return txStorage.run(txId, async () => {
-        db.exec("BEGIN");
-        setTx(txId, { client: db, driver: "sqlite" });
-        try {
-          const result = await stepsInvocable.invoke(expandedInputs);
-          db.exec("COMMIT");
-          return result;
-        } catch (err) {
-          db.exec("ROLLBACK");
-          throw err;
-        } finally {
-          deleteTx(txId);
-        }
-      });
-    }
+    return conn.transaction(() => m.steps.invoke(expandedInputs));
   }
 }
 

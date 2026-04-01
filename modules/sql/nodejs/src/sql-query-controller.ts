@@ -1,29 +1,11 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
-import { currentTxId, getTx } from "./transaction-store.js";
-import type { SqliteDb, SqliteStatement } from "./sqlite-driver-interface.js";
-
-const stmtCache = new WeakMap<SqliteDb, Map<string, SqliteStatement>>();
-
-export function cachedPrepare(db: SqliteDb, sql: string): SqliteStatement {
-  let cache = stmtCache.get(db);
-  if (!cache) {
-    cache = new Map();
-    stmtCache.set(db, cache);
-  }
-  let stmt = cache.get(sql);
-  if (!stmt) {
-    stmt = db.prepare(sql);
-    cache.set(sql, stmt);
-  }
-  return stmt;
-}
 
 interface SqlQueryManifest {
   metadata: { name: string; module: string };
-  connection?: string;
-  transaction?: string;
+  connection?: SqlConnectionResource;
+  transaction?: SqlTransactionResource;
   inputs: {
     sql: string;
     bindings?: unknown[];
@@ -47,63 +29,30 @@ class SqlQueryResource implements ResourceInstance {
     const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
     const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
 
-    return resolveClient(ctx, m.connection, m.transaction, (client, driver) =>
-      runQuery(client, driver, resolvedSql, params),
-    );
+    const connection = resolveConnection(m.connection, m.transaction);
+    return runQuery(connection, m.transaction, resolvedSql, params);
   }
 }
 
-export async function resolveClient<T>(
-  ctx: ResourceContext,
-  connectionName: string | undefined,
-  transactionName: string | undefined,
-  fn: (client: unknown, driver: "postgres" | "sqlite") => Promise<T>,
-): Promise<T> {
-  if (transactionName) {
-    const txResource = ctx.moduleContext.getInstance(transactionName) as SqlTransactionResource;
-    const { client, driver } = txResource.getClient();
-    return fn(client, driver);
-  }
-
-  if (!connectionName) {
-    throw new Error("Sql: either 'connection' or 'transaction' must be set");
-  }
-
-  const conn = ctx.moduleContext.getInstance(connectionName) as SqlConnectionResource;
-
-  if (conn.driver === "sqlite") {
-    return fn(conn.getDb(), "sqlite");
-  }
-
-  const txId = currentTxId();
-  if (txId) {
-    const entry = getTx(txId);
-    if (entry) return fn(entry.client, entry.driver);
-  }
-
-  const pgClient = await conn.getPool().connect();
-  try {
-    return await fn(pgClient, "postgres");
-  } finally {
-    pgClient.release();
-  }
+function resolveConnection(
+  connection: SqlConnectionResource | undefined,
+  transaction: SqlTransactionResource | undefined,
+): SqlConnectionResource {
+  return connection ?? transaction?.getConnection() ?? failMissingConnection();
 }
 
 async function runQuery(
-  client: unknown,
-  driver: "postgres" | "sqlite",
+  connection: SqlConnectionResource,
+  transaction: SqlTransactionResource | undefined,
   sql: string,
   params: unknown[],
 ): Promise<SqlResult> {
-  if (driver === "postgres") {
-    const pg = client as import("pg").PoolClient;
-    const result = await pg.query(sql, params);
-    return { rows: result.rows, rowCount: result.rowCount ?? result.rows.length };
-  } else {
-    const db = client as SqliteDb;
-    const rows = cachedPrepare(db, sql).all(...params) as Record<string, unknown>[];
-    return { rows, rowCount: rows.length };
-  }
+  const result = await connection.execute<Record<string, unknown>>(sql, params, transaction);
+  return { rows: result.rows, rowCount: result.rows.length };
+}
+
+function failMissingConnection(): never {
+  throw new Error("Sql: either 'connection' or 'transaction' must be set");
 }
 
 export function register(): void {}

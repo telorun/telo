@@ -42,7 +42,9 @@ steps:
     inputs: {}
     invoke:
       kind: Sql.Exec
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: |
           CREATE TABLE IF NOT EXISTS feedback (
@@ -89,7 +91,9 @@ routes:
           required: [text]
     handler:
       kind: Sql.Exec
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
         bindings:
@@ -110,7 +114,9 @@ routes:
       method: GET
     handler:
       kind: Sql.Query
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     response:
@@ -132,7 +138,9 @@ routes:
           required: [id]
     handler:
       kind: Sql.Query
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
         bindings:

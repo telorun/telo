@@ -1,8 +1,7 @@
 import { AsyncLocalStorage } from "async_hooks";
 
 export interface TxEntry {
-  client: unknown;
-  driver: "postgres" | "sqlite";
+  executor: unknown;
 }
 
 const txMap = new Map<string, TxEntry>();

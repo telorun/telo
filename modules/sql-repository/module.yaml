@@ -13,7 +13,8 @@ schema:
   type: object
   required: [connection, table]
   properties:
-    connection: { type: string }
+    connection:
+      x-telo-ref: "std/sql#Connection"
     table: { type: string }
 resources:
   - kind: Sql.Query
@@ -34,7 +35,8 @@ schema:
   type: object
   required: [connection, table]
   properties:
-    connection: { type: string }
+    connection:
+      x-telo-ref: "std/sql#Connection"
     table: { type: string }
 resources:
   - kind: Sql.Exec
@@ -55,7 +57,8 @@ schema:
   type: object
   required: [connection, table]
   properties:
-    connection: { type: string }
+    connection:
+      x-telo-ref: "std/sql#Connection"
     table: { type: string }
 resources:
   - kind: Sql.Exec

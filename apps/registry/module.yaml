@@ -19,7 +19,7 @@ metadata:
   name: telo-registry
   version: 1.0.0
 targets:
-  - InitSchema
+  - Migrations
   - RegistryServer
 ---
 # ── Imports ──────────────────────────────────────────────────────────────────
@@ -126,31 +126,26 @@ metadata:
 driver: sqlite
 file: "${{ resources.AppConfig.dbFile }}"
 ---
-kind: Sql.Exec
+kind: Sql.Migrations
 metadata:
-  name: CreateSchema
-connection: Db
-inputs:
-  sql: |
-    CREATE TABLE IF NOT EXISTS modules (
-      namespace    TEXT NOT NULL,
-      name         TEXT NOT NULL,
-      version      TEXT NOT NULL,
-      file_key     TEXT NOT NULL,
-      description  TEXT,
-      published_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (namespace, name, version)
-    )
-
+  name: Migrations
+connection:
+  kind: Sql.Connection
+  name: Db
 ---
-kind: Run.Sequence
+kind: Sql.Migration
 metadata:
-  name: InitSchema
-steps:
-  - name: create_tables
-    invoke:
-      kind: Sql.Exec
-      name: CreateSchema
+  name: 20260331143022_CreateModules
+sql: |
+  CREATE TABLE modules (
+    namespace    TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    version      TEXT NOT NULL,
+    file_key     TEXT NOT NULL,
+    description  TEXT,
+    published_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (namespace, name, version)
+  )
 
 ---
 # ── HTTP Server ───────────────────────────────────────────────────────────────
@@ -200,7 +195,9 @@ routes:
       method: GET
     handler:
       kind: Sql.Query
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: >-
           SELECT version, published_at FROM modules
@@ -239,7 +236,9 @@ routes:
         - name: record
           invoke:
             kind: Sql.Exec
-            connection: Db
+            connection:
+              kind: Sql.Connection
+              name: Db
           inputs:
             sql: >-
               INSERT OR REPLACE INTO modules (namespace, name, version, file_key)

@@ -34,19 +34,25 @@ file: ":memory:"
 kind: SqlRepository.Create
 metadata:
   name: InsertUser
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: users
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetUsers
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: users
 ---
 kind: SqlRepository.Delete
 metadata:
   name: DeleteUser
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: users
 ---
 kind: Run.Sequence
@@ -57,7 +63,9 @@ steps:
     inputs: {}
     invoke:
       kind: Sql.Exec
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)"
 

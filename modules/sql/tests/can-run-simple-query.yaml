@@ -34,7 +34,9 @@ steps:
     inputs: {}
     invoke:
       kind: Sql.Query
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: "SELECT 1 as result"
 

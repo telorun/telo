@@ -37,19 +37,25 @@ file: ./tmp/feedback-repo.db
 kind: SqlRepository.Create
 metadata:
   name: InsertFeedback
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: ListFeedback
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetFeedback
-connection: Db
+connection:
+  kind: Sql.Connection
+  name: Db
 table: feedback
 ---
 kind: Run.Sequence
@@ -60,7 +66,9 @@ steps:
     inputs: {}
     invoke:
       kind: Sql.Exec
-      connection: Db
+      connection:
+        kind: Sql.Connection
+        name: Db
       inputs:
         sql: |
           CREATE TABLE IF NOT EXISTS feedback (

@@ -1,14 +1,12 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
-import { resolveClient, cachedPrepare } from "./sql-query-controller.js";
 import type { SqlResult } from "./sql-query-controller.js";
-import type { SqliteDb } from "./sqlite-driver-interface.js";
+import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 interface SqlExecManifest {
   metadata: { name: string; module: string };
-  connection?: string;
-  transaction?: string;
+  connection?: SqlConnectionResource;
+  transaction?: SqlTransactionResource;
   inputs: {
     sql: string;
     bindings?: unknown[];
@@ -27,27 +25,23 @@ class SqlExecResource implements ResourceInstance {
     const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
     const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
 
-    return resolveClient(ctx, m.connection, m.transaction, (client, driver) =>
-      runExec(client, driver, resolvedSql, params),
-    );
+    const connection = m.connection ?? m.transaction?.getConnection();
+    if (!connection) {
+      throw new Error("Sql: either 'connection' or 'transaction' must be set");
+    }
+
+    return runExec(connection, m.transaction, resolvedSql, params);
   }
 }
 
 async function runExec(
-  client: unknown,
-  driver: "postgres" | "sqlite",
+  connection: SqlConnectionResource,
+  transaction: SqlTransactionResource | undefined,
   sql: string,
   params: unknown[],
 ): Promise<SqlResult> {
-  if (driver === "postgres") {
-    const pg = client as import("pg").PoolClient;
-    const result = await pg.query(sql, params);
-    return { rows: result.rows ?? [], rowCount: result.rowCount ?? 0 };
-  } else {
-    const db = client as SqliteDb;
-    const info = cachedPrepare(db, sql).run(...params);
-    return { rows: [], rowCount: info.changes };
-  }
+  const result = await connection.execute<Record<string, unknown>>(sql, params, transaction);
+  return { rows: result.rows, rowCount: connection.toRowCount(result) };
 }
 
 export function register(): void {}
