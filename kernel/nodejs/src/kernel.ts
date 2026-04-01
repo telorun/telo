@@ -167,7 +167,15 @@ export class Kernel implements IKernel {
     if (errors.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
-        errors.map((d) => d.message).join("\n"),
+        "Manifest validation failed",
+        errors.map((d) => ({
+          severity: "error" as const,
+          message: d.message,
+          code: d.code !== undefined ? String(d.code) : undefined,
+          resource: (d.data as any)?.resource
+            ? `${(d.data as any).resource.kind}.${(d.data as any).resource.name}`
+            : undefined,
+        })),
       );
     }
 
@@ -222,7 +230,15 @@ export class Kernel implements IKernel {
     if (refErrors.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
-        refErrors.map((d) => d.message).join("\n"),
+        "Manifest validation failed",
+        refErrors.map((d) => ({
+          severity: "error" as const,
+          message: d.message,
+          code: d.code !== undefined ? String(d.code) : undefined,
+          resource: (d.data as any)?.resource
+            ? `${(d.data as any).resource.kind}.${(d.data as any).resource.name}`
+            : undefined,
+        })),
       );
     }
     if (cycleError) {

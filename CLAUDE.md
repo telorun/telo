@@ -11,8 +11,9 @@ Follow this strictly:
 - never stash changes to investigate anything.
 - never fix linting problems.
 - never implement logic that swallows errors
-- kernel MUST be type safe
+- telo manifests MUST be type safe
 - never use `cat` nor `sed` to read files - read them directly.
+- never modify files in `dist` directories.
 
 ## Architecture
 

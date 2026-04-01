@@ -2,7 +2,7 @@
 
 import type { PositionIndex } from "@telorun/analyzer";
 import { DiagnosticSeverity, Loader, NodeAdapter, StaticAnalyzer } from "@telorun/analyzer";
-import { Kernel } from "@telorun/kernel";
+import { Kernel, type RuntimeDiagnostic } from "@telorun/kernel";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -39,8 +39,10 @@ async function checkOne(
     const sourceLine = (err as any).sourceLine as number | undefined;
     const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
     const loc = sourceLine !== undefined ? `:${sourceLine + 1}` : "";
-    console.error(
-      `${displayPath}${loc}  ${log.error("error")}  ${err instanceof Error ? err.message : String(err)}`,
+    formatDiagnostics(
+      [{ message: err instanceof Error ? err.message : String(err) }],
+      log,
+      `${displayPath}${loc}`,
     );
     return { errorCount: 1, warnCount: 0 };
   }
@@ -258,6 +260,19 @@ async function publish(argv: { path: string; registry: string }) {
   console.log(log.ok("✓") + `  Published: ${published}`);
 }
 
+function formatDiagnostics(
+  diagnostics: RuntimeDiagnostic[],
+  log: ReturnType<typeof createLogger>,
+  displayPath: string,
+): void {
+  for (const d of diagnostics) {
+    const severityLabel = d.severity === "warning" ? log.warn("warning") : log.error("error");
+    const who = d.resource ? `${d.resource}: ` : "";
+    const code = d.code ? `  ${log.dim(d.code)}` : "";
+    console.error(`${displayPath}  ${severityLabel}  ${who}${d.message}${code}`);
+  }
+}
+
 async function run(argv: {
   path: string;
   verbose: boolean;
@@ -313,10 +328,21 @@ async function run(argv: {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
-    console.error(
-      "Error loading runtime:",
-      error instanceof Error ? (error.stack ?? error.message) : String(error),
-    );
+    const isUrl = argv.path.startsWith("http://") || argv.path.startsWith("https://");
+    const displayPath = isUrl
+      ? argv.path
+      : path.relative(process.cwd(), path.resolve(process.cwd(), argv.path));
+    const attached = (error as any)?.diagnostics as RuntimeDiagnostic[] | undefined;
+    const diags: RuntimeDiagnostic[] = attached?.length
+      ? attached
+      : [{ message: error instanceof Error ? error.message : String(error), code: (error as any)?.code }];
+    formatDiagnostics(diags, log, displayPath);
+    const errorCount = diags.filter((d) => d.severity !== "warning").length;
+    const warnCount = diags.filter((d) => d.severity === "warning").length;
+    const parts: string[] = [];
+    if (errorCount > 0) parts.push(log.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));
+    if (warnCount > 0) parts.push(log.warn(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`));
+    console.error(`\n${parts.join(", ")}`);
     process.exit(1);
   }
 }

@@ -1,3 +1,10 @@
+export interface RuntimeDiagnostic {
+  severity?: "error" | "warning";
+  message: string;
+  resource?: string;
+  code?: string;
+}
+
 export type RuntimeErrorCode =
   | "ERR_RESOURCE_NOT_FOUND"
   | "ERR_RESOURCE_NOT_RUNNABLE"

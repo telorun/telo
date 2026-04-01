@@ -2,7 +2,7 @@ import { ControllerContext } from "./controller-context.js";
 import { ResourceContext } from "./resource-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
-import { RuntimeErrorCode } from "./runtime-error.js";
+import { RuntimeDiagnostic, RuntimeErrorCode } from "./runtime-error.js";
 import { RuntimeResource } from "./runtime-resource.js";
 
 export interface KernelContext {
@@ -83,6 +83,7 @@ export class RuntimeError extends Error {
   constructor(
     public code: RuntimeErrorCode,
     message: string,
+    public diagnostics?: RuntimeDiagnostic[],
   ) {
     super(message);
     this.name = "RuntimeError";

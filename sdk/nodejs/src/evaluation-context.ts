@@ -3,6 +3,7 @@ import type { ModuleContext } from "./module-context.js";
 import type { ScopeContext, ScopeHandle } from "./ref.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
+import { RuntimeDiagnostic } from "./runtime-error.js";
 import { RuntimeError } from "./types.js";
 
 export type EmitEvent = (event: string, payload?: any) => void | Promise<void>;
@@ -221,7 +222,7 @@ export class EvaluationContext {
           }
         } catch (error) {
           if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
-          errors.set(name, error instanceof Error ? (error.stack ?? error.message) : String(error));
+          errors.set(name, error instanceof Error ? error.message : String(error));
         }
       }
 
@@ -243,7 +244,7 @@ export class EvaluationContext {
           progress = true;
         } catch (error) {
           if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
-          errors.set(name, error instanceof Error ? (error.stack ?? error.message) : String(error));
+          errors.set(name, error instanceof Error ? error.message : String(error));
         }
       }
 
@@ -252,16 +253,20 @@ export class EvaluationContext {
     } while (pass <= MAX_PASSES);
 
     if (this.pendingResources.length > 0 || this.createdInstances.size > 0) {
-      const pending = this.pendingResources.map(
-        (r) => `- ${r.metadata.name}: ${errors.get(r.metadata.name) ?? "Unknown error"}`,
-      );
-      const created = [...this.createdInstances.keys()].map(
-        (name) => `- ${name}: ${errors.get(name) ?? "Unknown error"}`,
-      );
-      const unhandledList = [...pending, ...created].join("\n");
+      const diagnostics: RuntimeDiagnostic[] = [
+        ...this.pendingResources.map((r) => ({
+          resource: r.metadata.name,
+          message: errors.get(r.metadata.name) ?? "Unknown error",
+        })),
+        ...[...this.createdInstances.keys()].map((name) => ({
+          resource: name,
+          message: errors.get(name) ?? "Unknown error",
+        })),
+      ];
       throw new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
-        `Unable to process resources:\n\n${unhandledList}`,
+        "Unable to process resources",
+        diagnostics,
       );
     }
 
