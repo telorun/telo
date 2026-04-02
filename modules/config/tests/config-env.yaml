@@ -1,0 +1,82 @@
+kind: Kernel.Module
+metadata:
+  name: ConfigEnvTest
+targets:
+  - TestConfigEnv
+---
+kind: Kernel.Import
+metadata:
+  name: Config
+source: ../../config
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: Config.Env
+metadata:
+  name: AppConfig
+variables:
+  port:
+    value: "${{ env.PORT }}"
+    type: integer
+    minimum: 1024
+  logLevel:
+    value: "${{ env.LOG_LEVEL }}"
+    type: string
+    default: info
+    enum: [debug, info, warn, error]
+secrets:
+  apiKey:
+    value: "${{ env.API_KEY }}"
+    type: string
+    default: test-key
+---
+kind: Run.Sequence
+metadata:
+  name: TestConfigEnv
+steps:
+  - name: AssertPort
+    inputs:
+      port: "${{ resources.AppConfig.port }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          port:
+            type: integer
+            const: 1234
+        required: [port]
+
+  - name: AssertLogLevel
+    inputs:
+      logLevel: "${{ resources.AppConfig.logLevel }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          logLevel:
+            type: string
+            const: info
+        required: [logLevel]
+
+  - name: AssertApiKey
+    inputs:
+      apiKey: "${{ resources.AppConfig.apiKey }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          apiKey:
+            type: string
+            const: test-key
+        required: [apiKey]

@@ -1,15 +1,15 @@
 import { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
 import {
-  ControllerContext,
-  Kernel as IKernel,
-  ModuleContext,
-  ResourceContext,
-  ResourceDefinition,
-  ResourceInstance,
-  ResourceManifest,
-  RuntimeError,
-  RuntimeEvent,
-  isCompiledValue,
+    ControllerContext,
+    Kernel as IKernel,
+    ModuleContext,
+    ResourceContext,
+    ResourceDefinition,
+    ResourceInstance,
+    ResourceManifest,
+    RuntimeError,
+    RuntimeEvent,
+    isCompiledValue,
 } from "@telorun/sdk";
 import * as path from "path";
 import { ControllerRegistry } from "./controller-registry.js";
@@ -138,6 +138,7 @@ export class Kernel implements IKernel {
       [],
       this._createInstance.bind(this),
       (event, payload) => this.eventBus.emit(event, payload),
+      process.env,
     );
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();

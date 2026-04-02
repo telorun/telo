@@ -1,9 +1,34 @@
 import { Kernel, type RuntimeDiagnostic } from "@telorun/kernel";
+import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+
+/**
+ * Load .env and .env.local from the manifest's directory into process.env.
+ * Priority (highest to lowest): process.env > .env.local > .env
+ * Keys already present in process.env are never overwritten.
+ */
+function loadEnvFiles(manifestPath: string): void {
+  const dir = path.dirname(path.resolve(manifestPath));
+  const base = tryReadFile(path.join(dir, ".env"));
+  const local = tryReadFile(path.join(dir, ".env.local"));
+
+  const merged = { ...dotenv.parse(base), ...dotenv.parse(local) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+function tryReadFile(filePath: string): string {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
 
 type WatchHandle = { cleanup: () => void };
 
@@ -123,6 +148,7 @@ export async function run(argv: {
       });
     }
 
+    loadEnvFiles(argv.path);
     await kernel.loadFromConfig(argv.path);
 
     await kernel.start();
@@ -137,7 +163,12 @@ export async function run(argv: {
     const attached = (error as any)?.diagnostics as RuntimeDiagnostic[] | undefined;
     const diags: RuntimeDiagnostic[] = attached?.length
       ? attached
-      : [{ message: error instanceof Error ? error.message : String(error), code: (error as any)?.code }];
+      : [
+          {
+            message: error instanceof Error ? error.message : String(error),
+            code: (error as any)?.code,
+          },
+        ];
     formatDiagnostics(diags, log, displayPath);
     const errorCount = diags.filter((d) => d.severity !== "warning").length;
     const warnCount = diags.filter((d) => d.severity === "warning").length;

@@ -1,6 +1,26 @@
 import { Invocable } from "./capabilities/invokable.js";
 import { EmitEvent, EvaluationContext, InstanceFactory } from "./evaluation-context.js";
 
+/** Wraps process.env so that missing keys return null instead of throwing in CEL.
+ * cel-js uses Object.hasOwn(obj, key) before accessing obj[key], so we must
+ * intercept getOwnPropertyDescriptor to report every string key as "own". */
+function lenientEnv(env: Record<string, string | undefined>): Record<string, string | null> {
+  return new Proxy(env as Record<string, string | null>, {
+    get(target, key) {
+      if (typeof key !== "string") return (target as any)[key];
+      return key in target ? (target[key] ?? null) : null;
+    },
+    has() {
+      return true;
+    },
+    getOwnPropertyDescriptor(target, key) {
+      if (typeof key !== "string") return Object.getOwnPropertyDescriptor(target, key);
+      const value = key in target ? (target[key] ?? null) : null;
+      return { configurable: true, enumerable: true, writable: true, value };
+    },
+  });
+}
+
 function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
   const values = new Set<string>();
   for (const value of Object.values(secrets)) {
@@ -42,6 +62,7 @@ export class ModuleContext extends EvaluationContext {
     private targets: string[] = [],
     createInstance: InstanceFactory = async () => null,
     emit: EmitEvent,
+    private readonly _hostEnv?: Record<string, string | undefined>,
   ) {
     super(source, {}, createInstance, new Set(), emit);
     this._variables = variables;
@@ -157,6 +178,7 @@ export class ModuleContext extends EvaluationContext {
       variables: this._variables,
       secrets: this._secrets,
       resources: this._resources,
+      ...(this._hostEnv ? { env: lenientEnv(this._hostEnv) } : {}),
     };
     this._secretValues = collectSecretValues(this._secrets);
   }

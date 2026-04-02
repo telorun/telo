@@ -17,6 +17,11 @@
       "types": "./dist/secrets-controller.d.ts",
       "bun": "./src/secrets-controller.ts",
       "import": "./dist/secrets-controller.js"
+    },
+    "./env-controller": {
+      "types": "./dist/env-controller.d.ts",
+      "bun": "./src/env-controller.ts",
+      "import": "./dist/env-controller.js"
     }
   },
   "files": [

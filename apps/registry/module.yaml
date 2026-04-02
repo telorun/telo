@@ -32,8 +32,8 @@ metadata:
   name: S3
 source: ../../modules/s3
 secrets:
-  accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
-  secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
+  accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
+  secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
 ---
 kind: Kernel.Import
 metadata:
@@ -48,49 +48,34 @@ source: ../../modules/run
 ---
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-kind: Config.EnvironmentVariableStore
-metadata:
-  name: Env
-schema:
-  PORT:
-    type: string
-    default: "3000"
-  S3_BUCKET_NAME:
-    type: string
-  S3_ENDPOINT:
-    type: string
-  S3_FORCE_PATH_STYLE:
-    type: string
-    default: "false"
-  S3_ACCESS_KEY_ID:
-    type: string
-  S3_SECRET_ACCESS_KEY:
-    type: string
-  DB_CONNECTION:
-    type: string
-
----
-kind: Config.Variables
+kind: Config.Env
 metadata:
   name: AppConfig
-storeRef:
-  name: Env
-keys:
-  bucketName: S3_BUCKET_NAME
-  s3Endpoint: S3_ENDPOINT
-  s3ForcePathStyle: S3_FORCE_PATH_STYLE
-  port: PORT
-  dbConnection: DB_CONNECTION
-
----
-kind: Config.Secrets
-metadata:
-  name: S3Secrets
-storeRef:
-  name: Env
-keys:
-  accessKeyId: S3_ACCESS_KEY_ID
-  secretAccessKey: S3_SECRET_ACCESS_KEY
+variables:
+  port:
+    value: "${{ env.PORT }}"
+    type: integer
+    default: 3000
+  bucketName:
+    value: "${{ env.S3_BUCKET_NAME }}"
+    type: string
+  s3Endpoint:
+    value: "${{ env.S3_ENDPOINT }}"
+    type: string
+  s3ForcePathStyle:
+    value: "${{ env.S3_FORCE_PATH_STYLE }}"
+    type: boolean
+    default: false
+  dbConnection:
+    value: "${{ env.DB_CONNECTION }}"
+    type: string
+secrets:
+  accessKeyId:
+    value: "${{ env.S3_ACCESS_KEY_ID }}"
+    type: string
+  secretAccessKey:
+    value: "${{ env.S3_SECRET_ACCESS_KEY }}"
+    type: string
 
 ---
 # ── Storage ───────────────────────────────────────────────────────────────────
@@ -100,9 +85,9 @@ metadata:
   name: ModuleStore
 bucketName: "${{ resources.AppConfig.bucketName }}"
 endpoint: "${{ resources.AppConfig.s3Endpoint }}"
-forcePathStyle: "${{ resources.AppConfig.s3ForcePathStyle == 'true' }}"
-accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
-secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
+forcePathStyle: "${{ resources.AppConfig.s3ForcePathStyle }}"
+accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
+secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
 
 ---
 # ── Database ──────────────────────────────────────────────────────────────────
