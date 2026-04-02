@@ -6,8 +6,8 @@ tmp/
 Thumbs.db
 .telo-debug/
 .cache
-.env
 .env.local
+/.env
 
 # AI Agents
 .codex
