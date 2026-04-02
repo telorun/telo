@@ -1,5 +1,12 @@
 # @telorun/data
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies
+  - @telorun/sdk@0.2.6
+
 ## 0.0.6
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @telorun/kernel
 
+## 0.2.6
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.1
+  - @telorun/sdk@0.2.6
+  - @telorun/yaml-cel-templating@1.0.3
+
 ## 0.2.5
 
 ### Patch Changes
