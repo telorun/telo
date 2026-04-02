@@ -1,4 +1,11 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import {
+  CompiledQuery,
+  Migrator,
+  type Kysely,
+  type Migration,
+  type MigrationProvider,
+} from "kysely";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 
@@ -10,6 +17,23 @@ interface SqlMigrationsManifest {
 interface MigrationEntry {
   name: string;
   sql: string;
+}
+
+class TeloMigrationProvider implements MigrationProvider {
+  constructor(private readonly migrations: MigrationEntry[]) {}
+
+  async getMigrations(): Promise<Record<string, Migration>> {
+    return Object.fromEntries(
+      this.migrations.map((m) => [
+        m.name,
+        {
+          async up(db: Kysely<any>): Promise<void> {
+            await db.executeQuery(CompiledQuery.raw(m.sql));
+          },
+        },
+      ]),
+    );
+  }
 }
 
 class SqlMigrationsResource implements ResourceInstance {
@@ -33,39 +57,17 @@ class SqlMigrationsResource implements ResourceInstance {
     }
     migrations.sort((a, b) => a.name.localeCompare(b.name));
 
-    await this.runMigrations(conn, migrations);
-  }
+    const migrator = new Migrator({
+      db: conn.kysely,
+      provider: new TeloMigrationProvider(migrations),
+      migrationTableName: "migrations",
+      migrationLockTableName: "migration_locks",
+    });
 
-  private async runMigrations(
-    conn: SqlConnectionResource,
-    migrations: MigrationEntry[],
-  ): Promise<void> {
-    const binding = conn.driver === "postgres" ? "$1" : "?";
-
-    await conn.execute(
-      `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-    );
-
-    for (const migration of migrations) {
-      const existing = await conn.execute(
-        `SELECT 1 FROM schema_migrations WHERE name = ${binding}`,
-        [migration.name],
-      );
-
-      if (existing.rows.length === 0) {
-        await conn.transaction(async () => {
-          await this.applyMigrationSql(conn, migration.sql);
-          await conn.execute(
-            `INSERT INTO schema_migrations (name) VALUES (${binding})`,
-            [migration.name],
-          );
-        });
-      }
+    const { error } = await migrator.migrateToLatest();
+    if (error) {
+      throw error;
     }
-  }
-
-  private async applyMigrationSql(conn: SqlConnectionResource, migrationSql: string): Promise<void> {
-    await conn.executeScript(migrationSql);
   }
 }
 

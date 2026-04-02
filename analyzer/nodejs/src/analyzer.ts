@@ -325,22 +325,32 @@ export class StaticAnalyzer {
           return;
         }
 
-        if (!mDefinition?.schema) return;
-        const contexts = extractContextsFromSchema(mDefinition.schema);
-        if (contexts.length === 0) return;
+        const contexts = mDefinition?.schema ? extractContextsFromSchema(mDefinition.schema) : [];
+        const invocationContext = (m.metadata as any)?.xTeloInvocationContext as
+          | Record<string, any>
+          | undefined;
+        if (contexts.length === 0 && !invocationContext) return;
+
+        let matchedContext: Record<string, any> | undefined;
         for (const ctx of contexts) {
-          if (!pathMatchesScope(path, ctx.scope)) continue;
-          for (const chain of extractAccessChains(parsed.ast)) {
-            const err = validateChainAgainstSchema(chain, ctx.schema);
-            if (!err) continue;
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "CEL_UNKNOWN_FIELD",
-              source: SOURCE,
-              message: `${m.kind}/${resource.name}: CEL at '${path}': ${err}`,
-              data: { resource, path },
-            });
+          if (pathMatchesScope(path, ctx.scope)) {
+            matchedContext = ctx.schema;
+            break;
           }
+        }
+        if (!matchedContext) matchedContext = invocationContext;
+        if (!matchedContext) return;
+
+        for (const chain of extractAccessChains(parsed.ast)) {
+          const err = validateChainAgainstSchema(chain, matchedContext);
+          if (!err) continue;
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "CEL_UNKNOWN_FIELD",
+            source: SOURCE,
+            message: `${m.kind}/${resource.name}: CEL at '${path}': ${err}`,
+            data: { resource, path },
+          });
         }
       });
     }

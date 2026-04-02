@@ -31,14 +31,13 @@ metadata:
   name: TestSimpleQuery
 steps:
   - name: RunQuery
-    inputs: {}
+    inputs:
+      sql: "SELECT 1 as result"
     invoke:
       kind: Sql.Query
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "SELECT 1 as result"
 
   - name: AssertResult
     inputs:

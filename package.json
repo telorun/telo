@@ -5,6 +5,8 @@
   "description": "Telo Runtime: A lightweight, polyglot execution host.",
   "scripts": {
     "telo": "bun ./cli/nodejs/bin/telo.ts",
+    "publish": "bun ./cli/nodejs/bin/telo.ts publish --registry=http://registry.telo.localhost:8060",
+    "check": "bun ./cli/nodejs/bin/telo.ts check",
     "test": "bash scripts/test.sh",
     "release": "node scripts/release.mjs"
   },

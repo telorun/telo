@@ -1,9 +1,10 @@
 import type { ControllerInstance, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { isCompiledValue } from "@telorun/sdk";
 
 export function createTemplateController(definition: {
   schema: Record<string, any>;
   resources?: any[];
-  invoke?: string;
+  invoke?: string | { kind?: string; name: string; inputs?: Record<string, any> };
   run?: string;
 }): ControllerInstance {
   return {
@@ -12,8 +13,17 @@ export function createTemplateController(definition: {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
       const self = { ...resource, name: resource.metadata.name };
 
-      const invokeTarget = definition.invoke
-        ? (ctx.moduleContext.expandWith(definition.invoke, { self }) as string)
+      // Old string form: invoke is a plain string or a CompiledValue (after precompile).
+      // New object form: invoke is a plain object (non-CompiledValue) with at least `name`.
+      const objectInvoke =
+        definition.invoke !== null &&
+        typeof definition.invoke === "object" &&
+        !isCompiledValue(definition.invoke)
+          ? (definition.invoke as { kind?: string; name: string; inputs?: Record<string, any> })
+          : null;
+      const invokeNameTemplate = objectInvoke ? objectInvoke.name : (definition.invoke ?? null);
+      const invokeTarget = invokeNameTemplate
+        ? (ctx.moduleContext.expandWith(invokeNameTemplate, { self }) as string)
         : null;
       const runTarget = definition.run
         ? (ctx.moduleContext.expandWith(definition.run, { self }) as string)
@@ -77,13 +87,22 @@ export function createTemplateController(definition: {
             const expanded = ctx.moduleContext.expandWith(
               ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
               extraContext,
-            );
+            ) as any;
             return withEphemeral(expanded, async (name) => {
               const entry = ctx.moduleContext.resourceInstances.get(name);
               if (!entry?.instance?.invoke) {
                 throw new Error(`Ephemeral resource '${name}' is not invocable`);
               }
-              return entry.instance.invoke(inputs);
+              // New object form: expand objectInvoke.inputs with invoke context and pass as arg.
+              // Old string form: the manifest inputs were computed during template expansion;
+              // pass expanded.inputs so Sql.Exec/Query controllers receive { sql, bindings }.
+              const invokeInputs = objectInvoke?.inputs != null
+                ? ctx.moduleContext.expandWith(
+                    ctx.moduleContext.expandWith(objectInvoke.inputs, extraContext),
+                    extraContext,
+                  )
+                : expanded.inputs ?? inputs;
+              return entry.instance.invoke(invokeInputs);
             });
           },
         }),

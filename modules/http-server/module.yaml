@@ -53,6 +53,25 @@ schema:
             type: "string"
           type:
             type: "string"
+    contentTypeParsers:
+      type: "array"
+      x-telo-eval: compile
+      items:
+        type: "object"
+        additionalProperties: false
+        properties:
+          contentType:
+            type: "string"
+          parser:
+            x-telo-ref: "kernel#Invocable"
+            oneOf:
+              - type: "string"
+              - type: "object"
+                properties:
+                  kind: { type: "string" }
+                required: ["kind"]
+                additionalProperties: true
+        required: ["contentType"]
     notFoundHandler:
       type: "object"
       properties:

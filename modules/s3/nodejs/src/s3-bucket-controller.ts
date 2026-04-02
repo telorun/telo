@@ -7,6 +7,7 @@ export const schema = Type.Object({
   endpoint: Type.String(),
   accessKeyId: Type.String(),
   secretAccessKey: Type.String(),
+  forcePathStyle: Type.Optional(Type.Boolean()),
 });
 export type S3BucketManifest = Static<typeof schema>;
 
@@ -19,6 +20,7 @@ export class S3BucketResource implements ResourceInstance {
     this.client = new S3Client({
       region: "auto",
       endpoint: manifest.endpoint,
+      forcePathStyle: manifest.forcePathStyle ?? false,
       credentials: { accessKeyId: manifest.accessKeyId, secretAccessKey: manifest.secretAccessKey },
     });
   }

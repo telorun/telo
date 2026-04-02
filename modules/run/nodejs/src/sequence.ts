@@ -125,7 +125,7 @@ class RunSequence {
 
   async invoke(inputs: Record<string, unknown>): Promise<unknown> {
     const steps: Record<string, unknown> = {};
-    const extraCtx = { inputs: inputs ?? {} };
+    const extraCtx = inputs ?? {};
 
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {

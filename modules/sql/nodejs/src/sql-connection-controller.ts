@@ -123,6 +123,10 @@ export class SqlConnectionResource implements ResourceInstance {
     return result.rows.length;
   }
 
+  get kysely(): Kysely<any> {
+    return this.db;
+  }
+
   snapshot(): Record<string, unknown> {
     return {};
   }

@@ -82,6 +82,7 @@ schema:
         bindings:
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
+      required: [sql]
 ---
 kind: Kernel.Definition
 metadata:
@@ -105,6 +106,7 @@ schema:
         bindings:
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
+      required: [sql]
 ---
 kind: Kernel.Definition
 metadata:

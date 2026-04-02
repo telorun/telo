@@ -31,6 +31,9 @@ schema:
     endpoint:
       type: string
       description: S3-compatible endpoint URL (e.g. https://<accountId>.r2.cloudflarestorage.com)
+    forcePathStyle:
+      type: boolean
+      description: Use path-style URLs (required for MinIO, RustFS, and other self-hosted S3)
   required:
     - bucketName
     - endpoint

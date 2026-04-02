@@ -20,18 +20,17 @@ class SqlExecResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: unknown): Promise<SqlResult> {
+  async invoke(input: any): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
-    const resolvedSql = ctx.expandValue(m.inputs.sql, input ?? {}) as string;
-    const params = ctx.expandValue(m.inputs.bindings ?? [], input ?? {}) as unknown[];
+    const expandedInput = ctx.expandValue(input, {});
 
     const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
     if (!connection) {
       throw new Error("Sql: either 'connection' or 'transaction' must be set");
     }
 
-    return runExec(connection, m.transaction, resolvedSql, params);
+    return runExec(connection, m.transaction, expandedInput.sql, expandedInput.bindings ?? []);
   }
 }
 

@@ -1,18 +1,4 @@
 # Telo Module Registry
-#
-# A module registry for the Telo declarative runtime — analogous to NPM,
-# but for Kernel modules. Backed entirely by Cloudflare R2.
-#
-# The R2 bucket must be configured as public. Tarballs and version metadata
-# are served directly from R2. The registry server is read-only — publishing
-# is done by the CLI directly against R2 using separate credentials.
-#
-# New modules required (do not exist yet):
-#   - ../../cloudflare-r2  →  R2.Bucket                (object storage provider)
-#                           R2.Get                   (executable step kind)
-#   - ../../http-server    →  Http.Server, Http.Api    (HTTP server + routing)
-#                           Http.Fetch               (executable step kind)
-#   - ../../config         →  Config.EnvironmentVariableStore, Config.Variables, Config.Secrets
 
 kind: Kernel.Module
 metadata:
@@ -73,8 +59,9 @@ schema:
     type: string
   S3_ENDPOINT:
     type: string
-  S3_BUCKET_URL:
+  S3_FORCE_PATH_STYLE:
     type: string
+    default: "false"
   S3_ACCESS_KEY_ID:
     type: string
   S3_SECRET_ACCESS_KEY:
@@ -91,7 +78,7 @@ storeRef:
 keys:
   bucketName: S3_BUCKET_NAME
   s3Endpoint: S3_ENDPOINT
-  bucketUrl: S3_BUCKET_URL
+  s3ForcePathStyle: S3_FORCE_PATH_STYLE
   port: PORT
   dbConnection: DB_CONNECTION
 
@@ -113,6 +100,7 @@ metadata:
   name: ModuleStore
 bucketName: "${{ resources.AppConfig.bucketName }}"
 endpoint: "${{ resources.AppConfig.s3Endpoint }}"
+forcePathStyle: "${{ resources.AppConfig.s3ForcePathStyle == 'true' }}"
 accessKeyId: "${{ resources.S3Secrets.accessKeyId }}"
 secretAccessKey: "${{ resources.S3Secrets.secretAccessKey }}"
 
@@ -147,14 +135,14 @@ sql: |
   )
 
 ---
-# ── HTTP Server ───────────────────────────────────────────────────────────────
-
 kind: Http.Server
 metadata:
   name: RegistryServer
 host: "0.0.0.0"
 port: "${{ resources.AppConfig.port }}"
 logger: true
+contentTypeParsers:
+  - contentType: text/yaml
 openapi:
   info:
     title: Telo Module Registry
@@ -174,7 +162,7 @@ notFoundHandler:
     mode: stream
     inputs:
       method: "${{ request.method }}"
-      url: "${{ resources.AppConfig.bucketUrl }}/${{ request.path }}"
+      url: "${{ resources.AppConfig.s3Endpoint }}/${{ request.path }}"
   response:
     - status: 200
       mode: stream
@@ -241,7 +229,7 @@ routes:
           inputs:
             sql: >-
               INSERT INTO modules (namespace, name, version, file_key)
-              VALUES (?, ?, ?, ?)
+              VALUES ($1, $2, $3, $4)
               ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
             bindings:
               - "${{ request.params.namespace }}"

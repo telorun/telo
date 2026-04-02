@@ -31,34 +31,31 @@ metadata:
   name: TestInsertAndSelect
 steps:
   - name: CreateTable
-    inputs: {}
+    inputs:
+      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
     invoke:
       kind: Sql.Exec
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
 
   - name: InsertRow
-    inputs: {}
+    inputs:
+      sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
     invoke:
       kind: Sql.Exec
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
 
   - name: SelectRow
-    inputs: {}
+    inputs:
+      sql: "SELECT id, name, age FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "SELECT id, name, age FROM users WHERE id = 1"
 
   - name: AssertResult
     inputs:

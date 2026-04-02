@@ -5,6 +5,9 @@ export interface RefFieldEntry {
   refs: string[];
   /** True when the field path traversed through at least one array (path contains "[]"). */
   isArray: boolean;
+  /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
+   *  context available to resources placed in this slot. */
+  context?: Record<string, any>;
 }
 
 /** An entry for a field that declares an execution scope (x-telo-scope). */
@@ -124,7 +127,9 @@ function traverseNode(node: Record<string, any>, path: string, map: ReferenceFie
   // Reference slot (direct or via anyOf)
   const refs = collectRefs(node);
   if (refs.length > 0) {
-    map.set(path, { refs, isArray: path.includes("[]") });
+    const entry: RefFieldEntry = { refs, isArray: path.includes("[]") };
+    if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
+    map.set(path, entry);
     return;
   }
 

@@ -9,6 +9,9 @@ Thumbs.db
 .env
 .env.local
 
+# AI Agents
+.codex
+
 # NodeJS
 node_modules/
 dist

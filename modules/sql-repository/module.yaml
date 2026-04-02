@@ -21,10 +21,12 @@ resources:
     metadata:
       name: "${{ self.name }}-query"
     connection: "${{ self.connection }}"
-    inputs:
-      sql: "${{ 'SELECT * FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '') }}"
-      bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
-invoke: "${{ self.name }}-query"
+invoke:
+  kind: Sql.Query
+  name: "${{ self.name }}-query"
+  inputs:
+    sql: "${{ 'SELECT * FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '') }}"
+    bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
 
 ---
 kind: Kernel.Definition

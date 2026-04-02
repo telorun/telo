@@ -60,14 +60,13 @@ metadata:
   name: TestCrud
 steps:
   - name: Setup
-    inputs: {}
+    inputs:
+      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)"
     invoke:
       kind: Sql.Exec
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)"
 
   - name: Insert
     inputs:

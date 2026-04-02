@@ -2,6 +2,7 @@ kind: Kernel.Module
 metadata:
   name: http-client
   namespace: std
+  version: 0.1.0
   description: HTTP request client for testing and orchestration
 ---
 kind: "Kernel.Definition"

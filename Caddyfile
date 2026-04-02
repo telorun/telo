@@ -1,0 +1,7 @@
+http://registry.telo.localhost:8060 {
+	reverse_proxy registry:3000
+}
+
+http://storage.telo.localhost:8060 {
+	reverse_proxy storage:9001
+}

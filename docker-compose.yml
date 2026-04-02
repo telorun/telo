@@ -1,4 +1,14 @@
+# name: telo
+
 services:
+  proxy:
+    image: caddy
+    ports:
+      - "8060:8060"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - registry
   registry:
     image: node:24
     command: 'sh -c "corepack enable && exec pnpm run telo ./apps/registry"'
@@ -8,13 +18,16 @@ services:
     working_dir: /telo
     env_file:
       - ./apps/registry/.env.local
-    ports:
-      - "8060:3000"
     environment:
       DB_CONNECTION: "postgres://postgres:postgres@db/registry"
-    # depends_on:
-    #   db:
-    #     condition: service_healthy
+      S3_BUCKET_NAME: telo-registry
+      S3_ENDPOINT: http://storage:9000
+      S3_ACCESS_KEY_ID: rustfsadmin
+      S3_SECRET_ACCESS_KEY: rustfsadmin
+      S3_FORCE_PATH_STYLE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
   db:
     image: postgres:18
     environment:
@@ -23,8 +36,18 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+  storage:
+    image: rustfs/rustfs
+    volumes:
+      - storage-data:/data
+
+volumes:
+  storage-data:
+  db-data:

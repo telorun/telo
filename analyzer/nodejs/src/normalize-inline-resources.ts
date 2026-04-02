@@ -69,7 +69,8 @@ export function normalizeInlineResources(
           fieldPath.startsWith(prefix + "["),
       );
 
-      const extracted = extractInlinesAtPath(resource, fieldPath, parentName, parentModule);
+      const invocationContext = isRefEntry(entry) ? entry.context : undefined;
+      const extracted = extractInlinesAtPath(resource, fieldPath, parentName, parentModule, invocationContext);
       for (const manifest of extracted) {
         result.push(manifest);
         queue.push(manifest as ResourceManifest & { metadata: { name: string } });
@@ -92,6 +93,7 @@ function extractInlinesAtPath(
   fieldPath: string,
   parentName: string,
   parentModule: string | undefined,
+  invocationContext?: Record<string, any>,
 ): ResourceManifest[] {
   const extracted: ResourceManifest[] = [];
   const parts = fieldPath.split(".");
@@ -120,7 +122,7 @@ function extractInlinesAtPath(
           // Array element itself is the ref slot
           if (isInlineResource(elem as Record<string, unknown>)) {
             const name = sanitizeName([parentName, ...nameParts, key, elemId].join("_"));
-            extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule));
+            extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule, invocationContext));
             val[idx] = { kind: (elem as Record<string, unknown>).kind, name };
           }
         } else {
@@ -132,7 +134,7 @@ function extractInlinesAtPath(
         // val is the ref slot
         if (val && typeof val === "object" && !Array.isArray(val) && isInlineResource(val as Record<string, unknown>)) {
           const name = sanitizeName([parentName, ...nameParts, key].join("_"));
-          extracted.push(buildManifest(val as Record<string, unknown>, name, parentModule));
+          extracted.push(buildManifest(val as Record<string, unknown>, name, parentModule, invocationContext));
           container[key] = { kind: (val as Record<string, unknown>).kind, name };
         }
       } else {
@@ -149,6 +151,7 @@ function buildManifest(
   inline: Record<string, unknown>,
   name: string,
   parentModule: string | undefined,
+  invocationContext?: Record<string, any>,
 ): ResourceManifest {
   const existingMeta =
     inline.metadata && typeof inline.metadata === "object"
@@ -161,6 +164,7 @@ function buildManifest(
       name,
       // Inherit parent module only if the inline doesn't already declare one
       ...(parentModule && !existingMeta.module ? { module: parentModule } : {}),
+      ...(invocationContext ? { xTeloInvocationContext: invocationContext } : {}),
     },
   } as ResourceManifest;
 }

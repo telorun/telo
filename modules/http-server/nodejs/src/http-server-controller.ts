@@ -1,6 +1,12 @@
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
-import type { Invocable, KindRef, ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
+import type {
+  Invocable,
+  KindRef,
+  ResourceContext,
+  ResourceInstance,
+  RuntimeResource,
+} from "@telorun/sdk";
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
 import { dispatchResponse, HttpServerApi, ResponseEntry } from "./http-api-controller.js";
@@ -10,6 +16,7 @@ type HttpServerResource = RuntimeResource & {
   port?: number;
   baseUrl?: string;
   logger?: boolean;
+  contentTypeParsers?: Array<{ contentType: string; parser?: Invocable }>;
   openapi?: {
     info: {
       title: string;
@@ -71,6 +78,22 @@ class HttpServer implements ResourceInstance {
   }
 
   private async setupPlugins() {
+    for (const { contentType, parser } of this.resource.contentTypeParsers ?? []) {
+      if (parser) {
+        this.app.addContentTypeParser(contentType, { parseAs: "string" }, async (_req, body, done) => {
+          try {
+            done(null, await parser.invoke({ body }));
+          } catch (err) {
+            done(err as Error, undefined);
+          }
+        });
+      } else {
+        this.app.addContentTypeParser(contentType, { parseAs: "string" }, (_req, body, done) => {
+          done(null, body);
+        });
+      }
+    }
+
     // Register custom error handler for validation errors
     this.app.setErrorHandler((error, request, reply) => {
       const mappedError = convertFastifyValidationError(error);
