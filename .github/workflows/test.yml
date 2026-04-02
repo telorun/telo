@@ -45,5 +45,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check module manifests
+        shell: bash
+        run: |
+          shopt -s globstar
+          pnpm run check **/module.yaml
+
       - name: Run tests
         run: pnpm test
