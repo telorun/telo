@@ -54,6 +54,34 @@ function extractControllers(content: string, manifestDir: string): ParsedControl
   return result;
 }
 
+/** Bump the version field in the first YAML document's metadata block */
+function bumpModuleVersion(
+  content: string,
+  level: BumpLevel,
+): { content: string; from: string; to: string } | null {
+  const match = content.match(/^(\s{2,4}version:\s*)(\d+\.\d+\.\d+)/m);
+  if (!match) return null;
+
+  const parts = match[2].split(".").map(Number) as [number, number, number];
+  if (level === "major") {
+    parts[0]++;
+    parts[1] = 0;
+    parts[2] = 0;
+  } else if (level === "minor") {
+    parts[1]++;
+    parts[2] = 0;
+  } else {
+    parts[2]++;
+  }
+
+  const newVersion = parts.join(".");
+  return {
+    content: content.replace(match[0], `${match[1]}${newVersion}`),
+    from: match[2],
+    to: newVersion,
+  };
+}
+
 /** Rewrite all PURL version specs for a given packageName to an exact static version */
 function rewritePurls(content: string, packageName: string, newVersion: string): string {
   // Escape special regex chars in the package name (handles @scope/name)
@@ -244,13 +272,32 @@ async function publishOne(
     }
   }
 
+  // Bump the module's own metadata.version when --bump is set
+  let bumpedVersion: { from: string; to: string } | null = null;
+  if (bump) {
+    const bumped = bumpModuleVersion(content, bump);
+    if (bumped) {
+      content = bumped.content;
+      bumpedVersion = { from: bumped.from, to: bumped.to };
+    }
+  }
+
   // Write updated module.yaml back to disk
-  if (!dryRun && uniqueControllers.length > 0) {
+  const dirty = uniqueControllers.length > 0 || bump != null;
+  if (!dryRun && dirty) {
     fs.writeFileSync(filePath, content, "utf-8");
   }
 
   // --- Manifest ---
   console.log(`\n  ${log.dim("manifest")}`);
+
+  if (bumpedVersion) {
+    if (dryRun) {
+      stepDry(log, "version", `${bumpedVersion.from} → ${bumpedVersion.to}`);
+    } else {
+      stepOk(log, "version", `${bumpedVersion.from} → ${bumpedVersion.to}`);
+    }
+  }
 
   if (dryRun) {
     stepDry(log, "push", "Telo registry");

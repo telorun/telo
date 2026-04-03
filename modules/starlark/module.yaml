@@ -1,6 +1,6 @@
 kind: Kernel.Module
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows
@@ -10,7 +10,7 @@ metadata:
   name: Script
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/starlark@0.1.5?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@0.1.7?local_path=./nodejs#script
 schema:
   type: object
   properties:
