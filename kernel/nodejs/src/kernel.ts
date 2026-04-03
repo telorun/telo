@@ -1,21 +1,21 @@
-import { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
-    ControllerContext,
-    Kernel as IKernel,
-    ModuleContext,
-    ResourceContext,
-    ResourceDefinition,
-    ResourceInstance,
-    ResourceManifest,
-    RuntimeError,
-    RuntimeEvent,
-    isCompiledValue,
+  ControllerContext,
+  Kernel as IKernel,
+  ModuleContext,
+  ResourceContext,
+  ResourceDefinition,
+  ResourceInstance,
+  ResourceManifest,
+  RuntimeError,
+  RuntimeEvent,
+  isCompiledValue,
 } from "@telorun/sdk";
 import * as path from "path";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
-import { Loader } from "./loader.js";
+import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
@@ -27,26 +27,19 @@ export class Kernel implements IKernel {
   private readonly loader = new Loader();
   private readonly analyzer = new StaticAnalyzer();
   private readonly registry = new AnalysisRegistry();
-  // private manifests: ManifestRegistry = new ManifestRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
   private eventStream: EventStream = new EventStream();
-  // private snapshotSerializer: SnapshotSerializer = new SnapshotSerializer();
-  // private runtimeManifests: ResourceManifest[] | null = null;
-  // private resourceInstances: Map<
-  //   string,
-  //   { resource: ResourceManifest; instance: ResourceInstance }
-  // > = new Map();
 
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
-  // private bootContextRegistry = new BootContextRegistry();
   private readonly sharedSchemaValidator = new SchemaValidator();
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
 
   constructor() {
+    this.loader.register(new LocalFileAdapter());
     this.setupEventStreaming();
   }
 
@@ -125,11 +118,8 @@ export class Kernel implements IKernel {
    * Load from runtime configuration file
    */
   async loadFromConfig(runtimeYamlPath: string): Promise<void> {
-    // Resolve directory paths to their module.yaml so that relative imports
-    // (e.g. ../../modules/foo) use the correct base directory.
-    const sourceUrl = await this.loader.resolveEntryPoint(
-      new URL(runtimeYamlPath, `file://${process.cwd()}/`).href,
-    );
+    const resolvedUrl = new URL(runtimeYamlPath, `file://${process.cwd()}/`).href;
+    const sourceUrl = await this.loader.resolveEntryPoint(resolvedUrl);
     this.rootContext = new ModuleContext(
       sourceUrl,
       {},

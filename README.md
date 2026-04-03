@@ -14,7 +14,7 @@ You define the end state. Telo makes it real.
 
 ```bash
 # Reconcile your manifest into a running backend
-$ telo https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/hello-api/module.yaml
+$ telo https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/hello-api.yaml
 
 {"level":30,"time":1771610393008,"pid":1310178,"hostname":"dev","msg":"Server listening at http://127.0.0.1:8844"}
 ```

@@ -14,10 +14,10 @@ pnpm add -g @telorun/cli
 
 ```bash
 # Run a local manifest
-telo ./examples/hello-api/module.yaml
+telo ./examples/hello-api.yaml
 
 # Run from a remote URL
-telo https://raw.githubusercontent.com/telorun/telo/main/examples/hello-api/module.yaml
+telo https://raw.githubusercontent.com/telorun/telo/main/examples/hello-api.yaml
 
 # Watch mode - auto-restart on file changes
 telo --watch ./manifest.yaml

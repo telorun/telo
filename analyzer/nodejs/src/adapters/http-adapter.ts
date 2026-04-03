@@ -17,7 +17,7 @@ export class HttpAdapter implements ManifestAdapter {
   }
 
   resolveRelative(base: string, relative: string): string {
-    const baseWithSlash = base.endsWith("/") ? base : `${base}/`;
-    return new URL(relative, baseWithSlash).href;
+    const baseDir = base.endsWith("/") ? base : base.slice(0, base.lastIndexOf("/") + 1);
+    return new URL(relative, baseDir).href;
   }
 }

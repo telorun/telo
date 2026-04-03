@@ -23,6 +23,11 @@ export class Loader {
     return a;
   }
 
+  async resolveEntryPoint(url: string): Promise<string> {
+    const { source } = await this.pick(url).read(url);
+    return source;
+  }
+
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
     const parsedDocuments = parseAllDocuments(text);
