@@ -1,10 +1,10 @@
-name: Release Modules
+name: Release Platform Packages
 
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Default version bump level (used when no changeset entry exists)
+        description: Version bump level
         required: false
         default: patch
         type: choice
@@ -31,9 +31,6 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -42,8 +39,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Release modules
-        run: node scripts/release-modules.mjs ${{ inputs.bump }}
+      - name: Release
+        run: node scripts/release.mjs ${{ inputs.bump }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
