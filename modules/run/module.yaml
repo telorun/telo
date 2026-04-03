@@ -13,7 +13,7 @@ metadata:
   name: Sequence
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/run@>=1.0.0?local_path=./nodejs#sequence
+  - pkg:npm/@telorun/run@0.1.1?local_path=./nodejs#sequence
 schema:
   type: object
   properties:

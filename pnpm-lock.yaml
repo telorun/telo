@@ -112,6 +112,9 @@ importers:
       dotenv:
         specifier: ^17.4.0
         version: 17.4.0
+      packageurl-js:
+        specifier: ^2.0.1
+        version: 2.0.1
       yargs:
         specifier: ^17.7.2
         version: 17.7.2

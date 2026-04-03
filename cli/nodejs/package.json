@@ -27,6 +27,7 @@
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
     "@telorun/kernel": "workspace:*",
+    "packageurl-js": "^2.0.1",
     "yargs": "^17.7.2",
     "dotenv": "^17.4.0"
   },
