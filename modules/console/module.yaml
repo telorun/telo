@@ -9,7 +9,7 @@ metadata:
   name: WriteLine
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#writeline
+  - pkg:npm/@telorun/console@0.1.5?local_path=./nodejs#writeline
 schema:
   type: object
   properties:
@@ -22,7 +22,7 @@ metadata:
   name: ReadLine
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/console@>=1.1.0?local_path=./nodejs#readline
+  - pkg:npm/@telorun/console@0.1.5?local_path=./nodejs#readline
 schema:
   type: object
   properties:

@@ -2,6 +2,9 @@
   "name": "@telorun/starlark",
   "version": "0.1.5",
   "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
   "exports": {
     "./script": {
       "bun": "./src/script.ts",
@@ -15,6 +18,7 @@
     "starlark-webasm": "^1.0.3"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }

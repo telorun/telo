@@ -10,7 +10,7 @@ metadata:
   name: Script
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/starlark@>=1.1.0?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@0.1.5?local_path=./nodejs#script
 schema:
   type: object
   properties:

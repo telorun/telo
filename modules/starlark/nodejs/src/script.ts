@@ -1,11 +1,10 @@
 import type {
-    ControllerContext,
-    ResourceContext,
-    ResourceInstance,
-    ResourceManifest,
-    RuntimeResource,
+  ControllerContext,
+  ResourceContext,
+  ResourceInstance,
+  ResourceManifest,
+  RuntimeResource,
 } from "@telorun/sdk";
-import Ajv, { ErrorObject, ValidateFunction } from "ajv";
 import { initialize } from "starlark-webasm";
 
 declare global {
@@ -19,10 +18,6 @@ type StarlarkScriptResource = RuntimeResource & {
 };
 
 let initialized = false;
-const ajv = new Ajv({ allErrors: true, strict: false });
-const inputValidators = new Map<string, ValidateFunction>();
-const outputValidators = new Map<string, ValidateFunction>();
-
 export async function register(ctx: ControllerContext): Promise<void> {
   if (!initialized) {
     // Suppress the "run_starlark_code has been added to the javascript globals" message
@@ -58,11 +53,6 @@ class StarlarkScript implements ResourceInstance {
     const result = await executeStarlark(this.code, input);
     this.ctx.validateSchema(result, this.manifest.outputSchema);
     return result;
-  }
-
-  async teardown(): Promise<void> {
-    inputValidators.delete(`${this.name}:input`);
-    outputValidators.delete(`${this.name}:output`);
   }
 }
 
@@ -112,31 +102,4 @@ async function executeStarlark(code: string, input: any): Promise<any> {
       `StarlarkScript execution failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-}
-
-function getValidator(
-  cache: Map<string, ValidateFunction>,
-  key: string,
-  schema: Record<string, any>,
-): ValidateFunction {
-  const existing = cache.get(key);
-  if (existing) {
-    return existing;
-  }
-  const compiled = ajv.compile(schema);
-  cache.set(key, compiled);
-  return compiled;
-}
-
-function formatAjvErrors(errors?: ErrorObject[] | null): string {
-  if (!errors || errors.length === 0) {
-    return "Validation failed";
-  }
-  return errors
-    .map((err) => {
-      const path = err.instancePath && err.instancePath.length > 0 ? err.instancePath : "/";
-      const message = err.message || "is invalid";
-      return `${path} ${message}`;
-    })
-    .join("; ");
 }

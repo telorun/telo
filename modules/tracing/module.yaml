@@ -9,7 +9,7 @@ metadata:
   name: "Provider"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#provider
+  - pkg:npm/@telorun/tracing@0.1.5?local_path=./nodejs#provider
 schema:
   type: "object"
   properties:
@@ -64,7 +64,7 @@ metadata:
   name: "FileExporter"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/tracing@>=1.0.0?local_path=./nodejs#file-exporter
+  - pkg:npm/@telorun/tracing@0.1.5?local_path=./nodejs#file-exporter
 schema:
   type: "object"
   properties:

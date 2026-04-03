@@ -13,7 +13,7 @@ metadata:
   name: "Server"
 capability: Kernel.Service
 controllers:
-  - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
+  - pkg:npm/@telorun/http-server@0.1.5?local_path=./nodejs#http-server
 schema:
   type: "object"
   properties:
@@ -111,7 +111,7 @@ metadata:
   name: "Api"
 capability: Kernel.Mount
 controllers:
-  - pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server-api
+  - pkg:npm/@telorun/http-server@0.1.5?local_path=./nodejs#http-server-api
 schema:
   type: "object"
   properties:

@@ -10,7 +10,7 @@ metadata:
   name: Connection
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-connection
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-connection
 schema:
   type: object
   required:
@@ -65,7 +65,7 @@ metadata:
   name: Query
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-query
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-query
 schema:
   type: object
   properties:
@@ -89,7 +89,7 @@ metadata:
   name: Exec
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-exec
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-exec
 schema:
   type: object
   properties:
@@ -113,7 +113,7 @@ metadata:
   name: Transaction
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-transaction
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-transaction
 schema:
   type: object
   required:
@@ -133,7 +133,7 @@ metadata:
   name: Migration
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-migration
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-migration
 schema:
   type: object
   required: [sql]
@@ -147,7 +147,7 @@ metadata:
   name: Migrations
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/sql@>=1.0.0?local_path=./nodejs#sql-migrations
+  - pkg:npm/@telorun/sql@0.1.1?local_path=./nodejs#sql-migrations
 schema:
   type: object
   required: [connection]

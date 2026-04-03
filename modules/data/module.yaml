@@ -9,7 +9,7 @@ metadata:
   name: Type
 capability: Kernel.Type
 controllers:
-  - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
+  - pkg:npm/@telorun/data@0.0.7?local_path=./nodejs#type
 schema:
   type: object
   properties:
@@ -29,7 +29,7 @@ metadata:
   name: ObjectType
 capability: Kernel.Type
 controllers:
-  - pkg:npm/@telorun/data@>=0.0.2?local_path=./nodejs#type
+  - pkg:npm/@telorun/data@0.0.7?local_path=./nodejs#type
 schema:
   type: object
   additionalProperties: true

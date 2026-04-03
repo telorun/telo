@@ -15,7 +15,7 @@ metadata:
   name: ModuleContext
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@1.1.0?local_path=./nodejs#module-context
+  - pkg:npm/@telorun/assert@0.1.5?local_path=./nodejs#module-context
 schema:
   type: object
   properties:
@@ -34,7 +34,7 @@ metadata:
   name: Schema
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#schema
+  - pkg:npm/@telorun/assert@0.1.5?local_path=./nodejs#schema
 schema:
   type: object
   properties:
@@ -56,7 +56,7 @@ metadata:
   name: Events
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@1.0.0?local_path=./nodejs#events
+  - pkg:npm/@telorun/assert@0.1.5?local_path=./nodejs#events
 schema:
   type: object
   properties:
