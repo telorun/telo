@@ -111,20 +111,18 @@ export function validateChainAgainstSchema(
 }
 
 /**
- * Returns true when a CEL expression path (from walkCelExpressions, e.g. "routes[0].handler.inputs.name")
- * falls within the container region of a context scope (e.g. "$.routes[*].handler").
+ * Returns true when a CEL expression path (from walkCelExpressions, e.g. "routes[0].inputs.q")
+ * falls within the scope of a context (e.g. "$.routes[*].inputs").
  *
- * The container is derived by stripping the last dot-separated segment from the scope, so that
- * sibling fields within the same parent (e.g. routes[*].response) also match.
+ * The scope is matched directly (no sibling sharing): a context at "$.routes[*].inputs" only
+ * applies to expressions whose path starts with "routes[N].inputs", not to other sibling fields.
  */
 export function pathMatchesScope(exprPath: string, scope: string): boolean {
   const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  const lastDot = stripped.lastIndexOf(".");
-  if (lastDot <= 0) return false;
-  const container = stripped.slice(0, lastDot); // e.g. "routes[*]"
+  if (!stripped) return false;
 
   // Split on wildcard array segments; each [*] must match a concrete [N] in exprPath
-  const parts = container.split("[*]");
+  const parts = stripped.split("[*]");
   let remaining = exprPath;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
@@ -139,4 +137,96 @@ export function pathMatchesScope(exprPath: string, scope: string): boolean {
   }
   // Expression must end here or continue into a child path
   return remaining === "" || remaining[0] === "." || remaining[0] === "[";
+}
+
+/**
+ * Resolves `x-telo-context-from` annotations in a context schema using the concrete
+ * manifest item. Navigates the manifest item at the given slash-separated path and merges
+ * the result as named properties into the annotated node (locking additionalProperties: false).
+ *
+ * Example: `x-telo-context-from: "request/schema"` on the `request` context node replaces
+ * the open `request` schema with a closed schema whose properties are the keys of
+ * `manifestItem.request.schema` (e.g. `query`, `body`, `params`, `headers`).
+ */
+export function resolveContextAnnotations(
+  schema: Record<string, any>,
+  manifestItem: Record<string, any>,
+  allManifests?: Record<string, any>[],
+): Record<string, any> {
+  if (!schema || typeof schema !== "object") return schema;
+
+  const from = schema["x-telo-context-from"] as string | undefined;
+  if (from) {
+    const resolved = navigatePath(manifestItem, from.split("/")) as Record<string, any> | undefined;
+    // `resolved` is a map of property names → sub-schemas (e.g. { query: {...}, body: {...} })
+    return {
+      ...schema,
+      properties: { ...(schema.properties ?? {}), ...(resolved ?? {}) },
+      additionalProperties: false,
+    };
+  }
+
+  const refFrom = schema["x-telo-context-ref-from"] as string | undefined;
+  if (refFrom && allManifests) {
+    const slashIdx = refFrom.indexOf("/");
+    const refProp = slashIdx === -1 ? refFrom : refFrom.slice(0, slashIdx);
+    const subpath = slashIdx === -1 ? undefined : refFrom.slice(slashIdx + 1);
+    const ref = manifestItem[refProp] as Record<string, any> | undefined;
+    if (
+      ref &&
+      typeof ref === "object" &&
+      typeof ref.kind === "string" &&
+      typeof ref.name === "string" &&
+      subpath
+    ) {
+      const refManifest = allManifests.find(
+        (m) => m.kind === ref.kind && (m.metadata as any)?.name === ref.name,
+      ) as Record<string, any> | undefined;
+      const resolved = refManifest
+        ? (navigatePath(refManifest, subpath.split("/")) as Record<string, any> | undefined)
+        : undefined;
+      if (resolved && typeof resolved === "object") {
+        return resolved;
+      }
+    }
+    // Fallback: open schema (no false errors when outputSchema is not declared)
+    return { ...schema, additionalProperties: true };
+  }
+
+  if (schema.properties) {
+    const props: Record<string, any> = {};
+    for (const [k, v] of Object.entries(schema.properties)) {
+      props[k] = resolveContextAnnotations(v as Record<string, any>, manifestItem, allManifests);
+    }
+    return { ...schema, properties: props };
+  }
+
+  return schema;
+}
+
+/**
+ * Extracts the concrete manifest array item for a given expression path + scope.
+ * e.g. exprPath="routes[0].inputs.q", scope="$.routes[*].inputs" → manifest.routes[0]
+ */
+export function getManifestItem(
+  exprPath: string,
+  scope: string,
+  manifest: Record<string, any>,
+): Record<string, any> {
+  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
+  const wildcardIdx = stripped.indexOf("[*]");
+  if (wildcardIdx === -1) return manifest;
+  const arrayProp = stripped.slice(0, wildcardIdx); // e.g. "routes"
+  const m = exprPath.match(new RegExp(`^${arrayProp}\\[(\\d+)\\]`));
+  if (!m) return manifest;
+  return (manifest as any)[arrayProp]?.[Number(m[1])] ?? manifest;
+}
+
+function navigatePath(obj: unknown, segments: string[]): unknown {
+  let cur = obj;
+  for (const seg of segments) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  return cur;
 }

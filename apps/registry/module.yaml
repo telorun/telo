@@ -128,6 +128,7 @@ port: "${{ resources.AppConfig.port }}"
 logger: true
 contentTypeParsers:
   - contentType: text/yaml
+baseUrl: http://registry.telo.localhost:8060
 openapi:
   info:
     title: Telo Module Registry
@@ -153,8 +154,47 @@ notFoundHandler:
       mode: stream
 
 ---
+kind: Sql.Select
+metadata:
+  name: SearchModules
+connection:
+  kind: Sql.Connection
+  name: Db
+from: modules
+distinctOn: [namespace, name]
+columns: [namespace, name, version, description, published_at]
+where:
+  - when: "${{ inputs.q != '' }}"
+    or:
+      - { column: name, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+      - { column: namespace, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+      - { column: description, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+orderBy:
+  - { column: namespace }
+  - { column: name }
+  - { column: published_at, direction: desc }
+limit: "${{ inputs.limit }}"
+offset: "${{ inputs.offset }}"
+inputSchema:
+  q:
+    type: string
+    default: ""
+  limit:
+    type: integer
+    default: 20
+  offset:
+    type: integer
+    default: 0
+outputSchema:
+  type: object
+  properties:
+    rows: { type: array }
+    rowCount: { type: integer }
+
+---
 # Public API — unauthenticated.
-# GET /{namespace}/{name}          lists all versions from the SQL index.
+# GET /search                       full-text search across modules.
+# GET /{namespace}/{name}           lists all versions from the SQL index.
 # PUT /{namespace}/{name}/{version} publishes a module.yaml (body) to S3 and records it in SQL.
 # Everything else falls through to the server fallback (ForwardToR2).
 
@@ -163,8 +203,44 @@ metadata:
   name: PublicApi
 routes:
   - request:
+      path: /search
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q:
+              type: string
+              default: ""
+              description: "Search query for name, namespace, and description."
+            limit: { type: integer, default: 20, description: "Number of results to return." }
+            offset:
+              type: integer
+              default: 0
+              description: "Number of results to skip for pagination."
+    handler:
+      kind: Sql.Select
+      name: SearchModules
+    inputs:
+      q: "${{ request.query.q }}"
+      limit: "${{ request.query.limit }}"
+      offset: "${{ request.query.offset }}"
+    response:
+      - status: 200
+        body:
+          results: "${{ result.rows }}"
+          count: "${{ result.rowCount }}"
+
+  - request:
       path: /{namespace}/{name}
       method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+          required: ["namespace", "name"]
     handler:
       kind: Sql.Query
       connection:

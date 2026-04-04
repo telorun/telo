@@ -136,12 +136,27 @@ schema:
               headers:
                 type: "object"
             required: ["path", "method"]
+          inputs:
+            type: "object"
+            additionalProperties: true
+            description: "CEL expressions evaluated against the request context; result is passed to handler.invoke()"
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    path: { type: string }
+                    method: { type: string }
           handler:
             x-telo-ref: "kernel#Invocable"
             x-telo-context:
               type: object
               properties:
                 request:
+                  x-telo-context-from: "request/schema"
                   type: object
                   properties:
                     query: { type: object, additionalProperties: true }
@@ -164,6 +179,20 @@ schema:
                     type: "string"
           response:
             type: "array"
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    path: { type: string }
+                    method: { type: string }
+                result:
+                  x-telo-context-ref-from: "handler/outputSchema"
+                  type: object
+                  additionalProperties: true
             items:
               type: "object"
               additionalProperties: false

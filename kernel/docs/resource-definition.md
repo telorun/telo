@@ -226,6 +226,50 @@ The analyzer validates that:
 - CEL expressions at the annotated field only access variables present in the context schema (when `additionalProperties: false`).
 - Resources referenced from an annotated field have `inputs` schemas compatible with the declared context.
 
+### Context schema annotations
+
+#### `x-telo-context-from`
+
+Replaces a context node's properties at analysis time with values read from the **manifest instance** at the given slash-separated path. Use this to narrow an otherwise open context variable to exactly the fields declared by the resource author.
+
+```yaml
+handler:
+  x-telo-context:
+    type: object
+    additionalProperties: false
+    properties:
+      request:
+        # Replace this node with the contents of request.schema from the manifest instance
+        x-telo-context-from: "request/schema"
+        type: object
+```
+
+At analysis time the analyzer walks from the manifest item (e.g. the route object) along `request → schema` and merges the keys found there as named properties into the context node, closing it with `additionalProperties: false`. If the path resolves to nothing, the node is left open.
+
+This is the mechanism used to make query-string typos (`request.query.nonExistentKey`) a static error when the route declares an explicit query schema.
+
+#### `x-telo-context-ref-from`
+
+Replaces a context node at analysis time with the **`outputSchema`** (or any sub-path) of a resource referenced by a sibling field of the manifest item. Use this to give downstream CEL expressions precise type information about the result an invocable returns.
+
+```yaml
+response:
+  type: array
+  x-telo-context:
+    type: object
+    additionalProperties: false
+    properties:
+      result:
+        # Replace this node with the outputSchema of the resource referenced by "handler"
+        x-telo-context-ref-from: "handler/outputSchema"
+        type: object
+        additionalProperties: true # fallback when outputSchema is not declared
+```
+
+The value is `<refField>/<subpath>`. The analyzer resolves `refField` to the manifest value of that sibling key (expected to be a `{ kind, name }` resource reference), looks up that resource in the manifest set, and navigates `subpath` within it to find the schema to substitute. Falls back to the declared fallback schema (typically `additionalProperties: true`) when the referenced resource has no such path.
+
+This is the mechanism that types the `result` variable in HTTP response body CEL expressions based on the `outputSchema` declared on the handler resource (e.g. `Sql.Select`).
+
 ---
 
 ## 7. Execution (`controllers`)

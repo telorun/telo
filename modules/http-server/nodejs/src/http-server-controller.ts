@@ -66,7 +66,7 @@ class HttpServer implements ResourceInstance {
     if (!this.port) {
       throw new Error("Http.Server port is required");
     }
-    this.app = Fastify({ logger: resource.logger, ajv: { plugins: [addFormats.default as any] } });
+    this.app = Fastify({ logger: resource.logger, ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] } });
   }
 
   async init() {

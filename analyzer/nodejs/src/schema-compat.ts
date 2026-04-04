@@ -81,7 +81,19 @@ function checkProperty(
 
 export function formatSingleError(err: any): string {
   const p = err.instancePath || "/";
-  return `${p} ${err.message ?? "is invalid"}`;
+  const params = err.params ?? {};
+  switch (err.keyword) {
+    case "additionalProperties":
+      return `${p} must NOT have additional properties ('${params.additionalProperty}' is not allowed)`;
+    case "required":
+      return `${p} is missing required property '${params.missingProperty}'`;
+    case "enum":
+      return `${p} ${err.message ?? "is invalid"} (${(params.allowedValues as unknown[])?.join(" | ")})`;
+    case "type":
+      return `${p} must be ${params.type} (got ${typeof err.data})`;
+    default:
+      return `${p} ${err.message ?? "is invalid"}`;
+  }
 }
 
 export function formatAjvErrors(errors: any[] | null | undefined): string {
@@ -182,13 +194,20 @@ export function jsonSchemaToCelType(schema: Record<string, any> | undefined): st
   if (schema.anyOf || schema.oneOf || schema.allOf) return "dyn";
   if (Array.isArray(schema.type)) return "dyn";
   switch (schema.type) {
-    case "integer": return "int";
-    case "number": return "double";
-    case "string": return "string";
-    case "boolean": return "bool";
-    case "array": return "list";
-    case "object": return "map";
-    case "null": return "null_type";
+    case "integer":
+      return "int";
+    case "number":
+      return "double";
+    case "string":
+      return "string";
+    case "boolean":
+      return "bool";
+    case "array":
+      return "list";
+    case "object":
+      return "map";
+    case "null":
+      return "null_type";
   }
   if (schema.properties) return "map";
   if (schema.items) return "list";
@@ -196,10 +215,7 @@ export function jsonSchemaToCelType(schema: Record<string, any> | undefined): st
 }
 
 /** Check whether a CEL return type is compatible with a JSON Schema type constraint. */
-export function celTypeSatisfiesJsonSchema(
-  celType: string,
-  schema: Record<string, any>,
-): boolean {
+export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
   if (celType === "dyn") return true;
   if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
   if (schema.anyOf || schema.oneOf || schema.allOf) return true;
@@ -227,12 +243,18 @@ export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
   if (schema.default !== undefined) return schema.default;
   switch (schema.type) {
     case "integer":
-    case "number": return schema.minimum ?? 0;
-    case "string": return "";
-    case "boolean": return false;
-    case "array": return [];
-    case "object": return {};
-    default: return null;
+    case "number":
+      return schema.minimum ?? 0;
+    case "string":
+      return "";
+    case "boolean":
+      return false;
+    case "array":
+      return [];
+    case "object":
+      return {};
+    default:
+      return null;
   }
 }
 

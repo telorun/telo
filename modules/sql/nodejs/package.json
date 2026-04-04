@@ -11,6 +11,10 @@
       "bun": "./src/sql-query-controller.ts",
       "import": "./dist/sql-query-controller.js"
     },
+    "./sql-select": {
+      "bun": "./src/sql-select-controller.ts",
+      "import": "./dist/sql-select-controller.js"
+    },
     "./sql-exec": {
       "bun": "./src/sql-exec-controller.ts",
       "import": "./dist/sql-exec-controller.js"

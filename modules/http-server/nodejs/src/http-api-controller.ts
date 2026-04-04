@@ -1,5 +1,12 @@
 import { Static, Type } from "@sinclair/typebox";
-import { ControllerContext, Invocable, KindRef, Ref, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import {
+  ControllerContext,
+  Invocable,
+  KindRef,
+  Ref,
+  ResourceContext,
+  ResourceInstance,
+} from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -18,6 +25,7 @@ const HttpApiRouteManifest = Type.Object({
     ),
   }),
   handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("kernel#Invocable"))),
+  inputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
   response: Type.Array(
     Type.Object({
       status: Type.Integer({ minimum: 100, maximum: 599 }),
@@ -189,7 +197,10 @@ export class HttpServerApi implements ResourceInstance {
               body: request.body,
             },
           };
-          const result = handler ? await handler.invoke(requestContext) : undefined;
+          const invokeInput: Record<string, any> = route.inputs
+            ? (this.ctx.moduleContext.expandWith(route.inputs, requestContext) as any)
+            : requestContext;
+          const result = handler ? await handler.invoke(invokeInput) : undefined;
 
           return dispatchResponse(
             route.response,

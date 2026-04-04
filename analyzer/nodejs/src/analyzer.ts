@@ -6,15 +6,17 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import {
-  type SchemaIssue,
   celTypeSatisfiesJsonSchema,
   substituteCelFields,
   validateAgainstSchema,
+  type SchemaIssue,
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
   extractAccessChains,
+  getManifestItem,
   pathMatchesScope,
+  resolveContextAnnotations,
   validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
@@ -132,7 +134,14 @@ function collectCelTypeIssues(
     const itemSchema = (schema.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
       issues.push(
-        ...collectCelTypeIssues(data[i], itemSchema, `${path}[${i}]`, definition, manifest, baseEnv),
+        ...collectCelTypeIssues(
+          data[i],
+          itemSchema,
+          `${path}[${i}]`,
+          definition,
+          manifest,
+          baseEnv,
+        ),
       );
     }
   } else if (data !== null && typeof data === "object") {
@@ -332,17 +341,28 @@ export class StaticAnalyzer {
         if (contexts.length === 0 && !invocationContext) return;
 
         let matchedContext: Record<string, any> | undefined;
+        let matchedScope: string | undefined;
         for (const ctx of contexts) {
           if (pathMatchesScope(path, ctx.scope)) {
             matchedContext = ctx.schema;
+            matchedScope = ctx.scope;
             break;
           }
         }
         if (!matchedContext) matchedContext = invocationContext;
         if (!matchedContext) return;
 
+        const manifestItem = matchedScope
+          ? getManifestItem(path, matchedScope, m as Record<string, any>)
+          : (m as Record<string, any>);
+        const effectiveContext = resolveContextAnnotations(
+          matchedContext,
+          manifestItem,
+          allManifests as Record<string, any>[],
+        );
+
         for (const chain of extractAccessChains(parsed.ast)) {
-          const err = validateChainAgainstSchema(chain, matchedContext);
+          const err = validateChainAgainstSchema(chain, effectiveContext);
           if (!err) continue;
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
