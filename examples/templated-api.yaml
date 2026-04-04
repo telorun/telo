@@ -33,8 +33,8 @@ routes:
     handler:
       kind: JavaScript.Script
       name: SayHello
-      inputs:
-        name: "${{ request.query.name }}" # CEL expression
+    inputs:
+      name: "${{ request.query.name }}" # CEL expression
     response:
       - status: 200
         schema:

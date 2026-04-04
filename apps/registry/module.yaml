@@ -129,6 +129,10 @@ logger: true
 contentTypeParsers:
   - contentType: text/yaml
 baseUrl: http://registry.telo.localhost:8060
+cors:
+  origin: "*"
+  methods: "GET,PUT,POST,DELETE,OPTIONS"
+  allowedHeaders: "Content-Type, Authorization"
 openapi:
   info:
     title: Telo Module Registry
@@ -148,7 +152,7 @@ notFoundHandler:
     mode: stream
     inputs:
       method: "${{ request.method }}"
-      url: "${{ resources.AppConfig.s3Endpoint }}/${{ request.path }}"
+      url: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName + request.path }}"
   response:
     - status: 200
       mode: stream
@@ -162,13 +166,22 @@ connection:
   name: Db
 from: modules
 distinctOn: [namespace, name]
-columns: [namespace, name, version, description, published_at]
+columns:
+  - namespace
+  - name
+  - version
+  - description
+  - { column: published_at, as: publishedAt }
+  - { expr: "namespace || '/' || name || '@' || version", as: id }
 where:
   - when: "${{ inputs.q != '' }}"
     or:
       - { column: name, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
       - { column: namespace, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
       - { column: description, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+  - when: "${{ inputs.id != '' }}"
+    sql: "(namespace || '/' || name || '@' || version) ILIKE $1"
+    bindings: ["${{ '%' + inputs.id + '%' }}"]
 orderBy:
   - { column: namespace }
   - { column: name }
@@ -177,6 +190,9 @@ limit: "${{ inputs.limit }}"
 offset: "${{ inputs.offset }}"
 inputSchema:
   q:
+    type: string
+    default: ""
+  id:
     type: string
     default: ""
   limit:
@@ -192,12 +208,19 @@ outputSchema:
     rowCount: { type: integer }
 
 ---
+kind: HttpClient.Client
+metadata:
+  name: S3Client
+baseUrl: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName }}"
+
+---
 # Public API — unauthenticated.
 # GET /search                       full-text search across modules.
 # GET /{namespace}/{name}           lists all versions from the SQL index.
+# GET /{namespace}/{name}/{version} returns module metadata from the SQL index.
+# GET /{namespace}/{name}/{version}/module.yaml streams the module.yaml from S3.
 # PUT /{namespace}/{name}/{version} publishes a module.yaml (body) to S3 and records it in SQL.
 # Everything else falls through to the server fallback (ForwardToR2).
-
 kind: Http.Api
 metadata:
   name: PublicApi
@@ -213,6 +236,10 @@ routes:
               type: string
               default: ""
               description: "Search query for name, namespace, and description."
+            id:
+              type: string
+              default: ""
+              description: "Filter by module id (e.g. 'namespace/name@version')."
             limit: { type: integer, default: 20, description: "Number of results to return." }
             offset:
               type: integer
@@ -223,6 +250,7 @@ routes:
       name: SearchModules
     inputs:
       q: "${{ request.query.q }}"
+      id: "${{ request.query.id }}"
       limit: "${{ request.query.limit }}"
       offset: "${{ request.query.offset }}"
     response:
@@ -252,8 +280,11 @@ routes:
           WHERE namespace = ? AND name = ?
           ORDER BY published_at ASC
         bindings:
-          - "${{ request.params.namespace }}"
-          - "${{ request.params.name }}"
+          - "${{ inputs.namespace }}"
+          - "${{ inputs.name }}"
+    inputs:
+      namespace: "${{ request.params.namespace }}"
+      name: "${{ request.params.name }}"
     response:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
@@ -267,7 +298,81 @@ routes:
 
   - request:
       path: /{namespace}/{name}/{version}
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+            version: { type: string }
+          required: ["namespace", "name", "version"]
+    handler:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+    inputs:
+      sql: >-
+        SELECT namespace, name, version, description, published_at FROM modules
+        WHERE namespace = $1 AND name = $2 AND version = $3
+      bindings:
+        - "${{ request.params.namespace }}"
+        - "${{ request.params.name }}"
+        - "${{ request.params.version }}"
+    response:
+      - status: 200
+        when: "${{ result.rows.size() > 0 }}"
+        body:
+          id: "${{ result.rows[0].namespace + '/' + result.rows[0].name + '@' + result.rows[0].version }}"
+          namespace: "${{ result.rows[0].namespace }}"
+          name: "${{ result.rows[0].name }}"
+          version: "${{ result.rows[0].version }}"
+          description: "${{ result.rows[0].description }}"
+          publishedAt: "${{ result.rows[0].published_at }}"
+      - status: 404
+        body:
+          error: "Module not found"
+
+  - request:
+      path: /{namespace}/{name}/{version}/module.yaml
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string, default: "std" }
+            name: { type: string, default: "http-server" }
+            version: { type: string, default: "1.1.0" }
+          required: ["namespace", "name", "version"]
+    handler:
+      kind: HttpClient.Request
+      mode: stream
+      client: S3Client
+      inputs:
+        method: GET
+        url: "${{ '/' + inputs.path + '/module.yaml' }}"
+    inputs:
+      path: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version }}"
+    response:
+      - status: 200
+        mode: stream
+        headers:
+          Content-Type: text/yaml
+
+  - request:
+      path: /{namespace}/{name}/{version}
       method: PUT
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+            version: { type: string }
+          required: ["namespace", "name", "version"]
+        body:
+          type: string
     handler:
       kind: Run.Sequence
       steps:
@@ -277,9 +382,8 @@ routes:
             bucketRef:
               name: ModuleStore
           inputs:
-            namespace: "${{ request.params.namespace }}"
-            key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
-            body: "${{ request.body }}"
+            key: "${{ inputs.fileKey }}"
+            body: "${{ inputs.body }}"
             contentType: "text/yaml"
         - name: record
           invoke:
@@ -293,12 +397,19 @@ routes:
               VALUES ($1, $2, $3, $4)
               ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
             bindings:
-              - "${{ request.params.namespace }}"
-              - "${{ request.params.name }}"
-              - "${{ request.params.version }}"
-              - "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
+              - "${{ inputs.namespace }}"
+              - "${{ inputs.name }}"
+              - "${{ inputs.version }}"
+              - "${{ inputs.fileKey }}"
       outputs:
-        published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
+        published: "${{ inputs.published }}"
+    inputs:
+      namespace: "${{ request.params.namespace }}"
+      name: "${{ request.params.name }}"
+      version: "${{ request.params.version }}"
+      body: "${{ request.body }}"
+      fileKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
+      published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
     response:
       - status: 201
         body:

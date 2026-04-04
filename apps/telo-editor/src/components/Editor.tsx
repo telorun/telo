@@ -1,14 +1,38 @@
-'use client'
+"use client";
 
-import { useEffect, useRef, useState } from 'react'
-import { openRootManifest, loadApplication, createApplication, addModuleImport, readModuleMetadata, toRelativeSource, toPascalCase, isInTauri } from '../loader'
-import type { ManifestAdapter } from '@telorun/analyzer'
-import type { EditorState } from '../model'
-import { saveState, loadState } from '../storage'
-import { TopBar } from './TopBar'
-import { Sidebar } from './Sidebar'
-import { GraphCanvas } from './GraphCanvas'
-import { DetailPanel } from './DetailPanel'
+import type { ManifestAdapter } from "@telorun/analyzer";
+import { useRef, useState } from "react";
+import { useEditorPersistence } from "../hooks/useEditorPersistence";
+import {
+  addModuleImport,
+  classifyImport,
+  createApplication,
+  createRegistryAdapters,
+  getAvailableKinds,
+  getYamlStateSnapshots,
+  isInTauri,
+  loadApplication,
+  noopAdapter,
+  openRootManifest,
+  readModuleMetadata,
+  toPascalCase,
+  toRelativeSource,
+} from "../loader";
+import type {
+  Application,
+  EditorState,
+  MatcherSelection,
+  NavigationEntry,
+  ParsedResource,
+} from "../model";
+import { DEFAULT_SETTINGS } from "../model";
+import { CreateResourceModal } from "./CreateResourceModal";
+import { DetailPanel } from "./DetailPanel";
+import { GraphCanvas } from "./GraphCanvas";
+import { SettingsModal } from "./SettingsModal";
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { YamlStateViewer } from "./YamlStateViewer";
 
 const INITIAL_STATE: EditorState = {
   application: null,
@@ -17,68 +41,131 @@ const INITIAL_STATE: EditorState = {
   selectedResource: null,
   panelStack: [],
   diagnosticsByResource: new Map(),
+};
+
+function pruneUnreachableModules(application: Application): Application {
+  const reachable = new Set<string>();
+  const queue: string[] = [application.rootPath];
+
+  while (queue.length > 0) {
+    const path = queue.shift();
+    if (!path || reachable.has(path)) continue;
+    const manifest = application.modules.get(path);
+    if (!manifest) continue;
+
+    reachable.add(path);
+    for (const imp of manifest.imports) {
+      const depPath = imp.resolvedPath ?? imp.source;
+      if (application.modules.has(depPath) && !reachable.has(depPath)) {
+        queue.push(depPath);
+      }
+    }
+  }
+
+  const modules = new Map<
+    string,
+    Application["modules"] extends Map<string, infer V> ? V : never
+  >();
+  const importGraph = new Map<string, Set<string>>();
+  const importedBy = new Map<string, Set<string>>();
+
+  for (const [filePath, manifest] of application.modules) {
+    if (!reachable.has(filePath)) continue;
+    modules.set(filePath, manifest);
+  }
+
+  for (const [filePath, manifest] of modules) {
+    const deps = new Set<string>();
+    importGraph.set(filePath, deps);
+
+    for (const imp of manifest.imports) {
+      const depPath = imp.resolvedPath ?? imp.source;
+      if (!modules.has(depPath)) continue;
+      deps.add(depPath);
+
+      if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
+      importedBy.get(depPath)!.add(filePath);
+    }
+  }
+
+  return {
+    rootPath: application.rootPath,
+    modules,
+    importGraph,
+    importedBy,
+  };
+}
+
+function sanitizeNavigationStack(
+  stack: NavigationEntry[],
+  modules: Map<string, unknown>,
+  rootPath: string,
+): NavigationEntry[] {
+  const filtered = stack.filter((entry) => entry.type !== "module" || modules.has(entry.filePath));
+  if (filtered.length > 0) return filtered;
+  return [{ type: "module", filePath: rootPath, graphContext: null }];
 }
 
 export function Editor() {
-  const [state, setState] = useState<EditorState>(INITIAL_STATE)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  const { state, setState, settings, setSettings } = useEditorPersistence(
+    INITIAL_STATE,
+    DEFAULT_SETTINGS,
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [createResourceOpen, setCreateResourceOpen] = useState(false);
+  const [selectedMatcher, setSelectedMatcher] = useState<MatcherSelection | null>(null);
 
-  // isHydrated tracks whether the post-mount restore has run.
-  // Effects run in definition order, so the save effect (defined second) checks
-  // this flag and skips the initial render before the restore has happened.
-  const isHydrated = useRef(false)
-  const adapterRef = useRef<ManifestAdapter | null>(null)
+  const adapterRef = useRef<ManifestAdapter | null>(null);
 
-  useEffect(() => {
-    if (isHydrated.current) saveState(state)
-  }, [state])
-
-  useEffect(() => {
-    const saved = loadState()
-    if (saved) setState(s => ({ ...s, ...saved }))
-    isHydrated.current = true
-  }, [])
-
-  const activeManifest = state.application && state.activeModulePath
-    ? (state.application.modules.get(state.activeModulePath) ?? null)
-    : null
+  const activeManifest =
+    state.application && state.activeModulePath
+      ? (state.application.modules.get(state.activeModulePath) ?? null)
+      : null;
+  const currentNavigationEntry = state.navigationStack.at(-1) ?? null;
+  const graphContext =
+    currentNavigationEntry?.type === "module" ? currentNavigationEntry.graphContext : null;
 
   // ---------------------------------------------------------------------------
   // Application lifecycle
   // ---------------------------------------------------------------------------
 
   function handleCreate(name: string) {
-    adapterRef.current = null
-    const application = createApplication(name)
-    setCreating(false)
+    adapterRef.current = null;
+    const application = createApplication(name);
+    setCreating(false);
     setState({
       ...INITIAL_STATE,
       application,
       activeModulePath: application.rootPath,
-      navigationStack: [{ type: 'module', filePath: application.rootPath, graphContext: null }],
-    })
+      navigationStack: [{ type: "module", filePath: application.rootPath, graphContext: null }],
+    });
   }
 
   async function handleOpen() {
-    setError(null)
-    setLoading(true)
+    setError(null);
+    setLoading(true);
     try {
-      const opened = await openRootManifest()
-      if (!opened) return
-      adapterRef.current = opened.adapter
-      const application = await loadApplication(opened.rootPath, opened.adapter)
+      const opened = await openRootManifest();
+      if (!opened) return;
+      adapterRef.current = opened.adapter;
+      const application = await loadApplication(
+        opened.rootPath,
+        opened.adapter,
+        createRegistryAdapters(settings),
+      );
       setState({
         ...INITIAL_STATE,
         application,
         activeModulePath: opened.rootPath,
-        navigationStack: [{ type: 'module', filePath: opened.rootPath, graphContext: null }],
-      })
+        navigationStack: [{ type: "module", filePath: opened.rootPath, graphContext: null }],
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -86,34 +173,84 @@ export function Editor() {
   // Import authoring
   // ---------------------------------------------------------------------------
 
-  async function handleBrowseForModule(): Promise<{ source: string; suggestedAlias: string } | null> {
-    const adapter = adapterRef.current
-    if (!isInTauri() || !state.activeModulePath || !adapter) return null
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const result = await open({ filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }] })
-    if (!result || typeof result !== 'string') return null
-    const name = await readModuleMetadata(result, adapter)
-    const source = toRelativeSource(state.activeModulePath, result)
-    const suggestedAlias = toPascalCase(name ?? result.split('/').at(-2) ?? 'Module')
-    return { source, suggestedAlias }
+  async function handleBrowseForModule(): Promise<{
+    source: string;
+    suggestedAlias: string;
+  } | null> {
+    const adapter = adapterRef.current;
+    if (!isInTauri() || !state.activeModulePath || !adapter) return null;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const result = await open({ filters: [{ name: "YAML", extensions: ["yaml", "yml"] }] });
+    if (!result || typeof result !== "string") return null;
+    const name = await readModuleMetadata(result, adapter);
+    const source = toRelativeSource(state.activeModulePath, result);
+    const suggestedAlias = toPascalCase(name ?? result.split("/").at(-2) ?? "Module");
+    return { source, suggestedAlias };
   }
 
   async function handleAddModule(source: string, alias: string) {
-    const adapter = adapterRef.current
-    if (!state.application || !state.activeModulePath || !adapter) return
-    const resolvedPath = adapter.resolveRelative(state.activeModulePath, source)
-    const imp = { name: alias, source, importKind: 'submodule' as const, resolvedPath }
-    const updated = await addModuleImport(state.application, state.activeModulePath, imp, adapter)
-    setState(s => ({ ...s, application: updated }))
+    const adapter = adapterRef.current;
+    if (!state.application || !state.activeModulePath || !adapter) return;
+    const resolvedPath = adapter.resolveRelative(state.activeModulePath, source);
+    const imp = { name: alias, source, importKind: "submodule" as const, resolvedPath };
+    const updated = await addModuleImport(
+      state.application,
+      state.activeModulePath,
+      imp,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+    setState((s) => ({ ...s, application: updated }));
   }
 
-  function handleAddImport(source: string, alias: string) {
-    if (!state.application || !state.activeModulePath) return
-    const imp = { name: alias, source, importKind: 'remote' as const }
-    const modules = new Map(state.application.modules)
-    const current = modules.get(state.activeModulePath)!
-    modules.set(state.activeModulePath, { ...current, imports: [...current.imports, imp] })
-    setState(s => ({ ...s, application: { ...s.application!, modules } }))
+  async function handleAddImport(source: string, alias: string) {
+    if (!state.application || !state.activeModulePath) return;
+    const imp = { name: alias, source, importKind: classifyImport(source) };
+    const adapter = adapterRef.current ?? noopAdapter;
+    const updated = await addModuleImport(
+      state.application,
+      state.activeModulePath,
+      imp,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+    setState((s) => ({ ...s, application: updated }));
+  }
+
+  function handleRemoveImport(name: string) {
+    if (!state.application || !state.activeModulePath) return;
+    setState((s) => {
+      if (!s.application || !s.activeModulePath) return s;
+
+      const modules = new Map(s.application.modules);
+      const current = modules.get(s.activeModulePath);
+      if (!current) return s;
+
+      modules.set(s.activeModulePath, {
+        ...current,
+        imports: current.imports.filter((i) => i.name !== name),
+      });
+
+      const pruned = pruneUnreachableModules({ ...s.application, modules });
+      const navigationStack = sanitizeNavigationStack(
+        s.navigationStack,
+        pruned.modules as Map<string, unknown>,
+        pruned.rootPath,
+      );
+      const activeModulePath = pruned.modules.has(s.activeModulePath)
+        ? s.activeModulePath
+        : pruned.rootPath;
+      const shouldResetSelection = activeModulePath !== s.activeModulePath;
+
+      return {
+        ...s,
+        application: pruned,
+        navigationStack,
+        activeModulePath,
+        selectedResource: shouldResetSelection ? null : s.selectedResource,
+        panelStack: shouldResetSelection ? [] : s.panelStack,
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -121,28 +258,30 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleOpenModule(filePath: string) {
-    setState(s => ({
+    setSelectedMatcher(null);
+    setState((s) => ({
       ...s,
       activeModulePath: filePath,
       selectedResource: null,
       panelStack: [],
-      navigationStack: [...s.navigationStack, { type: 'module', filePath, graphContext: null }],
-    }))
+      navigationStack: [...s.navigationStack, { type: "module", filePath, graphContext: null }],
+    }));
   }
 
   function handlePopTo(index: number) {
-    setState(s => {
-      const entry = s.navigationStack[index]
-      if (!entry || entry.type !== 'module') return s
-      const newStack = s.navigationStack.slice(0, index + 1)
+    setSelectedMatcher(null);
+    setState((s) => {
+      const entry = s.navigationStack[index];
+      if (!entry || entry.type !== "module") return s;
+      const newStack = s.navigationStack.slice(0, index + 1);
       return {
         ...s,
         navigationStack: newStack,
         activeModulePath: entry.filePath,
         selectedResource: null,
         panelStack: [],
-      }
-    })
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -150,33 +289,116 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleSelectResource(kind: string, name: string) {
-    setState(s => ({
+    setSelectedMatcher(null);
+    setState((s) => ({
       ...s,
       selectedResource: { kind, name },
-      panelStack: [{ type: 'resource', kind, name }],
-    }))
+      panelStack: [{ type: "resource", kind, name }],
+    }));
   }
 
   function handleClearSelection() {
-    setState(s => ({ ...s, selectedResource: null, panelStack: [] }))
+    setSelectedMatcher(null);
+    setState((s) => ({ ...s, selectedResource: null, panelStack: [] }));
+  }
+
+  function handleNavigateResource(kind: string, name: string) {
+    setSelectedMatcher(null);
+    setState((s) => {
+      const nextStack = [...s.navigationStack];
+      const current = nextStack.at(-1);
+      if (!current || current.type !== "module") return s;
+
+      nextStack[nextStack.length - 1] = {
+        ...current,
+        graphContext: { kind, name },
+      };
+
+      return {
+        ...s,
+        navigationStack: nextStack,
+        selectedResource: { kind, name },
+        panelStack: [{ type: "resource", kind, name }],
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
-  // Panel drill-in / back
+  // Resource creation
   // ---------------------------------------------------------------------------
 
-  function handleDrillIn(path: string[], label: string) {
-    setState(s => ({
+  const availableKinds =
+    state.application && activeManifest ? getAvailableKinds(state.application, activeManifest) : [];
+  const yamlSnapshots = state.application ? getYamlStateSnapshots(state.application) : [];
+  const localKinds =
+    activeManifest?.resources
+      .filter((resource) => resource.kind === "Kernel.Definition")
+      .map((resource) => ({
+        fullKind: `${resource.module ?? activeManifest.metadata.name}.${resource.name}`,
+        alias: resource.module ?? activeManifest.metadata.name,
+        kindName: resource.name,
+        capability:
+          typeof resource.fields.capability === "string" ? resource.fields.capability : "",
+        topology:
+          typeof resource.fields.topology === "string" ? resource.fields.topology : undefined,
+        schema: (resource.fields.schema ?? {}) as Record<string, unknown>,
+      })) ?? [];
+  const schemaByKind: Record<string, Record<string, unknown>> = Object.fromEntries(
+    [...availableKinds, ...localKinds].map((k) => [k.fullKind, k.schema]),
+  );
+  const kindByFullKind = Object.fromEntries(
+    [...availableKinds, ...localKinds].map((k) => [k.fullKind, k]),
+  );
+  const graphResource =
+    graphContext && activeManifest
+      ? (activeManifest.resources.find(
+          (resource) => resource.kind === graphContext.kind && resource.name === graphContext.name,
+        ) ?? null)
+      : null;
+  const graphKind = graphResource ? (kindByFullKind[graphResource.kind] ?? null) : null;
+
+  function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
+    if (!state.application || !state.activeModulePath) return;
+    const modules = new Map(state.application.modules);
+    const current = modules.get(state.activeModulePath)!;
+    const newResource: ParsedResource = { kind, name, fields };
+    modules.set(state.activeModulePath, {
+      ...current,
+      resources: [...current.resources, newResource],
+    });
+    setState((s) => ({
       ...s,
-      panelStack: [...s.panelStack, { type: 'item', fieldPath: path, label }],
-    }))
+      application: { ...s.application!, modules },
+      selectedResource: { kind, name },
+      panelStack: [{ type: "resource", kind, name }],
+    }));
+    setSelectedMatcher(null);
+    setCreateResourceOpen(false);
   }
 
-  function handleBack() {
-    setState(s => {
-      if (s.panelStack.length <= 1) return s
-      return { ...s, panelStack: s.panelStack.slice(0, -1) }
-    })
+  function handleSelectMatcher(selection: MatcherSelection) {
+    setSelectedMatcher(selection);
+    setState((s) => ({
+      ...s,
+      selectedResource: selection.resource,
+      panelStack: [{ type: "resource", ...selection.resource }],
+    }));
+  }
+
+  function handleUpdateResource(kind: string, name: string, fields: Record<string, unknown>) {
+    if (!state.application || !state.activeModulePath) return;
+    const modules = new Map(state.application.modules);
+    const current = modules.get(state.activeModulePath);
+    if (!current) return;
+
+    modules.set(state.activeModulePath, {
+      ...current,
+      resources: current.resources.map((resource) =>
+        resource.kind === kind && resource.name === name ? { ...resource, fields } : resource,
+      ),
+    });
+
+    setState((s) => ({ ...s, application: { ...s.application!, modules } }));
   }
 
   // ---------------------------------------------------------------------------
@@ -191,6 +413,7 @@ export function Editor() {
         onNew={() => setCreating(true)}
         onOpen={handleOpen}
         onPopTo={handlePopTo}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       {error && (
@@ -208,16 +431,26 @@ export function Editor() {
         <Sidebar
           activeManifest={activeManifest}
           selectedResource={state.selectedResource}
+          graphContext={graphContext}
+          registryServers={settings.registryServers}
+          availableKinds={availableKinds}
           onSelectResource={handleSelectResource}
-          onClearSelection={handleClearSelection}
+          onNavigateResource={handleNavigateResource}
           onOpenModule={handleOpenModule}
           onPickModuleFile={isInTauri() && adapterRef.current ? handleBrowseForModule : null}
           onAddModule={handleAddModule}
           onAddImport={handleAddImport}
+          onRemoveImport={handleRemoveImport}
+          onCreateResource={() => setCreateResourceOpen(true)}
         />
         <GraphCanvas
           hasApplication={state.application !== null}
           creating={creating}
+          graphResource={graphResource}
+          graphTopology={graphKind?.topology}
+          graphSchema={graphKind?.schema}
+          onUpdateResource={handleUpdateResource}
+          onSelectMatcher={handleSelectMatcher}
           onCreate={handleCreate}
           onCancelCreate={() => setCreating(false)}
           onNew={() => setCreating(true)}
@@ -225,12 +458,29 @@ export function Editor() {
           onClearSelection={handleClearSelection}
         />
         <DetailPanel
-          panelStack={state.panelStack}
+          selectedResource={state.selectedResource}
+          matcherSelection={selectedMatcher}
+          onClearMatcherSelection={() => setSelectedMatcher(null)}
           activeManifest={activeManifest}
-          onDrillIn={handleDrillIn}
-          onBack={handleBack}
+          schemaByKind={schemaByKind}
+          onUpdateResource={handleUpdateResource}
         />
+        <YamlStateViewer snapshots={yamlSnapshots} activeFilePath={state.activeModulePath} />
       </div>
+      {settingsOpen && (
+        <SettingsModal
+          settings={settings}
+          onClose={() => setSettingsOpen(false)}
+          onChange={setSettings}
+        />
+      )}
+      {createResourceOpen && (
+        <CreateResourceModal
+          kinds={availableKinds}
+          onClose={() => setCreateResourceOpen(false)}
+          onCreate={handleCreateResource}
+        />
+      )}
     </div>
-  )
+  );
 }

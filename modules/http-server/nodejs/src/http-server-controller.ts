@@ -1,3 +1,4 @@
+import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
 import type {
@@ -11,11 +12,27 @@ import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
 import { dispatchResponse, HttpServerApi, ResponseEntry } from "./http-api-controller.js";
 
+type CorsOptions = {
+  origin?: string | boolean | string[];
+  methods?: string | string[];
+  allowedHeaders?: string | string[];
+  exposedHeaders?: string | string[];
+  credentials?: boolean;
+  maxAge?: number;
+  cacheControl?: number | string;
+  preflightContinue?: boolean;
+  optionsSuccessStatus?: number;
+  preflight?: boolean;
+  strictPreflight?: boolean;
+  hideOptionsRoute?: boolean;
+};
+
 type HttpServerResource = RuntimeResource & {
   host?: string;
   port?: number;
   baseUrl?: string;
   logger?: boolean;
+  cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable }>;
   openapi?: {
     info: {
@@ -66,7 +83,10 @@ class HttpServer implements ResourceInstance {
     if (!this.port) {
       throw new Error("Http.Server port is required");
     }
-    this.app = Fastify({ logger: resource.logger, ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] } });
+    this.app = Fastify({
+      logger: resource.logger,
+      ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
+    });
   }
 
   async init() {
@@ -80,18 +100,39 @@ class HttpServer implements ResourceInstance {
   private async setupPlugins() {
     for (const { contentType, parser } of this.resource.contentTypeParsers ?? []) {
       if (parser) {
-        this.app.addContentTypeParser(contentType, { parseAs: "string" }, async (_req, body, done) => {
-          try {
-            done(null, await parser.invoke({ body }));
-          } catch (err) {
-            done(err as Error, undefined);
-          }
-        });
+        this.app.addContentTypeParser(
+          contentType,
+          { parseAs: "string" },
+          async (_req, body, done) => {
+            try {
+              done(null, await parser.invoke({ body }));
+            } catch (err) {
+              done(err as Error, undefined);
+            }
+          },
+        );
       } else {
         this.app.addContentTypeParser(contentType, { parseAs: "string" }, (_req, body, done) => {
           done(null, body);
         });
       }
+    }
+
+    if (this.resource.cors) {
+      await this.app.register(cors, {
+        origin: this.resource.cors.origin,
+        methods: this.resource.cors.methods,
+        allowedHeaders: this.resource.cors.allowedHeaders,
+        exposedHeaders: this.resource.cors.exposedHeaders,
+        credentials: this.resource.cors.credentials,
+        maxAge: this.resource.cors.maxAge,
+        cacheControl: this.resource.cors.cacheControl,
+        preflightContinue: this.resource.cors.preflightContinue,
+        optionsSuccessStatus: this.resource.cors.optionsSuccessStatus,
+        preflight: this.resource.cors.preflight,
+        strictPreflight: this.resource.cors.strictPreflight,
+        hideOptionsRoute: this.resource.cors.hideOptionsRoute,
+      });
     }
 
     // Register custom error handler for validation errors

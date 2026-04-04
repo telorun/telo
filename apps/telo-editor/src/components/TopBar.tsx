@@ -6,9 +6,10 @@ interface TopBarProps {
   onNew: () => void
   onOpen: () => void
   onPopTo: (index: number) => void
+  onOpenSettings: () => void
 }
 
-export function TopBar({ application, navigationStack, onNew, onOpen, onPopTo }: TopBarProps) {
+export function TopBar({ application, navigationStack, onNew, onOpen, onPopTo, onOpenSettings }: TopBarProps) {
   const moduleEntries = navigationStack.filter(e => e.type === 'module')
 
   return (
@@ -63,6 +64,12 @@ export function TopBar({ application, navigationStack, onNew, onOpen, onPopTo }:
           className="rounded px-3 py-1 text-xs font-medium text-zinc-400 dark:text-zinc-600"
         >
           Run
+        </button>
+        <button
+          onClick={onOpenSettings}
+          className="rounded px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Settings
         </button>
       </div>
     </div>

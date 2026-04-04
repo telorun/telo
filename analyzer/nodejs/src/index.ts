@@ -7,9 +7,7 @@ export { Loader } from "./manifest-loader.js";
 export { DiagnosticSeverity } from "./types.js";
 export type {
     AnalysisDiagnostic,
-    AnalysisOptions,
-    LoadOptions,
-    ManifestAdapter,
+    AnalysisOptions, LoaderInitOptions, LoadOptions, ManifestAdapter,
     Position,
     PositionIndex,
     Range

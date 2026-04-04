@@ -1,6 +1,7 @@
-import type { Application, EditorState, NavigationEntry, PanelEntry, ParsedManifest } from './model'
+import type { Application, AppSettings, EditorState, NavigationEntry, PanelEntry, ParsedManifest } from './model'
 
 const KEY = 'telo-editor-v1'
+const SETTINGS_KEY = 'telo-editor-settings-v1'
 
 // ---------------------------------------------------------------------------
 // Serialization helpers — Map/Set don't JSON-round-trip natively
@@ -89,4 +90,22 @@ export function loadState(): Partial<EditorState> | null {
 export function clearState(): void {
   if (typeof window === 'undefined') return
   try { localStorage.removeItem(KEY) } catch { /* ignore */ }
+}
+
+export function saveSettings(settings: AppSettings): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  } catch { /* ignore */ }
+}
+
+export function loadSettings(): AppSettings | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as AppSettings
+  } catch {
+    return null
+  }
 }
