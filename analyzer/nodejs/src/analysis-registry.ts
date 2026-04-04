@@ -61,6 +61,16 @@ export class AnalysisRegistry {
     return KERNEL_BUILTINS;
   }
 
+  resolveDefinition(kind: string): ResourceDefinition | undefined {
+    const ctx = this._context();
+    const resolved = ctx.aliases?.resolveKind(kind);
+    return ctx.definitions?.resolve(kind) ?? (resolved ? ctx.definitions?.resolve(resolved) : undefined);
+  }
+
+  allKinds(): string[] {
+    return this._context().definitions?.kinds() ?? [];
+  }
+
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */
   _context(): AnalysisContext {
     return { aliases: this.aliases, definitions: this.defs };

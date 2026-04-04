@@ -1,8 +1,8 @@
 import type { AnalysisDiagnostic, PositionIndex } from "@telorun/analyzer";
-import { DiagnosticSeverity, Loader, NodeAdapter, StaticAnalyzer } from "@telorun/analyzer";
-import type { ResourceManifest } from "@telorun/sdk";
+import { AnalysisRegistry, DiagnosticSeverity, Loader, NodeAdapter, StaticAnalyzer } from "@telorun/analyzer";
 import * as path from "path";
 import * as vscode from "vscode";
+import { TeloCompletionProvider } from "./completion.js";
 
 const TELO_KIND_RE = /^kind:\s+Kernel\./m;
 
@@ -48,6 +48,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const includeMap = new Map<string, Set<string>>();
 
   const analyzer = new StaticAnalyzer();
+  const completionProvider = new TeloCompletionProvider();
+
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      { language: "yaml" },
+      completionProvider,
+      " ", ":",
+    ),
+  );
 
   async function analyzeDocument(document: vscode.TextDocument): Promise<void> {
     if (document.languageId !== "yaml") return;
@@ -59,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const filePath = document.uri.fsPath;
     const loader = new Loader([new NodeAdapter(path.dirname(filePath))]);
 
-    let manifests: ResourceManifest[];
+    let manifests: Awaited<ReturnType<typeof loader.loadManifests>>;
     try {
       manifests = await loader.loadManifests(filePath);
     } catch (err) {
@@ -86,14 +95,16 @@ export function activate(context: vscode.ExtensionContext): void {
       entries.add(filePath);
     }
 
-    const manifestByKey = new Map<string, ResourceManifest>();
+    const manifestByKey = new Map<string, (typeof manifests)[number]>();
     for (const m of manifests) {
       if (m.kind && m.metadata?.name) {
         manifestByKey.set(`${m.kind}.${m.metadata.name}`, m);
       }
     }
 
-    const diagnostics = analyzer.analyze(manifests).map((d) => {
+    // Fresh registry per analysis pass so stale imports don't linger.
+    const registry = new AnalysisRegistry();
+    const diagnostics = analyzer.analyze(manifests, undefined, registry).map((d) => {
       const resource = (d.data as any)?.resource as { kind: string; name: string } | undefined;
       const m = resource ? manifestByKey.get(`${resource.kind}.${resource.name}`) : undefined;
       const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
@@ -118,6 +129,9 @@ export function activate(context: vscode.ExtensionContext): void {
       return toDiagnostic(d);
     });
     collection.set(document.uri, diagnostics);
+
+    // Make the populated registry available for completions.
+    completionProvider.updateRegistry(filePath, registry);
   }
 
   async function reanalyzeEntries(changedPath: string): Promise<void> {
@@ -137,7 +151,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(analyzeDocument),
     vscode.workspace.onDidChangeTextDocument(onChangedDebounced),
-    vscode.workspace.onDidCloseTextDocument((doc) => collection.delete(doc.uri)),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      collection.delete(doc.uri);
+      completionProvider.deleteRegistry(doc.uri.fsPath);
+    }),
   );
 
   for (const doc of vscode.workspace.textDocuments) {

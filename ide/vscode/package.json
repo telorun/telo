@@ -1,7 +1,7 @@
 {
-  "name": "telo-kernel",
+  "name": "@telorun/vscode-extension",
   "displayName": "Telo Kernel",
-  "description": "YAML diagnostics for Telo manifests",
+  "description": "YAML diagnostics and completions for Telo manifests",
   "version": "0.0.2",
   "publisher": "telorun",
   "private": true,
@@ -9,7 +9,8 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Linters"
+    "Linters",
+    "Programming Languages"
   ],
   "activationEvents": [
     "onLanguage:yaml"
