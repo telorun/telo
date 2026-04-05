@@ -13,7 +13,7 @@ metadata:
   name: "Server"
 capability: Kernel.Service
 controllers:
-  - pkg:npm/@telorun/http-server@0.1.5?local_path=./nodejs#http-server
+  - pkg:npm/@telorun/http-server@0.1.6?local_path=./nodejs#http-server
 schema:
   type: "object"
   properties:
@@ -72,6 +72,62 @@ schema:
                 required: ["kind"]
                 additionalProperties: true
         required: ["contentType"]
+    cors:
+      type: "object"
+      x-telo-eval: compile
+      additionalProperties: false
+      properties:
+        origin:
+          description: "Access-Control-Allow-Origin. '*', boolean, or array of strings."
+          oneOf:
+            - type: "string"
+            - type: "boolean"
+            - type: "array"
+              items: { type: "string" }
+        methods:
+          description: "Access-Control-Allow-Methods. Comma-delimited string or array."
+          oneOf:
+            - type: "string"
+            - type: "array"
+              items: { type: "string" }
+        allowedHeaders:
+          description: "Access-Control-Allow-Headers. Comma-delimited string or array."
+          oneOf:
+            - type: "string"
+            - type: "array"
+              items: { type: "string" }
+        exposedHeaders:
+          description: "Access-Control-Expose-Headers. Comma-delimited string or array."
+          oneOf:
+            - type: "string"
+            - type: "array"
+              items: { type: "string" }
+        credentials:
+          type: "boolean"
+          description: "Access-Control-Allow-Credentials."
+        maxAge:
+          type: "integer"
+          description: "Access-Control-Max-Age in seconds."
+        cacheControl:
+          description: "Cache-Control for preflight responses. Integer (max-age=N) or string."
+          oneOf:
+            - type: "integer"
+            - type: "string"
+        preflightContinue:
+          type: "boolean"
+          description: "Pass preflight response to route handler. Default: false."
+        optionsSuccessStatus:
+          type: "integer"
+          description: "Status code for successful OPTIONS requests. Default: 204."
+        preflight:
+          type: "boolean"
+          description: "Enable preflight handling. Default: true."
+        strictPreflight:
+          type: "boolean"
+          description: "Enforce strict W3C CORS preflight headers. Default: true."
+        hideOptionsRoute:
+          type: "boolean"
+          description: "Hide OPTIONS route from Swagger docs. Default: true."
     notFoundHandler:
       type: "object"
       properties:
@@ -110,18 +166,21 @@ kind: "Kernel.Definition"
 metadata:
   name: "Api"
 capability: Kernel.Mount
+topology: Router
 controllers:
-  - pkg:npm/@telorun/http-server@0.1.5?local_path=./nodejs#http-server-api
+  - pkg:npm/@telorun/http-server@0.1.6?local_path=./nodejs#http-server-api
 schema:
   type: "object"
   properties:
     routes:
+      x-telo-topology-role: entries
       type: "array"
       items:
         type: "object"
         additionalProperties: false
         properties:
           request:
+            x-telo-topology-role: matcher
             type: "object"
             properties:
               path:
@@ -148,23 +207,21 @@ schema:
                   x-telo-context-from: "request/schema"
                   type: object
                   properties:
-                    path: { type: string }
-                    method: { type: string }
-          handler:
-            x-telo-ref: "kernel#Invocable"
-            x-telo-context:
-              type: object
-              properties:
-                request:
-                  x-telo-context-from: "request/schema"
-                  type: object
-                  properties:
                     query: { type: object, additionalProperties: true }
                     body: { type: object, additionalProperties: true }
                     headers: { type: object, additionalProperties: true }
                     params: { type: object, additionalProperties: true }
                     path: { type: string }
                     method: { type: string }
+          handler:
+            x-telo-topology-role: handler
+            x-telo-ref: "kernel#Invocable"
+            x-telo-context:
+              type: object
+              properties:
+                inputs:
+                  type: object
+                  additionalProperties: true
                 result:
                   type: object
                   additionalProperties: true

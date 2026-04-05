@@ -1,5 +1,5 @@
-import { PassThrough, Readable } from "stream";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { PassThrough, Readable } from "stream";
 
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT = 10000;
@@ -211,9 +211,22 @@ class HttpRequestResource implements ResourceInstance {
         throw new Error(`Http.Client "${clientName}" not found`);
       }
 
-      clientBaseUrl = client.baseUrl ?? "";
-      clientHeaders = normalizeHeaders(client.headers ?? {});
-      clientTimeout = client.timeout ?? DEFAULT_TIMEOUT;
+      const clientConfig =
+        typeof client.snapshot === "function"
+          ? (client.snapshot() as Record<string, unknown>)
+          : client;
+
+      const resolvedBaseUrl = ctx.expandValue(clientConfig.baseUrl ?? "", input ?? {});
+      clientBaseUrl = typeof resolvedBaseUrl === "string" ? resolvedBaseUrl : "";
+
+      const resolvedHeaders = ctx.expandValue(clientConfig.headers ?? {}, input ?? {});
+      clientHeaders = normalizeHeaders((resolvedHeaders ?? {}) as Record<string, string>);
+
+      const resolvedTimeout = ctx.expandValue(clientConfig.timeout ?? DEFAULT_TIMEOUT, input ?? {});
+      clientTimeout =
+        typeof resolvedTimeout === "number" && Number.isFinite(resolvedTimeout)
+          ? resolvedTimeout
+          : DEFAULT_TIMEOUT;
     }
 
     // Expand template fields from manifest.inputs using runtime input as context

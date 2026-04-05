@@ -3,13 +3,32 @@ import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
 import { precompileDoc } from "./precompile.js";
-import type { LoadOptions, ManifestAdapter, Position, PositionIndex } from "./types.js";
+import type {
+  LoadOptions,
+  LoaderInitOptions,
+  ManifestAdapter,
+  Position,
+  PositionIndex,
+} from "./types.js";
 
 export class Loader {
-  protected adapters: ManifestAdapter[] = [new HttpAdapter(), new RegistryAdapter()];
+  protected adapters: ManifestAdapter[];
 
-  constructor(extraAdapters: ManifestAdapter[] = []) {
-    this.adapters.unshift(...extraAdapters);
+  constructor(extraAdaptersOrOptions: ManifestAdapter[] | LoaderInitOptions = []) {
+    const options: LoaderInitOptions = Array.isArray(extraAdaptersOrOptions)
+      ? { extraAdapters: extraAdaptersOrOptions }
+      : extraAdaptersOrOptions;
+
+    const includeHttpAdapter = options.includeHttpAdapter ?? true;
+    const includeRegistryAdapter = options.includeRegistryAdapter ?? true;
+
+    this.adapters = [];
+    if (includeHttpAdapter) this.adapters.push(new HttpAdapter());
+    if (includeRegistryAdapter) this.adapters.push(new RegistryAdapter(options.registryUrl));
+
+    if (options.extraAdapters?.length) {
+      this.adapters.unshift(...options.extraAdapters);
+    }
   }
 
   register(adapter: ManifestAdapter): this {
@@ -92,6 +111,47 @@ export class Loader {
     return resolved;
   }
 
+  async loadModuleGraph(
+    entryUrl: string,
+    onError?: (url: string, error: Error) => void,
+  ): Promise<Map<string, ResourceManifest[]>> {
+    const visited = new Set<string>([entryUrl]);
+    const result = new Map<string, ResourceManifest[]>();
+
+    const entry = await this.loadModule(entryUrl);
+    result.set(entryUrl, entry);
+
+    const queue: ResourceManifest[] = [...entry];
+
+    while (queue.length > 0) {
+      const m = queue.shift()!;
+      if (m.kind !== "Kernel.Import") continue;
+      const importSource = (m as any).source as string | undefined;
+      if (!importSource) continue;
+      const base = (m.metadata as any)?.source ?? entryUrl;
+      const importUrl =
+        importSource.startsWith(".") || importSource.startsWith("/")
+          ? this.pick(base).resolveRelative(base, importSource)
+          : importSource;
+      if (visited.has(importUrl)) continue;
+      visited.add(importUrl);
+      let imported: ResourceManifest[];
+      try {
+        imported = await this.loadModule(importUrl);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.(importUrl, error);
+        continue;
+      }
+      result.set(importUrl, imported);
+      for (const im of imported) {
+        if (im.kind === "Kernel.Import") queue.push(im);
+      }
+    }
+
+    return result;
+  }
+
   async loadManifests(entryUrl: string): Promise<ResourceManifest[]> {
     const visited = new Set<string>([entryUrl]);
     const entry = await this.loadModule(entryUrl);
@@ -105,7 +165,10 @@ export class Loader {
       const importSource = (m as any).source as string | undefined;
       if (!importSource) continue;
       const base = (m.metadata as any)?.source ?? entryUrl;
-      const importUrl = this.pick(base).resolveRelative(base, importSource);
+      const importUrl =
+        importSource.startsWith(".") || importSource.startsWith("/")
+          ? this.pick(base).resolveRelative(base, importSource)
+          : importSource;
       if (visited.has(importUrl)) continue;
       visited.add(importUrl);
       let imported: ResourceManifest[];

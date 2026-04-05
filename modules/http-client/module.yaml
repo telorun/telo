@@ -16,7 +16,6 @@ schema:
   properties:
     baseUrl:
       type: "string"
-      format: "uri"
       description: "Base URL for all requests using this client"
     headers:
       type: "object"

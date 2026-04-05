@@ -62,6 +62,10 @@ Key modules: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`,
 - **Kernel** (`kernel/nodejs/src/`) — internal runtime, not for external consumption
 - **SDK** (`sdk/nodejs/src/`) — public surface for module authors; re-exports contexts and capability interfaces
 
+## Topology-driven design constraint
+
+The **analyzer** (`analyzer/nodejs/`) and the **telo editor** (`apps/telo-editor/`) must never contain hardcoded knowledge about specific resource kinds (e.g. `Http.Api`, `http-server.Api`, route field names, handler path patterns). All resource-specific behaviour — CEL context availability, field constraints, scope boundaries — must be expressed through `x-telo-*` schema annotations in the module's `Kernel.Definition` schema and resolved generically at analysis time.
+
 ---
 
 ## Kernel Resource Kinds

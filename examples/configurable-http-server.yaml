@@ -12,21 +12,17 @@ metadata:
   name: Http
 source: ../modules/http-server
 ---
-# Declare the secret (env var must be set at boot time)
-kind: Config.Secret
-metadata:
-  name: StripeKey
-source:
-  env: STRIPE_SECRET_KEY
-grants:
-  - Http.Api/PaymentApi # optional RBAC: only this consumer can read it
----
 # Declare an optional variable
-kind: Config.Variable
+kind: Config.Env
 metadata:
-  name: ApiBaseUrl
-source:
-  env: API_BASE_URL
+  name: Config
+variables:
+  apiBaseUrl:
+    type: string
+    value: ${{ env.API_BASE_URL }}
+  stripeSecretKey:
+    type: string
+    value: ${{ env.STRIPE_SECRET_KEY }}
 ---
 # Consume in another resource
 kind: Http.Api
@@ -38,16 +34,19 @@ routes:
       method: POST
     handler:
       kind: JavaScript.Script
-      name: ChargeCard
-      inputs:
-        apiKey: "${{ Config.Secret.StripeKey.value }}"
-        baseUrl: "${{ Config.Variable.ApiBaseUrl.value }}"
+      script: |
+        function main({ apiKey, baseUrl }) {
+          return {
+            success: true,
+          }
+        }
+    inputs:
+      apiKey: "${{ resources.Config.stripeSecretKey }}"
+      baseUrl: "${{ resources.Config.apiBaseUrl }}"
     response:
-      status: 200
-      statuses:
-        "200":
-          body:
-            message: Payment accepted
+      - status: 200
+        body:
+          message: Payment accepted
 ---
 kind: Http.Server
 metadata:

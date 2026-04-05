@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-server",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -20,6 +20,7 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^9.6.1",
     "@scalar/fastify-api-reference": "^1.44.6",
     "@sinclair/typebox": "^0.34.48",

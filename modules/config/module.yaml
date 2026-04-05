@@ -1,6 +1,6 @@
 kind: Kernel.Module
 metadata:
-  name: "Config"
+  name: "config"
   namespace: std
   version: "0.1.0"
 exports:

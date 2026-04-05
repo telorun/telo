@@ -114,11 +114,11 @@ routes:
     handler:
       kind: SqlRepository.Create
       name: InsertFeedback
-      inputs:
-        data:
-          text: "${{ request.body.text }}"
-          source: "${{ request.body.source }}"
-          score: "${{ size(request.body.text) }}"
+    inputs:
+      data:
+        text: "${{ request.body.text }}"
+        source: "${{ request.body.source }}"
+        score: "${{ size(request.body.text) }}"
     response:
       - status: 201
         headers:
@@ -134,8 +134,8 @@ routes:
     handler:
       kind: SqlRepository.Read
       name: ListFeedback
-      inputs:
-        filters: {}
+    inputs:
+      filters: {}
     response:
       - status: 200
         headers:
@@ -156,9 +156,9 @@ routes:
     handler:
       kind: SqlRepository.Read
       name: GetFeedback
-      inputs:
-        filters:
-          id: "${{ request.params.id }}"
+    inputs:
+      filters:
+        id: "${{ request.params.id }}"
     response:
       - status: 200
         when: "size(result.rows) > 0"

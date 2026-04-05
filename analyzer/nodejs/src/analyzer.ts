@@ -334,6 +334,8 @@ export class StaticAnalyzer {
           return;
         }
 
+        const accessChains = extractAccessChains(parsed.ast);
+
         const contexts = mDefinition?.schema ? extractContextsFromSchema(mDefinition.schema) : [];
         const invocationContext = (m.metadata as any)?.xTeloInvocationContext as
           | Record<string, any>
@@ -361,7 +363,7 @@ export class StaticAnalyzer {
           allManifests as Record<string, any>[],
         );
 
-        for (const chain of extractAccessChains(parsed.ast)) {
+        for (const chain of accessChains) {
           const err = validateChainAgainstSchema(chain, effectiveContext);
           if (!err) continue;
           diagnostics.push({

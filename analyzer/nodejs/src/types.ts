@@ -52,6 +52,17 @@ export interface LoadOptions {
   compile?: boolean;
 }
 
+export interface LoaderInitOptions {
+  /** Adapters inserted with highest priority before built-ins. */
+  extraAdapters?: ManifestAdapter[];
+  /** Include built-in HttpAdapter. Defaults to true. */
+  includeHttpAdapter?: boolean;
+  /** Include built-in RegistryAdapter. Defaults to true. */
+  includeRegistryAdapter?: boolean;
+  /** Base URL used by built-in RegistryAdapter when enabled. */
+  registryUrl?: string;
+}
+
 export interface AnalysisOptions {
   strictContexts?: boolean;
 }

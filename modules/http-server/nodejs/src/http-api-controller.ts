@@ -197,9 +197,13 @@ export class HttpServerApi implements ResourceInstance {
               body: request.body,
             },
           };
-          const invokeInput: Record<string, any> = route.inputs
-            ? (this.ctx.moduleContext.expandWith(route.inputs, requestContext) as any)
+          const resolvedInputs: Record<string, any> = route.inputs
+            ? ((this.ctx.moduleContext.expandWith(route.inputs, requestContext) as any) ?? {})
             : requestContext;
+          const invokeInput: Record<string, any> = {
+            ...resolvedInputs,
+            inputs: resolvedInputs,
+          };
           const result = handler ? await handler.invoke(invokeInput) : undefined;
 
           return dispatchResponse(
