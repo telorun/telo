@@ -1,14 +1,14 @@
 # Topology: Sequence
 
-An ordered, nestable tree of steps. Each step either invokes an invocable or applies a control flow operation (`if`, `while`, `switch`) that contains nested child steps.
+An ordered, nestable tree of steps. Each step either invokes an invocable or applies a control flow operation (`if`, `while`, `switch`, `try`) that contains nested child steps.
 
 ## Step Types
 
-A step is exactly one of the following variants, distinguished by which key is present:
+A step is exactly one of the following variants, distinguished by which discriminating field is present. All variants share `name` (required).
 
 ### Invoke
 
-Calls an invocable resource. Outputs are available to subsequent steps via CEL.
+Calls an invocable or runnable resource. Outputs are available to subsequent steps via CEL.
 
 ```yaml
 - name: FetchUser
@@ -19,7 +19,6 @@ Calls an invocable resource. Outputs are available to subsequent steps via CEL.
     id: "${{ vars.userId }}"
 
 - name: SendWelcomeEmail
-  when: "${{ steps.FetchUser.result.isNew }}"
   invoke: { kind: Http.Request, name: Mailer }
   inputs:
     to: "${{ steps.FetchUser.result.email }}"
@@ -28,14 +27,13 @@ Calls an invocable resource. Outputs are available to subsequent steps via CEL.
 | Field    | Required | Description                                                                          |
 | -------- | -------- | ------------------------------------------------------------------------------------ |
 | `name`   | yes      | Unique step name; used to reference outputs in later steps                           |
-| `invoke` | yes      | Invocable reference (kind + resource name)                                           |
+| `invoke` | yes      | Invocable or runnable reference (kind + resource name)                               |
 | `inputs` | no       | CEL expressions producing argument values — expanded by kernel (see invocable.md §3) |
 | `retry`  | no       | Retry policy applied by kernel on failure (see invocable.md §3)                      |
-| `when`   | no       | CEL boolean guard; step is skipped (not failed) when false                           |
 
 ### If
 
-Conditional branch. Evaluates a CEL boolean; executes `then` steps on true, `else` steps (if present) on false.
+Conditional branch. Evaluates a CEL boolean; executes `then` steps on true. Optional `elseif` entries are evaluated in order when `if` is false. `else` runs when no condition matched.
 
 ```yaml
 - name: CheckVerified
@@ -43,17 +41,23 @@ Conditional branch. Evaluates a CEL boolean; executes `then` steps on true, `els
   then:
     - name: ProcessPayment
       invoke: { kind: Payment.Process, name: Processor }
+  elseif:
+    - if: "${{ steps.FetchUser.result.pending }}"
+      then:
+        - name: QueuePayment
+          invoke: { kind: Payment.Queue, name: Queue }
   else:
     - name: RejectRequest
       invoke: { kind: Payment.Reject, name: Rejecter }
 ```
 
-| Field  | Required | Description                               |
-| ------ | -------- | ----------------------------------------- |
-| `name` | yes      | Step name                                 |
-| `if`   | yes      | CEL boolean expression                    |
-| `then` | yes      | Child steps executed when condition true  |
-| `else` | no       | Child steps executed when condition false |
+| Field     | Required | Description                                                              |
+| --------- | -------- | ------------------------------------------------------------------------ |
+| `name`    | yes      | Step name                                                                |
+| `if`      | yes      | CEL boolean expression                                                   |
+| `then`    | yes      | Child steps executed when `if` is true                                   |
+| `elseif`  | no       | Ordered list of `{ if, then }` pairs evaluated when `if` is false        |
+| `else`    | no       | Child steps executed when `if` and all `elseif` conditions are false     |
 
 ### While
 
@@ -129,7 +133,6 @@ Error boundary. Executes `try` steps; on failure jumps to `catch` (if present); 
 | Field     | Required | Description                                                        |
 | --------- | -------- | ------------------------------------------------------------------ |
 | `name`    | yes      | Step name                                                          |
-| `when`    | no       | CEL boolean guard; skips entire try block when false               |
 | `try`     | yes      | Child steps; halts on first failure and jumps to `catch`           |
 | `catch`   | no       | Runs when `try` fails; receives `${{ error }}`; swallows the error |
 | `finally` | no       | Always runs after `try`/`catch`; receives `${{ error }}`           |
@@ -161,22 +164,27 @@ When `concurrency > 1` is set on the resource, `steps.*` references are invalid 
 ## Kernel Behavior
 
 - Executes steps in declaration order.
-- For `invoke` steps: if `when` is present and evaluates to false, skips the step without error and continues. Otherwise calls the invocable, stores result under the step name, makes it available via CEL.
-- For `if` steps: evaluates the condition, executes the matching branch, halts on first step failure within the branch.
+- For `invoke` steps: calls the invocable, stores result under the step name, makes it available via CEL.
+- For `if` steps: evaluates `if`; on true executes `then`. On false evaluates each `elseif` condition in order, executing the first matching `then`. If no condition matched and `else` is present, executes `else`.
 - For `while` steps: re-evaluates the condition before each iteration; exits when false.
 - For `switch` steps: evaluates the expression, executes the first matching case, falls back to `default` if present, returns an error if no match and no default.
 - Halts the entire sequence on the first unhandled step failure.
 
 ## Analyzer Behavior
 
-- Validates `invoke` references resolve to existing invocable resources.
+- Validates `invoke` references resolve to existing invocable or runnable resources.
 - Validates step name uniqueness across the entire tree (including nested steps).
-- Validates CEL expressions in `inputs`, `when`, `if`, `while`, and `switch` only reference steps that precede the current step in execution order — no forward references.
-- Validates `then`, `else`, `do`, `cases`, and `default` recursively using the same rules.
+- Validates CEL expressions in `inputs`, `if`, `elseif[*].if`, `while`, and `switch` only reference steps that precede the current step in execution order — no forward references.
+- Enforces boolean type on `predicate`-role fields (`if`, `while`, `elseif[*].if`); allows any type on `discriminator`-role fields (`switch`).
+- Validates `then`, `elseif`, `else`, `do`, `cases`, `default`, `try`, `catch`, `finally` recursively using the same rules.
 
 ## Editor Behavior
 
-Activates the step tree sub-editor: a vertically stacked, hierarchical list. Control flow steps are collapsible and render child steps with indentation.
+Activates the step tree canvas: a vertically stacked, hierarchical list. The canvas derives all structural knowledge from `x-telo-topology-role` annotations — no step field names are hardcoded in the editor.
+
+**Step variant detection:** the canvas matches each step against the `oneOf` variants in the schema by checking which variant's `required` fields are present. Once the variant is identified, role annotations on that variant's properties drive all rendering decisions.
+
+**Detail panel:** when a step is selected, `branch` and `branch-list` role fields are excluded from the detail panel form — they are managed by the canvas, not edited as raw values.
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -187,150 +195,106 @@ Activates the step tree sub-editor: a vertically stacked, hierarchical list. Con
 │ 2. ◇ if: user.verified                      ⠿ │
 │   ├── then                                    │
 │   │    3. ProcessPayment   Payment.Process    │
+│   ├── elseif: user.pending                    │
+│   │    4. QueuePayment     Payment.Queue      │
 │   └── else                                    │
-│        3. RejectRequest   Payment.Reject      │
+│        5. RejectRequest   Payment.Reject      │
 └──────────────────────────────────────────────┘
               ↓
 ┌──────────────────────────────────────────────┐
-│ 4. Notify                  Http.Client      ⠿ │
+│ 6. Notify                  Http.Client      ⠿ │
 └──────────────────────────────────────────────┘
 
 [+ Add step]
 ```
 
 - `⠿` drag handle for reordering (top-level steps only).
-- Control flow step cards show: index, name, type symbol (`◇` for if/switch, `↻` for while), and the condition expression.
-- Invoke step cards show: index, name, invocable kind and resource name.
-- Clicking a card selects it — the detail panel opens with that step's fields.
+- Control flow step cards show the `predicate`-role field value as the condition expression, or the `discriminator`-role field value for switch steps.
+- Invoke step cards show the `invoke`-role field as the target reference.
+- `branch` fields render as inline labeled containers within the step card.
+- `branch-list` fields (elseif) render as an ordered list of collapsible condition+container pairs.
+- Clicking a card selects it — the detail panel opens with that step's non-topology fields.
 
 ## Role Annotations
 
-| Role     | Required | Description                                                                     |
-| -------- | -------- | ------------------------------------------------------------------------------- |
-| `steps`  | yes      | The top-level ordered array of step entries                                     |
-| `invoke` | yes      | The invocable reference field on each invoke-type step entry                    |
-| `inputs` | no       | CEL input mapping on each invoke step, evaluated against preceding step results |
+| Role            | Required | Cardinality     | Description                                                                 |
+| --------------- | -------- | --------------- | --------------------------------------------------------------------------- |
+| `steps`         | yes      | one             | The top-level ordered array of step entries                                 |
+| `invoke`        | yes*     | one per variant | The invocable/runnable reference field on invoke-type steps                 |
+| `inputs`        | no       | one per variant | CEL input mapping on invoke steps                                           |
+| `predicate`     | yes*     | one per variant | CEL boolean expression driving if/while control flow; editor shows condition builder |
+| `discriminator` | yes*     | one per variant | CEL value expression matched against case keys; editor shows plain input    |
+| `branch`        | no       | many            | Sequential child-steps array; canvas-owned, hidden from detail panel        |
+| `case-map`      | no       | one per variant | Map of string key → child-steps array; canvas enumerates keys as branches   |
+| `branch-list`   | no       | one per variant | Ordered list of `{ predicate, branch }` pairs (elseif chains)               |
 
-Control flow fields (`if`, `while`, `switch`, `then`, `else`, `do`, `cases`, `default`) and the `when` guard are built into the topology and do not require role annotations — the kernel and editor recognize them by name on any step entry.
+\* required on the specific variant that uses it, not globally.
 
 ## Example Definition
 
 ```yaml
 kind: Kernel.Definition
-metadata: { name: Steps, module: Job }
-capability: Runnable
+metadata: { name: Sequence, module: Run }
+capability: Kernel.Runnable
 topology: Sequence
+controllers:
+  - pkg:npm/@telorun/run@0.1.1#sequence
 schema:
   type: object
+  $defs:
+    step:
+      type: object
+      properties:
+        name: { type: string }
+      oneOf:
+        - properties:
+            invoke:
+              x-telo-topology-role: invoke
+              x-telo-ref: "kernel#Invocable"
+            inputs:
+              x-telo-topology-role: inputs
+              type: object
+
+        - properties:
+            if:
+              x-telo-topology-role: predicate
+              type: boolean
+            elseif:
+              x-telo-topology-role: branch-list
+              type: array
+              items:
+                type: object
+                properties:
+                  if:   { x-telo-topology-role: predicate, type: boolean }
+                  then: { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+                required: [if, then]
+            then: { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+            else: { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+          required: [if, then]
+
+        - properties:
+            while: { x-telo-topology-role: predicate,     type: boolean }
+            do:    { x-telo-topology-role: branch,        type: array, items: { $ref: "#/$defs/step" } }
+          required: [while, do]
+
+        - properties:
+            switch:  { x-telo-topology-role: discriminator, type: string }
+            cases:   { x-telo-topology-role: case-map,      type: object,
+                       additionalProperties: { type: array, items: { $ref: "#/$defs/step" } } }
+            default: { x-telo-topology-role: branch,        type: array, items: { $ref: "#/$defs/step" } }
+          required: [switch, cases]
+
+        - properties:
+            try:     { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+            catch:   { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+            finally: { x-telo-topology-role: branch, type: array, items: { $ref: "#/$defs/step" } }
+          required: [try]
+      required: [name]
+
   properties:
     steps:
       x-telo-topology-role: steps
       type: array
-      items:
-        type: object
-        properties:
-          name: { type: string }
-          invoke:
-            x-telo-topology-role: invoke
-            x-telo-ref: Kernel.Invocable
-          inputs:
-            x-telo-topology-role: inputs
-            type: object
-          when: { type: string }
-          if: { type: string }
-          then: { $ref: "#/properties/steps" }
-          else: { $ref: "#/properties/steps" }
-          while: { type: string }
-          do: { $ref: "#/properties/steps" }
-          switch: { type: string }
-          cases:
-            type: object
-            additionalProperties: { $ref: "#/properties/steps" }
-          default: { $ref: "#/properties/steps" }
-```
-
-## Comprehensive Example
-
-Covers all step types (`invoke`, `if`, `while`, `switch`) with `when` guards and three levels of nesting.
-
-```yaml
-kind: Run.Sequence
-metadata:
-  name: ProcessOrder
-  module: MyApp
-steps:
-  # Level 1 — plain invoke
-  - name: FetchOrder
-    invoke: { kind: Sql.Read, name: OrderQuery }
-    inputs:
-      id: "${{ vars.orderId }}"
-
-  # Level 1 — guarded invoke (skipped if order already processed)
-  - name: LogReceived
-    when: "${{ !steps.FetchOrder.result.alreadyProcessed }}"
-    invoke: { kind: Console.Log, name: Logger }
-    inputs:
-      message: "Processing order ${{ vars.orderId }}"
-
-  # Level 1 — switch on order type
-  - name: RouteByType
-    switch: "${{ steps.FetchOrder.result.type }}"
-    cases:
-      digital:
-        # Level 2 — if inside switch case
-        - name: CheckLicense
-          if: "${{ steps.FetchOrder.result.requiresLicense }}"
-          then:
-            # Level 3 — invoke inside if/then
-            - name: IssueLicense
-              invoke: { kind: Http.Request, name: LicenseApi }
-              inputs:
-                userId: "${{ steps.FetchOrder.result.userId }}"
-            - name: EmailLicense
-              when: "${{ steps.IssueLicense.result.ok }}"
-              invoke: { kind: Http.Request, name: Mailer }
-              inputs:
-                to: "${{ steps.FetchOrder.result.email }}"
-                key: "${{ steps.IssueLicense.result.key }}"
-          else:
-            # Level 3 — plain invoke inside if/else
-            - name: SendDownloadLink
-              invoke: { kind: Http.Request, name: Mailer }
-              inputs:
-                to: "${{ steps.FetchOrder.result.email }}"
-
-      physical:
-        # Level 2 — while inside switch case (poll fulfillment)
-        - name: PollFulfillment
-          while: "${{ steps.CheckFulfillment.result.status == 'pending' }}"
-          do:
-            # Level 3 — invoke inside while
-            - name: CheckFulfillment
-              invoke: { kind: Http.Request, name: FulfillmentApi }
-              inputs:
-                orderId: "${{ vars.orderId }}"
-            - name: WaitBeforeRetry
-              when: "${{ steps.CheckFulfillment.result.status == 'pending' }}"
-              invoke: { kind: Flow.Sleep, name: Delay }
-              inputs:
-                ms: 5000
-
-        - name: NotifyShipped
-          invoke: { kind: Http.Request, name: Mailer }
-          inputs:
-            to: "${{ steps.FetchOrder.result.email }}"
-            trackingId: "${{ steps.CheckFulfillment.result.trackingId }}"
-
-    default:
-      - name: RejectUnknownType
-        invoke: { kind: Console.Log, name: Logger }
-        inputs:
-          message: "Unknown order type: ${{ steps.FetchOrder.result.type }}"
-
-  # Level 1 — final invoke always runs
-  - name: RecordAudit
-    invoke: { kind: Sql.Exec, name: AuditInsert }
-    inputs:
-      orderId: "${{ vars.orderId }}"
-      status: "completed"
+      items: { $ref: "#/$defs/step" }
+  required: [steps]
 ```

@@ -21,7 +21,7 @@ import {
 import type {
   Application,
   EditorState,
-  MatcherSelection,
+  Selection,
   NavigationEntry,
   ParsedResource,
 } from "../model";
@@ -29,6 +29,7 @@ import { DEFAULT_SETTINGS } from "../model";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
 import { GraphCanvas } from "./GraphCanvas";
+import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -116,7 +117,7 @@ export function Editor() {
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
-  const [selectedMatcher, setSelectedMatcher] = useState<MatcherSelection | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
 
   const adapterRef = useRef<ManifestAdapter | null>(null);
 
@@ -293,7 +294,7 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleOpenModule(filePath: string) {
-    setSelectedMatcher(null);
+    setSelection(null);
     setState((s) => ({
       ...s,
       activeModulePath: filePath,
@@ -304,7 +305,7 @@ export function Editor() {
   }
 
   function handlePopTo(index: number) {
-    setSelectedMatcher(null);
+    setSelection(null);
     setState((s) => {
       const entry = s.navigationStack[index];
       if (!entry || entry.type !== "module") return s;
@@ -324,7 +325,7 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleSelectResource(kind: string, name: string) {
-    setSelectedMatcher(null);
+    setSelection(null);
     setState((s) => ({
       ...s,
       selectedResource: { kind, name },
@@ -333,12 +334,12 @@ export function Editor() {
   }
 
   function handleClearSelection() {
-    setSelectedMatcher(null);
+    setSelection(null);
     setState((s) => ({ ...s, selectedResource: null, panelStack: [] }));
   }
 
   function handleNavigateResource(kind: string, name: string) {
-    setSelectedMatcher(null);
+    setSelection(null);
     setState((s) => {
       const nextStack = [...s.navigationStack];
       const current = nextStack.at(-1);
@@ -384,6 +385,11 @@ export function Editor() {
   const kindByFullKind = Object.fromEntries(
     [...availableKinds, ...localKinds].map((k) => [k.fullKind, k]),
   );
+  const capabilityByKind: Record<string, string> = Object.fromEntries(
+    [...availableKinds, ...localKinds]
+      .filter((k) => k.capability)
+      .map((k) => [k.fullKind, k.capability]),
+  );
   const graphResource =
     graphContext && activeManifest
       ? (activeManifest.resources.find(
@@ -391,6 +397,15 @@ export function Editor() {
         ) ?? null)
       : null;
   const graphKind = graphResource ? (kindByFullKind[graphResource.kind] ?? null) : null;
+  const resolvedResources: ResolvedResourceOption[] =
+    activeManifest?.resources.map((resource) => ({
+      kind: resource.kind,
+      name: resource.name,
+      capability:
+        typeof kindByFullKind[resource.kind]?.capability === "string"
+          ? kindByFullKind[resource.kind].capability
+          : undefined,
+    })) ?? [];
 
   function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.application || !state.activeModulePath) return;
@@ -407,12 +422,12 @@ export function Editor() {
       selectedResource: { kind, name },
       panelStack: [{ type: "resource", kind, name }],
     }));
-    setSelectedMatcher(null);
+    setSelection(null);
     setCreateResourceOpen(false);
   }
 
-  function handleSelectMatcher(selection: MatcherSelection) {
-    setSelectedMatcher(selection);
+  function handleSelect(selection: Selection) {
+    setSelection(selection);
     setState((s) => ({
       ...s,
       selectedResource: selection.resource,
@@ -486,7 +501,7 @@ export function Editor() {
           graphTopology={graphKind?.topology}
           graphSchema={graphKind?.schema}
           onUpdateResource={handleUpdateResource}
-          onSelectMatcher={handleSelectMatcher}
+          onSelect={handleSelect}
           onCreate={handleCreate}
           onCancelCreate={() => setCreating(false)}
           onNew={() => setCreating(true)}
@@ -495,10 +510,11 @@ export function Editor() {
         />
         <DetailPanel
           selectedResource={state.selectedResource}
-          matcherSelection={selectedMatcher}
-          onClearMatcherSelection={() => setSelectedMatcher(null)}
+          selection={selection}
           activeManifest={activeManifest}
           schemaByKind={schemaByKind}
+          capabilityByKind={capabilityByKind}
+          resolvedResources={resolvedResources}
           onUpdateResource={handleUpdateResource}
         />
         <YamlStateViewer snapshots={yamlSnapshots} activeFilePath={state.activeModulePath} />

@@ -28,6 +28,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  editor:
+    image: node:24
+    command: 'sh -c "corepack enable && exec pnpm run --filter telo-editor dev"'
+    init: true
+    volumes:
+      - .:/telo
+    working_dir: /telo
   db:
     image: postgres:18
     environment:

@@ -14,6 +14,8 @@ schema:
   type: object
   properties:
     output:
+      title: Output
+      description: Text content written to standard output.
       type: string
   required: ["output"]
 ---
@@ -27,5 +29,7 @@ schema:
   type: object
   properties:
     prompt:
+      title: Prompt
+      description: Prompt text shown before reading input.
       type: string
   required: ["prompt"]

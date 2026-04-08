@@ -16,8 +16,11 @@ schema:
   type: object
   properties:
     namespace:
+      title: Namespace
+      description: Temporal namespace used for workflow execution.
       type: string
     address:
+      title: Address
       type: string
       description: Temporal server address (e.g. localhost:7233)
   $defs:
@@ -25,12 +28,19 @@ schema:
       type: object
       properties:
         scheduleToCloseTimeout:
+          title: Schedule To Close Timeout
           type: string
           description: Maximum time for the entire activity (e.g. 10m)
         retryPolicy:
+          title: Retry Policy
+          description: Retry behavior for failed activity executions.
           type: object
           properties:
             maxAttempts:
+              title: Max Attempts
+              description: Maximum number of activity retry attempts.
               type: integer
             initialInterval:
+              title: Initial Interval
+              description: Initial delay between retry attempts.
               type: string

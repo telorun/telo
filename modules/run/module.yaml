@@ -12,112 +12,213 @@ kind: Kernel.Definition
 metadata:
   name: Sequence
 capability: Kernel.Runnable
+topology: Sequence
 controllers:
   - pkg:npm/@telorun/run@0.1.2?local_path=./nodejs#sequence
 schema:
   type: object
+  $defs:
+    step:
+      title: Step
+      description: Single executable step or control-flow block.
+      type: object
+      properties:
+        name:
+          title: Name
+          description: Unique step name.
+          type: string
+      oneOf:
+        - title: invoke
+          description: Invokes an invocable or runnable resource.
+          properties:
+            invoke:
+              title: Invoke
+              description: Resource to invoke for this step.
+              x-telo-topology-role: invoke
+              anyOf:
+                - title: Invocable
+                  description: Reference to an invocable resource.
+                  x-telo-ref: "kernel#Invocable"
+                - title: Runnable
+                  description: Reference to a runnable resource.
+                  x-telo-ref: "kernel#Runnable"
+            inputs:
+              title: Inputs
+              description: Inputs passed to the invoked resource.
+              x-telo-topology-role: inputs
+              type: object
+              additionalProperties: true
+            retry:
+              title: Retry
+              description: Retry policy for step invocation.
+              type: object
+              properties:
+                attempts:
+                  title: Attempts
+                  description: Maximum retry attempts.
+                  type: integer
+                delay:
+                  title: Delay
+                  description: Delay between retries.
+                  type: string
+
+        - title: if/then/else
+          description: Conditional branch; executes then or else based on a boolean expression.
+          properties:
+            if:
+              title: If
+              description: CEL boolean expression; true executes then, false executes else.
+              x-telo-topology-role: predicate
+              type: boolean
+            elseif:
+              title: Else If
+              description: Additional condition-branch pairs evaluated when if is false.
+              x-telo-topology-role: branch-list
+              type: array
+              items:
+                type: object
+                properties:
+                  if:
+                    title: If
+                    description: CEL boolean expression for this else-if branch.
+                    x-telo-topology-role: predicate
+                    type: boolean
+                  then:
+                    title: Then
+                    description: Steps executed when this else-if condition is true.
+                    x-telo-topology-role: branch
+                    type: array
+                    items:
+                      $ref: "#/$defs/step"
+                required:
+                  - if
+                  - then
+            then:
+              title: Then
+              description: Steps executed when if evaluates true.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+            else:
+              title: Else
+              description: Steps executed when if (and all elseif conditions) evaluate false.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+          required:
+            - if
+            - then
+
+        - title: while/do
+          description: Loop; executes do steps repeatedly while condition is true.
+          properties:
+            while:
+              title: While
+              description: CEL boolean expression; evaluated before each iteration.
+              x-telo-topology-role: predicate
+              type: boolean
+            do:
+              title: Do
+              description: Steps executed on each iteration.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+          required:
+            - while
+            - do
+
+        - title: switch/cases/default
+          description: Multi-branch dispatch; matches a value expression against case keys.
+          properties:
+            switch:
+              title: Switch
+              description: CEL expression; result matched against case keys.
+              x-telo-topology-role: discriminator
+              type: string
+            cases:
+              title: Cases
+              description: Map of value to step list; executed when switch matches the key.
+              x-telo-topology-role: case-map
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  $ref: "#/$defs/step"
+            default:
+              title: Default
+              description: Steps executed when no case matches.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+          required:
+            - switch
+            - cases
+
+        - title: try/catch/finally
+          description: Error boundary; executes try steps and handles failure via catch and finally.
+          properties:
+            try:
+              title: Try
+              description: Steps executed; halts on first failure and jumps to catch.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+            catch:
+              title: Catch
+              description: Steps executed when try fails; receives error context.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+            finally:
+              title: Finally
+              description: Steps always executed after try/catch regardless of outcome.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/step"
+          required:
+            - try
+      required:
+        - name
+
   properties:
     with:
+      title: With
       x-telo-scope: /steps
       description: Resources available during sequence execution; torn down when done
     targets:
+      title: Targets
       type: array
-      items:
-        type: string
       description: Names of with-resources to run() before executing steps; torn down when done
+      items:
+        title: Target
+        description: Name of a with-resource to run before steps.
+        type: string
     inputs:
+      title: Inputs
       type: object
       description: Input values passed to the sequence when invoked
       additionalProperties: true
     outputs:
+      title: Outputs
       type: object
       description: CEL mapping producing the sequence result
       additionalProperties: true
     steps:
+      title: Steps
+      description: Ordered sequence of steps to execute.
+      x-telo-topology-role: steps
       type: array
       x-telo-step-context:
         invoke: invoke
         outputType: outputType
       items:
-        type: object
-        properties:
-          name:
-            type: string
-          when:
-            type: boolean
-            description: CEL boolean guard; step skipped when falsy
-          invoke:
-            anyOf:
-              - x-telo-ref: "kernel#Invocable"
-              - x-telo-ref: "kernel#Runnable"
-          inputs:
-            type: object
-            additionalProperties: true
-          retry:
-            type: object
-            properties:
-              attempts: { type: integer }
-              delay: { type: string }
-          if:
-            type: boolean
-          then:
-            type: array
-            items: &nested_step
-              type: object
-              properties:
-                name: { type: string }
-                when: { type: boolean }
-                invoke:
-                  anyOf:
-                    - x-telo-ref: "kernel#Invocable"
-                    - x-telo-ref: "kernel#Runnable"
-                inputs: { type: object, additionalProperties: true }
-                retry:
-                  type: object
-                  properties:
-                    attempts: { type: integer }
-                    delay: { type: string }
-                if: { type: boolean }
-                then: { type: array }
-                else: { type: array }
-                while: { type: boolean }
-                do: { type: array }
-                switch: { type: string }
-                cases: { type: object }
-                default: { type: array }
-                try: { type: array }
-                catch: { type: array }
-                finally: { type: array }
-              required:
-                - name
-          else:
-            type: array
-            items: *nested_step
-          while:
-            type: boolean
-          do:
-            type: array
-            items: *nested_step
-          switch:
-            type: string
-          cases:
-            type: object
-            additionalProperties:
-              type: array
-              items: *nested_step
-          default:
-            type: array
-            items: *nested_step
-          try:
-            type: array
-            items: *nested_step
-          catch:
-            type: array
-            items: *nested_step
-          finally:
-            type: array
-            items: *nested_step
-        required:
-          - name
+        $ref: "#/$defs/step"
   required:
     - steps

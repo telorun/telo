@@ -22,17 +22,27 @@ schema:
   type: object
   properties:
     backend:
+      title: Backend
+      description: Reference to the workflow backend provider.
       x-telo-ref: "std/workflow#Backend"
     nodes:
+      title: Nodes
+      description: Workflow nodes to execute.
       type: array
       items:
         type: object
         properties:
           name:
+            title: Name
+            description: Unique node name.
             type: string
           invoke:
+            title: Invoke
+            description: Resource invoked by this node.
             x-telo-ref: "kernel#Invocable"
           options:
+            title: Options
+            description: Backend-specific execution options for this node.
             x-telo-schema-from: "backend/$defs/NodeOptions"
         required:
           - name

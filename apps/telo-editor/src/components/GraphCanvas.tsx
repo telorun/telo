@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { MatcherSelection, ParsedResource } from "../model";
+import type { Selection, ParsedResource } from "../model";
 import { Button } from "./ui/button";
 import { RouterTopologyCanvas } from "./RouterTopologyCanvas";
+import { SequenceTopologyCanvas } from "./SequenceTopologyCanvas";
 
 interface GraphCanvasProps {
   hasApplication: boolean;
@@ -12,7 +13,7 @@ interface GraphCanvasProps {
   graphTopology?: string;
   graphSchema?: Record<string, unknown>;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
-  onSelectMatcher: (selection: MatcherSelection) => void;
+  onSelect: (selection: Selection) => void;
   onCreate: (name: string) => void;
   onCancelCreate: () => void;
   onNew: () => void;
@@ -27,7 +28,7 @@ export function GraphCanvas({
   graphTopology,
   graphSchema,
   onUpdateResource,
-  onSelectMatcher,
+  onSelect,
   onCreate,
   onCancelCreate,
   onNew,
@@ -98,7 +99,19 @@ export function GraphCanvas({
         resource={graphResource}
         schema={graphSchema}
         onUpdateResource={onUpdateResource}
-        onSelectMatcher={onSelectMatcher}
+        onSelect={onSelect}
+        onBackgroundClick={onClearSelection}
+      />
+    );
+  }
+
+  if (graphTopology === "Sequence" && graphResource && graphSchema) {
+    return (
+      <SequenceTopologyCanvas
+        resource={graphResource}
+        schema={graphSchema}
+        onUpdateResource={onUpdateResource}
+        onSelect={onSelect}
         onBackgroundClick={onClearSelection}
       />
     );

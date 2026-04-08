@@ -18,145 +18,232 @@ schema:
   type: "object"
   properties:
     host:
+      title: Host
+      description: Host interface for the HTTP server.
       type: "string"
       x-telo-eval: compile
       default: "localhost"
     port:
+      title: Port
+      description: TCP port used by the HTTP server.
       type: "integer"
       x-telo-eval: compile
       minimum: 1
       maximum: 65535
     baseUrl:
+      title: Base URL
+      description: External base URL used in generated links.
       type: "string"
       x-telo-eval: compile
     logger:
+      title: Logger
+      description: Enable or disable request logging.
       type: "boolean"
       x-telo-eval: compile
     openapi:
+      title: OpenAPI
+      description: OpenAPI document metadata for the server.
       type: "object"
       x-telo-eval: compile
       properties:
         info:
+          title: Info
+          description: OpenAPI info block.
           type: "object"
           properties:
-            title: { type: "string" }
-            version: { type: "string" }
+            title:
+              title: Title
+              description: API title shown in OpenAPI documentation.
+              type: "string"
+            version:
+              title: Version
+              description: API version shown in OpenAPI documentation.
+              type: "string"
           required: ["title", "version"]
       required: ["info"]
     mounts:
+      title: Mounts
+      description: Mount points attached to the HTTP server.
       type: "array"
       x-telo-eval: compile
       items:
+        title: Mount
+        description: Single mount configuration.
         type: "object"
         properties:
           path:
+            title: Path
+            description: URL prefix where the mount is attached.
             type: "string"
           type:
+            title: Type
+            description: Mount resource kind to attach.
             type: "string"
+            x-telo-ref: "kernel#Mount"
     contentTypeParsers:
+      title: Content Type Parsers
+      description: Custom parsers for specific content types.
       type: "array"
       x-telo-eval: compile
       items:
+        title: Content Type Parser
+        description: Parser mapping for one content type.
         type: "object"
         additionalProperties: false
         properties:
           contentType:
+            title: Content Type
+            description: HTTP content type matched by this parser.
             type: "string"
           parser:
+            title: Parser
+            description: Invocable parser resource for this content type.
             x-telo-ref: "kernel#Invocable"
             oneOf:
-              - type: "string"
+              - title: Parser Reference
+                description: String reference to an invocable parser.
+                type: "string"
               - type: "object"
+                title: Parser Object
+                description: Object reference to an invocable parser.
                 properties:
-                  kind: { type: "string" }
+                  kind:
+                    title: Kind
+                    description: Kind of the parser resource.
+                    type: "string"
                 required: ["kind"]
                 additionalProperties: true
         required: ["contentType"]
     cors:
+      title: CORS
+      description: Cross-origin resource sharing configuration.
       type: "object"
       x-telo-eval: compile
       additionalProperties: false
       properties:
         origin:
+          title: Origin
           description: "Access-Control-Allow-Origin. '*', boolean, or array of strings."
           oneOf:
             - type: "string"
             - type: "boolean"
             - type: "array"
-              items: { type: "string" }
+              items:
+                title: Origin
+                description: Allowed origin value.
+                type: "string"
         methods:
+          title: Methods
           description: "Access-Control-Allow-Methods. Comma-delimited string or array."
           oneOf:
             - type: "string"
             - type: "array"
-              items: { type: "string" }
+              items:
+                title: Method
+                description: Allowed HTTP method.
+                type: "string"
         allowedHeaders:
+          title: Allowed Headers
           description: "Access-Control-Allow-Headers. Comma-delimited string or array."
           oneOf:
             - type: "string"
             - type: "array"
-              items: { type: "string" }
+              items:
+                title: Header
+                description: Allowed request header name.
+                type: "string"
         exposedHeaders:
+          title: Exposed Headers
           description: "Access-Control-Expose-Headers. Comma-delimited string or array."
           oneOf:
             - type: "string"
             - type: "array"
-              items: { type: "string" }
+              items:
+                title: Header
+                description: Exposed response header name.
+                type: "string"
         credentials:
+          title: Credentials
           type: "boolean"
           description: "Access-Control-Allow-Credentials."
         maxAge:
+          title: Max Age
           type: "integer"
           description: "Access-Control-Max-Age in seconds."
         cacheControl:
+          title: Cache Control
           description: "Cache-Control for preflight responses. Integer (max-age=N) or string."
           oneOf:
             - type: "integer"
             - type: "string"
         preflightContinue:
+          title: Preflight Continue
           type: "boolean"
           description: "Pass preflight response to route handler. Default: false."
         optionsSuccessStatus:
+          title: Options Success Status
           type: "integer"
           description: "Status code for successful OPTIONS requests. Default: 204."
         preflight:
+          title: Preflight
           type: "boolean"
           description: "Enable preflight handling. Default: true."
         strictPreflight:
+          title: Strict Preflight
           type: "boolean"
           description: "Enforce strict W3C CORS preflight headers. Default: true."
         hideOptionsRoute:
+          title: Hide Options Route
           type: "boolean"
           description: "Hide OPTIONS route from Swagger docs. Default: true."
     notFoundHandler:
+      title: Not Found Handler
+      description: Fallback handler configuration when no route matches.
       type: "object"
       properties:
         invoke:
+          title: Invoke
+          description: Resource invoked to generate not-found response data.
           type: "object"
           properties:
             kind:
+              title: Kind
+              description: Kind of resource used for fallback invocation.
               type: "string"
           required: ["kind"]
           additionalProperties: true
         response:
+          title: Response
+          description: Response selection rules for not-found handling.
           type: "array"
           items:
+            title: Response Entry
+            description: Conditional response mapping entry.
             type: "object"
             properties:
               status:
+                title: Status
+                description: HTTP status code for this response entry.
                 type: "integer"
                 minimum: 100
                 maximum: 599
               when:
+                title: When
+                description: CEL condition that selects this response entry.
                 type: "boolean"
               mode:
+                title: Mode
+                description: Response mode; buffer or stream.
                 type: "string"
                 enum: ["buffer", "stream"]
               headers:
+                title: Headers
+                description: Response headers.
                 type: "object"
                 additionalProperties:
                   type: "string"
               body:
+                title: Body
                 description: "CEL expression or object mapping for response body"
             required: ["status"]
       required: ["invoke"]
@@ -173,29 +260,46 @@ schema:
   type: "object"
   properties:
     routes:
+      title: Routes
+      description: HTTP route definitions.
       x-telo-topology-role: entries
       type: "array"
       items:
+        title: Route
+        description: Single route definition.
         type: "object"
         additionalProperties: false
         properties:
           request:
+            title: Request
+            description: Request matcher for this route.
             x-telo-topology-role: matcher
             type: "object"
             properties:
               path:
+                title: Path
+                description: Route path pattern.
                 type: "string"
               method:
+                title: Method
+                description: HTTP method matched by the route.
                 type: "string"
                 enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
               query:
+                title: Query
+                description: Query parameter schema for request matching.
                 type: "object"
               body:
+                title: Body
+                description: Request body schema for request matching.
                 type: "object"
               headers:
+                title: Headers
+                description: Header schema for request matching.
                 type: "object"
             required: ["path", "method"]
           inputs:
+            title: Inputs
             type: "object"
             additionalProperties: true
             description: "CEL expressions evaluated against the request context; result is passed to handler.invoke()"
@@ -214,6 +318,8 @@ schema:
                     path: { type: string }
                     method: { type: string }
           handler:
+            title: Handler
+            description: Invocable route handler.
             x-telo-topology-role: handler
             x-telo-ref: "kernel#Invocable"
             x-telo-context:
@@ -227,14 +333,24 @@ schema:
                   additionalProperties: true
               additionalProperties: false
             oneOf:
-              - type: "string"
+              - title: Handler Reference
+                description: String reference to a handler resource.
+                type: "string"
               - type: "object"
+                title: Handler Object
+                description: Object reference to a handler resource.
                 properties:
                   kind:
+                    title: Kind
+                    description: Kind of resource used as handler.
                     type: "string"
                   type:
+                    title: Type
+                    description: Optional handler type hint.
                     type: "string"
           response:
+            title: Response
+            description: Ordered response mapping entries.
             type: "array"
             x-telo-context:
               type: object
@@ -251,27 +367,38 @@ schema:
                   type: object
                   additionalProperties: true
             items:
+              title: Response Entry
+              description: Conditional response mapping entry.
               type: "object"
               additionalProperties: false
               properties:
                 status:
+                  title: Status
+                  description: HTTP status code for this response entry.
                   type: "integer"
                   minimum: 100
                   maximum: 599
                 when:
+                  title: When
                   type: "boolean"
                   description: "CEL expression; entry is selected if this evaluates to true"
                 mode:
+                  title: Mode
                   type: "string"
                   enum: ["buffer", "stream"]
                   description: "buffer (default): CEL body expansion + schema validation. stream: pipe result directly, skipping both"
                 schema:
+                  title: Schema
+                  description: JSON Schema used to validate buffered response body.
                   type: "object"
                 headers:
+                  title: Headers
+                  description: Response headers.
                   type: "object"
                   additionalProperties:
                     type: "string"
                 body:
+                  title: Body
                   description: "CEL expression or object mapping for response body"
               required: ["status"]
   required: ["routes"]

@@ -14,8 +14,13 @@ schema:
   required: [connection, table]
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
-    table: { type: string }
+    table:
+      title: Table
+      description: Database table name.
+      type: string
 resources:
   - kind: Sql.Query
     metadata:
@@ -38,8 +43,13 @@ schema:
   required: [connection, table]
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
-    table: { type: string }
+    table:
+      title: Table
+      description: Database table name.
+      type: string
 resources:
   - kind: Sql.Exec
     metadata:
@@ -60,8 +70,13 @@ schema:
   required: [connection, table]
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
-    table: { type: string }
+    table:
+      title: Table
+      description: Database table name.
+      type: string
 resources:
   - kind: Sql.Exec
     metadata:

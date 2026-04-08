@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import type { MatcherSelection, ParsedManifest } from "../model";
+import type { Selection, ParsedManifest } from "../model";
+import type { CelEvalMode } from "./resource-schema-form/cel-utils";
 import { Button } from "./ui/button";
+import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
 
 interface DetailPanelProps {
   selectedResource: { kind: string; name: string } | null;
-  matcherSelection: MatcherSelection | null;
-  onClearMatcherSelection: () => void;
+  selection: Selection | null;
   activeManifest: ParsedManifest | null;
   schemaByKind: Record<string, Record<string, unknown>>;
+  capabilityByKind?: Record<string, string>;
+  resolvedResources: ResolvedResourceOption[];
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
 }
 
@@ -25,12 +28,57 @@ function sanitizeFields(values: Record<string, unknown>): Record<string, unknown
   return next;
 }
 
+function parsePointer(pointer: string): (string | number)[] {
+  if (!pointer) return [];
+  return pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((s) => {
+      const n = Number(s);
+      return Number.isInteger(n) && n >= 0 ? n : s;
+    });
+}
+
+function getByPointer(obj: unknown, pointer: string): unknown {
+  const segments = parsePointer(pointer);
+  let current = obj;
+  for (const seg of segments) {
+    if (current == null) return undefined;
+    if (Array.isArray(current)) current = current[seg as number];
+    else if (isRecord(current)) current = current[seg as string];
+    else return undefined;
+  }
+  return current;
+}
+
+function setByPointer(root: unknown, pointer: string, value: unknown): unknown {
+  const segments = parsePointer(pointer);
+  if (segments.length === 0) return value;
+
+  function update(obj: unknown, idx: number): unknown {
+    if (idx === segments.length) return value;
+    const seg = segments[idx];
+    if (Array.isArray(obj)) {
+      const arr = [...obj];
+      arr[seg as number] = update(arr[seg as number], idx + 1);
+      return arr;
+    }
+    if (isRecord(obj)) {
+      return { ...obj, [seg as string]: update(obj[seg as string], idx + 1) };
+    }
+    return obj;
+  }
+
+  return update(root, 0);
+}
+
 export function DetailPanel({
   selectedResource,
-  matcherSelection,
-  onClearMatcherSelection,
+  selection,
   activeManifest,
   schemaByKind,
+  capabilityByKind = {},
+  resolvedResources,
   onUpdateResource,
 }: DetailPanelProps) {
   const resource = useMemo(() => {
@@ -42,91 +90,59 @@ export function DetailPanel({
     );
   }, [selectedResource, activeManifest]);
 
-  const matcherContext = useMemo(() => {
-    if (!resource || !matcherSelection) return null;
+  const selectionContext = useMemo(() => {
+    if (!resource || !selection) return null;
     if (
-      matcherSelection.resource.kind !== resource.kind ||
-      matcherSelection.resource.name !== resource.name
+      selection.resource.kind !== resource.kind ||
+      selection.resource.name !== resource.name
     ) {
       return null;
     }
 
-    const entries = resource.fields[matcherSelection.entriesField];
-    if (!Array.isArray(entries)) return null;
+    const target = getByPointer(resource.fields, selection.pointer);
+    if (!isRecord(target)) return null;
 
-    const entry = entries[matcherSelection.entryIndex];
-    if (!isRecord(entry)) return null;
+    return { ...selection, values: target };
+  }, [resource, selection]);
 
-    const matcher = entry[matcherSelection.matcherField];
-    return {
-      ...matcherSelection,
-      values: isRecord(matcher) ? matcher : {},
-    };
-  }, [resource, matcherSelection]);
-
-  const schema = matcherContext
-    ? matcherContext.matcherSchema
+  const schema = selectionContext
+    ? selectionContext.schema
     : resource
       ? schemaByKind[resource.kind]
       : undefined;
-  const required = useMemo(
-    () => new Set(((schema as { required?: string[] } | undefined)?.required ?? []) as string[]),
-    [schema],
-  );
+
+  const rootCelEval: CelEvalMode | null = useMemo(() => {
+    if (!resource) return null;
+    const capability = capabilityByKind[resource.kind];
+    return capability === "Kernel.Provider" ? "compile" : null;
+  }, [resource, capabilityByKind]);
   const [fields, setFields] = useState<Record<string, unknown>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [hasParseErrors, setHasParseErrors] = useState(false);
 
   useEffect(() => {
-    if (matcherContext) {
-      setFields(matcherContext.values);
+    if (selectionContext) {
+      setFields(selectionContext.values);
     } else {
       setFields(resource?.fields ?? {});
     }
-    setError(null);
-    setHasParseErrors(false);
-  }, [resource, matcherContext]);
-
-  function validate(values: Record<string, unknown>): string | null {
-    for (const req of required) {
-      const value = values[req];
-      if (value === undefined || value === null || value === "") {
-        return `Required field missing: ${req}`;
-      }
-    }
-    return null;
-  }
+  }, [resource, selectionContext]);
 
   function apply(values: Record<string, unknown>) {
     if (!resource) return;
-    const validationError = validate(values);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-    if (hasParseErrors) {
-      setError("Fix invalid JSON before applying changes");
-      return;
-    }
-    setError(null);
 
-    if (matcherContext) {
-      const existingEntries = resource.fields[matcherContext.entriesField];
-      if (!Array.isArray(existingEntries)) return;
+    if (selectionContext) {
+      const target = getByPointer(resource.fields, selectionContext.pointer);
+      if (!isRecord(target)) return;
 
-      const nextEntries = [...existingEntries];
-      const currentEntry = nextEntries[matcherContext.entryIndex];
-      if (!isRecord(currentEntry)) return;
+      const editableKeys = new Set(
+        Object.keys((selectionContext.schema.properties as Record<string, unknown>) ?? {}),
+      );
+      const preserved = Object.fromEntries(
+        Object.entries(target).filter(([k]) => !editableKeys.has(k)),
+      );
+      const updated = { ...preserved, ...sanitizeFields(values) };
+      const nextFields = setByPointer(resource.fields, selectionContext.pointer, updated);
 
-      nextEntries[matcherContext.entryIndex] = {
-        ...currentEntry,
-        [matcherContext.matcherField]: sanitizeFields(values),
-      };
-
-      onUpdateResource(resource.kind, resource.name, {
-        ...resource.fields,
-        [matcherContext.entriesField]: nextEntries,
-      });
+      onUpdateResource(resource.kind, resource.name, nextFields as Record<string, unknown>);
       return;
     }
 
@@ -138,12 +154,11 @@ export function DetailPanel({
   }
 
   function handleReset() {
-    if (matcherContext) {
-      setFields(matcherContext.values);
+    if (selectionContext) {
+      setFields(selectionContext.values);
     } else {
       setFields(resource?.fields ?? {});
     }
-    setError(null);
   }
 
   if (!resource) return null;
@@ -153,19 +168,14 @@ export function DetailPanel({
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-100 px-4 dark:border-zinc-800">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-            {matcherContext
-              ? `${resource.name} • matcher #${matcherContext.entryIndex + 1}`
+            {selectionContext
+              ? `${resource.name} • ${selectionContext.pointer}`
               : resource.name}
           </span>
           <span className="shrink-0 rounded bg-zinc-100 px-1 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
             {resource.kind}
           </span>
         </div>
-        {matcherContext && (
-          <Button variant="ghost" size="xs" onClick={onClearMatcherSelection}>
-            Back
-          </Button>
-        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
@@ -177,16 +187,12 @@ export function DetailPanel({
           <ResourceSchemaForm
             schema={schema}
             values={fields}
-            onChange={(next) => {
-              setFields(next);
-              const validationError = validate(next);
-              if (!validationError) setError(null);
-            }}
+            onChange={setFields}
             onFieldBlur={handleFieldBlur}
-            onParseStateChange={setHasParseErrors}
+            resolvedResources={resolvedResources}
+            rootCelEval={rootCelEval}
           />
         )}
-        {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-3 py-2 dark:border-zinc-800">

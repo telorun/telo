@@ -20,6 +20,8 @@ schema:
   type: "object"
   properties:
     schema:
+      title: Schema
+      description: Variable schema loaded from the environment variable store.
       type: "object"
       additionalProperties:
         type: "object"
@@ -36,13 +38,19 @@ schema:
   type: "object"
   properties:
     storeRef:
+      title: Store Reference
+      description: Reference to the environment variable store resource.
       type: "object"
       properties:
         name:
+          title: Name
+          description: Name of the referenced store resource.
           type: "string"
       required: ["name"]
       additionalProperties: false
     keys:
+      title: Keys
+      description: Mapping of target variable names to source store keys.
       type: "object"
       additionalProperties:
         type: "string"
@@ -59,13 +67,19 @@ schema:
   type: "object"
   properties:
     storeRef:
+      title: Store Reference
+      description: Reference to the environment variable store resource.
       type: "object"
       properties:
         name:
+          title: Name
+          description: Name of the referenced store resource.
           type: "string"
       required: ["name"]
       additionalProperties: false
     keys:
+      title: Keys
+      description: Mapping of target secret names to source store keys.
       type: "object"
       additionalProperties:
         type: "string"
@@ -82,23 +96,35 @@ schema:
   type: object
   properties:
     variables:
+      title: Variables
+      description: Variables exposed from literal values.
       type: object
       additionalProperties:
         type: object
         properties:
-          value: {}
+          value:
+            title: Value
+            description: Literal value assigned to this variable.
           type:
+            title: Type
+            description: Declared scalar type of the value.
             type: string
             enum: [string, integer, number, boolean]
         required: [value, type]
         additionalProperties: true
     secrets:
+      title: Secrets
+      description: Secrets exposed from literal values.
       type: object
       additionalProperties:
         type: object
         properties:
-          value: {}
+          value:
+            title: Value
+            description: Literal value assigned to this secret.
           type:
+            title: Type
+            description: Declared scalar type of the value.
             type: string
             enum: [string, integer, number, boolean]
         required: [value, type]

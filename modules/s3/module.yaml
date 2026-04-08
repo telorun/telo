@@ -26,12 +26,15 @@ schema:
   type: object
   properties:
     bucketName:
+      title: Bucket Name
       type: string
       description: Bucket name
     endpoint:
+      title: Endpoint
       type: string
       description: S3-compatible endpoint URL (e.g. https://<accountId>.r2.cloudflarestorage.com)
     forcePathStyle:
+      title: Force Path Style
       type: boolean
       description: Use path-style URLs (required for MinIO, RustFS, and other self-hosted S3)
   required:
@@ -48,10 +51,13 @@ schema:
   type: object
   properties:
     bucketRef:
+      title: Bucket Reference
       type: object
       description: Reference to an S3.Bucket resource by name
       properties:
         name:
+          title: Name
+          description: Name of the referenced bucket resource.
           type: string
       required:
         - name
@@ -68,19 +74,33 @@ schema:
   type: object
   properties:
     bucketRef:
+      title: Bucket Reference
       type: object
       description: Reference to an S3.Bucket resource by name
       properties:
         name:
+          title: Name
+          description: Name of the referenced bucket resource.
           type: string
       required:
         - name
     inputs:
+      title: Inputs
+      description: Object key and content written to the bucket.
       type: object
       properties:
-        key:         { type: string }
-        body:        { type: string }
-        contentType: { type: string }
+        key:
+          title: Key
+          description: Object key path inside the bucket.
+          type: string
+        body:
+          title: Body
+          description: Object content to upload.
+          type: string
+        contentType:
+          title: Content Type
+          description: MIME type set on the uploaded object.
+          type: string
       required:
         - key
         - body

@@ -76,10 +76,9 @@ export type PanelEntry =
   | { type: "resource"; kind: string; name: string }
   | { type: "item"; fieldPath: string[]; label: string };
 
-export interface MatcherSelection {
+export interface Selection {
   resource: { kind: string; name: string };
-  entriesField: string;
-  entryIndex: number;
-  matcherField: string;
-  matcherSchema: Record<string, unknown>;
+  /** JSON pointer into the resource fields, e.g. "/steps/0" or "/entries/2/handler" */
+  pointer: string;
+  schema: Record<string, unknown>;
 }

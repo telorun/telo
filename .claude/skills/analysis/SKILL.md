@@ -52,13 +52,18 @@ After receiving the analyst's proposal, spawn the `reviewer` agent with this pro
 
 ## Step 3: Present
 
-Combine both outputs into a final report for the user:
+Synthesize the analysis and review into a single implementation plan. The plan must read as a standalone document — do not reference the analysis or review phases, do not attribute ideas to "the analyst" or "the reviewer". Where the review raised issues or suggestions, fold them into the plan as refinements to the proposed approach.
 
-### Analysis
-[analyst output]
+Structure the plan as:
 
-### Review
-[reviewer output]
+### Problem
+Restate the problem and core requirements.
 
-### Final recommendation
-Synthesize both into a concise recommendation, incorporating the verifier's feedback into the analyst's proposal where applicable.
+### Plan
+A concrete, ordered list of changes to make. Each item should specify what to change, where, and why. Incorporate any corrections or improvements surfaced during review directly into the steps — the reader should see only the best version of the approach.
+
+### Trade-offs
+Key alternatives considered and why this path was chosen.
+
+### Open questions
+Decisions that need user input before implementation can proceed.

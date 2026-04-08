@@ -17,47 +17,66 @@ schema:
     - driver
   properties:
     driver:
+      title: Driver
       type: string
       enum: [postgres, sqlite]
       description: Database driver
     connectionString:
+      title: Connection String
       type: string
       description: PostgreSQL connection URL (e.g. postgres://user:pass@host/db)
     host:
+      title: Host
       type: string
       description: PostgreSQL host
     port:
+      title: Port
       type: integer
       default: 5432
       description: PostgreSQL port
     database:
+      title: Database
       type: string
       description: PostgreSQL database name
     user:
+      title: User
       type: string
       description: PostgreSQL user
     password:
+      title: Password
       type: string
       description: PostgreSQL password
     ssl:
+      title: SSL
       type: boolean
       default: false
       description: Enable SSL for PostgreSQL
     file:
+      title: File
       type: string
       description: SQLite file path or ':memory:'
     pool:
+      title: Pool
+      description: Database connection pool configuration.
       type: object
       properties:
         min:
+          title: Min
+          description: Minimum number of connections in the pool.
           type: integer
           default: 1
         max:
+          title: Max
+          description: Maximum number of connections in the pool.
           type: integer
           default: 10
         idleTimeoutMs:
+          title: Idle Timeout Ms
+          description: Milliseconds before idle connections are closed.
           type: integer
         connectionTimeoutMs:
+          title: Connection Timeout Ms
+          description: Milliseconds to wait for a new connection.
           type: integer
 ---
 kind: Kernel.Definition
@@ -70,16 +89,24 @@ schema:
   type: object
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
     transaction:
+      title: Transaction
+      description: Reference to the SQL transaction resource.
       x-telo-ref: "std/sql#Transaction"
     inputs:
+      title: Inputs
+      description: Query parameters supplied at invocation time.
       type: object
       properties:
         sql:
+          title: SQL
           type: string
           description: SQL query text; may contain CEL template expressions
         bindings:
+          title: Bindings
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
       required: [sql]
@@ -94,16 +121,24 @@ schema:
   type: object
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
     transaction:
+      title: Transaction
+      description: Reference to the SQL transaction resource.
       x-telo-ref: "std/sql#Transaction"
     inputs:
+      title: Inputs
+      description: Statement parameters supplied at invocation time.
       type: object
       properties:
         sql:
+          title: SQL
           type: string
           description: SQL statement text; may contain CEL template expressions
         bindings:
+          title: Bindings
           type: array
           description: Positional parameters bound to ? placeholders in the SQL string
       required: [sql]
@@ -121,10 +156,15 @@ schema:
     - steps
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
     steps:
+      title: Steps
+      description: Invocable resource executed inside the transaction.
       x-telo-ref: "kernel#Invocable"
     bindings:
+      title: Bindings
       type: object
       description: Forwarded to the steps resource at invoke time; may contain CEL template expressions
 ---
@@ -139,36 +179,70 @@ schema:
   required: [from]
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
     transaction:
+      title: Transaction
+      description: Reference to the SQL transaction resource.
       x-telo-ref: "std/sql#Transaction"
     from:
+      title: From
+      description: Table name to select from.
       type: string
       x-telo-eval: compile
     columns:
+      title: Columns
+      description: Column names or expressions to select.
       type: array
       x-telo-eval: compile
     distinct:
+      title: Distinct
+      description: Whether to return only distinct rows.
       type: boolean
       x-telo-eval: compile
     distinctOn:
+      title: Distinct On
+      description: PostgreSQL DISTINCT ON column list.
       type: array
-      items: { type: string }
+      items:
+        title: Distinct On Column
+        description: Column name used in DISTINCT ON.
+        type: string
       x-telo-eval: compile
     where:
+      title: Where
+      description: Structured where clauses.
       type: array
-      items: { type: object }
+      items:
+        title: Where Clause
+        description: Single where clause object.
+        type: object
     groupBy:
+      title: Group By
+      description: Columns used for grouping.
       type: array
-      items: { type: string }
+      items:
+        title: Group By Column
+        description: Column name used for grouping.
+        type: string
       x-telo-eval: compile
     having:
+      title: Having
+      description: Structured having clauses.
       type: array
-      items: { type: object }
+      items:
+        title: Having Clause
+        description: Single having clause object.
+        type: object
     orderBy:
+      title: Order By
+      description: Ordering rules for selected rows.
       type: array
       x-telo-eval: compile
       items:
+        title: Order By Entry
+        description: Single ordering rule.
         type: object
         properties:
           column:
@@ -214,6 +288,7 @@ schema:
   required: [sql]
   properties:
     sql:
+      title: SQL
       type: string
       description: SQL statement(s) to execute for this migration
 ---
@@ -228,4 +303,6 @@ schema:
   required: [connection]
   properties:
     connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"

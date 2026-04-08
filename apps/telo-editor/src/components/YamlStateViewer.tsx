@@ -1,8 +1,11 @@
 "use client";
 
 import Editor from "@monaco-editor/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+
+const STORAGE_KEY = "telo-editor:yaml-state-collapsed";
 
 interface Snapshot {
   filePath: string;
@@ -15,20 +18,44 @@ interface YamlStateViewerProps {
 }
 
 export function YamlStateViewer({ snapshots, activeFilePath }: YamlStateViewerProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(STORAGE_KEY) === "true") setCollapsed(true);
+    } catch {}
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(STORAGE_KEY, String(next)); } catch {}
+      return next;
+    });
+  }
+
   const defaultPath = useMemo(() => {
     if (snapshots.length === 0) return undefined;
     if (activeFilePath && snapshots.some((s) => s.filePath === activeFilePath)) return activeFilePath;
     return snapshots[0].filePath;
   }, [snapshots, activeFilePath]);
 
-  if (snapshots.length === 0) {
+  if (collapsed) {
     return (
-      <div className="flex h-full w-136 shrink-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-          YAML State
+      <div className="flex h-full shrink-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex items-center border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
+          <Button variant="ghost" size="icon-xs" onClick={toggleCollapsed} title="Expand YAML State">
+            ‹
+          </Button>
         </div>
-        <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
-          Open or create an application to view YAML state.
+        <div className="flex flex-1 items-center justify-center">
+          <span
+            className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500"
+            style={{ writingMode: "vertical-rl" }}
+            onClick={toggleCollapsed}
+          >
+            YAML State
+          </span>
         </div>
       </div>
     );
@@ -36,8 +63,13 @@ export function YamlStateViewer({ snapshots, activeFilePath }: YamlStateViewerPr
 
   return (
     <div className="flex h-full w-136 shrink-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        YAML State
+      <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          YAML State
+        </div>
+        <Button variant="ghost" size="icon-xs" onClick={toggleCollapsed} title="Collapse YAML State">
+          ›
+        </Button>
       </div>
 
       <Tabs defaultValue={defaultPath} orientation="vertical" className="min-h-0 flex-1 !flex-row gap-0">

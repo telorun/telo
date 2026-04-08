@@ -21,6 +21,8 @@ schema:
           type: string
       required: [name]
     code:
+      title: Code
+      description: Starlark source code to execute.
       type: string
     inputType:
       title: Input Type

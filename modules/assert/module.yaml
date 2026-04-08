@@ -47,6 +47,7 @@ schema:
       required:
         - name
     schema:
+      title: Schema
       description: Value to assert (can be any type or expression)
   required:
     - metadata
@@ -62,24 +63,31 @@ schema:
   type: object
   properties:
     filter:
+      title: Filter
+      description: Event filters used before expectation checks.
       type: array
       items:
         type: object
         properties:
           type:
+            title: Type
+            description: Event type pattern to include.
             type: string
         required:
           - type
     expect:
+      title: Expect
       type: array
       description: Ordered sequence of events to assert
       items:
         type: object
         properties:
           event:
+            title: Event
             type: string
             description: Event name or wildcard pattern (e.g. "JavaScript.Script.*.Invoked")
           payload:
+            title: Payload
             type: object
             description: Partial payload to match against (only declared fields are checked)
         required:

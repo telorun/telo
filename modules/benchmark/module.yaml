@@ -21,58 +21,89 @@ schema:
           type: string
       required: [name]
     duration:
+      title: Duration
       type: string
       description: "How long to run (e.g. 30s, 1m, 500ms). Mutually exclusive with requests."
     requests:
+      title: Requests
       type: integer
       description: Total number of requests across all workers. Mutually exclusive with duration.
     concurrency:
+      title: Concurrency
       type: integer
       default: 1
       description: Number of parallel workers
     warmup:
+      title: Warmup
       type: string
       description: "Warm-up window excluded from metrics (e.g. 5s)"
     report:
+      title: Report
+      description: Benchmark reporting options.
       type: object
       properties:
         format:
+          title: Format
+          description: Output format for benchmark results.
           type: string
           enum: [table, json]
           default: table
         thresholds:
+          title: Thresholds
+          description: Optional threshold checks for result metrics.
           type: array
           items:
             type: object
             properties:
               scenario:
+                title: Scenario
+                description: Scenario name to match.
                 type: string
               p99:
+                title: P99
+                description: Maximum allowed 99th percentile latency.
                 type: number
               p95:
+                title: P95
+                description: Maximum allowed 95th percentile latency.
                 type: number
               p50:
+                title: P50
+                description: Maximum allowed 50th percentile latency.
                 type: number
               errorRate:
+                title: Error Rate
+                description: Maximum allowed error rate.
                 type: number
     scenarios:
+      title: Scenarios
+      description: Workload scenarios executed during the suite.
       type: array
       items:
         type: object
         properties:
           name:
+            title: Name
+            description: Scenario display name.
             type: string
           weight:
+            title: Weight
+            description: Relative execution weight among scenarios.
             type: integer
             default: 1
           invoke:
+            title: Invoke
+            description: Invocable resource reference for this scenario.
             type: object
             properties:
               kind:
+                title: Kind
+                description: Kind of resource to invoke.
                 type: string
             required: [kind]
             additionalProperties: true
           validate:
+            title: Validate
             type: string
             description: "CEL expression evaluated against `result`; false counts as error"
         required: [name, invoke]

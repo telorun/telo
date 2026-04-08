@@ -20,39 +20,48 @@ schema:
           type: "string"
       required: ["name"]
     exporters:
+      title: Exporters
       type: "array"
       description: 'List of exporter resource references (e.g., "Tracing.FileExporter.myExporter")'
       items:
         type: "string"
     events:
+      title: Events
       type: "array"
       description: 'Event patterns to trace. Use "*" for all events, "Kernel.*" for all Runtime events, etc.'
       items:
         type: "string"
       default: ["*"]
     filters:
+      title: Filters
       type: "object"
       description: "Optional filtering configuration"
       properties:
         minLevel:
+          title: Min Level
+          description: Minimum event level to export.
           type: "string"
           enum: ["debug", "info", "error"]
           default: "debug"
     buffer:
+      title: Buffer
       type: "object"
       description: "Event buffer configuration for retry logic"
       properties:
         maxSize:
+          title: Max Size
           type: "integer"
           description: "Maximum number of events to buffer"
           default: 1000
           minimum: 1
         retryAttempts:
+          title: Retry Attempts
           type: "integer"
           description: "Number of retry attempts for failed exports"
           default: 3
           minimum: 0
         retryDelay:
+          title: Retry Delay
           type: "integer"
           description: "Delay in milliseconds between retry attempts"
           default: 1000
@@ -75,19 +84,23 @@ schema:
           type: "string"
       required: ["name"]
     path:
+      title: Path
       type: "string"
       description: "Output file path for trace events"
     format:
+      title: Format
       type: "string"
       description: "Output format for trace events"
       enum: ["json", "ndjson", "text"]
       default: "ndjson"
     mode:
+      title: Mode
       type: "string"
       description: "File write mode"
       enum: ["append", "overwrite"]
       default: "append"
     pretty:
+      title: Pretty
       type: "boolean"
       description: "Pretty-print JSON output (only applies to json format)"
       default: false

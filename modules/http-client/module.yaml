@@ -15,21 +15,26 @@ schema:
   type: "object"
   properties:
     baseUrl:
+      title: Base URL
       type: "string"
       description: "Base URL for all requests using this client"
     headers:
+      title: Headers
       type: "object"
       additionalProperties:
         type: "string"
       description: "Default headers applied to all requests (e.g., Authorization)"
     timeout:
+      title: Timeout
       type: "integer"
       minimum: 1
       default: 10000
       description: "Default timeout in milliseconds"
     followRedirects:
+      title: Follow Redirects
       type: "boolean"
       default: true
+      description: "Whether redirects should be followed automatically."
 ---
 kind: "Kernel.Definition"
 metadata:
@@ -41,47 +46,59 @@ schema:
   type: "object"
   properties:
     client:
+      title: Client
       type: "string"
       description: "Reference to an Http.Client resource name"
     timeout:
+      title: Timeout
       type: "integer"
       minimum: 1
       description: "Overrides the client or default timeout (in ms)"
     throwOnHttpError:
+      title: Throw On HTTP Error
       type: "boolean"
       default: false
       description: "If true, HTTP 4xx and 5xx responses will throw a runtime error. If false, they return gracefully."
     retries:
+      title: Retries
       type: "integer"
       minimum: 0
       default: 0
       description: "Number of times to retry on Network Errors (not HTTP errors)"
     mode:
+      title: Mode
       type: "string"
       enum: ["buffer", "stream"]
       default: "buffer"
       description: "buffer (default): read and deserialize the full response body. stream: return body as a readable stream without buffering."
     inputs:
+      title: Inputs
       type: "object"
       description: "Request parameters, resolved dynamically on each invocation"
       properties:
         url:
+          title: URL
           type: "string"
           description: "Absolute URL, or relative path if 'client' is provided"
         method:
+          title: Method
           type: "string"
           default: "GET"
+          description: "HTTP method to use for the request."
         query:
+          title: Query
           type: "object"
           description: "Query parameters to be appended to the URL"
           additionalProperties:
             type: "string"
         headers:
+          title: Headers
           type: "object"
           description: "Request-specific headers (merges with client headers)"
           additionalProperties:
             type: "string"
         body:
+          title: Body
           oneOf:
             - type: "string"
             - type: "object"

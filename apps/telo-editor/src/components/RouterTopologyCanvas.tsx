@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import type { MatcherSelection, ParsedResource } from "../model";
+import type { Selection, ParsedResource } from "../model";
 import { Button } from "./ui/button";
 
 interface RouterTopologyCanvasProps {
   resource: ParsedResource;
   schema: Record<string, unknown>;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
-  onSelectMatcher: (selection: MatcherSelection) => void;
+  onSelect: (selection: Selection) => void;
   onBackgroundClick: () => void;
 }
 
@@ -179,7 +179,7 @@ export function RouterTopologyCanvas({
   resource,
   schema,
   onUpdateResource,
-  onSelectMatcher,
+  onSelect,
   onBackgroundClick,
 }: RouterTopologyCanvasProps) {
   const schemaInfo = useMemo(() => getRouterSchemaInfo(schema), [schema]);
@@ -285,16 +285,10 @@ export function RouterTopologyCanvas({
                               return;
                             }
 
-                            const entriesField = schemaInfo.entriesField;
-                            const matcherField = schemaInfo.matcherField;
-                            const matcherSchema = schemaInfo.matcherSchema;
-
-                            onSelectMatcher({
+                            onSelect({
                               resource: { kind: resource.kind, name: resource.name },
-                              entriesField,
-                              entryIndex: index,
-                              matcherField,
-                              matcherSchema,
+                              pointer: `/${schemaInfo.entriesField}/${index}/${schemaInfo.matcherField}`,
+                              schema: schemaInfo.matcherSchema,
                             });
                           }}
                         >

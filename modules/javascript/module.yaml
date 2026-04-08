@@ -14,6 +14,8 @@ schema:
   type: "object"
   properties:
     code:
+      title: Code
+      description: JavaScript source code executed by this resource.
       type: "string"
     inputType:
       title: Input Type
