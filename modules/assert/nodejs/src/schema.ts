@@ -12,24 +12,24 @@ export const schema = Type.Object({
 
 type AssertManifest = Static<typeof schema>;
 
-const useColor = process.stderr.isTTY;
-const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = (t: string) => c("1", t);
-const red = (t: string) => c("31", t);
-const green = (t: string) => c("32", t);
-const dim = (t: string) => c("2", t);
-
 export async function create(manifest: AssertManifest, ctx: ResourceContext) {
+  const useColor = (ctx.stderr as any).isTTY ?? false;
+  const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+  const bold = (t: string) => c("1", t);
+  const red = (t: string) => c("31", t);
+  const green = (t: string) => c("32", t);
+  const dim = (t: string) => c("2", t);
+
   const validator = ctx.createSchemaValidator(manifest.schema);
   const name = manifest.metadata.name;
   return {
     invoke: (data: any) => {
       try {
         validator.validate(data);
-        process.stdout.write(bold(green(`Assert.Schema.${name}: assertion passed`)) + "\n" + `  ${green("✓")} ${dim(JSON.stringify(data))}\n`);
+        ctx.stdout.write(bold(green(`Assert.Schema.${name}: assertion passed`)) + "\n" + `  ${green("✓")} ${dim(JSON.stringify(data))}\n`);
         return true;
       } catch (err: any) {
-        process.stderr.write(bold(red(`Assert.Schema.${name}: assertion failed`)) + "\n" + `  ${red("✗")} ${err?.message ?? String(err)}\n`);
+        ctx.stderr.write(bold(red(`Assert.Schema.${name}: assertion failed`)) + "\n" + `  ${red("✗")} ${err?.message ?? String(err)}\n`);
         throw err;
       }
     },

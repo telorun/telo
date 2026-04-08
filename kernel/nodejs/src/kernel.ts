@@ -19,6 +19,12 @@ import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { SchemaValidator } from "./schema-valiator.js";
 
+export interface KernelOptions {
+  stdin?: NodeJS.ReadableStream;
+  stdout?: NodeJS.WritableStream;
+  stderr?: NodeJS.WritableStream;
+}
+
 /**
  * Kernel: Central orchestrator managing lifecycle and message bus
  * Handles resource loading, initialization, and execution through controllers
@@ -38,7 +44,14 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
 
-  constructor() {
+  readonly stdin: NodeJS.ReadableStream;
+  readonly stdout: NodeJS.WritableStream;
+  readonly stderr: NodeJS.WritableStream;
+
+  constructor(options: KernelOptions = {}) {
+    this.stdin = options.stdin ?? process.stdin;
+    this.stdout = options.stdout ?? process.stdout;
+    this.stderr = options.stderr ?? process.stderr;
     this.loader.register(new LocalFileAdapter());
     this.setupEventStreaming();
   }
@@ -349,6 +362,9 @@ export class Kernel implements IKernel {
       moduleContext,
       resource.metadata,
       this.sharedSchemaValidator,
+      this.stdin,
+      this.stdout,
+      this.stderr,
     );
   }
 

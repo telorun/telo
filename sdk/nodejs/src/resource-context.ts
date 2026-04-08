@@ -48,8 +48,8 @@ export interface ResourceContext extends ControllerContext {
   registerDefinition(definition: any): void;
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;
   teardownResource(kind: string, name: string): Promise<void>;
-  moduleContext: ModuleContext;
-  stdin: NodeJS.ReadableStream;
-  stdout: NodeJS.WritableStream;
-  stderr: NodeJS.WritableStream;
+  readonly moduleContext: ModuleContext;
+  readonly stdin: NodeJS.ReadableStream;
+  readonly stdout: NodeJS.WritableStream;
+  readonly stderr: NodeJS.WritableStream;
 }

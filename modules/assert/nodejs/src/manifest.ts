@@ -56,13 +56,6 @@ class LocalFileAdapter implements ManifestAdapter {
   }
 }
 
-const useColor = process.stderr.isTTY;
-const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = (t: string) => c("1", t);
-const red = (t: string) => c("31", t);
-const green = (t: string) => c("32", t);
-const dim = (t: string) => c("2", t);
-
 function matchesDiagnostic(diag: AnalysisDiagnostic, expected: ExpectError): boolean {
   if (expected.code && diag.code !== expected.code) return false;
   if (expected.message && !diag.message.includes(expected.message)) return false;
@@ -75,6 +68,13 @@ export async function create(
 ): Promise<Runnable> {
   return {
     run: async () => {
+      const useColor = (ctx.stderr as any).isTTY ?? false;
+      const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+      const bold = (t: string) => c("1", t);
+      const red = (t: string) => c("31", t);
+      const green = (t: string) => c("32", t);
+      const dim = (t: string) => c("2", t);
+
       const name = manifest.metadata.name;
       const loader = new Loader([new LocalFileAdapter()]);
       const analyzer = new StaticAnalyzer();
@@ -84,7 +84,7 @@ export async function create(
       try {
         manifests = await loader.loadManifests(resolvedUrl);
       } catch (err) {
-        process.stderr.write(
+        ctx.stderr.write(
           bold(red(`Assert.Manifest.${name}: failed to load "${manifest.source}"`)) +
             "\n  " + (err instanceof Error ? err.message : String(err)) + "\n",
         );
@@ -129,13 +129,13 @@ export async function create(
           ? `  ${dim("actual errors:")}\n` +
             errors.map((d) => `    ${dim(`[${d.code}] ${d.message}`)}\n`).join("")
           : `  ${dim("no errors produced")}\n`;
-        process.stderr.write(
+        ctx.stderr.write(
           bold(red(`Assert.Manifest.${name}: assertion failed`)) + "\n" +
             passedLines + failedLines + actualLines,
         );
         ctx.requestExit(1);
       } else {
-        process.stdout.write(
+        ctx.stdout.write(
           bold(green(`Assert.Manifest.${name}: assertion passed`)) + "\n" + passedLines,
         );
       }

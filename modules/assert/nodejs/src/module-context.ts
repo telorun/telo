@@ -18,13 +18,17 @@ export const schema = Type.Object({
 
 type ModuleContextManifest = Static<typeof schema>;
 
-const useColor = process.stderr.isTTY;
-const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = (t: string) => c("1", t);
-const red = (t: string) => c("31", t);
-const green = (t: string) => c("32", t);
-const yellow = (t: string) => c("33", t);
-const dim = (t: string) => c("2", t);
+function createColors(stream: NodeJS.WritableStream) {
+  const useColor = (stream as any).isTTY ?? false;
+  const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+  return {
+    bold: (t: string) => c("1", t),
+    red: (t: string) => c("31", t),
+    green: (t: string) => c("32", t),
+    yellow: (t: string) => c("33", t),
+    dim: (t: string) => c("2", t),
+  };
+}
 
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -45,6 +49,7 @@ export async function create(
 ): Promise<Runnable> {
   return {
     run: async () => {
+      const { bold, red, green, yellow, dim } = createColors(ctx.stderr);
       const declaringModule = manifest.metadata.module ?? "default";
       const resourcesToCheck = manifest.resources ?? {};
       const failures: string[] = [];
@@ -82,10 +87,10 @@ export async function create(
       const passedLines = passed.map((p) => `  ${green("✓")} ${dim(p)}\n`).join("");
       if (failures.length > 0) {
         const failedLines = failures.map((f) => `  ${red("✗")} ${f}\n`).join("");
-        process.stderr.write(bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n" + passedLines + failedLines);
+        ctx.stderr.write(bold(red(`Assert.ModuleContext.${name}: assertion failed`)) + "\n" + passedLines + failedLines);
         ctx.requestExit(1);
       } else {
-        process.stdout.write(bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n" + passedLines);
+        ctx.stdout.write(bold(green(`Assert.ModuleContext.${name}: assertion passed`)) + "\n" + passedLines);
       }
     },
   };
