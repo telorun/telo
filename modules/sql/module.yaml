@@ -171,20 +171,37 @@ schema:
       items:
         type: object
         properties:
-          column: { type: string }
-          direction: { type: string, enum: [asc, desc] }
-    limit: {}
-    offset: {}
-    inputSchema:
-      type: object
-      additionalProperties:
-        type: object
-        properties:
-          type: { type: string }
-          default: {}
-    outputSchema:
-      type: object
-      description: "JSON Schema for the invoke() return value; used by the analyzer to type-check CEL accessing 'result'"
+          column:
+            title: Column
+            description: Column name to order by.
+            type: string
+          direction:
+            title: Direction
+            description: Sort direction.
+            type: string
+            enum: [asc, desc]
+    limit:
+      title: Limit
+      description: Maximum number of rows returned.
+    offset:
+      title: Offset
+      description: Number of rows skipped before returning results.
+    inputType:
+      title: Input Type
+      description: Named type reference or inline type definition for invocation inputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: string
+        - type: object
+          additionalProperties: true
+    outputType:
+      title: Output Type
+      description: Named type reference or inline type definition for invocation outputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: string
+        - type: object
+          additionalProperties: true
 ---
 kind: Kernel.Definition
 metadata:

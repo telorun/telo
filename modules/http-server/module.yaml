@@ -247,7 +247,7 @@ schema:
                     path: { type: string }
                     method: { type: string }
                 result:
-                  x-telo-context-ref-from: "handler/outputSchema"
+                  x-telo-context-ref-from: "handler/outputType"
                   type: object
                   additionalProperties: true
             items:

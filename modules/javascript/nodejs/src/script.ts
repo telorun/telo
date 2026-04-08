@@ -1,5 +1,4 @@
 import {
-    NoopValidator,
     type ControllerContext,
     type DataValidator,
     type ResourceContext,
@@ -8,8 +7,8 @@ import {
 
 type JavaScriptResource = RuntimeResource & {
   code?: string;
-  inputSchema?: Record<string, any>;
-  outputSchema?: Record<string, any>;
+  inputType?: string | Record<string, any>;
+  outputType?: string | Record<string, any>;
 };
 
 export function register(ctx: ControllerContext): void {}
@@ -41,8 +40,8 @@ export async function create(
   const compiled = compileJavaScriptModule(resource.code);
   return new JavaScript(
     ctx,
-    resource.inputSchema ? ctx.createSchemaValidator(resource.inputSchema) : new NoopValidator(),
-    resource.outputSchema ? ctx.createSchemaValidator(resource.outputSchema) : new NoopValidator(),
+    ctx.createTypeValidator(resource.inputType),
+    ctx.createTypeValidator(resource.outputType),
     compiled,
   );
 }

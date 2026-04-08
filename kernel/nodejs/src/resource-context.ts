@@ -6,6 +6,7 @@ import {
   RuntimeError,
   RuntimeResource,
   isCompiledValue,
+  type TypeRule,
 } from "@telorun/sdk";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
@@ -40,6 +41,48 @@ export class ResourceContextImpl implements ResourceContext {
 
   lookupSchema(name: string): object | undefined {
     return this.validator.getSchema(name);
+  }
+
+  registerTypeRules(name: string, rules: TypeRule[]): void {
+    this.validator.addTypeRules(name, rules);
+  }
+
+  lookupTypeRules(name: string): TypeRule[] | undefined {
+    return this.validator.getTypeRules(name);
+  }
+
+  createTypeValidator(typeRef: string | Record<string, any> | undefined) {
+    if (!typeRef) return new NoopValidator();
+
+    // String reference: look up registered type schema by name
+    if (typeof typeRef === "string") {
+      const schema = this.validator.getSchema(typeRef);
+      if (!schema) {
+        throw new RuntimeError(
+          "ERR_TYPE_NOT_FOUND",
+          `Type "${typeRef}" not found in schema registry`,
+        );
+      }
+      const base = this.validator.compile(schema);
+      const rules = this.validator.getTypeRules(typeRef);
+      if (rules && rules.length > 0) {
+        return this.validator.composeWithRules(base, typeRef, rules);
+      }
+      return base;
+    }
+
+    // Inline schema object: if it has a `schema` property, it's a type resource shape
+    if (typeRef.schema && typeof typeRef.schema === "object") {
+      const base = this.validator.compile(typeRef.schema);
+      const rules = Array.isArray(typeRef.rules) ? typeRef.rules : [];
+      if (rules.length > 0) {
+        return this.validator.composeWithRules(base, "inline", rules);
+      }
+      return base;
+    }
+
+    // Raw JSON Schema object (direct schema, not wrapped in type resource)
+    return this.validator.compile(typeRef);
   }
 
   validateSchema(value: any, schema: any) {

@@ -1,4 +1,4 @@
-# @telorun/data
+# @telorun/type
 
 ## 0.0.7
 

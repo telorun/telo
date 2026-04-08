@@ -71,7 +71,7 @@ interface SelectManifest {
   orderBy?: OrderByItem[];
   limit?: unknown;
   offset?: unknown;
-  inputSchema?: Record<string, { type?: string; default?: unknown }>;
+  inputType?: string | Record<string, any>;
 }
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ class SqlSelectResource implements ResourceInstance {
     const m = this.manifest;
     const ctx = this.ctx;
     const inputs = {
-      ...extractDefaults(m.inputSchema),
+      ...extractDefaults(m.inputType, ctx),
       ...((input as Record<string, unknown>) ?? {}),
     };
     const expandCtx = { inputs };
@@ -272,11 +272,31 @@ function opToSql(op: Op): string {
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
-function extractDefaults(inputSchema?: Record<string, { default?: unknown }>): Record<string, unknown> {
-  if (!inputSchema) return {};
+function extractDefaults(
+  inputType: string | Record<string, any> | undefined,
+  ctx: ResourceContext,
+): Record<string, unknown> {
+  if (!inputType) return {};
+
+  // Resolve schema: string ref → look up, inline object → use directly
+  let schema: Record<string, any> | undefined;
+  if (typeof inputType === "string") {
+    schema = ctx.lookupSchema(inputType) as Record<string, any> | undefined;
+  } else if (inputType.schema && typeof inputType.schema === "object") {
+    schema = inputType.schema;
+  } else {
+    schema = inputType;
+  }
+
+  if (!schema || typeof schema !== "object") return {};
+  const props = schema.properties as Record<string, any> | undefined;
+  if (!props) return {};
+
   const defaults: Record<string, unknown> = {};
-  for (const [key, def] of Object.entries(inputSchema)) {
-    if ("default" in def) defaults[key] = def.default;
+  for (const [key, def] of Object.entries(props)) {
+    if (def && typeof def === "object" && "default" in def) {
+      defaults[key] = def.default;
+    }
   }
   return defaults;
 }

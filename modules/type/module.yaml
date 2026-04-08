@@ -1,0 +1,49 @@
+kind: Kernel.Module
+metadata:
+  name: type
+  namespace: std
+  version: "1.0.0"
+exports:
+  kinds:
+    - JsonSchema
+---
+kind: Kernel.Definition
+metadata:
+  name: JsonSchema
+capability: Kernel.Type
+controllers:
+  - pkg:npm/@telorun/type@0.0.1?local_path=./nodejs#type
+schema:
+  type: object
+  properties:
+    schema:
+      title: Schema
+      description: JSON Schema definition for the declared data type.
+      type: object
+    extends:
+      title: Extends
+      description: Parent type name or list of parent type names to inherit from.
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: string
+    rules:
+      title: Rules
+      description: CEL-based business invariant rules. Each rule's condition must return true for valid data.
+      type: array
+      items:
+        type: object
+        properties:
+          condition:
+            type: string
+            description: CEL expression evaluated with 'this' bound to the data. Must return true for valid data.
+          code:
+            type: string
+            description: Machine-readable error code surfaced on validation failure.
+          message:
+            type: string
+            description: Optional human-readable hint for the validation failure.
+        required: ["condition", "code"]
+  required: ["schema"]
+  additionalProperties: false

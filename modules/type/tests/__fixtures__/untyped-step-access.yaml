@@ -1,0 +1,42 @@
+kind: Kernel.Module
+metadata:
+  name: UntypedStepAccess
+  version: 1.0.0
+targets:
+  - TestUntypedAccess
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+# Script with no outputType — result should be untyped (any access allowed)
+kind: JavaScript.Script
+metadata:
+  name: Compute
+code: |
+  function main() {
+    return { anything: 42 }
+  }
+---
+kind: Run.Sequence
+metadata:
+  name: TestUntypedAccess
+steps:
+  - name: Step1
+    invoke:
+      kind: JavaScript.Script
+      name: Compute
+  - name: Step2
+    inputs:
+      val: "${{ steps.Step1.result.anything }}"
+      deep: "${{ steps.Step1.result.some.deeply.nested.field }}"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main(input) { return input }

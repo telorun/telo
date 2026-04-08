@@ -5,6 +5,7 @@ export interface RuntimeDiagnostic {
   code?: string;
 }
 
+/** Well-known kernel error codes. User-defined codes (e.g. from Type.JsonSchema rules) are also valid. */
 export type RuntimeErrorCode =
   | "ERR_RESOURCE_NOT_FOUND"
   | "ERR_RESOURCE_NOT_RUNNABLE"
@@ -19,4 +20,7 @@ export type RuntimeErrorCode =
   | "ERR_VISIBILITY_DENIED"
   | "ERR_MANIFEST_VALIDATION_FAILED"
   | "ERR_CIRCULAR_DEPENDENCY"
-  | "ERR_SCOPE_RESOURCE_NOT_FOUND";
+  | "ERR_SCOPE_RESOURCE_NOT_FOUND"
+  | "ERR_TYPE_NOT_FOUND"
+  | "ERR_TYPE_VALIDATION_FAILED"
+  | (string & {});

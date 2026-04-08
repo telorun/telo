@@ -12,6 +12,11 @@ targets:
 
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: Http
 source: ../../modules/http-server
 ---
@@ -188,24 +193,22 @@ orderBy:
   - { column: published_at, direction: desc }
 limit: "${{ inputs.limit }}"
 offset: "${{ inputs.offset }}"
-inputSchema:
-  q:
-    type: string
-    default: ""
-  id:
-    type: string
-    default: ""
-  limit:
-    type: integer
-    default: 20
-  offset:
-    type: integer
-    default: 0
-outputSchema:
-  type: object
-  properties:
-    rows: { type: array }
-    rowCount: { type: integer }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      q: { type: string, default: "" }
+      id: { type: string, default: "" }
+      limit: { type: integer, default: 20 }
+      offset: { type: integer, default: 0 }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows: { type: array }
+      rowCount: { type: integer }
 
 ---
 kind: HttpClient.Client

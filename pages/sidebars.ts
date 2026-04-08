@@ -64,6 +64,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "modules/README", label: "Overview" },
         { type: "doc", id: "modules/http-server/README", label: "HTTP Server" },
         { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
+        { type: "doc", id: "modules/assert/docs/manifest", label: "Assert.Manifest" },
       ],
     },
     {

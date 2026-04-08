@@ -35,6 +35,9 @@ schema:
       additionalProperties: true
     steps:
       type: array
+      x-telo-step-context:
+        invoke: invoke
+        outputType: outputType
       items:
         type: object
         properties:

@@ -8,6 +8,11 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: Run
 source: ../modules/run
 ---
@@ -28,12 +33,18 @@ code: |
   function main({ value }) {
     return { result: value * 2 }
   }
-inputSchema:
-  value:
-    type: number
-outputSchema:
-  result:
-    type: number
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      value: { type: number }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      result: { type: number }
 ---
 kind: Run.Sequence
 metadata:
@@ -50,9 +61,12 @@ steps:
       result: "${{ steps.Step1.result.result }}"
     invoke:
       kind: Console.WriteLine
-      inputSchema:
-        result:
-          type: number
+      inputType:
+        kind: Type.JsonSchema
+        schema:
+          type: object
+          properties:
+            result: { type: number }
       output: |
         Evaluated JavaScript code.
         Result is: ${{ result }}

@@ -8,6 +8,12 @@ export interface DataValidator {
   isValid(data: any): boolean;
 }
 
+export interface TypeRule {
+  condition: string;
+  code: string;
+  message?: string;
+}
+
 export class NoopValidator implements DataValidator {
   isValid() {
     return true;
@@ -34,6 +40,10 @@ export interface ResourceContext extends ControllerContext {
   createSchemaValidator(schema: any): DataValidator;
   registerSchema(name: string, schema: object): void;
   lookupSchema(name: string): object | undefined;
+  registerTypeRules(name: string, rules: TypeRule[]): void;
+  lookupTypeRules(name: string): TypeRule[] | undefined;
+  /** Resolve a type reference (name string or inline schema) to a DataValidator. */
+  createTypeValidator(typeRef: string | Record<string, any> | undefined): DataValidator;
   registerController(moduleName: string, kindName: string, controllerInstance: any): Promise<void>;
   registerDefinition(definition: any): void;
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;

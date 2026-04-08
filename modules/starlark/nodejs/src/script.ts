@@ -1,5 +1,6 @@
 import type {
   ControllerContext,
+  DataValidator,
   ResourceContext,
   ResourceInstance,
   ResourceManifest,
@@ -13,8 +14,8 @@ declare global {
 
 type StarlarkScriptResource = RuntimeResource & {
   code?: string;
-  inputSchema?: Record<string, any>;
-  outputSchema?: Record<string, any>;
+  inputType?: string | Record<string, any>;
+  outputType?: string | Record<string, any>;
 };
 
 let initialized = false;
@@ -33,25 +34,23 @@ export async function register(ctx: ControllerContext): Promise<void> {
 }
 
 class StarlarkScript implements ResourceInstance {
-  private name: string;
   private code: string;
+  private inputValidator: DataValidator;
+  private outputValidator: DataValidator;
 
   constructor(
     readonly ctx: ResourceContext,
     readonly manifest: ResourceManifest,
   ) {
-    this.name = manifest.metadata.name;
     this.code = manifest.code || "";
-  }
-
-  async init(): Promise<void> {
-    // Starlark code is compiled on-demand during execution
+    this.inputValidator = ctx.createTypeValidator(manifest.inputType);
+    this.outputValidator = ctx.createTypeValidator(manifest.outputType);
   }
 
   async invoke(input: Record<string, any>): Promise<any> {
-    this.ctx.validateSchema(input, this.manifest.inputSchema);
+    this.inputValidator.validate(input);
     const result = await executeStarlark(this.code, input);
-    this.ctx.validateSchema(result, this.manifest.outputSchema);
+    this.outputValidator.validate(result);
     return result;
   }
 }
@@ -65,9 +64,7 @@ export async function create(
     throw new Error(`StarlarkScript "${name}" is missing code`);
   }
 
-  const instance = new StarlarkScript(ctx, resource);
-  await instance.init();
-  return instance;
+  return new StarlarkScript(ctx, resource);
 }
 
 async function executeStarlark(code: string, input: any): Promise<any> {

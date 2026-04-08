@@ -103,7 +103,16 @@ export class Loader {
     if (moduleName) {
       for (const manifest of resolved) {
         if (manifest.kind !== "Kernel.Module" && !manifest.metadata?.module) {
+          const pi = (manifest.metadata as any)?.positionIndex;
           manifest.metadata = { ...manifest.metadata, module: moduleName };
+          if (pi) {
+            Object.defineProperty(manifest.metadata, "positionIndex", {
+              value: pi,
+              enumerable: false,
+              writable: true,
+              configurable: true,
+            });
+          }
         }
       }
     }
@@ -181,11 +190,20 @@ export class Loader {
       }
       const importedModule = imported.find((im) => im.kind === "Kernel.Module");
       if (importedModule?.metadata?.name) {
+        const pi = (m.metadata as any)?.positionIndex;
         m.metadata = {
           ...m.metadata,
           resolvedModuleName: importedModule.metadata.name as string,
           resolvedNamespace: (importedModule.metadata as any).namespace ?? null,
         };
+        if (pi) {
+          Object.defineProperty(m.metadata, "positionIndex", {
+            value: pi,
+            enumerable: false,
+            writable: true,
+            configurable: true,
+          });
+        }
       }
       for (const im of imported) {
         if (im.kind === "Kernel.Definition") importedDefs.push(im);
