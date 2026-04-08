@@ -1,0 +1,473 @@
+kind: Kernel.Module
+metadata:
+  name: TypeJsonSchemaTest
+  version: 1.0.0
+targets:
+  - TestTypeValidation
+  - TestTypeRejection
+  - TestTypeInheritance
+  - TestCelRules
+  - TestOutputTypeRejection
+  - TestMultipleRules
+  - TestMultipleExtends
+
+---
+kind: Kernel.Import
+metadata:
+  name: Type
+source: ..
+---
+kind: Kernel.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../../javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# ─── Type definitions ──────────────────────────────────────────────────────────
+
+kind: Type.JsonSchema
+metadata:
+  name: AdditionInput
+schema:
+  type: object
+  required: [a, b]
+  properties:
+    a: { type: number }
+    b: { type: number }
+---
+kind: Type.JsonSchema
+metadata:
+  name: AdditionOutput
+schema:
+  type: object
+  required: [sum]
+  properties:
+    sum: { type: number }
+---
+kind: Type.JsonSchema
+metadata:
+  name: Entity
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: string }
+---
+kind: Type.JsonSchema
+metadata:
+  name: NamedEntity
+extends: Entity
+schema:
+  type: object
+  required: [name]
+  properties:
+    name: { type: string }
+---
+# ─── Scripts ──────────────────────────────────────────────────────────────────
+
+kind: JavaScript.Script
+metadata:
+  name: AddNumbers
+inputType: AdditionInput
+outputType: AdditionOutput
+code: |
+  function main({ a, b }) {
+    return { sum: a + b }
+  }
+---
+kind: JavaScript.Script
+metadata:
+  name: Identity
+inputType: NamedEntity
+code: |
+  function main(input) {
+    return input
+  }
+---
+kind: Type.JsonSchema
+metadata:
+  name: PositiveAmount
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: number }
+rules:
+  - condition: "this.amount > 0"
+    code: "ERR_NON_POSITIVE"
+    message: "Amount must be positive"
+---
+kind: JavaScript.Script
+metadata:
+  name: ProcessAmount
+inputType: PositiveAmount
+code: |
+  function main({ amount }) {
+    return { doubled: amount * 2 }
+  }
+---
+# ─── Test 1: valid input passes through ───────────────────────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestTypeValidation
+steps:
+  - name: Add
+    inputs:
+      a: 10
+      b: 20
+    invoke:
+      kind: JavaScript.Script
+      name: AddNumbers
+  - name: VerifySum
+    inputs:
+      sum: "${{ steps.Add.result.sum }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          sum:
+            type: number
+            const: 30
+---
+# ─── Test 2: invalid input is rejected ────────────────────────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestTypeRejection
+steps:
+  - name: BadInput
+    try:
+      - name: CallWithString
+        inputs:
+          a: "not a number"
+          b: 5
+        invoke:
+          kind: JavaScript.Script
+          name: AddNumbers
+    catch:
+      - name: VerifyError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+---
+# ─── Test 3: type inheritance via extends ─────────────────────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestTypeInheritance
+steps:
+  # NamedEntity extends Entity — requires both id and name
+  - name: ValidInherited
+    inputs:
+      id: "abc-123"
+      name: "Alice"
+    invoke:
+      kind: JavaScript.Script
+      name: Identity
+  - name: VerifyPassthrough
+    inputs:
+      id: "${{ steps.ValidInherited.result.id }}"
+      name: "${{ steps.ValidInherited.result.name }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          id:
+            type: string
+            const: "abc-123"
+          name:
+            type: string
+            const: "Alice"
+  # Missing required 'id' from parent Entity should fail
+  - name: MissingParentField
+    try:
+      - name: CallWithoutId
+        inputs:
+          name: "Bob"
+        invoke:
+          kind: JavaScript.Script
+          name: Identity
+    catch:
+      - name: VerifyInheritanceError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+---
+# ─── Test 4: CEL rules ───────────────────────────────────────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestCelRules
+steps:
+  # Valid: positive amount passes both schema and rule
+  - name: ValidAmount
+    inputs:
+      amount: 42
+    invoke:
+      kind: JavaScript.Script
+      name: ProcessAmount
+  - name: VerifyDoubled
+    inputs:
+      doubled: "${{ steps.ValidAmount.result.doubled }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          doubled:
+            type: number
+            const: 84
+  # Invalid: zero fails the "amount > 0" CEL rule
+  - name: ZeroAmount
+    try:
+      - name: CallWithZero
+        inputs:
+          amount: 0
+        invoke:
+          kind: JavaScript.Script
+          name: ProcessAmount
+    catch:
+      - name: VerifyRuleError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+                const: "Amount must be positive"
+---
+# ─── Additional type definitions ──────────────────────────────────────────────
+
+kind: Type.JsonSchema
+metadata:
+  name: NonNegativeAmount
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: number }
+rules:
+  - condition: "this.amount >= 0"
+    code: "ERR_NEGATIVE"
+    message: "Amount must not be negative"
+  - condition: "this.amount <= 1000"
+    code: "ERR_OVER_LIMIT"
+    message: "Amount exceeds limit of 1000"
+---
+kind: JavaScript.Script
+metadata:
+  name: ProcessNonNegative
+inputType: NonNegativeAmount
+code: |
+  function main({ amount }) {
+    return { result: amount }
+  }
+---
+kind: Type.JsonSchema
+metadata:
+  name: Timestamped
+schema:
+  type: object
+  required: [updatedAt]
+  properties:
+    updatedAt: { type: string }
+---
+kind: Type.JsonSchema
+metadata:
+  name: FullEntity
+extends:
+  - Entity
+  - Timestamped
+schema:
+  type: object
+  required: [label]
+  properties:
+    label: { type: string }
+---
+kind: JavaScript.Script
+metadata:
+  name: FullIdentity
+inputType: FullEntity
+code: |
+  function main(input) {
+    return input
+  }
+---
+kind: JavaScript.Script
+metadata:
+  name: BadOutput
+outputType: AdditionOutput
+code: |
+  function main() {
+    return { wrong: "field" }
+  }
+---
+# ─── Test 5: outputType validation — wrong return shape ──────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestOutputTypeRejection
+steps:
+  - name: BadReturn
+    try:
+      - name: CallBadOutput
+        invoke:
+          kind: JavaScript.Script
+          name: BadOutput
+    catch:
+      - name: VerifyOutputError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+---
+# ─── Test 6: multiple CEL rules — first passes, second fails ─────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestMultipleRules
+steps:
+  # Valid: 500 passes both rules (>= 0 and <= 1000)
+  - name: ValidMid
+    inputs:
+      amount: 500
+    invoke:
+      kind: JavaScript.Script
+      name: ProcessNonNegative
+  - name: VerifyMid
+    inputs:
+      result: "${{ steps.ValidMid.result.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            type: number
+            const: 500
+  # Invalid: -1 fails the first rule
+  - name: NegativeAmount
+    try:
+      - name: CallNegative
+        inputs:
+          amount: -1
+        invoke:
+          kind: JavaScript.Script
+          name: ProcessNonNegative
+    catch:
+      - name: VerifyNegativeError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+                const: "Amount must not be negative"
+  # Invalid: 2000 passes first rule but fails second
+  - name: OverLimit
+    try:
+      - name: CallOverLimit
+        inputs:
+          amount: 2000
+        invoke:
+          kind: JavaScript.Script
+          name: ProcessNonNegative
+    catch:
+      - name: VerifyLimitError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+                const: "Amount exceeds limit of 1000"
+---
+# ─── Test 7: multiple extends ────────────────────────────────────────────────
+
+kind: Run.Sequence
+metadata:
+  name: TestMultipleExtends
+steps:
+  # FullEntity extends [Entity, Timestamped] — requires id, updatedAt, label
+  - name: ValidFull
+    inputs:
+      id: "x-1"
+      updatedAt: "2026-01-01"
+      label: "Test"
+    invoke:
+      kind: JavaScript.Script
+      name: FullIdentity
+  - name: VerifyFull
+    inputs:
+      id: "${{ steps.ValidFull.result.id }}"
+      label: "${{ steps.ValidFull.result.label }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          id:
+            type: string
+            const: "x-1"
+          label:
+            type: string
+            const: "Test"
+  # Missing updatedAt from Timestamped parent
+  - name: MissingTimestamp
+    try:
+      - name: CallWithoutTimestamp
+        inputs:
+          id: "x-2"
+          label: "Oops"
+        invoke:
+          kind: JavaScript.Script
+          name: FullIdentity
+    catch:
+      - name: VerifyTimestampError
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string

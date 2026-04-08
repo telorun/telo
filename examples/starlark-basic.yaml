@@ -8,6 +8,11 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: Run
 source: ../modules/run
 ---
@@ -28,28 +33,31 @@ code: |
   def run(input):
     result = input["value"] * 2
     return {"result": result}
-inputSchema:
-  type: object
-  properties:
-    value:
-      type: number
-  required: [value]
-outputSchema:
-  type: object
-  properties:
-    result:
-      type: number
-  required: [result]
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      value: { type: number }
+    required: [value]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      result: { type: number }
+    required: [result]
 ---
 kind: Console.WriteLine
 metadata:
   name: WriteResult
-inputSchema:
-  type: object
-  properties:
-    result:
-      type: number
-  required: [result]
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      result: { type: number }
+    required: [result]
 output: |
   Evaluated starlark code.
   Result is: ${{ result }}

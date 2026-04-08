@@ -1,6 +1,46 @@
 import type { ASTNode } from "@marcbachmann/cel-js";
 
 /**
+ * Resolve a type field value (string name, inline type, or raw schema) to a JSON Schema.
+ * - String: look up the named type in allManifests (Type.JsonSchema resources)
+ * - Object with `kind` + `schema`: inline type definition → return the `schema`
+ * - Object with `type` or `properties`: raw JSON Schema, return as-is
+ */
+export function resolveTypeFieldToSchema(
+  value: unknown,
+  allManifests: Record<string, any>[],
+): Record<string, any> | undefined {
+  if (!value) return undefined;
+
+  if (typeof value === "string") {
+    // Named type reference — find a Kernel.Type resource by name
+    const typeManifest = allManifests.find(
+      (m) =>
+        (m.metadata as any)?.name === value &&
+        typeof m.kind === "string" &&
+        /\bType\b/.test(m.kind) &&
+        typeof m.schema === "object" &&
+        m.schema !== null,
+    );
+    return typeManifest?.schema as Record<string, any> | undefined;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, any>;
+    // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
+    if (obj.schema && typeof obj.schema === "object") {
+      return obj.schema as Record<string, any>;
+    }
+    // Raw JSON Schema (has type or properties)
+    if (obj.type || obj.properties) {
+      return obj;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Extract all member-access chains from a CEL AST.
  * Returns arrays like ["request", "query", "name"] for `request.query.name`.
  * Chains that start with a call or non-identifier root are ignored.
@@ -96,16 +136,18 @@ export function validateChainAgainstSchema(
   for (let i = 0; i < chain.length; i++) {
     const key = chain[i]!;
     if (!current || typeof current !== "object") return null;
-    // Open schema: no properties declared or explicitly allows additional properties
     const props: Record<string, any> | undefined = current.properties;
     if (!props) return null;
-    if (current.additionalProperties === true) return null;
-    if (!(key in props)) {
-      const path = chain.slice(0, i + 1).join(".");
-      const available = Object.keys(props).join(", ");
-      return `'${path}' is not defined (available: ${available})`;
+    if (key in props) {
+      // Known property — drill into it even if additionalProperties is true
+      current = props[key];
+      continue;
     }
-    current = props[key];
+    // Unknown property — only flag if schema is closed
+    if (current.additionalProperties === true) return null;
+    const path = chain.slice(0, i + 1).join(".");
+    const available = Object.keys(props).join(", ");
+    return `'${path}' is not defined (available: ${available})`;
   }
   return null;
 }
@@ -182,14 +224,17 @@ export function resolveContextAnnotations(
       const refManifest = allManifests.find(
         (m) => m.kind === ref.kind && (m.metadata as any)?.name === ref.name,
       ) as Record<string, any> | undefined;
-      const resolved = refManifest
-        ? (navigatePath(refManifest, subpath.split("/")) as Record<string, any> | undefined)
-        : undefined;
-      if (resolved && typeof resolved === "object") {
-        return resolved;
+      if (refManifest) {
+        const resolved = resolveTypeFieldToSchema(
+          navigatePath(refManifest, subpath.split("/")) as unknown,
+          allManifests,
+        );
+        if (resolved && typeof resolved === "object") {
+          return resolved;
+        }
       }
     }
-    // Fallback: open schema (no false errors when outputSchema is not declared)
+    // Fallback: open schema (no false errors when outputType is not declared)
     return { ...schema, additionalProperties: true };
   }
 

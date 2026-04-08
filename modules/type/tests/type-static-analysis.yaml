@@ -1,0 +1,39 @@
+kind: Kernel.Module
+metadata:
+  name: TypeStaticAnalysisTest
+  version: 1.0.0
+targets:
+  - TestBadFieldAccess
+  - TestValidFieldAccess
+  - TestUntypedStepAccess
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# Bad field access on typed output — should produce CEL_UNKNOWN_FIELD
+kind: Assert.Manifest
+metadata:
+  name: TestBadFieldAccess
+source: ./__fixtures__/bad-type-access.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: nonExistent
+---
+# Valid field access on typed output — should produce zero errors
+kind: Assert.Manifest
+metadata:
+  name: TestValidFieldAccess
+source: ./__fixtures__/valid-type-access.yaml
+expect:
+  errors: []
+---
+# Untyped step result — any access allowed, no false positives
+kind: Assert.Manifest
+metadata:
+  name: TestUntypedStepAccess
+source: ./__fixtures__/untyped-step-access.yaml
+expect:
+  errors: []

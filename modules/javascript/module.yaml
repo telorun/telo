@@ -15,23 +15,21 @@ schema:
   properties:
     code:
       type: "string"
-    inputSchema:
-      type: "object"
-      additionalProperties:
-        type: "object"
-        properties:
-          type:
-            type: "string"
-            enum: ["string", "number", "integer", "boolean", "array", "object", "null"]
-        additionalProperties: true
-    outputSchema:
-      type: "object"
-      additionalProperties:
-        type: "object"
-        properties:
-          type:
-            type: "string"
-            enum: ["string", "number", "integer", "boolean", "array", "object", "null"]
-        additionalProperties: true
+    inputType:
+      title: Input Type
+      description: Named type reference or inline type definition for invocation inputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: "string"
+        - type: "object"
+          additionalProperties: true
+    outputType:
+      title: Output Type
+      description: Named type reference or inline type definition for invocation outputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: "string"
+        - type: "object"
+          additionalProperties: true
   required: ["metadata", "code"]
   additionalProperties: false

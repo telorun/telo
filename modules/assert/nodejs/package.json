@@ -5,7 +5,8 @@
   "exports": {
     "./schema": "./src/schema.ts",
     "./events": "./src/events.ts",
-    "./module-context": "./src/module-context.ts"
+    "./module-context": "./src/module-context.ts",
+    "./manifest": "./src/manifest.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.lib.json"
@@ -15,6 +16,7 @@
   ],
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
+    "@telorun/analyzer": "workspace:*",
     "@telorun/sdk": "workspace:*"
   },
   "devDependencies": {

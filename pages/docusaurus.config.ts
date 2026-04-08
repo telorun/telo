@@ -52,6 +52,7 @@ const config: Config = {
             "modules/http-server/README.md",
             "modules/http-client/README.md",
             "modules/studio/README.md",
+            "modules/assert/docs/manifest.md",
             "sdk/README.md",
             "sdk/nodejs/README.md",
             "tests/README.md",

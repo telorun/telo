@@ -60,10 +60,10 @@ export interface ControllerInstance<
     ctx: ResourceContext,
   ): ResourceInstance<TInput, TOutput> | null | Promise<ResourceInstance<TInput, TOutput> | null>;
   schema?: any;
-  /** JSON Schema for invoke() inputs — used for runtime validation and static analysis. */
-  inputSchema?: Record<string, any>;
-  /** JSON Schema for invoke() outputs — used for documentation and static analysis. */
-  outputSchema?: Record<string, any>;
+  /** Type reference for invoke() inputs — name string or inline type definition. */
+  inputType?: string | Record<string, any>;
+  /** Type reference for invoke() outputs — name string or inline type definition. */
+  outputType?: string | Record<string, any>;
 }
 
 export interface Kernel {

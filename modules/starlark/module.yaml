@@ -22,8 +22,20 @@ schema:
       required: [name]
     code:
       type: string
-    inputSchema:
-      type: object
-    outputSchema:
-      type: object
+    inputType:
+      title: Input Type
+      description: Named type reference or inline type definition for script inputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: string
+        - type: object
+          additionalProperties: true
+    outputType:
+      title: Output Type
+      description: Named type reference or inline type definition for script outputs.
+      x-telo-ref: "kernel#Type"
+      oneOf:
+        - type: string
+        - type: object
+          additionalProperties: true
   required: [metadata, code]

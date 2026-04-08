@@ -5,6 +5,11 @@ metadata:
 ---
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: JavaScript
 source: ../modules/javascript
 ---
@@ -31,12 +36,18 @@ with:
           doubled: value * 2
         }
       };
-    inputSchema:
-      value:
-        type: number
-    outputSchema:
-      doubled:
-        type: number
+    inputType:
+      kind: Type.JsonSchema
+      schema:
+        type: object
+        properties:
+          value: { type: number }
+    outputType:
+      kind: Type.JsonSchema
+      schema:
+        type: object
+        properties:
+          doubled: { type: number }
 steps:
   - name: UseHelper
     inputs:

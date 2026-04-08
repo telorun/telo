@@ -17,6 +17,7 @@ import {
   getManifestItem,
   pathMatchesScope,
   resolveContextAnnotations,
+  resolveTypeFieldToSchema,
   validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
@@ -78,6 +79,87 @@ function extractContextsFromSchema(
   }
 
   return results;
+}
+
+/**
+ * Build a `steps` context schema from `x-telo-step-context` annotation.
+ * Walks each step in the manifest array, resolves the invoked resource's outputType,
+ * and builds `steps.<name>.result` context entries.
+ */
+function buildStepContextSchema(
+  manifest: Record<string, any>,
+  defSchema: Record<string, any>,
+  allManifests: Record<string, any>[],
+): Record<string, any> | undefined {
+  const props = defSchema.properties as Record<string, any> | undefined;
+  if (!props) return undefined;
+
+  for (const [fieldName, fieldSchema] of Object.entries(props)) {
+    const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
+    if (!stepCtx) continue;
+
+    const invokeField = stepCtx.invoke;
+    const outputTypeField = stepCtx.outputType;
+    if (!invokeField || !outputTypeField) continue;
+
+    const steps = manifest[fieldName];
+    if (!Array.isArray(steps)) continue;
+
+    const stepProperties: Record<string, any> = {};
+    const collectSteps = (items: unknown[]) => {
+      for (const step of items) {
+        if (!step || typeof step !== "object") continue;
+        const s = step as Record<string, any>;
+        const name = s.name;
+        if (typeof name === "string") {
+          const invoke = s[invokeField] as Record<string, any> | undefined;
+          let outputSchema: Record<string, any> | undefined;
+          if (invoke && typeof invoke === "object") {
+            const invokedKind = invoke.kind as string | undefined;
+            const invokedName = invoke.name as string | undefined;
+            if (invokedName) {
+              const invokedManifest = allManifests.find(
+                (m) =>
+                  (m.metadata as any)?.name === invokedName &&
+                  (!invokedKind || m.kind === invokedKind),
+              ) as Record<string, any> | undefined;
+              if (invokedManifest) {
+                outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
+              }
+            } else {
+              outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
+            }
+          }
+          stepProperties[name] = {
+            type: "object",
+            properties: {
+              result: outputSchema ?? { type: "object", additionalProperties: true },
+            },
+          };
+        }
+        // Recurse into nested step arrays (then, else, do, catch, finally, try, default, cases)
+        for (const nested of ["then", "else", "do", "catch", "finally", "try", "default"]) {
+          if (Array.isArray(s[nested])) collectSteps(s[nested]);
+        }
+        // cases is an object map of arrays
+        if (s.cases && typeof s.cases === "object") {
+          for (const arr of Object.values(s.cases)) {
+            if (Array.isArray(arr)) collectSteps(arr);
+          }
+        }
+      }
+    };
+    collectSteps(steps);
+
+    if (Object.keys(stepProperties).length > 0) {
+      return {
+        type: "object",
+        properties: stepProperties,
+      };
+    }
+  }
+
+  return undefined;
 }
 
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
@@ -319,6 +401,15 @@ export class StaticAnalyzer {
       const mDefinition =
         defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
 
+      // Pre-compute step context for manifests with x-telo-step-context
+      const stepContextSchema = mDefinition?.schema
+        ? buildStepContextSchema(
+            m as Record<string, any>,
+            mDefinition.schema as Record<string, any>,
+            allManifests as Record<string, any>[],
+          )
+        : undefined;
+
       walkCelExpressions(m, "", (expr, path) => {
         let parsed: ReturnType<typeof celEnvironment.parse> | undefined;
         try {
@@ -340,7 +431,9 @@ export class StaticAnalyzer {
         const invocationContext = (m.metadata as any)?.xTeloInvocationContext as
           | Record<string, any>
           | undefined;
-        if (contexts.length === 0 && !invocationContext) return;
+
+        // If no static context but we have step context, inject it
+        if (contexts.length === 0 && !invocationContext && !stepContextSchema) return;
 
         let matchedContext: Record<string, any> | undefined;
         let matchedScope: string | undefined;
@@ -352,6 +445,19 @@ export class StaticAnalyzer {
           }
         }
         if (!matchedContext) matchedContext = invocationContext;
+
+        // Merge step context into the effective context
+        if (stepContextSchema) {
+          const base = matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
+          matchedContext = {
+            ...base,
+            properties: {
+              ...(base.properties ?? {}),
+              steps: stepContextSchema,
+            },
+          };
+        }
+
         if (!matchedContext) return;
 
         const manifestItem = matchedScope

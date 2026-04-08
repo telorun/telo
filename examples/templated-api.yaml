@@ -8,6 +8,11 @@ exports:
 ---
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: Http
 source: ../modules/http-server
 ---
@@ -62,10 +67,16 @@ code: |
       message: `Hello ${name}!`,
     }
   };
-inputSchema:
-  name:
-    type: string
-outputSchema:
-  message:
-    type: string
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      message: { type: string }
 ---

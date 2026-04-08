@@ -1,6 +1,6 @@
 {
-  "name": "@telorun/data",
-  "version": "0.0.7",
+  "name": "@telorun/type",
+  "version": "0.0.1",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -19,6 +19,7 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
+    "@marcbachmann/cel-js": "^7.5.3",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/sdk": "workspace:*"
   },

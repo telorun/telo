@@ -9,6 +9,7 @@ exports:
     - ModuleContext
     - Schema
     - Events
+    - Manifest
 ---
 kind: Kernel.Definition
 metadata:
@@ -85,3 +86,32 @@ schema:
           - event
   required:
     - expect
+---
+kind: Kernel.Definition
+metadata:
+  name: Manifest
+capability: Kernel.Runnable
+controllers:
+  - pkg:npm/@telorun/assert@0.1.5?local_path=./nodejs#manifest
+schema:
+  type: object
+  properties:
+    source:
+      type: string
+      description: Relative path to the manifest file to analyze
+    expect:
+      type: object
+      properties:
+        errors:
+          type: array
+          description: Expected analysis errors
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Diagnostic code (e.g. CEL_UNKNOWN_FIELD)
+              message:
+                type: string
+                description: Substring to match in the diagnostic message
+  required: [source, expect]

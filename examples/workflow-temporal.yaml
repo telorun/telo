@@ -7,6 +7,11 @@ targets:
 ---
 kind: Kernel.Import
 metadata:
+  name: Type
+source: ../modules/type
+---
+kind: Kernel.Import
+metadata:
   name: Workflow
 source: ../modules/workflow
 ---
@@ -34,12 +39,18 @@ code: |
     const res = await fetch(url);
     return { data: await res.json() };
   }
-inputSchema:
-  url:
-    type: string
-outputSchema:
-  data:
+inputType:
+  kind: Type.JsonSchema
+  schema:
     type: object
+    properties:
+      url: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      data: { type: object }
 ---
 kind: JS.Script
 metadata:
@@ -48,12 +59,18 @@ code: |
   function main({ data }) {
     return { result: data.items.map(i => i.id) };
   }
-inputSchema:
-  data:
+inputType:
+  kind: Type.JsonSchema
+  schema:
     type: object
-outputSchema:
-  result:
-    type: array
+    properties:
+      data: { type: object }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      result: { type: array }
 ---
 kind: Workflow.Graph
 metadata:
