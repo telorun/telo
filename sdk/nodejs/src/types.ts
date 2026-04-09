@@ -60,6 +60,8 @@ export interface ControllerInstance<
     ctx: ResourceContext,
   ): ResourceInstance<TInput, TOutput> | null | Promise<ResourceInstance<TInput, TOutput> | null>;
   schema?: any;
+  /** CLI argument spec. Keys are arg names; values define type, alias, and description. */
+  args?: Record<string, { type: "string" | "boolean"; alias?: string; description?: string }>;
   /** Type reference for invoke() inputs — name string or inline type definition. */
   inputType?: string | Record<string, any>;
   /** Type reference for invoke() outputs — name string or inline type definition. */

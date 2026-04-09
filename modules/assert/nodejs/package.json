@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "files": [
-    "dist/**"
+    "dist",
+    "src/**"
   ],
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",

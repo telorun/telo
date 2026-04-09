@@ -10,8 +10,10 @@ import {
   RuntimeError,
   RuntimeEvent,
   isCompiledValue,
+  type ParsedArgs,
 } from "@telorun/sdk";
 import * as path from "path";
+import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
@@ -23,6 +25,8 @@ export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
+  env?: Record<string, string | undefined>;
+  argv?: string[];
 }
 
 /**
@@ -47,11 +51,15 @@ export class Kernel implements IKernel {
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
+  readonly env: Record<string, string | undefined>;
+  readonly argv: string[];
 
   constructor(options: KernelOptions = {}) {
     this.stdin = options.stdin ?? process.stdin;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
+    this.env = options.env ?? process.env;
+    this.argv = options.argv ?? [];
     this.loader.register(new LocalFileAdapter());
     this.setupEventStreaming();
   }
@@ -141,7 +149,7 @@ export class Kernel implements IKernel {
       [],
       this._createInstance.bind(this),
       (event, payload) => this.eventBus.emit(event, payload),
-      process.env,
+      this.env,
     );
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
@@ -356,6 +364,7 @@ export class Kernel implements IKernel {
   private createResourceContext(
     moduleContext: ModuleContext,
     resource: ResourceManifest,
+    args?: ParsedArgs,
   ): ResourceContext {
     return new ResourceContextImpl(
       this,
@@ -365,7 +374,40 @@ export class Kernel implements IKernel {
       this.stdin,
       this.stdout,
       this.stderr,
+      args,
     );
+  }
+
+  /**
+   * Parse kernel.argv using a controller's args spec (if present).
+   * If the controller exports no args spec, does a generic parse.
+   */
+  private parseArgsForController(controller: any): ParsedArgs {
+    if (this.argv.length === 0) return { _: [] };
+
+    const argSpec = controller.args;
+    if (argSpec) {
+      const options: Record<string, { type: "string" | "boolean"; short?: string }> = {};
+      for (const [name, def] of Object.entries(argSpec) as [string, any][]) {
+        options[name] = { type: def.type ?? "string" };
+        if (def.alias) options[name].short = def.alias;
+      }
+      const { values, positionals } = parseArgs({
+        args: this.argv,
+        options,
+        allowPositionals: true,
+        strict: false,
+      });
+      return { ...values, _: positionals } as ParsedArgs;
+    }
+
+    // Generic parse: no spec, best-effort
+    const { values, positionals } = parseArgs({
+      args: this.argv,
+      allowPositionals: true,
+      strict: false,
+    });
+    return { ...values, _: positionals } as ParsedArgs;
   }
 
   /**
@@ -440,7 +482,8 @@ export class Kernel implements IKernel {
         ) as ResourceManifest)
       : resource;
 
-    const ctx = this.createResourceContext(evalContext, processedResource);
+    const parsedArgs = this.parseArgsForController(controller);
+    const ctx = this.createResourceContext(evalContext, processedResource, parsedArgs);
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 

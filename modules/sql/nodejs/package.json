@@ -40,7 +40,8 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "files": [
-    "dist/**"
+    "dist",
+    "src/**"
   ],
   "dependencies": {
     "@telorun/sdk": "workspace:*",

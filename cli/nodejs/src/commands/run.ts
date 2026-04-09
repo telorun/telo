@@ -106,11 +106,12 @@ export async function run(argv: {
   debug: boolean;
   snapshotOnExit: boolean;
   watch: boolean;
+  "--"?: string[];
 }): Promise<void> {
   const log = createLogger(argv.verbose);
 
   try {
-    const kernel = new Kernel();
+    const kernel = new Kernel({ argv: argv["--"] });
     if (argv.verbose) {
       kernel.on("*", (event: any) => {
         log.info(`${event.name}: ${JSON.stringify(event.payload)}`);
@@ -182,16 +183,31 @@ export async function run(argv: {
 
 export function runCommand(yargs: Argv): Argv {
   return yargs.command(
-    ["run <path>", "$0 <path>"],
+    ["run <path> [..]", "$0 <path> [..]"],
     "Run a Telo runtime from a manifest file or directory",
     (y) =>
-      y.positional("path", {
-        describe: "Path to YAML manifest, directory containing module.yaml, or HTTP(S) URL",
-        type: "string",
-        demandOption: true,
-      }),
+      y
+        .positional("path", {
+          describe: "Path to YAML manifest, directory containing module.yaml, or HTTP(S) URL",
+          type: "string",
+          demandOption: true,
+        })
+        .strict(false),
     async (argv) => {
-      await run(argv as any);
+      // Everything after the manifest path that isn't a known telo flag
+      // becomes argv for the kernel. We extract it from process.argv by
+      // finding the manifest path and taking everything after it, excluding
+      // known telo flags.
+      const knownFlags = new Set([
+        "--verbose", "--debug", "--snapshot-on-exit", "--watch", "-w",
+        "--help", "--version",
+      ]);
+      const rawArgs = process.argv;
+      const pathIdx = rawArgs.indexOf(argv.path as string);
+      const extraArgs = pathIdx >= 0
+        ? rawArgs.slice(pathIdx + 1).filter((a) => !knownFlags.has(a) && a !== "--")
+        : [];
+      await run({ ...(argv as any), "--": extraArgs });
     },
   );
 }
