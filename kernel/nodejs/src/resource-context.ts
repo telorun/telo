@@ -17,16 +17,23 @@ import { SchemaValidator } from "./schema-valiator.js";
 const Ajv = AjvModule.default ?? AjvModule;
 
 export class ResourceContextImpl implements ResourceContext {
+  readonly stdin: NodeJS.ReadableStream;
+  readonly stdout: NodeJS.WritableStream;
+  readonly stderr: NodeJS.WritableStream;
+
   constructor(
     readonly kernel: Kernel,
     readonly moduleContext: ModuleContext,
     private readonly metadata: Record<string, any>,
     private readonly validator: SchemaValidator = new SchemaValidator(),
-  ) {}
-
-  stdin: NodeJS.ReadableStream = process.stdin;
-  stdout: NodeJS.WritableStream = process.stdout;
-  stderr: NodeJS.WritableStream = process.stderr;
+    stdin?: NodeJS.ReadableStream,
+    stdout?: NodeJS.WritableStream,
+    stderr?: NodeJS.WritableStream,
+  ) {
+    this.stdin = stdin ?? process.stdin;
+    this.stdout = stdout ?? process.stdout;
+    this.stderr = stderr ?? process.stderr;
+  }
 
   createSchemaValidator(schema: any) {
     if (!schema) {

@@ -21,8 +21,8 @@ class ConsoleWriteLineResource implements ResourceInstance {
   invoke(input: any) {
     this.inputValidator.validate(input);
     const output = this.ctx.expandValue(this.manifest.output, input ?? {});
-    process.stdout.write(output);
-    process.stdout.write("\n");
+    this.ctx.stdout.write(output);
+    this.ctx.stdout.write("\n");
     this.ctx.emit("StdOut.LineWritten", { line: output });
     return output;
   }

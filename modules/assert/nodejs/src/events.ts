@@ -57,74 +57,66 @@ function matchesPayload(actual: any, expected: Record<string, any>): boolean {
   return true;
 }
 
-const useColor = process.stderr.isTTY;
-const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = (t: string) => c("1", t);
-const red = (t: string) => c("31", t);
-const green = (t: string) => c("32", t);
-const yellow = (t: string) => c("33", t);
-const dim = (t: string) => c("2", t);
-
-function buildReport(name: string, captured: CapturedEvent[], expect: ExpectEntry[]) {
-  const results: MatchResult[] = [];
-  let pos = 0;
-
-  for (const entry of expect) {
-    let found = false;
-    while (pos < captured.length) {
-      const ev = captured[pos++];
-      if (matchesPattern(entry.event, ev.name)) {
-        if (!entry.payload || matchesPayload(ev.payload, entry.payload)) {
-          results.push({ status: "matched", entry, actual: ev });
-        } else {
-          results.push({ status: "payload-mismatch", entry, actual: ev });
-        }
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      results.push({ status: "not-found", entry });
-    }
-  }
-
-  const failures = results.filter((r) => r.status !== "matched");
-  // if (failures.length === 0) {
-  //   return null;
-  // }
-
-  let report =
-    bold(
-      failures.length > 0
-        ? red(`Assert.Events.${name}: assertion failed`)
-        : green(`Assert.Events.${name}: assertion passed`),
-    ) + "\n";
-  for (const result of results) {
-    if (result.status === "matched") {
-      report += `  ${green("✓")} ${dim(result.actual.name)}\n`;
-    } else if (result.status === "not-found") {
-      report += `  ${red("✗")} ${result.entry.event}  ${dim("← not found in stream")}\n`;
-      if (result.entry.payload) {
-        report += `       ${dim("expected payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
-      }
-    } else if (result.status === "payload-mismatch") {
-      report += `  ${red("✗")} ${result.actual.name}\n`;
-      report += `       ${dim("expected payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
-      report += `       ${dim("actual payload:  ")} ${red(JSON.stringify(result.actual.payload))}\n`;
-    }
-  }
-
-  return { report, passed: failures.length === 0 };
-}
-
 export async function create(manifest: AssertManifest, ctx: ResourceContext) {
+  const useColor = (ctx.stderr as any).isTTY ?? false;
+  const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+  const bold = (t: string) => c("1", t);
+  const red = (t: string) => c("31", t);
+  const green = (t: string) => c("32", t);
+  const yellow = (t: string) => c("33", t);
+  const dim = (t: string) => c("2", t);
+
+  function buildReport(name: string, captured: CapturedEvent[], expect: ExpectEntry[]) {
+    const results: MatchResult[] = [];
+    let pos = 0;
+
+    for (const entry of expect) {
+      let found = false;
+      while (pos < captured.length) {
+        const ev = captured[pos++];
+        if (matchesPattern(entry.event, ev.name)) {
+          if (!entry.payload || matchesPayload(ev.payload, entry.payload)) {
+            results.push({ status: "matched", entry, actual: ev });
+          } else {
+            results.push({ status: "payload-mismatch", entry, actual: ev });
+          }
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        results.push({ status: "not-found", entry });
+      }
+    }
+
+    const failures = results.filter((r) => r.status !== "matched");
+
+    let report =
+      bold(
+        failures.length > 0
+          ? red(`Assert.Events.${name}: assertion failed`)
+          : green(`Assert.Events.${name}: assertion passed`),
+      ) + "\n";
+    for (const result of results) {
+      if (result.status === "matched") {
+        report += `  ${green("✓")} ${dim(result.actual.name)}\n`;
+      } else if (result.status === "not-found") {
+        report += `  ${red("✗")} ${result.entry.event}  ${dim("← not found in stream")}\n`;
+        if (result.entry.payload) {
+          report += `       ${dim("expected payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
+        }
+      } else if (result.status === "payload-mismatch") {
+        report += `  ${red("✗")} ${result.actual.name}\n`;
+        report += `       ${dim("expected payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
+        report += `       ${dim("actual payload:  ")} ${red(JSON.stringify(result.actual.payload))}\n`;
+      }
+    }
+
+    return { report, passed: failures.length === 0 };
+  }
+
   const captured: CapturedEvent[] = [];
   const filters = manifest.filter ?? [{ type: "*" }];
-  let appStarted = false;
-
-  ctx.on("Kernel.Started", () => {
-    appStarted = true;
-  });
 
   ctx.on("*", (event) => {
     if (filters.some((f) => matchesPattern(f.type, event.name))) {
@@ -137,9 +129,9 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
       const report = buildReport(manifest.metadata.name, captured, manifest.expect);
       if (report) {
         if (report.passed) {
-          process.stdout.write(report.report);
+          ctx.stdout.write(report.report);
         } else {
-          process.stderr.write(report.report);
+          ctx.stderr.write(report.report);
           ctx.requestExit(1);
         }
       }

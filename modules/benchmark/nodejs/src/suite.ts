@@ -67,13 +67,6 @@ function fmtMs(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
-const useColor = process.stdout.isTTY;
-const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = (t: string) => c("1", t);
-const green = (t: string) => c("32", t);
-const red = (t: string) => c("31", t);
-const dim = (t: string) => c("2", t);
-
 class BenchmarkSuite {
   private resolved: ResolvedScenario[] = [];
   private cumulativeWeights: number[] = [];
@@ -83,10 +76,22 @@ class BenchmarkSuite {
   private measureStart = 0;
   private measureEnd = 0;
 
+  private bold: (t: string) => string;
+  private green: (t: string) => string;
+  private red: (t: string) => string;
+  private dim: (t: string) => string;
+
   constructor(
     private resource: SuiteManifest,
     private ctx: ResourceContext,
-  ) {}
+  ) {
+    const useColor = (ctx.stdout as any).isTTY ?? false;
+    const c = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+    this.bold = (t: string) => c("1", t);
+    this.green = (t: string) => c("32", t);
+    this.red = (t: string) => c("31", t);
+    this.dim = (t: string) => c("2", t);
+  }
 
   async init() {
     for (const scenario of this.resource.scenarios) {
@@ -119,9 +124,9 @@ class BenchmarkSuite {
 
     const stopCondition = this.makeStopCondition();
 
-    process.stdout.write(
-      dim(`Benchmarking ${this.resource.scenarios.length} scenario(s) with ${concurrency} worker(s)`) +
-      (warmupMs > 0 ? dim(`, ${this.resource.warmup} warmup`) : "") +
+    this.ctx.stdout.write(
+      this.dim(`Benchmarking ${this.resource.scenarios.length} scenario(s) with ${concurrency} worker(s)`) +
+      (warmupMs > 0 ? this.dim(`, ${this.resource.warmup} warmup`) : "") +
       "\n",
     );
 
@@ -246,15 +251,15 @@ class BenchmarkSuite {
     );
 
     const pad = (s: string, w: number) => s.padEnd(w);
-    const line = header.map((h, i) => bold(pad(h, widths[i]))).join("  ");
+    const line = header.map((h, i) => this.bold(pad(h, widths[i]))).join("  ");
 
-    process.stdout.write("\n" + line + "\n");
-    process.stdout.write(widths.map((w) => "-".repeat(w)).join("  ") + "\n");
+    this.ctx.stdout.write("\n" + line + "\n");
+    this.ctx.stdout.write(widths.map((w) => "-".repeat(w)).join("  ") + "\n");
 
     for (const row of rows) {
-      process.stdout.write(row.map((cell, i) => pad(cell, widths[i])).join("  ") + "\n");
+      this.ctx.stdout.write(row.map((cell, i) => pad(cell, widths[i])).join("  ") + "\n");
     }
-    process.stdout.write("\n");
+    this.ctx.stdout.write("\n");
 
     this.enforceThresholds(thresholds);
   }
@@ -264,7 +269,7 @@ class BenchmarkSuite {
     for (const s of this.resolved) {
       result[s.scenarioName] = this.buildStats(s.scenarioName);
     }
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    this.ctx.stdout.write(JSON.stringify(result, null, 2) + "\n");
     this.enforceThresholds(thresholds);
   }
 
@@ -280,20 +285,20 @@ class BenchmarkSuite {
         const st = this.buildStats(name);
 
         if (t.p50 != null && st.p50 > t.p50) {
-          process.stderr.write(red(`THRESHOLD FAIL [${name}] p50 ${fmtMs(st.p50)} > ${fmtMs(t.p50)}\n`));
+          this.ctx.stderr.write(this.red(`THRESHOLD FAIL [${name}] p50 ${fmtMs(st.p50)} > ${fmtMs(t.p50)}\n`));
           failed = true;
         }
         if (t.p95 != null && st.p95 > t.p95) {
-          process.stderr.write(red(`THRESHOLD FAIL [${name}] p95 ${fmtMs(st.p95)} > ${fmtMs(t.p95)}\n`));
+          this.ctx.stderr.write(this.red(`THRESHOLD FAIL [${name}] p95 ${fmtMs(st.p95)} > ${fmtMs(t.p95)}\n`));
           failed = true;
         }
         if (t.p99 != null && st.p99 > t.p99) {
-          process.stderr.write(red(`THRESHOLD FAIL [${name}] p99 ${fmtMs(st.p99)} > ${fmtMs(t.p99)}\n`));
+          this.ctx.stderr.write(this.red(`THRESHOLD FAIL [${name}] p99 ${fmtMs(st.p99)} > ${fmtMs(t.p99)}\n`));
           failed = true;
         }
         if (t.errorRate != null && st.errorRate > t.errorRate) {
-          process.stderr.write(
-            red(`THRESHOLD FAIL [${name}] errorRate ${(st.errorRate * 100).toFixed(2)}% > ${(t.errorRate * 100).toFixed(2)}%\n`),
+          this.ctx.stderr.write(
+            this.red(`THRESHOLD FAIL [${name}] errorRate ${(st.errorRate * 100).toFixed(2)}% > ${(t.errorRate * 100).toFixed(2)}%\n`),
           );
           failed = true;
         }
@@ -301,7 +306,7 @@ class BenchmarkSuite {
     }
 
     if (!failed) {
-      process.stdout.write(green("All thresholds passed.\n"));
+      this.ctx.stdout.write(this.green("All thresholds passed.\n"));
     } else {
       this.ctx.requestExit(1);
     }
