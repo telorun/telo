@@ -2,7 +2,7 @@
   "name": "@telorun/vscode-extension",
   "displayName": "Telo Kernel",
   "description": "YAML diagnostics and completions for Telo manifests",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "telorun",
   "private": true,
   "engines": {
