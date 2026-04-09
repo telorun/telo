@@ -1,5 +1,11 @@
 # @telorun/sdk
 
+## 0.2.7
+
+### Patch Changes
+
+- Automated release.
+
 ## 0.2.6
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/kernel",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Telo Runtime - A lightweight, polyglot execution host.",
   "type": "module",
   "main": "./dist/index.js",
