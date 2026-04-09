@@ -1,0 +1,19 @@
+kind: Kernel.Module
+metadata:
+  name: TestSuite
+  version: 1.0.0
+targets:
+  - RunAll
+---
+kind: Kernel.Import
+metadata:
+  name: Test
+source: ./modules/test
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "**/tests/*.yaml"
+exclude:
+  - "**/__fixtures__/**"

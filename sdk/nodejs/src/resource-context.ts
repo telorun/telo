@@ -24,7 +24,10 @@ export class NoopValidator implements DataValidator {
   }
 }
 
+export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & { _: string[] };
+
 export interface ResourceContext extends ControllerContext {
+  readonly args: ParsedArgs;
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;

@@ -6,6 +6,7 @@ import {
   RuntimeError,
   RuntimeResource,
   isCompiledValue,
+  type ParsedArgs,
   type TypeRule,
 } from "@telorun/sdk";
 import AjvModule from "ajv";
@@ -20,6 +21,7 @@ export class ResourceContextImpl implements ResourceContext {
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
+  readonly args: ParsedArgs;
 
   constructor(
     readonly kernel: Kernel,
@@ -29,10 +31,12 @@ export class ResourceContextImpl implements ResourceContext {
     stdin?: NodeJS.ReadableStream,
     stdout?: NodeJS.WritableStream,
     stderr?: NodeJS.WritableStream,
+    args?: ParsedArgs,
   ) {
     this.stdin = stdin ?? process.stdin;
     this.stdout = stdout ?? process.stdout;
     this.stderr = stderr ?? process.stderr;
+    this.args = args ?? { _: [] };
   }
 
   createSchemaValidator(schema: any) {

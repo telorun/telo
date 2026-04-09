@@ -1,7 +1,7 @@
 # Claude
 
 Use `pnpm run telo ./manifest.yaml` for testing.
-Use `pnpm run test` to run the full test suite (discovers all `tests/*.yaml` across the repo via bun).
+Use `pnpm run test` to run the full test suite (runs `test-suite.yaml` which discovers all `tests/*.yaml` across the repo).
 Tests should live in the module they test: `modules/<name>/tests/*.yaml`.
 Test fixtures go in `__fixtures__/` subdirectories (excluded from test discovery).
 
@@ -15,6 +15,7 @@ Follow this strictly:
 - telo manifests MUST be type safe
 - never use `cat` nor `sed` to read files — read them directly
 - never modify files in `dist` directories
+- never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js
 
 ## Architecture
 
@@ -27,7 +28,7 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 - `kernel/nodejs/src/` — core runtime: orchestration, loading, controllers, init loop
 - `cli/nodejs/` — CLI wrapper (`bin/telo.mjs`)
 - `sdk/nodejs/src/` — public API for module authors (re-exports kernel contexts + capability interfaces)
-- `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `console`, etc.
+- `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
 - `yaml-cel-templating/nodejs/` — CEL + YAML directive engine (`$let`, `$if`, `$for`, `$eval`, `$include`)
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking)
 - `apps/telo-editor/` — desktop editor (Next.js + Tauri)
@@ -120,15 +121,19 @@ YAML directives: `$let`, `$if`, `$for`, `$eval`, `$include` — see `yaml-cel-te
 - x-telo-ref / scope / topology → `analyzer/nodejs/src/reference-field-map.ts`, `dependency-graph.ts`, `validate-references.ts`
 - CEL type checking → `analyzer/nodejs/src/validate-cel-context.ts`, `cel-environment.ts`
 - Test a manifest → add to `tests/`, run `pnpm run test`
+- Controller CLI args → `kernel.ts` (`parseArgsForController`), `resource-context.ts`
+- Test runner → `modules/test/nodejs/src/suite.ts`
 
-## Module Documentation
+## Module Documentation — MANDATORY
 
-Each module's documentation lives in `modules/<name>/docs/`. When code in a module changes, update the corresponding documentation to stay in sync. If documentation does not exist yet, create it.
+**Every module change MUST include documentation updates.** This is not optional. Before finishing any task that adds or modifies a module, verify:
 
-New documentation files must be wired into GitHub Pages (Docusaurus):
-1. Add the file path to `pages/docusaurus.config.ts` in the `include` array
-2. Add a sidebar entry in `pages/sidebars.ts`
-3. Add `sidebar_label` frontmatter to the markdown file
+1. Documentation exists in `modules/<name>/docs/`. If not, create it.
+2. Documentation matches the current code. If code changed, docs must be updated.
+3. New documentation files are wired into GitHub Pages (Docusaurus):
+   - Add the file path to `pages/docusaurus.config.ts` in the `include` array
+   - Add a sidebar entry in `pages/sidebars.ts`
+   - Add `sidebar_label` frontmatter to the markdown file
 
 ## Keep CLAUDE.md up to date
 

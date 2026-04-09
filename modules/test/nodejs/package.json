@@ -1,9 +1,14 @@
 {
-  "name": "@telorun/benchmark",
-  "version": "0.1.1",
+  "name": "@telorun/test",
+  "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./suite": "./src/suite.ts"
+    "./suite": {
+      "source": "./src/suite.ts",
+      "bun": "./src/suite.ts",
+      "import": "./dist/suite.js",
+      "default": "./dist/suite.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.lib.json"
@@ -14,6 +19,7 @@
   ],
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
+    "@telorun/kernel": "workspace:*",
     "@telorun/sdk": "workspace:*"
   },
   "devDependencies": {

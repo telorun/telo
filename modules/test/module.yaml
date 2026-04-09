@@ -1,0 +1,46 @@
+kind: Kernel.Module
+metadata:
+  name: test
+  namespace: std
+  version: 0.1.0
+  description: Test discovery and execution
+exports:
+  kinds:
+    - Suite
+---
+kind: Kernel.Definition
+metadata:
+  name: Suite
+capability: Kernel.Runnable
+controllers:
+  - pkg:npm/@telorun/test@0.1.0?local_path=./nodejs#suite
+schema:
+  type: object
+  properties:
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    include:
+      type: array
+      items:
+        type: string
+      description: >
+        Glob patterns to discover test manifests, resolved relative to this
+        manifest's directory.
+    exclude:
+      type: array
+      items:
+        type: string
+      description: >
+        Glob patterns to exclude from discovery. Defaults to ["**/__fixtures__/**"].
+    filter:
+      type: string
+      description: >
+        Optional substring filter applied to each discovered path. Only matching
+        tests are executed.
+  required:
+    - metadata
