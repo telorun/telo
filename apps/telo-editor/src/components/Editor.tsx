@@ -253,6 +253,41 @@ export function Editor() {
     });
   }
 
+  async function handleUpgradeImport(name: string, newSource: string) {
+    if (!state.application || !state.activeModulePath) return;
+
+    const modules = new Map(state.application.modules);
+    const current = modules.get(state.activeModulePath);
+    if (!current) return;
+
+    // Remove old import and prune its graph
+    modules.set(state.activeModulePath, {
+      ...current,
+      imports: current.imports.filter((i) => i.name !== name),
+    });
+    const pruned = pruneUnreachableModules({ ...state.application, modules });
+
+    // Re-add with new source to re-resolve the graph
+    const imp = { name, source: newSource, importKind: classifyImport(newSource) };
+    const adapter = adapterRef.current ?? noopAdapter;
+    const updated = await addModuleImport(
+      pruned,
+      state.activeModulePath,
+      imp,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+
+    setState((s) => {
+      const navigationStack = sanitizeNavigationStack(
+        s.navigationStack,
+        updated.modules as Map<string, unknown>,
+        updated.rootPath,
+      );
+      return { ...s, application: updated, navigationStack };
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------
@@ -441,6 +476,7 @@ export function Editor() {
           onAddModule={handleAddModule}
           onAddImport={handleAddImport}
           onRemoveImport={handleRemoveImport}
+          onUpgradeImport={handleUpgradeImport}
           onCreateResource={() => setCreateResourceOpen(true)}
         />
         <GraphCanvas

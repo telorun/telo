@@ -47,7 +47,13 @@ services:
     image: rustfs/rustfs
     volumes:
       - storage-data:/data
-
+  editor:
+    image: node:24
+    command: 'sh -c "corepack enable && exec pnpm run --filter telo-editor dev"'
+    init: true
+    volumes:
+      - .:/telo
+    working_dir: /telo
 volumes:
   storage-data:
   db-data:

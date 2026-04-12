@@ -21,7 +21,7 @@ metadata:
   name: Bucket
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/s3@1.0.1?local_path=./nodejs#s3-bucket
+  - pkg:npm/@telorun/s3@1.0.2?local_path=./nodejs#s3-bucket
 schema:
   type: object
   properties:
@@ -43,7 +43,7 @@ metadata:
   name: List
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.0.1?local_path=./nodejs#s3-list
+  - pkg:npm/@telorun/s3@1.0.2?local_path=./nodejs#s3-list
 schema:
   type: object
   properties:
@@ -63,7 +63,7 @@ metadata:
   name: Put
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.0.1?local_path=./nodejs#s3-put
+  - pkg:npm/@telorun/s3@1.0.2?local_path=./nodejs#s3-put
 schema:
   type: object
   properties:

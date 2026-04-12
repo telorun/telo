@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { toPascalCase } from "../loader";
-import type { AvailableKind, ParsedManifest, RegistryServer } from "../model";
+import { fetchAvailableVersions, parseRegistryRef, toPascalCase } from "../loader";
+import type { RegistryVersion } from "../loader";
+import type { AvailableKind, ParsedImport, ParsedManifest, RegistryServer } from "../model";
 
 interface RegistryResult {
   id: string;
@@ -24,6 +25,7 @@ interface SidebarProps {
   onAddModule: (source: string, alias: string) => Promise<void>;
   onAddImport: (source: string, alias: string) => Promise<void>;
   onRemoveImport: (name: string) => void;
+  onUpgradeImport: (name: string, newSource: string) => Promise<void>;
   onCreateResource: () => void;
 }
 
@@ -62,6 +64,7 @@ export function Sidebar({
   onAddModule,
   onAddImport,
   onRemoveImport,
+  onUpgradeImport,
   onCreateResource,
 }: SidebarProps) {
   const moduleImports = activeManifest?.imports.filter((i) => i.importKind === "submodule") ?? [];
@@ -106,6 +109,12 @@ export function Sidebar({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressFetchRef = useRef(false);
+
+  const [upgradingImport, setUpgradingImport] = useState<string | null>(null);
+  const [upgradeVersions, setUpgradeVersions] = useState<RegistryVersion[]>([]);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [upgradeSubmitting, setUpgradeSubmitting] = useState(false);
 
   // Fetch suggestions from all enabled registries, debounced
   useEffect(() => {
@@ -256,6 +265,66 @@ export function Sidebar({
     setShowSuggestions(false);
   }
 
+  // ---------------------------------------------------------------------------
+  // Import upgrade logic
+  // ---------------------------------------------------------------------------
+
+  async function handleUpgradeClick(imp: ParsedImport) {
+    if (upgradingImport === imp.name) {
+      setUpgradingImport(null);
+      return;
+    }
+
+    const ref = parseRegistryRef(imp.source);
+    if (!ref) return;
+
+    setUpgradingImport(imp.name);
+    setUpgradeVersions([]);
+    setUpgradeError(null);
+    setUpgradeLoading(true);
+
+    try {
+      const versions = await fetchAvailableVersions(ref.moduleId, registryServers);
+      setUpgradeVersions(versions);
+      if (versions.length === 0) {
+        setUpgradeError("No versions available");
+      }
+    } catch {
+      setUpgradeError("Failed to fetch versions");
+    } finally {
+      setUpgradeLoading(false);
+    }
+  }
+
+  async function handleVersionSelect(imp: ParsedImport, version: string) {
+    const ref = parseRegistryRef(imp.source);
+    if (!ref) return;
+
+    const newSource = `${ref.moduleId}@${version}`;
+    setUpgradeSubmitting(true);
+    try {
+      await onUpgradeImport(imp.name, newSource);
+      setUpgradingImport(null);
+      setUpgradeVersions([]);
+    } catch {
+      setUpgradeError("Upgrade failed");
+    } finally {
+      setUpgradeSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!upgradingImport) return;
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-upgrade-dropdown]")) {
+        setUpgradingImport(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [upgradingImport]);
+
   const inputCls =
     "w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
   const btnPrimary =
@@ -346,20 +415,79 @@ export function Sidebar({
           onAdd={activeManifest ? () => setAddingImport(true) : undefined}
         />
         {remoteImports.length === 0 && !addingImport && <EmptyHint text="No imports" />}
-        {remoteImports.map((imp) => (
-          <div
-            key={imp.name}
-            className={`group ${rowBase} ${rowHover} text-zinc-500 dark:text-zinc-400`}
-          >
-            <span className="flex-1 truncate">{imp.name}</span>
-            <button
-              onClick={() => onRemoveImport(imp.name)}
-              className="invisible rounded px-1 text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
-            >
-              ×
-            </button>
-          </div>
-        ))}
+        {remoteImports.map((imp) => {
+          const ref = imp.importKind === "external" ? parseRegistryRef(imp.source) : null;
+          const isUpgrading = upgradingImport === imp.name;
+
+          return (
+            <div key={imp.name} className="relative" data-upgrade-dropdown={isUpgrading || undefined}>
+              <div
+                className={`group ${rowBase} ${rowHover} text-zinc-500 dark:text-zinc-400`}
+              >
+                {ref && (
+                  <button
+                    onClick={() => handleUpgradeClick(imp)}
+                    disabled={upgradeSubmitting}
+                    data-upgrade-dropdown
+                    className="shrink-0 rounded px-0.5 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
+                    title={`Upgrade ${imp.name} (${ref.version})`}
+                  >
+                    ↑
+                  </button>
+                )}
+                <span className="flex-1 truncate">{imp.name}</span>
+                {ref && (
+                  <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-600">
+                    {ref.version}
+                  </span>
+                )}
+                <button
+                  onClick={() => onRemoveImport(imp.name)}
+                  className="invisible rounded px-1 text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
+                >
+                  ×
+                </button>
+              </div>
+
+              {isUpgrading && (
+                <div
+                  data-upgrade-dropdown
+                  className="absolute left-4 right-2 top-full z-10 mt-0.5 max-h-48 overflow-y-auto rounded border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  {upgradeLoading && (
+                    <div className="px-3 py-2 text-xs text-zinc-400">Loading versions…</div>
+                  )}
+                  {upgradeError && (
+                    <div className="px-3 py-2 text-xs text-red-500 dark:text-red-400">
+                      {upgradeError}
+                    </div>
+                  )}
+                  {!upgradeLoading &&
+                    upgradeVersions.map((v) => (
+                      <button
+                        key={v.version}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleVersionSelect(imp, v.version);
+                        }}
+                        disabled={upgradeSubmitting}
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 ${
+                          ref && v.version === ref.version
+                            ? "font-medium text-zinc-900 dark:text-zinc-100"
+                            : "text-zinc-600 dark:text-zinc-400"
+                        }`}
+                      >
+                        <span>{v.version}</span>
+                        {ref && v.version === ref.version && (
+                          <span className="text-[10px] text-zinc-400">current</span>
+                        )}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {addingImport && (
           <div className="mx-3 mt-1 flex flex-col gap-1.5">

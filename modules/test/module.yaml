@@ -13,7 +13,7 @@ metadata:
   name: Suite
 capability: Kernel.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.1.0?local_path=./nodejs#suite
+  - pkg:npm/@telorun/test@0.1.1?local_path=./nodejs#suite
 schema:
   type: object
   properties:

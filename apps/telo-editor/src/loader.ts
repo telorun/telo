@@ -9,6 +9,7 @@ import type {
   ParsedImport,
   ParsedManifest,
   ParsedResource,
+  RegistryServer,
 } from "./model";
 
 type LoaderOptionsCompat = {
@@ -22,7 +23,7 @@ const LoaderCtor = Loader as unknown as new (
   extraAdaptersOrOptions?: ManifestAdapter[] | LoaderOptionsCompat,
 ) => Loader;
 
-function isRegistryImportSource(source: string): boolean {
+export function isRegistryImportSource(source: string): boolean {
   return (
     !source.startsWith("http://") &&
     !source.startsWith("https://") &&
@@ -31,6 +32,54 @@ function isRegistryImportSource(source: string): boolean {
     source.includes("@") &&
     source.includes("/")
   );
+}
+
+export function parseRegistryRef(source: string): { moduleId: string; version: string } | null {
+  if (!isRegistryImportSource(source)) return null;
+  const atIdx = source.lastIndexOf("@");
+  if (atIdx <= 0 || atIdx === source.length - 1) return null;
+  const moduleId = source.slice(0, atIdx);
+  if (!moduleId.includes("/")) return null;
+  const rawVersion = source.slice(atIdx + 1);
+  const version = rawVersion.startsWith("v") ? rawVersion.substring(1) : rawVersion;
+  return { moduleId, version };
+}
+
+export interface RegistryVersion {
+  version: string;
+  publishedAt: string;
+}
+
+export async function fetchAvailableVersions(
+  moduleId: string,
+  registryServers: RegistryServer[],
+): Promise<RegistryVersion[]> {
+  const enabled = registryServers.filter((s) => s.enabled);
+  if (!enabled.length) return [];
+
+  const results = await Promise.allSettled(
+    enabled.map((server) =>
+      fetch(`${server.url.replace(/\/$/, "")}/${moduleId}/versions`)
+        .then((r) =>
+          r.ok ? (r.json() as Promise<{ items: RegistryVersion[] }>) : { items: [] },
+        )
+        .then((data) => data.items ?? []),
+    ),
+  );
+
+  const seen = new Set<string>();
+  const merged: RegistryVersion[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      for (const item of r.value) {
+        if (!seen.has(item.version)) {
+          seen.add(item.version);
+          merged.push(item);
+        }
+      }
+    }
+  }
+  return merged;
 }
 
 const registryFallbackBlocker: ManifestAdapter = {

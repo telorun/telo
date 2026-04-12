@@ -219,7 +219,8 @@ baseUrl: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketN
 ---
 # Public API — unauthenticated.
 # GET /search                       full-text search across modules.
-# GET /{namespace}/{name}           lists all versions from the SQL index.
+# GET /{namespace}/{name}           module overview with latest version.
+# GET /{namespace}/{name}/versions  lists all versions from the SQL index.
 # GET /{namespace}/{name}/{version} returns module metadata from the SQL index.
 # GET /{namespace}/{name}/{version}/module.yaml streams the module.yaml from S3.
 # PUT /{namespace}/{name}/{version} publishes a module.yaml (body) to S3 and records it in SQL.
@@ -295,6 +296,38 @@ routes:
           name: "${{ request.params.namespace + '/' + request.params.name }}"
           version: "${{ result.rows[result.rows.size() - 1].version }}"
           versions: "${{ result.rows.map(r, r.version) }}"
+      - status: 404
+        body:
+          error: "Module not found"
+
+  - request:
+      path: /{namespace}/{name}/versions
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+          required: ["namespace", "name"]
+    handler:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+    inputs:
+      sql: >-
+        SELECT version, published_at as publishedAt FROM modules
+        WHERE namespace = $1 AND name = $2
+        ORDER BY published_at DESC
+      bindings:
+        - "${{ request.params.namespace }}"
+        - "${{ request.params.name }}"
+    response:
+      - status: 200
+        when: "${{ result.rows.size() > 0 }}"
+        body:
+          items: "${{ result.rows }}"
       - status: 404
         body:
           error: "Module not found"

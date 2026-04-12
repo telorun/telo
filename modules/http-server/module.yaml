@@ -2,7 +2,7 @@ kind: Kernel.Module
 metadata:
   name: "http-server"
   namespace: std
-  version: "1.1.0"
+  version: "1.1.1"
 exports:
   kinds:
     - Server
@@ -13,7 +13,7 @@ metadata:
   name: "Server"
 capability: Kernel.Service
 controllers:
-  - pkg:npm/@telorun/http-server@0.1.6?local_path=./nodejs#http-server
+  - pkg:npm/@telorun/http-server@0.1.7?local_path=./nodejs#http-server
 schema:
   type: "object"
   properties:
@@ -168,7 +168,7 @@ metadata:
 capability: Kernel.Mount
 topology: Router
 controllers:
-  - pkg:npm/@telorun/http-server@0.1.6?local_path=./nodejs#http-server-api
+  - pkg:npm/@telorun/http-server@0.1.7?local_path=./nodejs#http-server-api
 schema:
   type: "object"
   properties:
