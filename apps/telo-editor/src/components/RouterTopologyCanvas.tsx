@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { MatcherSelection, ParsedResource } from "../model";
+import { Button } from "./ui/button";
 
 interface RouterTopologyCanvasProps {
   resource: ParsedResource;
@@ -222,12 +223,14 @@ export function RouterTopologyCanvas({
             {entries.length} route{entries.length === 1 ? "" : "s"}
           </div>
           {schemaInfo.entriesField && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-900/60"
               onClick={handleAddRoute}
-              className="rounded border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-900/60"
             >
               + Add route
-            </button>
+            </Button>
           )}
         </div>
       </div>

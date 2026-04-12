@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchAvailableVersions, parseRegistryRef, toPascalCase } from "../loader";
 import type { RegistryVersion } from "../loader";
 import type { AvailableKind, ParsedImport, ParsedManifest, RegistryServer } from "../model";
+import { Button } from "./ui/button";
 
 interface RegistryResult {
   id: string;
@@ -36,12 +37,9 @@ function SectionHeader({ label, onAdd }: { label: string; onAdd?: () => void }) 
         {label}
       </span>
       {onAdd && (
-        <button
-          onClick={onAdd}
-          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 leading-none px-0.5"
-        >
+        <Button variant="ghost" size="icon-xs" onClick={onAdd}>
           +
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -327,10 +325,6 @@ export function Sidebar({
 
   const inputCls =
     "w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
-  const btnPrimary =
-    "rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40 hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300";
-  const btnGhost =
-    "rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800";
 
   return (
     <div className="flex h-full w-56 flex-col overflow-y-auto border-r border-zinc-200 bg-white text-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -346,15 +340,17 @@ export function Sidebar({
           >
             <span className="text-zinc-400">⊟</span>
             <span className="flex-1 truncate">{imp.name}</span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="invisible text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemoveImport(imp.name);
               }}
-              className="invisible rounded px-1 text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
             >
               ×
-            </button>
+            </Button>
           </div>
         ))}
 
@@ -391,16 +387,16 @@ export function Sidebar({
               className={inputCls}
             />
             <div className="flex gap-1">
-              <button
+              <Button
+                size="xs"
                 onClick={handleSubmitModule}
                 disabled={!moduleSource.trim() || !moduleAlias.trim() || moduleSubmitting}
-                className={btnPrimary}
               >
                 Add
-              </button>
-              <button onClick={handleCancelModule} className={btnGhost}>
+              </Button>
+              <Button variant="ghost" size="xs" onClick={handleCancelModule}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -425,15 +421,16 @@ export function Sidebar({
                 className={`group ${rowBase} ${rowHover} text-zinc-500 dark:text-zinc-400`}
               >
                 {ref && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => handleUpgradeClick(imp)}
                     disabled={upgradeSubmitting}
                     data-upgrade-dropdown
-                    className="shrink-0 rounded px-0.5 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
                     title={`Upgrade ${imp.name} (${ref.version})`}
                   >
                     ↑
-                  </button>
+                  </Button>
                 )}
                 <span className="flex-1 truncate">{imp.name}</span>
                 {ref && (
@@ -441,12 +438,14 @@ export function Sidebar({
                     {ref.version}
                   </span>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="invisible text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
                   onClick={() => onRemoveImport(imp.name)}
-                  className="invisible rounded px-1 text-zinc-400 hover:text-red-500 group-hover:visible dark:hover:text-red-400"
                 >
                   ×
-                </button>
+                </Button>
               </div>
 
               {isUpgrading && (
@@ -565,16 +564,16 @@ export function Sidebar({
               <p className="text-xs text-red-500 dark:text-red-400">{importError}</p>
             )}
             <div className="flex gap-1">
-              <button
+              <Button
+                size="xs"
                 onClick={handleSubmitImport}
                 disabled={!importSource.trim() || !importAlias.trim() || importSubmitting}
-                className={btnPrimary}
               >
                 {importSubmitting ? "Adding…" : "Add"}
-              </button>
-              <button onClick={handleCancelImport} disabled={importSubmitting} className={btnGhost}>
+              </Button>
+              <Button variant="ghost" size="xs" onClick={handleCancelImport} disabled={importSubmitting}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}

@@ -1,4 +1,5 @@
 import type { Application, NavigationEntry } from '../model'
+import { Button } from './ui/button'
 
 interface TopBarProps {
   application: Application | null
@@ -41,36 +42,21 @@ export function TopBar({ application, navigationStack, onNew, onOpen, onPopTo, o
       </div>
 
       <div className="flex gap-2">
-        <button
-          onClick={onNew}
-          className="rounded px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
+        <Button variant="ghost" size="sm" onClick={onNew}>
           New
-        </button>
-        <button
-          onClick={onOpen}
-          className="rounded px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onOpen}>
           Open
-        </button>
-        <button
-          disabled
-          className="rounded px-3 py-1 text-xs font-medium text-zinc-400 dark:text-zinc-600"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" disabled>
           Save
-        </button>
-        <button
-          disabled
-          className="rounded px-3 py-1 text-xs font-medium text-zinc-400 dark:text-zinc-600"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" disabled>
           Run
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="rounded px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
-        </button>
+        </Button>
       </div>
     </div>
   )

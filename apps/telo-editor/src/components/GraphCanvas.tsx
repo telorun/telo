@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { MatcherSelection, ParsedResource } from "../model";
+import { Button } from "./ui/button";
 import { RouterTopologyCanvas } from "./RouterTopologyCanvas";
 
 interface GraphCanvasProps {
@@ -67,19 +68,12 @@ export function GraphCanvas({
           className="w-56 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
         />
         <div className="flex gap-2">
-          <button
-            onClick={handleCreate}
-            disabled={!name.trim()}
-            className="rounded bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
+          <Button size="sm" onClick={handleCreate} disabled={!name.trim()}>
             Create
-          </button>
-          <button
-            onClick={handleCancel}
-            className="rounded px-4 py-1.5 text-xs font-medium text-zinc-500 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800"
-          >
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -88,18 +82,12 @@ export function GraphCanvas({
   if (!hasApplication) {
     return (
       <div className="flex h-full flex-1 items-center justify-center gap-3 bg-zinc-50 dark:bg-zinc-900">
-        <button
-          onClick={onNew}
-          className="rounded border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-        >
+        <Button variant="outline" onClick={onNew}>
           New application
-        </button>
-        <button
-          onClick={onOpen}
-          className="rounded border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-        >
+        </Button>
+        <Button variant="outline" onClick={onOpen}>
           Open file
-        </button>
+        </Button>
       </div>
     );
   }

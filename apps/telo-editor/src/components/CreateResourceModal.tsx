@@ -1,9 +1,17 @@
 import { useState } from "react";
 import type { AvailableKind } from "../model";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 interface CreateResourceModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   kinds: AvailableKind[];
-  onClose: () => void;
   onCreate: (kind: string, name: string, fields: Record<string, unknown>) => void;
 }
 
@@ -13,7 +21,7 @@ function capabilityLabel(capability: string): string {
   return capability.replace("Kernel.", "");
 }
 
-export function CreateResourceModal({ kinds, onClose, onCreate }: CreateResourceModalProps) {
+export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: CreateResourceModalProps) {
   const [selectedKind, setSelectedKind] = useState<AvailableKind | null>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -39,46 +47,33 @@ export function CreateResourceModal({ kinds, onClose, onCreate }: CreateResource
     onCreate(selectedKind.fullKind, trimmedName, {});
   }
 
+  function handleClose() {
+    onOpenChange(false);
+    setSelectedKind(null);
+    setName("");
+    setNameError(null);
+  }
+
   const inputCls =
     "w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400";
-  const btnPrimary =
-    "rounded bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300";
-  const btnGhost =
-    "rounded px-3 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="w-110 max-w-full rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-110">
+        <DialogHeader>
           <div className="flex items-center gap-2">
             {selectedKind && (
-              <button
-                onClick={() => setSelectedKind(null)}
-                className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-              >
+              <Button variant="ghost" size="icon-xs" onClick={() => setSelectedKind(null)}>
                 ←
-              </button>
+              </Button>
             )}
-            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <DialogTitle>
               {selectedKind ? `New ${selectedKind.fullKind}` : "Create Resource"}
-            </span>
+            </DialogTitle>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          >
-            ×
-          </button>
-        </div>
+        </DialogHeader>
 
-        {/* Body */}
-        <div className="p-4">
+        <div>
           {!selectedKind ? (
             // Step 1: Kind picker
             kinds.length === 0 ? (
@@ -117,7 +112,6 @@ export function CreateResourceModal({ kinds, onClose, onCreate }: CreateResource
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSubmit();
-                    if (e.key === "Escape") onClose();
                   }}
                   placeholder="my_server"
                   className={inputCls}
@@ -131,17 +125,17 @@ export function CreateResourceModal({ kinds, onClose, onCreate }: CreateResource
               </p>
 
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={onClose} className={btnGhost}>
+                <Button variant="ghost" size="sm" onClick={handleClose}>
                   Cancel
-                </button>
-                <button onClick={handleSubmit} disabled={!name.trim()} className={btnPrimary}>
+                </Button>
+                <Button size="sm" onClick={handleSubmit} disabled={!name.trim()}>
                   Create
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

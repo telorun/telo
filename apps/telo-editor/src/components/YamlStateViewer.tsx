@@ -1,7 +1,8 @@
 "use client";
 
 import Editor from "@monaco-editor/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface Snapshot {
   filePath: string;
@@ -14,20 +15,11 @@ interface YamlStateViewerProps {
 }
 
 export function YamlStateViewer({ snapshots, activeFilePath }: YamlStateViewerProps) {
-  const [userSelectedPath, setUserSelectedPath] = useState<string | null>(null);
-
-  const selectedPath = useMemo(() => {
-    if (snapshots.length === 0) return null;
-    const snapshotPaths = new Set(snapshots.map((s) => s.filePath));
-    if (userSelectedPath && snapshotPaths.has(userSelectedPath)) return userSelectedPath;
-    if (activeFilePath && snapshotPaths.has(activeFilePath)) return activeFilePath;
+  const defaultPath = useMemo(() => {
+    if (snapshots.length === 0) return undefined;
+    if (activeFilePath && snapshots.some((s) => s.filePath === activeFilePath)) return activeFilePath;
     return snapshots[0].filePath;
-  }, [snapshots, activeFilePath, userSelectedPath]);
-
-  const selected = useMemo(
-    () => snapshots.find((snapshot) => snapshot.filePath === selectedPath) ?? null,
-    [snapshots, selectedPath],
-  );
+  }, [snapshots, activeFilePath]);
 
   if (snapshots.length === 0) {
     return (
@@ -48,44 +40,38 @@ export function YamlStateViewer({ snapshots, activeFilePath }: YamlStateViewerPr
         YAML State
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="w-48 shrink-0 overflow-y-auto border-r border-zinc-200 dark:border-zinc-800">
-          {snapshots.map((snapshot) => {
-            const selectedRow = snapshot.filePath === selectedPath;
-            return (
-              <button
-                key={snapshot.filePath}
-                type="button"
-                onClick={() => setUserSelectedPath(snapshot.filePath)}
-                className={`w-full border-b border-zinc-100 px-2 py-2 text-left text-xs dark:border-zinc-800 ${
-                  selectedRow
-                    ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-                    : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900"
-                }`}
-                title={snapshot.filePath}
-              >
-                <span className="line-clamp-2 break-all">{snapshot.filePath}</span>
-              </button>
-            );
-          })}
-        </div>
+      <Tabs defaultValue={defaultPath} orientation="vertical" className="min-h-0 flex-1 !flex-row gap-0">
+        <TabsList variant="line" className="h-auto w-48 shrink-0 flex-col items-stretch justify-start overflow-y-auto rounded-none border-r border-zinc-200 p-0 dark:border-zinc-800">
+          {snapshots.map((snapshot) => (
+            <TabsTrigger
+              key={snapshot.filePath}
+              value={snapshot.filePath}
+              className="h-auto flex-none justify-start rounded-none border-b border-zinc-100 px-2 py-2 text-left text-xs data-[state=active]:bg-zinc-100 data-[state=active]:text-zinc-900 dark:border-zinc-800 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-zinc-100"
+              title={snapshot.filePath}
+            >
+              <span className="line-clamp-2 break-all">{snapshot.filePath}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <div className="min-h-0 min-w-0 flex-1">
-          <Editor
-            height="100%"
-            language="yaml"
-            value={selected?.yaml ?? ""}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              fontSize: 12,
-              wordWrap: "on",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-            }}
-          />
-        </div>
-      </div>
+        {snapshots.map((snapshot) => (
+          <TabsContent key={snapshot.filePath} value={snapshot.filePath} className="min-h-0 min-w-0">
+            <Editor
+              height="100%"
+              language="yaml"
+              value={snapshot.yaml}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 12,
+                wordWrap: "on",
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+              }}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }

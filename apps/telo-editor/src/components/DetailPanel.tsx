@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MatcherSelection, ParsedManifest } from "../model";
+import { Button } from "./ui/button";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
 
 interface DetailPanelProps {
@@ -161,12 +162,9 @@ export function DetailPanel({
           </span>
         </div>
         {matcherContext && (
-          <button
-            onClick={onClearMatcherSelection}
-            className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-          >
+          <Button variant="ghost" size="xs" onClick={onClearMatcherSelection}>
             Back
-          </button>
+          </Button>
         )}
       </div>
 
@@ -192,12 +190,9 @@ export function DetailPanel({
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-3 py-2 dark:border-zinc-800">
-        <button
-          onClick={handleReset}
-          className="rounded px-3 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-        >
+        <Button variant="ghost" size="sm" onClick={handleReset}>
           Reset
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -503,20 +503,18 @@ export function Editor() {
         />
         <YamlStateViewer snapshots={yamlSnapshots} activeFilePath={state.activeModulePath} />
       </div>
-      {settingsOpen && (
-        <SettingsModal
-          settings={settings}
-          onClose={() => setSettingsOpen(false)}
-          onChange={setSettings}
-        />
-      )}
-      {createResourceOpen && (
-        <CreateResourceModal
-          kinds={availableKinds}
-          onClose={() => setCreateResourceOpen(false)}
-          onCreate={handleCreateResource}
-        />
-      )}
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={settings}
+        onChange={setSettings}
+      />
+      <CreateResourceModal
+        open={createResourceOpen}
+        onOpenChange={setCreateResourceOpen}
+        kinds={availableKinds}
+        onCreate={handleCreateResource}
+      />
     </div>
   );
 }

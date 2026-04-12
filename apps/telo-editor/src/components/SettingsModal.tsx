@@ -1,13 +1,21 @@
 import { useState } from 'react'
 import type { AppSettings, RegistryServer } from '../model'
+import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 
 interface SettingsModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   settings: AppSettings
-  onClose: () => void
   onChange: (settings: AppSettings) => void
 }
 
-export function SettingsModal({ settings, onClose, onChange }: SettingsModalProps) {
+export function SettingsModal({ open, onOpenChange, settings, onChange }: SettingsModalProps) {
   const [newUrl, setNewUrl] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -54,28 +62,16 @@ export function SettingsModal({ settings, onClose, onChange }: SettingsModalProp
 
   function handleUrlKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') handleAdd()
-    if (e.key === 'Escape') onClose()
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="w-[480px] max-w-full rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Settings</span>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-120">
+        <DialogHeader>
+          <DialogTitle>Settings</DialogTitle>
+        </DialogHeader>
 
-        {/* Body */}
-        <div className="p-4">
+        <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             Registry Servers
           </p>
@@ -102,12 +98,14 @@ export function SettingsModal({ settings, onClose, onChange }: SettingsModalProp
                   )}
                   <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{server.url}</p>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="shrink-0 text-zinc-400 hover:text-red-600 dark:text-zinc-600 dark:hover:text-red-400"
                   onClick={() => handleDelete(server.id)}
-                  className="shrink-0 rounded px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-red-400"
                 >
                   Remove
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -129,20 +127,17 @@ export function SettingsModal({ settings, onClose, onChange }: SettingsModalProp
               placeholder="Label (optional)"
               value={newLabel}
               onChange={e => setNewLabel(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') onClose() }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
               className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
             />
             <div className="flex justify-end">
-              <button
-                onClick={handleAdd}
-                className="rounded px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
+              <Button variant="ghost" size="sm" onClick={handleAdd}>
                 Add
-              </button>
+              </Button>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
