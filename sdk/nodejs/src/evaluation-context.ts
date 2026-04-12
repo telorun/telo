@@ -263,9 +263,12 @@ export class EvaluationContext {
           message: errors.get(name) ?? "Unknown error",
         })),
       ];
+      const details = diagnostics
+        .map((d) => `  ${d.resource}: ${d.message}`)
+        .join("\n");
       throw new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
-        "Unable to process resources",
+        `Unable to process resources:\n${details}`,
         diagnostics,
       );
     }

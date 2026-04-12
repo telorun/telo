@@ -51,5 +51,11 @@ jobs:
           shopt -s globstar
           pnpm run check **/module.yaml
 
-      - name: Run tests
+      - name: Run tests (bun)
         run: pnpm test
+
+      - name: Build for Node.js
+        run: pnpm -r run build
+
+      - name: Run tests (node)
+        run: pnpm run telo:node ./test-suite.yaml

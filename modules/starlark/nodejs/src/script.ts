@@ -6,7 +6,8 @@ import type {
   ResourceManifest,
   RuntimeResource,
 } from "@telorun/sdk";
-import { initialize } from "starlark-webasm";
+import starlarkWebasm from "starlark-webasm";
+const { initialize } = starlarkWebasm;
 
 declare global {
   var run_starlark_code: (code: string, context?: Record<string, any>) => any;
@@ -18,9 +19,35 @@ type StarlarkScriptResource = RuntimeResource & {
   outputType?: string | Record<string, any>;
 };
 
+/**
+ * Patch fetch to support file:// URLs for Node.js,
+ * where starlark-webasm uses fetch() to load its WASM file.
+ */
+function patchFetchForFileUrls(): (() => void) | undefined {
+  if (typeof (globalThis as any).Bun !== "undefined") return;
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input: any, init?: any) => {
+    const url = typeof input === "string" ? input : input?.url;
+    if (url && url.startsWith("file://")) {
+      const { readFile } = await import("fs/promises");
+      const { fileURLToPath } = await import("url");
+      const buffer = await readFile(fileURLToPath(url));
+      return new Response(buffer, {
+        headers: { "Content-Type": "application/wasm" },
+      });
+    }
+    return originalFetch(input, init);
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
 let initialized = false;
 export async function register(ctx: ControllerContext): Promise<void> {
   if (!initialized) {
+    const restoreFetch = patchFetchForFileUrls();
     // Suppress the "run_starlark_code has been added to the javascript globals" message
     const originalLog = console.log;
     console.log = () => {};
@@ -28,6 +55,7 @@ export async function register(ctx: ControllerContext): Promise<void> {
       await initialize();
     } finally {
       console.log = originalLog;
+      restoreFetch?.();
     }
     initialized = true;
   }
