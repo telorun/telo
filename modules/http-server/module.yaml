@@ -307,6 +307,15 @@ schema:
               type: object
               additionalProperties: false
               properties:
+                variables:
+                  type: object
+                  additionalProperties: true
+                secrets:
+                  type: object
+                  additionalProperties: true
+                resources:
+                  type: object
+                  additionalProperties: true
                 request:
                   x-telo-context-from: "request/schema"
                   type: object
@@ -356,6 +365,15 @@ schema:
               type: object
               additionalProperties: false
               properties:
+                variables:
+                  type: object
+                  additionalProperties: true
+                secrets:
+                  type: object
+                  additionalProperties: true
+                resources:
+                  type: object
+                  additionalProperties: true
                 request:
                   x-telo-context-from: "request/schema"
                   type: object

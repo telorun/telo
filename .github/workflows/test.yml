@@ -46,10 +46,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check module manifests
-        shell: bash
-        run: |
-          shopt -s globstar
-          pnpm run check **/module.yaml
+        run: pnpm run check modules/*/module.yaml
+
+      - name: Check example manifests
+        run: pnpm run check examples/*.yaml
 
       - name: Run tests (bun)
         run: pnpm test
@@ -58,4 +58,4 @@ jobs:
         run: pnpm -r run build
 
       - name: Run tests (node)
-        run: pnpm run telo:node ./test-suite.yaml
+        run: pnpm run test:node

@@ -44,33 +44,21 @@ If you want an `AuthenticatedApi` that extends `Http.Api` with auth middleware i
 
 The `x-telo-ref: Kernel.Invocable` mechanism hints at interface-like contracts but it's read-only — you can say "this field must be Invocable" but you can't say "this type extends X and adds Y".
 
-## 4. `sdk` Package Contains the Core Runtime
+## 4. Kernel Globals Not Available in `x-telo-context` Scopes
 
-`@telorun/sdk` is named as a public authoring API — the surface module authors use to write controllers. But it actually contains the core runtime engine:
+CEL expressions always have access to kernel-level globals (`resources`, `variables`, `secrets`, `imports`, `env`) — `buildTypedCelEnvironment` registers them unconditionally. But the analyzer's CEL context validation only checks access chains against what's declared in `x-telo-context` annotations.
 
-- `EvaluationContext` — the full multi-pass init loop, teardown tree, scope handles
-- `ModuleContext` — variables/secrets/resources namespaces, kind alias resolution
-- `ExecutionContext` — per-trigger execution overlay
-- `ResourceContext` interface — the full kernel service contract
+When a field declares `x-telo-context` with `additionalProperties: false` (e.g. Http.Api `inputs` only declares `request`), the validator rejects `resources.Config.foo` as unknown — even though it works at runtime.
 
-This is the opposite of what an SDK should be. An SDK should expose stable, minimal, outward-facing types that module authors depend on (`ResourceInstance`, `ResourceContext`, capability interfaces). The runtime engine — `EvaluationContext`, `ModuleContext`, the init loop — is an internal implementation detail that module authors should never need to import directly.
+**Current workaround:** Either set `additionalProperties: true` on every context (kills type safety) or redundantly re-declare every kernel global in every `x-telo-context` schema.
 
-The current arrangement has two concrete consequences:
-
-- **Compilation is blocked.** Extracting a kernel-free compiled runtime requires `EvaluationContext` and the init loop to be importable without pulling in the full kernel. Since they live in `sdk`, they appear to be a public contract, creating confusion about what is stable surface vs internal machinery.
-- **SDK stability is undermined.** Every internal refactor of `EvaluationContext` (init loop changes, scope handle semantics, context tree changes) is technically a breaking change to a public package. The boundary between "stable API" and "internal engine" is invisible.
-
-### Solution
-
-Move `EvaluationContext`, `ModuleContext`, `ExecutionContext`, the init loop, scope handles, and `CompiledValue` back into `@telorun/kernel` where they belong. The SDK (`@telorun/sdk`) is then reduced to what a public authoring API should be: `ResourceContext` interface, `ResourceInstance`, capability interfaces (`Invocable`, `Runnable`, `Provider`), `ScopeHandle`, `KindRef`.
-
-Controllers import only `@telorun/sdk`. The kernel imports its own internal engine directly — no circular dependency, no leaking of init loop internals into a public package.
+**Direction:** The context validator should automatically merge kernel globals into every `x-telo-context` before validation, so module schemas only declare context-specific variables (`request`, `result`, `steps`).
 
 ## Summary
 
-| Concept             | Core Problem                                                                              | Direction                                                                 |
-| ------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Concept             | Core Problem                                                                                                                            | Direction                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `Kernel.Definition` | Capability-specific semantics (`x-telo-context`, `x-telo-scope`) accumulate as informal schema conventions; no structural slot for them | Split by capability or add a dedicated `hooks`/`extensions` field |
-| `capability` values | Inconsistent prefix usage                                                                 | Drop `Kernel.` prefix inside Definition; use enum                         |
-| Type inheritance    | Missing entirely                                                                          | At minimum: `extends:` for schema composition                             |
-| `sdk` package       | Contains core runtime, not a public authoring API                                         | Move runtime internals back to kernel; SDK exposes only authoring surface |
+| `capability` values | Inconsistent prefix usage                                                                                                               | Drop `Kernel.` prefix inside Definition; use enum                 |
+| Type inheritance    | Missing entirely                                                                                                                        | At minimum: `extends:` for schema composition                     |
+| Kernel globals      | `x-telo-context` doesn't include kernel globals; validator rejects valid CEL like `resources.X`                                         | Auto-merge kernel globals into every context before validation            |

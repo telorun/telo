@@ -36,7 +36,7 @@ Here is an example Telo application that defines a simple HTTP API:
 ```yaml
 kind: Kernel.Module
 metadata:
-  name: FeedbackApi
+  name: feedback
   version: 1.0.0
   description: |
     A complete feedback collection REST API — no code, pure YAML.
@@ -119,11 +119,12 @@ routes:
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
-        text: "${{ request.body.text }}"
-        source: "${{ request.body.source }}"
-        score: "${{ size(request.body.text) }}"
+    inputs:
+      sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
+      bindings:
+        - "${{ request.body.text }}"
+        - "${{ request.body.source }}"
+        - "${{ size(request.body.text) }}"
     response:
       - status: 201
         headers:

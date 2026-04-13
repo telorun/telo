@@ -12,6 +12,11 @@ metadata:
   name: Http
 source: ../modules/http-server
 ---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
 # Declare an optional variable
 kind: Config.Env
 metadata:
@@ -34,7 +39,7 @@ routes:
       method: POST
     handler:
       kind: JavaScript.Script
-      script: |
+      code: |
         function main({ apiKey, baseUrl }) {
           return {
             success: true,
