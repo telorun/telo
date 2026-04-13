@@ -4,8 +4,9 @@
   "identifier": "com.telo.editor",
   "build": {
     "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../out"
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [

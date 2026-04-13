@@ -1,5 +1,3 @@
-"use client";
-
 import Editor from "@monaco-editor/react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";

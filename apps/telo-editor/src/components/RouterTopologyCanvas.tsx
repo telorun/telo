@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 import type { Selection, ParsedResource } from "../model";
 import { Button } from "./ui/button";

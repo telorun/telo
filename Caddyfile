@@ -3,13 +3,9 @@ http://registry.telo.localhost:8060 {
 }
 
 http://editor.telo.localhost:8060 {
-	reverse_proxy editor:3000
+	reverse_proxy editor:5173
 }
 
 http://storage.telo.localhost:8060 {
 	reverse_proxy storage:9001
-}
-
-http://editor.telo.localhost:8060 {
-	reverse_proxy editor:3000
 }

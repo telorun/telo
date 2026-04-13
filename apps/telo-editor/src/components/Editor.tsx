@@ -1,5 +1,3 @@
-"use client";
-
 import type { ManifestAdapter } from "@telorun/analyzer";
 import { useRef, useState } from "react";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";

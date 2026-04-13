@@ -31,7 +31,7 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 - `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
 - `yaml-cel-templating/nodejs/` — CEL + YAML directive engine (`$let`, `$if`, `$for`, `$eval`, `$include`)
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking)
-- `apps/telo-editor/` — desktop editor (Next.js + Tauri)
+- `apps/telo-editor/` — desktop editor (React + Vite + Tauri)
 - `ide/vscode/` — VS Code extension (YAML diagnostics via analyzer)
 - `tests/` — integration tests (YAML manifests run via kernel)
 - `examples/` — sample manifests

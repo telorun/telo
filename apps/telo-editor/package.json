@@ -3,9 +3,9 @@
   "version": "0.1.2",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "lint": "eslint"
   },
   "dependencies": {
@@ -21,7 +21,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
-    "next": "16.1.7",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-complex-tree": "^2.6.1",
@@ -38,7 +37,8 @@
     "@types/wicg-file-system-access": "^2020.9.8",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.1.7",
+    "@vitejs/plugin-react": "^4",
+    "vite": "^6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
