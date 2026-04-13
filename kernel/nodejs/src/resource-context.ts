@@ -1,14 +1,15 @@
 import {
-  EvaluationContext,
-  ModuleContext,
   NoopValidator,
   ResourceContext,
   RuntimeError,
   RuntimeResource,
   isCompiledValue,
+  type EvaluationContext as IEvaluationContext,
+  type ModuleContext,
   type ParsedArgs,
   type TypeRule,
 } from "@telorun/sdk";
+import { EvaluationContext } from "./evaluation-context.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
@@ -264,10 +265,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   /**
    * Create a child EvaluationContext attached to the current module context.
-   * Queue resources on the returned context with pendingResources.push(), then
-   * call initializeChildContext() to initialize them in isolation.
+   * Register resources on the returned context with registerManifest(), then
+   * call initializeResources() to initialize them in isolation.
    */
-  spawnChildContext(): EvaluationContext {
+  spawnChildContext(): IEvaluationContext {
     const child = new EvaluationContext(
       this.moduleContext.source,
       this.moduleContext.context,
@@ -278,7 +279,7 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.spawnChild(child);
   }
 
-  transientChild(context: Record<string, any>): EvaluationContext {
+  transientChild(context: Record<string, any>): IEvaluationContext {
     return this.moduleContext.transientChild(context);
   }
 

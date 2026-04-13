@@ -161,7 +161,7 @@ routes:
         id: "${{ request.params.id }}"
     response:
       - status: 200
-        when: "size(result.rows) > 0"
+        when: "${{ size(result.rows) > 0 }}"
         headers:
           Content-Type: application/json
         body: "${{ result.rows[0] }}"

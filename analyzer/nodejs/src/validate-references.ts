@@ -134,10 +134,22 @@ export function validateReferences(
         if (!val) continue;
 
         // Name-only reference (plain string) — look up by name to validate.
+        // Qualified references use "Kind.Name" format (e.g. "Http.Api.PaymentApi");
+        // extract the resource name from the last dot segment.
         if (typeof val === "string") {
+          const lastDot = val.lastIndexOf(".");
+          const refName = lastDot > 0 ? val.slice(lastDot + 1) : val;
+          const refKindPrefix = lastDot > 0 ? val.slice(0, lastDot) : undefined;
           const target =
-            byName.get(val) ?? visibleScopeManifests.find((m) => m.metadata?.name === val);
+            byName.get(refName) ?? visibleScopeManifests.find((m) => m.metadata?.name === refName);
           if (!target) {
+            // Cross-module reference: "Alias.ResourceName" (single dot, bare alias prefix).
+            // The resource lives in the imported module's scope and can't be validated here.
+            // Multi-dot prefixes like "Alias.Kind.Name" are local resources with qualified
+            // kinds — those must be validated.
+            if (refKindPrefix && !refKindPrefix.includes(".") && aliases.hasAlias(refKindPrefix)) {
+              continue;
+            }
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",

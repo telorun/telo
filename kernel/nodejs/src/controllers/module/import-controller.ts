@@ -1,6 +1,7 @@
 import { DiagnosticSeverity, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { EvaluationContext, RuntimeError } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
+import { ModuleContext } from "../../module-context.js";
 import { LocalFileAdapter } from "../../manifest-adapters/local-file-adapter.js";
 
 const importAnalysisCache = new Map<
@@ -63,15 +64,13 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Create child context with the imported variables/secrets baked in, so that
   // ${{ variables.x }} / ${{ secrets.y }} templates resolve correctly at runtime.
   const child = ctx.moduleContext.spawnChild(
-    new EvaluationContext(
+    new ModuleContext(
       ctx.moduleContext.source,
-      {
-        variables: (resource.variables as Record<string, unknown>) ?? {},
-        secrets: (resource.secrets as Record<string, unknown>) ?? {},
-        resources: {},
-      },
+      (resource.variables as Record<string, unknown>) ?? {},
+      (resource.secrets as Record<string, unknown>) ?? {},
+      {},
+      [],
       ctx.moduleContext.createInstance,
-      ctx.moduleContext.secretValues,
       ctx.moduleContext.emit,
     ),
   );

@@ -2,7 +2,6 @@ import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
   ControllerContext,
   Kernel as IKernel,
-  ModuleContext,
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
@@ -10,8 +9,11 @@ import {
   RuntimeError,
   RuntimeEvent,
   isCompiledValue,
+  type EvaluationContext as IEvaluationContext,
+  type ModuleContext as IModuleContext,
   type ParsedArgs,
 } from "@telorun/sdk";
+import { ModuleContext } from "./module-context.js";
 import * as path from "path";
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
@@ -361,8 +363,21 @@ export class Kernel implements IKernel {
     };
   }
 
+  /**
+   * Walk up the parent chain from a given evaluation context to find the nearest
+   * ModuleContext ancestor. Falls back to rootContext if none found.
+   */
+  private findModuleContext(ctx: IEvaluationContext): IModuleContext {
+    let current: IEvaluationContext | undefined = ctx;
+    while (current) {
+      if (current instanceof ModuleContext) return current;
+      current = current.parent;
+    }
+    return this.rootContext;
+  }
+
   private createResourceContext(
-    moduleContext: ModuleContext,
+    moduleContext: IModuleContext,
     resource: ResourceManifest,
     args?: ParsedArgs,
   ): ResourceContext {
@@ -417,7 +432,7 @@ export class Kernel implements IKernel {
    * is not yet registered (retry signal).
    */
   private async _createInstance(
-    evalContext: ModuleContext,
+    evalContext: IEvaluationContext,
     resource: ResourceManifest,
   ): Promise<{ instance: ResourceInstance; ctx: ResourceContext } | null> {
     const kind = resource.kind;
@@ -483,7 +498,8 @@ export class Kernel implements IKernel {
       : resource;
 
     const parsedArgs = this.parseArgsForController(controller);
-    const ctx = this.createResourceContext(evalContext, processedResource, parsedArgs);
+    const moduleCtx = this.findModuleContext(evalContext);
+    const ctx = this.createResourceContext(moduleCtx, processedResource, parsedArgs);
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 

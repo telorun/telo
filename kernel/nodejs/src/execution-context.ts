@@ -1,5 +1,5 @@
 import { EvaluationContext } from "./evaluation-context.js";
-import { ModuleContext } from "./module-context.js";
+import type { ModuleContext } from "./module-context.js";
 
 /**
  * The ephemeral, per-trigger context layer. Merges a ModuleContext with
