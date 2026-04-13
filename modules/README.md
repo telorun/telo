@@ -13,14 +13,19 @@ For a full explanation of how modules are defined, imported, and composed, see t
 | Module | Description |
 |--------|-------------|
 | [**assert/**](assert/) | Assertion and value verification for testing (`Assert.Schema`) |
+| [**benchmark/**](benchmark/) | Performance benchmarking |
 | [**config/**](config/) | Configuration injection via `Config.Variable` and `Config.Secret` resources |
 | [**console/**](console/) | Console I/O via `Console.WriteLine` and `Console.ReadLine` |
-| [**data/**](data/) | Shared data type definitions (`Data.Type`) |
 | [**http-client/**](http-client/README.md) | Outgoing HTTP calls via `Http.Request` and `Http.Client` |
 | [**http-server/**](http-server/README.md) | HTTP server and routing via `Http.Server` and `Http.Api` |
 | [**javascript/**](javascript/) | Inline JavaScript execution via `JavaScript.Script` |
 | [**run/**](run/) | Unified sequence execution with invoke, if, while, switch, and try steps |
+| [**s3/**](s3/) | S3-compatible object storage |
 | [**sql/**](sql/) | SQL database access for PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Exec`, and `Sql.Transaction` |
+| [**sql-repository/**](sql-repository/) | Higher-level CRUD operations on SQL tables via `SqlRepository.Create`, `SqlRepository.Read` |
 | [**starlark/**](starlark/) | Starlark scripting within workflows via `Starlark.Script` |
-| [**template/**](template/) | Parameterized resource generation via `Template.Definition` |
+| [**test/**](test/) | Test runner for YAML-based test suites |
 | [**tracing/**](tracing/) | Distributed tracing support via `Tracing` definitions |
+| [**type/**](type/) | Type definitions via `Type.JsonSchema` |
+| [**workflow/**](workflow/) | Workflow orchestration primitives |
+| [**workflow-temporal/**](workflow-temporal/) | Temporal-based workflow execution |
