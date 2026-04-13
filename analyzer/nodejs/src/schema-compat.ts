@@ -14,6 +14,7 @@ export function createAjv(): InstanceType<typeof Ajv> {
 }
 
 const ajv = createAjv();
+const compiledSchemaValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
 
 export interface CompatibilityResult {
   compatible: boolean;
@@ -131,11 +132,14 @@ export interface SchemaIssue {
 
 /** Validate actual data against a JSON Schema. Returns issues with path info, or empty array if valid. */
 export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaIssue[] {
-  let validate: ReturnType<typeof ajv.compile>;
-  try {
-    validate = ajv.compile(schema);
-  } catch {
-    return [];
+  let validate = compiledSchemaValidators.get(schema);
+  if (!validate) {
+    try {
+      validate = ajv.compile(schema);
+      compiledSchemaValidators.set(schema, validate);
+    } catch {
+      return [];
+    }
   }
   if (validate(data)) return [];
   return (validate.errors ?? []).map((err: any) => ({
@@ -260,25 +264,55 @@ export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
 
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 
+/** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
+function resolveRef(schema: Record<string, any>, root: Record<string, any>): Record<string, any> {
+  if (schema.$ref && typeof schema.$ref === "string" && schema.$ref.startsWith("#/$defs/")) {
+    const defName = schema.$ref.slice("#/$defs/".length);
+    const resolved = root.$defs?.[defName];
+    if (resolved) return resolved;
+  }
+  return schema;
+}
+
+/** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
+function collectProperties(schema: Record<string, any>): Record<string, any> {
+  const props: Record<string, any> = { ...(schema.properties ?? {}) };
+  for (const sub of schema.oneOf ?? schema.anyOf ?? []) {
+    if (sub && typeof sub === "object" && sub.properties) {
+      for (const [k, v] of Object.entries(sub.properties as Record<string, any>)) {
+        if (!(k in props)) props[k] = v;
+      }
+    }
+  }
+  return props;
+}
+
 /** Deep-clone `data`, replacing every pure CEL template string (`${{ expr }}`) with a
  *  schema-appropriate placeholder so AJV can validate non-CEL fields without false positives. */
-export function substituteCelFields(data: unknown, schema: Record<string, any>): unknown {
+export function substituteCelFields(
+  data: unknown,
+  schema: Record<string, any>,
+  rootSchema?: Record<string, any>,
+): unknown {
+  const root = rootSchema ?? schema;
+  const resolved = resolveRef(schema, root);
+
   if (typeof data === "string" && CEL_PURE_RE.test(data)) {
-    return celPlaceholderForSchema(schema);
+    return celPlaceholderForSchema(resolved);
   }
   if (Array.isArray(data)) {
-    const itemSchema = (schema.items ?? {}) as Record<string, any>;
-    return data.map((item) => substituteCelFields(item, itemSchema));
+    const itemSchema = resolveRef((resolved.items ?? {}) as Record<string, any>, root);
+    return data.map((item) => substituteCelFields(item, itemSchema, root));
   }
   if (data !== null && typeof data === "object") {
-    const props = (schema.properties ?? {}) as Record<string, any>;
+    const props = collectProperties(resolved);
     const addlProps =
-      schema.additionalProperties && typeof schema.additionalProperties === "object"
-        ? (schema.additionalProperties as Record<string, any>)
+      resolved.additionalProperties && typeof resolved.additionalProperties === "object"
+        ? (resolved.additionalProperties as Record<string, any>)
         : undefined;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>);
+      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>, root);
     }
     return result;
   }

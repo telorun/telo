@@ -3,6 +3,11 @@ import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { EvaluationContext, RuntimeError } from "@telorun/sdk";
 import { LocalFileAdapter } from "../../manifest-adapters/local-file-adapter.js";
 
+const importAnalysisCache = new Map<
+  string,
+  { signature: string; errors: string[] }
+>();
+
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
   const loader = new Loader([new LocalFileAdapter()]);
@@ -14,12 +19,24 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
   const resolvedUrl = new URL(moduleSource, ctx.moduleContext.source).toString();
   const analysisManifests = await loader.loadManifests(resolvedUrl);
-  const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
-  const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+  const signature = JSON.stringify(analysisManifests);
+  const cached = importAnalysisCache.get(resolvedUrl);
+  let errors: string[];
+
+  if (cached && cached.signature === signature) {
+    errors = cached.errors;
+  } else {
+    const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
+    errors = diagnostics
+      .filter((d) => d.severity === DiagnosticSeverity.Error)
+      .map((d) => d.message);
+    importAnalysisCache.set(resolvedUrl, { signature, errors });
+  }
+
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
-      errors.map((d) => d.message).join("\n"),
+      errors.join("\n"),
     );
   }
 

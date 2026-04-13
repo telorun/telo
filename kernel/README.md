@@ -97,4 +97,4 @@ controllers:
 
 When a `Kernel.Definition` instance initializes, it resolves and loads the controller module
 and registers it with the kernel. For the full resolution algorithm (local path, host
-node_modules, registry cache) and PURL format, see [controllers.md](controllers.md).
+node_modules, registry cache) and PURL format, see [controllers.md](docs/controllers.md).

@@ -10,6 +10,7 @@ export class SchemaValidator {
   private ajv: InstanceType<typeof Ajv>;
   private typeRules = new Map<string, TypeRule[]>();
   private rawSchemas = new Map<string, object>();
+  private compiledValidators = new WeakMap<object, DataValidator>();
 
   constructor() {
     this.ajv = new Ajv({
@@ -53,6 +54,11 @@ export class SchemaValidator {
   }
 
   compile(schema: any): DataValidator {
+    if (schema && typeof schema === "object") {
+      const cached = this.compiledValidators.get(schema as object);
+      if (cached) return cached;
+    }
+
     const isFullSchema =
       ("type" in schema && typeof schema.type === "string") ||
       "allOf" in schema ||
@@ -80,7 +86,7 @@ export class SchemaValidator {
         : normalized;
     const validate = this.ajv.compile(injected);
 
-    return {
+    const validator = {
       validate: (data: any) => {
         const isValid = validate(data);
         if (!isValid) {
@@ -94,6 +100,12 @@ export class SchemaValidator {
         return validate(data);
       },
     };
+
+    if (schema && typeof schema === "object") {
+      this.compiledValidators.set(schema as object, validator);
+    }
+
+    return validator;
   }
 
   composeWithRules(base: DataValidator, typeName: string, rules: TypeRule[]): DataValidator {

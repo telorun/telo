@@ -13,7 +13,7 @@ import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
-import { SchemaValidator } from "./schema-valiator.js";
+import { SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 

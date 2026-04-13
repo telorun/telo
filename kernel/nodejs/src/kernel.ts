@@ -19,7 +19,7 @@ import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
-import { SchemaValidator } from "./schema-valiator.js";
+import { SchemaValidator } from "./schema-validator.js";
 
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
@@ -578,20 +578,61 @@ function placeholderForSchema(schema: Record<string, unknown>): unknown {
   }
 }
 
+/** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
+function resolveSchemaRef(
+  schema: Record<string, unknown>,
+  root: Record<string, unknown>,
+): Record<string, unknown> {
+  if (schema.$ref && typeof schema.$ref === "string" && (schema.$ref as string).startsWith("#/$defs/")) {
+    const defName = (schema.$ref as string).slice("#/$defs/".length);
+    const defs = root.$defs as Record<string, Record<string, unknown>> | undefined;
+    const resolved = defs?.[defName];
+    if (resolved) return resolved;
+  }
+  return schema;
+}
+
+/** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
+function collectSchemaProperties(
+  schema: Record<string, unknown>,
+): Record<string, Record<string, unknown>> {
+  const props: Record<string, Record<string, unknown>> = {
+    ...((schema.properties ?? {}) as Record<string, Record<string, unknown>>),
+  };
+  for (const sub of (schema.oneOf ?? schema.anyOf ?? []) as Record<string, unknown>[]) {
+    if (sub && typeof sub === "object" && sub.properties) {
+      for (const [k, v] of Object.entries(sub.properties as Record<string, Record<string, unknown>>)) {
+        if (!(k in props)) props[k] = v;
+      }
+    }
+  }
+  return props;
+}
+
 /** Replaces CompiledValue wrappers with schema-appropriate placeholders for schema validation.
  *  Template strings were compiled from YAML at load time; this restores a shape
  *  that AJV can validate without evaluating expressions. */
-function stripCompiledValues(v: unknown, schema: Record<string, unknown> = {}): unknown {
-  if (isCompiledValue(v)) return placeholderForSchema(schema);
+function stripCompiledValues(
+  v: unknown,
+  schema: Record<string, unknown> = {},
+  rootSchema?: Record<string, unknown>,
+): unknown {
+  const root = rootSchema ?? schema;
+  const resolved = resolveSchemaRef(schema, root);
+
+  if (isCompiledValue(v)) return placeholderForSchema(resolved);
   if (Array.isArray(v)) {
-    const itemSchema = (schema.items ?? {}) as Record<string, unknown>;
-    return v.map((item) => stripCompiledValues(item, itemSchema));
+    const itemSchema = resolveSchemaRef(
+      (resolved.items ?? {}) as Record<string, unknown>,
+      root,
+    );
+    return v.map((item) => stripCompiledValues(item, itemSchema, root));
   }
   if (v !== null && typeof v === "object") {
-    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const props = collectSchemaProperties(resolved);
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = stripCompiledValues(val, props[k] ?? {});
+      out[k] = stripCompiledValues(val, props[k] ?? {}, root);
     }
     return out;
   }

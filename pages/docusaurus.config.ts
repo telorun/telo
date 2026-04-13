@@ -51,7 +51,6 @@ const config: Config = {
             "modules/README.md",
             "modules/http-server/README.md",
             "modules/http-client/README.md",
-            "modules/studio/README.md",
             "modules/assert/docs/manifest.md",
             "modules/test/docs/suite.md",
             "sdk/README.md",
@@ -67,6 +66,8 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+
+  plugins: ["./plugins/llms-txt"],
 
   themeConfig: {
     navbar: {

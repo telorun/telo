@@ -61,6 +61,8 @@ schema:
                   title: Delay
                   description: Delay between retries.
                   type: string
+          required:
+            - invoke
 
         - title: if/then/else
           description: Conditional branch; executes then or else based on a boolean expression.

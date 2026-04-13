@@ -1,4 +1,4 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
@@ -12,6 +12,11 @@ import type {
 } from "./types.js";
 
 export class Loader {
+  private static readonly moduleCache = new Map<
+    string,
+    { text: string; manifests: ResourceManifest[] }
+  >();
+
   protected adapters: ManifestAdapter[];
 
   constructor(extraAdaptersOrOptions: ManifestAdapter[] | LoaderInitOptions = []) {
@@ -49,6 +54,12 @@ export class Loader {
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
+    const cacheKey = `${options?.compile ? "compiled" : "raw"}:${source}`;
+    const cached = Loader.moduleCache.get(cacheKey);
+    if (cached && cached.text === text) {
+      return cloneManifestArray(cached.manifests);
+    }
+
     const parsedDocuments = parseAllDocuments(text);
     const rawDocs = parsedDocuments.map((d) => d.toJSON());
     const offsets = documentLineOffsets(text);
@@ -117,7 +128,8 @@ export class Loader {
       }
     }
 
-    return resolved;
+    Loader.moduleCache.set(cacheKey, { text, manifests: resolved });
+    return cloneManifestArray(resolved);
   }
 
   async loadModuleGraph(
@@ -213,6 +225,32 @@ export class Loader {
 
     return [...entry, ...importedDefs];
   }
+}
+
+function cloneManifestArray(manifests: ResourceManifest[]): ResourceManifest[] {
+  return manifests.map((manifest) => cloneManifestValue(manifest));
+}
+
+function cloneManifestValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneManifestValue(entry)) as T;
+  }
+  if (isCompiledValue(value)) {
+    return value;
+  }
+  if (value !== null && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const clone: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(source)) {
+      clone[key] = cloneManifestValue(entry);
+    }
+    const positionIndex = Object.getOwnPropertyDescriptor(source, "positionIndex");
+    if (positionIndex) {
+      Object.defineProperty(clone, "positionIndex", positionIndex);
+    }
+    return clone as T;
+  }
+  return value;
 }
 
 function documentLineOffsets(text: string): number[] {

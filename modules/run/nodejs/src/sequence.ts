@@ -17,6 +17,10 @@ interface IfStep {
   name: string;
   if: string;
   then: Step[];
+  elseif?: Array<{
+    if: string;
+    then: Step[];
+  }>;
   else?: Step[];
 }
 
@@ -84,32 +88,45 @@ class RunSequence {
     this.resolveInvokes(this.resource.steps);
   }
 
-  private resolveInvokes(stepList: Step[]): void {
-    for (const step of stepList) {
+  private resolveInvokes(stepList: Step[], path: string[] = ["steps"]): void {
+    for (const [index, step] of stepList.entries()) {
+      const stepPath = [...path, String(index)];
       if (isInvokeStep(step)) {
         const raw = step.invoke as unknown;
         if (!raw || typeof (raw as Invocable).invoke !== "function") {
           (step as InvokeStep).invoke = this.ctx.resolveChildren(
             raw as any,
-            step.name,
+            this.inlineInvokeResourceName(step.name, stepPath),
           ) as KindRef<Invocable>;
         }
       }
       if (isIfStep(step)) {
-        this.resolveInvokes(step.then);
-        if (step.else) this.resolveInvokes(step.else);
+        this.resolveInvokes(step.then, [...stepPath, "then"]);
+        if (step.elseif) {
+          for (const [elseifIndex, branch] of step.elseif.entries()) {
+            this.resolveInvokes(branch.then, [...stepPath, "elseif", String(elseifIndex), "then"]);
+          }
+        }
+        if (step.else) this.resolveInvokes(step.else, [...stepPath, "else"]);
       }
-      if (isWhileStep(step)) this.resolveInvokes(step.do);
+      if (isWhileStep(step)) this.resolveInvokes(step.do, [...stepPath, "do"]);
       if (isSwitchStep(step)) {
-        for (const branch of Object.values(step.cases)) this.resolveInvokes(branch);
-        if (step.default) this.resolveInvokes(step.default);
+        for (const [caseName, branch] of Object.entries(step.cases)) {
+          this.resolveInvokes(branch, [...stepPath, "cases", caseName]);
+        }
+        if (step.default) this.resolveInvokes(step.default, [...stepPath, "default"]);
       }
       if (isTryStep(step)) {
-        this.resolveInvokes(step.try);
-        if (step.catch) this.resolveInvokes(step.catch);
-        if (step.finally) this.resolveInvokes(step.finally);
+        this.resolveInvokes(step.try, [...stepPath, "try"]);
+        if (step.catch) this.resolveInvokes(step.catch, [...stepPath, "catch"]);
+        if (step.finally) this.resolveInvokes(step.finally, [...stepPath, "finally"]);
       }
     }
+  }
+
+  private inlineInvokeResourceName(stepName: string, stepPath: string[]): string {
+    const safeName = stepName.replace(/[^a-zA-Z0-9_-]+/g, "_");
+    return `__sequence_${stepPath.join("_")}__${safeName}`;
   }
 
   async run(): Promise<void> {
@@ -217,7 +234,19 @@ class RunSequence {
   ): Promise<void> {
     if (this.ctx.expandValue(step.if, { steps, ...extraCtx })) {
       await this.executeSteps(step.then, steps, scope, extraCtx);
-    } else if (step.else) {
+      return;
+    }
+
+    if (step.elseif) {
+      for (const branch of step.elseif) {
+        if (this.ctx.expandValue(branch.if, { steps, ...extraCtx })) {
+          await this.executeSteps(branch.then, steps, scope, extraCtx);
+          return;
+        }
+      }
+    }
+
+    if (step.else) {
       await this.executeSteps(step.else, steps, scope, extraCtx);
     }
   }
