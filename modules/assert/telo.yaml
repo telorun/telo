@@ -122,4 +122,7 @@ schema:
               message:
                 type: string
                 description: Substring to match in the diagnostic message
+        loadError:
+          type: string
+          description: Substring to match in a manifest load error (asserts that loading fails)
   required: [source, expect]

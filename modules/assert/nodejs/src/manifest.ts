@@ -13,6 +13,7 @@ interface ManifestAssertManifest {
   source: string;
   expect: {
     errors?: ExpectError[];
+    loadError?: string;
   };
 }
 
@@ -84,9 +85,35 @@ export async function create(
       try {
         manifests = await loader.loadManifests(resolvedUrl);
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (manifest.expect.loadError) {
+          if (errMsg.includes(manifest.expect.loadError)) {
+            ctx.stdout.write(
+              bold(green(`Assert.Manifest.${name}: assertion passed`)) +
+                "\n  " + green("✓") + " " + dim(`load error: ${errMsg}`) + "\n",
+            );
+          } else {
+            ctx.stderr.write(
+              bold(red(`Assert.Manifest.${name}: assertion failed`)) +
+                "\n  " + red("✗") + ` expected load error containing "${manifest.expect.loadError}"` +
+                "\n  " + dim(`actual: ${errMsg}`) + "\n",
+            );
+            ctx.requestExit(1);
+          }
+          return;
+        }
         ctx.stderr.write(
           bold(red(`Assert.Manifest.${name}: failed to load "${manifest.source}"`)) +
-            "\n  " + (err instanceof Error ? err.message : String(err)) + "\n",
+            "\n  " + errMsg + "\n",
+        );
+        ctx.requestExit(1);
+        return;
+      }
+
+      if (manifest.expect.loadError) {
+        ctx.stderr.write(
+          bold(red(`Assert.Manifest.${name}: assertion failed`)) +
+            "\n  " + red("✗") + ` expected load error containing "${manifest.expect.loadError}" but manifest loaded successfully\n`,
         );
         ctx.requestExit(1);
         return;

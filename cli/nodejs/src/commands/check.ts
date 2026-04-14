@@ -1,8 +1,8 @@
-import type { PositionIndex } from "@telorun/analyzer";
-import { DiagnosticSeverity, Loader, NodeAdapter, StaticAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { LocalFileAdapter } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";
-import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { createLogger, formatAnalysisDiagnostics, formatDiagnostics, type Logger } from "../logger.js";
 
 async function checkOne(
   inputPath: string,
@@ -10,9 +10,8 @@ async function checkOne(
 ): Promise<{ errorCount: number; warnCount: number }> {
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
-  const cwd = isUrl ? process.cwd() : path.dirname(entryPath);
 
-  const loader = new Loader([new NodeAdapter(cwd)]);
+  const loader = new Loader([new LocalFileAdapter()]);
 
   let manifests;
   try {
@@ -30,51 +29,7 @@ async function checkOne(
   }
 
   const diagnostics = new StaticAnalyzer().analyze(manifests);
-
-  const manifestByKey = new Map<string, (typeof manifests)[number]>();
-  for (const m of manifests) {
-    if (m.kind && m.metadata?.name) {
-      manifestByKey.set(`${m.kind}.${m.metadata.name}`, m);
-    }
-  }
-
-  let errorCount = 0;
-  let warnCount = 0;
-
-  for (const d of diagnostics) {
-    const resource = (d.data as any)?.resource as { kind: string; name: string } | undefined;
-    const m = resource ? manifestByKey.get(`${resource.kind}.${resource.name}`) : undefined;
-    const absSource = (m?.metadata as any)?.source as string | undefined;
-    const displaySource = absSource
-      ? isUrl
-        ? absSource
-        : path.relative(process.cwd(), absSource)
-      : isUrl
-        ? entryPath
-        : path.relative(process.cwd(), entryPath);
-    const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
-    const positionIndex = (m?.metadata as any)?.positionIndex as PositionIndex | undefined;
-    const fieldPath = (d.data as any)?.path as string | undefined;
-
-    const fieldRange =
-      fieldPath !== undefined && positionIndex ? positionIndex.get(fieldPath) : undefined;
-    const line = (fieldRange?.start.line ?? sourceLine ?? 0) + 1;
-    const col = (fieldRange?.start.character ?? 0) + 1;
-
-    const loc = `${displaySource}:${line}:${col}`;
-    const severityLabel =
-      (d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error
-        ? log.error("error")
-        : log.warn("warning");
-    const code = d.code ? `  ${log.dim(String(d.code))}` : "";
-
-    console.log(`${loc}  ${severityLabel}  ${d.message}${code}`);
-
-    if ((d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error) errorCount++;
-    else warnCount++;
-  }
-
-  return { errorCount, warnCount };
+  return formatAnalysisDiagnostics(diagnostics, manifests, log, entryPath);
 }
 
 export async function check(argv: { paths: string[] }): Promise<void> {

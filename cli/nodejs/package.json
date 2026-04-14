@@ -40,9 +40,12 @@
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
     "@telorun/kernel": "workspace:*",
+    "@telorun/sdk": "workspace:*",
+    "dotenv": "^17.4.0",
+    "minimatch": "^10.2.5",
     "packageurl-js": "^2.0.1",
-    "yargs": "^17.7.2",
-    "dotenv": "^17.4.0"
+    "yaml": "^2.8.3",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

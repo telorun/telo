@@ -16,12 +16,15 @@ Follow this strictly:
 - never use `cat` nor `sed` to read files — read them directly
 - never modify files in `dist` directories
 - never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js
+- never make architectural decisions (package boundaries, dependency direction, where code lives) without asking first
 
 ## Architecture
 
 Telo is a declarative runtime: YAML manifests describe desired state, the kernel resolves resource dependencies via a multi-pass init loop, and controllers implement each resource kind. CEL expressions in `${{ }}` are compiled before execution.
 
 **Topology-driven constraint:** The analyzer and telo editor must never hardcode knowledge about specific resource kinds. All resource-specific behaviour must be expressed via `x-telo-*` schema annotations in `Kernel.Definition` schemas and resolved generically.
+
+**Browser compatibility:** The `analyzer` package must be runnable in the browser without Node.js polyfills. Do not import Node.js built-ins (`fs`, `path`, `url`, `child_process`, etc.) from analyzer code. Node.js-specific adapters belong in the consuming package (kernel, IDE extension, CLI).
 
 ## Monorepo Structure
 
@@ -59,6 +62,7 @@ Declares a module's identity, inputs, and targets. Every module file must start 
 - `lifecycle` — `"shared"` (default) | `"isolated"`
 - `keepAlive` — prevent kernel exit when idle
 - `variables` / `secrets` — JSON Schema property map; public contract for importers
+- `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Kernel.Module`, `Kernel.Import`, or `Kernel.Definition`
 - `targets` — run after all resources init; must reference `Kernel.Runnable` or `Kernel.Service`
 - `exports.kinds` — which kinds importers may reference
 

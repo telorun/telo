@@ -45,6 +45,16 @@ export interface ManifestAdapter {
   supports(url: string): boolean;
   read(url: string): Promise<{ text: string; source: string }>;
   resolveRelative(base: string, relative: string): string;
+
+  /** Expand glob patterns relative to a base source. Returns sources in the same
+   *  format as read().source — suitable to pass back into read() / resolveRelative().
+   *  Optional — only filesystem-capable adapters implement this. */
+  expandGlob?(base: string, patterns: string[]): Promise<string[]>;
+
+  /** Walk parent directories from fileUrl looking for the nearest telo.yaml.
+   *  Returns the source in the same format as read().source, or null if none found.
+   *  Optional — only filesystem-capable adapters implement this. */
+  resolveOwnerOf?(fileUrl: string): Promise<string | null>;
 }
 
 export interface LoadOptions {

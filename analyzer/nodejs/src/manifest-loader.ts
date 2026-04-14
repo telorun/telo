@@ -3,13 +3,16 @@ import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
 import { precompileDoc } from "./precompile.js";
-import type {
-  LoadOptions,
-  LoaderInitOptions,
-  ManifestAdapter,
-  Position,
-  PositionIndex,
+import {
+  DEFAULT_MANIFEST_FILENAME,
+  type LoadOptions,
+  type LoaderInitOptions,
+  type ManifestAdapter,
+  type Position,
+  type PositionIndex,
 } from "./types.js";
+
+const SYSTEM_KINDS = new Set(["Kernel.Module", "Kernel.Import", "Kernel.Definition"]);
 
 export class Loader {
   private static readonly moduleCache = new Map<
@@ -128,8 +131,150 @@ export class Loader {
       }
     }
 
-    Loader.moduleCache.set(cacheKey, { text, manifests: resolved });
+    // Expand include directives — load partial files into the same module scope.
+    // Results with includes are NOT cached because partial file content is not
+    // tracked in the cache key — the cache would serve stale data if a partial changes.
+    let hasIncludes = false;
+    if (moduleManifest) {
+      const includePatterns = (moduleManifest as any).include as string[] | undefined;
+      if (includePatterns?.length) {
+        hasIncludes = true;
+        const adapter = this.pick(source);
+        const includedFiles = await this.resolveIncludes(source, includePatterns, adapter);
+        for (const includedUrl of includedFiles) {
+          const partialManifests = await this.loadPartialFile(includedUrl, moduleName, options);
+          resolved.push(...partialManifests);
+        }
+      }
+    }
+
+    if (!hasIncludes) {
+      Loader.moduleCache.set(cacheKey, { text, manifests: resolved });
+    }
     return cloneManifestArray(resolved);
+  }
+
+  private async resolveIncludes(
+    ownerSource: string,
+    patterns: string[],
+    adapter: ManifestAdapter,
+  ): Promise<string[]> {
+    const hasGlobs = patterns.some((p) => /[*?{}\[\]]/.test(p));
+    if (hasGlobs) {
+      if (!adapter.expandGlob) {
+        throw new Error(
+          `Include patterns in '${ownerSource}' contain globs but the adapter for this source ` +
+            `does not support glob expansion. Use explicit file paths instead of patterns like: ` +
+            patterns.filter((p) => /[*?{}\[\]]/.test(p)).join(", "),
+        );
+      }
+      return adapter.expandGlob(ownerSource, patterns);
+    }
+    // Literal relative paths — deduplicate in case the same file appears under multiple patterns.
+    return [...new Set(patterns.map((p) => adapter.resolveRelative(ownerSource, p)))];
+  }
+
+  private async loadPartialFile(
+    url: string,
+    ownerModuleName: string | undefined,
+    options?: LoadOptions,
+  ): Promise<ResourceManifest[]> {
+    const { text, source } = await this.pick(url).read(url);
+
+    const parsedDocuments = parseAllDocuments(text);
+    const rawDocs = parsedDocuments.map((d) => d.toJSON());
+    const offsets = documentLineOffsets(text);
+    const lineOffsets = buildLineOffsets(text);
+    const resolved: ResourceManifest[] = [];
+    let docIdx = 0;
+
+    for (const rawDoc of rawDocs) {
+      const currentDocIdx = docIdx++;
+      const sourceLine = offsets[currentDocIdx] ?? 0;
+      const positionIndex = buildPositionIndex(parsedDocuments[currentDocIdx], lineOffsets);
+      if (rawDoc === null || rawDoc === undefined) continue;
+
+      const kind = rawDoc.kind as string | undefined;
+      if (kind && SYSTEM_KINDS.has(kind)) {
+        throw new Error(
+          `Included file '${source}' contains '${kind}' which is not allowed in partial files. ` +
+            `Only the owner telo.yaml may declare ${kind} resources.`,
+        );
+      }
+
+      let compiledDocs: unknown[];
+      if (options?.compile) {
+        try {
+          const result = precompileDoc(rawDoc);
+          compiledDocs = Array.isArray(result) ? result : [result];
+        } catch (error) {
+          throw new Error(
+            `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      } else {
+        compiledDocs = [rawDoc];
+      }
+
+      for (const doc of compiledDocs) {
+        if (doc === null || doc === undefined) continue;
+        const manifest = doc as ResourceManifest;
+        const metadata = {
+          ...manifest.metadata,
+          source,
+          sourceLine,
+          ...(ownerModuleName && !manifest.metadata?.module ? { module: ownerModuleName } : {}),
+        };
+        Object.defineProperty(metadata, "positionIndex", {
+          value: positionIndex,
+          enumerable: false,
+          writable: true,
+          configurable: true,
+        });
+        resolved.push({ ...manifest, metadata });
+      }
+    }
+
+    return resolved;
+  }
+
+  async loadModuleForFile(
+    fileUrl: string,
+  ): Promise<{
+    ownerUrl: string;
+    manifests: ResourceManifest[];
+    sourceManifests: Map<string, ResourceManifest[]>;
+  } | null> {
+    // Try loading as a regular module first (it might be a telo.yaml itself).
+    // Use loadManifests (not loadModule) so imported definitions are included —
+    // otherwise the analyzer won't know about kinds from Kernel.Import sources.
+    try {
+      const docs = await this.loadModule(fileUrl);
+      const hasModule = docs.some((d) => d.kind === "Kernel.Module");
+      if (hasModule) {
+        const { source } = await this.pick(fileUrl).read(fileUrl);
+        const manifests = await this.loadManifests(fileUrl);
+        return { ownerUrl: source, manifests, sourceManifests: groupBySource(manifests) };
+      }
+    } catch (err) {
+      // If the file looks like an owner manifest (named telo.yaml), rethrow —
+      // a broken owner shouldn't silently fall through to parent lookup.
+      const normalized = fileUrl.replace(/\\/g, "/");
+      if (normalized.endsWith(`/${DEFAULT_MANIFEST_FILENAME}`) || normalized === DEFAULT_MANIFEST_FILENAME) {
+        throw err;
+      }
+      // Otherwise fall through to owner lookup — this is likely a partial file
+    }
+
+    // Find the owning telo.yaml via parent-directory traversal
+    const adapter = this.pick(fileUrl);
+    if (!adapter.resolveOwnerOf) return null;
+    const ownerUrl = await adapter.resolveOwnerOf(fileUrl);
+    if (!ownerUrl) return null;
+
+    // Load the owner module (which will load included files via include expansion)
+    const manifests = await this.loadManifests(ownerUrl);
+    return { ownerUrl, manifests, sourceManifests: groupBySource(manifests) };
   }
 
   async loadModuleGraph(
@@ -251,6 +396,20 @@ function cloneManifestValue<T>(value: T): T {
     return clone as T;
   }
   return value;
+}
+
+function groupBySource(manifests: ResourceManifest[]): Map<string, ResourceManifest[]> {
+  const map = new Map<string, ResourceManifest[]>();
+  for (const m of manifests) {
+    const src = (m.metadata?.source as string) ?? "unknown";
+    let list = map.get(src);
+    if (!list) {
+      list = [];
+      map.set(src, list);
+    }
+    list.push(m);
+  }
+  return map;
 }
 
 function documentLineOffsets(text: string): number[] {

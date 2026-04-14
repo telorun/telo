@@ -1,5 +1,4 @@
 export { HttpAdapter } from "./adapters/http-adapter.js";
-export { createNodeAdapter, NodeAdapter } from "./adapters/node-adapter.js";
 export { RegistryAdapter } from "./adapters/registry-adapter.js";
 export { AnalysisRegistry } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";

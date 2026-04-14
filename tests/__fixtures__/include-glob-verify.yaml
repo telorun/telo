@@ -1,0 +1,27 @@
+kind: Run.Sequence
+metadata:
+  name: TestIncludeGlob
+steps:
+  - name: Multiply
+    inputs:
+      x: 7
+      y: 6
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ x, y }) {
+          return { product: x * y }
+        }
+  - name: VerifyProduct
+    inputs:
+      product: "${{ steps.Multiply.result.product }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          product:
+            type: number
+            const: 42
+        required:
+          - product

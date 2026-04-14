@@ -1,8 +1,12 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
+import { minimatch } from "minimatch";
+import { Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { LocalFileAdapter } from "@telorun/kernel";
+import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
-import { createLogger, type Logger } from "../logger.js";
+import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
 
@@ -90,6 +94,75 @@ function rewritePurls(content: string, packageName: string, newVersion: string):
     new RegExp(`(pkg:[^/]+/${escapedName}@)[^?#]+(\\?[^#]*)?(#[^\\s]*)?`, "g"),
     (_, prefix, qs, frag) => `${prefix}${newVersion}${qs ?? ""}${frag ?? ""}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Include expansion — resolve globs and inline partial file contents
+// ---------------------------------------------------------------------------
+
+function expandAndInlineIncludes(content: string, manifestDir: string): string {
+  // Parse the first YAML document to extract include patterns
+  const docs = parseAllDocuments(content);
+  const firstParsed = docs[0]?.toJSON();
+  if (!firstParsed || !Array.isArray(firstParsed.include) || firstParsed.include.length === 0) {
+    return content;
+  }
+
+  const patterns: string[] = firstParsed.include.filter(
+    (p: unknown): p is string => typeof p === "string",
+  );
+  if (patterns.length === 0) return content;
+
+  // Expand globs against the manifest directory
+  const hasGlobs = patterns.some((p) => /[*?{}\[\]]/.test(p));
+  let resolvedFiles: string[];
+
+  if (hasGlobs) {
+    const entries = fs.readdirSync(manifestDir, { recursive: true, withFileTypes: true });
+    const normalizedPatterns = patterns.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
+    resolvedFiles = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const relative = path.relative(manifestDir, path.join(entry.parentPath, entry.name));
+      const normalized = relative.replace(/\\/g, "/");
+      if (normalizedPatterns.some((p) => minimatch(normalized, p))) {
+        resolvedFiles.push(path.resolve(manifestDir, relative));
+      }
+    }
+    resolvedFiles.sort();
+  } else {
+    resolvedFiles = [...new Set(patterns.map((p) => path.resolve(manifestDir, p)))];
+  }
+
+  // Validate all resolved paths exist and stay within the module directory
+  const realManifestDir = fs.realpathSync(manifestDir) + path.sep;
+  for (const filePath of resolvedFiles) {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Included file not found: ${filePath}`);
+    }
+    const realPath = fs.realpathSync(filePath);
+    if (!realPath.startsWith(realManifestDir)) {
+      throw new Error(
+        `Include path '${filePath}' resolves outside the module directory. ` +
+          `Publishing files from outside the module root is not allowed.`,
+      );
+    }
+  }
+
+  // Remove include from the first document via AST (preserves formatting/comments)
+  docs[0].deleteIn(["include"]);
+
+  // Inline partial file contents as additional YAML documents
+  let inlined = "";
+  for (const filePath of resolvedFiles) {
+    const partialContent = fs.readFileSync(filePath, "utf-8").trim();
+    if (!partialContent) continue;
+    inlined += "\n---\n" + partialContent + "\n";
+  }
+
+  // Re-serialize all original documents + inlined partials
+  const serialized = docs.map((d) => d.toString()).join("---\n");
+  return serialized + inlined;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +371,30 @@ async function publishOne(
       stepOk(log, "version", `${bumpedVersion.from} → ${bumpedVersion.to}`);
     }
   }
+
+  // Static analysis pre-flight: validate the manifest (with includes) before publishing.
+  // This catches schema errors, bad references, CEL issues, and system-kind violations
+  // in partial files — all before the artifact reaches the registry.
+  const analysisLoader = new Loader([new LocalFileAdapter()]);
+  let analysisManifests;
+  try {
+    analysisManifests = await analysisLoader.loadManifests(filePath);
+  } catch (err) {
+    console.error(
+      log.error("error") +
+        `  Failed to load manifest for analysis: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+  const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
+  const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisManifests, log, filePath);
+  if (errorCount > 0) {
+    return false;
+  }
+  stepOk(log, "check", "static analysis passed");
+
+  // Expand include globs and inline partial file contents before pushing
+  content = expandAndInlineIncludes(content, manifestDir);
 
   if (dryRun) {
     stepDry(log, "push", "Telo registry");

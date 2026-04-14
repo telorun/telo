@@ -1,5 +1,6 @@
 export { ControllerRegistry } from "./controller-registry.js";
 export { EvaluationContext } from "./evaluation-context.js";
+export { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 export { EventStream } from "./event-stream.js";
 export { ExecutionContext } from "./execution-context.js";
 export { Kernel, type KernelOptions } from "./kernel.js";

@@ -39,7 +39,8 @@
     "watch": "node esbuild.mjs --watch"
   },
   "dependencies": {
-    "@telorun/analyzer": "workspace:*"
+    "@telorun/analyzer": "workspace:*",
+    "minimatch": "^10.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

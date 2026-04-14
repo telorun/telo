@@ -429,18 +429,23 @@ function buildParsedManifest(filePath: string, docs: ResourceManifest[]): Parsed
     .map((r) => {
       const { kind, metadata, ...rest } = r as Record<string, unknown> & {
         kind: string;
-        metadata: { name: string; module?: string };
+        metadata: { name: string; module?: string; source?: string };
       };
       return {
         kind,
         name: metadata.name,
         module: metadata.module,
         fields: rest as Record<string, unknown>,
+        sourceFile: metadata.source,
       };
     });
 
   const targets: string[] =
     ((moduleDoc as Record<string, unknown> | undefined)?.targets as string[]) ?? [];
+
+  const include = (moduleDoc as Record<string, unknown> | undefined)?.include as
+    | string[]
+    | undefined;
 
   return {
     filePath,
@@ -458,6 +463,7 @@ function buildParsedManifest(filePath: string, docs: ResourceManifest[]): Parsed
     targets,
     imports,
     resources,
+    ...(include?.length ? { include } : {}),
   };
 }
 
@@ -671,6 +677,7 @@ function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
     },
   };
 
+  if (manifest.include?.length) moduleDoc.include = manifest.include;
   if (manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
 
   const importDocs = manifest.imports.map((imp) => ({
@@ -706,4 +713,52 @@ export function getYamlStateSnapshots(app: Application): Array<{ filePath: strin
       filePath,
       yaml: renderManifestYaml(manifest),
     }));
+}
+
+/** Produces per-file YAML snapshots for a multi-file module. Resources are written
+ *  back to their originating sourceFile rather than collapsed into the owner. */
+export function getMultiFileSnapshots(
+  manifest: ParsedManifest,
+): Array<{ filePath: string; yaml: string }> {
+  // Group resources by sourceFile (or manifest.filePath if no sourceFile)
+  const groups = new Map<string, ParsedResource[]>();
+  for (const r of manifest.resources) {
+    const file = r.sourceFile ?? manifest.filePath;
+    let list = groups.get(file);
+    if (!list) {
+      list = [];
+      groups.set(file, list);
+    }
+    list.push(r);
+  }
+
+  const snapshots: Array<{ filePath: string; yaml: string }> = [];
+
+  // Owner file: module doc + imports + resources that belong to this file
+  const ownerResources = groups.get(manifest.filePath) ?? [];
+  const ownerManifest: ParsedManifest = { ...manifest, resources: ownerResources };
+  const ownerDocs = toManifestDocs(ownerManifest);
+  snapshots.push({
+    filePath: manifest.filePath,
+    yaml: ownerDocs.map((doc) => dumpYamlDoc(doc)).join("\n---\n"),
+  });
+
+  // Partial files: only their resources
+  for (const [file, resources] of groups) {
+    if (file === manifest.filePath) continue;
+    const docs = resources.map((r) => ({
+      kind: r.kind,
+      metadata: {
+        name: r.name,
+        ...(r.module ? { module: r.module } : {}),
+      },
+      ...r.fields,
+    }));
+    snapshots.push({
+      filePath: file,
+      yaml: docs.map((doc) => dumpYamlDoc(doc)).join("\n---\n"),
+    });
+  }
+
+  return snapshots;
 }
