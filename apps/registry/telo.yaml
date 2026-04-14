@@ -222,8 +222,8 @@ baseUrl: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketN
 # GET /{namespace}/{name}           module overview with latest version.
 # GET /{namespace}/{name}/versions  lists all versions from the SQL index.
 # GET /{namespace}/{name}/{version} returns module metadata from the SQL index.
-# GET /{namespace}/{name}/{version}/module.yaml streams the module.yaml from S3.
-# PUT /{namespace}/{name}/{version} publishes a module.yaml (body) to S3 and records it in SQL.
+# GET /{namespace}/{name}/{version}/telo.yaml streams the telo.yaml from S3.
+# PUT /{namespace}/{name}/{version} publishes a telo.yaml (body) to S3 and records it in SQL.
 # Everything else falls through to the server fallback (ForwardToR2).
 kind: Http.Api
 metadata:
@@ -371,7 +371,7 @@ routes:
           error: "Module not found"
 
   - request:
-      path: /{namespace}/{name}/{version}/module.yaml
+      path: /{namespace}/{name}/{version}/telo.yaml
       method: GET
       schema:
         params:
@@ -387,7 +387,7 @@ routes:
       client: S3Client
       inputs:
         method: GET
-        url: "${{ '/' + inputs.path + '/module.yaml' }}"
+        url: "${{ '/' + inputs.path + '/telo.yaml' }}"
     inputs:
       path: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version }}"
     response:
@@ -444,7 +444,7 @@ routes:
       name: "${{ request.params.name }}"
       version: "${{ request.params.version }}"
       body: "${{ request.body }}"
-      fileKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.yaml' }}"
+      fileKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
       published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
     response:
       - status: 201

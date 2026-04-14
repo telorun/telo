@@ -1,4 +1,4 @@
-import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
   ControllerContext,
   Kernel as IKernel,
@@ -218,7 +218,7 @@ export class Kernel implements IKernel {
    * @deprecated Use loadFromConfig instead
    */
   async loadDirectory(dirPath: string): Promise<void> {
-    const configYamlPath = path.join(dirPath, "module.yaml");
+    const configYamlPath = path.join(dirPath, DEFAULT_MANIFEST_FILENAME);
 
     await this.loadFromConfig(configYamlPath);
   }

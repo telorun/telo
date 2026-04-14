@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "@telorun/analyzer";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -19,7 +19,7 @@ export class LocalFileAdapter implements ManifestAdapter {
       : pathOrUrl;
     const resolvedPath = path.resolve(normalizedPath);
     const stat = await fs.stat(resolvedPath);
-    const filePath = stat.isDirectory() ? path.join(resolvedPath, "module.yaml") : resolvedPath;
+    const filePath = stat.isDirectory() ? path.join(resolvedPath, DEFAULT_MANIFEST_FILENAME) : resolvedPath;
     const text = await fs.readFile(filePath, "utf-8");
     return { text, source: `file://${filePath}` };
   }

@@ -3,7 +3,7 @@
 `extends` on a `Kernel.Definition` declares that the kind **fulfills an abstract interface** declared by another module. This is the extension point for pluggable subsystems: one module defines the contract, other modules provide implementations.
 
 ```yaml
-# modules/workflow-temporal/module.yaml
+# modules/workflow-temporal/telo.yaml
 kind: Kernel.Definition
 metadata: { name: Backend, module: WorkflowTemporal }
 capability: Provider
@@ -19,7 +19,7 @@ extends: Workflow.Backend
 A module declares an abstract interface with `kind: Kernel.Abstract`. This registers a named slot that other modules can target via `extends`.
 
 ```yaml
-# modules/workflow/module.yaml
+# modules/workflow/telo.yaml
 kind: Kernel.Abstract
 metadata: { name: Backend, module: Workflow }
 capability: Provider

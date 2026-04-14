@@ -14,7 +14,7 @@ End-users enable observability by declaring a Telemetry Provider at the highest 
 
 The Telo engine detects the `Telemetry` trait of this Provider and automatically attaches it to the execution context (`ctx`) of all downstream `Runnable` and `Invokable` resources.
 
-**Syntax (`root-module.yaml`):**
+**Syntax (`root-telo.yaml`):**
 
 ```yaml
 kind: Kernel.Module

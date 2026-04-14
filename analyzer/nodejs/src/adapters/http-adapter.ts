@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "../types.js";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "../types.js";
 
 export class HttpAdapter implements ManifestAdapter {
   supports(url: string): boolean {
@@ -6,7 +6,7 @@ export class HttpAdapter implements ManifestAdapter {
   }
 
   async read(url: string): Promise<{ text: string; source: string }> {
-    const fetchUrl = url.includes(".yaml") ? url : `${url}/module.yaml`;
+    const fetchUrl = url.includes(".yaml") ? url : `${url}/${DEFAULT_MANIFEST_FILENAME}`;
     const response = await fetch(fetchUrl);
     if (!response.ok) {
       throw new Error(

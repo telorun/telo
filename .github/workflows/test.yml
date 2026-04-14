@@ -46,7 +46,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check module manifests
-        run: pnpm run check modules/*/module.yaml
+        run: pnpm run check modules/*/telo.yaml
 
       - name: Check example manifests
         run: pnpm run check examples/*.yaml

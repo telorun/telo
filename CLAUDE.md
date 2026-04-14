@@ -64,13 +64,13 @@ Declares a module's identity, inputs, and targets. Every module file must start 
 
 ### `kind: Kernel.Import`
 Loads an external module into the current scope under a PascalCase alias.
-- `source` — relative path; resolved to `module.yaml` automatically
+- `source` — relative path; resolved to `telo.yaml` automatically
 - `variables` / `secrets` — values passed into the child module
 - Creates an isolated child `EvaluationContext`; child resources not visible to root scope
 - Only root module gets `env: process.env`; child modules are isolated from the host environment
 
 ### `kind: Kernel.Definition`
-Registers a new resource kind. Defined inline in a module's `module.yaml`.
+Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 - `metadata.name` — kind suffix; full kind = `<module-name>.<Name>`
 - `capability` — one of the kernel capabilities (see below)
 - `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development
@@ -115,7 +115,7 @@ YAML directives: `$let`, `$if`, `$for`, `$eval`, `$include` — see `yaml-cel-te
 
 - Runtime bug / init order → `kernel.ts`, `loader.ts`
 - Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts`
-- New resource kind → add `Kernel.Definition` to module's `module.yaml`, controller in `src/`
+- New resource kind → add `Kernel.Definition` to module's `telo.yaml`, controller in `src/`
 - CEL template syntax → `yaml-cel-templating/nodejs/`
 - Schema validation errors → `manifest-schemas.ts`, `analyzer/nodejs/`
 - x-telo-ref / scope / topology → `analyzer/nodejs/src/reference-field-map.ts`, `dependency-graph.ts`, `validate-references.ts`

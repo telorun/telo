@@ -38,10 +38,10 @@ Publish one or more module manifests to the Telo registry. For each manifest, th
 7. Pushes the updated manifest to the Telo registry.
 
 ```bash
-telo publish ./modules/my-module/module.yaml
-telo publish ./modules/my-module/module.yaml --bump=patch
-telo publish ./modules/a/module.yaml ./modules/b/module.yaml --bump=minor
-telo publish ./modules/my-module/module.yaml --dry-run
+telo publish ./modules/my-module/telo.yaml
+telo publish ./modules/my-module/telo.yaml --bump=patch
+telo publish ./modules/a/telo.yaml ./modules/b/telo.yaml --bump=minor
+telo publish ./modules/my-module/telo.yaml --dry-run
 ```
 
 **Options:**
@@ -53,7 +53,7 @@ telo publish ./modules/my-module/module.yaml --dry-run
 **Example output:**
 
 ```
-Publishing modules/run/module.yaml
+Publishing modules/run/telo.yaml
 
   @telorun/run
     bump     0.1.1 → 0.1.2
@@ -74,11 +74,11 @@ Statically validates one or more manifests without running them. Uses the Telo a
 
 ```bash
 telo check ./manifest.yaml
-telo check ./modules/my-module/module.yaml
+telo check ./modules/my-module/telo.yaml
 telo check https://example.com/manifest.yaml
 ```
 
-Accepts local paths, directories containing a `module.yaml`, or HTTP(S) URLs.
+Accepts local paths, directories containing a `telo.yaml`, or HTTP(S) URLs.
 
 **Example output:**
 

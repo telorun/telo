@@ -108,7 +108,7 @@ export function checkCommand(yargs: Argv): Argv {
     "Check one or more Telo manifests for errors without running them",
     (y) =>
       y.positional("paths", {
-        describe: "Paths to YAML manifests, directories containing module.yaml, or HTTP(S) URLs",
+        describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
         type: "string",
         array: true,
         demandOption: true,

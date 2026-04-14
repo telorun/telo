@@ -124,7 +124,7 @@ Modules encapsulate their internal types and only expose what is necessary throu
 ### Exporting (Provider Side)
 
 ```yaml
-# Inside billing-module.yaml
+# Inside billing-telo.yaml
 exports:
   types:
     PublicInvoice: InvoiceType # Points to a Type.JsonSchema resource
@@ -133,7 +133,7 @@ exports:
 ### Importing (Consumer Side)
 
 ```yaml
-# Inside main-module.yaml
+# Inside main-telo.yaml
 kind: Kernel.Import
 metadata:
   name: Billing

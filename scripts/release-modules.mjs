@@ -99,7 +99,7 @@ for (const file of changedFiles) {
   const abs = resolve(ROOT, file);
   for (const modDir of modulePackageDirs) {
     const manifestDir = resolve(modDir, "..");
-    const manifestFile = join(manifestDir, "module.yaml");
+    const manifestFile = join(manifestDir, "telo.yaml");
     if (!existsSync(manifestFile)) continue;
     if (abs.startsWith(manifestDir + "/")) {
       changedManifests.add(manifestFile);
@@ -110,7 +110,7 @@ for (const file of changedFiles) {
 // Also include modules explicitly listed in a changeset file even if no files changed
 for (const key of Object.keys(moduleBumps)) {
   const [, name] = key.split("/");
-  const manifestFile = join(ROOT, "modules", name, "module.yaml");
+  const manifestFile = join(ROOT, "modules", name, "telo.yaml");
   if (existsSync(manifestFile)) changedManifests.add(manifestFile);
 }
 

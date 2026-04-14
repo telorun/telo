@@ -1,5 +1,5 @@
 import type { ManifestAdapter } from "@telorun/analyzer";
-import { Loader, RegistryAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, RegistryAdapter } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   AppSettings,
@@ -258,7 +258,7 @@ class TauriAdapter implements ManifestAdapter {
 
   resolveRelative(base: string, relative: string): string {
     const resolved = pathResolve(base, relative);
-    if (!pathExtname(resolved)) return resolved + "/module.yaml";
+    if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;
     return resolved;
   }
 }
@@ -289,7 +289,7 @@ class WebFsAdapter implements ManifestAdapter {
 
   resolveRelative(base: string, relative: string): string {
     const resolved = pathResolve(base, relative);
-    if (!pathExtname(resolved)) return resolved + "/module.yaml";
+    if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;
     return resolved;
   }
 }
@@ -347,6 +347,7 @@ async function findRootManifest(dir: FileSystemDirectoryHandle): Promise<string 
     names.push(name as string);
   }
   return (
+    names.find((n) => n === DEFAULT_MANIFEST_FILENAME) ??
     names.find((n) => n === "module.yaml") ??
     names.find((n) => n === "manifest.yaml") ??
     names.find((n) => n.endsWith(".yaml") || n.endsWith(".yml")) ??
@@ -483,7 +484,7 @@ export function createRegistryAdapters(settings: AppSettings): ManifestAdapter[]
         const modulePath = moduleRef.slice(0, atIdx);
         const rawVersion = moduleRef.slice(atIdx + 1);
         const version = rawVersion.startsWith("v") ? rawVersion.substring(1) : rawVersion;
-        const fetchUrl = `${baseUrl}/${modulePath}/${version}/module.yaml`;
+        const fetchUrl = `${baseUrl}/${modulePath}/${version}/${DEFAULT_MANIFEST_FILENAME}`;
 
         const response = await fetch(fetchUrl);
         if (!response.ok) {
@@ -584,7 +585,7 @@ export function getAvailableKinds(app: Application, manifest: ParsedManifest): A
 
 // The `new://` scheme marks an in-memory application that has not been saved.
 export function createApplication(name: string): Application {
-  const filePath = `new://${name}/module.yaml`;
+  const filePath = `new://${name}/${DEFAULT_MANIFEST_FILENAME}`;
   const manifest: ParsedManifest = {
     filePath,
     metadata: { name, version: "1.0.0" },

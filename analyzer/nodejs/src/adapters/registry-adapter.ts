@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "../types.js";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "../types.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
@@ -40,7 +40,7 @@ export class RegistryAdapter implements ManifestAdapter {
   }
 
   private toRegistryUrl(moduleRef: string): string {
-    return `${this.toRegistryModuleBase(moduleRef)}/module.yaml`;
+    return `${this.toRegistryModuleBase(moduleRef)}/${DEFAULT_MANIFEST_FILENAME}`;
   }
 
   private parseModuleRef(moduleRef: string): { modulePath: string; version: string } {

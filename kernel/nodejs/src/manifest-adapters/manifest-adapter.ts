@@ -17,7 +17,7 @@ export interface ManifestAdapter {
   /**
    * Read a single manifest entry point.
    * - File path or URL → read that file/URL.
-   * - Directory path → find and read `module.yaml` within it.
+   * - Directory path → find and read `telo.yaml` within it.
    */
   read(pathOrUrl: string): Promise<ManifestSourceData>;
   /**

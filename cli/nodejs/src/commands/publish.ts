@@ -282,7 +282,7 @@ async function publishOne(
     }
   }
 
-  // Write updated module.yaml back to disk
+  // Write updated telo.yaml back to disk
   const dirty = uniqueControllers.length > 0 || bump != null;
   if (!dryRun && dirty) {
     fs.writeFileSync(filePath, content, "utf-8");
@@ -341,7 +341,7 @@ export function publishCommand(yargs: Argv): Argv {
     (y) =>
       y
         .positional("paths", {
-          describe: "Paths to module.yaml files to publish",
+          describe: "Paths to telo.yaml files to publish",
           type: "string",
           array: true,
           demandOption: true,
