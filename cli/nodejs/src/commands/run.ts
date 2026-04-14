@@ -188,7 +188,7 @@ export function runCommand(yargs: Argv): Argv {
     (y) =>
       y
         .positional("path", {
-          describe: "Path to YAML manifest, directory containing module.yaml, or HTTP(S) URL",
+          describe: "Path to YAML manifest, directory containing telo.yaml, or HTTP(S) URL",
           type: "string",
           demandOption: true,
         })

@@ -169,7 +169,7 @@ Lists all submodule imports (`kind: Kernel.Import` with a local-path `source`) o
 
 The `+` affordance adds a new submodule import. The flow differs by environment:
 
-**In Tauri**: clicking `+` immediately opens a native file picker filtered to `.yaml`/`.yml`. The selected file is read to extract the module's `metadata.name`, which is converted to PascalCase and pre-filled as the alias. The `source` stored in `Kernel.Import` is a relative path from the active module's directory to the selected file's **directory** (e.g. `../auth` — the loader appends `/module.yaml` automatically). The user can edit the alias before confirming.
+**In Tauri**: clicking `+` immediately opens a native file picker filtered to `.yaml`/`.yml`. The selected file is read to extract the module's `metadata.name`, which is converted to PascalCase and pre-filled as the alias. The `source` stored in `Kernel.Import` is a relative path from the active module's directory to the selected file's **directory** (e.g. `../auth` — the loader appends `/telo.yaml` automatically). The user can edit the alias before confirming.
 
 **In browser with directory access**: clicking `+` shows an inline form with a text input for a relative path (e.g. `./auth`) and an alias field.
 
@@ -196,7 +196,7 @@ The `+` affordance shows an inline form accepting any of the following source fo
 | Format | Example |
 | ------ | ------- |
 | Registry reference | `acme/user-service@1.0.0` |
-| Absolute URL | `https://cdn.example.com/lib/module.yaml` |
+| Absolute URL | `https://cdn.example.com/lib/telo.yaml` |
 
 The alias is derived from the module-name portion of the source (e.g. `user-service` → `UserService`) and is editable before confirming. The editor does not resolve or load these sources.
 
@@ -409,7 +409,7 @@ A kind is always keyed as `metadata.module + "." + metadata.name`. Definitions t
 Loading order:
 
 1. **All submodule definitions** — `kind: Kernel.Definition` documents from every module in the application graph (root module and all transitively reachable submodules). Because the application graph is fully loaded upfront, cross-submodule definitions are available without any depth limit.
-2. **Remote import definitions** — for each `Kernel.Import` whose `importKind` is `remote`, the import's `source` is a `pkg:` or registry reference that cannot be fetched. The editor loads definitions from remote imports only if they were previously cached locally (e.g. resolved by the kernel into a local `node_modules` path that contains a `module.yaml`). If no local resolution exists, that import's definitions are absent from the registry and its kinds appear as unknown.
+2. **Remote import definitions** — for each `Kernel.Import` whose `importKind` is `remote`, the import's `source` is a `pkg:` or registry reference that cannot be fetched. The editor loads definitions from remote imports only if they were previously cached locally (e.g. resolved by the kernel into a local `node_modules` path that contains a `telo.yaml`). If no local resolution exists, that import's definitions are absent from the registry and its kinds appear as unknown.
 3. **Built-in abstracts** — `Kernel.Runnable`, `Kernel.Provider`, `Kernel.Type`, `Kernel.Invocable`, `Kernel.Service`, `Kernel.Mount`, `Kernel.Template` are always available without file loading.
 
 Each definition's schema is processed by `buildReferenceFieldMap` at load time and the resulting field map is cached on the registry entry. The field map records every `x-telo-ref` slot (reference fields) and every `x-telo-scope` slot (scope fields) by field path, and is reused by the editor for edge rendering, connectable mode, reference dropdowns, and scope field rendering — no schema traversal happens at interaction time. The full field map structure, `anyOf` traversal rules, `x-telo-ref` URI format, `Kernel.Abstract` resolution via `getByExtends()`, and visual editor interaction contract are specified in [kernel/docs/resource-references.md](../../kernel/docs/resource-references.md) (Sections 1–4 and 10).

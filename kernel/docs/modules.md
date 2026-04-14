@@ -202,8 +202,8 @@ The `source` field accepts three forms:
 | Form               | Example                                   | Resolved as                                       |
 | ------------------ | ----------------------------------------- | ------------------------------------------------- |
 | Registry reference | `acme/user-service@1.0.0`                 | Looked up in the configured module registry       |
-| Relative path      | `./payment/module.yaml`                   | Resolved relative to the importing manifest's URL |
-| Absolute URL       | `https://cdn.example.com/lib/module.yaml` | Fetched directly                                  |
+| Relative path      | `./payment/telo.yaml`                   | Resolved relative to the importing manifest's URL |
+| Absolute URL       | `https://cdn.example.com/lib/telo.yaml` | Fetched directly                                  |
 
 Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that contains the `Kernel.Import`, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 

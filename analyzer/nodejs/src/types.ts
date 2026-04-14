@@ -8,6 +8,9 @@ export const DiagnosticSeverity = {
 } as const;
 export type DiagnosticSeverity = (typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];
 
+/** Default entry-point filename when a directory is given instead of a file. */
+export const DEFAULT_MANIFEST_FILENAME = "telo.yaml";
+
 export interface Position {
   /** 0-based line number */
   line: number;

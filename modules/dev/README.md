@@ -71,7 +71,7 @@ metadata:
 kind: Kernel.Import
 metadata:
   name: App
-source: ./module.yaml
+source: ./telo.yaml
 ---
 kind: Dev.Server
 metadata:
@@ -93,7 +93,7 @@ model:
 
 Running `telo ./dev.yaml` starts the full production application (via the `App` import) alongside the dev tools. The migration generator has direct access to `App.Db` — the same live database connection the main app uses — because it is a resolved reference to an already-initialized resource from the imported module.
 
-Running `telo ./module.yaml` (without `dev.yaml`) starts only the production application. No `Dev.Server` resource is declared, so no dev HTTP server starts.
+Running `telo ./telo.yaml` (without `dev.yaml`) starts only the production application. No `Dev.Server` resource is declared, so no dev HTTP server starts.
 
 ---
 

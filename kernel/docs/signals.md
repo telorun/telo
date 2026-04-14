@@ -13,7 +13,7 @@ The Telo engine handles asynchronous communication for business logic and resour
 
 To expose an internal resource signal to the outside world, a module must explicitly map it in its root-level `exports` block. This categorizes the public contract and provides a clean, domain-specific alias for consumers.
 
-**Syntax (`users-module.yaml`):**
+**Syntax (`users-telo.yaml`):**
 
 ```yaml
 kind: Kernel.Module
@@ -45,7 +45,7 @@ Consumers subscribe to exported signals using the `trigger` property with a stat
 
 Because Telo does not wrap payloads in runtime envelopes, the CEL `condition` evaluates the raw data object emitted by the source resource directly.
 
-**Syntax (`consumer-module.yaml`):**
+**Syntax (`consumer-telo.yaml`):**
 
 ```yaml
 kind: Kernel.Import

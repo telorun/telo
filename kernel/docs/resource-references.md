@@ -82,7 +82,7 @@ schema:
 ```
 
 ```yaml
-# modules/run/module.yaml
+# modules/run/telo.yaml
 schema:
   properties:
     steps:

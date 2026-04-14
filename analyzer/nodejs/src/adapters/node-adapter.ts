@@ -1,6 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import type { ManifestAdapter } from "../types.js";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "../types.js";
 
 /** Node.js fs-based ManifestAdapter for local files. Not browser-compatible. */
 export class NodeAdapter implements ManifestAdapter {
@@ -20,7 +20,7 @@ export class NodeAdapter implements ManifestAdapter {
     const filePath = url.startsWith("file://") ? new URL(url).pathname : url;
     const stat = await fs.stat(filePath).catch(() => null);
     const resolvedPath =
-      stat?.isDirectory() ? path.join(filePath, "module.yaml") : filePath;
+      stat?.isDirectory() ? path.join(filePath, DEFAULT_MANIFEST_FILENAME) : filePath;
     const text = await fs.readFile(resolvedPath, "utf8");
     return { text, source: resolvedPath };
   }
