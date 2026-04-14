@@ -1,6 +1,6 @@
 {
   "name": "@telorun/javascript",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Telo JavaScript module - JavaScript script execution for Telo manifests.",
   "keywords": [
     "telo",

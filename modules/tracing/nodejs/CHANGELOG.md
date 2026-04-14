@@ -1,5 +1,12 @@
 # @telorun/tracing
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies
+  - @telorun/sdk@0.2.8
+
 ## 0.1.6
 
 ### Patch Changes

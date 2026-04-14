@@ -1,5 +1,12 @@
 # @telorun/s3
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @telorun/sdk@0.2.8
+
 ## 1.0.2
 
 ### Patch Changes

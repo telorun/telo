@@ -1,6 +1,6 @@
 {
   "name": "@telorun/yaml-cel-templating",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Telo YAML-CEL Templating engine implementation",
   "keywords": [
     "digly",
