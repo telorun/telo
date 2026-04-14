@@ -96,7 +96,7 @@ source: acme/postgres-driver@2.0.0
 variables:
   poolSize: 10
 secrets:
-  connectionString: "${{ imports.HostEnv.values.DATABASE_URL }}"
+  connectionString: "${{ resources.HostEnv.values.DATABASE_URL }}"
 
 # Explicit runtime capability authorizations
 grants:

@@ -20,8 +20,11 @@ export const celEnvironment = new Environment({ unlistedVariablesAreDyn: true })
  *
  *  - `variables`: typed from the manifest's `variables` field if it is a schema map
  *    (only `Kernel.Module` resources carry this); otherwise registered as `map` (dyn).
- *  - `secrets`, `resources`, `imports`, `env`: always `map` (dyn — output schemas unknown).
- *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation. */
+ *  - `secrets`, `resources`, `env`: always `map` (dyn — output schemas unknown).
+ *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
+ *
+ *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
+ *  in kernel-globals.ts, which is used for chain-access validation. */
 export function buildTypedCelEnvironment(
   manifest: ResourceManifest,
   extraContextSchema?: Record<string, any> | null,
@@ -50,7 +53,6 @@ export function buildTypedCelEnvironment(
 
     env.registerVariable("secrets", "map");
     env.registerVariable("resources", "map");
-    env.registerVariable("imports", "map");
     env.registerVariable("env", "map");
 
     if (extraContextSchema?.properties) {
