@@ -1,6 +1,25 @@
 {
   "name": "@telorun/sql",
   "version": "0.1.2",
+  "description": "Telo SQL module - SQL database resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "sql",
+    "database",
+    "sqlite",
+    "postgres"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/sql/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./sql-connection": {
@@ -36,13 +55,15 @@
       "import": "./dist/sql-migrations-controller.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@telorun/sdk": "workspace:*",
     "better-sqlite3": "^12.8.0",

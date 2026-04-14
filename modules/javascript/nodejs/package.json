@@ -1,14 +1,27 @@
 {
   "name": "@telorun/javascript",
   "version": "0.1.8",
+  "description": "Telo JavaScript module - JavaScript script execution for Telo manifests.",
+  "keywords": [
+    "telo",
+    "javascript",
+    "scripting"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/javascript/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": [
-    "dist/**",
-    "src/**"
-  ],
   "exports": {
     "./script": {
       "types": "./dist/script.d.ts",
@@ -16,8 +29,14 @@
       "import": "./dist/script.js"
     }
   },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@telorun/sdk": "workspace:*"

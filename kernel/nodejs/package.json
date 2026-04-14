@@ -2,6 +2,23 @@
   "name": "@telorun/kernel",
   "version": "0.2.7",
   "description": "Telo Runtime - A lightweight, polyglot execution host.",
+  "keywords": [
+    "digly",
+    "runtime",
+    "execution",
+    "manifest"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "kernel/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -20,14 +37,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc",
+    "prepack": "cp ../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
-  "keywords": [
-    "digly",
-    "runtime",
-    "execution",
-    "manifest"
-  ],
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",

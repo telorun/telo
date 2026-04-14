@@ -1,6 +1,24 @@
 {
   "name": "@telorun/sdk",
   "version": "0.2.7",
+  "description": "Telo SDK - Public API for Telo module authors.",
+  "keywords": [
+    "telo",
+    "sdk",
+    "runtime",
+    "modules"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "sdk/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -17,7 +35,9 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../LICENSE .",
+    "postpack": "rm -f LICENSE"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

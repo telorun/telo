@@ -1,6 +1,24 @@
 {
   "name": "@telorun/s3",
   "version": "1.0.2",
+  "description": "Telo S3 module - AWS S3 resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "s3",
+    "aws",
+    "storage"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/s3/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./s3-bucket": {
@@ -16,13 +34,15 @@
       "import": "./dist/s3-put-controller.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@sinclair/typebox": "^0.34.48",

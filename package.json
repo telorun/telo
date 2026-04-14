@@ -3,6 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "description": "Telo Runtime: A lightweight, polyglot execution host.",
+  "keywords": [
+    "telo",
+    "runtime",
+    "declarative",
+    "manifest",
+    "orchestration"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "packageManager": "pnpm@10.28.2",
   "scripts": {
     "telo": "bun ./cli/nodejs/bin/telo.ts",
     "telo:node": "node ./cli/nodejs/bin/telo.mjs",
@@ -15,7 +33,6 @@
     "release:modules": "node scripts/release-modules.mjs",
     "release:platform": "node scripts/release.mjs"
   },
-  "packageManager": "pnpm@10.28.2",
   "devDependencies": {
     "bun": "^1.3.9",
     "@changesets/cli": "^2.29.8"

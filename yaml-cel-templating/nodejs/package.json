@@ -2,6 +2,24 @@
   "name": "@telorun/yaml-cel-templating",
   "version": "1.0.3",
   "description": "Telo YAML-CEL Templating engine implementation",
+  "keywords": [
+    "digly",
+    "CEL",
+    "yaml",
+    "templating",
+    "manifest"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "yaml-cel-templating/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,15 +34,10 @@
     "build": "tsc -p tsconfig.lib.json",
     "dev": "tsc --watch -p tsconfig.lib.json",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch"
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "prepack": "cp ../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
-  "keywords": [
-    "digly",
-    "CEL",
-    "yaml",
-    "templating",
-    "manifest"
-  ],
   "dependencies": {
     "@marcbachmann/cel-js": "^7.5.3",
     "chevrotain": "^11.1.1",

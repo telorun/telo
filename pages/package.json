@@ -1,6 +1,26 @@
 {
   "name": "@telorun/pages",
   "private": true,
+  "description": "Telo documentation website.",
+  "keywords": [
+    "telo",
+    "docs",
+    "documentation"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "pages"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "engines": {
+    "node": ">=18.0"
+  },
   "scripts": {
     "dev": "docusaurus start",
     "build": "docusaurus build",
@@ -17,8 +37,5 @@
   "devDependencies": {
     "@docusaurus/types": "^3.9.2",
     "typescript": "^5.9.3"
-  },
-  "engines": {
-    "node": ">=18.0"
   }
 }

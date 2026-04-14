@@ -1,6 +1,23 @@
 {
   "name": "@telorun/console",
   "version": "0.1.6",
+  "description": "Telo Console module - Console I/O resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "console",
+    "io"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/console/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./writeline": {
@@ -12,13 +29,15 @@
       "import": "./dist/readline-controller.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@telorun/sdk": "workspace:*"
   },

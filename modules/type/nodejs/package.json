@@ -1,13 +1,26 @@
 {
   "name": "@telorun/type",
   "version": "0.0.2",
+  "description": "Telo Type module - Type definition resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "type",
+    "schema"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/type/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
-  "files": [
-    "dist/**",
-    "src/**"
-  ],
   "exports": {
     "./type": {
       "bun": "./src/index.ts",
@@ -15,8 +28,14 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@marcbachmann/cel-js": "^7.5.3",

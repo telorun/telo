@@ -1,6 +1,25 @@
 {
   "name": "@telorun/analyzer",
   "version": "0.1.2",
+  "description": "Telo Analyzer - Static manifest validator for Telo manifests.",
+  "keywords": [
+    "telo",
+    "analyzer",
+    "validator",
+    "manifest",
+    "yaml"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "analyzer/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -17,7 +36,9 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../LICENSE . && cp ../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@marcbachmann/cel-js": "^7.5.3",

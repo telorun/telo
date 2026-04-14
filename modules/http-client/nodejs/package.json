@@ -1,6 +1,24 @@
 {
   "name": "@telorun/http-client",
   "version": "0.1.3",
+  "description": "Telo HTTP Client module - HTTP client resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "http",
+    "client",
+    "request"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/http-client/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./http-client": {
@@ -12,13 +30,15 @@
       "import": "./dist/http-request-controller.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@telorun/sdk": "workspace:*"
   },
