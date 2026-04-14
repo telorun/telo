@@ -1,6 +1,23 @@
 {
   "name": "@telorun/test",
   "version": "0.1.1",
+  "description": "Telo Test module - Test runner for Telo manifests.",
+  "keywords": [
+    "telo",
+    "test",
+    "runner"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/test/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./suite": {
@@ -10,13 +27,15 @@
       "default": "./dist/suite.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
     "@telorun/kernel": "workspace:*",

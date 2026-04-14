@@ -2,6 +2,22 @@
   "name": "@telorun/cli",
   "version": "0.2.7",
   "description": "Telo CLI - Command-line interface for the Telo runtime.",
+  "keywords": [
+    "telo",
+    "cli",
+    "runtime"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "cli/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "bin": {
     "telo": "./bin/telo.mjs"
@@ -17,13 +33,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc",
+    "prepack": "cp ../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
-  "keywords": [
-    "telo",
-    "cli",
-    "runtime"
-  ],
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
     "@telorun/kernel": "workspace:*",

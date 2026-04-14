@@ -2,6 +2,24 @@
   "name": "telo-editor",
   "version": "0.1.2",
   "private": true,
+  "description": "Telo Editor - Desktop manifest editor for Telo.",
+  "keywords": [
+    "telo",
+    "editor",
+    "desktop",
+    "tauri"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "apps/telo-editor"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

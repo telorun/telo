@@ -1,16 +1,35 @@
 {
   "name": "@telorun/starlark",
   "version": "0.1.8",
-  "type": "module",
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+  "description": "Telo Starlark module - Starlark script execution for Telo manifests.",
+  "keywords": [
+    "telo",
+    "starlark",
+    "scripting"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/starlark/nodejs"
   },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
   "exports": {
     "./script": {
       "bun": "./src/script.ts",
       "import": "./dist/script.js",
       "require": "./dist/script.js"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@telorun/sdk": "workspace:*",

@@ -1,6 +1,24 @@
 {
   "name": "@telorun/run",
   "version": "0.1.2",
+  "description": "Telo Run module - Sequence execution for Telo manifests.",
+  "keywords": [
+    "telo",
+    "run",
+    "sequence",
+    "pipeline"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/run/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./src/sequence.ts",
   "module": "./src/sequence.ts",
@@ -11,7 +29,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@telorun/sdk": "workspace:*"

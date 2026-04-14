@@ -1,6 +1,25 @@
 {
   "name": "@telorun/http-server",
   "version": "0.1.7",
+  "description": "Telo HTTP Server module - HTTP server and API resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "http",
+    "server",
+    "api",
+    "fastify"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/http-server/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -17,7 +36,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

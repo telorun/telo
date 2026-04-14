@@ -1,10 +1,27 @@
 {
   "name": "@telorun/vscode-extension",
   "displayName": "Telo Kernel",
-  "description": "YAML diagnostics and completions for Telo manifests",
   "version": "0.0.3",
-  "publisher": "telorun",
   "private": true,
+  "description": "YAML diagnostics and completions for Telo manifests",
+  "keywords": [
+    "telo",
+    "vscode",
+    "yaml",
+    "diagnostics"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "ide/vscode"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "publisher": "telorun",
   "engines": {
     "vscode": "^1.85.0"
   },

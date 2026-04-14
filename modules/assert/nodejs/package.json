@@ -1,6 +1,23 @@
 {
   "name": "@telorun/assert",
   "version": "0.1.6",
+  "description": "Telo Assert module - Assertion resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "assert",
+    "testing"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/assert/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
   "type": "module",
   "exports": {
     "./schema": "./src/schema.ts",
@@ -8,13 +25,15 @@
     "./module-context": "./src/module-context.ts",
     "./manifest": "./src/manifest.ts"
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
-  },
   "files": [
     "dist",
     "src/**"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",
