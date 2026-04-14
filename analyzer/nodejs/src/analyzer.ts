@@ -4,6 +4,7 @@ import { AnalysisRegistry } from "./analysis-registry.js";
 import { buildTypedCelEnvironment, celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
+import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import {
   celTypeSatisfiesJsonSchema,
@@ -317,6 +318,10 @@ export class StaticAnalyzer {
       }
     }
 
+    // Build typed kernel globals schema so x-telo-context chain validation
+    // recognises variables, secrets, resources, env automatically
+    const kernelGlobals = buildKernelGlobalsSchema(allManifests);
+
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
       if (!m.kind || !m.metadata?.name) {
@@ -463,11 +468,12 @@ export class StaticAnalyzer {
         const manifestItem = matchedScope
           ? getManifestItem(path, matchedScope, m as Record<string, any>)
           : (m as Record<string, any>);
-        const effectiveContext = resolveContextAnnotations(
+        const resolvedContext = resolveContextAnnotations(
           matchedContext,
           manifestItem,
           allManifests as Record<string, any>[],
         );
+        const effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
 
         for (const chain of accessChains) {
           const err = validateChainAgainstSchema(chain, effectiveContext);

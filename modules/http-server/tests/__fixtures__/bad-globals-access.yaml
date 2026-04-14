@@ -1,0 +1,51 @@
+kind: Kernel.Module
+metadata:
+  name: BadGlobalsAccess
+  version: 1.0.0
+variables:
+  apiKey:
+    type: string
+---
+kind: Kernel.Import
+metadata:
+  name: Http
+source: ../..
+---
+kind: Kernel.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+kind: Kernel.Import
+metadata:
+  name: Type
+source: ../../../type
+---
+kind: JavaScript.Script
+metadata:
+  name: Handler
+code: |
+  function main(input) { return { ok: true } }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      ok: { type: boolean }
+---
+kind: Http.Api
+metadata:
+  name: TestApi
+routes:
+  - request:
+      path: /test
+      method: GET
+    handler:
+      kind: JavaScript.Script
+      name: Handler
+    inputs:
+      key: "${{ variables.nonExistent }}"
+    response:
+      - status: 200
+        body:
+          ok: "${{ result.ok }}"

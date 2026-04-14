@@ -84,6 +84,6 @@ metadata:
   name: appLogger
   module: my-awesome-app
 # Notice how clean the CEL expression reads:
-# object.property.subProperty -> imports.prodApi.apiUrl
-message: "Production API is running at: ${{ imports.prodApi.apiUrl }}"
+# object.property.subProperty -> resources.prodApi.apiUrl
+message: "Production API is running at: ${{ resources.prodApi.apiUrl }}"
 ```

@@ -44,15 +44,9 @@ If you want an `AuthenticatedApi` that extends `Http.Api` with auth middleware i
 
 The `x-telo-ref: Kernel.Invocable` mechanism hints at interface-like contracts but it's read-only — you can say "this field must be Invocable" but you can't say "this type extends X and adds Y".
 
-## 4. Kernel Globals Not Available in `x-telo-context` Scopes
+## 4. ~~Kernel Globals Not Available in `x-telo-context` Scopes~~ (resolved)
 
-CEL expressions always have access to kernel-level globals (`resources`, `variables`, `secrets`, `imports`, `env`) — `buildTypedCelEnvironment` registers them unconditionally. But the analyzer's CEL context validation only checks access chains against what's declared in `x-telo-context` annotations.
-
-When a field declares `x-telo-context` with `additionalProperties: false` (e.g. Http.Api `inputs` only declares `request`), the validator rejects `resources.Config.foo` as unknown — even though it works at runtime.
-
-**Current workaround:** Either set `additionalProperties: true` on every context (kills type safety) or redundantly re-declare every kernel global in every `x-telo-context` schema.
-
-**Direction:** The context validator should automatically merge kernel globals into every `x-telo-context` before validation, so module schemas only declare context-specific variables (`request`, `result`, `steps`).
+**Fix:** `buildKernelGlobalsSchema` in `analyzer/nodejs/src/kernel-globals.ts` builds typed schemas from the manifest (variable/secret declarations, resource names, import aliases) and `mergeKernelGlobalsIntoContext` merges them into every `x-telo-context` before chain validation. Module schemas only declare context-specific variables; redundant `variables`/`secrets`/`resources` entries removed from http-server.
 
 ## Summary
 

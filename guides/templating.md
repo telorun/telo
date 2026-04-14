@@ -66,7 +66,7 @@ To use the template in another module (like your application's Root Module), you
 
 - **Instantiation:** The `kind: Kernel.Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
 - **Passing Environment Variables:** If you are instantiating the template within the **Root Module**, you can securely pass host environment variables to the template's secrets using the `env` object.
-- **Accessing Exports:** Once instantiated, you can access the template's exported properties in your local resources using the `${{ imports.<ImportName>.<exportProperty> }}` syntax.
+- **Accessing Exports:** Once instantiated, you can access the template's exported properties in your local resources using the `${{ resources.<ImportName>.<exportProperty> }}` syntax.
 
 **Example: `main-app.yaml`**
 
@@ -94,5 +94,5 @@ metadata:
   name: UserApi
 spec:
   # Utilizing the exported property from the instantiated template
-  storageUrl: ${{ imports.UserDataStorage.primaryEndpoint }}
+  storageUrl: ${{ resources.UserDataStorage.primaryEndpoint }}
 ```

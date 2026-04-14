@@ -192,8 +192,8 @@ The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or
 To utilize an external package, a project declares a dependency using `kind: Kernel.Import`. The import acts as a local proxy.
 
 - **Instantiation**: The `Import` resource provides the required `variables` and `secrets`.
-- **Referencing**: Once imported, the module's exported properties are accessed directly through the import instance name. The `.exports` accessor is omitted for cleaner syntax.
-- **Syntax**: `${{ imports.<ImportName>.<exportProperty> }}`.
+- **Referencing**: Once imported, the module's snapshot is stored under `resources.<ImportName>` alongside local resources. Access exported properties directly.
+- **Syntax**: `${{ resources.<ImportName>.<exportProperty> }}`.
 
 ### 6.1 Source Resolution
 

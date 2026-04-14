@@ -1,0 +1,31 @@
+kind: Kernel.Module
+metadata:
+  name: HttpGlobalsInContextTest
+  version: 1.0.0
+targets:
+  - TestValidGlobalsAccess
+  - TestBadGlobalsAccess
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# Kernel globals (variables, secrets, resources, imports, env) must be
+# available inside x-telo-context scopes without being re-declared.
+kind: Assert.Manifest
+metadata:
+  name: TestValidGlobalsAccess
+source: ./__fixtures__/valid-globals-access.yaml
+expect:
+  errors: []
+---
+# Non-existent variable must still be flagged — type safety preserved.
+kind: Assert.Manifest
+metadata:
+  name: TestBadGlobalsAccess
+source: ./__fixtures__/bad-globals-access.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: nonExistent
