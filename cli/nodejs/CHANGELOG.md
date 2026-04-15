@@ -1,5 +1,14 @@
 # @telorun/cli
 
+## 0.2.9
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.4
+  - @telorun/kernel@0.2.9
+
 ## 0.2.8
 
 ### Patch Changes

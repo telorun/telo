@@ -1,5 +1,11 @@
 # @telorun/analyzer
 
+## 0.1.4
+
+### Patch Changes
+
+- Automated release.
+
 ## 0.1.3
 
 ### Patch Changes
