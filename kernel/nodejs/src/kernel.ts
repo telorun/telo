@@ -386,6 +386,7 @@ export class Kernel implements IKernel {
       moduleContext,
       resource.metadata,
       this.sharedSchemaValidator,
+      this.env,
       this.stdin,
       this.stdout,
       this.stderr,

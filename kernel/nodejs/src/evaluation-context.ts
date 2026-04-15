@@ -158,7 +158,7 @@ export class EvaluationContext implements IEvaluationContext {
    * propagate before the next create attempt.
    *
    * Each resource is created at most once and inited at most once.
-   * ERR_VISIBILITY_DENIED is fatal and re-thrown immediately.
+   * ERR_VISIBILITY_DENIED and ERR_FATAL are re-thrown immediately.
    * All other errors are tracked and retried until no progress is made.
    */
   async initializeResources(): Promise<void> {
@@ -189,7 +189,7 @@ export class EvaluationContext implements IEvaluationContext {
             progress = true;
           }
         } catch (error) {
-          if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
+          if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
           errors.set(name, error instanceof Error ? error.message : String(error));
         }
       }
@@ -211,7 +211,7 @@ export class EvaluationContext implements IEvaluationContext {
           errors.delete(name);
           progress = true;
         } catch (error) {
-          if (error instanceof RuntimeError && error.code === "ERR_VISIBILITY_DENIED") throw error;
+          if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
           errors.set(name, error instanceof Error ? error.message : String(error));
         }
       }
@@ -402,7 +402,13 @@ export class EvaluationContext implements IEvaluationContext {
    */
   expand(value: unknown): unknown {
     if (isCompiledValue(value)) {
-      return value.call(this._context);
+      try {
+        return value.call(this._context);
+      } catch (error) {
+        const expr = value.source ? `\${{ ${value.source} }}` : "unknown expression";
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new Error(`Expression ${expr} failed: ${msg}`);
+      }
     }
     if (Array.isArray(value)) {
       return value.map((entry) => this.expand(entry));

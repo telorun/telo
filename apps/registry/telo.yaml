@@ -58,28 +58,28 @@ metadata:
   name: AppConfig
 variables:
   port:
-    value: "${{ env.PORT }}"
+    env: PORT
     type: integer
     default: 3000
   bucketName:
-    value: "${{ env.S3_BUCKET_NAME }}"
+    env: S3_BUCKET_NAME
     type: string
   s3Endpoint:
-    value: "${{ env.S3_ENDPOINT }}"
+    env: S3_ENDPOINT
     type: string
   s3ForcePathStyle:
-    value: "${{ env.S3_FORCE_PATH_STYLE }}"
+    env: S3_FORCE_PATH_STYLE
     type: boolean
     default: false
   dbConnection:
-    value: "${{ env.DB_CONNECTION }}"
+    env: DB_CONNECTION
     type: string
 secrets:
   accessKeyId:
-    value: "${{ env.S3_ACCESS_KEY_ID }}"
+    env: S3_ACCESS_KEY_ID
     type: string
   secretAccessKey:
-    value: "${{ env.S3_SECRET_ACCESS_KEY }}"
+    env: S3_SECRET_ACCESS_KEY
     type: string
 
 ---

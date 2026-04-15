@@ -10,7 +10,7 @@ metadata:
   name: "Client"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/http-client@0.1.3?local_path=./nodejs#http-client
+  - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-client
 schema:
   type: "object"
   properties:
@@ -41,7 +41,7 @@ metadata:
   name: "Request"
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/http-client@0.1.3?local_path=./nodejs#http-request
+  - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-request
 schema:
   type: "object"
   properties:

@@ -12,7 +12,10 @@ import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
  * Keys already present in process.env are never overwritten.
  */
 function loadEnvFiles(manifestPath: string): void {
-  const dir = path.dirname(path.resolve(manifestPath));
+  const resolved = path.resolve(manifestPath);
+  const dir = fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
+    ? resolved
+    : path.dirname(resolved);
   const base = tryReadFile(path.join(dir, ".env"));
   const local = tryReadFile(path.join(dir, ".env.local"));
 

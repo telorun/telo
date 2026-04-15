@@ -12,7 +12,7 @@ metadata:
   name: JsonSchema
 capability: Kernel.Type
 controllers:
-  - pkg:npm/@telorun/type@0.0.2?local_path=./nodejs#type
+  - pkg:npm/@telorun/type@0.0.3?local_path=./nodejs#type
 schema:
   type: object
   properties:

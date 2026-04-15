@@ -178,7 +178,7 @@ class HttpServer implements ResourceInstance {
       const { kind, name } = parseType(type);
       const prefix = mount.path || "";
 
-      const api = this.ctx.moduleContext.getInvocable(name) as unknown as HttpServerApi;
+      const api = this.ctx.moduleContext.getInstance(name) as unknown as HttpServerApi;
 
       if (!api) {
         throw new Error(`Failed to mount Http.Api at "${prefix}": ${type} not found`);
