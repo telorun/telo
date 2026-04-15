@@ -1,0 +1,6 @@
+kind: Kernel.Module
+metadata:
+  name: IncludeRejectsSystemKinds
+  version: 1.0.0
+include:
+  - ./include-bad-system-kind.yaml

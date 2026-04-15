@@ -20,13 +20,16 @@ The `Kernel.Module` kind acts as the manifest and public interface for the packa
 
 ## 2. Including External Manifests
 
-A module can load additional manifests from other files into the same module scope using the `include` field. This allows splitting a large module definition across multiple files while keeping them logically united under one module.
+A module can load additional manifests from other files into the same module scope using the `include` field. This allows splitting a large module definition across multiple files while keeping them logically united under one module. Glob patterns are supported.
 
 ```yaml
 kind: Kernel.Module
 metadata:
   name: user-service
   version: 1.0.0
+include:
+  - ./routes.yaml
+  - "handlers/**/*.yaml"
 
 variables:
   dbConnectionString:
@@ -37,9 +40,16 @@ exports:
     - UserApi
 ```
 
-All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, and `resources` context. Included files must not redeclare a `kind: Kernel.Module` manifest.
+All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, and `resources` context.
 
-Resources in included files that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
+**Constraints on included (partial) files:**
+
+- Must not contain `kind: Kernel.Module`, `kind: Kernel.Import`, or `kind: Kernel.Definition`. These system kinds are reserved for the owner `telo.yaml`.
+- Resources that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
+
+**Glob patterns** (e.g. `**/*.yaml`, `routes/*.yaml`) are expanded at load time against the module directory. At publish time, globs are expanded and partial file contents are inlined into the published artifact, so registry consumers receive a single self-contained manifest.
+
+**IDE support:** When a partial file is opened directly in an IDE, the analyzer walks parent directories to find the owning `telo.yaml` and provides full diagnostics in context. If a file has a discoverable owner but is not listed in its `include` field, a warning is shown indicating the file will not be loaded at runtime.
 
 ---
 

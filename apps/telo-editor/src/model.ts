@@ -32,6 +32,7 @@ export interface ParsedManifest {
   targets: string[];
   imports: ParsedImport[];
   resources: ParsedResource[];
+  include?: string[];
 }
 
 export type ImportKind = "submodule" | "remote" | "external";
@@ -50,6 +51,7 @@ export interface ParsedResource {
   name: string;
   module?: string;
   fields: Record<string, unknown>;
+  sourceFile?: string;
 }
 
 export interface Application {

@@ -96,6 +96,10 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             ],
           },
         },
+        include: {
+          type: "array",
+          items: { type: "string" },
+        },
         exports: {
           type: "object",
           properties: {

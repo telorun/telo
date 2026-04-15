@@ -24,7 +24,8 @@
   "scripts": {
     "telo": "bun ./cli/nodejs/bin/telo.ts",
     "telo:node": "node ./cli/nodejs/bin/telo.mjs",
-    "publish": "bun ./cli/nodejs/bin/telo.ts publish --registry=http://registry.telo.localhost:8060",
+    "publish": "bun ./cli/nodejs/bin/telo.ts publish",
+    "publish:local": "bun ./cli/nodejs/bin/telo.ts publish --registry=http://registry.telo.localhost:8060",
     "check": "bun ./cli/nodejs/bin/telo.ts check",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
