@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "./ui/button";
+import { Button } from "../../ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,15 +26,15 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
-} from "./ui/context-menu";
+} from "../../ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+} from "../../ui/dropdown-menu";
 import { useEffect, useRef, useState, useMemo } from "react";
-import type { Selection, ParsedResource } from "../model";
+import type { Selection, ParsedResource } from "../../../model";
 import {
   buildEditableSchema,
   getTopologyRole,
@@ -44,7 +44,7 @@ import {
   matchVariant,
   resolveRef,
   type VariantMeta,
-} from "../schema-utils";
+} from "../../../schema-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

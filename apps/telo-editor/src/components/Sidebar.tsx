@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchAvailableVersions, parseRegistryRef, toPascalCase } from "../loader";
 import type { RegistryVersion } from "../loader";
-import type { AvailableKind, ParsedImport, ParsedManifest, RegistryServer } from "../model";
+import type { ModuleViewData, ParsedImport, ParsedManifest, RegistryServer } from "../model";
 import { Button } from "./ui/button";
 
 interface RegistryResult {
@@ -17,7 +17,7 @@ interface SidebarProps {
   selectedResource: { kind: string; name: string } | null;
   graphContext: { kind: string; name: string } | null;
   registryServers: RegistryServer[];
-  availableKinds: AvailableKind[];
+  viewData: ModuleViewData | null;
   onSelectResource: (kind: string, name: string) => void;
   onNavigateResource: (kind: string, name: string) => void;
   onOpenModule: (filePath: string) => void;
@@ -54,7 +54,7 @@ export function Sidebar({
   selectedResource,
   graphContext,
   registryServers,
-  availableKinds,
+  viewData,
   onSelectResource,
   onNavigateResource,
   onOpenModule,
@@ -73,22 +73,8 @@ export function Sidebar({
   const definitions = activeManifest?.resources.filter((r) => r.kind === "Kernel.Definition") ?? [];
   const userResources =
     activeManifest?.resources.filter((r) => !r.kind.startsWith("Kernel.")) ?? [];
-  const localKinds =
-    activeManifest?.resources
-      .filter((resource) => resource.kind === "Kernel.Definition")
-      .map((resource) => ({
-        fullKind: `${resource.module ?? activeManifest.metadata.name}.${resource.name}`,
-        alias: resource.module ?? activeManifest.metadata.name,
-        kindName: resource.name,
-        capability:
-          typeof resource.fields.capability === "string" ? resource.fields.capability : "",
-        topology:
-          typeof resource.fields.topology === "string" ? resource.fields.topology : undefined,
-        schema: (resource.fields.schema ?? {}) as Record<string, unknown>,
-      })) ?? [];
-  const kindsByFullKind = new Map(
-    [...availableKinds, ...localKinds].map((kind) => [kind.fullKind, kind]),
-  );
+  // Unified kinds map from ModuleViewData (imported + locally defined)
+  const kindsByFullKind = viewData?.kinds ?? new Map();
 
   const [addingModule, setAddingModule] = useState(false);
   const [moduleSource, setModuleSource] = useState("");

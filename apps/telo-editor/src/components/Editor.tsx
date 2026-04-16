@@ -1,13 +1,12 @@
 import type { ManifestAdapter } from "@telorun/analyzer";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { analyzeApplication } from "../analysis";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
   addModuleImport,
   classifyImport,
   createApplication,
   createRegistryAdapters,
-  getAvailableKinds,
-  getYamlStateSnapshots,
   isInTauri,
   loadApplication,
   noopAdapter,
@@ -21,21 +20,22 @@ import type {
   EditorState,
   Selection,
   NavigationEntry,
-  ParsedResource,
+  ViewId,
 } from "../model";
 import { DEFAULT_SETTINGS } from "../model";
+import { buildModuleViewData } from "../view-data";
+import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
-import { GraphCanvas } from "./GraphCanvas";
-import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { YamlStateViewer } from "./YamlStateViewer";
+import { ViewContainer } from "./views/ViewContainer";
 
 const INITIAL_STATE: EditorState = {
   application: null,
   activeModulePath: null,
+  activeView: "topology",
   navigationStack: [],
   selectedResource: null,
   panelStack: [],
@@ -118,6 +118,25 @@ export function Editor() {
   const [selection, setSelection] = useState<Selection | null>(null);
 
   const adapterRef = useRef<ManifestAdapter | null>(null);
+  const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced analysis: re-analyze whenever the application changes
+  useEffect(() => {
+    if (!state.application) return;
+    if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
+    const app = state.application;
+    analysisTimerRef.current = setTimeout(() => {
+      const diagnosticsByResource = analyzeApplication(app);
+      setState((s) => {
+        // Only update if the application hasn't changed since we started
+        if (s.application !== app) return s;
+        return { ...s, diagnosticsByResource };
+      });
+    }, 300);
+    return () => {
+      if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
+    };
+  }, [state.application]);
 
   const activeManifest =
     state.application && state.activeModulePath
@@ -350,6 +369,7 @@ export function Editor() {
 
       return {
         ...s,
+        activeView: "topology" as ViewId,
         navigationStack: nextStack,
         selectedResource: { kind, name },
         panelStack: [{ type: "resource", kind, name }],
@@ -361,55 +381,24 @@ export function Editor() {
   // Resource creation
   // ---------------------------------------------------------------------------
 
-  const availableKinds =
-    state.application && activeManifest ? getAvailableKinds(state.application, activeManifest) : [];
-  const yamlSnapshots = state.application ? getYamlStateSnapshots(state.application) : [];
-  const localKinds =
-    activeManifest?.resources
-      .filter((resource) => resource.kind === "Kernel.Definition")
-      .map((resource) => ({
-        fullKind: `${resource.module ?? activeManifest.metadata.name}.${resource.name}`,
-        alias: resource.module ?? activeManifest.metadata.name,
-        kindName: resource.name,
-        capability:
-          typeof resource.fields.capability === "string" ? resource.fields.capability : "",
-        topology:
-          typeof resource.fields.topology === "string" ? resource.fields.topology : undefined,
-        schema: (resource.fields.schema ?? {}) as Record<string, unknown>,
-      })) ?? [];
-  const schemaByKind: Record<string, Record<string, unknown>> = Object.fromEntries(
-    [...availableKinds, ...localKinds].map((k) => [k.fullKind, k.schema]),
-  );
-  const kindByFullKind = Object.fromEntries(
-    [...availableKinds, ...localKinds].map((k) => [k.fullKind, k]),
-  );
-  const capabilityByKind: Record<string, string> = Object.fromEntries(
-    [...availableKinds, ...localKinds]
-      .filter((k) => k.capability)
-      .map((k) => [k.fullKind, k.capability]),
-  );
-  const graphResource =
-    graphContext && activeManifest
-      ? (activeManifest.resources.find(
-          (resource) => resource.kind === graphContext.kind && resource.name === graphContext.name,
-        ) ?? null)
+  // Stable view data contract — consumed by all views
+  const viewData =
+    state.application && activeManifest
+      ? buildModuleViewData(
+          state.application,
+          activeManifest,
+          state.diagnosticsByResource.get(state.activeModulePath!),
+        )
       : null;
-  const graphKind = graphResource ? (kindByFullKind[graphResource.kind] ?? null) : null;
-  const resolvedResources: ResolvedResourceOption[] =
-    activeManifest?.resources.map((resource) => ({
-      kind: resource.kind,
-      name: resource.name,
-      capability:
-        typeof kindByFullKind[resource.kind]?.capability === "string"
-          ? kindByFullKind[resource.kind].capability
-          : undefined,
-    })) ?? [];
+
+  const availableKinds = viewData ? [...viewData.kinds.values()] : [];
+
 
   function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.application || !state.activeModulePath) return;
     const modules = new Map(state.application.modules);
     const current = modules.get(state.activeModulePath)!;
-    const newResource: ParsedResource = { kind, name, fields };
+    const newResource = { kind, name, fields };
     modules.set(state.activeModulePath, {
       ...current,
       resources: [...current.resources, newResource],
@@ -481,7 +470,7 @@ export function Editor() {
           selectedResource={state.selectedResource}
           graphContext={graphContext}
           registryServers={settings.registryServers}
-          availableKinds={availableKinds}
+          viewData={viewData}
           onSelectResource={handleSelectResource}
           onNavigateResource={handleNavigateResource}
           onOpenModule={handleOpenModule}
@@ -492,30 +481,37 @@ export function Editor() {
           onUpgradeImport={handleUpgradeImport}
           onCreateResource={() => setCreateResourceOpen(true)}
         />
-        <GraphCanvas
-          hasApplication={state.application !== null}
-          creating={creating}
-          graphResource={graphResource}
-          graphTopology={graphKind?.topology}
-          graphSchema={graphKind?.schema}
-          onUpdateResource={handleUpdateResource}
-          onSelect={handleSelect}
-          onCreate={handleCreate}
-          onCancelCreate={() => setCreating(false)}
-          onNew={() => setCreating(true)}
-          onOpen={handleOpen}
-          onClearSelection={handleClearSelection}
-        />
+        {!state.application || creating ? (
+          <AppLifecyclePanel
+            hasApplication={state.application !== null}
+            creating={creating}
+            onCreate={handleCreate}
+            onCancelCreate={() => setCreating(false)}
+            onNew={() => setCreating(true)}
+            onOpen={handleOpen}
+          />
+        ) : viewData ? (
+          <ViewContainer
+            activeView={state.activeView}
+            onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
+            viewProps={{
+              viewData,
+              selectedResource: state.selectedResource,
+              graphContext,
+              onSelectResource: handleSelectResource,
+              onNavigateResource: handleNavigateResource,
+              onUpdateResource: handleUpdateResource,
+              onSelect: handleSelect,
+              onClearSelection: handleClearSelection,
+            }}
+          />
+        ) : null}
         <DetailPanel
           selectedResource={state.selectedResource}
           selection={selection}
-          activeManifest={activeManifest}
-          schemaByKind={schemaByKind}
-          capabilityByKind={capabilityByKind}
-          resolvedResources={resolvedResources}
+          viewData={viewData}
           onUpdateResource={handleUpdateResource}
         />
-        <YamlStateViewer snapshots={yamlSnapshots} activeFilePath={state.activeModulePath} />
       </div>
       <SettingsModal
         open={settingsOpen}

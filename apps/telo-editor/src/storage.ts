@@ -1,4 +1,4 @@
-import type { Application, AppSettings, EditorState, NavigationEntry, PanelEntry, ParsedManifest } from './model'
+import type { Application, AppSettings, EditorState, NavigationEntry, PanelEntry, ParsedManifest, ViewId } from './model'
 
 const KEY = 'telo-editor-v1'
 const SETTINGS_KEY = 'telo-editor-settings-v1'
@@ -14,9 +14,12 @@ interface SerializedApplication {
   importedBy: Record<string, string[]>
 }
 
+const VALID_VIEWS: Set<string> = new Set<ViewId>(["topology", "inventory", "source"]);
+
 interface PersistedState {
   application: SerializedApplication | null
   activeModulePath: string | null
+  activeView?: string
   navigationStack: NavigationEntry[]
   selectedResource: { kind: string; name: string } | null
   panelStack: PanelEntry[]
@@ -58,6 +61,7 @@ export function saveState(state: EditorState): void {
     const persisted: PersistedState = {
       application: state.application ? serializeApplication(state.application) : null,
       activeModulePath: state.activeModulePath,
+      activeView: state.activeView,
       navigationStack: state.navigationStack,
       selectedResource: state.selectedResource,
       panelStack: state.panelStack,
@@ -77,6 +81,7 @@ export function loadState(): Partial<EditorState> | null {
     return {
       application: data.application ? deserializeApplication(data.application) : null,
       activeModulePath: data.activeModulePath ?? null,
+      activeView: (data.activeView && VALID_VIEWS.has(data.activeView) ? data.activeView : "topology") as ViewId,
       navigationStack: data.navigationStack ?? [],
       selectedResource: data.selectedResource ?? null,
       panelStack: data.panelStack ?? [],

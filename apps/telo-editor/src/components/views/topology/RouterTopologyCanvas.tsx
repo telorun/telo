@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { Selection, ParsedResource } from "../model";
-import { Button } from "./ui/button";
+import type { Selection, ParsedResource } from "../../../model";
+import { Button } from "../../ui/button";
 
 interface RouterTopologyCanvasProps {
   resource: ParsedResource;

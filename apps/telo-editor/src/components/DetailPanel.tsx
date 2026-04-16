@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Selection, ParsedManifest } from "../model";
+import type { ModuleViewData, Selection } from "../model";
 import type { CelEvalMode } from "./resource-schema-form/cel-utils";
 import { Button } from "./ui/button";
 import type { ResolvedResourceOption } from "./ResourceSchemaForm";
@@ -8,10 +8,7 @@ import { ResourceSchemaForm } from "./ResourceSchemaForm";
 interface DetailPanelProps {
   selectedResource: { kind: string; name: string } | null;
   selection: Selection | null;
-  activeManifest: ParsedManifest | null;
-  schemaByKind: Record<string, Record<string, unknown>>;
-  capabilityByKind?: Record<string, string>;
-  resolvedResources: ResolvedResourceOption[];
+  viewData: ModuleViewData | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
 }
 
@@ -75,20 +72,27 @@ function setByPointer(root: unknown, pointer: string, value: unknown): unknown {
 export function DetailPanel({
   selectedResource,
   selection,
-  activeManifest,
-  schemaByKind,
-  capabilityByKind = {},
-  resolvedResources,
+  viewData,
   onUpdateResource,
 }: DetailPanelProps) {
   const resource = useMemo(() => {
-    if (!selectedResource || !activeManifest) return null;
+    if (!selectedResource || !viewData) return null;
     return (
-      activeManifest.resources.find(
+      viewData.manifest.resources.find(
         (r) => r.kind === selectedResource.kind && r.name === selectedResource.name,
       ) ?? null
     );
-  }, [selectedResource, activeManifest]);
+  }, [selectedResource, viewData]);
+
+  const resolvedResources: ResolvedResourceOption[] = useMemo(
+    () =>
+      (viewData?.manifest.resources ?? []).map((r) => ({
+        kind: r.kind,
+        name: r.name,
+        capability: viewData?.kinds.get(r.kind)?.capability || undefined,
+      })),
+    [viewData],
+  );
 
   const selectionContext = useMemo(() => {
     if (!resource || !selection) return null;
@@ -108,14 +112,14 @@ export function DetailPanel({
   const schema = selectionContext
     ? selectionContext.schema
     : resource
-      ? schemaByKind[resource.kind]
+      ? viewData?.kinds.get(resource.kind)?.schema
       : undefined;
 
   const rootCelEval: CelEvalMode | null = useMemo(() => {
-    if (!resource) return null;
-    const capability = capabilityByKind[resource.kind];
+    if (!resource || !viewData) return null;
+    const capability = viewData.kinds.get(resource.kind)?.capability;
     return capability === "Kernel.Provider" ? "compile" : null;
-  }, [resource, capabilityByKind]);
+  }, [resource, viewData]);
   const [fields, setFields] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
