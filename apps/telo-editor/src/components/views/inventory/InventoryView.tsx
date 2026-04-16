@@ -1,4 +1,5 @@
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "@telorun/analyzer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
 
 function DiagnosticIndicator({ diagnostics }: { diagnostics: AnalysisDiagnostic[] }) {
@@ -19,7 +20,6 @@ function DiagnosticIndicator({ diagnostics }: { diagnostics: AnalysisDiagnostic[
 }
 
 function capabilityLabel(cap: string): string {
-  // "Kernel.Service" → "Service", "Kernel.Invocable" → "Invocable"
   const dot = cap.lastIndexOf(".");
   return dot >= 0 ? cap.slice(dot + 1) : cap;
 }
@@ -61,16 +61,6 @@ export function InventoryView({
   const userResources = viewData.manifest.resources.filter((r) => !r.kind.startsWith("Kernel."));
   const definitions = viewData.manifest.resources.filter((r) => r.kind === "Kernel.Definition");
 
-  if (userResources.length === 0 && definitions.length === 0) {
-    return (
-      <div className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900">
-        <span className="text-sm text-zinc-400 dark:text-zinc-600">
-          No resources — use the sidebar to create one
-        </span>
-      </div>
-    );
-  }
-
   function rowClassName(kind: string, name: string): string {
     const isSelected = selectedResource?.kind === kind && selectedResource?.name === name;
     const isGraphContext = graphContext?.kind === kind && graphContext?.name === name;
@@ -89,119 +79,222 @@ export function InventoryView({
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-y-auto bg-zinc-50 dark:bg-zinc-900">
-      {/* User resources */}
-      {userResources.length > 0 && (
-        <div className="px-4 pt-4 pb-2">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+    <div className="flex h-full flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-900">
+      <Tabs defaultValue="resources" className="flex h-full flex-col">
+        <TabsList variant="line" className="shrink-0 border-b border-zinc-200 px-4 dark:border-zinc-800">
+          <TabsTrigger value="resources" className="text-xs">
             Resources
-          </h3>
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-                <th className="w-5 pb-1.5" />
-                <th className="pb-1.5 pr-3 font-medium">Name</th>
-                <th className="pb-1.5 pr-3 font-medium">Kind</th>
-                <th className="pb-1.5 pr-3 font-medium">Capability</th>
-                <th className="pb-1.5 font-medium">Topology</th>
-              </tr>
-            </thead>
-            <tbody>
-              {userResources.map((r) => {
-                const kind = viewData.kinds.get(r.kind);
-                const hasTopology = !!kind?.topology;
-                const diagnostics = viewData.diagnostics.get(r.name) ?? [];
-                return (
-                  <tr
-                    key={`${r.kind}/${r.name}`}
-                    className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
-                    onClick={() => onSelectResource(r.kind, r.name)}
-                  >
-                    <td className="py-1.5 w-5 text-center">
-                      <DiagnosticIndicator diagnostics={diagnostics} />
-                    </td>
-                    <td className="py-1.5 pr-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate font-medium">{r.name}</span>
-                        {hasTopology && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigateResource(r.kind, r.name);
-                            }}
-                            title="Open in topology view"
-                            className="shrink-0 rounded px-1 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
-                          >
-                            ↗
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-1.5 pr-3">
-                      <span className="text-zinc-400 dark:text-zinc-500">
-                        {r.kind.split(".")[0]}.
-                      </span>
-                      <span>{r.kind.split(".").slice(1).join(".")}</span>
-                    </td>
-                    <td className="py-1.5 pr-3">
-                      {kind?.capability && <CapabilityBadge capability={kind.capability} />}
-                    </td>
-                    <td className="py-1.5">
-                      {kind?.topology && <TopologyBadge topology={kind.topology} />}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+          </TabsTrigger>
+          <TabsTrigger value="imports" className="text-xs">
+            Imports
+          </TabsTrigger>
+          <TabsTrigger value="kinds" className="text-xs">
+            Kinds
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Definitions */}
-      {definitions.length > 0 && (
-        <div className="px-4 pt-4 pb-2">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-            Definitions
-          </h3>
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-                <th className="w-5 pb-1.5" />
-                <th className="pb-1.5 pr-3 font-medium">Name</th>
-                <th className="pb-1.5 pr-3 font-medium">Capability</th>
-                <th className="pb-1.5 font-medium">Topology</th>
-              </tr>
-            </thead>
-            <tbody>
-              {definitions.map((r) => {
-                const capability =
-                  typeof r.fields.capability === "string" ? r.fields.capability : "";
-                const topology =
-                  typeof r.fields.topology === "string" ? r.fields.topology : undefined;
-                const diagnostics = viewData.diagnostics.get(r.name) ?? [];
-                return (
-                  <tr
-                    key={r.name}
-                    className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
-                    onClick={() => onSelectResource(r.kind, r.name)}
-                  >
-                    <td className="py-1.5 w-5 text-center">
-                      <DiagnosticIndicator diagnostics={diagnostics} />
-                    </td>
-                    <td className="py-1.5 pr-3 font-medium">{r.name}</td>
-                    <td className="py-1.5 pr-3">
-                      {capability && <CapabilityBadge capability={capability} />}
-                    </td>
-                    <td className="py-1.5">
-                      {topology && <TopologyBadge topology={topology} />}
-                    </td>
+        {/* Resources tab */}
+        <TabsContent value="resources" className="flex-1 overflow-y-auto">
+          {userResources.length === 0 && definitions.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-sm text-zinc-400 dark:text-zinc-600">
+                No resources — use the sidebar to create one
+              </span>
+            </div>
+          ) : (
+            <div className="px-4 pt-3 pb-2">
+              {/* User resources */}
+              {userResources.length > 0 && (
+                <>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                    Resources
+                  </h3>
+                  <table className="mb-4 w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                        <th className="w-5 pb-1.5" />
+                        <th className="pb-1.5 pr-3 font-medium">Name</th>
+                        <th className="pb-1.5 pr-3 font-medium">Kind</th>
+                        <th className="pb-1.5 pr-3 font-medium">Capability</th>
+                        <th className="pb-1.5 font-medium">Topology</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userResources.map((r) => {
+                        const kind = viewData.kinds.get(r.kind);
+                        const hasTopology = !!kind?.topology;
+                        const diagnostics = viewData.diagnostics.get(r.name) ?? [];
+                        return (
+                          <tr
+                            key={`${r.kind}/${r.name}`}
+                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
+                            onClick={() => onSelectResource(r.kind, r.name)}
+                          >
+                            <td className="py-1.5 w-5 text-center">
+                              <DiagnosticIndicator diagnostics={diagnostics} />
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate font-medium">{r.name}</span>
+                                {hasTopology && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigateResource(r.kind, r.name);
+                                    }}
+                                    title="Open in topology view"
+                                    className="shrink-0 rounded px-1 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                                  >
+                                    ↗
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              <span className="text-zinc-400 dark:text-zinc-500">
+                                {r.kind.split(".")[0]}.
+                              </span>
+                              <span>{r.kind.split(".").slice(1).join(".")}</span>
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              {kind?.capability && <CapabilityBadge capability={kind.capability} />}
+                            </td>
+                            <td className="py-1.5">
+                              {kind?.topology && <TopologyBadge topology={kind.topology} />}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              {/* Definitions */}
+              {definitions.length > 0 && (
+                <>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                    Definitions
+                  </h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                        <th className="w-5 pb-1.5" />
+                        <th className="pb-1.5 pr-3 font-medium">Name</th>
+                        <th className="pb-1.5 pr-3 font-medium">Capability</th>
+                        <th className="pb-1.5 font-medium">Topology</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {definitions.map((r) => {
+                        const capability =
+                          typeof r.fields.capability === "string" ? r.fields.capability : "";
+                        const topology =
+                          typeof r.fields.topology === "string" ? r.fields.topology : undefined;
+                        const diagnostics = viewData.diagnostics.get(r.name) ?? [];
+                        return (
+                          <tr
+                            key={r.name}
+                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
+                            onClick={() => onSelectResource(r.kind, r.name)}
+                          >
+                            <td className="py-1.5 w-5 text-center">
+                              <DiagnosticIndicator diagnostics={diagnostics} />
+                            </td>
+                            <td className="py-1.5 pr-3 font-medium">{r.name}</td>
+                            <td className="py-1.5 pr-3">
+                              {capability && <CapabilityBadge capability={capability} />}
+                            </td>
+                            <td className="py-1.5">
+                              {topology && <TopologyBadge topology={topology} />}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Imports tab */}
+        <TabsContent value="imports" className="flex-1 overflow-y-auto">
+          {viewData.manifest.imports.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-sm text-zinc-400 dark:text-zinc-600">No imports</span>
+            </div>
+          ) : (
+            <div className="px-4 pt-3 pb-2">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                    <th className="pb-1.5 pr-3 font-medium">Alias</th>
+                    <th className="pb-1.5 pr-3 font-medium">Source</th>
+                    <th className="pb-1.5 pr-3 font-medium">Type</th>
+                    <th className="pb-1.5 font-medium">Resolved Path</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {viewData.manifest.imports.map((imp) => (
+                    <tr
+                      key={imp.name}
+                      className="border-b border-zinc-100 text-zinc-700 dark:border-zinc-800/50 dark:text-zinc-300"
+                    >
+                      <td className="py-1.5 pr-3 font-medium text-xs">{imp.name}</td>
+                      <td className="py-1.5 pr-3 text-xs truncate max-w-64">{imp.source}</td>
+                      <td className="py-1.5 pr-3 text-xs">{imp.importKind}</td>
+                      <td className="py-1.5 text-xs truncate max-w-64 text-zinc-400 dark:text-zinc-500">
+                        {imp.resolvedPath ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Kinds tab */}
+        <TabsContent value="kinds" className="flex-1 overflow-y-auto">
+          {viewData.kinds.size === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-sm text-zinc-400 dark:text-zinc-600">No kinds resolved</span>
+            </div>
+          ) : (
+            <div className="px-4 pt-3 pb-2">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                    <th className="pb-1.5 pr-3 font-medium">Kind</th>
+                    <th className="pb-1.5 pr-3 font-medium">Alias</th>
+                    <th className="pb-1.5 pr-3 font-medium">Capability</th>
+                    <th className="pb-1.5 font-medium">Topology</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...viewData.kinds.values()].map((k) => (
+                    <tr
+                      key={k.fullKind}
+                      className="border-b border-zinc-100 text-zinc-700 dark:border-zinc-800/50 dark:text-zinc-300"
+                    >
+                      <td className="py-1.5 pr-3 text-xs">{k.fullKind}</td>
+                      <td className="py-1.5 pr-3 text-xs">{k.alias}</td>
+                      <td className="py-1.5 pr-3">
+                        {k.capability && <CapabilityBadge capability={k.capability} />}
+                      </td>
+                      <td className="py-1.5">
+                        {k.topology && <TopologyBadge topology={k.topology} />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

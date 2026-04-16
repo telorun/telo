@@ -1,4 +1,4 @@
-import type { ModuleViewData, Selection } from "../../model";
+import type { ModuleViewData, ParsedManifest, Selection } from "../../model";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
@@ -11,4 +11,6 @@ export interface ViewProps {
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   onSelect: (selection: Selection) => void;
   onClearSelection: () => void;
+  /** Replace the active module's manifest wholesale (used by source editing). */
+  onReplaceManifest: (manifest: ParsedManifest) => void;
 }
