@@ -31,8 +31,9 @@ function compileString(s: string): unknown {
 
   const exact = s.match(EXACT_TEMPLATE_REGEX);
   if (exact) {
-    const fn = celEnvironment.parse(exact[1].trim());
-    return { __compiled: true, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue;
+    const expr = exact[1].trim();
+    const fn = celEnvironment.parse(expr);
+    return { __compiled: true, source: expr, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue;
   }
 
   // Interpolated template — collect literal parts + compiled sub-expressions
@@ -40,14 +41,16 @@ function compileString(s: string): unknown {
   let last = 0;
   for (const m of s.matchAll(TEMPLATE_REGEX)) {
     if (m.index! > last) parts.push(s.slice(last, m.index));
-    const fn = celEnvironment.parse(m[1].trim());
-    parts.push({ __compiled: true, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue);
+    const expr = m[1].trim();
+    const fn = celEnvironment.parse(expr);
+    parts.push({ __compiled: true, source: expr, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue);
     last = m.index! + m[0].length;
   }
   if (last < s.length) parts.push(s.slice(last));
 
   return {
     __compiled: true,
+    source: s,
     call: (ctx: Record<string, unknown>) =>
       parts.map((p) => (typeof p === "string" ? p : String(p.call(ctx) ?? ""))).join(""),
   } satisfies CompiledValue;

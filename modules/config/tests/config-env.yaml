@@ -24,17 +24,17 @@ metadata:
   name: AppConfig
 variables:
   port:
-    value: "${{ env.PORT }}"
+    env: PORT
     type: integer
     minimum: 1024
   logLevel:
-    value: "${{ env.LOG_LEVEL }}"
+    env: LOG_LEVEL
     type: string
     default: info
     enum: [debug, info, warn, error]
 secrets:
   apiKey:
-    value: "${{ env.API_KEY }}"
+    env: API_KEY
     type: string
     default: test-key
 ---

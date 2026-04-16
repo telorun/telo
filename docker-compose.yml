@@ -10,14 +10,14 @@ services:
     depends_on:
       - registry
   registry:
-    image: node:24
-    command: 'sh -c "corepack enable && exec pnpm run telo ./apps/registry"'
-    init: true
+    image: telorun/registry:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./apps/registry/Dockerfile
+      target: ${DOCKER_TARGET:-development}
     volumes:
-      - .:/telo
-    working_dir: /telo
-    env_file:
-      - ./apps/registry/.env.local
+      - .:/app
+    working_dir: /app
     environment:
       DB_CONNECTION: "postgres://postgres:postgres@db/registry"
       S3_BUCKET_NAME: telo-registry

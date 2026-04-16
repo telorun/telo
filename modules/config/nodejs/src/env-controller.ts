@@ -1,9 +1,9 @@
-import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
+import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 
 type EntryType = "string" | "integer" | "number" | "boolean";
 
 type EntryDef = {
-  value: unknown;
+  env: string;
   type: EntryType;
   default?: unknown;
   [key: string]: unknown;
@@ -33,7 +33,8 @@ class ConfigEnv implements ResourceInstance {
     );
 
     for (const [name, entry] of [...variableEntries, ...secretEntries]) {
-      const raw = entry.value;
+      const envKey = entry.env;
+      const raw = this.ctx.env[envKey];
 
       if (raw === null || raw === undefined) {
         if (entry.default !== undefined) {
@@ -46,15 +47,15 @@ class ConfigEnv implements ResourceInstance {
           }
           continue;
         }
-        errors.push(`${name}: missing required value`);
+        errors.push(`${name}: environment variable ${envKey} is not set (no default)`);
         continue;
       }
 
       let coerced: unknown;
       try {
-        coerced = coerce(String(raw), entry.type);
+        coerced = coerce(raw, entry.type);
       } catch (e) {
-        errors.push(`${name}: ${(e as Error).message}`);
+        errors.push(`${name}: environment variable ${envKey}: ${(e as Error).message}`);
         continue;
       }
 
@@ -70,7 +71,8 @@ class ConfigEnv implements ResourceInstance {
     }
 
     if (errors.length > 0) {
-      throw new Error(
+      throw new RuntimeError(
+        "ERR_FATAL",
         `Config.Env "${this.resource.metadata.name}" failed:\n` +
           errors.map((e) => `  - ${e}`).join("\n"),
       );
@@ -83,7 +85,7 @@ class ConfigEnv implements ResourceInstance {
 }
 
 function buildValidationSchema(entry: EntryDef): object {
-  const skip = new Set(["value", "default"]);
+  const skip = new Set(["env", "default"]);
   const schema: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(entry)) {
     if (!skip.has(k)) {
@@ -117,7 +119,6 @@ function coerce(value: string, type: EntryType): unknown {
 
 function formatValidationError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  // Strip the "[ResourceName] Invalid value. Error: " prefix from ctx.validateSchema errors
   return msg.replace(/^\[.*?\]\s+Invalid value\.\s+Error:\s+/, "");
 }
 

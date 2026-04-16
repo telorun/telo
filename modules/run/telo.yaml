@@ -14,7 +14,7 @@ metadata:
 capability: Kernel.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@0.1.2?local_path=./nodejs#sequence
+  - pkg:npm/@telorun/run@0.1.3?local_path=./nodejs#sequence
 schema:
   type: object
   $defs:

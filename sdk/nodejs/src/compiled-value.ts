@@ -3,6 +3,8 @@
  *  The SDK has no knowledge of CEL — it only calls .call(). */
 export interface CompiledValue {
   readonly __compiled: true;
+  /** Original expression source text (e.g. "env.PORT"), if available. */
+  readonly source?: string;
   call(ctx: Record<string, unknown>): unknown;
 }
 

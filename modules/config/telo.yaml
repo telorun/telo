@@ -15,7 +15,7 @@ metadata:
   name: "EnvironmentVariableStore"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.4?local_path=./nodejs#env-variable-store-controller
+  - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#env-variable-store-controller
 schema:
   type: "object"
   properties:
@@ -33,7 +33,7 @@ metadata:
   name: "Variables"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.4?local_path=./nodejs#variables-controller
+  - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#variables-controller
 schema:
   type: "object"
   properties:
@@ -62,7 +62,7 @@ metadata:
   name: "Secrets"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.4?local_path=./nodejs#secrets-controller
+  - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#secrets-controller
 schema:
   type: "object"
   properties:
@@ -91,42 +91,50 @@ metadata:
   name: "Env"
 capability: Kernel.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.4?local_path=./nodejs#env-controller
+  - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#env-controller
 schema:
   type: object
   properties:
     variables:
       title: Variables
-      description: Variables exposed from literal values.
+      description: Variables read from environment variables.
       type: object
       additionalProperties:
         type: object
         properties:
-          value:
-            title: Value
-            description: Literal value assigned to this variable.
+          env:
+            title: Environment Variable
+            description: Name of the environment variable to read.
+            type: string
           type:
             title: Type
             description: Declared scalar type of the value.
             type: string
             enum: [string, integer, number, boolean]
-        required: [value, type]
+          default:
+            title: Default
+            description: Default value when the environment variable is not set.
+        required: [env, type]
         additionalProperties: true
     secrets:
       title: Secrets
-      description: Secrets exposed from literal values.
+      description: Secrets read from environment variables.
       type: object
       additionalProperties:
         type: object
         properties:
-          value:
-            title: Value
-            description: Literal value assigned to this secret.
+          env:
+            title: Environment Variable
+            description: Name of the environment variable to read.
+            type: string
           type:
             title: Type
             description: Declared scalar type of the value.
             type: string
             enum: [string, integer, number, boolean]
-        required: [value, type]
+          default:
+            title: Default
+            description: Default value when the environment variable is not set.
+        required: [env, type]
         additionalProperties: true
   additionalProperties: true

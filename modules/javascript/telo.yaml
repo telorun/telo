@@ -9,7 +9,7 @@ metadata:
   name: "Script"
 capability: Kernel.Invocable
 controllers:
-  - pkg:npm/@telorun/javascript@0.1.8?local_path=./nodejs#script
+  - pkg:npm/@telorun/javascript@0.1.9?local_path=./nodejs#script
 schema:
   type: "object"
   properties:
