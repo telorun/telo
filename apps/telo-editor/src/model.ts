@@ -28,7 +28,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export interface ParsedManifest {
   filePath: string;
-  metadata: { name: string; version?: string; description?: string };
+  metadata: {
+    name: string;
+    version?: string;
+    description?: string;
+    namespace?: string;
+    variables?: Record<string, unknown>;
+    secrets?: Record<string, unknown>;
+  };
   targets: string[];
   imports: ParsedImport[];
   resources: ParsedResource[];
@@ -61,9 +68,21 @@ export interface Application {
   importedBy: Map<string, Set<string>>; // reverse index
 }
 
+export type ViewId = "topology" | "inventory" | "source";
+
+/** Stable data contract consumed by all editor views. */
+export interface ModuleViewData {
+  manifest: ParsedManifest;
+  /** fullKind → merged local + imported kind metadata */
+  kinds: Map<string, AvailableKind>;
+  /** resourceName → diagnostics (flat projection for the active module) */
+  diagnostics: Map<string, AnalysisDiagnostic[]>;
+}
+
 export interface EditorState {
   application: Application | null;
   activeModulePath: string | null;
+  activeView: ViewId;
   navigationStack: NavigationEntry[];
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];

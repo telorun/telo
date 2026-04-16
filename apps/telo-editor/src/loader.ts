@@ -447,6 +447,8 @@ function buildParsedManifest(filePath: string, docs: ResourceManifest[]): Parsed
     | string[]
     | undefined;
 
+  const moduleMeta = moduleDoc as Record<string, unknown> | undefined;
+
   return {
     filePath,
     metadata: {
@@ -459,6 +461,9 @@ function buildParsedManifest(filePath: string, docs: ResourceManifest[]): Parsed
         "unknown",
       version: moduleDoc?.metadata.version as string | undefined,
       description: moduleDoc?.metadata.description as string | undefined,
+      namespace: (moduleDoc?.metadata as Record<string, unknown>)?.namespace as string | undefined,
+      variables: moduleMeta?.variables as Record<string, unknown> | undefined,
+      secrets: moduleMeta?.secrets as Record<string, unknown> | undefined,
     },
     targets,
     imports,
@@ -667,7 +672,7 @@ function dumpYamlDoc(doc: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
-function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
+export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
   const moduleDoc: Record<string, unknown> = {
     kind: "Kernel.Module",
     metadata: {
@@ -677,6 +682,9 @@ function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
     },
   };
 
+  if (manifest.metadata.namespace) (moduleDoc.metadata as Record<string, unknown>).namespace = manifest.metadata.namespace;
+  if (manifest.metadata.variables) moduleDoc.variables = manifest.metadata.variables;
+  if (manifest.metadata.secrets) moduleDoc.secrets = manifest.metadata.secrets;
   if (manifest.include?.length) moduleDoc.include = manifest.include;
   if (manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
 
@@ -706,14 +714,6 @@ export function renderManifestYaml(manifest: ParsedManifest): string {
   return docs.map((doc) => dumpYamlDoc(doc)).join("\n---\n");
 }
 
-export function getYamlStateSnapshots(app: Application): Array<{ filePath: string; yaml: string }> {
-  return [...app.modules.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([filePath, manifest]) => ({
-      filePath,
-      yaml: renderManifestYaml(manifest),
-    }));
-}
 
 /** Produces per-file YAML snapshots for a multi-file module. Resources are written
  *  back to their originating sourceFile rather than collapsed into the owner. */
