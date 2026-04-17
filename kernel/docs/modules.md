@@ -6,15 +6,26 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 
 ---
 
-## 1. Module Contract (`kind: Kernel.Module`)
+## 1. Module Contract (`kind: Kernel.Application` / `kind: Kernel.Library`)
 
-The `Kernel.Module` kind acts as the manifest and public interface for the package. It is the single source of truth for what the module needs to run and what it provides to the outside world. It utilizes JSON Schema validation for its inputs and Common Expression Language (CEL) for its outputs.
+Every module file begins with exactly one `Kernel.Application` or `Kernel.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
 
-- **`metadata.name`**: This serves as the global identifier in the package registry. It should be a **kebab-case slug** (e.g., `user-service`) to remain URL-friendly and consistent with standard registry patterns.
-- **`variables`**: Defines the standard configuration properties required by the module. These are defined as **JSON Schema object properties**. Per the style guide, these should use **camelCase** (e.g., `dbConnectionString`).
-- **`secrets`**: Defines sensitive inputs. These are also defined as **JSON Schema object properties** but are handled separately to ensure secure injection and to prevent accidental exposure in logs.
-- **Optionality (No `required` block)**: Requirement validation is handled via defaults. If an input is mandatory, it is defined without a `default`. If it is optional, it must be explicitly defined with `default: null`.
-- **`exports`**: Declares which resource kinds this module exposes to consumers. Kinds listed here become accessible to importers under the import alias.
+- **`metadata.name`**: Global identifier in the package registry. Kebab-case slug (e.g., `user-service`) to remain URL-friendly and consistent with standard registry patterns.
+- **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `dbConnectionString`).
+- **`secrets`**: Sensitive inputs. Also JSON Schema object properties, handled separately to ensure secure injection and prevent accidental exposure in logs.
+- **Optionality (No `required` block)**: Requirement validation is handled via defaults. Mandatory inputs are defined without a `default`. Optional inputs must be explicitly defined with `default: null`.
+
+**Application-only:**
+
+- **`targets`**: Optional. Resources to run once initialization completes. Applications whose work is carried entirely by auto-start Services (e.g. an HTTP server) may declare no targets.
+- **`lifecycle`** / **`keepAlive`**: Runtime lifecycle hints.
+- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of a `Kernel.Import`.
+
+**Library-only:**
+
+- **`exports.kinds`**: Which resource kinds this library exposes to importers.
+- `targets`, `lifecycle`, and `keepAlive` are forbidden — libraries are not lifecycle participants.
+- Never runnable via `loadFromConfig`; loaded only through `Kernel.Import`.
 
 ---
 
@@ -23,7 +34,7 @@ The `Kernel.Module` kind acts as the manifest and public interface for the packa
 A module can load additional manifests from other files into the same module scope using the `include` field. This allows splitting a large module definition across multiple files while keeping them logically united under one module. Glob patterns are supported.
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: user-service
   version: 1.0.0
@@ -44,7 +55,7 @@ All resources defined in included files behave as if they were declared in the s
 
 **Constraints on included (partial) files:**
 
-- Must not contain `kind: Kernel.Module`, `kind: Kernel.Import`, or `kind: Kernel.Definition`. These system kinds are reserved for the owner `telo.yaml`.
+- Must not contain `kind: Kernel.Application`, `kind: Kernel.Library`, `kind: Kernel.Import`, or `kind: Kernel.Definition`. These system kinds are reserved for the owner `telo.yaml`.
 - Resources that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
 
 **Glob patterns** (e.g. `**/*.yaml`, `routes/*.yaml`) are expanded at load time against the module directory. At publish time, globs are expanded and partial file contents are inlined into the published artifact, so registry consumers receive a single self-contained manifest.
@@ -80,7 +91,7 @@ This example demonstrates an application module requiring a connection string an
 ### Module File (The Contract)
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: user-service
   version: 1.0.0
@@ -141,29 +152,29 @@ inputs:
 
 ---
 
-## 5. Root Module
+## 5. Root Module (Application)
 
-A **Root Module** is the designated entry point of an application. It is the only module in the dependency graph that is bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration), and it is the **only** module that has access to the host's environment variables via the `env` object.
+The root of every running instance is a `Kernel.Application`. It is the only module bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration) and the **only** module that has access to the host's environment variables via the `env` object. `Kernel.Library` manifests cannot be roots — attempting to `loadFromConfig` on a Library is a hard error.
 
 ### 5.1 The `env` Capability
 
-The `env` object represents the host process's environment variables and is **exclusively available** in Root Module documents. Child modules are deliberately isolated from the host environment — they can only receive values that are explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
+The `env` object represents the host process's environment variables and is **exclusively available** in the root Application. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: Root Module documents only (`kind: Kernel.Module` and `kind: Kernel.Import` declared in the root module's files).
-- **Unavailable in**: Any non-root module, regardless of nesting depth.
-- **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root module.
+- **Available in**: The root `Kernel.Application` and any `Kernel.Import` declared in its files.
+- **Unavailable in**: Any imported `Kernel.Library`, regardless of nesting depth.
+- **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root Application.
 
 ### 5.2 Designating a Root Module
 
-A module is designated as the root externally — by the deployment target, CLI invocation, or platform configuration — not by a flag inside the YAML itself. Any module can serve as a root, but a module graph can only have one root entry point per running instance.
+The root is always the `Kernel.Application` named on the CLI or by the deployment target. Only Applications can serve this role; Libraries cannot. A module graph has exactly one root per running instance.
 
 ### 5.3 Example
 
-The primary purpose of the Root Module is to bridge the host environment to its child modules' contracts, keeping secrets out of child module files entirely.
+The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely.
 
 ```yaml
-# main.yaml (The Root Module)
-kind: Kernel.Module
+# main.yaml (The Root Application)
+kind: Kernel.Application
 metadata:
   name: backend-root
   version: 1.0.0

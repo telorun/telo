@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: CanRunSimpleQuery
   version: 1.0.0

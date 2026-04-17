@@ -2,6 +2,7 @@ import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
+import { isModuleKind } from "./module-kinds.js";
 import { precompileDoc } from "./precompile.js";
 import {
   DEFAULT_MANIFEST_FILENAME,
@@ -12,7 +13,12 @@ import {
   type PositionIndex,
 } from "./types.js";
 
-const SYSTEM_KINDS = new Set(["Kernel.Module", "Kernel.Import", "Kernel.Definition"]);
+const SYSTEM_KINDS = new Set([
+  "Kernel.Application",
+  "Kernel.Library",
+  "Kernel.Import",
+  "Kernel.Definition",
+]);
 
 export class Loader {
   private static readonly moduleCache = new Map<
@@ -106,17 +112,19 @@ export class Loader {
       }
     }
 
-    const moduleManifests = resolved.filter((m) => m.kind === "Kernel.Module");
+    const moduleManifests = resolved.filter((m) => isModuleKind(m.kind));
     if (moduleManifests.length > 1) {
+      const kinds = moduleManifests.map((m) => m.kind).join(", ");
       throw new Error(
-        `File '${source}' contains ${moduleManifests.length} Kernel.Module declarations. Maximum one is allowed.`,
+        `File '${source}' contains ${moduleManifests.length} module declarations (${kinds}). ` +
+          `A file may declare at most one Kernel.Application or Kernel.Library.`,
       );
     }
     const moduleManifest = moduleManifests[0];
     const moduleName = moduleManifest?.metadata?.name as string | undefined;
     if (moduleName) {
       for (const manifest of resolved) {
-        if (manifest.kind !== "Kernel.Module" && !manifest.metadata?.module) {
+        if (!isModuleKind(manifest.kind) && !manifest.metadata?.module) {
           const pi = (manifest.metadata as any)?.positionIndex;
           manifest.metadata = { ...manifest.metadata, module: moduleName };
           if (pi) {
@@ -250,7 +258,7 @@ export class Loader {
     // otherwise the analyzer won't know about kinds from Kernel.Import sources.
     try {
       const docs = await this.loadModule(fileUrl);
-      const hasModule = docs.some((d) => d.kind === "Kernel.Module");
+      const hasModule = docs.some((d) => isModuleKind(d.kind));
       if (hasModule) {
         const { source } = await this.pick(fileUrl).read(fileUrl);
         const manifests = await this.loadManifests(fileUrl);
@@ -345,7 +353,20 @@ export class Loader {
         (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
         throw e;
       }
-      const importedModule = imported.find((im) => im.kind === "Kernel.Module");
+      // Import target must be a Kernel.Library. Check the Library branch
+      // explicitly rather than "anything that's a module kind" so that a
+      // future third kind can't silently slip past as a valid import target.
+      const importedLibrary = imported.find((im) => im.kind === "Kernel.Library");
+      const importedApplication = imported.find((im) => im.kind === "Kernel.Application");
+      if (importedApplication) {
+        const e = new Error(
+          `Kernel.Import target '${importSource}' is a Kernel.Application. ` +
+            `Only Kernel.Library modules may be imported. Applications are run directly, not imported.`,
+        );
+        (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
+        throw e;
+      }
+      const importedModule = importedLibrary;
       if (importedModule?.metadata?.name) {
         const pi = (m.metadata as any)?.positionIndex;
         m.metadata = {

@@ -1,4 +1,4 @@
-import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, isModuleKind, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
   ControllerContext,
   Kernel as IKernel,
@@ -109,10 +109,10 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Load built-in Runtime definitions (e.g., Kernel.Module)
+   * Load built-in Runtime definitions (e.g., Kernel.Application, Kernel.Library).
    * Also declares all known module namespaces upfront so that resources can be
-   * registered to them. User-defined modules are declared explicitly by Kernel.Module
-   * resources during the initialization phase.
+   * registered to them. User-defined modules are declared explicitly by
+   * Kernel.Application or Kernel.Library resources during the initialization phase.
    */
   private async loadBuiltinDefinitions(): Promise<void> {
     // Declare built-in module namespaces upfront so getContext() can distinguish
@@ -127,10 +127,9 @@ export class Kernel implements IKernel {
       "Kernel.Definition",
       await import("./controllers/resource-definition/resource-definition-controller.js"),
     );
-    this.controllers.registerController(
-      "Kernel.Module",
-      await import("./controllers/module/module-controller.js"),
-    );
+    const moduleController = await import("./controllers/module/module-controller.js");
+    this.controllers.registerController("Kernel.Application", moduleController);
+    this.controllers.registerController("Kernel.Library", moduleController);
     this.controllers.registerController(
       "Kernel.Import",
       await import("./controllers/module/import-controller.js"),
@@ -168,8 +167,15 @@ export class Kernel implements IKernel {
     // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
     // Kernel built-ins ("kernel" → "Kernel") are auto-registered when Kernel.Abstract
     // definitions are registered in loadBuiltinDefinitions() above.
+    const rootModuleDoc = staticManifests.find((m) => isModuleKind(m.kind));
+    if (rootModuleDoc?.kind === "Kernel.Library") {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        `Root manifest '${sourceUrl}' is a Kernel.Library. Only Kernel.Application manifests can be run directly — libraries are imported via Kernel.Import.`,
+      );
+    }
     for (const m of staticManifests) {
-      if (m.kind === "Kernel.Module" && m.metadata?.name && m.metadata?.namespace) {
+      if (isModuleKind(m.kind) && m.metadata?.name && m.metadata?.namespace) {
         this.registry.registerModuleIdentity(
           m.metadata.namespace as string,
           m.metadata.name as string,
@@ -204,9 +210,10 @@ export class Kernel implements IKernel {
     this.staticManifests = normalizedManifests;
 
     for (const manifest of normalizedManifests) {
-      if (manifest.kind === "Kernel.Module") {
-        this.rootContext.setSecrets(manifest.secrets ?? {});
-        this.rootContext.setVariables(manifest.variables ?? {});
+      if (isModuleKind(manifest.kind)) {
+        // Root is always Kernel.Application (Library root rejected above). Applications
+        // have no variables/secrets fields — those are a Library-only contract, populated
+        // by importers, not by the root manifest itself.
         this.rootContext.setTargets(manifest.targets ?? []);
       }
       this.rootContext.registerManifest(manifest);

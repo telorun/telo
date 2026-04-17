@@ -34,7 +34,7 @@ Manifests also support directives for dynamic generation: `$let`, `$if`, `$for`,
 Here is an example Telo application that defines a simple HTTP API:
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: feedback
   version: 1.0.0

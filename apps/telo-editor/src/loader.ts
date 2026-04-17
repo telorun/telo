@@ -1,5 +1,5 @@
 import type { ManifestAdapter } from "@telorun/analyzer";
-import { DEFAULT_MANIFEST_FILENAME, Loader, RegistryAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, RegistryAdapter, isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   AppSettings,
@@ -173,7 +173,7 @@ export function toRelativeSource(fromPath: string, toPath: string): string {
   return rel === "." ? "." : rel.startsWith(".") ? rel : "./" + rel;
 }
 
-// Reads a manifest file and returns the metadata.name from its Kernel.Module doc.
+// Reads a manifest file and returns the metadata.name from its module doc.
 export async function readModuleMetadata(
   filePath: string,
   adapter: ManifestAdapter,
@@ -181,7 +181,7 @@ export async function readModuleMetadata(
   try {
     const loader = createEditorLoader(adapter, []);
     const docs = (await loader.loadModule(filePath)) as ResourceManifest[];
-    const moduleDoc = docs.find((d) => d.kind === "Kernel.Module");
+    const moduleDoc = docs.find((d) => isModuleKind(d.kind));
     return (moduleDoc?.metadata.name as string | undefined) ?? null;
   } catch {
     return null;
@@ -426,7 +426,9 @@ export function classifyImport(source: string): ImportKind {
 }
 
 export function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
-  const moduleDoc = docs.find((r) => r.kind === "Kernel.Module");
+  const moduleDoc = docs.find((r) => isModuleKind(r.kind));
+  const moduleKind: "Application" | "Library" =
+    moduleDoc?.kind === "Kernel.Library" ? "Library" : "Application";
 
   const imports: ParsedImport[] = docs
     .filter((r) => r.kind === "Kernel.Import")
@@ -439,7 +441,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     }));
 
   const resources: ParsedResource[] = docs
-    .filter((r) => r.kind !== "Kernel.Module" && r.kind !== "Kernel.Import")
+    .filter((r) => !isModuleKind(r.kind) && r.kind !== "Kernel.Import")
     .map((r) => {
       const { kind, metadata, ...rest } = r as Record<string, unknown> & {
         kind: string;
@@ -465,6 +467,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
 
   return {
     filePath,
+    kind: moduleKind,
     metadata: {
       name:
         (moduleDoc?.metadata.name as string | undefined) ??
@@ -684,6 +687,7 @@ export function createApplication(name: string): Application {
   const filePath = `new://${name}/${DEFAULT_MANIFEST_FILENAME}`;
   const manifest: ParsedManifest = {
     filePath,
+    kind: "Application",
     metadata: { name, version: "1.0.0" },
     targets: [],
     imports: [],
@@ -776,7 +780,7 @@ function dumpYamlDoc(doc: Record<string, unknown>): string {
 
 export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
   const moduleDoc: Record<string, unknown> = {
-    kind: "Kernel.Module",
+    kind: manifest.kind === "Application" ? "Kernel.Application" : "Kernel.Library",
     metadata: {
       name: manifest.metadata.name,
       ...(manifest.metadata.version ? { version: manifest.metadata.version } : {}),
@@ -788,7 +792,7 @@ export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown
   if (manifest.metadata.variables) moduleDoc.variables = manifest.metadata.variables;
   if (manifest.metadata.secrets) moduleDoc.secrets = manifest.metadata.secrets;
   if (manifest.include?.length) moduleDoc.include = manifest.include;
-  if (manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
+  if (manifest.kind === "Application" && manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
 
   const importDocs = manifest.imports.map((imp) => ({
     kind: "Kernel.Import",

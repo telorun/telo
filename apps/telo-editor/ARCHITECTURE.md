@@ -70,7 +70,7 @@ A single module file maps to this structure:
 ```
 ParsedManifest (= Module)
 ├── filePath     (absolute path to the .yaml file)
-├── metadata     (name, version, description — from Kernel.Module)
+├── metadata     (name, version, description — from Kernel.Application / Kernel.Library)
 ├── targets[]    (list of Runnable resource names to boot)
 ├── imports[]    (Kernel.Import documents with resolved importKind)
 └── resources[]
@@ -404,7 +404,7 @@ All annotations use the `editor.telo.run/` prefix and are placed in `metadata.an
 
 Before rendering any resource, the editor builds a **definition registry** mapping each fully-qualified kind to its `Kernel.Definition`. The registry is built from the entire application — all `ParsedManifest` objects in the application graph — and is rebuilt whenever any module in the application changes.
 
-A kind is always keyed as `metadata.module + "." + metadata.name`. Definitions that omit `metadata.module` inherit the module name from the `Kernel.Module` document in the same file.
+A kind is always keyed as `metadata.module + "." + metadata.name`. Definitions that omit `metadata.module` inherit the module name from the `Kernel.Application` or `Kernel.Library` document in the same file.
 
 Loading order:
 

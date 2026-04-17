@@ -64,7 +64,7 @@ telo --dev=0.0.0.0:3579 ./dev.yaml  # all interfaces (explicit escalation)
 
 ```yaml
 # dev.yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: my-app-dev
 ---

@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   version: 0.2.1
   name: starlark

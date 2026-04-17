@@ -119,7 +119,7 @@ Load and run a Telo manifest.
 Create a file `server.yaml`:
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: Example
 targets:

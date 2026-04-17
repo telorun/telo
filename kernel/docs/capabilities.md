@@ -111,4 +111,4 @@ interface Provider {
 
 ### `Template`
 
-A meta-capability reserved for system-level kernel kinds: `Kernel.Module`, `Kernel.Definition`, `Kernel.Import`, `Kernel.Abstract`. Not for use in application modules.
+A meta-capability reserved for system-level kernel kinds: `Kernel.Application`, `Kernel.Library`, `Kernel.Definition`, `Kernel.Import`, `Kernel.Abstract`. Not for use in application modules.

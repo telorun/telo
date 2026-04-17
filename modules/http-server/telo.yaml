@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: "http-server"
   namespace: std

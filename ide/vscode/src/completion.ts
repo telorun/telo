@@ -231,7 +231,12 @@ export class TeloCompletionProvider implements vscode.CompletionItemProvider {
 }
 
 function kindCompletions(registry: AnalysisRegistry | undefined): vscode.CompletionItem[] {
-  const kinds = new Set<string>(["Kernel.Module", "Kernel.Import", "Kernel.Definition"]);
+  const kinds = new Set<string>([
+    "Kernel.Application",
+    "Kernel.Library",
+    "Kernel.Import",
+    "Kernel.Definition",
+  ]);
 
   if (registry) {
     for (const kind of registry.allKinds()) {

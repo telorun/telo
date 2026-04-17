@@ -17,7 +17,14 @@ export interface DependencyGraph {
   cycle?: ReadonlyArray<ResourceNode>;
 }
 
-/** System resource kinds that are not runtime nodes in the dependency graph. */
+/** System resource kinds that are not runtime nodes in the dependency graph.
+ *  Module-identity docs (Kernel.Application, Kernel.Library) are intentionally
+ *  not in this set: an Application's `targets` use `x-telo-ref` to real
+ *  Runnable/Service resources, so the Application legitimately depends on
+ *  them in boot order — modeling that as a graph edge is correct. A Library
+ *  has no `targets`, so it becomes a zero-edge node, which is harmless.
+ *  If the graph is ever consumed as "things to init", skip these kinds at
+ *  the consumer site; the controller already runs them separately. */
 const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Import"]);
 
 const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;

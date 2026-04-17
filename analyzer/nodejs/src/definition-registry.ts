@@ -52,7 +52,7 @@ export class DefinitionRegistry {
   }
 
   /** Register a module identity for x-telo-ref resolution.
-   *  Call once per Kernel.Module manifest when the manifest is loaded.
+   *  Call once per module doc (Kernel.Application or Kernel.Library) when the manifest is loaded.
    *  @param namespace  The module's metadata.namespace (e.g. "std"), or null for kernel built-ins.
    *  @param moduleName The module's metadata.name (e.g. "pipeline", "http-server"). */
   registerModuleIdentity(namespace: string | null, moduleName: string): void {

@@ -16,7 +16,7 @@ To expose an internal resource signal to the outside world, a module must explic
 **Syntax (`users-telo.yaml`):**
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: users
 

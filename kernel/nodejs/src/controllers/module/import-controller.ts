@@ -50,10 +50,17 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
       compile: true,
     },
   );
-  // Find the kind: Module manifest to learn the target module name and contract.
-  const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Module");
+  // Import targets must be Kernel.Library — Applications are run directly, not imported.
+  const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Library");
   if (!moduleManifest) {
-    throw new Error(`No kind: Module manifest found in source "${resource.source as string}"`);
+    const applicationManifest = manifests.find((m: any) => m.kind === "Kernel.Application");
+    if (applicationManifest) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        `Kernel.Import target '${resource.source as string}' is a Kernel.Application. Only Kernel.Library modules may be imported. Applications are run directly, not imported.`,
+      );
+    }
+    throw new Error(`No Kernel.Library manifest found in source "${resource.source as string}"`);
   }
   const targetModule: string = moduleManifest.metadata.name;
 
@@ -102,19 +109,6 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
       variables: ctx.expandValue(resource.variables, {}) ?? {},
       secrets: ctx.expandValue(resource.secrets, {}) ?? {},
     }),
-    run: async () => {
-      // Proxy run to target module
-      for (const target of (moduleManifest.targets as string[]) ?? []) {
-        await child.run(target);
-      }
-    },
-    invoke: async () => {
-      // Proxy run to target module
-      // for (const target of (moduleManifest.targets as string[]) ?? []) {
-      //   child.invoke(target);
-      // }
-      console.log("invoking");
-    },
     init: async () => {
       await child.initializeResources();
     },

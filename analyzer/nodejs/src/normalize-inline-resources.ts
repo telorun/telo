@@ -3,7 +3,12 @@ import { isRefEntry, isScopeEntry, isInlineResource } from "./reference-field-ma
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { AliasResolver } from "./alias-resolver.js";
 
-const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Module", "Kernel.Import"]);
+const SYSTEM_KINDS = new Set([
+  "Kernel.Definition",
+  "Kernel.Application",
+  "Kernel.Library",
+  "Kernel.Import",
+]);
 
 /** Replaces characters outside [a-zA-Z0-9_] with underscores. */
 function sanitizeName(raw: string): string {

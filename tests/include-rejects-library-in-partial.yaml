@@ -1,0 +1,18 @@
+kind: Kernel.Application
+metadata:
+  name: IncludeRejectsLibraryInPartialTest
+  version: 1.0.0
+targets:
+  - TestLibraryRejected
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Assert.Manifest
+metadata:
+  name: TestLibraryRejected
+source: ./__fixtures__/include-rejects-library.yaml
+expect:
+  loadError: "not allowed in partial files"

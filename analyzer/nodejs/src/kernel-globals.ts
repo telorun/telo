@@ -15,7 +15,8 @@ export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "env"] 
 
 const SYSTEM_KINDS = new Set([
   "Kernel.Definition",
-  "Kernel.Module",
+  "Kernel.Application",
+  "Kernel.Library",
   "Kernel.Abstract",
 ]);
 
@@ -25,16 +26,24 @@ const SYSTEM_KINDS = new Set([
  * chain-access validation recognises kernel globals without module authors
  * having to re-declare them.
  *
- * - `variables` / `secrets`: typed from the `Kernel.Module` declaration
+ * - `variables` / `secrets`: typed from the root module doc — prefer
+ *   Kernel.Application when present, otherwise fall back to Kernel.Library.
+ *   Applications are the root whose variables/secrets contract governs CEL
+ *   in the outer module; Libraries are only relevant when the caller scoped
+ *   the manifest list to a single library's file.
  * - `resources`: enumerates all non-system resource names
  * - `env`: dynamic (runtime env vars, root module only)
  */
 export function buildKernelGlobalsSchema(
   manifests: ResourceManifest[],
 ): Record<string, any> {
-  const moduleManifest = manifests.find((m) => m.kind === "Kernel.Module") as
-    | Record<string, any>
-    | undefined;
+  const moduleManifest =
+    (manifests.find((m) => m.kind === "Kernel.Application") as
+      | Record<string, any>
+      | undefined) ??
+    (manifests.find((m) => m.kind === "Kernel.Library") as
+      | Record<string, any>
+      | undefined);
 
   const resourceProps: Record<string, any> = {};
   for (const m of manifests) {
@@ -62,7 +71,7 @@ export function buildKernelGlobalsSchema(
   };
 }
 
-/** Wrap a JSON Schema property map (like `Kernel.Module.variables`) into a
+/** Wrap a JSON Schema property map (like `Kernel.Application.variables`) into a
  *  closed object schema suitable for chain-access validation. Falls back to
  *  an open map when the module declares no variables/secrets. */
 function buildSchemaMapSchema(

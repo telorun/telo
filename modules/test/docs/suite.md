@@ -13,7 +13,7 @@ Each test runs in an isolated `Kernel` instance with its own controllers, event 
 ## Example
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: TestSuite
 targets:

@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: templated-server
   version: 1.0.0

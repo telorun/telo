@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: UntypedStepAccess
   version: 1.0.0

@@ -62,7 +62,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   },
   {
     kind: "Kernel.Definition",
-    metadata: { name: "Module", module: "Kernel" },
+    metadata: { name: "Application", module: "Kernel" },
     capability: "Kernel.Template",
     schema: {
       type: "object",
@@ -85,8 +85,6 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           default: "shared",
         },
         keepAlive: { type: "boolean", default: false },
-        variables: { type: "object" },
-        secrets: { type: "object" },
         targets: {
           type: "array",
           items: {
@@ -96,6 +94,36 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             ],
           },
         },
+        include: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: ["metadata"],
+      additionalProperties: false,
+    },
+  },
+  {
+    kind: "Kernel.Definition",
+    metadata: { name: "Library", module: "Kernel" },
+    capability: "Kernel.Template",
+    schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string" },
+        metadata: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            version: { type: "string" },
+            source: { type: "string" },
+            module: { type: "string" },
+          },
+          required: ["name"],
+          additionalProperties: true,
+        },
+        variables: { type: "object" },
+        secrets: { type: "object" },
         include: {
           type: "array",
           items: { type: "string" },

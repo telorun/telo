@@ -1,0 +1,10 @@
+kind: Kernel.Application
+metadata:
+  name: ImportsAnApplication
+  version: 1.0.0
+targets: []
+---
+kind: Kernel.Import
+metadata:
+  name: ForbiddenApp
+source: ./tiny-application.yaml

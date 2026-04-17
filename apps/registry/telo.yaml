@@ -1,6 +1,6 @@
 # Telo Module Registry
 
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: telo-registry
   version: 1.0.0

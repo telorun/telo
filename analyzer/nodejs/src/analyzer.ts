@@ -5,6 +5,7 @@ import { buildTypedCelEnvironment, celEnvironment } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
+import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import {
   celTypeSatisfiesJsonSchema,
@@ -262,12 +263,13 @@ export class StaticAnalyzer {
     const defs = ctx?.definitions ?? new DefinitionRegistry();
 
     // Register module identities and aliases.
-    // The root Kernel.Module provides its own identity; imported modules surface their
-    // identity via resolvedModuleName/resolvedNamespace stamped onto the Kernel.Import
-    // by the loader (so we don't need to include imported Kernel.Module manifests in
-    // the analysis set, avoiding false reference errors in the parent context).
+    // The root module doc (Kernel.Application or Kernel.Library) provides its own
+    // identity; imported modules surface their identity via resolvedModuleName/
+    // resolvedNamespace stamped onto the Kernel.Import by the loader (so we don't
+    // need to include imported module manifests in the analysis set, avoiding false
+    // reference errors in the parent context).
     for (const m of manifests) {
-      if (m.kind === "Kernel.Module") {
+      if (isModuleKind(m.kind)) {
         const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
         const moduleName = m.metadata.name as string;
         if (moduleName) defs.registerModuleIdentity(namespace, moduleName);

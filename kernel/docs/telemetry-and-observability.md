@@ -17,7 +17,7 @@ The Telo engine detects the `Telemetry` trait of this Provider and automatically
 **Syntax (`root-telo.yaml`):**
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: main-application
 

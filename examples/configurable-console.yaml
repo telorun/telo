@@ -1,24 +1,7 @@
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: ExampleConsole
   version: 1.0.0
-variables:
-  product:
-    type: object
-    properties:
-      id:
-        type: string
-        format: uuid
-      name:
-        type: string
-      price:
-        type: number
-      inStock:
-        type: boolean
-    required: ["id", "name", "price", "inStock"]
-secrets:
-  password:
-    type: string
 targets:
   - Main
 ---
@@ -42,4 +25,4 @@ steps:
       metadata:
         name: Result
         module: ExampleConsole
-      output: "Product name: ${{ variables.product.name }}, Password: ${{ secrets.password }}"
+      output: "Product name: Sample Product"

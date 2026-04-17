@@ -1,4 +1,4 @@
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: type
   namespace: std

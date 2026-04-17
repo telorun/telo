@@ -6,6 +6,7 @@ Tests should live in the module they test: `modules/<name>/tests/*.yaml`.
 Test fixtures go in `__fixtures__/` subdirectories (excluded from test discovery).
 
 Follow this strictly:
+
 - never build anything
 - never add underscores to unused function arguments
 - never look at commit history
@@ -47,7 +48,7 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 - `resource-context.ts` — bridge: `getModuleContext()`, `registerModuleImport()`
 - `module-context-registry.ts` — per-module store for variables, secrets, resources, imports
 - `controller-registry.ts` — maps resource kinds to controller implementations
-- `controllers/module/module-controller.ts` — handles `kind: Kernel.Module` (includes, module scope)
+- `controllers/module/module-controller.ts` — handles `kind: Kernel.Application` / `kind: Kernel.Library` (includes, module scope)
 - `controllers/module/import-controller.ts` — handles `kind: Kernel.Import` (external modules, export CEL eval)
 - `controllers/resource-definition/` — handles `kind: Kernel.Definition` and parameterized templates
 - `capabilities/` — base interfaces: runnable, invokable, listener, provider, template, mount
@@ -55,26 +56,46 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 
 ## Resource Kinds
 
-### `kind: Kernel.Module`
-Declares a module's identity, inputs, and targets. Every module file must start with exactly one.
+Every module file must start with exactly one `Kernel.Application` OR `Kernel.Library` doc. Applications are runnable entry points, Libraries are importable units of kinds/definitions. The two kinds share most fields; what differs is runtime role.
+
+### `kind: Kernel.Application`
+
+A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** the target of a `Kernel.Import` — importing an Application is rejected at load time.
+
 - `metadata.name` — kebab-case; becomes the kind prefix (e.g. `MyModule.*`)
 - `metadata.namespace` — optional grouping prefix for `x-telo-ref` resolution
 - `lifecycle` — `"shared"` (default) | `"isolated"`
 - `keepAlive` — prevent kernel exit when idle
-- `variables` / `secrets` — JSON Schema property map; public contract for importers
-- `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Kernel.Module`, `Kernel.Import`, or `Kernel.Definition`
-- `targets` — run after all resources init; must reference `Kernel.Runnable` or `Kernel.Service`
-- `exports.kinds` — which kinds importers may reference
+- `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Kernel.Application`, `Kernel.Library`, `Kernel.Import`, or `Kernel.Definition`
+- `targets` — optional; run after all resources init; must reference `Kernel.Runnable` or `Kernel.Service`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
+- Receives `env: process.env` when it is the root loaded manifest.
+- `variables` / `secrets` / `exports` are **forbidden** — an Application is a root with no parent to supply inputs. Use `env` for runtime config. If you want to export or accept variables/secrets, the file is a Library.
+
+### `kind: Kernel.Library`
+
+An importable unit of kinds/definitions. Loaded **only** as the target of a `Kernel.Import`. Cannot be run directly; `loadFromConfig` on a Library manifest is a hard error.
+
+- `metadata.name` / `metadata.namespace` — as Application.
+- `variables` / `secrets` — JSON Schema property map; public contract for importers.
+- `include` — same semantics as Application.
+- `exports.kinds` — which kinds importers may reference.
+- `targets` is **forbidden**. `lifecycle` / `keepAlive` are also forbidden — libraries are not lifecycle participants.
+- No `env` access.
 
 ### `kind: Kernel.Import`
-Loads an external module into the current scope under a PascalCase alias.
-- `source` — relative path; resolved to `telo.yaml` automatically
-- `variables` / `secrets` — values passed into the child module
-- Creates an isolated child `EvaluationContext`; child resources not visible to root scope
-- Only root module gets `env: process.env`; child modules are isolated from the host environment
+
+Loads a `Kernel.Library` into the current scope under a PascalCase alias.
+
+- `source` — relative path / registry ref / URL; resolved to `telo.yaml` automatically.
+- `variables` / `secrets` — values passed into the child library.
+- Creates an isolated child `EvaluationContext`; child resources not visible to root scope.
+- Importing a `Kernel.Application` is a hard error — applications are run directly, not imported.
+- Only root module gets `env: process.env`; child modules are isolated from the host environment.
 
 ### `kind: Kernel.Definition`
+
 Registers a new resource kind. Defined inline in a module's `telo.yaml`.
+
 - `metadata.name` — kind suffix; full kind = `<module-name>.<Name>`
 - `capability` — one of the kernel capabilities (see below)
 - `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development
@@ -91,7 +112,7 @@ Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
 Defined as `Kernel.Abstract` entries in `builtins.ts`.
 
-## x-telo-* Schema Annotations
+## x-telo-\* Schema Annotations
 
 Inside `Kernel.Definition` schema blocks:
 
@@ -107,6 +128,7 @@ Inside `Kernel.Definition` schema blocks:
 Pure expression: `"${{ variables.port }}"` → typed value. Inline: `"Hello ${{ variables.name }}!"` → string.
 
 Available in `${{ }}`:
+
 - `variables`, `secrets` — always available (module inputs)
 - `resources.<name>` — after that resource's `snapshot()`
 - `steps.<step>.result` — inside `Run.Sequence` steps

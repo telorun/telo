@@ -1,0 +1,6 @@
+kind: Kernel.Application
+metadata:
+  name: IncludeRejectsLibrary
+  version: 1.0.0
+include:
+  - ./include-bad-library-kind.yaml

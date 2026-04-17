@@ -2,9 +2,9 @@
 
 In Telo, a "template" is fundamentally a parameterized Module. By defining a strict contract and utilizing CEL-YAML directives, you can create reusable, encapsulated components that dynamically generate resources based on provided inputs.
 
-## 1. Creating the Template Contract (`kind: Kernel.Module`)
+## 1. Creating the Template Contract (`kind: Kernel.Library`)
 
-The `kind: Kernel.Module` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what outputs it exposes to the consumer.
+The `kind: Kernel.Library` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what kinds it exposes to the consumer.
 
 - **Naming:** The template's `metadata.name` must be a kebab-case slug.
 - **Inputs:** Define `variables` (standard configuration) and `secrets` (sensitive data) using JSON Schema object properties.
@@ -14,7 +14,7 @@ The `kind: Kernel.Module` manifest acts as the public interface for your templat
 **Example: `template-contract.yaml`**
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Library
 metadata:
   name: secure-storage-template
 variables:
@@ -62,16 +62,16 @@ spec:
 
 ## 3. Using the Template (`kind: Kernel.Import`)
 
-To use the template in another module (like your application's Root Module), you instantiate it using the `kind: Kernel.Import` resource. The import acts as a local proxy that fulfills the template's contract.
+To use the template in another module (such as your root `Kernel.Application`), you instantiate it using the `kind: Kernel.Import` resource. The import acts as a local proxy that fulfills the template's contract.
 
 - **Instantiation:** The `kind: Kernel.Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
-- **Passing Environment Variables:** If you are instantiating the template within the **Root Module**, you can securely pass host environment variables to the template's secrets using the `env` object.
+- **Passing Environment Variables:** If you are instantiating the template within the root **Kernel.Application**, you can securely pass host environment variables to the template's secrets using the `env` object.
 - **Accessing Exports:** Once instantiated, you can access the template's exported properties in your local resources using the `${{ resources.<ImportName>.<exportProperty> }}` syntax.
 
 **Example: `main-app.yaml`**
 
 ```yaml
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: my-root-application
 

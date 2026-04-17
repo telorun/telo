@@ -19,7 +19,7 @@ export const celEnvironment = new Environment({ unlistedVariablesAreDyn: true })
  *  `env.check(expr)` can infer return types for expressions referencing known variables.
  *
  *  - `variables`: typed from the manifest's `variables` field if it is a schema map
- *    (only `Kernel.Module` resources carry this); otherwise registered as `map` (dyn).
+ *    (only module-identity docs — `Kernel.Application` / `Kernel.Library` — carry this); otherwise registered as `map` (dyn).
  *  - `secrets`, `resources`, `env`: always `map` (dyn — output schemas unknown).
  *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
  *

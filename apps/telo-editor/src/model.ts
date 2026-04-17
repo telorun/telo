@@ -26,8 +26,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ],
 };
 
+export type ModuleKind = "Application" | "Library";
+
 export interface ParsedManifest {
   filePath: string;
+  kind: ModuleKind;
   metadata: {
     name: string;
     version?: string;

@@ -6,6 +6,11 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 const SOURCE = "telo-analyzer";
+/** Kinds skipped by reference validation. Kernel.Application and Kernel.Library
+ *  are intentionally not here: Application has `targets` with x-telo-ref that
+ *  must be validated, and Library has no ref-bearing fields so flows through
+ *  harmlessly. Kernel.Import is also not here for the same reason — its
+ *  `source` field isn't x-telo-ref, so nothing gets checked. */
 const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Abstract"]);
 
 /**

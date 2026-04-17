@@ -1,21 +1,14 @@
-kind: Kernel.Module
+kind: Kernel.Application
 metadata:
   name: CanImportModuleWithAlias
   version: 1.0.0
 targets:
-  - MyConsole
-  - VerifyConfigurableConsoleEvents
-  - VerifyConfigurableConsoleModuleContext
+  - VerifyTinyModuleContext
 ---
 kind: Kernel.Import
 metadata:
-  name: MyAssert
-source: ../modules/assert
----
-kind: Kernel.Import
-metadata:
-  name: MyConsole
-source: ../examples/configurable-console.yaml
+  name: MyTiny
+source: ./__fixtures__/tiny-module.yaml
 variables:
   product:
     id: "123e4567-e89b-12d3-a456-426614174000"
@@ -25,20 +18,16 @@ variables:
 secrets:
   password: "supersecret"
 ---
-kind: MyAssert.Events
+kind: Kernel.Import
 metadata:
-  name: VerifyConfigurableConsoleEvents
-filter:
-  - type: "*"
-expect:
-  - event: Console.WriteLine.*.Invoked
-    payload: {}
+  name: MyAssert
+source: ../modules/assert
 ---
 kind: MyAssert.ModuleContext
 metadata:
-  name: VerifyConfigurableConsoleModuleContext
+  name: VerifyTinyModuleContext
 resources:
-  MyConsole:
+  MyTiny:
     variables:
       product:
         id: "123e4567-e89b-12d3-a456-426614174000"

@@ -1,0 +1,18 @@
+kind: Kernel.Application
+metadata:
+  name: ImportRejectsApplicationTargetTest
+  version: 1.0.0
+targets:
+  - TestImportApplicationRejected
+---
+kind: Kernel.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Assert.Manifest
+metadata:
+  name: TestImportApplicationRejected
+source: ./__fixtures__/imports-an-application.yaml
+expect:
+  loadError: "Kernel.Application"

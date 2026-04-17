@@ -1,0 +1,21 @@
+kind: Kernel.Library
+metadata:
+  name: TinyModule
+  version: 1.0.0
+variables:
+  product:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      name:
+        type: string
+      price:
+        type: number
+      inStock:
+        type: boolean
+    required: ["id", "name", "price", "inStock"]
+secrets:
+  password:
+    type: string
