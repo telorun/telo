@@ -1,9 +1,9 @@
 # Capabilities
 
-A `capability` declaration on `Kernel.Definition` assigns a single **lifecycle role** to instances of that kind. The kernel uses this role to determine when and how to interact with instances during the init loop, run phase, and shutdown.
+A `capability` declaration on `Telo.Definition` assigns a single **lifecycle role** to instances of that kind. The kernel uses this role to determine when and how to interact with instances during the init loop, run phase, and shutdown.
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Client, module: Http }
 capability: Provider
 ```
@@ -111,4 +111,4 @@ interface Provider {
 
 ### `Template`
 
-A meta-capability reserved for system-level kernel kinds: `Kernel.Application`, `Kernel.Library`, `Kernel.Definition`, `Kernel.Import`, `Kernel.Abstract`. Not for use in application modules.
+A meta-capability reserved for system-level kernel kinds: `Telo.Application`, `Telo.Library`, `Telo.Definition`, `Telo.Import`, `Telo.Abstract`. Not for use in application modules.

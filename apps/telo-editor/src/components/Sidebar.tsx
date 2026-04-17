@@ -70,9 +70,9 @@ export function Sidebar({
     activeManifest?.imports.filter(
       (i) => i.importKind === "remote" || i.importKind === "external",
     ) ?? [];
-  const definitions = activeManifest?.resources.filter((r) => r.kind === "Kernel.Definition") ?? [];
+  const definitions = activeManifest?.resources.filter((r) => r.kind === "Telo.Definition") ?? [];
   const userResources =
-    activeManifest?.resources.filter((r) => !r.kind.startsWith("Kernel.")) ?? [];
+    activeManifest?.resources.filter((r) => !r.kind.startsWith("Telo.")) ?? [];
   // Unified kinds map from ModuleViewData (imported + locally defined)
   const kindsByFullKind = viewData?.kinds ?? new Map();
 

@@ -109,7 +109,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   /**
    * Register an imported module under the given alias, with the list of kind names
-   * it exports. An empty kinds array means no restriction (used for built-ins like Kernel).
+   * it exports. An empty kinds array means no restriction (used for built-ins like Telo).
    */
   registerImport(alias: string, targetModule: string, kinds: string[]): void {
     this.importAliases.set(alias, targetModule);

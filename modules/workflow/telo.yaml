@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: workflow
   namespace: std
@@ -9,15 +9,15 @@ exports:
     - Backend
     - Graph
 ---
-kind: Kernel.Abstract
+kind: Telo.Abstract
 metadata:
   name: Backend
-capability: Kernel.Provider
+capability: Telo.Provider
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Graph
-capability: Kernel.Runnable
+capability: Telo.Runnable
 schema:
   type: object
   properties:
@@ -39,7 +39,7 @@ schema:
           invoke:
             title: Invoke
             description: Resource invoked by this node.
-            x-telo-ref: "kernel#Invocable"
+            x-telo-ref: "telo#Invocable"
           options:
             title: Options
             description: Backend-specific execution options for this node.

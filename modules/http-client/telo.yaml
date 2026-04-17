@@ -1,14 +1,14 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: http-client
   namespace: std
   version: 0.1.0
   description: HTTP request client for testing and orchestration
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Client"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-client
 schema:
@@ -36,10 +36,10 @@ schema:
       default: true
       description: "Whether redirects should be followed automatically."
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Request"
-capability: Kernel.Invocable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-request
 schema:

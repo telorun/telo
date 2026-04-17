@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: HttpClientTest
   version: 1.0.0
@@ -8,17 +8,17 @@ targets:
   - TestPostWithJsonBody
   - TestNotFoundDoesNotThrow
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-client
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

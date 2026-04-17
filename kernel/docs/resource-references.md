@@ -27,20 +27,20 @@ Both fields are required. The kind constraint is declared in the definition sche
 
 ```yaml
 x-telo-ref: "std/http-server#Server"   # fully-qualified: namespace/module-name#TypeName
-x-telo-ref: "kernel#Invocable"         # kernel built-ins use "kernel" as their identity
+x-telo-ref: "telo#Invocable"         # telo built-ins use "telo" as their identity
 ```
 
-**Why not the dot format.** Definition schemas are authored by module authors and must be alias-independent — they cannot assume anything about how the user has imported modules. The dot format used in manifests (`Http.Server`, `Kernel.Invocable`) is alias-prefixed and varies per manifest. Using the same format in `x-telo-ref` would be visually indistinguishable from an alias-dependent reference. The `#` separator makes it unambiguously a canonical, alias-free reference.
+**Why not the dot format.** Definition schemas are authored by module authors and must be alias-independent — they cannot assume anything about how the user has imported modules. The dot format used in manifests (`Http.Server`, `Telo.Invocable`) is alias-prefixed and varies per manifest. Using the same format in `x-telo-ref` would be visually indistinguishable from an alias-dependent reference. The `#` separator makes it unambiguously a canonical, alias-free reference.
 
 **Why `#` separates the module identity from the type name.** The module identity is a slash-separated path (`std/http-server`, `kernel`) that may contain multiple segments as namespaces are added. Using `/` for both the namespace separator and the module/type separator would make parsing ambiguous — the last segment could be either a type name or a module name segment depending on convention. `#` splits the string into exactly two parts with no ambiguity regardless of how deep the namespace path is. This mirrors the convention in JSON Schema `$ref` (`"other-schema.json#/definitions/Foo"`), where `#` separates the document identity from the location within it.
 
-**Module identity.** The left side of `#` is always the fully-qualified module identity: `namespace/module-name`. Both segments come from the module's own `Kernel.Application` or `Kernel.Library` declaration (`metadata.namespace` and `metadata.name`). Every module must declare a namespace — short-form references using only the module name are not permitted. The kernel built-ins use `"kernel"` as their identity (no namespace segment). The kernel rejects any `x-telo-ref` value whose left side does not match a registered fully-qualified identity.
+**Module identity.** The left side of `#` is always the fully-qualified module identity: `namespace/module-name`. Both segments come from the module's own `Telo.Application` or `Telo.Library` declaration (`metadata.namespace` and `metadata.name`). Every module must declare a namespace — short-form references using only the module name are not permitted. The Telo built-ins use `"telo"` as their identity (no namespace segment). The kernel rejects any `x-telo-ref` value whose left side does not match a registered fully-qualified identity.
 
 **How the lookup works.** When a module is loaded, the kernel registers its fully-qualified identity (`namespace/module-name`) alongside its canonical module name (`metadata.module`). The field map builder (Phase 1) stores `x-telo-ref` strings as-is — no identity resolution occurs at that point, because modules are still being loaded concurrently. Resolution is deferred to Phase 3, when all imports are guaranteed to be registered. At Phase 3, each `x-telo-ref` string is split on `#`, the left side is looked up in the identity table to get the canonical module name, and the `DefinitionRegistry` key is constructed as `canonicalModule.TypeName`:
 
 ```text
 "std/http-server#Server"  →  module "std/http-server"  →  canonical "Http"   →  registry key "Http.Server"
-"kernel#Invocable"        →  module "kernel"            →  canonical "Kernel" →  registry key "Kernel.Invocable"
+"telo#Invocable"          →  module "telo"              →  canonical "Telo"   →  registry key "Telo.Invocable"
 ```
 
 AJV ignores unknown keywords in `strict: false` mode (already the project default), so schemas containing `x-telo-ref` are passed to AJV as-is — no materialization or resolver plugin is needed. The field map builder detects reference slots by checking for the presence of `x-telo-ref` in a schema node.
@@ -53,11 +53,11 @@ Any schema node with `x-telo-ref` marks a reference slot:
 
 ```yaml
 # modules/http-server/http-server.yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Server
   module: Http
-extends: Kernel.Service
+extends: Telo.Service
 schema:
   type: object
   properties:
@@ -65,7 +65,7 @@ schema:
       type: object
       properties:
         invoke:
-          x-telo-ref: "kernel#Invocable" # any Kernel.Invocable resource
+          x-telo-ref: "telo#Invocable" # any Telo.Invocable resource
     middlewares:
       type: array
       items:
@@ -78,7 +78,7 @@ schema:
           path:
             type: string
           mount:
-            x-telo-ref: "kernel#Service" # any Kernel.Service resource
+            x-telo-ref: "telo#Service" # any Telo.Service resource
 ```
 
 ```yaml
@@ -89,7 +89,7 @@ schema:
       items:
         properties:
           invoke:
-            x-telo-ref: "kernel#Invocable"
+            x-telo-ref: "telo#Invocable"
 ```
 
 ---
@@ -117,10 +117,10 @@ Two mechanisms handle schema references across definitions. Which to use depends
 
 ### Static cross-module references via `$ref` + `$id`
 
-Every `Kernel.Definition` schema is automatically assigned an `$id` by the analyzer when the definition is loaded — derived from the module's canonical identity and the type name. Authors never declare `$id` manually. This makes all definition schemas addressable by standard JSON Schema `$ref`:
+Every `Telo.Definition` schema is automatically assigned an `$id` by the analyzer when the definition is loaded — derived from the module's canonical identity and the type name. Authors never declare `$id` manually. This makes all definition schemas addressable by standard JSON Schema `$ref`:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Backend
   module: Temporal
@@ -158,7 +158,7 @@ Static `$ref` requires the target type to be known at definition authoring time.
 `x-telo-schema-from` is a custom JSON Schema keyword that resolves a field's schema dynamically by following a property path to the referenced resource's definition schema:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Graph
   module: Workflow
@@ -214,11 +214,11 @@ AJV ignores this keyword during its standard validation pass — the dependent s
 The abstract base kind acts as a nominal type tag — it constrains the `x-telo-ref` slot without declaring any schema contract:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Backend
   module: Workflow
-extends: Kernel.Provider
+extends: Telo.Provider
 # no controllers — cannot be instantiated directly
 ```
 
@@ -273,17 +273,17 @@ Names must satisfy `^[a-zA-Z_][a-zA-Z0-9_]*$`.
 
 Resources in Telo have one of two lifetimes. Most resources are **singleton-scoped**: initialized once at kernel boot and torn down when the kernel stops. But some resources are **execution-scoped**: they exist only for the duration of a single operation, initialized when the operation starts and torn down when it ends. Each invocation of the operation gets a fresh set.
 
-The canonical use case is `Kernel.Runnable`: start an HTTP server inside the scope, run test steps against it, and have the server torn down automatically when the job completes — without keeping the process alive. The pattern is not exclusive to runnables; any resource kind can declare a scoped field under any name it chooses.
+The canonical use case is `Telo.Runnable`: start an HTTP server inside the scope, run test steps against it, and have the server torn down automatically when the job completes — without keeping the process alive. The pattern is not exclusive to runnables; any resource kind can declare a scoped field under any name it chooses.
 
 ### Declaring a scoped field with `x-telo-scope`
 
 A definition author marks a field as an execution scope using the `x-telo-scope` custom schema keyword. Its value is a JSON Pointer (RFC 6901) declaring where in the parent resource's config the scope is visible — all x-telo-ref resolutions within that path have access to the scoped resources. A scope visible in multiple paths uses an array.
 
-**JSON Pointer visibility is a prefix match.** A ref slot is considered "within the scope" if its field path, expressed as a JSON Pointer, starts with the declared pointer. For example, `x-telo-scope: /steps` covers `/steps/0/invoke`, `/steps/1/handler`, and any deeper path under `/steps`. Both the analyzer (deciding which refs check the scope when resolving names) and Phase 5 (deciding which ref slots to skip at boot) use this same prefix rule. The field value is an array of resource manifests, including `Kernel.Import` entries:
+**JSON Pointer visibility is a prefix match.** A ref slot is considered "within the scope" if its field path, expressed as a JSON Pointer, starts with the declared pointer. For example, `x-telo-scope: /steps` covers `/steps/0/invoke`, `/steps/1/handler`, and any deeper path under `/steps`. Both the analyzer (deciding which refs check the scope when resolving names) and Phase 5 (deciding which ref slots to skip at boot) use this same prefix rule. The field value is an array of resource manifests, including `Telo.Import` entries:
 
 ```yaml
-# Kernel.Runnable definition schema
-kind: Kernel.Definition
+# Telo.Runnable definition schema
+kind: Telo.Definition
 metadata:
   name: Runnable
   module: Kernel
@@ -298,7 +298,7 @@ schema:
         type: object
         properties:
           invoke:
-            x-telo-ref: "kernel#Invocable"
+            x-telo-ref: "telo#Invocable"
 ```
 
 ### Example
@@ -314,7 +314,7 @@ steps:
       kind: Http.Request
       name: FetchData # resolved against the 'with' scope
 with:
-  - kind: Kernel.Import
+  - kind: Telo.Import
     metadata:
       name: Http
     source: std/http-client
@@ -353,7 +353,7 @@ async run() {
 }
 ```
 
-`Injected<T>` transforms `x-telo-scope` fields from `ResourceManifest[]` to `ScopeHandle`, the same way it transforms `x-telo-ref` fields from `{kind, name}` to live instances. This pattern is not specific to `Kernel.Runnable` or `run()` — any resource kind that declares an `x-telo-scope` field receives a `ScopeHandle` and manages it as it sees fit.
+`Injected<T>` transforms `x-telo-scope` fields from `ResourceManifest[]` to `ScopeHandle`, the same way it transforms `x-telo-ref` fields from `{kind, name}` to live instances. This pattern is not specific to `Telo.Runnable` or `run()` — any resource kind that declares an `x-telo-scope` field receives a `ScopeHandle` and manages it as it sees fit.
 
 ### Lifetime
 
@@ -368,7 +368,7 @@ References from the parent's config into the scope (such as `steps[].invoke`) ar
 `x-telo-scope` fields are excluded from AJV validation of the parent resource — the kernel strips them before schema validation, then validates their contents separately as a child manifest set:
 
 - Each declaration in the scope is validated against its definition schema.
-- `Kernel.Import` entries in the scope are resolved and their definitions registered for scope-local use.
+- `Telo.Import` entries in the scope are resolved and their definitions registered for scope-local use.
 - References between scoped resources are validated within the scope.
 - References from scoped resources to outer resources are validated normally.
 - References from a scoped resource to a resource declared in a **different** scope (a sibling scope belonging to another parent resource, or a scope at a different nesting level) are rejected. Each scope is self-contained with respect to other scopes; the only cross-boundary direction allowed is scoped → outer.
@@ -436,7 +436,7 @@ Raw TypeScript interface — author is responsible for keeping the exported `sch
 
 ```typescript
 interface MyConfig {
-  invoke: KindRef<Invocable>;    // x-telo-ref: "kernel#Invocable"
+  invoke: KindRef<Invocable>;    // x-telo-ref: "telo#Invocable"
   server: KindRef<HttpServer>;   // x-telo-ref: "std/http-server#Server"
   with:   ScopeRef;              // x-telo-scope: /steps
   port:   number;
@@ -469,7 +469,7 @@ import { Type, Static } from "@sinclair/typebox";
 import { Ref, Scope, KindRef, ScopeRef, Injected } from "@telorun/sdk";
 
 const MyConfig = Type.Object({
-  invoke: Ref<Invocable>("kernel#Invocable"),
+  invoke: Ref<Invocable>("telo#Invocable"),
   server: Ref<HttpServer>("std/http-server#Server"),
   with:   Scope("/steps"),
   port:   Type.Integer(),
@@ -482,7 +482,7 @@ async function create(config: Injected<Static<typeof MyConfig>>, ctx: ResourceCo
 }
 ```
 
-The TypeBox schema object can be used directly as the `schema` field in a `Kernel.Definition`. **The exported `schema` is the source of truth for validation.** The TypeBox approach is recommended because it keeps the JSON Schema and TypeScript types in sync automatically.
+The TypeBox schema object can be used directly as the `schema` field in a `Telo.Definition`. **The exported `schema` is the source of truth for validation.** The TypeBox approach is recommended because it keeps the JSON Schema and TypeScript types in sync automatically.
 
 ### `kernel/nodejs` (kernel-only)
 
@@ -503,11 +503,11 @@ Reference injection is implemented across five sequential phases that span `load
 
 ### Import loading is eager
 
-`Kernel.Import` resources are resolved during `loadFromConfig`, not lazily during the init loop. Each import's child manifests — including their definitions — are loaded and registered before `start()` is called. `Kernel.Import` entries declared inside `x-telo-scope` fields are also resolved eagerly, so all definitions from all scopes are registered and known before Phase 3 validation runs. The scoped resources themselves are not initialized at load time — only their definitions are registered.
+`Telo.Import` resources are resolved during `loadFromConfig`, not lazily during the init loop. Each import's child manifests — including their definitions — are loaded and registered before `start()` is called. `Telo.Import` entries declared inside `x-telo-scope` fields are also resolved eagerly, so all definitions from all scopes are registered and known before Phase 3 validation runs. The scoped resources themselves are not initialized at load time — only their definitions are registered.
 
 ### Phase 1 — Field map construction
 
-When a `Kernel.Definition` is registered during `loadFromConfig`, `buildReferenceFieldMap` traverses its schema once. It records two kinds of entries:
+When a `Telo.Definition` is registered during `loadFromConfig`, `buildReferenceFieldMap` traverses its schema once. It records two kinds of entries:
 
 - A node containing `x-telo-ref` is a **reference slot**. All `x-telo-ref` values from `anyOf` branches are collected into `refs`.
 - A node containing `x-telo-scope` is a **scope slot**. The JSON Pointer visibility path is recorded alongside the field path.
@@ -517,9 +517,9 @@ The field map is cached on the `DefinitionRegistry` entry:
 ```text
 fieldPath       → { refs,                                                              isArray }
 ───────────────────────────────────────────────────────────────────────────────────────────────
-invoke          → { refs: ["kernel#Invocable"],                                        false   }
+invoke          → { refs: ["telo#Invocable"],                                        false   }
 middlewares[]   → { refs: ["std/http-server#Middleware"],                              true    }
-mounts[].mount  → { refs: ["kernel#Service"],                                          true    }
+mounts[].mount  → { refs: ["telo#Service"],                                          true    }
 server          → { refs: ["std/http-server#Server"],                                  false   }
 handler         → { refs: ["std/http-server#Middleware", "std/javascript#Script"],     false   }
 with            → { scope: "/steps" }
@@ -548,16 +548,16 @@ After Phase 2 completes, all reference slot values are `{kind, name}` pairs. Inl
 
 After normalization and before any resource is initialized, the kernel validates every reference value against the field maps using `validateReferences`. Each `x-telo-ref` value is parsed directly.
 
-For each reference field, the value must satisfy at least one `ref` entry in the field map (`anyOf` semantics). Per entry, validation dispatches on whether the target is a `Kernel.Abstract` or `Kernel.Definition`:
+For each reference field, the value must satisfy at least one `ref` entry in the field map (`anyOf` semantics). Per entry, validation dispatches on whether the target is a `Telo.Abstract` or `Telo.Definition`:
 
 1. **Structural validation** — the reference object has both `kind` and `name` fields of type string.
 2. **Kind validation** — dispatched per ref value:
-   - `Kernel.Abstract` target → `registry.getByExtends(targetKind)` must include the referenced resource's definition.
-   - `Kernel.Definition` target → the alias-resolved reference `kind` must equal the target's canonical kind.
+   - `Telo.Abstract` target → `registry.getByExtends(targetKind)` must include the referenced resource's definition.
+   - `Telo.Definition` target → the alias-resolved reference `kind` must equal the target's canonical kind.
 3. **Scope validation** — uses the `AliasResolver` from `AnalysisContext`:
    - Scoped resources may reference outer (singleton-scoped) resources — outer resources are initialized before any scope opens.
    - Outer resources may not hold injected references to scoped resources — they are initialized at boot before any scope exists. References from the parent's config into a scope (within the JSON Pointer path declared by `x-telo-scope`) are validated for name and kind but are not injection-time dependencies.
-   - Cross-module references without an explicit `Kernel.Import` are rejected at any scope level.
+   - Cross-module references without an explicit `Telo.Import` are rejected at any scope level.
 4. **Resolution validation** — a resource with the given `kind` and `name` exists in the visible manifest set.
 
 Failures in any check halt boot immediately with a descriptive error identifying the field path, the reference value, and the violated constraint.
@@ -604,10 +604,10 @@ The visual editor builds a field index once when a definition schema is loaded, 
 ```text
 field path              → { refs }
 ──────────────────────────────────────────────────────────────────────────────────────
-notFoundHandler.invoke  → { refs: ["kernel#Invocable"]                                        }
-mounts[].mount          → { refs: ["kernel#Service"]                                          }
+notFoundHandler.invoke  → { refs: ["telo#Invocable"]                                        }
+mounts[].mount          → { refs: ["telo#Service"]                                          }
 middlewares[]           → { refs: ["std/http-server#Middleware"]                              }
-steps[].invoke          → { refs: ["kernel#Invocable"]                                        }
+steps[].invoke          → { refs: ["telo#Invocable"]                                        }
 handler                 → { refs: ["std/http-server#Middleware", "std/javascript#Script"]     }
 ```
 
@@ -615,7 +615,7 @@ At interaction time, when a user focuses a reference field, the editor performs 
 
 ```text
 for each ref in refs:
-  if ref resolves to Kernel.Abstract:
+  if ref resolves to Telo.Abstract:
     registry.getByExtends(targetKind)   // DefinitionRegistry reverse index
   else:
     registry.getByKind(targetKind)

@@ -1,9 +1,9 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TinyApplication
   version: 1.0.0
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Console
 source: ../../modules/console

@@ -1,16 +1,16 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: UntypedStepAccess
   version: 1.0.0
 targets:
   - TestUntypedAccess
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../../run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../../../javascript

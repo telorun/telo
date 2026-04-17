@@ -1,10 +1,10 @@
 # Inheritance
 
-`extends` on a `Kernel.Definition` declares that the kind **fulfills an abstract interface** declared by another module. This is the extension point for pluggable subsystems: one module defines the contract, other modules provide implementations.
+`extends` on a `Telo.Definition` declares that the kind **fulfills an abstract interface** declared by another module. This is the extension point for pluggable subsystems: one module defines the contract, other modules provide implementations.
 
 ```yaml
 # modules/workflow-temporal/telo.yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Backend, module: WorkflowTemporal }
 capability: Provider
 extends: Workflow.Backend
@@ -14,18 +14,18 @@ extends: Workflow.Backend
 
 ---
 
-## Declaring an Abstract Interface (`Kernel.Abstract`)
+## Declaring an Abstract Interface (`Telo.Abstract`)
 
-A module declares an abstract interface with `kind: Kernel.Abstract`. This registers a named slot that other modules can target via `extends`.
+A module declares an abstract interface with `kind: Telo.Abstract`. This registers a named slot that other modules can target via `extends`.
 
 ```yaml
 # modules/workflow/telo.yaml
-kind: Kernel.Abstract
+kind: Telo.Abstract
 metadata: { name: Backend, module: Workflow }
 capability: Provider
 ```
 
-`Kernel.Abstract` accepts the same fields as `Kernel.Definition` except `controllers` — it has no implementation. It defines the contract (capability, schema, inputs/outputs) that all implementations must satisfy.
+`Telo.Abstract` accepts the same fields as `Telo.Definition` except `controllers` — it has no implementation. It defines the contract (capability, schema, inputs/outputs) that all implementations must satisfy.
 
 The fully-qualified name of the abstract kind (`Workflow.Backend`) becomes the value used in `extends` by implementors.
 
@@ -36,7 +36,7 @@ The fully-qualified name of the abstract kind (`Workflow.Backend`) becomes the v
 A definition extends an abstract interface by setting `extends` to the abstract kind's qualified name:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Backend, module: WorkflowTemporal }
 capability: Provider
 extends: Workflow.Backend
@@ -76,4 +76,4 @@ The analyzer resolves this to `Workflow.Backend` and accepts any resource instan
 | ----------------- | ----------------------------------------------------- | ------------------------ |
 | `capability`      | Assigns a lifecycle role                              | Kernel built-ins only    |
 | `extends`         | Declares which abstract interface the kind implements | Cross-module, non-kernel |
-| `Kernel.Abstract` | Declares a pluggable abstract interface               | Within a module          |
+| `Telo.Abstract` | Declares a pluggable abstract interface               | Within a module          |

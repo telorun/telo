@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: assert
   namespace: std
@@ -11,10 +11,10 @@ exports:
     - Events
     - Manifest
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: ModuleContext
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.1.8?local_path=./nodejs#module-context
 schema:
@@ -30,10 +30,10 @@ schema:
   required:
     - metadata
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Schema
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.1.8?local_path=./nodejs#schema
 schema:
@@ -53,10 +53,10 @@ schema:
     - metadata
     - schema
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Events
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.1.8?local_path=./nodejs#events
 schema:
@@ -95,10 +95,10 @@ schema:
   required:
     - expect
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Manifest
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.1.8?local_path=./nodejs#manifest
 schema:

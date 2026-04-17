@@ -233,9 +233,9 @@ Activates the step tree canvas: a vertically stacked, hierarchical list. The can
 ## Example Definition
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Sequence, module: Run }
-capability: Kernel.Runnable
+capability: Telo.Runnable
 topology: Sequence
 controllers:
   - pkg:npm/@telorun/run@0.1.1#sequence
@@ -250,7 +250,7 @@ schema:
         - properties:
             invoke:
               x-telo-topology-role: invoke
-              x-telo-ref: "kernel#Invocable"
+              x-telo-ref: "telo#Invocable"
             inputs:
               x-telo-topology-role: inputs
               type: object

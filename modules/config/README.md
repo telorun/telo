@@ -123,7 +123,7 @@ keys:
   stripeKey: STRIPE_KEY
   dbUrl: "${{ DB_USERNAME + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + DB_PORT + '/' + DB_NAME }}"
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Config
 source: ./config

@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: type
   namespace: std
@@ -7,10 +7,10 @@ exports:
   kinds:
     - JsonSchema
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: JsonSchema
-capability: Kernel.Type
+capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/type@0.0.3?local_path=./nodejs#type
 schema:

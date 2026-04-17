@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: "config"
   namespace: std
@@ -10,10 +10,10 @@ exports:
     - Secrets
     - Env
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "EnvironmentVariableStore"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#env-variable-store-controller
 schema:
@@ -28,10 +28,10 @@ schema:
   required: ["schema"]
   additionalProperties: true
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Variables"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#variables-controller
 schema:
@@ -57,10 +57,10 @@ schema:
   required: ["storeRef", "keys"]
   additionalProperties: true
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Secrets"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#secrets-controller
 schema:
@@ -86,10 +86,10 @@ schema:
   required: ["storeRef", "keys"]
   additionalProperties: true
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Env"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.1.5?local_path=./nodejs#env-controller
 schema:

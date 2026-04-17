@@ -7,17 +7,17 @@ import type { ResourceManifest } from "@telorun/sdk";
  * must stay in sync with this list.
  *
  * Note: `env` is only available in the root module context. Child modules
- * loaded via Kernel.Import do not receive host environment variables.
+ * loaded via Telo.Import do not receive host environment variables.
  * There is no `imports` namespace at runtime — import snapshots are stored
  * under `resources.<alias>`.
  */
 export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "env"] as const;
 
 const SYSTEM_KINDS = new Set([
-  "Kernel.Definition",
-  "Kernel.Application",
-  "Kernel.Library",
-  "Kernel.Abstract",
+  "Telo.Definition",
+  "Telo.Application",
+  "Telo.Library",
+  "Telo.Abstract",
 ]);
 
 /**
@@ -27,7 +27,7 @@ const SYSTEM_KINDS = new Set([
  * having to re-declare them.
  *
  * - `variables` / `secrets`: typed from the root module doc — prefer
- *   Kernel.Application when present, otherwise fall back to Kernel.Library.
+ *   Telo.Application when present, otherwise fall back to Telo.Library.
  *   Applications are the root whose variables/secrets contract governs CEL
  *   in the outer module; Libraries are only relevant when the caller scoped
  *   the manifest list to a single library's file.
@@ -38,10 +38,10 @@ export function buildKernelGlobalsSchema(
   manifests: ResourceManifest[],
 ): Record<string, any> {
   const moduleManifest =
-    (manifests.find((m) => m.kind === "Kernel.Application") as
+    (manifests.find((m) => m.kind === "Telo.Application") as
       | Record<string, any>
       | undefined) ??
-    (manifests.find((m) => m.kind === "Kernel.Library") as
+    (manifests.find((m) => m.kind === "Telo.Library") as
       | Record<string, any>
       | undefined);
 
@@ -49,7 +49,7 @@ export function buildKernelGlobalsSchema(
   for (const m of manifests) {
     const name = m.metadata?.name as string | undefined;
     if (!name || !m.kind) continue;
-    // Kernel.Import snapshots are stored under resources.<alias> at runtime,
+    // Telo.Import snapshots are stored under resources.<alias> at runtime,
     // so they appear here alongside regular resources.
     if (!SYSTEM_KINDS.has(m.kind)) {
       resourceProps[name] = { type: "object", additionalProperties: true };
@@ -71,7 +71,7 @@ export function buildKernelGlobalsSchema(
   };
 }
 
-/** Wrap a JSON Schema property map (like `Kernel.Application.variables`) into a
+/** Wrap a JSON Schema property map (like `Telo.Application.variables`) into a
  *  closed object schema suitable for chain-access validation. Falls back to
  *  an open map when the module declares no variables/secrets. */
 function buildSchemaMapSchema(

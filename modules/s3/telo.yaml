@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: s3
   namespace: std
@@ -16,10 +16,10 @@ exports:
     - List
     - Put
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Bucket
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/s3@1.0.3?local_path=./nodejs#s3-bucket
 schema:
@@ -41,10 +41,10 @@ schema:
     - bucketName
     - endpoint
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: List
-capability: Kernel.Invocable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@1.0.3?local_path=./nodejs#s3-list
 schema:
@@ -64,10 +64,10 @@ schema:
   required:
     - bucketRef
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Put
-capability: Kernel.Invocable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@1.0.3?local_path=./nodejs#s3-put
 schema:

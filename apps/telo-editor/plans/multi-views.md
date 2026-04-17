@@ -207,7 +207,7 @@ Layout: a scrollable area with two groups, each rendered as a compact table.
 | Topology | `viewData.kinds.get(resource.kind)?.topology` — badge if present |
 | Diagnostics | icon + red left border when `viewData.diagnostics.get(resource.name)` is non-empty |
 
-**Definitions group** — resources where `kind === "Kernel.Definition"`:
+**Definitions group** — resources where `kind === "Telo.Definition"`:
 
 | Column | Source |
 |--------|--------|
@@ -216,7 +216,7 @@ Layout: a scrollable area with two groups, each rendered as a compact table.
 | Topology | `resource.fields.topology` — badge if present |
 | Diagnostics | same as above |
 
-`Kernel.Module` and `Kernel.Import` resources are **not shown** — they are structural metadata already visible in the sidebar's Modules and Imports sections. The inventory shows only resources that the user creates and edits.
+`Telo.Module` and `Telo.Import` resources are **not shown** — they are structural metadata already visible in the sidebar's Modules and Imports sections. The inventory shows only resources that the user creates and edits.
 
 Clicking a row calls `onSelectResource` (opens detail panel). If the resource has topology, show a small icon/button that calls `onNavigateResource` (switches to topology view and opens that resource's canvas — see step 4c for the view switch behavior).
 
@@ -262,9 +262,9 @@ The analyzer's `StaticAnalyzer.analyze()` accepts `ResourceManifest[]` and retur
 
 The existing `toManifestDocs()` in `loader.ts:670-701` handles user resources correctly (spreads `resource.fields` to top level, constructs `metadata: { name }`). However, **two kinds of data are lost during the original `buildParsedManifest` parse** and `toManifestDocs` cannot reconstruct them:
 
-1. **`Kernel.Module` is missing `variables` and `secrets` schemas.** `buildParsedManifest` (loader.ts:450-462) stores only `{ name, version?, description? }` in `ParsedManifest.metadata`. The module's `variables`/`secrets` schema maps are dropped. The analyzer's `buildKernelGlobalsSchema` (kernel-globals.ts:53) reads `moduleManifest?.variables` to type-check CEL expressions like `${{ variables.port }}`. Without it, CEL validation produces false results.
+1. **`Telo.Module` is missing `variables` and `secrets` schemas.** `buildParsedManifest` (loader.ts:450-462) stores only `{ name, version?, description? }` in `ParsedManifest.metadata`. The module's `variables`/`secrets` schema maps are dropped. The analyzer's `buildKernelGlobalsSchema` (kernel-globals.ts:53) reads `moduleManifest?.variables` to type-check CEL expressions like `${{ variables.port }}`. Without it, CEL validation produces false results.
 
-2. **`Kernel.Import` is missing `resolvedModuleName`, `resolvedNamespace`, and `exports.kinds`.** The analyzer reads these at analyzer.ts:279-287 to register import aliases and module identities. `ParsedImport` (model.ts:40-47) doesn't store any of these. Without them, the analyzer falls back to deriving the module name from the source path, which may not match the actual module name, causing false `UNDEFINED_KIND` errors.
+2. **`Telo.Import` is missing `resolvedModuleName`, `resolvedNamespace`, and `exports.kinds`.** The analyzer reads these at analyzer.ts:279-287 to register import aliases and module identities. `ParsedImport` (model.ts:40-47) doesn't store any of these. Without them, the analyzer falls back to deriving the module name from the source path, which may not match the actual module name, causing false `UNDEFINED_KIND` errors.
 
 **Fix:** Enrich the editor's model to preserve these fields during initial parsing:
 
@@ -386,7 +386,7 @@ interface WorkflowGraph {
 
 Build the graph from `ModuleViewData`:
 
-1. **Nodes**: one per resource in `viewData.manifest.resources`, excluding `Kernel.Definition`, `Kernel.Import`, and `Kernel.Module` — these are structural metadata, not runtime resources. Enrich with `viewData.kinds.get(r.kind)` for capability/topology metadata and `viewData.diagnostics.get(r.name)` for diagnostic state.
+1. **Nodes**: one per resource in `viewData.manifest.resources`, excluding `Telo.Definition`, `Telo.Import`, and `Telo.Module` — these are structural metadata, not runtime resources. Enrich with `viewData.kinds.get(r.kind)` for capability/topology metadata and `viewData.diagnostics.get(r.name)` for diagnostic state.
 
 2. **Edges**: for each resource, use the analyzer's `buildReferenceFieldMap()` on its kind's schema (from `viewData.kinds.get(r.kind).schema`) to discover all `x-telo-ref` field paths. Then resolve actual reference values from `resource.fields` using `resolveFieldValues()`. Each resolved reference that matches an existing resource produces an edge.
 
@@ -425,7 +425,7 @@ The workflow view should support filtering edges by category:
 
 - **All references** — every resolved `x-telo-ref` edge.
 - **Boot-time only** — exclude scoped edges (matches the analyzer's `buildDependencyGraph` output). Shows the initialization order.
-- **By capability** — e.g., show only `Kernel.Invocable` edges to trace the invocation graph.
+- **By capability** — e.g., show only `Telo.Invocable` edges to trace the invocation graph.
 
 This is a local UI control (dropdown/toggle) inside the workflow view — not part of `ViewProps`.
 

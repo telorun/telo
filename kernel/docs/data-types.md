@@ -60,7 +60,7 @@ During module compilation, the Kernel registers all resources with the **Type** 
 - **Local Reference:** `BankAccount`
 - **Imported Reference:** `Billing.Invoice`
 
-When a module uses a `Kernel.Import`, the Kernel maps the external module's exported types into the local registry under the import's alias.
+When a module uses a `Telo.Import`, the Kernel maps the external module's exported types into the local registry under the import's alias.
 
 ## 4. Enforcing Types on Resources
 
@@ -134,7 +134,7 @@ exports:
 
 ```yaml
 # Inside main-telo.yaml
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Billing
 source: modules/billing

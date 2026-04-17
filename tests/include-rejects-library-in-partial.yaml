@@ -1,11 +1,11 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: IncludeRejectsLibraryInPartialTest
   version: 1.0.0
 targets:
   - TestLibraryRejected
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

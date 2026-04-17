@@ -6,9 +6,9 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 
 ---
 
-## 1. Module Contract (`kind: Kernel.Application` / `kind: Kernel.Library`)
+## 1. Module Contract (`kind: Telo.Application` / `kind: Telo.Library`)
 
-Every module file begins with exactly one `Kernel.Application` or `Kernel.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
+Every module file begins with exactly one `Telo.Application` or `Telo.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
 
 - **`metadata.name`**: Global identifier in the package registry. Kebab-case slug (e.g., `user-service`) to remain URL-friendly and consistent with standard registry patterns.
 - **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `dbConnectionString`).
@@ -19,13 +19,13 @@ Every module file begins with exactly one `Kernel.Application` or `Kernel.Librar
 
 - **`targets`**: Optional. Resources to run once initialization completes. Applications whose work is carried entirely by auto-start Services (e.g. an HTTP server) may declare no targets.
 - **`lifecycle`** / **`keepAlive`**: Runtime lifecycle hints.
-- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of a `Kernel.Import`.
+- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of a `Telo.Import`.
 
 **Library-only:**
 
 - **`exports.kinds`**: Which resource kinds this library exposes to importers.
 - `targets`, `lifecycle`, and `keepAlive` are forbidden — libraries are not lifecycle participants.
-- Never runnable via `loadFromConfig`; loaded only through `Kernel.Import`.
+- Never runnable via `loadFromConfig`; loaded only through `Telo.Import`.
 
 ---
 
@@ -34,7 +34,7 @@ Every module file begins with exactly one `Kernel.Application` or `Kernel.Librar
 A module can load additional manifests from other files into the same module scope using the `include` field. This allows splitting a large module definition across multiple files while keeping them logically united under one module. Glob patterns are supported.
 
 ```yaml
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: user-service
   version: 1.0.0
@@ -55,7 +55,7 @@ All resources defined in included files behave as if they were declared in the s
 
 **Constraints on included (partial) files:**
 
-- Must not contain `kind: Kernel.Application`, `kind: Kernel.Library`, `kind: Kernel.Import`, or `kind: Kernel.Definition`. These system kinds are reserved for the owner `telo.yaml`.
+- Must not contain `kind: Telo.Application`, `kind: Telo.Library`, `kind: Telo.Import`, or `kind: Telo.Definition`. These system kinds are reserved for the owner `telo.yaml`.
 - Resources that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
 
 **Glob patterns** (e.g. `**/*.yaml`, `routes/*.yaml`) are expanded at load time against the module directory. At publish time, globs are expanded and partial file contents are inlined into the published artifact, so registry consumers receive a single self-contained manifest.
@@ -91,7 +91,7 @@ This example demonstrates an application module requiring a connection string an
 ### Module File (The Contract)
 
 ```yaml
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: user-service
   version: 1.0.0
@@ -154,19 +154,19 @@ inputs:
 
 ## 5. Root Module (Application)
 
-The root of every running instance is a `Kernel.Application`. It is the only module bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration) and the **only** module that has access to the host's environment variables via the `env` object. `Kernel.Library` manifests cannot be roots — attempting to `loadFromConfig` on a Library is a hard error.
+The root of every running instance is a `Telo.Application`. It is the only module bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration) and the **only** module that has access to the host's environment variables via the `env` object. `Telo.Library` manifests cannot be roots — attempting to `loadFromConfig` on a Library is a hard error.
 
 ### 5.1 The `env` Capability
 
 The `env` object represents the host process's environment variables and is **exclusively available** in the root Application. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: The root `Kernel.Application` and any `Kernel.Import` declared in its files.
-- **Unavailable in**: Any imported `Kernel.Library`, regardless of nesting depth.
+- **Available in**: The root `Telo.Application` and any `Telo.Import` declared in its files.
+- **Unavailable in**: Any imported `Telo.Library`, regardless of nesting depth.
 - **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root Application.
 
 ### 5.2 Designating a Root Module
 
-The root is always the `Kernel.Application` named on the CLI or by the deployment target. Only Applications can serve this role; Libraries cannot. A module graph has exactly one root per running instance.
+The root is always the `Telo.Application` named on the CLI or by the deployment target. Only Applications can serve this role; Libraries cannot. A module graph has exactly one root per running instance.
 
 ### 5.3 Example
 
@@ -174,7 +174,7 @@ The primary purpose of the root Application is to bridge the host environment to
 
 ```yaml
 # main.yaml (The Root Application)
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: backend-root
   version: 1.0.0
@@ -182,7 +182,7 @@ metadata:
 ---
 # The root module imports the payment gateway and injects host environment
 # variables into the child module's explicit contract.
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: PaymentGateway
 source: acme/payment-gateway@1.2.0
@@ -196,7 +196,7 @@ secrets:
   webhookSignature: "${{ env.STRIPE_WEBHOOK_SECRET }}"
 
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: UserService
 source: acme/user-service@1.0.0
@@ -208,9 +208,9 @@ The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or
 
 ---
 
-## 6. Import and Usage (`kind: Kernel.Import`)
+## 6. Import and Usage (`kind: Telo.Import`)
 
-To utilize an external package, a project declares a dependency using `kind: Kernel.Import`. The import acts as a local proxy.
+To utilize an external package, a project declares a dependency using `kind: Telo.Import`. The import acts as a local proxy.
 
 - **Instantiation**: The `Import` resource provides the required `variables` and `secrets`.
 - **Referencing**: Once imported, the module's snapshot is stored under `resources.<ImportName>` alongside local resources. Access exported properties directly.
@@ -226,12 +226,12 @@ The `source` field accepts three forms:
 | Relative path      | `./payment/telo.yaml`                   | Resolved relative to the importing manifest's URL |
 | Absolute URL       | `https://cdn.example.com/lib/telo.yaml` | Fetched directly                                  |
 
-Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that contains the `Kernel.Import`, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
+Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that contains the `Telo.Import`, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 
 ### Import Declaration
 
 ```yaml
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: UserService
   # Implicitly module: default

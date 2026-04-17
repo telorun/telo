@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TypeJsonSchemaTest
   version: 1.0.0
@@ -12,22 +12,22 @@ targets:
   - TestMultipleExtends
 
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ..
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../../javascript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../../assert

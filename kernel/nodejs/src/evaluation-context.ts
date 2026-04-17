@@ -152,7 +152,7 @@ export class EvaluationContext implements IEvaluationContext {
    *      resource. Successful results go into resourceInstances.
    *
    * Interleaving is necessary because some resources' create() depends on effects
-   * produced by other resources' init() (e.g. Kernel.Import.init() runs
+   * produced by other resources' init() (e.g. Telo.Import.init() runs
    * child.initializeResources() which registers controllers needed by sibling
    * resources' create()). Running both sub-phases each pass lets those effects
    * propagate before the next create attempt.

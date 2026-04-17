@@ -1,21 +1,21 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: CanInsertAndSelect
   version: 1.0.0
 targets:
   - TestInsertAndSelect
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Sql
 source: ../
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../../assert

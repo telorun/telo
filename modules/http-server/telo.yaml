@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: "http-server"
   namespace: std
@@ -8,10 +8,10 @@ exports:
     - Server
     - Api
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Server"
-capability: Kernel.Service
+capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/http-server@0.1.8?local_path=./nodejs#http-server
 schema:
@@ -79,7 +79,7 @@ schema:
             title: Type
             description: Mount resource kind to attach.
             type: "string"
-            x-telo-ref: "kernel#Mount"
+            x-telo-ref: "telo#Mount"
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -98,7 +98,7 @@ schema:
           parser:
             title: Parser
             description: Invocable parser resource for this content type.
-            x-telo-ref: "kernel#Invocable"
+            x-telo-ref: "telo#Invocable"
             oneOf:
               - title: Parser Reference
                 description: String reference to an invocable parser.
@@ -249,10 +249,10 @@ schema:
       required: ["invoke"]
   required: ["port", "mounts"]
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Api"
-capability: Kernel.Mount
+capability: Telo.Mount
 topology: Router
 controllers:
   - pkg:npm/@telorun/http-server@0.1.8?local_path=./nodejs#http-server-api
@@ -321,7 +321,7 @@ schema:
             title: Handler
             description: Invocable route handler.
             x-telo-topology-role: handler
-            x-telo-ref: "kernel#Invocable"
+            x-telo-ref: "telo#Invocable"
             x-telo-context:
               type: object
               properties:

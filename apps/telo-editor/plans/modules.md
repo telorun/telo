@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the "Modules vs Imports" sidebar split with a directory-based workspace model. A module is a directory containing a `telo.yaml`. The sidebar becomes a tree of modules; navigation is direct (no breadcrumb). The editor supports multi-application workspaces on top of the kernel's `Kernel.Application` / `Kernel.Library` split.
+Replace the "Modules vs Imports" sidebar split with a directory-based workspace model. A module is a directory containing a `telo.yaml`. The sidebar becomes a tree of modules; navigation is direct (no breadcrumb). The editor supports multi-application workspaces on top of the kernel's `Telo.Application` / `Telo.Library` split.
 
 ## Non-goals
 
@@ -20,11 +20,11 @@ Replace the "Modules vs Imports" sidebar split with a directory-based workspace 
 - One node per directory under the workspace root that contains a `telo.yaml`. No other folders appear.
 - Applications render with a distinct icon and a Run affordance. Libraries render plain.
 - Expanding a module reveals its `include:`-reachable partial files as leaf nodes (click → opens the partial in source view).
-- **"No importers" badge** on a Library with no transitive importer from any Application in the workspace (*any* Application — tests, examples, apps). Rendered dimmed. Wording is deliberate: "no importers" is a neutral observation, not a judgement ("unused" or "orphan" would misread WIP libraries and test-only helpers as broken).
+- **"No importers" badge** on a Library with no transitive importer from any Application in the workspace (_any_ Application — tests, examples, apps). Rendered dimmed. Wording is deliberate: "no importers" is a neutral observation, not a judgement ("unused" or "orphan" would misread WIP libraries and test-only helpers as broken).
 
 ### Sidebar: Imports section (per active module)
 
-- Stays. What moves to the workspace tree is *module discovery* (the "browse all submodules" UX), not imports themselves — imports are a property of a module and stay listed on it.
+- Stays. What moves to the workspace tree is _module discovery_ (the "browse all submodules" UX), not imports themselves — imports are a property of a module and stay listed on it.
 - Drops the old three-way `submodule`/`remote`/`external` filter chips. Shows **all** of the active module's imports in one unified list — `local`, `registry`, `remote` — differentiated by a per-entry icon.
 - Registry entries retain the version badge and upgrade dropdown ([Sidebar.tsx:400-426](apps/telo-editor/src/components/Sidebar.tsx#L400-L426)); those affordances key off `ImportKind === "registry"`.
 - Keeps `+` (add), remove, and upgrade actions.
@@ -38,7 +38,7 @@ Replace the "Modules vs Imports" sidebar split with a directory-based workspace 
 
 - User picks a directory (Tauri picker / Chrome FSA picker).
 - Editor scans the tree for every `telo.yaml` and loads each as a module.
-- Module `kind` (`Kernel.Application` or `Kernel.Library`) classifies the node.
+- Module `kind` (`Telo.Application` or `Telo.Library`) classifies the node.
 - Active module selection on load:
   1. First Application in tree order, if any.
   2. Otherwise first Library in tree order. (Libraries are editable; the Run action simply doesn't appear.)
@@ -66,9 +66,9 @@ Rename and reshape (file: [model.ts:64-69](apps/telo-editor/src/model.ts#L64-L69
 ```ts
 interface Workspace {
   rootDir: string;
-  modules: Map<string, ParsedManifest>;   // keyed by module directory (absolute)
-  importGraph: Map<string, Set<string>>;  // module dir → library module dirs it imports
-  importedBy: Map<string, Set<string>>;   // reverse index
+  modules: Map<string, ParsedManifest>; // keyed by module directory (absolute)
+  importGraph: Map<string, Set<string>>; // module dir → library module dirs it imports
+  importedBy: Map<string, Set<string>>; // reverse index
 }
 ```
 
@@ -127,9 +127,9 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 - Header has a single `New module` action that prompts for a path relative to workspace root. No per-node "New module here" — avoids the "inside vs next to" ambiguity and matches how authors actually organize modules (typically siblings, not nested).
 - Per-node interactions:
   - Click → `onOpenModule(path)`.
-  - Inline Run icon on every `Kernel.Application` node (ghost-style, small).
+  - Inline Run icon on every `Telo.Application` node (ghost-style, small).
   - Context menu → `Delete module`, `Reveal in filesystem`.
-- **Delete cascade.** `Delete module` shows a confirmation that lists every importer of the target (using `workspace.importedBy`). On confirm: remove the target directory via `WorkspaceAdapter.delete`, then rewrite each importer to drop its `Kernel.Import` entry pointing at the deleted path. A plain filesystem delete would leave dangling imports that subsequently fail analyzer validation; handling the graph edge here beats making the author chase diagnostics. If the user cancels, nothing changes.
+- **Delete cascade.** `Delete module` shows a confirmation that lists every importer of the target (using `workspace.importedBy`). On confirm: remove the target directory via `WorkspaceAdapter.delete`, then rewrite each importer to drop its `Telo.Import` entry pointing at the deleted path. A plain filesystem delete would leave dangling imports that subsequently fail analyzer validation; handling the graph edge here beats making the author chase diagnostics. If the user cancels, nothing changes.
 - Visual treatment:
   - Application/Library icon per node.
   - Active module highlighted.
@@ -139,7 +139,7 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 
 - Remove breadcrumb rendering and `onPopTo`.
 - Show active module name + path as a static label.
-- When the active module is a `Kernel.Application`, show a prominent Run button. (Complements the inline Run icons on Application nodes in the tree.)
+- When the active module is a `Telo.Application`, show a prominent Run button. (Complements the inline Run icons on Application nodes in the tree.)
 
 ### `Editor.tsx`
 
@@ -155,8 +155,6 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 - Replace `loadApplication` with `loadWorkspace`.
 - Remove `pruneUnreachableModules` — membership is filesystem-driven.
 - Rename `addModuleImport` → `addImport`.
-- `buildParsedManifest`: detect either `Kernel.Application` or `Kernel.Library` as the module identity doc; populate `ParsedManifest.kind` from it.
-- [`toManifestDocs`](apps/telo-editor/src/loader.ts#L777) currently hardcodes `kind: "Kernel.Module"` on serialize ([loader.ts:779](apps/telo-editor/src/loader.ts#L779)). Update it to emit `ParsedManifest.kind` (`"Kernel.Application"` or `"Kernel.Library"`) and to skip `targets` when the kind is Library. Otherwise saving any file round-trips through the old kind and breaks schema.
 
 ---
 
@@ -174,20 +172,6 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 - `onPickModuleFile`, `onAddModule` props (folded into tree context menu).
 - "No submodules" empty hint and the add-module form in `Sidebar.tsx`.
 - `pruneUnreachableModules` helper.
-
----
-
-## Dependency on kernel plan
-
-Assumes `Kernel.Module` has been split into `Kernel.Application` + `Kernel.Library`. Editor reads the `kind` field directly from each parsed `telo.yaml` to classify nodes.
-
-**The transitional parser is required regardless of shipping order.** Phase 2 of the kernel plan's migration is a hand-review pass across tests, examples, apps, and benchmarks — while that pass is in flight, the workspace will contain a mix of legacy `Kernel.Module` files and migrated `Kernel.Application` / `Kernel.Library` files. The editor must not break on legacy kind during that window. Rule for `buildParsedManifest`:
-
-- `Kernel.Application` → `ParsedManifest.kind = "Application"`.
-- `Kernel.Library` → `ParsedManifest.kind = "Library"`.
-- `Kernel.Module` (legacy): Application iff the doc declares `targets:`, else Library. Tag the manifest internally as "legacy-classified" so the UI can surface a subtle badge prompting migration.
-
-The transitional parser stays in the codebase until Phase 2 is complete across the repo; then it is removed.
 
 ---
 

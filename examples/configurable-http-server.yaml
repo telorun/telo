@@ -1,18 +1,18 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ConfigExample
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Config
 source: ../modules/config
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../modules/javascript

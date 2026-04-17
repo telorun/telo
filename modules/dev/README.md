@@ -64,11 +64,11 @@ telo --dev=0.0.0.0:3579 ./dev.yaml  # all interfaces (explicit escalation)
 
 ```yaml
 # dev.yaml
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: my-app-dev
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: App
 source: ./telo.yaml
@@ -100,7 +100,7 @@ Running `telo ./telo.yaml` (without `dev.yaml`) starts only the production appli
 ## Importing the module
 
 ```yaml
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Dev
 source: pkg:npm/@telorun/dev@0.1.0

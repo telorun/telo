@@ -1,10 +1,10 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ImportsAnApplication
   version: 1.0.0
 targets: []
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: ForbiddenApp
 source: ./tiny-application.yaml

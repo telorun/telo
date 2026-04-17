@@ -32,7 +32,7 @@ Activates the route mapping table sub-editor.
 ## Example
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Api
   module: Http
@@ -54,5 +54,5 @@ schema:
             type: object
           handler:
             x-telo-topology-role: handler
-            x-telo-ref: Kernel.Invocable
+            x-telo-ref: Telo.Invocable
 ```

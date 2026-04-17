@@ -5,7 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { TeloCompletionProvider } from "./completion.js";
 
-const TELO_KIND_RE = /^kind:\s+Kernel\./m;
+const TELO_KIND_RE = /^kind:\s+Telo\./m;
 
 const SEVERITY: Record<number, vscode.DiagnosticSeverity> = {
   [DiagnosticSeverity.Error]: vscode.DiagnosticSeverity.Error,

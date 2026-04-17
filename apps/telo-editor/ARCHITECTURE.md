@@ -18,10 +18,10 @@ The center canvas is not a single fixed view. It hosts a set of purpose-built su
 
 | Paradigm      | Topology                             | Sub-editor          | Activated by                |
 | ------------- | ------------------------------------ | ------------------- | --------------------------- |
-| Service graph | Connected resources, reference edges | React Flow canvas   | `Kernel.Runnable` (default) |
+| Service graph | Connected resources, reference edges | React Flow canvas   | `Telo.Runnable` (default) |
 | Routing       | Request → handler mapping            | Route mapping table | `topology: Router`          |
 | Sequence      | Ordered steps with data passing      | Step list editor    | `topology: Sequence`        |
-| Schema        | Type hierarchy and composition       | Inheritance graph   | `Kernel.Definition`         |
+| Schema        | Type hierarchy and composition       | Inheritance graph   | `Telo.Definition`         |
 
 Resources always belong to one paradigm determined by their kind's abstract base. The manifest is the shared layer — resources from different paradigms reference each other freely, and navigation between sub-editors is seamless.
 
@@ -29,9 +29,9 @@ New paradigms can be introduced by Telo modules: a module declares a definition 
 
 **Topology is required for navigation.** A resource whose kind declares no `topology` cannot be navigated to — it has no canvas view. Clicking it in the sidebar opens the detail panel (same as a Library item) without changing the canvas context. This rule is static and definition-level: it is determined by the kind's definition, not by whether the resource instance happens to have connections at authoring time.
 
-The editor has **no built-in knowledge of any specific resource kind**. All display hints are declared on `Kernel.Definition` resources using annotations under the `editor.telo.run/` namespace, described in Section 6.
+The editor has **no built-in knowledge of any specific resource kind**. All display hints are declared on `Telo.Definition` resources using annotations under the `editor.telo.run/` namespace, described in Section 6.
 
-**The editor operates on pure YAML.** It reads YAML files and writes YAML files. It never loads npm packages, executes `pkg:` URIs, or imports JavaScript/TypeScript controllers. `controllers:` fields in `Kernel.Definition` documents are opaque strings to the editor — they are runtime artifacts and are ignored entirely. All information needed for display, validation, and authoring must be derivable from YAML documents alone.
+**The editor operates on pure YAML.** It reads YAML files and writes YAML files. It never loads npm packages, executes `pkg:` URIs, or imports JavaScript/TypeScript controllers. `controllers:` fields in `Telo.Definition` documents are opaque strings to the editor — they are runtime artifacts and are ignored entirely. All information needed for display, validation, and authoring must be derivable from YAML documents alone.
 
 ---
 
@@ -49,11 +49,11 @@ Application
 └── importedBy            (Map<filePath, Set<filePath>> — reverse index)
 ```
 
-Discovery is recursive: load the root manifest → follow all `Kernel.Import` entries whose `source` resolves to a local `.yaml` file → load each, recurse. Already-visited paths stop recursion. The result is a DAG of module files. Cycles are displayed as errors in the affected module's diagnostics but do not prevent loading the rest.
+Discovery is recursive: load the root manifest → follow all `Telo.Import` entries whose `source` resolves to a local `.yaml` file → load each, recurse. Already-visited paths stop recursion. The result is a DAG of module files. Cycles are displayed as errors in the affected module's diagnostics but do not prevent loading the rest.
 
 ### Import Kinds
 
-Not all `Kernel.Import` entries are equal. The editor classifies each by its `source` field:
+Not all `Telo.Import` entries are equal. The editor classifies each by its `source` field:
 
 | Kind                     | `source` pattern                            | Editor treatment                                                                                           |
 | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -70,9 +70,9 @@ A single module file maps to this structure:
 ```
 ParsedManifest (= Module)
 ├── filePath     (absolute path to the .yaml file)
-├── metadata     (name, version, description — from Kernel.Application / Kernel.Library)
+├── metadata     (name, version, description — from Telo.Application / Telo.Library)
 ├── targets[]    (list of Runnable resource names to boot)
-├── imports[]    (Kernel.Import documents with resolved importKind)
+├── imports[]    (Telo.Import documents with resolved importKind)
 └── resources[]
     └── each resource has:
         ├── kind        (e.g. "Http.Server")
@@ -83,18 +83,18 @@ ParsedManifest (= Module)
 
 ### Resource Categories
 
-The editor derives whether a resource belongs to the Library from the `capability` field on its `Kernel.Definition`.
+The editor derives whether a resource belongs to the Library from the `capability` field on its `Telo.Definition`.
 
 | Category   | Detection                                    | Placement          |
 | ---------- | -------------------------------------------- | ------------------ |
-| `provider` | Definition has `capability: Kernel.Provider` | Library panel only |
-| `type`     | Definition has `capability: Kernel.Type`     | Library panel only |
+| `provider` | Definition has `capability: Telo.Provider` | Library panel only |
+| `type`     | Definition has `capability: Telo.Type`     | Library panel only |
 
 All other resources appear in the resource tree. Whether they appear on the canvas depends on the active canvas mode — canvas content is always slot-driven, never a blanket category filter.
 
 Fields within a resource are raw YAML values. Their visual treatment is determined by:
 
-1. Annotations on the `Kernel.Definition` for that kind (Section 6)
+1. Annotations on the `Telo.Definition` for that kind (Section 6)
 2. Structural inference from the value itself as a fallback (Section 7)
 
 ---
@@ -159,7 +159,7 @@ The sidebar has four sections: **Modules**, **Imports**, **Definitions**, and **
 
 ### 3.1 Modules Section
 
-Lists all submodule imports (`kind: Kernel.Import` with a local-path `source`) of the active module. Each entry is navigable — clicking it pushes a new `module` entry onto the navigation stack and opens that module in the editor.
+Lists all submodule imports (`kind: Telo.Import` with a local-path `source`) of the active module. Each entry is navigable — clicking it pushes a new `module` entry onto the navigation stack and opens that module in the editor.
 
 ```
 ── Modules ──
@@ -169,15 +169,15 @@ Lists all submodule imports (`kind: Kernel.Import` with a local-path `source`) o
 
 The `+` affordance adds a new submodule import. The flow differs by environment:
 
-**In Tauri**: clicking `+` immediately opens a native file picker filtered to `.yaml`/`.yml`. The selected file is read to extract the module's `metadata.name`, which is converted to PascalCase and pre-filled as the alias. The `source` stored in `Kernel.Import` is a relative path from the active module's directory to the selected file's **directory** (e.g. `../auth` — the loader appends `/telo.yaml` automatically). The user can edit the alias before confirming.
+**In Tauri**: clicking `+` immediately opens a native file picker filtered to `.yaml`/`.yml`. The selected file is read to extract the module's `metadata.name`, which is converted to PascalCase and pre-filled as the alias. The `source` stored in `Telo.Import` is a relative path from the active module's directory to the selected file's **directory** (e.g. `../auth` — the loader appends `/telo.yaml` automatically). The user can edit the alias before confirming.
 
 **In browser with directory access**: clicking `+` shows an inline form with a text input for a relative path (e.g. `./auth`) and an alias field.
 
 **In browser without directory access** (single-file mode): adding submodules is not available.
 
-After confirmation, a `Kernel.Import` is added to the active module in memory and the referenced module is loaded into the application graph immediately.
+After confirmation, a `Telo.Import` is added to the active module in memory and the referenced module is loaded into the application graph immediately.
 
-A context menu on each entry provides a remove option. Removing a module import removes the `Kernel.Import` from the active module in memory but does not delete the submodule file.
+A context menu on each entry provides a remove option. Removing a module import removes the `Telo.Import` from the active module in memory but does not delete the submodule file.
 
 ### 3.2 Imports Section
 
@@ -246,7 +246,7 @@ Contains all `provider`- and `type`-category resources, grouped under their resp
 
 ### 3.4 Definitions Section
 
-Lists all `kind: Kernel.Definition` documents declared locally in the manifest. **Navigating within this section switches the canvas to Definitions mode** — the canvas shows the type hierarchy and composition graph rather than the runtime resource graph.
+Lists all `kind: Telo.Definition` documents declared locally in the manifest. **Navigating within this section switches the canvas to Definitions mode** — the canvas shows the type hierarchy and composition graph rather than the runtime resource graph.
 
 ```text
 ── Definitions ──
@@ -256,7 +256,7 @@ Lists all `kind: Kernel.Definition` documents declared locally in the manifest. 
 
 Each entry shows the definition name (the `metadata.name` value). **Clicking a definition** sets it as the canvas context in Definitions mode, showing that definition's schema, its `capability` chain, and any composition relationships.
 
-Definitions imported from external modules (via `kind: Kernel.Import`) are visible in Definitions mode as read-only nodes but do not appear in this sidebar section — only locally-declared definitions are listed here.
+Definitions imported from external modules (via `kind: Telo.Import`) are visible in Definitions mode as read-only nodes but do not appear in this sidebar section — only locally-declared definitions are listed here.
 
 Navigating back into the Flow section (clicking the module root or any Flow resource) returns the canvas to Flow mode.
 
@@ -276,7 +276,7 @@ The canvas is the primary visual surface. It operates in one of two top-level mo
 
 ### Definitions Mode
 
-Shows the type hierarchy for the manifest's local definitions alongside read-only nodes for definitions inherited from imported modules. Nodes represent `Kernel.Definition` resources; edges represent `capability` relationships and composition references. The detail panel in this mode functions as a schema builder — add properties, set types, configure `x-telo-ref` slots, and set `editor.telo.run/` annotations.
+Shows the type hierarchy for the manifest's local definitions alongside read-only nodes for definitions inherited from imported modules. Nodes represent `Telo.Definition` resources; edges represent `capability` relationships and composition references. The detail panel in this mode functions as a schema builder — add properties, set types, configure `x-telo-ref` slots, and set `editor.telo.run/` annotations.
 
 ### Flow Mode Canvas Modes
 
@@ -284,7 +284,7 @@ Within Flow mode, the canvas operates in one of three sub-modes at any time. Pro
 
 **Root mode** (no context, no selection)
 
-- Shows all Runnable resources (`capability: Kernel.Runnable`)
+- Shows all Runnable resources (`capability: Telo.Runnable`)
 - Each node has a **target toggle** (star icon): clicking it adds or removes the resource from the module's `targets` list
 - Nodes currently in `targets` are marked with a filled star and a distinct border style
 - Edges show actual reference connections between resources
@@ -396,23 +396,23 @@ Diagnostics come from `AnalysisDiagnostic` objects whose `data.resource.name` ma
 
 ## 6. Resource Display Metadata (Annotations)
 
-The editor reads `Kernel.Definition` resources from the manifest (and from imported modules' definitions) to determine how to display each kind. No kind-specific logic exists in the editor itself.
+The editor reads `Telo.Definition` resources from the manifest (and from imported modules' definitions) to determine how to display each kind. No kind-specific logic exists in the editor itself.
 
-All annotations use the `editor.telo.run/` prefix and are placed in `metadata.annotations` on the `Kernel.Definition`.
+All annotations use the `editor.telo.run/` prefix and are placed in `metadata.annotations` on the `Telo.Definition`.
 
 ### 6.0 Definition Registry
 
-Before rendering any resource, the editor builds a **definition registry** mapping each fully-qualified kind to its `Kernel.Definition`. The registry is built from the entire application — all `ParsedManifest` objects in the application graph — and is rebuilt whenever any module in the application changes.
+Before rendering any resource, the editor builds a **definition registry** mapping each fully-qualified kind to its `Telo.Definition`. The registry is built from the entire application — all `ParsedManifest` objects in the application graph — and is rebuilt whenever any module in the application changes.
 
-A kind is always keyed as `metadata.module + "." + metadata.name`. Definitions that omit `metadata.module` inherit the module name from the `Kernel.Application` or `Kernel.Library` document in the same file.
+A kind is always keyed as `metadata.module + "." + metadata.name`. Definitions that omit `metadata.module` inherit the module name from the `Telo.Application` or `Telo.Library` document in the same file.
 
 Loading order:
 
-1. **All submodule definitions** — `kind: Kernel.Definition` documents from every module in the application graph (root module and all transitively reachable submodules). Because the application graph is fully loaded upfront, cross-submodule definitions are available without any depth limit.
-2. **Remote import definitions** — for each `Kernel.Import` whose `importKind` is `remote`, the import's `source` is a `pkg:` or registry reference that cannot be fetched. The editor loads definitions from remote imports only if they were previously cached locally (e.g. resolved by the kernel into a local `node_modules` path that contains a `telo.yaml`). If no local resolution exists, that import's definitions are absent from the registry and its kinds appear as unknown.
-3. **Built-in abstracts** — `Kernel.Runnable`, `Kernel.Provider`, `Kernel.Type`, `Kernel.Invocable`, `Kernel.Service`, `Kernel.Mount`, `Kernel.Template` are always available without file loading.
+1. **All submodule definitions** — `kind: Telo.Definition` documents from every module in the application graph (root module and all transitively reachable submodules). Because the application graph is fully loaded upfront, cross-submodule definitions are available without any depth limit.
+2. **Remote import definitions** — for each `Telo.Import` whose `importKind` is `remote`, the import's `source` is a `pkg:` or registry reference that cannot be fetched. The editor loads definitions from remote imports only if they were previously cached locally (e.g. resolved by the kernel into a local `node_modules` path that contains a `telo.yaml`). If no local resolution exists, that import's definitions are absent from the registry and its kinds appear as unknown.
+3. **Built-in abstracts** — `Telo.Runnable`, `Telo.Provider`, `Telo.Type`, `Telo.Invocable`, `Telo.Service`, `Telo.Mount`, `Telo.Template` are always available without file loading.
 
-Each definition's schema is processed by `buildReferenceFieldMap` at load time and the resulting field map is cached on the registry entry. The field map records every `x-telo-ref` slot (reference fields) and every `x-telo-scope` slot (scope fields) by field path, and is reused by the editor for edge rendering, connectable mode, reference dropdowns, and scope field rendering — no schema traversal happens at interaction time. The full field map structure, `anyOf` traversal rules, `x-telo-ref` URI format, `Kernel.Abstract` resolution via `getByExtends()`, and visual editor interaction contract are specified in [kernel/docs/resource-references.md](../../kernel/docs/resource-references.md) (Sections 1–4 and 10).
+Each definition's schema is processed by `buildReferenceFieldMap` at load time and the resulting field map is cached on the registry entry. The field map records every `x-telo-ref` slot (reference fields) and every `x-telo-scope` slot (scope fields) by field path, and is reused by the editor for edge rendering, connectable mode, reference dropdowns, and scope field rendering — no schema traversal happens at interaction time. The full field map structure, `anyOf` traversal rules, `x-telo-ref` URI format, `Telo.Abstract` resolution via `getByExtends()`, and visual editor interaction contract are specified in [kernel/docs/resource-references.md](../../kernel/docs/resource-references.md) (Sections 1–4 and 10).
 
 ### 6.1 Kind-level Annotations
 
@@ -428,7 +428,7 @@ The sidebar section (Flow vs Library) and canvas visibility are derived from the
 **Example:**
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Server
   module: Http
@@ -437,20 +437,20 @@ metadata:
     editor.telo.run/color: "#3b82f6"
     editor.telo.run/icon: "server"
     editor.telo.run/card-fields: "port,baseUrl"
-capability: Kernel.Service
+capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/http-server@>=0.1.0
 ```
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Connection
   module: Sql
   annotations:
     editor.telo.run/group: "SQL"
     editor.telo.run/color: "#f59e0b"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/sql@>=0.1.0
 ```
@@ -494,7 +494,7 @@ schema:
 | `editor.telo.run/card-fields`           | Only resource name shown on node                                            |
 | `editor.telo.run/collection-item-label` | Item index used as label (`[0]`, `[1]`, …)                                  |
 | `editor.telo.run/field-type`            | Inferred from value structure (Section 7)                                   |
-| No `Kernel.Definition` found for a kind | Treated as `flow`; node renders name only; fields rendered as raw YAML tree |
+| No `Telo.Definition` found for a kind | Treated as `flow`; node renders name only; fields rendered as raw YAML tree |
 
 ---
 
@@ -774,9 +774,9 @@ See [kernel/docs/topologies/workflow.md](../../kernel/docs/topologies/workflow.m
 
 | Component            | Purpose                                                                                       |
 | -------------------- | --------------------------------------------------------------------------------------------- |
-| `ImportsSection`     | Lists all `Kernel.Import` entries; clicking one opens that module in the editor               |
+| `ImportsSection`     | Lists all `Telo.Import` entries; clicking one opens that module in the editor               |
 | `ResourceTree`       | Navigable list of non-Library resources; navigating here sets Flow mode                       |
-| `DefinitionsSection` | Lists local `Kernel.Definition` entries; navigating here sets Definitions mode                |
+| `DefinitionsSection` | Lists local `Telo.Definition` entries; navigating here sets Definitions mode                |
 | `LibrarySection`     | Sidebar library section; lists providers and types; opens inline popover on click             |
 | `LibraryItemPopover` | Inline field view for a provider or type resource within the sidebar                          |
 | `GraphCanvas`        | React Flow canvas; Flow mode (root/context/connectable) or Definitions mode                   |
@@ -801,7 +801,7 @@ Out of scope for the initial implementation but should not be designed against:
 
 - **Multi-manifest workspace**: cross-manifest resource reference visibility; inter-manifest edges in the graph
 - **Validation panel**: field-level error markers sourced from schema validation, surfaced on graph nodes and in the detail panel
-- **Module registry integration**: browse `apps/registry` when adding a `Kernel.Import`
+- **Module registry integration**: browse `apps/registry` when adding a `Telo.Import`
 - **Live YAML diff**: side-by-side view of raw YAML changes as fields are edited
 - **Graph layout options**: user-selectable layout algorithms (hierarchical, force-directed, radial)
 - **Multi-hop connectable mode**: extend connectable view beyond 1-hop to show transitive structural connections

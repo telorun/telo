@@ -4,7 +4,7 @@
 
 ## Overview
 
-A `topology` field on `Kernel.Definition` declares the **structural composition pattern** of a resource kind. It is distinct from `capability`, which assigns a lifecycle role:
+A `topology` field on `Telo.Definition` declares the **structural composition pattern** of a resource kind. It is distinct from `capability`, which assigns a lifecycle role:
 
 | Field        | Describes                                            | Consumer                 |
 | ------------ | ---------------------------------------------------- | ------------------------ |
@@ -14,7 +14,7 @@ A `topology` field on `Kernel.Definition` declares the **structural composition 
 A definition may declare both. `capability` and `topology` are orthogonal.
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Steps, module: Job }
 capability: Runnable
 topology: Sequence

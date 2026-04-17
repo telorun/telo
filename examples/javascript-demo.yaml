@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: JavaScriptDemo
   version: 1.0.0
@@ -6,22 +6,22 @@ metadata:
 targets:
   - RunScript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../modules/javascript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Console
 source: ../modules/console

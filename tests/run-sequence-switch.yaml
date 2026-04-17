@@ -1,21 +1,21 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: RunSequenceSwitch
   version: 1.0.0
 targets:
   - TestSwitch
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../modules/javascript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

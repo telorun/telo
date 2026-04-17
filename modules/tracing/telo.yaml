@@ -1,13 +1,13 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: tracing
   namespace: std
   version: 1.0.0
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Provider"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/tracing@0.1.7?local_path=./nodejs#provider
 schema:
@@ -68,10 +68,10 @@ schema:
           minimum: 0
   required: ["metadata", "exporters"]
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "FileExporter"
-capability: Kernel.Provider
+capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/tracing@0.1.7?local_path=./nodejs#file-exporter
 schema:

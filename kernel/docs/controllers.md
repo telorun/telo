@@ -2,7 +2,7 @@
 
 ## Overview
 
-When a `Kernel.Definition` resource is initialized, the kernel must locate and load the
+When a `Telo.Definition` resource is initialized, the kernel must locate and load the
 controller module that implements that resource kind. Controllers are identified by
 **Package URLs (PURLs)** — a standard, registry-agnostic URI format.
 
@@ -29,11 +29,11 @@ pkg:<type>/<namespace>/<name>@<version-spec>[?<qualifiers>][#<entry>]
 | `qualifiers`   | Key-value pairs; see [Section 2](#2-qualifiers)                                |
 | `entry`        | Export entry point within the package; see [Section 3](#3-entry-points)        |
 
-A `Kernel.Definition` lists one or more PURL candidates. The loader selects the first
+A `Telo.Definition` lists one or more PURL candidates. The loader selects the first
 candidate whose `type` matches the current runtime (e.g. `npm` for Node.js/Bun).
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Server
   module: Http
@@ -51,7 +51,7 @@ Only one candidate is loaded per initialization — the first one the runtime ca
 
 ### `local_path`
 
-A relative path from the **definition file** (`Kernel.Definition` YAML) to the local
+A relative path from the **definition file** (`Telo.Definition` YAML) to the local
 package directory.
 
 ```

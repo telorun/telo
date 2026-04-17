@@ -1,16 +1,16 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: FeedbackBenchmark
   version: 1.0.0
 targets:
   - FeedbackLoad
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Bench
 source: ../modules/benchmark
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-client

@@ -109,29 +109,29 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Load built-in Runtime definitions (e.g., Kernel.Application, Kernel.Library).
+   * Load built-in Runtime definitions (e.g., Telo.Application, Telo.Library).
    * Also declares all known module namespaces upfront so that resources can be
    * registered to them. User-defined modules are declared explicitly by
-   * Kernel.Application or Kernel.Library resources during the initialization phase.
+   * Telo.Application or Telo.Library resources during the initialization phase.
    */
   private async loadBuiltinDefinitions(): Promise<void> {
     // Declare built-in module namespaces upfront so getContext() can distinguish
     // "not yet populated" from a completely unknown module name.
-    this.rootContext.registerImport("Kernel", "Kernel", []); // built-ins, unrestricted
+    this.rootContext.registerImport("Telo", "Telo", []); // built-ins, unrestricted
 
     // Register built-in definitions with the controller registry.
     // AnalysisRegistry's underlying DefinitionRegistry already seeds KERNEL_BUILTINS on construction.
     for (const def of this.registry.builtinDefinitions()) this.controllers.registerDefinition(def);
 
     this.controllers.registerController(
-      "Kernel.Definition",
+      "Telo.Definition",
       await import("./controllers/resource-definition/resource-definition-controller.js"),
     );
     const moduleController = await import("./controllers/module/module-controller.js");
-    this.controllers.registerController("Kernel.Application", moduleController);
-    this.controllers.registerController("Kernel.Library", moduleController);
+    this.controllers.registerController("Telo.Application", moduleController);
+    this.controllers.registerController("Telo.Library", moduleController);
     this.controllers.registerController(
-      "Kernel.Import",
+      "Telo.Import",
       await import("./controllers/module/import-controller.js"),
     );
   }
@@ -165,13 +165,13 @@ export class Kernel implements IKernel {
     this.staticManifests = staticManifests;
 
     // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
-    // Kernel built-ins ("kernel" → "Kernel") are auto-registered when Kernel.Abstract
+    // Telo built-ins ("telo" → "Telo") are auto-registered when Telo.Abstract
     // definitions are registered in loadBuiltinDefinitions() above.
     const rootModuleDoc = staticManifests.find((m) => isModuleKind(m.kind));
-    if (rootModuleDoc?.kind === "Kernel.Library") {
+    if (rootModuleDoc?.kind === "Telo.Library") {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
-        `Root manifest '${sourceUrl}' is a Kernel.Library. Only Kernel.Application manifests can be run directly — libraries are imported via Kernel.Import.`,
+        `Root manifest '${sourceUrl}' is a Telo.Library. Only Telo.Application manifests can be run directly — libraries are imported via Telo.Import.`,
       );
     }
     for (const m of staticManifests) {
@@ -211,7 +211,7 @@ export class Kernel implements IKernel {
 
     for (const manifest of normalizedManifests) {
       if (isModuleKind(manifest.kind)) {
-        // Root is always Kernel.Application (Library root rejected above). Applications
+        // Root is always Telo.Application (Library root rejected above). Applications
         // have no variables/secrets fields — those are a Library-only contract, populated
         // by importers, not by the root manifest itself.
         this.rootContext.setTargets(manifest.targets ?? []);

@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TypeStaticAnalysisTest
   version: 1.0.0
@@ -7,7 +7,7 @@ targets:
   - TestValidFieldAccess
   - TestUntypedStepAccess
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../../assert

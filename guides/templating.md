@@ -2,9 +2,9 @@
 
 In Telo, a "template" is fundamentally a parameterized Module. By defining a strict contract and utilizing CEL-YAML directives, you can create reusable, encapsulated components that dynamically generate resources based on provided inputs.
 
-## 1. Creating the Template Contract (`kind: Kernel.Library`)
+## 1. Creating the Template Contract (`kind: Telo.Library`)
 
-The `kind: Kernel.Library` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what kinds it exposes to the consumer.
+The `kind: Telo.Library` manifest acts as the public interface for your template. It dictates exactly what inputs the template requires and what kinds it exposes to the consumer.
 
 - **Naming:** The template's `metadata.name` must be a kebab-case slug.
 - **Inputs:** Define `variables` (standard configuration) and `secrets` (sensitive data) using JSON Schema object properties.
@@ -14,7 +14,7 @@ The `kind: Kernel.Library` manifest acts as the public interface for your templa
 **Example: `template-contract.yaml`**
 
 ```yaml
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: secure-storage-template
 variables:
@@ -60,23 +60,23 @@ spec:
     replicationRegion: "eu-west-1"
 ```
 
-## 3. Using the Template (`kind: Kernel.Import`)
+## 3. Using the Template (`kind: Telo.Import`)
 
-To use the template in another module (such as your root `Kernel.Application`), you instantiate it using the `kind: Kernel.Import` resource. The import acts as a local proxy that fulfills the template's contract.
+To use the template in another module (such as your root `Telo.Application`), you instantiate it using the `kind: Telo.Import` resource. The import acts as a local proxy that fulfills the template's contract.
 
-- **Instantiation:** The `kind: Kernel.Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
-- **Passing Environment Variables:** If you are instantiating the template within the root **Kernel.Application**, you can securely pass host environment variables to the template's secrets using the `env` object.
+- **Instantiation:** The `kind: Telo.Import` provides the required `variables` and `secrets`. Import aliases (`metadata.name`) must not contain hyphens.
+- **Passing Environment Variables:** If you are instantiating the template within the root **Telo.Application**, you can securely pass host environment variables to the template's secrets using the `env` object.
 - **Accessing Exports:** Once instantiated, you can access the template's exported properties in your local resources using the `${{ resources.<ImportName>.<exportProperty> }}` syntax.
 
 **Example: `main-app.yaml`**
 
 ```yaml
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: my-root-application
 
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: UserDataStorage
 spec:

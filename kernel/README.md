@@ -20,7 +20,7 @@ The kernel performs three functions:
 
 ## 2. Resource Definitions
 
-Every resource in a manifest is an instance of a `Kernel.Definition`. A definition declares several orthogonal facets:
+Every resource in a manifest is an instance of a `Telo.Definition`. A definition declares several orthogonal facets:
 
 | Facet         | Field          | Purpose                                                                             |
 | ------------- | -------------- | ----------------------------------------------------------------------------------- |
@@ -43,11 +43,11 @@ Every resource in a manifest is an instance of a `Kernel.Definition`. A definiti
 
 ### Inheritance
 
-`extends` declares that a definition fulfills an abstract interface (`Kernel.Abstract`) declared by another module. This is the plugin pattern for subsystems like workflow backends.
+`extends` declares that a definition fulfills an abstract interface (`Telo.Abstract`) declared by another module. This is the plugin pattern for subsystems like workflow backends.
 
 → [docs/inheritance.md](docs/inheritance.md)
 
-For the complete `Kernel.Definition` field reference, see [docs/resource-definition.md](docs/resource-definition.md).
+For the complete `Telo.Definition` field reference, see [docs/resource-definition.md](docs/resource-definition.md).
 
 ---
 
@@ -72,12 +72,12 @@ When the entire string is a single interpolation, the result preserves the CEL t
 
 ---
 
-## 4. Kernel.Definition
+## 4. Telo.Definition
 
-Modules declare the resource kinds they handle using `Kernel.Definition`:
+Modules declare the resource kinds they handle using `Telo.Definition`:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Server # fully-qualified kind: Http.Server
   module: Http
@@ -95,6 +95,6 @@ controllers:
   - pkg:golang/github.com/telorun/run@>=1.0.0?local_path=./go#sequence
 ```
 
-When a `Kernel.Definition` instance initializes, it resolves and loads the controller module
+When a `Telo.Definition` instance initializes, it resolves and loads the controller module
 and registers it with the kernel. For the full resolution algorithm (local path, host
 node_modules, registry cache) and PURL format, see [controllers.md](docs/controllers.md).

@@ -118,7 +118,7 @@ export function DetailPanel({
   const rootCelEval: CelEvalMode | null = useMemo(() => {
     if (!resource || !viewData) return null;
     const capability = viewData.kinds.get(resource.kind)?.capability;
-    return capability === "Kernel.Provider" ? "compile" : null;
+    return capability === "Telo.Provider" ? "compile" : null;
   }, [resource, viewData]);
   const [fields, setFields] = useState<Record<string, unknown>>({});
 

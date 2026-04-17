@@ -24,7 +24,7 @@ const HttpApiRouteManifest = Type.Object({
       }),
     ),
   }),
-  handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("kernel#Invocable"))),
+  handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("telo#Invocable"))),
   inputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
   response: Type.Array(
     Type.Object({

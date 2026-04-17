@@ -1,11 +1,11 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: CanImportModuleWithAlias
   version: 1.0.0
 targets:
   - VerifyTinyModuleContext
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: MyTiny
 source: ./__fixtures__/tiny-module.yaml
@@ -18,7 +18,7 @@ variables:
 secrets:
   password: "supersecret"
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: MyAssert
 source: ../modules/assert

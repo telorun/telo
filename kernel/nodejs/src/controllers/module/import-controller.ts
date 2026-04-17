@@ -16,7 +16,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   const moduleSource: string = resource.module ?? resource.source;
 
   // Validate the imported module and all its transitive imports before loading for runtime.
-  // loadManifests() follows Kernel.Import chains so definitions from sub-imports are present,
+  // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
   const resolvedUrl = new URL(moduleSource, ctx.moduleContext.source).toString();
   const analysisManifests = await loader.loadManifests(resolvedUrl);
@@ -50,17 +50,17 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
       compile: true,
     },
   );
-  // Import targets must be Kernel.Library — Applications are run directly, not imported.
-  const moduleManifest = manifests.find((m: any) => m.kind === "Kernel.Library");
+  // Import targets must be Telo.Library — Applications are run directly, not imported.
+  const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library");
   if (!moduleManifest) {
-    const applicationManifest = manifests.find((m: any) => m.kind === "Kernel.Application");
+    const applicationManifest = manifests.find((m: any) => m.kind === "Telo.Application");
     if (applicationManifest) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
-        `Kernel.Import target '${resource.source as string}' is a Kernel.Application. Only Kernel.Library modules may be imported. Applications are run directly, not imported.`,
+        `Telo.Import target '${resource.source as string}' is a Telo.Application. Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
       );
     }
-    throw new Error(`No Kernel.Library manifest found in source "${resource.source as string}"`);
+    throw new Error(`No Telo.Library manifest found in source "${resource.source as string}"`);
   }
   const targetModule: string = moduleManifest.metadata.name;
 

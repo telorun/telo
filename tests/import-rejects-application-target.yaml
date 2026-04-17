@@ -1,11 +1,11 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ImportRejectsApplicationTargetTest
   version: 1.0.0
 targets:
   - TestImportApplicationRejected
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert
@@ -15,4 +15,4 @@ metadata:
   name: TestImportApplicationRejected
 source: ./__fixtures__/imports-an-application.yaml
 expect:
-  loadError: "Kernel.Application"
+  loadError: "Telo.Application"

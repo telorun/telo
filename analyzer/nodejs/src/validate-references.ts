@@ -6,12 +6,12 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 const SOURCE = "telo-analyzer";
-/** Kinds skipped by reference validation. Kernel.Application and Kernel.Library
+/** Kinds skipped by reference validation. Telo.Application and Telo.Library
  *  are intentionally not here: Application has `targets` with x-telo-ref that
  *  must be validated, and Library has no ref-bearing fields so flows through
- *  harmlessly. Kernel.Import is also not here for the same reason — its
+ *  harmlessly. Telo.Import is also not here for the same reason — its
  *  `source` field isn't x-telo-ref, so nothing gets checked. */
-const SYSTEM_KINDS = new Set(["Kernel.Definition", "Kernel.Abstract"]);
+const SYSTEM_KINDS = new Set(["Telo.Definition", "Telo.Abstract"]);
 
 /**
  * Checks whether `kind` satisfies the ref constraint in `entry`.
@@ -32,7 +32,7 @@ function checkKind(
     if (!targetKind) return [];
     const targetDef = registry.resolve(targetKind);
     if (!targetDef) return [];
-    if (targetDef.kind === "Kernel.Abstract") {
+    if (targetDef.kind === "Telo.Abstract") {
       const implementing = registry.getByExtends(targetKind);
       if (implementing.length === 0) return []; // partial context — no implementations loaded yet
       const implementingKinds = new Set(
@@ -76,7 +76,7 @@ export function validateReferences(
   if (!aliases || !registry) return diagnostics;
 
   // Build outer resource lookup by name for resolution check.
-  // Exclude system kinds (Kernel.Definition) — they are type blueprints, not instances,
+  // Exclude system kinds (Telo.Definition) — they are type blueprints, not instances,
   // and their names (e.g. "Server", "Job") would shadow user-defined resource instances.
   const byName = new Map<string, ResourceManifest>();
   for (const r of resources) {

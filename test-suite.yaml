@@ -1,11 +1,11 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TestSuite
   version: 1.0.0
 targets:
   - RunAll
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Test
 source: ./modules/test

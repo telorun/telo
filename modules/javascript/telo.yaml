@@ -1,13 +1,13 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: "javascript"
   namespace: std
   version: "0.2.0"
 ---
-kind: "Kernel.Definition"
+kind: "Telo.Definition"
 metadata:
   name: "Script"
-capability: Kernel.Invocable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/javascript@0.1.9?local_path=./nodejs#script
 schema:
@@ -20,7 +20,7 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref: "kernel#Type"
+      x-telo-ref: "telo#Type"
       oneOf:
         - type: "string"
         - type: "object"
@@ -28,7 +28,7 @@ schema:
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref: "kernel#Type"
+      x-telo-ref: "telo#Type"
       oneOf:
         - type: "string"
         - type: "object"

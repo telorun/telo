@@ -13,7 +13,7 @@ interface EnrichedMetadata {
 
 /**
  * Converts all modules in the Application to ResourceManifest[], enriching
- * Kernel.Import documents with resolvedModuleName/resolvedNamespace so the
+ * Telo.Import documents with resolvedModuleName/resolvedNamespace so the
  * analyzer can correctly register import aliases and module identities.
  */
 function toAnalysisManifests(app: Application): ResourceManifest[] {
@@ -26,8 +26,8 @@ function toAnalysisManifests(app: Application): ResourceManifest[] {
       const meta = doc.metadata as EnrichedMetadata;
       meta.source = filePath;
 
-      // Enrich Kernel.Import with resolved module metadata from the imported module
-      if (doc.kind === "Kernel.Import") {
+      // Enrich Telo.Import with resolved module metadata from the imported module
+      if (doc.kind === "Telo.Import") {
         const imp = manifest.imports.find((i) => i.name === meta.name);
         const resolvedPath = imp?.resolvedPath;
         if (resolvedPath) {

@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: workflow-temporal
   namespace: std
@@ -8,7 +8,7 @@ exports:
   kinds:
     - Backend
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Backend
 capability: Workflow.Backend

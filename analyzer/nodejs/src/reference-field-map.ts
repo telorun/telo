@@ -1,6 +1,6 @@
 /** An entry for a field that carries one or more x-telo-ref constraints. */
 export interface RefFieldEntry {
-  /** One or more canonical ref strings ("namespace/module#TypeName" or "kernel#TypeName").
+  /** One or more canonical ref strings ("namespace/module#TypeName" or "telo#TypeName").
    *  Multiple entries arise from anyOf branches. */
   refs: string[];
   /** True when the field path traversed through at least one array (path contains "[]"). */

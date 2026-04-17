@@ -8,7 +8,7 @@ const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
  * Walks a raw YAML document and replaces all "${{ expr }}" strings with
  * CompiledValue wrappers. Throws on CEL syntax errors.
  * Intended to be called once per document at load time.
- * Kernel.Definition documents are returned unchanged — their schema fields
+ * Telo.Definition documents are returned unchanged — their schema fields
  * are static metadata and must not be treated as CEL templates.
  */
 export function precompileDoc(doc: unknown): unknown {

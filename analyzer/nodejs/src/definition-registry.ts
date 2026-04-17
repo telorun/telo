@@ -20,10 +20,10 @@ export class DefinitionRegistry {
   /** Reverse inheritance index: parent kind → direct child kinds. */
   private readonly extendedBy = new Map<string, string[]>();
   /** Module identity table: identity string → canonical module name.
-   *  "kernel" → "Kernel", "std/pipeline" → "pipeline", etc. */
+   *  "telo" → "Telo", "std/pipeline" → "pipeline", etc. */
   private readonly identityMap = new Map<string, string>();
   /** Reverse identity table: canonical module name → full identity string.
-   *  "Kernel" → "kernel", "pipeline" → "std/pipeline", etc.
+   *  "Telo" → "telo", "pipeline" → "std/pipeline", etc.
    *  Used to compute definition $id values for the AJV schema store. */
   private readonly reverseIdentityMap = new Map<string, string>();
 
@@ -40,10 +40,10 @@ export class DefinitionRegistry {
         this.extendedBy.set(definition.capability, [key]);
       }
     }
-    // Auto-register the kernel identity when any Kernel built-in is registered.
-    if (definition.kind === "Kernel.Abstract" && mod === "Kernel") {
-      this.identityMap.set("kernel", "Kernel");
-      this.reverseIdentityMap.set("Kernel", "kernel");
+    // Auto-register the telo identity when any Telo built-in is registered.
+    if (definition.kind === "Telo.Abstract" && mod === "Telo") {
+      this.identityMap.set("telo", "Telo");
+      this.reverseIdentityMap.set("Telo", "telo");
     }
     // If identity is already known, register the schema in AJV immediately.
     if (mod && definition.schema) {
@@ -52,11 +52,11 @@ export class DefinitionRegistry {
   }
 
   /** Register a module identity for x-telo-ref resolution.
-   *  Call once per module doc (Kernel.Application or Kernel.Library) when the manifest is loaded.
-   *  @param namespace  The module's metadata.namespace (e.g. "std"), or null for kernel built-ins.
+   *  Call once per module doc (Telo.Application or Telo.Library) when the manifest is loaded.
+   *  @param namespace  The module's metadata.namespace (e.g. "std"), or null for telo built-ins.
    *  @param moduleName The module's metadata.name (e.g. "pipeline", "http-server"). */
   registerModuleIdentity(namespace: string | null, moduleName: string): void {
-    const identity = namespace ? `${namespace}/${moduleName}` : "kernel";
+    const identity = namespace ? `${namespace}/${moduleName}` : "telo";
     this.identityMap.set(identity, moduleName);
     this.reverseIdentityMap.set(moduleName, identity);
     // Retroactively register AJV schemas for definitions of this module already in the registry.
@@ -110,7 +110,7 @@ export class DefinitionRegistry {
    *  Splits on "#", looks up the left side in the identity table, and returns
    *  "<canonicalModule>.<TypeName>".
    *
-   *  "kernel#Invocable"       → "Kernel.Invocable"
+   *  "telo#Invocable"         → "Telo.Invocable"
    *  "std/pipeline#Job"       → "pipeline.Job"
    *  "std/http-server#Server" → "http-server.Server"
    *

@@ -23,7 +23,7 @@ Follow this strictly:
 
 Telo is a declarative runtime: YAML manifests describe desired state, the kernel resolves resource dependencies via a multi-pass init loop, and controllers implement each resource kind. CEL expressions in `${{ }}` are compiled before execution.
 
-**Topology-driven constraint:** The analyzer and telo editor must never hardcode knowledge about specific resource kinds. All resource-specific behaviour must be expressed via `x-telo-*` schema annotations in `Kernel.Definition` schemas and resolved generically.
+**Topology-driven constraint:** The analyzer and telo editor must never hardcode knowledge about specific resource kinds. All resource-specific behaviour must be expressed via `x-telo-*` schema annotations in `Telo.Definition` schemas and resolved generically.
 
 **Browser compatibility:** The `analyzer` package must be runnable in the browser without Node.js polyfills. Do not import Node.js built-ins (`fs`, `path`, `url`, `child_process`, etc.) from analyzer code. Node.js-specific adapters belong in the consuming package (kernel, IDE extension, CLI).
 
@@ -48,32 +48,32 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 - `resource-context.ts` — bridge: `getModuleContext()`, `registerModuleImport()`
 - `module-context-registry.ts` — per-module store for variables, secrets, resources, imports
 - `controller-registry.ts` — maps resource kinds to controller implementations
-- `controllers/module/module-controller.ts` — handles `kind: Kernel.Application` / `kind: Kernel.Library` (includes, module scope)
-- `controllers/module/import-controller.ts` — handles `kind: Kernel.Import` (external modules, export CEL eval)
-- `controllers/resource-definition/` — handles `kind: Kernel.Definition` and parameterized templates
+- `controllers/module/module-controller.ts` — handles `kind: Telo.Application` / `kind: Telo.Library` (includes, module scope)
+- `controllers/module/import-controller.ts` — handles `kind: Telo.Import` (external modules, export CEL eval)
+- `controllers/resource-definition/` — handles `kind: Telo.Definition` and parameterized templates
 - `capabilities/` — base interfaces: runnable, invokable, listener, provider, template, mount
 - `manifest-schemas.ts` — JSON Schema for YAML validation
 
 ## Resource Kinds
 
-Every module file must start with exactly one `Kernel.Application` OR `Kernel.Library` doc. Applications are runnable entry points, Libraries are importable units of kinds/definitions. The two kinds share most fields; what differs is runtime role.
+Every module file must start with exactly one `Telo.Application` OR `Telo.Library` doc. Applications are runnable entry points, Libraries are importable units of kinds/definitions. The two kinds share most fields; what differs is runtime role.
 
-### `kind: Kernel.Application`
+### `kind: Telo.Application`
 
-A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** the target of a `Kernel.Import` — importing an Application is rejected at load time.
+A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** the target of a `Telo.Import` — importing an Application is rejected at load time.
 
 - `metadata.name` — kebab-case; becomes the kind prefix (e.g. `MyModule.*`)
 - `metadata.namespace` — optional grouping prefix for `x-telo-ref` resolution
 - `lifecycle` — `"shared"` (default) | `"isolated"`
 - `keepAlive` — prevent kernel exit when idle
-- `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Kernel.Application`, `Kernel.Library`, `Kernel.Import`, or `Kernel.Definition`
-- `targets` — optional; run after all resources init; must reference `Kernel.Runnable` or `Kernel.Service`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
+- `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Telo.Application`, `Telo.Library`, `Telo.Import`, or `Telo.Definition`
+- `targets` — optional; run after all resources init; must reference `Telo.Runnable` or `Telo.Service`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
 - Receives `env: process.env` when it is the root loaded manifest.
 - `variables` / `secrets` / `exports` are **forbidden** — an Application is a root with no parent to supply inputs. Use `env` for runtime config. If you want to export or accept variables/secrets, the file is a Library.
 
-### `kind: Kernel.Library`
+### `kind: Telo.Library`
 
-An importable unit of kinds/definitions. Loaded **only** as the target of a `Kernel.Import`. Cannot be run directly; `loadFromConfig` on a Library manifest is a hard error.
+An importable unit of kinds/definitions. Loaded **only** as the target of a `Telo.Import`. Cannot be run directly; `loadFromConfig` on a Library manifest is a hard error.
 
 - `metadata.name` / `metadata.namespace` — as Application.
 - `variables` / `secrets` — JSON Schema property map; public contract for importers.
@@ -82,17 +82,17 @@ An importable unit of kinds/definitions. Loaded **only** as the target of a `Ker
 - `targets` is **forbidden**. `lifecycle` / `keepAlive` are also forbidden — libraries are not lifecycle participants.
 - No `env` access.
 
-### `kind: Kernel.Import`
+### `kind: Telo.Import`
 
-Loads a `Kernel.Library` into the current scope under a PascalCase alias.
+Loads a `Telo.Library` into the current scope under a PascalCase alias.
 
 - `source` — relative path / registry ref / URL; resolved to `telo.yaml` automatically.
 - `variables` / `secrets` — values passed into the child library.
 - Creates an isolated child `EvaluationContext`; child resources not visible to root scope.
-- Importing a `Kernel.Application` is a hard error — applications are run directly, not imported.
+- Importing a `Telo.Application` is a hard error — applications are run directly, not imported.
 - Only root module gets `env: process.env`; child modules are isolated from the host environment.
 
-### `kind: Kernel.Definition`
+### `kind: Telo.Definition`
 
 Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
@@ -103,18 +103,18 @@ Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
 ## Capabilities
 
-- `Kernel.Service` — `init()` + optional `teardown()`; long-lived servers, pools
-- `Kernel.Runnable` — `run()`; one-shot tasks, pipelines
-- `Kernel.Invocable` — `invoke(inputs)`; request handlers, scripts
-- `Kernel.Provider` — `init()`; config/secret providers; all fields implicitly `x-telo-eval: compile`
-- `Kernel.Mount` — mounted into a Service (e.g. HTTP APIs, middleware)
-- `Kernel.Type` — pure schema definition, no runtime instance
+- `Telo.Service` — `init()` + optional `teardown()`; long-lived servers, pools
+- `Telo.Runnable` — `run()`; one-shot tasks, pipelines
+- `Telo.Invocable` — `invoke(inputs)`; request handlers, scripts
+- `Telo.Provider` — `init()`; config/secret providers; all fields implicitly `x-telo-eval: compile`
+- `Telo.Mount` — mounted into a Service (e.g. HTTP APIs, middleware)
+- `Telo.Type` — pure schema definition, no runtime instance
 
-Defined as `Kernel.Abstract` entries in `builtins.ts`.
+Defined as `Telo.Abstract` entries in `builtins.ts`.
 
 ## x-telo-\* Schema Annotations
 
-Inside `Kernel.Definition` schema blocks:
+Inside `Telo.Definition` schema blocks:
 
 - `x-telo-eval: "compile" | "runtime"` — when `${{ }}` expressions are evaluated: at load time (compile) or per invocation (runtime). Without annotation, strings pass through raw.
 - `x-telo-ref: "namespace/module-name#TypeName"` — field must be a named reference to a resource of that capability/type. Validated at Phase 3; replaced with live `ResourceInstance` at Phase 5.
@@ -141,7 +141,7 @@ YAML directives: `$let`, `$if`, `$for`, `$eval`, `$include` — see `yaml-cel-te
 
 - Runtime bug / init order → `kernel.ts`, `loader.ts`
 - Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts`
-- New resource kind → add `Kernel.Definition` to module's `telo.yaml`, controller in `src/`
+- New resource kind → add `Telo.Definition` to module's `telo.yaml`, controller in `src/`
 - CEL template syntax → `yaml-cel-templating/nodejs/`
 - Schema validation errors → `manifest-schemas.ts`, `analyzer/nodejs/`
 - x-telo-ref / scope / topology → `analyzer/nodejs/src/reference-field-map.ts`, `dependency-graph.ts`, `validate-references.ts`

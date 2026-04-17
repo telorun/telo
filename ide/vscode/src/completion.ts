@@ -2,16 +2,16 @@ import type { AnalysisRegistry } from "@telorun/analyzer";
 import * as vscode from "vscode";
 
 const CAPABILITY_VALUES = [
-  "Kernel.Service",
-  "Kernel.Runnable",
-  "Kernel.Invocable",
-  "Kernel.Provider",
-  "Kernel.Mount",
-  "Kernel.Type",
+  "Telo.Service",
+  "Telo.Runnable",
+  "Telo.Invocable",
+  "Telo.Provider",
+  "Telo.Mount",
+  "Telo.Type",
 ];
 
 // Abstract/template kinds that should not appear as resource kind suggestions
-const ABSTRACT_DEF_KINDS = new Set(["Kernel.Abstract", "Kernel.Template"]);
+const ABSTRACT_DEF_KINDS = new Set(["Telo.Abstract", "Telo.Template"]);
 
 type CompletionCtx =
   | { type: "kind" }
@@ -169,8 +169,8 @@ function detectContext(
   const { start, end } = findDocBounds(lines, position.line);
   const docKind = extractKindFromDoc(lines, start, end);
 
-  // Capability value completion: only inside Kernel.Definition docs
-  if (/^capability:\s*\S*$/.test(currentLine) && docKind === "Kernel.Definition") {
+  // Capability value completion: only inside Telo.Definition docs
+  if (/^capability:\s*\S*$/.test(currentLine) && docKind === "Telo.Definition") {
     return { type: "capability" };
   }
 
@@ -232,10 +232,10 @@ export class TeloCompletionProvider implements vscode.CompletionItemProvider {
 
 function kindCompletions(registry: AnalysisRegistry | undefined): vscode.CompletionItem[] {
   const kinds = new Set<string>([
-    "Kernel.Application",
-    "Kernel.Library",
-    "Kernel.Import",
-    "Kernel.Definition",
+    "Telo.Application",
+    "Telo.Library",
+    "Telo.Import",
+    "Telo.Definition",
   ]);
 
   if (registry) {
@@ -257,7 +257,7 @@ function kindCompletions(registry: AnalysisRegistry | undefined): vscode.Complet
 function capabilityCompletions(): vscode.CompletionItem[] {
   return CAPABILITY_VALUES.map((cap) => {
     const item = new vscode.CompletionItem(cap, vscode.CompletionItemKind.EnumMember);
-    item.detail = "Kernel capability";
+    item.detail = "Telo capability";
     return item;
   });
 }

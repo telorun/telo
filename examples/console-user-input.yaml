@@ -1,20 +1,20 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ConsoleConfigExample
 targets:
   - ConsoleConfigExampleFlow
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Config
 source: ../modules/config
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Console
 source: ../modules/console
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run

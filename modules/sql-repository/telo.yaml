@@ -1,14 +1,14 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: sql-repository
   namespace: std
   version: 0.1.0
   description: Named CRUD handlers that generate SQL from domain operations
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Read
-capability: Kernel.Invocable
+capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -34,10 +34,10 @@ invoke:
     bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
 
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Create
-capability: Kernel.Invocable
+capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]
@@ -61,10 +61,10 @@ resources:
 invoke: "${{ self.name }}-exec"
 
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Delete
-capability: Kernel.Invocable
+capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]

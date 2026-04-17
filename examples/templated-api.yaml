@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: templated-server
   version: 1.0.0
@@ -6,17 +6,17 @@ exports:
   kinds:
     - HelloApi
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../modules/javascript

@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: IncludeRejectsSystemKinds
   version: 1.0.0

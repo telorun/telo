@@ -50,7 +50,7 @@ function filterResolvedResourcesByRef(
   if (!parsed) return [];
 
   if (parsed.scope === "kernel") {
-    const capability = normalizeCapability(`Kernel.${parsed.symbol}`);
+    const capability = normalizeCapability(`Telo.${parsed.symbol}`);
     return resolvedResources.filter((resource) =>
       resource.capability ? normalizeCapability(resource.capability) === capability : false,
     );

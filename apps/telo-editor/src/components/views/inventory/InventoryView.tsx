@@ -58,8 +58,8 @@ export function InventoryView({
   onSelectResource,
   onNavigateResource,
 }: ViewProps) {
-  const userResources = viewData.manifest.resources.filter((r) => !r.kind.startsWith("Kernel."));
-  const definitions = viewData.manifest.resources.filter((r) => r.kind === "Kernel.Definition");
+  const userResources = viewData.manifest.resources.filter((r) => !r.kind.startsWith("Telo."));
+  const definitions = viewData.manifest.resources.filter((r) => r.kind === "Telo.Definition");
 
   function rowClassName(kind: string, name: string): string {
     const isSelected = selectedResource?.kind === kind && selectedResource?.name === name;

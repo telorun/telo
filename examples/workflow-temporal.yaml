@@ -1,26 +1,26 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: example
   version: 1.0.0
 targets:
   - DataSyncWorkflow
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Workflow
 source: ../modules/workflow
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Temporal
 source: ../modules/workflow-temporal
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JS
 source: ../modules/javascript

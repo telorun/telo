@@ -1,11 +1,11 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: IncludeRejectsSystemKindsTest
   version: 1.0.0
 targets:
   - TestSystemKindRejected
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

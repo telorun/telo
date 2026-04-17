@@ -25,7 +25,7 @@ const baseDefinition = {
   type: "object",
   required: ["kind", "metadata"],
   properties: {
-    kind: { const: "Kernel.Definition" },
+    kind: { const: "Telo.Definition" },
     metadata: metadataSchema,
     capability: { type: "string" },
     schema: { type: "object", additionalProperties: true },
@@ -35,26 +35,26 @@ const baseDefinition = {
 };
 
 const KNOWN_CAPABILITIES = [
-  "Kernel.Service",
-  "Kernel.Runnable",
-  "Kernel.Invocable",
-  "Kernel.Provider",
-  "Kernel.Type",
-  "Kernel.Mount",
+  "Telo.Service",
+  "Telo.Runnable",
+  "Telo.Invocable",
+  "Telo.Provider",
+  "Telo.Type",
+  "Telo.Mount",
 ] as const;
 
 export const ResourceDefinitionSchema = {
   ...baseDefinition,
   oneOf: [
-    { required: ["capability"], properties: { capability: { const: "Kernel.Service" } } },
-    { required: ["capability"], properties: { capability: { const: "Kernel.Runnable" } } },
-    { required: ["capability"], properties: { capability: { const: "Kernel.Invocable" } } },
-    { required: ["capability"], properties: { capability: { const: "Kernel.Provider" } } },
-    { required: ["capability"], properties: { capability: { const: "Kernel.Type" } } },
+    { required: ["capability"], properties: { capability: { const: "Telo.Service" } } },
+    { required: ["capability"], properties: { capability: { const: "Telo.Runnable" } } },
+    { required: ["capability"], properties: { capability: { const: "Telo.Invocable" } } },
+    { required: ["capability"], properties: { capability: { const: "Telo.Provider" } } },
+    { required: ["capability"], properties: { capability: { const: "Telo.Type" } } },
     {
       required: ["capability"],
       properties: {
-        capability: { const: "Kernel.Mount" },
+        capability: { const: "Telo.Mount" },
       },
     },
     // Unknown/absent capability: open schema for third-party extensibility

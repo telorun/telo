@@ -119,18 +119,18 @@ Load and run a Telo manifest.
 Create a file `server.yaml`:
 
 ```yaml
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: Example
 targets:
   - Server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: HttpServer
 source: std/http-server@1.0.1
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: std/javascript@1.0.0

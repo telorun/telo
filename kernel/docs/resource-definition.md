@@ -1,8 +1,8 @@
-# `Kernel.Definition` Specification
+# `Telo.Definition` Specification
 
 ## Overview
 
-A `Kernel.Definition` is the schema, contract, and execution specification for a named resource kind. Every resource in a Telo manifest is an instance of a definition. The definition tells the kernel how to validate, execute, and relate instances of that kind; it tells the analyzer what is valid to write; and it tells the editor how to render and edit instances visually.
+A `Telo.Definition` is the schema, contract, and execution specification for a named resource kind. Every resource in a Telo manifest is an instance of a definition. The definition tells the kernel how to validate, execute, and relate instances of that kind; it tells the analyzer what is valid to write; and it tells the editor how to render and edit instances visually.
 
 A definition is composed of several independent **facets**, each serving a distinct layer:
 
@@ -22,7 +22,7 @@ Facets are orthogonal. Any combination is valid. A definition need not declare a
 ## 1. Identification
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Api # PascalCase type name, unique within the module
   module: Http # Module namespace this type belongs to
@@ -90,7 +90,7 @@ schema:
         type: object
         properties:
           handler:
-            x-telo-ref: Kernel.Invocable
+            x-telo-ref: Telo.Invocable
   required:
     - port
     - routes
@@ -104,7 +104,7 @@ Marks a field as a reference to another resource. The value is the fully-qualifi
 
 ```yaml
 handler:
-  x-telo-ref: Kernel.Invocable # must reference an invocable resource
+  x-telo-ref: Telo.Invocable # must reference an invocable resource
 ```
 
 At runtime, the field value is the live instance of the referenced resource rather than a plain identifier. The analyzer validates that the referenced resource exists and fulfills the declared contract.
@@ -114,8 +114,8 @@ To accept multiple capability alternatives:
 ```yaml
 invoke:
   anyOf:
-    - x-telo-ref: Kernel.Invocable
-    - x-telo-ref: Kernel.Runnable
+    - x-telo-ref: Telo.Invocable
+    - x-telo-ref: Telo.Runnable
 ```
 
 #### `x-telo-scope`
@@ -142,7 +142,7 @@ routes:
         x-telo-topology-role: matcher
       handler:
         x-telo-topology-role: handler
-        x-telo-ref: Kernel.Invocable
+        x-telo-ref: Telo.Invocable
 ```
 
 Role annotations are required whenever a `topology` is declared, regardless of whether a controller is also present. The controller replaces runtime execution but the editor and analyzer still read role annotations.
@@ -202,7 +202,7 @@ schema:
         type: object
         properties:
           handler:
-            x-telo-ref: Kernel.Invocable
+            x-telo-ref: Telo.Invocable
             x-telo-context:
               type: object
               properties:
@@ -295,7 +295,7 @@ For the full specification of PURL format, resolution order, entry points, and t
 A definition that combines all facets:
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Api
   module: Http
@@ -328,7 +328,7 @@ schema:
               method: { type: string }
           handler:
             x-telo-topology-role: handler
-            x-telo-ref: Kernel.Invocable
+            x-telo-ref: Telo.Invocable
             # CEL context available to the handler invocable and its inputs
             x-telo-context:
               type: object

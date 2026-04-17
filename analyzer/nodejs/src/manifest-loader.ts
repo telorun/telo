@@ -14,10 +14,10 @@ import {
 } from "./types.js";
 
 const SYSTEM_KINDS = new Set([
-  "Kernel.Application",
-  "Kernel.Library",
-  "Kernel.Import",
-  "Kernel.Definition",
+  "Telo.Application",
+  "Telo.Library",
+  "Telo.Import",
+  "Telo.Definition",
 ]);
 
 export class Loader {
@@ -117,7 +117,7 @@ export class Loader {
       const kinds = moduleManifests.map((m) => m.kind).join(", ");
       throw new Error(
         `File '${source}' contains ${moduleManifests.length} module declarations (${kinds}). ` +
-          `A file may declare at most one Kernel.Application or Kernel.Library.`,
+          `A file may declare at most one Telo.Application or Telo.Library.`,
       );
     }
     const moduleManifest = moduleManifests[0];
@@ -255,7 +255,7 @@ export class Loader {
   } | null> {
     // Try loading as a regular module first (it might be a telo.yaml itself).
     // Use loadManifests (not loadModule) so imported definitions are included —
-    // otherwise the analyzer won't know about kinds from Kernel.Import sources.
+    // otherwise the analyzer won't know about kinds from Telo.Import sources.
     try {
       const docs = await this.loadModule(fileUrl);
       const hasModule = docs.some((d) => isModuleKind(d.kind));
@@ -299,7 +299,7 @@ export class Loader {
 
     while (queue.length > 0) {
       const m = queue.shift()!;
-      if (m.kind !== "Kernel.Import") continue;
+      if (m.kind !== "Telo.Import") continue;
       const importSource = (m as any).source as string | undefined;
       if (!importSource) continue;
       const base = (m.metadata as any)?.source ?? entryUrl;
@@ -319,7 +319,7 @@ export class Loader {
       }
       result.set(importUrl, imported);
       for (const im of imported) {
-        if (im.kind === "Kernel.Import") queue.push(im);
+        if (im.kind === "Telo.Import") queue.push(im);
       }
     }
 
@@ -335,7 +335,7 @@ export class Loader {
 
     while (queue.length > 0) {
       const m = queue.shift()!;
-      if (m.kind !== "Kernel.Import") continue;
+      if (m.kind !== "Telo.Import") continue;
       const importSource = (m as any).source as string | undefined;
       if (!importSource) continue;
       const base = (m.metadata as any)?.source ?? entryUrl;
@@ -353,15 +353,15 @@ export class Loader {
         (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
         throw e;
       }
-      // Import target must be a Kernel.Library. Check the Library branch
+      // Import target must be a Telo.Library. Check the Library branch
       // explicitly rather than "anything that's a module kind" so that a
       // future third kind can't silently slip past as a valid import target.
-      const importedLibrary = imported.find((im) => im.kind === "Kernel.Library");
-      const importedApplication = imported.find((im) => im.kind === "Kernel.Application");
+      const importedLibrary = imported.find((im) => im.kind === "Telo.Library");
+      const importedApplication = imported.find((im) => im.kind === "Telo.Application");
       if (importedApplication) {
         const e = new Error(
-          `Kernel.Import target '${importSource}' is a Kernel.Application. ` +
-            `Only Kernel.Library modules may be imported. Applications are run directly, not imported.`,
+          `Telo.Import target '${importSource}' is a Telo.Application. ` +
+            `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
         );
         (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
         throw e;
@@ -384,8 +384,8 @@ export class Loader {
         }
       }
       for (const im of imported) {
-        if (im.kind === "Kernel.Definition") importedDefs.push(im);
-        if (im.kind === "Kernel.Import") queue.push(im);
+        if (im.kind === "Telo.Definition") importedDefs.push(im);
+        if (im.kind === "Telo.Import") queue.push(im);
       }
     }
 

@@ -13,7 +13,7 @@ const ScenarioEntry = Type.Object(
   {
     name: Type.String(),
     weight: Type.Optional(Type.Integer()),
-    invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "kernel#Invocable" }),
+    invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "telo#Invocable" }),
     validate: Type.Optional(Type.String()),
   },
   { additionalProperties: true },

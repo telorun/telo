@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: FeedbackApiRepo
   version: 1.0.0
@@ -8,22 +8,22 @@ targets:
   - SetupDb
   - Server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Sql
 source: ../modules/sql
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: SqlRepository
 source: ../modules/sql-repository
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run

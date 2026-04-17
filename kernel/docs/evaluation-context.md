@@ -192,7 +192,7 @@ public async initializeResources(): Promise<void> {
 
 **Why multiple passes?**
 
-Resources may depend on other resources being created first (e.g., a `Kernel.Import` resource brings in a library that registers new kinds other resources need). Rather than requiring explicit topological sorting, the loop retries failed resources until all are resolved or the max passes are exhausted.
+Resources may depend on other resources being created first (e.g., a `Telo.Import` resource brings in a library that registers new kinds other resources need). Rather than requiring explicit topological sorting, the loop retries failed resources until all are resolved or the max passes are exhausted.
 
 ### 5.5 Child Context Initialization
 

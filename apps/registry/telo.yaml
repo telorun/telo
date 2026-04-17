@@ -1,6 +1,6 @@
 # Telo Module Registry
 
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: telo-registry
   version: 1.0.0
@@ -10,29 +10,29 @@ targets:
 ---
 # ── Imports ──────────────────────────────────────────────────────────────────
 
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: HttpClient
 source: ../../modules/http-client
 
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Config
 source: ../../modules/config
 
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: S3
 source: ../../modules/s3
@@ -40,12 +40,12 @@ secrets:
   accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
   secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Sql
 source: ../../modules/sql
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../modules/run
@@ -144,7 +144,7 @@ openapi:
     version: 1.0.0
     description: |
       Resolve and browse Telo Kernel modules.
-      Compatible with the Telo CLI and kind: Kernel.Import source resolution.
+      Compatible with the Telo CLI and kind: Telo.Import source resolution.
 mounts:
   - path: /
     type: Http.Api.PublicApi

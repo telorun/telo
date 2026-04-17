@@ -1,14 +1,14 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: templated-api-usage
   version: 1.0.0
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Templated
 source: ./templated-api.yaml

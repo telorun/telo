@@ -1,4 +1,4 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: ValidGlobalsAccess
   version: 1.0.0
@@ -6,17 +6,17 @@ variables:
   apiKey:
     type: string
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../..
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../../../javascript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../../../type

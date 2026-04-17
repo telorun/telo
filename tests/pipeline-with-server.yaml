@@ -1,34 +1,34 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: PipelineWithServer
   version: 1.0.0
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: HttpClient
 source: ../modules/http-client
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: JavaScript
 source: ../modules/javascript
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

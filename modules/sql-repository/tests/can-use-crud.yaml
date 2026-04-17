@@ -1,26 +1,26 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: CanUseCrud
   version: 1.0.0
 targets:
   - TestCrud
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Sql
 source: ../../sql
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: SqlRepository
 source: ../
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../../assert

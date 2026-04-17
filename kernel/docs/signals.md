@@ -16,7 +16,7 @@ To expose an internal resource signal to the outside world, a module must explic
 **Syntax (`users-telo.yaml`):**
 
 ```yaml
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: users
 
@@ -48,7 +48,7 @@ Because Telo does not wrap payloads in runtime envelopes, the CEL `condition` ev
 **Syntax (`consumer-telo.yaml`):**
 
 ```yaml
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Users
 source: example/users@1.0.0

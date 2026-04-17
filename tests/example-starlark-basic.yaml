@@ -1,4 +1,4 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TestStarlarkBasic
   version: 1.0.0
@@ -7,27 +7,27 @@ targets:
   - RunScriptOnEvent
   - VerifyStarlarkBasicEvents
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Starlark
 source: ../modules/starlark
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Console
 source: ../modules/console
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../modules/assert

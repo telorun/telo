@@ -164,7 +164,7 @@ export function toPascalCase(s: string): string {
     .join("");
 }
 
-// Returns the source string to store in Kernel.Import — relative path from
+// Returns the source string to store in Telo.Import — relative path from
 // fromPath's directory to toPath's directory (directory form, no extension).
 export function toRelativeSource(fromPath: string, toPath: string): string {
   const fromDir = pathDirname(fromPath);
@@ -428,10 +428,10 @@ export function classifyImport(source: string): ImportKind {
 export function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
   const moduleDoc = docs.find((r) => isModuleKind(r.kind));
   const moduleKind: "Application" | "Library" =
-    moduleDoc?.kind === "Kernel.Library" ? "Library" : "Application";
+    moduleDoc?.kind === "Telo.Library" ? "Library" : "Application";
 
   const imports: ParsedImport[] = docs
-    .filter((r) => r.kind === "Kernel.Import")
+    .filter((r) => r.kind === "Telo.Import")
     .map((r) => ({
       name: r.metadata.name as string,
       source: (r as Record<string, unknown>).source as string,
@@ -441,7 +441,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     }));
 
   const resources: ParsedResource[] = docs
-    .filter((r) => !isModuleKind(r.kind) && r.kind !== "Kernel.Import")
+    .filter((r) => !isModuleKind(r.kind) && r.kind !== "Telo.Import")
     .map((r) => {
       const { kind, metadata, ...rest } = r as Record<string, unknown> & {
         kind: string;
@@ -668,7 +668,7 @@ export function getAvailableKinds(app: Application, manifest: ParsedManifest): A
     const mod = app.modules.get(imp.resolvedPath);
     if (!mod) continue;
     for (const r of mod.resources) {
-      if (r.kind !== "Kernel.Definition") continue;
+      if (r.kind !== "Telo.Definition") continue;
       result.push({
         fullKind: `${imp.name}.${r.name}`,
         alias: imp.name,
@@ -780,7 +780,7 @@ function dumpYamlDoc(doc: Record<string, unknown>): string {
 
 export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
   const moduleDoc: Record<string, unknown> = {
-    kind: manifest.kind === "Application" ? "Kernel.Application" : "Kernel.Library",
+    kind: manifest.kind === "Application" ? "Telo.Application" : "Telo.Library",
     metadata: {
       name: manifest.metadata.name,
       ...(manifest.metadata.version ? { version: manifest.metadata.version } : {}),
@@ -795,7 +795,7 @@ export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown
   if (manifest.kind === "Application" && manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
 
   const importDocs = manifest.imports.map((imp) => ({
-    kind: "Kernel.Import",
+    kind: "Telo.Import",
     metadata: { name: imp.name },
     source: imp.source,
     ...(imp.variables ? { variables: imp.variables } : {}),

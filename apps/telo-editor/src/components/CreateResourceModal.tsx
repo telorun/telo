@@ -18,7 +18,7 @@ interface CreateResourceModalProps {
 const NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 function capabilityLabel(capability: string): string {
-  return capability.replace("Kernel.", "");
+  return capability.replace("Telo.", "");
 }
 
 export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: CreateResourceModalProps) {

@@ -1,16 +1,16 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ExampleConsole
   version: 1.0.0
 targets:
   - Main
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../modules/run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Console
 source: ../modules/console

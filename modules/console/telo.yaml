@@ -1,13 +1,13 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   name: console
   namespace: std
   version: 1.1.0
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: WriteLine
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/console@0.1.7?local_path=./nodejs#writeline
 schema:
@@ -19,10 +19,10 @@ schema:
       type: string
   required: ["output"]
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: ReadLine
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/console@0.1.7?local_path=./nodejs#readline
 schema:

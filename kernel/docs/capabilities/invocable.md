@@ -20,10 +20,10 @@ The kernel calls `invoke()` directly. Controllers are responsible only for execu
 
 ## 2. Definition-Level Contract (`inputs` / `outputs`)
 
-Declared on `Kernel.Definition`. Describes the _shape_ of what the invocable accepts and returns, as JSON Schema.
+Declared on `Telo.Definition`. Describes the _shape_ of what the invocable accepts and returns, as JSON Schema.
 
 ```yaml
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata: { name: Query, module: Sql }
 capability: Invocable
 inputs:
@@ -108,7 +108,7 @@ The call-site is where a specific invocable is called within a topology (a seque
 
 | Context                                  | Meaning                                                     |
 | ---------------------------------------- | ----------------------------------------------------------- |
-| `Kernel.Definition inputs`               | JSON Schema — the _type_ of arguments the invocable accepts |
+| `Telo.Definition inputs`               | JSON Schema — the _type_ of arguments the invocable accepts |
 | Call-site `inputs` (step, handler, tool) | CEL expressions — the _values_ passed at this specific call |
 
 The definition `inputs` schema is authored once on the type. Call-site `inputs` are authored at every place the invocable is called.

@@ -1,21 +1,21 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
-  { kind: "Kernel.Abstract", metadata: { name: "Template", module: "Kernel" } },
-  { kind: "Kernel.Abstract", metadata: { name: "Runnable", module: "Kernel" } },
-  { kind: "Kernel.Abstract", metadata: { name: "Service", module: "Kernel" } },
-  { kind: "Kernel.Abstract", metadata: { name: "Invocable", module: "Kernel" } },
-  { kind: "Kernel.Abstract", metadata: { name: "Mount", module: "Kernel" } },
-  { kind: "Kernel.Abstract", metadata: { name: "Type", module: "Kernel" } },
+  { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Runnable", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Service", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Invocable", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Mount", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Type", module: "Telo" } },
   {
-    kind: "Kernel.Abstract",
-    metadata: { name: "Provider", module: "Kernel" },
+    kind: "Telo.Abstract",
+    metadata: { name: "Provider", module: "Telo" },
     schema: { "x-telo-eval": "compile" },
   },
   {
-    kind: "Kernel.Definition",
-    metadata: { name: "Abstract", module: "Kernel" },
-    capability: "Kernel.Template",
+    kind: "Telo.Definition",
+    metadata: { name: "Abstract", module: "Telo" },
+    capability: "Telo.Template",
     schema: {
       type: "object",
       properties: {
@@ -33,15 +33,15 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     },
   },
   {
-    kind: "Kernel.Definition",
-    metadata: { name: "Definition", module: "Kernel" },
-    capability: "Kernel.Template",
+    kind: "Telo.Definition",
+    metadata: { name: "Definition", module: "Telo" },
+    capability: "Telo.Template",
     schema: { type: "object" },
   },
   {
-    kind: "Kernel.Definition",
-    metadata: { name: "Import", module: "Kernel" },
-    capability: "Kernel.Template",
+    kind: "Telo.Definition",
+    metadata: { name: "Import", module: "Telo" },
+    capability: "Telo.Template",
     schema: {
       type: "object",
       properties: {
@@ -61,9 +61,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     },
   },
   {
-    kind: "Kernel.Definition",
-    metadata: { name: "Application", module: "Kernel" },
-    capability: "Kernel.Template",
+    kind: "Telo.Definition",
+    metadata: { name: "Application", module: "Telo" },
+    capability: "Telo.Template",
     schema: {
       type: "object",
       properties: {
@@ -89,8 +89,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: {
             anyOf: [
-              { type: "string", "x-telo-ref": "kernel#Runnable" },
-              { type: "string", "x-telo-ref": "kernel#Service" },
+              { type: "string", "x-telo-ref": "telo#Runnable" },
+              { type: "string", "x-telo-ref": "telo#Service" },
             ],
           },
         },
@@ -104,9 +104,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     },
   },
   {
-    kind: "Kernel.Definition",
-    metadata: { name: "Library", module: "Kernel" },
-    capability: "Kernel.Template",
+    kind: "Telo.Definition",
+    metadata: { name: "Library", module: "Telo" },
+    capability: "Telo.Template",
     schema: {
       type: "object",
       properties: {

@@ -6,7 +6,7 @@ import type { Application, AvailableKind, ModuleViewData, ParsedManifest } from 
  * Builds the stable view data contract from application state.
  *
  * Merges imported kinds (from `getAvailableKinds`) and locally-defined kinds
- * (from `Kernel.Definition` resources in the manifest) into a single map.
+ * (from `Telo.Definition` resources in the manifest) into a single map.
  *
  * @param moduleDiagnostics — the inner map from
  *   `EditorState.diagnosticsByResource.get(activeModulePath)`, or undefined if
@@ -24,9 +24,9 @@ export function buildModuleViewData(
     kinds.set(kind.fullKind, kind);
   }
 
-  // Locally-defined kinds (Kernel.Definition resources in the same module)
+  // Locally-defined kinds (Telo.Definition resources in the same module)
   for (const resource of manifest.resources) {
-    if (resource.kind !== "Kernel.Definition") continue;
+    if (resource.kind !== "Telo.Definition") continue;
     const fullKind = `${resource.module ?? manifest.metadata.name}.${resource.name}`;
     kinds.set(fullKind, {
       fullKind,

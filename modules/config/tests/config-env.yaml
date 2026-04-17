@@ -1,20 +1,20 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: ConfigEnvTest
 targets:
   - TestConfigEnv
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Config
 source: ../../config
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Run
 source: ../../run
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Assert
 source: ../../assert

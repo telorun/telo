@@ -1,13 +1,13 @@
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: Test
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Http
 source: ../modules/http-server
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: TemplatingBasics
 source: ../examples/templated-api.yaml

@@ -18,7 +18,7 @@ The `Ai` module provides LLM integration for Telo manifests. It exposes four res
 Declares a connection to an LLM provider. Other resources reference it by name.
 
 ```yaml
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Ai
 source: ../modules/ai

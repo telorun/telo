@@ -1,14 +1,14 @@
-kind: Kernel.Library
+kind: Telo.Library
 metadata:
   version: 0.2.1
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows
 ---
-kind: Kernel.Definition
+kind: Telo.Definition
 metadata:
   name: Script
-capability: Kernel.Runnable
+capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/starlark@0.1.9?local_path=./nodejs#script
 schema:
@@ -27,7 +27,7 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for script inputs.
-      x-telo-ref: "kernel#Type"
+      x-telo-ref: "telo#Type"
       oneOf:
         - type: string
         - type: object
@@ -35,7 +35,7 @@ schema:
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for script outputs.
-      x-telo-ref: "kernel#Type"
+      x-telo-ref: "telo#Type"
       oneOf:
         - type: string
         - type: object

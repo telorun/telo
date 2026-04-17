@@ -13,7 +13,7 @@ export function resolveTypeFieldToSchema(
   if (!value) return undefined;
 
   if (typeof value === "string") {
-    // Named type reference — find a Kernel.Type resource by name
+    // Named type reference — find a Telo.Type resource by name
     const typeManifest = allManifests.find(
       (m) =>
         (m.metadata as any)?.name === value &&

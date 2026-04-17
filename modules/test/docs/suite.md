@@ -13,13 +13,13 @@ Each test runs in an isolated `Kernel` instance with its own controllers, event 
 ## Example
 
 ```yaml
-kind: Kernel.Application
+kind: Telo.Application
 metadata:
   name: TestSuite
 targets:
   - RunAll
 ---
-kind: Kernel.Import
+kind: Telo.Import
 metadata:
   name: Test
 source: ./modules/test

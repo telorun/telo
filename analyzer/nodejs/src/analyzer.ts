@@ -263,9 +263,9 @@ export class StaticAnalyzer {
     const defs = ctx?.definitions ?? new DefinitionRegistry();
 
     // Register module identities and aliases.
-    // The root module doc (Kernel.Application or Kernel.Library) provides its own
+    // The root module doc (Telo.Application or Telo.Library) provides its own
     // identity; imported modules surface their identity via resolvedModuleName/
-    // resolvedNamespace stamped onto the Kernel.Import by the loader (so we don't
+    // resolvedNamespace stamped onto the Telo.Import by the loader (so we don't
     // need to include imported module manifests in the analysis set, avoiding false
     // reference errors in the parent context).
     for (const m of manifests) {
@@ -274,7 +274,7 @@ export class StaticAnalyzer {
         const moduleName = m.metadata.name as string;
         if (moduleName) defs.registerModuleIdentity(namespace, moduleName);
       }
-      if (m.kind === "Kernel.Import") {
+      if (m.kind === "Telo.Import") {
         const alias = m.metadata.name as string;
         const source = (m as any).source as string | undefined;
         const exportedKinds: string[] = (m as any).exports?.kinds ?? [];
@@ -294,11 +294,11 @@ export class StaticAnalyzer {
       }
     }
 
-    // Register definitions from Kernel.Definition resources.
+    // Register definitions from Telo.Definition resources.
     // Normalize alias-prefixed `capability` to canonical form so extendedBy lookup works
     // (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known alias).
     for (const m of manifests) {
-      if (m.kind === "Kernel.Definition") {
+      if (m.kind === "Telo.Definition") {
         const def = m as unknown as ResourceDefinition;
         const resolvedCapability = def.capability
           ? (aliases.resolveKind(def.capability) ?? def.capability)
@@ -336,7 +336,7 @@ export class StaticAnalyzer {
         });
         continue;
       }
-      if (m.kind === "Kernel.Definition" || m.kind === "Kernel.Abstract") {
+      if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
         continue;
       }
 
@@ -359,7 +359,7 @@ export class StaticAnalyzer {
           severity: DiagnosticSeverity.Error,
           code: "UNDEFINED_KIND",
           source: SOURCE,
-          message: `No Kernel.Definition found for kind '${m.kind}'.${hint}`,
+          message: `No Telo.Definition found for kind '${m.kind}'.${hint}`,
           data: { resource, path: "kind" },
         });
         continue;

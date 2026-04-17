@@ -48,7 +48,7 @@ export type Injected<T> = {
 /** Returns a schema node that emits `x-telo-ref` for buildReferenceFieldMap and carries
  *  KindRef<T> as its TypeScript type. For TypeBox schemas use Type.Unsafe<KindRef<T>>(Ref(...)).
  *
- *  @param ref Canonical ref string: "namespace/module-name#TypeName" or "kernel#TypeName" */
+ *  @param ref Canonical ref string: "namespace/module-name#TypeName" or "telo#TypeName" */
 export const Ref = <T = ResourceInstance>(ref: string): KindRef<T> =>
   ({ "x-telo-ref": ref } as unknown as KindRef<T>);
 
