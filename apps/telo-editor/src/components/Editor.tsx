@@ -12,6 +12,7 @@ import {
   noopAdapter,
   openRootManifest,
   readModuleMetadata,
+  reconcileImports,
   toPascalCase,
   toRelativeSource,
 } from "../loader";
@@ -119,6 +120,17 @@ export function Editor() {
 
   const adapterRef = useRef<ManifestAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suppress Ctrl+S globally — save will be wired later
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Debounced analysis: re-analyze whenever the application changes
   useEffect(() => {
@@ -438,6 +450,21 @@ export function Editor() {
     setState((s) => ({ ...s, application: { ...s.application!, modules } }));
   }
 
+  async function handleReplaceManifest(manifest: typeof activeManifest & {}) {
+    if (!state.application || !state.activeModulePath) return;
+
+    const modules = new Map(state.application.modules);
+    modules.set(state.activeModulePath, manifest);
+    let app: Application = { ...state.application, modules };
+
+    // Load sub-graphs for any new/changed imports, then prune removed ones
+    const adapter = adapterRef.current ?? noopAdapter;
+    app = await reconcileImports(app, state.activeModulePath, adapter, createRegistryAdapters(settings));
+    app = pruneUnreachableModules(app);
+
+    setState((s) => ({ ...s, application: app }));
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -503,6 +530,7 @@ export function Editor() {
               onUpdateResource: handleUpdateResource,
               onSelect: handleSelect,
               onClearSelection: handleClearSelection,
+              onReplaceManifest: handleReplaceManifest,
             }}
           />
         ) : null}

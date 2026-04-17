@@ -220,6 +220,20 @@ export async function addModuleImport(
     const subGraph = await loader.loadModuleGraph(resolvedPath, (url, err) => {
       console.error(`Failed to load module ${url}:`, err);
     });
+    // The sub-graph may key the root module under a different URL than
+    // resolvedPath (e.g. registry adapter resolves to a full URL). Update
+    // resolvedPath to match so getAvailableKinds can look it up.
+    if (!subGraph.has(resolvedPath) && subGraph.size > 0) {
+      const actualRoot = subGraph.keys().next().value as string;
+      imp.resolvedPath = actualRoot;
+      deps.delete(resolvedPath);
+      deps.add(actualRoot);
+      if (importedBy.has(resolvedPath)) {
+        const parents = importedBy.get(resolvedPath)!;
+        importedBy.delete(resolvedPath);
+        importedBy.set(actualRoot, parents);
+      }
+    }
     for (const [filePath, docs] of subGraph) {
       if (modules.has(filePath)) continue;
       const parsed = buildParsedManifest(filePath, docs);
@@ -411,7 +425,7 @@ export function classifyImport(source: string): ImportKind {
   return "submodule";
 }
 
-function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
+export function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
   const moduleDoc = docs.find((r) => r.kind === "Kernel.Module");
 
   const imports: ParsedImport[] = docs
@@ -536,6 +550,77 @@ function resolveDepPath(adapter: ManifestAdapter, filePath: string, source: stri
     : source;
 }
 
+/**
+ * Loads sub-graphs for any imports in the active module that aren't already in
+ * the application's module map. Call this after replacing a manifest (e.g. from
+ * source editing) to resolve newly-added or changed imports.
+ */
+export async function reconcileImports(
+  app: Application,
+  modulePath: string,
+  adapter: ManifestAdapter,
+  extraAdapters: ManifestAdapter[] = [],
+): Promise<Application> {
+  const manifest = app.modules.get(modulePath);
+  if (!manifest) return app;
+
+  const modules = new Map(app.modules);
+  const importGraph = new Map(app.importGraph);
+  const importedBy = new Map(app.importedBy);
+  const deps = new Set(importGraph.get(modulePath) ?? []);
+
+  const loader = createEditorLoader(adapter, extraAdapters);
+
+  for (const imp of manifest.imports) {
+    const resolvedPath = imp.resolvedPath ?? resolveDepPath(adapter, modulePath, imp.source);
+    imp.resolvedPath = resolvedPath;
+    deps.add(resolvedPath);
+
+    if (!importedBy.has(resolvedPath)) importedBy.set(resolvedPath, new Set());
+    importedBy.get(resolvedPath)!.add(modulePath);
+
+    if (!modules.has(resolvedPath)) {
+      try {
+        const subGraph = await loader.loadModuleGraph(resolvedPath, (url, err) => {
+          console.error(`Failed to load module ${url}:`, err);
+        });
+        if (!subGraph.has(resolvedPath) && subGraph.size > 0) {
+          const actualRoot = subGraph.keys().next().value as string;
+          imp.resolvedPath = actualRoot;
+          deps.delete(resolvedPath);
+          deps.add(actualRoot);
+          if (importedBy.has(resolvedPath)) {
+            const parents = importedBy.get(resolvedPath)!;
+            importedBy.delete(resolvedPath);
+            importedBy.set(actualRoot, parents);
+          }
+        }
+        for (const [filePath, docs] of subGraph) {
+          if (modules.has(filePath)) continue;
+          const parsed = buildParsedManifest(filePath, docs);
+          modules.set(filePath, parsed);
+          const subDeps = new Set<string>();
+          importGraph.set(filePath, subDeps);
+          for (const subImp of parsed.imports) {
+            const depPath = resolveDepPath(adapter, filePath, subImp.source);
+            subImp.resolvedPath = depPath;
+            if (subGraph.has(depPath)) {
+              subDeps.add(depPath);
+              if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
+              importedBy.get(depPath)!.add(filePath);
+            }
+          }
+        }
+      } catch {
+        // Import loading failed — leave it unresolved
+      }
+    }
+  }
+
+  importGraph.set(modulePath, deps);
+  return { rootPath: app.rootPath, modules, importGraph, importedBy };
+}
+
 export async function loadApplication(
   rootPath: string,
   adapter: ManifestAdapter,
@@ -623,6 +708,17 @@ function yamlScalar(value: unknown): string {
   return text;
 }
 
+/** Formats a multiline string as a YAML block scalar (|). */
+function yamlBlockScalar(text: string, indent: number): string {
+  const pad = " ".repeat(indent);
+  const blockLines = text.split("\n");
+  // Remove trailing empty line if present (block scalar trailing newline)
+  const hasTrailingNewline = text.endsWith("\n");
+  const contentLines = hasTrailingNewline ? blockLines.slice(0, -1) : blockLines;
+  const header = hasTrailingNewline ? "|" : "|-";
+  return header + "\n" + contentLines.map((l) => (l.length > 0 ? `${pad}${l}` : "")).join("\n");
+}
+
 function pushYaml(lines: string[], value: unknown, indent: number): void {
   const pad = " ".repeat(indent);
 
@@ -656,6 +752,8 @@ function pushYaml(lines: string[], value: unknown, indent: number): void {
       if (Array.isArray(entry) || (entry !== null && typeof entry === "object")) {
         lines.push(`${pad}${key}:`);
         pushYaml(lines, entry, indent + 2);
+      } else if (typeof entry === "string" && entry.includes("\n")) {
+        lines.push(`${pad}${key}: ${yamlBlockScalar(entry, indent + 2)}`);
       } else {
         lines.push(`${pad}${key}: ${yamlScalar(entry)}`);
       }
@@ -663,6 +761,10 @@ function pushYaml(lines: string[], value: unknown, indent: number): void {
     return;
   }
 
+  if (typeof value === "string" && value.includes("\n")) {
+    lines.push(`${pad}${yamlBlockScalar(value, indent + 2)}`);
+    return;
+  }
   lines.push(`${pad}${yamlScalar(value)}`);
 }
 
