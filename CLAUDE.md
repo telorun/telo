@@ -18,6 +18,7 @@ Follow this strictly:
 - never modify files in `dist` directories
 - never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js
 - never make architectural decisions (package boundaries, dependency direction, where code lives) without asking first
+- UI primitives must use Radix (`radix-ui` package, same pattern as `apps/telo-editor/src/components/ui/*`); if a needed component isn't wrapped yet, install it via shadcn before rolling your own
 
 ## Architecture
 

@@ -19,6 +19,9 @@ interface FieldControlProps {
   rootCelEval?: CelEvalMode | null;
   /** Propagated to `ReferenceSelectField` so ref chips can open the peek panel. */
   onSelectResource?: (kind: string, name: string) => void;
+  /** User-facing label for the field — used by `ObjectField` as the collapsible
+   *  trigger title. Ignored by non-object field types. */
+  label?: string;
 }
 
 export function inferType(prop: JsonSchemaProperty): string {
@@ -26,6 +29,19 @@ export function inferType(prop: JsonSchemaProperty): string {
   const oneOfTypes = (prop.oneOf ?? []).map((x) => x.type).filter(Boolean);
   if (oneOfTypes.length === 1) return oneOfTypes[0] as string;
   return "string";
+}
+
+/** True when `FieldControl` will delegate to `ObjectField` for this prop — i.e.
+ *  the prop renders as a collapsible object card that owns its own header.
+ *  Call sites use this to suppress their own label (the collapsible trigger
+ *  displays the title instead). */
+export function willRenderAsObjectField(prop: JsonSchemaProperty): boolean {
+  if (typeof prop["x-telo-ref"] === "string") return false;
+  const hasNestedRef = (prop.anyOf ?? prop.oneOf ?? []).some(
+    (item) => typeof item === "object" && item !== null && typeof item["x-telo-ref"] === "string",
+  );
+  if (hasNestedRef) return false;
+  return inferType(prop) === "object" && !!prop.properties;
 }
 
 export function FieldControl({
@@ -38,6 +54,7 @@ export function FieldControl({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  label,
 }: FieldControlProps) {
   const kind = inferType(prop);
   const onBlur = () => onFieldBlur?.(rootFieldName);
@@ -76,6 +93,7 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          label={label}
         />
       );
     }

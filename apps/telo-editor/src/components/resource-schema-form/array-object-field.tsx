@@ -1,5 +1,5 @@
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType } from "./field-control";
+import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
 import { inferRefMode, resolveRefCandidates, toRefValue } from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
@@ -108,16 +108,21 @@ export function ArrayObjectField({
               {Object.entries(itemProperties).map(([itemName, itemProp]) => {
                 const itemValue = entryValue[itemName];
                 const itemKind = inferType(itemProp);
+                const itemLabel =
+                  typeof itemProp.title === "string" ? itemProp.title : itemName;
+                const itemOwnsLabel = willRenderAsObjectField(itemProp);
 
                 return (
                   <div key={`${fieldPath}.${index}.${itemName}`} className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      {typeof itemProp.title === "string" ? itemProp.title : itemName}
-                      {itemRequired.has(itemName) ? (
-                        <span className="ml-1 text-red-500">*</span>
-                      ) : null}
-                      <span className="ml-1 text-zinc-400 dark:text-zinc-600">({itemKind})</span>
-                    </label>
+                    {!itemOwnsLabel && (
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        {itemLabel}
+                        {itemRequired.has(itemName) ? (
+                          <span className="ml-1 text-red-500">*</span>
+                        ) : null}
+                        <span className="ml-1 text-zinc-400 dark:text-zinc-600">({itemKind})</span>
+                      </label>
+                    )}
                     <FieldControl
                       rootFieldName={rootFieldName}
                       fieldPath={`${fieldPath}.${index}.${itemName}`}
@@ -133,6 +138,7 @@ export function ArrayObjectField({
                       resolvedResources={resolvedResources}
                       rootCelEval={rootCelEval}
                       onSelectResource={onSelectResource}
+                      label={itemLabel}
                     />
                     {typeof itemProp.description === "string" && (
                       <span className="text-xs text-zinc-400 dark:text-zinc-500">

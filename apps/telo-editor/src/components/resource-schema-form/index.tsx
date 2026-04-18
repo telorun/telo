@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType } from "./field-control";
+import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
 import type { JsonSchema, JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 export interface ResourceSchemaFormProps {
@@ -49,29 +49,36 @@ export function ResourceSchemaForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {fields.map(({ name, prop, kind }) => (
-        <div key={name} className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {typeof prop.title === "string" ? prop.title : name}
-            {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
-            <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
-          </label>
-          <FieldControl
-            rootFieldName={name}
-            fieldPath={name}
-            prop={prop as JsonSchemaProperty}
-            value={values[name]}
-            onValueChange={(next) => setField(name, next)}
-            onFieldBlur={onFieldBlur}
-            resolvedResources={resolvedResources}
-            rootCelEval={rootCelEval}
-            onSelectResource={onSelectResource}
-          />
-          {typeof prop.description === "string" && (
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
-          )}
-        </div>
-      ))}
+      {fields.map(({ name, prop, kind }) => {
+        const labelText = typeof prop.title === "string" ? prop.title : name;
+        const ownsLabel = willRenderAsObjectField(prop as JsonSchemaProperty);
+        return (
+          <div key={name} className="flex flex-col gap-1">
+            {!ownsLabel && (
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                {labelText}
+                {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
+                <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
+              </label>
+            )}
+            <FieldControl
+              rootFieldName={name}
+              fieldPath={name}
+              prop={prop as JsonSchemaProperty}
+              value={values[name]}
+              onValueChange={(next) => setField(name, next)}
+              onFieldBlur={onFieldBlur}
+              resolvedResources={resolvedResources}
+              rootCelEval={rootCelEval}
+              onSelectResource={onSelectResource}
+              label={labelText}
+            />
+            {typeof prop.description === "string" && (
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

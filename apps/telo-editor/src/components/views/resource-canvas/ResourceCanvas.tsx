@@ -1,6 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ParsedResource } from "../../../model";
-import { FieldControl, inferType } from "../../resource-schema-form/field-control";
+import {
+  FieldControl,
+  inferType,
+  willRenderAsObjectField,
+} from "../../resource-schema-form/field-control";
 import {
   inferRefMode,
   parseRefValue,
@@ -368,13 +372,16 @@ export function ResourceCanvas({
                 aria-hidden="true"
               />
             );
-            const label = (
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                {typeof prop.title === "string" ? prop.title : name}
-                {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
-                <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
-              </label>
-            );
+            const labelText = typeof prop.title === "string" ? prop.title : name;
+            const fieldOwnsLabel = willRenderAsObjectField(prop);
+            const label =
+              fieldOwnsLabel ? null : (
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  {labelText}
+                  {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
+                  <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
+                </label>
+              );
             const description =
               typeof prop.description === "string" ? (
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
@@ -390,8 +397,25 @@ export function ResourceCanvas({
                 onFieldBlur={handleFieldBlur}
                 resolvedResources={resolvedResources}
                 onSelectResource={onSelectResource}
+                label={labelText}
               />
             );
+
+            if (fieldOwnsLabel) {
+              // Object fields own their collapsible header — render full-width
+              // in both full and peek layouts so the collapsible card spans
+              // the whole grid row.
+              return (
+                <Fragment key={name}>
+                  {showTopDivider && divider}
+                  <div className="col-span-full flex flex-col gap-1">
+                    {formControl}
+                    {description}
+                  </div>
+                  {showBottomDivider && divider}
+                </Fragment>
+              );
+            }
 
             if (hideHeader) {
               return (
