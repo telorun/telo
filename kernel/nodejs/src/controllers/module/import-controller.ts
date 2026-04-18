@@ -1,8 +1,7 @@
-import { DiagnosticSeverity, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { ModuleContext } from "../../module-context.js";
-import { LocalFileAdapter } from "../../manifest-adapters/local-file-adapter.js";
 
 const importAnalysisCache = new Map<
   string,
@@ -11,7 +10,6 @@ const importAnalysisCache = new Map<
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
-  const loader = new Loader([new LocalFileAdapter()]);
 
   const moduleSource: string = resource.module ?? resource.source;
 
@@ -19,7 +17,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
   const resolvedUrl = new URL(moduleSource, ctx.moduleContext.source).toString();
-  const analysisManifests = await loader.loadManifests(resolvedUrl);
+  const analysisManifests = await ctx.loadManifests(resolvedUrl);
   const signature = JSON.stringify(analysisManifests);
   const cached = importAnalysisCache.get(resolvedUrl);
   let errors: string[];
@@ -44,7 +42,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Load target module manifests for runtime. Inject variables/secrets as compile context so
   // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
-  const manifests = await loader.loadModule(
+  const manifests = await ctx.loadModule(
     new URL(moduleSource, ctx.moduleContext.source).toString(),
     {
       compile: true,

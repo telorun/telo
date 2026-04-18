@@ -109,12 +109,17 @@ export async function run(argv: {
   debug: boolean;
   snapshotOnExit: boolean;
   watch: boolean;
+  registryUrl?: string;
   "--"?: string[];
 }): Promise<void> {
   const log = createLogger(argv.verbose);
 
   try {
-    const kernel = new Kernel({ argv: argv["--"] });
+    // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
+    // RegistryAdapter default. The kernel itself does no env lookup — programmatic
+    // callers (tests, SDK) pass registryUrl explicitly when they need one.
+    const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
+    const kernel = new Kernel({ argv: argv["--"], registryUrl });
     if (argv.verbose) {
       kernel.on("*", (event: any) => {
         log.info(`${event.name}: ${JSON.stringify(event.payload)}`);
@@ -195,21 +200,43 @@ export function runCommand(yargs: Argv): Argv {
           type: "string",
           demandOption: true,
         })
+        .option("registry-url", {
+          type: "string",
+          describe:
+            "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+        })
         .strict(false),
     async (argv) => {
       // Everything after the manifest path that isn't a known telo flag
       // becomes argv for the kernel. We extract it from process.argv by
       // finding the manifest path and taking everything after it, excluding
       // known telo flags.
-      const knownFlags = new Set([
+      const knownBooleanFlags = new Set([
         "--verbose", "--debug", "--snapshot-on-exit", "--watch", "-w",
         "--help", "--version",
       ]);
+      const knownValuedFlags = new Set(["--registry-url"]);
       const rawArgs = process.argv;
       const pathIdx = rawArgs.indexOf(argv.path as string);
-      const extraArgs = pathIdx >= 0
-        ? rawArgs.slice(pathIdx + 1).filter((a) => !knownFlags.has(a) && a !== "--")
-        : [];
+      const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];
+      const extraArgs: string[] = [];
+      for (let i = 0; i < sliced.length; i++) {
+        const a = sliced[i];
+        if (a === "--") continue;
+        if (knownBooleanFlags.has(a)) continue;
+        const eqIdx = a.indexOf("=");
+        const bare = eqIdx >= 0 ? a.slice(0, eqIdx) : a;
+        if (knownValuedFlags.has(bare)) {
+          // Only skip the next token as a value when it actually looks like one.
+          // Guards against `--registry-url --verbose` (or trailing bare flag) where
+          // yargs consumed `--verbose` as the value — we still want the next flag
+          // re-evaluated by this loop rather than silently dropped.
+          const next = sliced[i + 1];
+          if (eqIdx < 0 && next !== undefined && !next.startsWith("-")) i++;
+          continue;
+        }
+        extraArgs.push(a);
+      }
       await run({ ...(argv as any), "--": extraArgs });
     },
   );

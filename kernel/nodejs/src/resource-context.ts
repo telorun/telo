@@ -1,10 +1,12 @@
 import {
   NoopValidator,
   ResourceContext,
+  ResourceManifest,
   RuntimeError,
   RuntimeResource,
   isCompiledValue,
   type EvaluationContext as IEvaluationContext,
+  type LoadOptions,
   type ModuleContext,
   type ParsedArgs,
   type TypeRule,
@@ -137,6 +139,14 @@ export class ResourceContextImpl implements ResourceContext {
 
   registerManifest(resource: any): void {
     this.moduleContext.registerManifest(resource);
+  }
+
+  loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
+    return this.kernel.loadModule(url, options);
+  }
+
+  loadManifests(url: string): Promise<ResourceManifest[]> {
+    return this.kernel.loadManifests(url);
   }
 
   /**

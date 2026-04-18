@@ -122,6 +122,87 @@ describe("POST /v1/sessions", () => {
     }
   });
 
+  describe("TELO_REGISTRY_URL precedence", () => {
+    afterEach(() => {
+      delete process.env.TELO_REGISTRY_URL;
+    });
+
+    it("uses runner's TELO_REGISTRY_URL when neither body.env nor body.config.registryUrl provides one", async () => {
+      process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
+      h = await buildHarness();
+      await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+      expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://runner-default:3000");
+    });
+
+    it("body.config.registryUrl overrides the runner's TELO_REGISTRY_URL", async () => {
+      process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
+      h = await buildHarness();
+      await h.app.inject({
+        method: "POST",
+        url: "/v1/sessions",
+        payload: {
+          ...VALID_START_BODY,
+          config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
+        },
+      });
+      const envArr = h.docker._lastCreateOpts?.Env ?? [];
+      expect(envArr).toContain("TELO_REGISTRY_URL=http://client-override:4000");
+      expect(envArr).not.toContain("TELO_REGISTRY_URL=http://runner-default:3000");
+    });
+
+    it("body.env TELO_REGISTRY_URL wins over body.config.registryUrl and runner env", async () => {
+      process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
+      h = await buildHarness();
+      await h.app.inject({
+        method: "POST",
+        url: "/v1/sessions",
+        payload: {
+          ...VALID_START_BODY,
+          env: { ...VALID_START_BODY.env, TELO_REGISTRY_URL: "http://body-env:5000" },
+          config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
+        },
+      });
+      const envArr = h.docker._lastCreateOpts?.Env ?? [];
+      expect(envArr).toContain("TELO_REGISTRY_URL=http://body-env:5000");
+      expect(envArr).not.toContain("TELO_REGISTRY_URL=http://client-override:4000");
+      expect(envArr).not.toContain("TELO_REGISTRY_URL=http://runner-default:3000");
+    });
+
+    it("does not set TELO_REGISTRY_URL when no source provides one", async () => {
+      h = await buildHarness();
+      await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+      const envArr = h.docker._lastCreateOpts?.Env ?? [];
+      expect(envArr.some((e) => e.startsWith("TELO_REGISTRY_URL="))).toBe(false);
+    });
+
+    it("treats whitespace-only body.config.registryUrl as unset and falls back to runner env", async () => {
+      process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
+      h = await buildHarness();
+      await h.app.inject({
+        method: "POST",
+        url: "/v1/sessions",
+        payload: {
+          ...VALID_START_BODY,
+          config: { ...VALID_START_BODY.config, registryUrl: "   " },
+        },
+      });
+      expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://runner-default:3000");
+    });
+
+    it("trims body.config.registryUrl before forwarding", async () => {
+      h = await buildHarness();
+      await h.app.inject({
+        method: "POST",
+        url: "/v1/sessions",
+        payload: {
+          ...VALID_START_BODY,
+          config: { ...VALID_START_BODY.config, registryUrl: "  http://client:4000\n" },
+        },
+      });
+      expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://client:4000");
+    });
+  });
+
   it("returns 409 too_many_sessions when at capacity", async () => {
     h = await buildHarness({}, { maxSessions: 1 });
     // First session succeeds.

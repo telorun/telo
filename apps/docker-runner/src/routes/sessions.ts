@@ -53,6 +53,7 @@ const startBodySchema = {
       properties: {
         image: { type: "string", minLength: 1 },
         pullPolicy: { type: "string", enum: ["missing", "always", "never"] },
+        registryUrl: { type: "string", minLength: 1 },
       },
     },
   },
@@ -167,6 +168,19 @@ async function startSession(
       throw err;
     }
 
+    // Surface a TELO_REGISTRY_URL to the spawned container so the telo CLI
+    // inside picks it up. Precedence: body.env explicit value > body.config.registryUrl
+    // (per-request override from the client) > runner's own TELO_REGISTRY_URL
+    // (compose-level default, e.g. pointing at an internal registry service).
+    // Trim client-supplied URLs so a stray whitespace/newline from an editor input
+    // doesn't flow into the container.
+    const configRegistryUrl = body.config.registryUrl?.trim() || undefined;
+    const registryUrl = configRegistryUrl ?? process.env.TELO_REGISTRY_URL;
+    const sessionEnv =
+      registryUrl && !("TELO_REGISTRY_URL" in body.env)
+        ? { ...body.env, TELO_REGISTRY_URL: registryUrl }
+        : body.env;
+
     const { container } = await spawnSession({
       docker: deps.docker,
       sessionId,
@@ -175,7 +189,7 @@ async function startSession(
       pullPolicy: body.config.pullPolicy,
       entryRelativePath: `./${entryRelative}`,
       workingDir,
-      env: body.env,
+      env: sessionEnv,
       bundleVolume: deps.runnerConfig.bundleVolume,
       childNetwork: deps.runnerConfig.childNetwork,
       onEvent: (event) => deps.registry.emit(sessionId, event),

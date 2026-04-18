@@ -134,6 +134,7 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
   async start(request, config): Promise<RunSession> {
     const base = trimTrailingSlash(config.baseUrl);
 
+    const trimmedRegistryUrl = config.registryUrl?.trim();
     const createRes = await fetchWithTimeout(
       `${base}/v1/sessions`,
       {
@@ -142,7 +143,11 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
         body: JSON.stringify({
           bundle: request.bundle,
           env: request.env ?? {},
-          config: { image: config.image, pullPolicy: config.pullPolicy },
+          config: {
+            image: config.image,
+            pullPolicy: config.pullPolicy,
+            ...(trimmedRegistryUrl ? { registryUrl: trimmedRegistryUrl } : {}),
+          },
         }),
       },
       START_TIMEOUT_MS,

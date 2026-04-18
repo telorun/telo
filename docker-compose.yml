@@ -9,6 +9,18 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
     depends_on:
       - registry
+    # Network aliases so containers on the compose network (e.g. runner-spawned
+    # children) can resolve the same *.telo.localhost hostnames the browser
+    # uses. Browser → OS `.localhost` rule → 127.0.0.1:8060 → proxy container.
+    # Container → docker DNS alias → proxy container:8060. Same URL works for
+    # both, Caddy routes by Host header.
+    networks:
+      default:
+        aliases:
+          - registry.telo.localhost
+          - editor.telo.localhost
+          - storage.telo.localhost
+          - runner.telo.localhost
   registry:
     image: telorun/registry:${DOCKER_TAG:-latest}
     build:
@@ -62,6 +74,9 @@ services:
       BUNDLE_ROOT: /bundles
       BUNDLE_VOLUME: telo_runner-bundles
       RUNNER_CHILD_NETWORK: telo_default
+      # Fallback registry URL injected into spawned containers when the
+      # editor/client does not pass one in config.registryUrl.
+      TELO_REGISTRY_URL: http://registry:3000
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:

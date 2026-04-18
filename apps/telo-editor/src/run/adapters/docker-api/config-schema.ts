@@ -4,6 +4,7 @@ export interface DockerApiConfig {
   baseUrl: string;
   image: string;
   pullPolicy: "missing" | "always" | "never";
+  registryUrl?: string;
 }
 
 const RUNNER_URL_FROM_ENV =
@@ -43,6 +44,12 @@ export const dockerApiConfigSchema: JSONSchema7 = {
       title: "Pull policy",
       description:
         "`missing` pulls on first use; `always` forces a pull every run; `never` fails if the image isn't present on the runner's daemon.",
+    },
+    registryUrl: {
+      type: "string",
+      title: "Registry URL",
+      description:
+        "Optional base URL for the telo module registry. Forwarded to the runner as TELO_REGISTRY_URL. Leave blank to use the telo default registry.",
     },
   },
 };

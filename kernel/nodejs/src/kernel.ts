@@ -2,6 +2,7 @@ import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, isModuleKind, Loader, Stat
 import {
   ControllerContext,
   Kernel as IKernel,
+  type LoadOptions,
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
@@ -29,6 +30,10 @@ export interface KernelOptions {
   stderr?: NodeJS.WritableStream;
   env?: Record<string, string | undefined>;
   argv?: string[];
+  /** Base URL for the registry adapter. When unset, the RegistryAdapter
+   *  default applies. Callers (e.g. the CLI) are responsible for resolving
+   *  `TELO_REGISTRY_URL` or any other env-based fallback before passing. */
+  registryUrl?: string;
 }
 
 /**
@@ -36,7 +41,7 @@ export interface KernelOptions {
  * Handles resource loading, initialization, and execution through controllers
  */
 export class Kernel implements IKernel {
-  private readonly loader = new Loader();
+  private readonly loader: Loader;
   private readonly analyzer = new StaticAnalyzer();
   private readonly registry = new AnalysisRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
@@ -55,6 +60,7 @@ export class Kernel implements IKernel {
   readonly stderr: NodeJS.WritableStream;
   readonly env: Record<string, string | undefined>;
   readonly argv: string[];
+  readonly registryUrl: string | undefined;
 
   constructor(options: KernelOptions = {}) {
     this.stdin = options.stdin ?? process.stdin;
@@ -62,6 +68,8 @@ export class Kernel implements IKernel {
     this.stderr = options.stderr ?? process.stderr;
     this.env = options.env ?? process.env;
     this.argv = options.argv ?? [];
+    this.registryUrl = options.registryUrl;
+    this.loader = new Loader({ registryUrl: this.registryUrl });
     this.loader.register(new LocalFileAdapter());
     this.setupEventStreaming();
   }
@@ -99,6 +107,14 @@ export class Kernel implements IKernel {
   ): void {
     this.rootContext.registerImport(alias, targetModule, kinds);
     this.registry.registerImport(alias, targetModule, kinds);
+  }
+
+  loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
+    return this.loader.loadModule(url, options);
+  }
+
+  loadManifests(url: string): Promise<ResourceManifest[]> {
+    return this.loader.loadManifests(url);
   }
 
   /** Returns the live analysis registry backed by this kernel's known definitions and aliases.

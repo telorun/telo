@@ -1,7 +1,14 @@
 import { ControllerContext } from "./controller-context.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
+import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
+
+export interface LoadOptions {
+  /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
+   *  so they can be evaluated at runtime. Leave unset for static analysis. */
+  compile?: boolean;
+}
 
 export interface DataValidator {
   validate(data: any): void;
@@ -51,6 +58,14 @@ export interface ResourceContext extends ControllerContext {
   registerDefinition(definition: any): void;
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;
   teardownResource(kind: string, name: string): Promise<void>;
+  /** Load a single module (its own file + `include`d partials). Use this when
+   *  you need just the declaring file's manifests. */
+  loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;
+  /** Load a module and follow its Telo.Import chain, returning the union of
+   *  the module's manifests plus all transitively-imported Telo.Definition
+   *  manifests. Use this when you need the full kind surface area visible from
+   *  the module. */
+  loadManifests(url: string): Promise<ResourceManifest[]>;
   readonly moduleContext: ModuleContext;
   readonly env: Record<string, string | undefined>;
   readonly stdin: NodeJS.ReadableStream;

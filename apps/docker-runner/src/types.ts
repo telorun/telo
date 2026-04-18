@@ -8,6 +8,7 @@ export interface ProbeConfig {
 export interface SessionConfig {
   image: string;
   pullPolicy: PullPolicy;
+  registryUrl?: string;
 }
 
 export interface ConfigIssue {
