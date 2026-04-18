@@ -336,7 +336,9 @@ export function Editor() {
 
     let bundle;
     try {
-      bundle = await buildRunBundle(workspace, filePath, workspaceAdapter.readFile);
+      bundle = await buildRunBundle(workspace, filePath, (p) =>
+        workspaceAdapter.readFile(p),
+      );
     } catch (err) {
       setError(
         `Failed to build run bundle: ${err instanceof Error ? err.message : String(err)}`,
@@ -446,6 +448,7 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleOpenModule(filePath: string) {
+    runContext.closeRunView();
     setSelection(null);
     setState((s) => {
       const nextModule = s.workspace?.modules.get(filePath);
@@ -471,6 +474,7 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleSelectResource(kind: string, name: string) {
+    runContext.closeRunView();
     setSelection(null);
     setState((s) => ({
       ...s,
@@ -485,6 +489,7 @@ export function Editor() {
   }
 
   function handleNavigateResource(kind: string, name: string) {
+    runContext.closeRunView();
     setSelection(null);
     setState((s) => ({
       ...s,

@@ -22,7 +22,7 @@ export function LogStream({ lines, truncated, emptyLabel }: LogStreamProps) {
   // line wrapping across the viewport stays on one virtuoso item (CSS
   // `whitespace-pre-wrap`) rather than being split into multiple.
   return (
-    <div className="flex h-full flex-1 flex-col bg-zinc-950 font-mono text-xs text-zinc-200 selection:bg-amber-300 selection:text-zinc-950">
+    <div className="flex h-full flex-1 flex-col bg-zinc-950 font-mono text-xs text-zinc-200">
       {truncated && (
         <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-1 text-[10px] text-zinc-500">
           (earlier output truncated — showing last {lines.length} lines)
@@ -39,10 +39,25 @@ export function LogStream({ lines, truncated, emptyLabel }: LogStreamProps) {
   );
 }
 
+// Why the selection rules are duplicated onto descendants AND use `!`:
+// <Ansi> renders inline `style="color: ..."` on spans. Some browsers honor
+// that during selection and drop the ancestor's ::selection rule, so the
+// highlighted text kept its ANSI color but the selection background never
+// appeared. `[&_*]:` hits descendants' ::selection; `!` forces the color past
+// inline-style specificity so ANSI spans can't win during selection.
+const SELECTION_CLASSES =
+  "selection:bg-amber-400 selection:!text-black [&_*]:selection:bg-amber-400 [&_*]:selection:!text-black";
+
 function LogRow({ line }: { line: LogLine }) {
-  const streamClass = line.stream === "stderr" ? "text-red-300" : "text-zinc-200";
+  // Both stdout and stderr render in the same base color so ANSI escapes
+  // drive the actual text colors. Stderr gets a subtle red left border as a
+  // visual hint without hijacking the text color (many CLIs, including pino,
+  // write all output to stderr — coloring the whole row red would make the
+  // log view monochrome red).
+  const borderClass =
+    line.stream === "stderr" ? "border-l-2 border-red-500/60" : "border-l-2 border-transparent";
   return (
-    <div className={`whitespace-pre-wrap break-words px-3 py-[1px] ${streamClass}`}>
+    <div className={`whitespace-pre-wrap break-words px-3 py-[1px] ${borderClass} ${SELECTION_CLASSES}`}>
       <Ansi>{line.text}</Ansi>
     </div>
   );

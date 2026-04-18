@@ -9,3 +9,7 @@ http://editor.telo.localhost:8060 {
 http://storage.telo.localhost:8060 {
 	reverse_proxy storage:9001
 }
+
+http://runner.telo.localhost:8060 {
+	reverse_proxy runner:8061
+}

@@ -1,4 +1,4 @@
-# name: telo
+name: telo
 
 services:
   proxy:
@@ -36,6 +36,40 @@ services:
     volumes:
       - .:/telo
     working_dir: /telo
+    environment:
+      # Value is embedded into the Vite client bundle served to the USER'S
+      # browser, which cannot resolve compose service names. The Caddy proxy
+      # routes `*.telo.localhost:8060` to the matching compose service, and
+      # any `*.localhost` hostname resolves to 127.0.0.1 in the browser.
+      VITE_TELO_RUNNER_URL: http://runner.telo.localhost:8060
+    depends_on:
+      runner:
+        condition: service_healthy
+
+  runner:
+    image: telorun/docker-runner:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./apps/docker-runner/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-bundles:/bundles
+    working_dir: /app
+    environment:
+      PORT: 8061
+      BUNDLE_ROOT: /bundles
+      BUNDLE_VOLUME: telo_runner-bundles
+      RUNNER_CHILD_NETWORK: telo_default
+    # No published port — the runner is reached via the Caddy proxy at
+    # http://runner.telo.localhost:8060 (see Caddyfile).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8061/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
   db:
     image: postgres:18
     environment:
@@ -59,3 +93,4 @@ services:
 volumes:
   storage-data:
   db-data:
+  runner-bundles:

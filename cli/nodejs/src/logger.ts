@@ -5,7 +5,13 @@ import type { RuntimeDiagnostic } from "@telorun/kernel";
 import * as path from "path";
 
 export function createLogger(verbose: boolean) {
-  const useColor = process.stdout.isTTY;
+  // Honor FORCE_COLOR / CLICOLOR_FORCE so callers piping stdout (the docker
+  // runner, CI, etc.) can still opt into ANSI. Without these, running under a
+  // non-TTY wrapper produces plain text even when the consumer can render it.
+  const useColor =
+    Boolean(process.stdout.isTTY) ||
+    Boolean(process.env.FORCE_COLOR) ||
+    Boolean(process.env.CLICOLOR_FORCE);
   const wrap = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
   return {
     info: (...args: any[]) => console.log(...args),

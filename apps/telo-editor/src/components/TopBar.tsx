@@ -68,13 +68,13 @@ export function TopBar({
           variant={canRun ? "default" : "ghost"}
           size="sm"
           onClick={
-            runInFlight || runTerminal
+            runInFlight
               ? onOpenRunView
               : canRun
                 ? onRun
                 : undefined
           }
-          disabled={!canRun && !runInFlight && !runTerminal}
+          disabled={!canRun && !runInFlight}
         >
           {runInFlight ? (
             <span

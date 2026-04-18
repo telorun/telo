@@ -1,0 +1,40 @@
+{
+  "name": "@telorun/docker-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telo Docker Runner - HTTP service that runs Telo Applications in Docker containers on the host daemon.",
+  "keywords": [
+    "telo",
+    "docker",
+    "runner"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "apps/docker-runner"
+  },
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "dockerode": "^4.0.7",
+    "fastify": "^5.7.2",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.43",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

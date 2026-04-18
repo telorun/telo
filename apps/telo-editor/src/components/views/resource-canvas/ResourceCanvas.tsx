@@ -235,6 +235,7 @@ export function ResourceCanvas({
     }
 
     function addEntry() {
+      if (!refFieldName) return;
       const first = candidates[0];
       const entry: Record<string, unknown> = {};
       if (first) entry[refFieldName] = toRefValue(first, mode);
