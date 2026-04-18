@@ -93,6 +93,7 @@ endpoint: "${{ resources.AppConfig.s3Endpoint }}"
 forcePathStyle: "${{ resources.AppConfig.s3ForcePathStyle }}"
 accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
 secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
+createIfMissing: true
 
 ---
 # ── Database ──────────────────────────────────────────────────────────────────

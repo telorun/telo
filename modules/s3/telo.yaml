@@ -37,6 +37,10 @@ schema:
       title: Force Path Style
       type: boolean
       description: Use path-style URLs (required for MinIO, RustFS, and other self-hosted S3)
+    createIfMissing:
+      title: Create If Missing
+      type: boolean
+      description: Create the bucket during init if it does not already exist. Intended for self-hosted/dev backends; leave false for managed clouds where the app lacks CreateBucket permission.
   required:
     - bucketName
     - endpoint

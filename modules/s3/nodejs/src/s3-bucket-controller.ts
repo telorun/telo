@@ -1,4 +1,4 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
 import { Static, Type } from "@sinclair/typebox";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 
@@ -8,6 +8,7 @@ export const schema = Type.Object({
   accessKeyId: Type.String(),
   secretAccessKey: Type.String(),
   forcePathStyle: Type.Optional(Type.Boolean()),
+  createIfMissing: Type.Optional(Type.Boolean()),
 });
 export type S3BucketManifest = Static<typeof schema>;
 
@@ -41,5 +42,22 @@ export async function create(
   ctx: ResourceContext,
 ): Promise<S3BucketResource> {
   ctx.validateSchema(resource, schema);
-  return new S3BucketResource(resource);
+  const instance = new S3BucketResource(resource);
+  if (resource.createIfMissing) {
+    await ensureBucket(instance);
+  }
+  return instance;
+}
+
+async function ensureBucket(instance: S3BucketResource): Promise<void> {
+  try {
+    await instance.getClient().send(new CreateBucketCommand({ Bucket: instance.bucketName }));
+  } catch (err) {
+    if (err instanceof S3ServiceException) {
+      if (err.name === "BucketAlreadyOwnedByYou" || err.name === "BucketAlreadyExists") {
+        return;
+      }
+    }
+    throw err;
+  }
 }

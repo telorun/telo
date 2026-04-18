@@ -65,6 +65,15 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "modules/http-server/README", label: "HTTP Server" },
         { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
         { type: "doc", id: "modules/assert/docs/manifest", label: "Assert.Manifest" },
+        {
+          type: "category",
+          label: "S3",
+          items: [
+            { type: "doc", id: "modules/s3/docs/bucket", label: "S3.Bucket" },
+            { type: "doc", id: "modules/s3/docs/put", label: "S3.Put" },
+            { type: "doc", id: "modules/s3/docs/list", label: "S3.List" },
+          ],
+        },
         { type: "doc", id: "modules/test/docs/suite", label: "Test.Suite" },
       ],
     },
