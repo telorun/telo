@@ -48,7 +48,10 @@ export function useEditorPersistence(
     }
 
     const savedSettings = loadSettings();
-    if (savedSettings) setSettings(savedSettings);
+    // Merge with defaults so older persisted shapes inherit fields added in
+    // later editor versions (e.g. activeRunAdapterId was introduced after
+    // registryServers — pre-existing installs must not land with it missing).
+    if (savedSettings) setSettings({ ...defaultSettings, ...savedSettings });
 
     isHydrated.current = true;
   }, []);

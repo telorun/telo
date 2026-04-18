@@ -22,6 +22,9 @@ interface FieldControlProps {
   /** User-facing label for the field — used by `ObjectField` as the collapsible
    *  trigger title. Ignored by non-object field types. */
   label?: string;
+  /** Whether the parent schema marks this field as required. Used by
+   *  `ObjectField` to decide whether to expose a Clear affordance. */
+  required?: boolean;
 }
 
 export function inferType(prop: JsonSchemaProperty): string {
@@ -55,6 +58,7 @@ export function FieldControl({
   rootCelEval,
   onSelectResource,
   label,
+  required,
 }: FieldControlProps) {
   const kind = inferType(prop);
   const onBlur = () => onFieldBlur?.(rootFieldName);
@@ -94,6 +98,7 @@ export function FieldControl({
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
           label={label}
+          required={required}
         />
       );
     }

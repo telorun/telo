@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppSettings, RegistryServer } from '../model'
+import { RunSettingsSection } from '../run'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -66,10 +67,29 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-120">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-120">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
+
+        <div className="mb-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            Run
+          </p>
+          <RunSettingsSection
+            activeAdapterId={settings.activeRunAdapterId}
+            runAdapterConfig={settings.runAdapterConfig}
+            onChangeActiveAdapter={(id) =>
+              onChange({ ...settings, activeRunAdapterId: id })
+            }
+            onChangeConfig={(id, config) =>
+              onChange({
+                ...settings,
+                runAdapterConfig: { ...settings.runAdapterConfig, [id]: config },
+              })
+            }
+          />
+        </div>
 
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">

@@ -26,6 +26,17 @@ import type {
   WorkspaceAdapter,
 } from "../model";
 import { DEFAULT_SETTINGS } from "../model";
+import { readActiveEnvironment, setActiveEnvironmentEnv } from "../deployment";
+import {
+  buildRunBundle,
+  registry as runRegistry,
+  RunView,
+  useRun,
+} from "../run";
+import {
+  loadDeploymentsForWorkspace,
+  saveDeploymentsForWorkspace,
+} from "../storage-deployments";
 import { buildModuleViewData } from "../view-data";
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -43,6 +54,7 @@ const INITIAL_STATE: EditorState = {
   selectedResource: null,
   panelStack: [],
   diagnosticsByResource: new Map(),
+  deploymentsByApp: {},
 };
 
 function pickInitialActiveModule(workspace: Workspace): string | null {
@@ -62,6 +74,7 @@ export function Editor() {
     INITIAL_STATE,
     DEFAULT_SETTINGS,
   );
+  const runContext = useRun();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -72,6 +85,10 @@ export function Editor() {
   const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestoredRef = useRef(false);
+  // "Latest ref" for handleRunModule — the recheck callback passed into
+  // RunContext outlives the render that created it, so closing over the
+  // function declaration directly captures a stale reference to state.
+  const handleRunModuleRef = useRef<(filePath: string) => void | Promise<void>>(() => undefined);
 
   // Suppress Ctrl+S globally — save will be wired later
   useEffect(() => {
@@ -106,14 +123,27 @@ export function Editor() {
           createRegistryAdapters(settings),
         );
         if (cancelled) return;
+        const nextActiveModulePath =
+          persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
+            ? persistedHint.activeModulePath
+            : pickInitialActiveModule(workspace);
+        const nextActiveModule = nextActiveModulePath
+          ? workspace.modules.get(nextActiveModulePath)
+          : null;
+        // Deployment view only makes sense for Applications; if the persisted
+        // view is "deployment" and the active module is a Library, fall back
+        // to topology — same pattern storage.ts already uses for unknown views.
+        const persistedView = persistedHint.activeView;
+        const nextActiveView: ViewId =
+          persistedView === "deployment" && nextActiveModule?.kind !== "Application"
+            ? "topology"
+            : (persistedView ?? "topology");
         setState((s) => ({
           ...s,
           workspace,
-          activeModulePath:
-            persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
-              ? persistedHint.activeModulePath
-              : pickInitialActiveModule(workspace),
-          activeView: persistedHint.activeView ?? s.activeView,
+          activeModulePath: nextActiveModulePath,
+          activeView: nextActiveView,
+          deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
         }));
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -140,6 +170,13 @@ export function Editor() {
       if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     };
   }, [state.workspace]);
+
+  // Persist deployment config on every mutation. Workspace-scoped, stored
+  // under its own localStorage key (not via saveState).
+  useEffect(() => {
+    if (!state.workspace) return;
+    saveDeploymentsForWorkspace(state.workspace.rootDir, state.deploymentsByApp);
+  }, [state.workspace, state.deploymentsByApp]);
 
   const activeManifest =
     state.workspace && state.activeModulePath
@@ -168,6 +205,7 @@ export function Editor() {
         ...INITIAL_STATE,
         workspace,
         activeModulePath: pickInitialActiveModule(workspace),
+        deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -217,10 +255,112 @@ export function Editor() {
     });
   }
 
-  function handleRunModule(filePath: string) {
-    // Run is not wired yet — surface a placeholder so the affordance isn't silent.
-    setError(`Run is not implemented yet (target: ${filePath})`);
+  async function handleRunModule(filePath: string) {
+    setError(null);
+    if (!state.workspace) return;
+    const workspace = state.workspace;
+    const workspaceAdapter = workspaceAdapterRef.current;
+    if (!workspaceAdapter) {
+      setError("No workspace adapter available.");
+      return;
+    }
+
+    const adapter = runRegistry.get(settings.activeRunAdapterId);
+    if (!adapter) {
+      // PR 5 will surface this as an inline message in the Run Settings row.
+      setError(`Run adapter "${settings.activeRunAdapterId}" is not registered.`);
+      setSettingsOpen(true);
+      return;
+    }
+
+    const persistedConfig = settings.runAdapterConfig[adapter.id];
+    const config = persistedConfig ?? adapter.defaultConfig;
+
+    const syncIssues = adapter.validateConfig(config);
+    if (syncIssues.length > 0) {
+      // PR 5 wires these into the Run settings row; for now open Settings.
+      setSettingsOpen(true);
+      return;
+    }
+
+    let availability;
+    try {
+      availability = await adapter.isAvailable(config);
+    } catch (err) {
+      setError(
+        `Failed to probe ${adapter.displayName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    if (availability.status === "needs-setup") {
+      setSettingsOpen(true);
+      return;
+    }
+    if (availability.status === "unavailable") {
+      runContext.showUnavailable({
+        adapterId: adapter.id,
+        adapterDisplayName: adapter.displayName,
+        message: availability.message,
+        remediation: availability.remediation,
+        recheck: async () => {
+          const again = await adapter.isAvailable(config);
+          if (again.status === "ready") {
+            runContext.closeRunView();
+            void handleRunModuleRef.current(filePath);
+          }
+        },
+      });
+      return;
+    }
+
+    if (
+      runContext.activeRun &&
+      (runContext.activeRun.status.kind === "starting" ||
+        runContext.activeRun.status.kind === "running")
+    ) {
+      const proceed = window.confirm("Stop current run and start new?");
+      if (!proceed) return;
+      await runContext.stopRun();
+    }
+
+    // save-before-run is a no-op today: every mutation in the editor persists
+    // eagerly via `persistModule`. The only exception is the SourceView
+    // Monaco debounce (~500ms); if the user clicks Run within that window the
+    // unflushed edit runs one revision behind. Acceptable for v1; revisit if
+    // it bites.
+
+    // Read-only lookup — the seeded record is committed only on first user
+    // edit via `setActiveEnvironmentEnv`. Running doesn't need to persist a
+    // record just because the user ran it once with default env.
+    const environment = readActiveEnvironment(state.deploymentsByApp, filePath);
+
+    let bundle;
+    try {
+      bundle = await buildRunBundle(workspace, filePath, workspaceAdapter.readFile);
+    } catch (err) {
+      setError(
+        `Failed to build run bundle: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
+    try {
+      await runContext.startRun({
+        adapter,
+        config,
+        request: { bundle, env: environment.env },
+      });
+    } catch (err) {
+      setError(
+        `Failed to start run: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
+
+  // Keep the ref pointed at the current handleRunModule. Safe during render
+  // because refs are write-only here — no observed value flows back into the
+  // render output.
+  handleRunModuleRef.current = handleRunModule;
 
   /** Persists a single module to disk via the workspace adapter. Surfaces
    *  write failures as errors so the author notices before data diverges from
@@ -307,13 +447,23 @@ export function Editor() {
 
   function handleOpenModule(filePath: string) {
     setSelection(null);
-    setState((s) => ({
-      ...s,
-      activeModulePath: filePath,
-      graphContext: null,
-      selectedResource: null,
-      panelStack: [],
-    }));
+    setState((s) => {
+      const nextModule = s.workspace?.modules.get(filePath);
+      // Leaving the Deployment view behind when switching to a Library —
+      // the tab is hidden there so we pre-select a view that exists.
+      const activeView: ViewId =
+        s.activeView === "deployment" && nextModule?.kind !== "Application"
+          ? "topology"
+          : s.activeView;
+      return {
+        ...s,
+        activeModulePath: filePath,
+        activeView,
+        graphContext: null,
+        selectedResource: null,
+        panelStack: [],
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -413,6 +563,15 @@ export function Editor() {
     });
   }
 
+  function handleSetDeploymentEnvVars(env: Record<string, string>) {
+    const appPath = state.activeModulePath;
+    if (!appPath) return;
+    setState((s) => ({
+      ...s,
+      deploymentsByApp: setActiveEnvironmentEnv(s.deploymentsByApp, appPath, env),
+    }));
+  }
+
   async function handleReplaceManifest(manifest: typeof activeManifest & {}) {
     if (!state.workspace || !state.activeModulePath) return;
 
@@ -446,9 +605,11 @@ export function Editor() {
         onOpenSettings={() => setSettingsOpen(true)}
         onRun={
           activeManifest?.kind === "Application"
-            ? () => handleRunModule(activeManifest.filePath)
+            ? () => void handleRunModule(activeManifest.filePath)
             : undefined
         }
+        runStatus={runContext.activeRun?.status ?? null}
+        onOpenRunView={runContext.openRunView}
       />
 
       {error && (
@@ -488,49 +649,62 @@ export function Editor() {
           onUpgradeImport={handleUpgradeImport}
           onCreateResource={() => setCreateResourceOpen(true)}
         />
-        {!state.workspace ? (
-          <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
-        ) : state.workspace.modules.size === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              This workspace is empty
-            </p>
-            <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
-              Add your first module using the <strong>+</strong> next to Applications or Libraries
-              in the sidebar.
-            </p>
-          </div>
-        ) : viewData ? (
-          <ViewContainer
-            activeView={state.activeView}
-            onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
-            viewProps={{
-              viewData,
-              selectedResource: state.selectedResource,
-              graphContext: state.graphContext,
-              onSelectResource: handleSelectResource,
-              onNavigateResource: handleNavigateResource,
-              onUpdateResource: handleUpdateResource,
-              onSelect: handleSelect,
-              onClearSelection: handleClearSelection,
-              onReplaceManifest: handleReplaceManifest,
-            }}
-          />
+        {runContext.isRunViewOpen ? (
+          <RunView />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
-            Select a module from the workspace tree.
-          </div>
+          <>
+            {!state.workspace ? (
+              <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
+            ) : state.workspace.modules.size === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  This workspace is empty
+                </p>
+                <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
+                  Add your first module using the <strong>+</strong> next to Applications or
+                  Libraries in the sidebar.
+                </p>
+              </div>
+            ) : viewData ? (
+              <ViewContainer
+                activeView={state.activeView}
+                onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
+                viewProps={{
+                  viewData,
+                  selectedResource: state.selectedResource,
+                  graphContext: state.graphContext,
+                  onSelectResource: handleSelectResource,
+                  onNavigateResource: handleNavigateResource,
+                  onUpdateResource: handleUpdateResource,
+                  onSelect: handleSelect,
+                  onClearSelection: handleClearSelection,
+                  onReplaceManifest: handleReplaceManifest,
+                  deployment: {
+                    activeEnvironment: readActiveEnvironment(
+                      state.deploymentsByApp,
+                      state.activeModulePath,
+                    ),
+                    onSetEnvVars: handleSetDeploymentEnvVars,
+                  },
+                }}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
+                Select a module from the workspace tree.
+              </div>
+            )}
+            <DetailPanel
+              selectedResource={state.selectedResource}
+              graphContext={state.graphContext}
+              selection={selection}
+              viewData={viewData}
+              onUpdateResource={handleUpdateResource}
+              onSelectResource={handleSelectResource}
+              onSelect={handleSelect}
+              onNavigateResource={handleNavigateResource}
+            />
+          </>
         )}
-        <DetailPanel
-          selectedResource={state.selectedResource}
-          graphContext={state.graphContext}
-          selection={selection}
-          viewData={viewData}
-          onUpdateResource={handleUpdateResource}
-          onSelectResource={handleSelectResource}
-          onSelect={handleSelect}
-          onNavigateResource={handleNavigateResource}
-        />
       </div>
       <SettingsModal
         open={settingsOpen}

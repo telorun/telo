@@ -4,6 +4,7 @@ Use `pnpm run telo ./manifest.yaml` for testing.
 Use `pnpm run test` to run the full test suite (runs `test-suite.yaml` which discovers all `tests/*.yaml` across the repo).
 Tests should live in the module they test: `modules/<name>/tests/*.yaml`.
 Test fixtures go in `__fixtures__/` subdirectories (excluded from test discovery).
+Implementation plans should live in the package they affect the most, eg. `apps/telo-editor/plans/some-plan.md`.
 
 Follow this strictly:
 
