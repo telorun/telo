@@ -1,7 +1,7 @@
 import { StaticAnalyzer, type AnalysisDiagnostic } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { toManifestDocs } from "./loader";
-import type { Application } from "./model";
+import type { Workspace } from "./model";
 
 interface EnrichedMetadata {
   name: string;
@@ -12,11 +12,11 @@ interface EnrichedMetadata {
 }
 
 /**
- * Converts all modules in the Application to ResourceManifest[], enriching
+ * Converts all modules in the Workspace to ResourceManifest[], enriching
  * Telo.Import documents with resolvedModuleName/resolvedNamespace so the
  * analyzer can correctly register import aliases and module identities.
  */
-function toAnalysisManifests(app: Application): ResourceManifest[] {
+function toAnalysisManifests(app: Workspace): ResourceManifest[] {
   const result: ResourceManifest[] = [];
 
   for (const [filePath, manifest] of app.modules) {
@@ -47,15 +47,15 @@ function toAnalysisManifests(app: Application): ResourceManifest[] {
 }
 
 /**
- * Runs static analysis on the entire Application and returns diagnostics
+ * Runs static analysis on the entire Workspace and returns diagnostics
  * organized as `Map<filePath, Map<resourceName, AnalysisDiagnostic[]>>`.
  *
  * Groups diagnostics using the `source` filePath stamped on each manifest's
  * metadata during conversion, avoiding a reverse lookup that could collide
  * when two modules define resources with the same kind+name.
  */
-export function analyzeApplication(
-  app: Application,
+export function analyzeWorkspace(
+  app: Workspace,
 ): Map<string, Map<string, AnalysisDiagnostic[]>> {
   const manifests = toAnalysisManifests(app);
   const analyzer = new StaticAnalyzer();

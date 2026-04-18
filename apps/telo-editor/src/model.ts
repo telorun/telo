@@ -45,13 +45,13 @@ export interface ParsedManifest {
   include?: string[];
 }
 
-export type ImportKind = "submodule" | "remote" | "external";
+export type ImportKind = "local" | "registry" | "remote";
 
 export interface ParsedImport {
-  name: string; // metadata.name (alias)
-  source: string; // raw source field
+  name: string;
+  source: string;
   importKind: ImportKind;
-  resolvedPath?: string; // absolute path, populated for submodule imports
+  resolvedPath?: string;
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
 }
@@ -64,11 +64,36 @@ export interface ParsedResource {
   sourceFile?: string;
 }
 
-export interface Application {
-  rootPath: string;
-  modules: Map<string, ParsedManifest>; // keyed by absolute filePath
-  importGraph: Map<string, Set<string>>; // filePath → submodule filePaths
-  importedBy: Map<string, Set<string>>; // reverse index
+/** A workspace is a directory tree on disk containing one or more modules.
+ *  `modules` holds every module reachable from the scan (workspace-local) or
+ *  via transitive imports (registry/remote). `rootDir` distinguishes the two:
+ *  workspace-local modules have a filePath under rootDir. */
+export interface Workspace {
+  rootDir: string;
+  modules: Map<string, ParsedManifest>;
+  importGraph: Map<string, Set<string>>;
+  importedBy: Map<string, Set<string>>;
+}
+
+/** Mutation surface for a workspace. Read ops come from the ManifestAdapter
+ *  (shared with the runtime); WorkspaceAdapter adds the write/list/delete
+ *  ops the editor needs. Kept split so analyzer code never sees mutations. */
+export interface WorkspaceAdapter {
+  /** Read text file. Relative to the workspace root (or absolute, implementation-defined). */
+  readFile(path: string): Promise<string>;
+  /** Write text file; creates parent directories if needed. */
+  writeFile(path: string, text: string): Promise<void>;
+  /** List directory entries (one level). */
+  listDir(path: string): Promise<DirEntry[]>;
+  /** Create directory (recursive). */
+  createDir(path: string): Promise<void>;
+  /** Delete a file or directory (recursive for directories). */
+  delete(path: string): Promise<void>;
+}
+
+export interface DirEntry {
+  name: string;
+  isDirectory: boolean;
 }
 
 export type ViewId = "topology" | "inventory" | "source";
@@ -83,18 +108,17 @@ export interface ModuleViewData {
 }
 
 export interface EditorState {
-  application: Application | null;
+  workspace: Workspace | null;
   activeModulePath: string | null;
   activeView: ViewId;
-  navigationStack: NavigationEntry[];
+  /** The "canvas focus" resource in the active module — last resource the
+   *  user navigated to in a topology/inventory view. Cleared when the active
+   *  module changes. */
+  graphContext: { kind: string; name: string } | null;
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];
   diagnosticsByResource: Map<string, Map<string, AnalysisDiagnostic[]>>;
 }
-
-export type NavigationEntry =
-  | { type: "module"; filePath: string; graphContext: { kind: string; name: string } | null }
-  | { type: "scope"; resource: { kind: string; name: string }; fieldPath: string[] };
 
 export type PanelEntry =
   | { type: "resource"; kind: string; name: string }

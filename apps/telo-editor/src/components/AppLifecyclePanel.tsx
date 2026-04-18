@@ -1,76 +1,36 @@
-import { useState } from "react";
 import { Button } from "./ui/button";
 
 interface AppLifecyclePanelProps {
-  hasApplication: boolean;
-  creating: boolean;
-  onCreate: (name: string) => void;
-  onCancelCreate: () => void;
-  onNew: () => void;
   onOpen: () => void;
+  /** If present, FSA couldn't silently re-attach to this path — surface it as
+   *  a hint so the user can re-open with one click. */
+  recentRootDir?: string | null;
 }
 
-export function AppLifecyclePanel({
-  hasApplication,
-  creating,
-  onCreate,
-  onCancelCreate,
-  onNew,
-  onOpen,
-}: AppLifecyclePanelProps) {
-  const [name, setName] = useState("");
-
-  function handleCreate() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setName("");
-    onCreate(trimmed);
-  }
-
-  function handleCancel() {
-    setName("");
-    onCancelCreate();
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") handleCreate();
-    if (e.key === "Escape") handleCancel();
-  }
-
-  if (creating) {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-zinc-50 dark:bg-zinc-900">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Application name
-        </span>
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="MyApp"
-          className="w-56 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <div className="flex gap-2">
-          <Button size="sm" onClick={handleCreate} disabled={!name.trim()}>
-            Create
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleCancel}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
+export function AppLifecyclePanel({ onOpen, recentRootDir }: AppLifecyclePanelProps) {
   return (
-    <div className="flex h-full flex-1 items-center justify-center gap-3 bg-zinc-50 dark:bg-zinc-900">
-      <Button variant="outline" onClick={onNew}>
-        New application
-      </Button>
-      <Button variant="outline" onClick={onOpen}>
-        Open file
-      </Button>
+    <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No workspace open</p>
+        <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
+          Open a directory to load its modules. An empty directory becomes a new workspace — you
+          can add applications and libraries from the sidebar.
+        </p>
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <Button variant="default" onClick={onOpen}>
+          Open workspace
+        </Button>
+        {recentRootDir && (
+          <button
+            className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            onClick={onOpen}
+            title="Pick the same directory again to re-open"
+          >
+            Recent: {recentRootDir}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

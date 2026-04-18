@@ -1,6 +1,6 @@
 import type { AnalysisDiagnostic } from "@telorun/analyzer";
 import { getAvailableKinds } from "./loader";
-import type { Application, AvailableKind, ModuleViewData, ParsedManifest } from "./model";
+import type { AvailableKind, ModuleViewData, ParsedManifest, Workspace } from "./model";
 
 /**
  * Builds the stable view data contract from application state.
@@ -13,14 +13,14 @@ import type { Application, AvailableKind, ModuleViewData, ParsedManifest } from 
  *   no diagnostics are available. The caller unwraps by module path.
  */
 export function buildModuleViewData(
-  application: Application,
+  workspace: Workspace,
   manifest: ParsedManifest,
   moduleDiagnostics: Map<string, AnalysisDiagnostic[]> | undefined,
 ): ModuleViewData {
   const kinds = new Map<string, AvailableKind>();
 
   // Imported kinds
-  for (const kind of getAvailableKinds(application, manifest)) {
+  for (const kind of getAvailableKinds(workspace, manifest)) {
     kinds.set(kind.fullKind, kind);
   }
 

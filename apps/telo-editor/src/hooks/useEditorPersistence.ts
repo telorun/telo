@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { AppSettings, EditorState } from "../model";
-import { loadSettings, loadState, saveSettings, saveState } from "../storage";
+import type { AppSettings, EditorState, ViewId } from "../model";
+import { loadPersistedState, loadSettings, saveSettings, saveState } from "../storage";
+
+export interface PersistedEditorState {
+  rootDir: string | null;
+  activeModulePath: string | null;
+  activeView: ViewId;
+}
 
 interface UseEditorPersistenceResult {
   state: EditorState;
   setState: React.Dispatch<React.SetStateAction<EditorState>>;
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
+  /** Hint values loaded from localStorage at hydration — the Editor uses these
+   *  to decide whether to reopen the last workspace on launch. Null before
+   *  hydration runs. */
+  persistedHint: PersistedEditorState | null;
 }
 
 export function useEditorPersistence(
@@ -15,9 +25,8 @@ export function useEditorPersistence(
 ): UseEditorPersistenceResult {
   const [state, setState] = useState<EditorState>(initialState);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [persistedHint, setPersistedHint] = useState<PersistedEditorState | null>(null);
 
-  // isHydrated tracks whether the post-mount restore has run.
-  // Effects run in definition order, so save effects skip initial render.
   const isHydrated = useRef(false);
 
   useEffect(() => {
@@ -29,8 +38,14 @@ export function useEditorPersistence(
   }, [settings]);
 
   useEffect(() => {
-    const saved = loadState();
-    if (saved) setState((s) => ({ ...s, ...saved }));
+    const saved = loadPersistedState();
+    if (saved) {
+      setPersistedHint({
+        rootDir: saved.rootDir,
+        activeModulePath: saved.activeModulePath,
+        activeView: (saved.activeView ?? "topology") as ViewId,
+      });
+    }
 
     const savedSettings = loadSettings();
     if (savedSettings) setSettings(savedSettings);
@@ -38,5 +53,5 @@ export function useEditorPersistence(
     isHydrated.current = true;
   }, []);
 
-  return { state, setState, settings, setSettings };
+  return { state, setState, settings, setSettings, persistedHint };
 }

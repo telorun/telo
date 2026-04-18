@@ -14,13 +14,18 @@ Replace the "Modules vs Imports" sidebar split with a directory-based workspace 
 
 ## UX changes
 
-### Sidebar: unified Workspace tree
+### Sidebar: split Workspace tree (Applications / Libraries)
 
 - Replaces the `Modules` section and the breadcrumb.
-- One node per directory under the workspace root that contains a `telo.yaml`. No other folders appear.
-- Applications render with a distinct icon and a Run affordance. Libraries render plain.
+- Two sibling sections, each with its own header and add action:
+  - **Applications** header → `New application` action. Lists every directory under the workspace root whose `telo.yaml` declares `kind: Telo.Application`.
+  - **Libraries** header → `New library` action. Lists every directory whose `telo.yaml` declares `kind: Telo.Library`.
+- Splitting by header (rather than a unified tree with mixed icons and a single "New module" button that asks for kind) makes module kind an upfront choice tied to where the author clicks. It also removes the "what happens if I add in the wrong place" retroactive-fix problem, since Application-only fields like `targets` are gated at parse time.
+- Within each section: one node per directory under the workspace root matching that kind. No other folders appear.
+- Applications render with an Application icon and a Run affordance. Libraries render with a Library icon.
 - Expanding a module reveals its `include:`-reachable partial files as leaf nodes (click → opens the partial in source view).
 - **"No importers" badge** on a Library with no transitive importer from any Application in the workspace (_any_ Application — tests, examples, apps). Rendered dimmed. Wording is deliberate: "no importers" is a neutral observation, not a judgement ("unused" or "orphan" would misread WIP libraries and test-only helpers as broken).
+- Empty-section hints: an empty Applications section shows "No applications yet" with the `New application` action inline; same for Libraries.
 
 ### Sidebar: Imports section (per active module)
 
@@ -104,11 +109,13 @@ interface WorkspaceAdapter {
 
 Implementations:
 
-- **`TauriWorkspaceAdapter`** — `@tauri-apps/plugin-fs`.
+- **`TauriWorkspaceAdapter`** — `@tauri-apps/plugin-fs` for every filesystem op (read, write, listDir, delete, createDir). The existing Rust `read_file` invoke path is removed as part of this change; the plugin is the single Tauri filesystem surface. Clean cut, not a read-vs-write split — two code paths for the same concept would be a maintenance hazard.
 - **`FsaWorkspaceAdapter`** — Chrome/Edge File System Access API. Extends current read-only FSA adapter with writes. Requests read+write permission in a single gesture at directory-pick time, so the first actual save doesn't fail with a surprise permission prompt mid-edit.
-- **`IndexedDbWorkspaceAdapter`** — browser fallback when FSA is unavailable. Backs new/unsaved workspaces and edits in Firefox/Safari.
+- **`LocalStorageWorkspaceAdapter`** — browser fallback when FSA is unavailable (Firefox/Safari). Stores files under a keyed prefix per workspace in `window.localStorage` (key = `${prefix}/${relativePath}`, value = UTF-8 text). Acceptable because manifests are small text and a workspace rarely exceeds a few dozen files — the ~5 MB origin quota is not a realistic ceiling for YAML. If that assumption breaks for a user, revisit with IndexedDB; don't pre-invest.
 
 The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but the interfaces stay split so runtime code never takes a dependency on mutation APIs.
+
+File watching (`watch?`) is deliberately out of scope for v1. External edits made outside the editor require a manual workspace reload. Keeps the initial surface small and sidesteps cross-platform watcher differences (Tauri notify events, FSA's lack of change notifications, localStorage's `storage` event).
 
 ---
 
@@ -123,17 +130,18 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 
 ### `<WorkspaceTree>` (new)
 
-- Renders a tree from `workspace.modules` keyed by directory path.
-- Header has a single `New module` action that prompts for a path relative to workspace root. No per-node "New module here" — avoids the "inside vs next to" ambiguity and matches how authors actually organize modules (typically siblings, not nested).
+- Renders two sections — `Applications` and `Libraries` — from `workspace.modules`, partitioned by `ParsedManifest.kind`. Each section is keyed by directory path and sorted by filesystem order.
+- Each section header has its own add action: `New application` and `New library`. Each prompts only for the module name; the parent directory is fixed by the section — `apps/<name>` for applications, `libs/<name>` for libraries. The kind is fixed by which header was clicked. No per-node "New module here" — avoids the "inside vs next to" ambiguity and matches how authors organize modules (typically siblings, not nested). The fixed parent removes the second form field entirely; if an author needs a different layout they can rename the directory on disk.
 - Per-node interactions:
   - Click → `onOpenModule(path)`.
-  - Inline Run icon on every `Telo.Application` node (ghost-style, small).
+  - Inline Run icon on every Application node (ghost-style, small). Not shown in the Libraries section.
   - Context menu → `Delete module`, `Reveal in filesystem`.
 - **Delete cascade.** `Delete module` shows a confirmation that lists every importer of the target (using `workspace.importedBy`). On confirm: remove the target directory via `WorkspaceAdapter.delete`, then rewrite each importer to drop its `Telo.Import` entry pointing at the deleted path. A plain filesystem delete would leave dangling imports that subsequently fail analyzer validation; handling the graph edge here beats making the author chase diagnostics. If the user cancels, nothing changes.
 - Visual treatment:
-  - Application/Library icon per node.
+  - Application / Library icon per node (section-consistent).
   - Active module highlighted.
   - Libraries with no transitive importer from any Application rendered dimmed with a `no importers` badge (see UX section for wording rationale). No hide-toggle — authors should see what's unwired.
+  - Empty sections render a muted "No applications yet" / "No libraries yet" hint with the section's add action inline.
 
 ### `TopBar.tsx`
 
@@ -179,7 +187,10 @@ The same object may implement both `ManifestAdapter` and `WorkspaceAdapter` but 
 
 None at plan-time. Items decided during design:
 
-- New-module action lives on the tree header, not per-node — prompts for a path relative to workspace root.
+- The workspace tree is split into `Applications` and `Libraries` sections, each with its own add action (`New application` / `New library`). Kind is determined by the section, not by a dialog radio. Add actions live on the section header, not per-node. The creation form asks only for the module name; parent directories are fixed per-kind (`apps/` / `libs/`).
 - Run action appears both as an inline icon on each Application node and as a prominent button in the TopBar when an Application is active.
 - Libraries with no transitive importer from any Application are dimmed with a `no importers` badge; no hide-toggle.
 - FSA read+write permission is requested together at directory-pick time.
+- Tauri filesystem layer is fully migrated to `@tauri-apps/plugin-fs`; the Rust `read_file` invoke is removed.
+- Browser fallback (Firefox/Safari) uses `localStorage` under a workspace-keyed prefix; IndexedDB deferred until the ~5 MB quota proves insufficient in practice.
+- File watcher support is deferred; external edits require a manual workspace reload.

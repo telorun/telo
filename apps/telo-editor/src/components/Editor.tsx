@@ -1,27 +1,29 @@
 import type { ManifestAdapter } from "@telorun/analyzer";
 import { useEffect, useRef, useState } from "react";
-import { analyzeApplication } from "../analysis";
+import { analyzeWorkspace } from "../analysis";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
-  addModuleImport,
+  addImport,
   classifyImport,
-  createApplication,
+  createModule,
   createRegistryAdapters,
-  isInTauri,
-  loadApplication,
+  deleteModule,
+  isWorkspaceModule,
+  loadWorkspace,
   noopAdapter,
-  openRootManifest,
-  readModuleMetadata,
+  openWorkspaceDirectory,
   reconcileImports,
-  toPascalCase,
-  toRelativeSource,
+  reopenWorkspaceAt,
+  saveModule,
 } from "../loader";
+import type { ParsedManifest } from "../model";
 import type {
-  Application,
   EditorState,
+  ModuleKind,
   Selection,
-  NavigationEntry,
   ViewId,
+  Workspace,
+  WorkspaceAdapter,
 } from "../model";
 import { DEFAULT_SETTINGS } from "../model";
 import { buildModuleViewData } from "../view-data";
@@ -29,97 +31,47 @@ import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
 import { SettingsModal } from "./SettingsModal";
-import { Sidebar } from "./Sidebar";
+import { Sidebar } from "./sidebar/Sidebar";
 import { TopBar } from "./TopBar";
 import { ViewContainer } from "./views/ViewContainer";
 
 const INITIAL_STATE: EditorState = {
-  application: null,
+  workspace: null,
   activeModulePath: null,
   activeView: "topology",
-  navigationStack: [],
+  graphContext: null,
   selectedResource: null,
   panelStack: [],
   diagnosticsByResource: new Map(),
 };
 
-function pruneUnreachableModules(application: Application): Application {
-  const reachable = new Set<string>();
-  const queue: string[] = [application.rootPath];
-
-  while (queue.length > 0) {
-    const path = queue.shift();
-    if (!path || reachable.has(path)) continue;
-    const manifest = application.modules.get(path);
-    if (!manifest) continue;
-
-    reachable.add(path);
-    for (const imp of manifest.imports) {
-      const depPath = imp.resolvedPath ?? imp.source;
-      if (application.modules.has(depPath) && !reachable.has(depPath)) {
-        queue.push(depPath);
-      }
-    }
-  }
-
-  const modules = new Map<
-    string,
-    Application["modules"] extends Map<string, infer V> ? V : never
-  >();
-  const importGraph = new Map<string, Set<string>>();
-  const importedBy = new Map<string, Set<string>>();
-
-  for (const [filePath, manifest] of application.modules) {
-    if (!reachable.has(filePath)) continue;
-    modules.set(filePath, manifest);
-  }
-
-  for (const [filePath, manifest] of modules) {
-    const deps = new Set<string>();
-    importGraph.set(filePath, deps);
-
-    for (const imp of manifest.imports) {
-      const depPath = imp.resolvedPath ?? imp.source;
-      if (!modules.has(depPath)) continue;
-      deps.add(depPath);
-
-      if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
-      importedBy.get(depPath)!.add(filePath);
-    }
-  }
-
-  return {
-    rootPath: application.rootPath,
-    modules,
-    importGraph,
-    importedBy,
-  };
-}
-
-function sanitizeNavigationStack(
-  stack: NavigationEntry[],
-  modules: Map<string, unknown>,
-  rootPath: string,
-): NavigationEntry[] {
-  const filtered = stack.filter((entry) => entry.type !== "module" || modules.has(entry.filePath));
-  if (filtered.length > 0) return filtered;
-  return [{ type: "module", filePath: rootPath, graphContext: null }];
+function pickInitialActiveModule(workspace: Workspace): string | null {
+  const entries = [...workspace.modules.entries()].filter(([path]) =>
+    isWorkspaceModule(workspace, path),
+  );
+  entries.sort((a, b) => a[0].localeCompare(b[0]));
+  const app = entries.find(([, m]) => m.kind === "Application");
+  if (app) return app[0];
+  const lib = entries.find(([, m]) => m.kind === "Library");
+  if (lib) return lib[0];
+  return null;
 }
 
 export function Editor() {
-  const { state, setState, settings, setSettings } = useEditorPersistence(
+  const { state, setState, settings, setSettings, persistedHint } = useEditorPersistence(
     INITIAL_STATE,
     DEFAULT_SETTINGS,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
 
-  const adapterRef = useRef<ManifestAdapter | null>(null);
+  const manifestAdapterRef = useRef<ManifestAdapter | null>(null);
+  const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRestoredRef = useRef(false);
 
   // Suppress Ctrl+S globally — save will be wired later
   useEffect(() => {
@@ -132,65 +84,90 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Debounced analysis: re-analyze whenever the application changes
+  // Auto-restore the last workspace on mount, when the environment allows
+  // re-attaching without a user gesture (Tauri filesystem, browser localStorage).
+  // FSA can't silently re-attach — user sees the recent rootDir hint instead.
   useEffect(() => {
-    if (!state.application) return;
+    if (autoRestoredRef.current) return;
+    if (!persistedHint?.rootDir) return;
+    if (state.workspace) return;
+    autoRestoredRef.current = true;
+    const reopened = reopenWorkspaceAt(persistedHint.rootDir);
+    if (!reopened) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        manifestAdapterRef.current = reopened.manifestAdapter;
+        workspaceAdapterRef.current = reopened.workspaceAdapter;
+        const workspace = await loadWorkspace(
+          reopened.rootDir,
+          reopened.manifestAdapter,
+          reopened.workspaceAdapter,
+          createRegistryAdapters(settings),
+        );
+        if (cancelled) return;
+        setState((s) => ({
+          ...s,
+          workspace,
+          activeModulePath:
+            persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
+              ? persistedHint.activeModulePath
+              : pickInitialActiveModule(workspace),
+          activeView: persistedHint.activeView ?? s.activeView,
+        }));
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [persistedHint, state.workspace, settings, setState]);
+
+  // Debounced analysis: re-analyze whenever the workspace changes
+  useEffect(() => {
+    if (!state.workspace) return;
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
-    const app = state.application;
+    const workspace = state.workspace;
     analysisTimerRef.current = setTimeout(() => {
-      const diagnosticsByResource = analyzeApplication(app);
+      const diagnosticsByResource = analyzeWorkspace(workspace);
       setState((s) => {
-        // Only update if the application hasn't changed since we started
-        if (s.application !== app) return s;
+        if (s.workspace !== workspace) return s;
         return { ...s, diagnosticsByResource };
       });
     }, 300);
     return () => {
       if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     };
-  }, [state.application]);
+  }, [state.workspace]);
 
   const activeManifest =
-    state.application && state.activeModulePath
-      ? (state.application.modules.get(state.activeModulePath) ?? null)
+    state.workspace && state.activeModulePath
+      ? (state.workspace.modules.get(state.activeModulePath) ?? null)
       : null;
-  const currentNavigationEntry = state.navigationStack.at(-1) ?? null;
-  const graphContext =
-    currentNavigationEntry?.type === "module" ? currentNavigationEntry.graphContext : null;
 
   // ---------------------------------------------------------------------------
-  // Application lifecycle
+  // Workspace lifecycle
   // ---------------------------------------------------------------------------
-
-  function handleCreate(name: string) {
-    adapterRef.current = null;
-    const application = createApplication(name);
-    setCreating(false);
-    setState({
-      ...INITIAL_STATE,
-      application,
-      activeModulePath: application.rootPath,
-      navigationStack: [{ type: "module", filePath: application.rootPath, graphContext: null }],
-    });
-  }
 
   async function handleOpen() {
     setError(null);
     setLoading(true);
     try {
-      const opened = await openRootManifest();
+      const opened = await openWorkspaceDirectory();
       if (!opened) return;
-      adapterRef.current = opened.adapter;
-      const application = await loadApplication(
-        opened.rootPath,
-        opened.adapter,
+      manifestAdapterRef.current = opened.manifestAdapter;
+      workspaceAdapterRef.current = opened.workspaceAdapter;
+      const workspace = await loadWorkspace(
+        opened.rootDir,
+        opened.manifestAdapter,
+        opened.workspaceAdapter,
         createRegistryAdapters(settings),
       );
       setState({
         ...INITIAL_STATE,
-        application,
-        activeModulePath: opened.rootPath,
-        navigationStack: [{ type: "module", filePath: opened.rootPath, graphContext: null }],
+        workspace,
+        activeModulePath: pickInitialActiveModule(workspace),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -200,126 +177,132 @@ export function Editor() {
   }
 
   // ---------------------------------------------------------------------------
-  // Import authoring
+  // Module creation + deletion
   // ---------------------------------------------------------------------------
 
-  async function handleBrowseForModule(): Promise<{
-    source: string;
-    suggestedAlias: string;
-  } | null> {
-    const adapter = adapterRef.current;
-    if (!isInTauri() || !state.activeModulePath || !adapter) return null;
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const result = await open({ filters: [{ name: "YAML", extensions: ["yaml", "yml"] }] });
-    if (!result || typeof result !== "string") return null;
-    const name = await readModuleMetadata(result, adapter);
-    const source = toRelativeSource(state.activeModulePath, result);
-    const suggestedAlias = toPascalCase(name ?? result.split("/").at(-2) ?? "Module");
-    return { source, suggestedAlias };
+  async function handleCreateModule(kind: ModuleKind, relativePath: string, name: string) {
+    const workspace = state.workspace;
+    const adapter = workspaceAdapterRef.current;
+    if (!workspace || !adapter) throw new Error("No workspace open");
+    const updated = await createModule(workspace, { kind, relativePath, name }, adapter);
+    const newFilePath = [...updated.modules.keys()].find((p) => !workspace.modules.has(p))!;
+    setState((s) => ({
+      ...s,
+      workspace: updated,
+      activeModulePath: newFilePath,
+      graphContext: null,
+      selectedResource: null,
+      panelStack: [],
+    }));
   }
 
-  async function handleAddModule(source: string, alias: string) {
-    const adapter = adapterRef.current;
-    if (!state.application || !state.activeModulePath || !adapter) return;
-    const resolvedPath = adapter.resolveRelative(state.activeModulePath, source);
-    const imp = { name: alias, source, importKind: "submodule" as const, resolvedPath };
-    const updated = await addModuleImport(
-      state.application,
-      state.activeModulePath,
-      imp,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    setState((s) => ({ ...s, application: updated }));
-  }
-
-  async function handleAddImport(source: string, alias: string) {
-    if (!state.application || !state.activeModulePath) return;
-    const imp = { name: alias, source, importKind: classifyImport(source) };
-    const adapter = adapterRef.current ?? noopAdapter;
-    const updated = await addModuleImport(
-      state.application,
-      state.activeModulePath,
-      imp,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    setState((s) => ({ ...s, application: updated }));
-  }
-
-  function handleRemoveImport(name: string) {
-    if (!state.application || !state.activeModulePath) return;
+  async function handleDeleteModule(filePath: string) {
+    const workspace = state.workspace;
+    const adapter = workspaceAdapterRef.current;
+    if (!workspace || !adapter) return;
+    const updated = await deleteModule(workspace, filePath, adapter);
     setState((s) => {
-      if (!s.application || !s.activeModulePath) return s;
-
-      const modules = new Map(s.application.modules);
-      const current = modules.get(s.activeModulePath);
-      if (!current) return s;
-
-      modules.set(s.activeModulePath, {
-        ...current,
-        imports: current.imports.filter((i) => i.name !== name),
-      });
-
-      const pruned = pruneUnreachableModules({ ...s.application, modules });
-      const navigationStack = sanitizeNavigationStack(
-        s.navigationStack,
-        pruned.modules as Map<string, unknown>,
-        pruned.rootPath,
-      );
-      const activeModulePath = pruned.modules.has(s.activeModulePath)
-        ? s.activeModulePath
-        : pruned.rootPath;
-      const shouldResetSelection = activeModulePath !== s.activeModulePath;
-
+      const nextActive =
+        s.activeModulePath === filePath
+          ? pickInitialActiveModule(updated)
+          : s.activeModulePath;
       return {
         ...s,
-        application: pruned,
-        navigationStack,
-        activeModulePath,
-        selectedResource: shouldResetSelection ? null : s.selectedResource,
-        panelStack: shouldResetSelection ? [] : s.panelStack,
+        workspace: updated,
+        activeModulePath: nextActive,
+        graphContext: nextActive === s.activeModulePath ? s.graphContext : null,
+        selectedResource: nextActive === s.activeModulePath ? s.selectedResource : null,
+        panelStack: nextActive === s.activeModulePath ? s.panelStack : [],
       };
     });
   }
 
-  async function handleUpgradeImport(name: string, newSource: string) {
-    if (!state.application || !state.activeModulePath) return;
+  function handleRunModule(filePath: string) {
+    // Run is not wired yet — surface a placeholder so the affordance isn't silent.
+    setError(`Run is not implemented yet (target: ${filePath})`);
+  }
 
-    const modules = new Map(state.application.modules);
+  /** Persists a single module to disk via the workspace adapter. Surfaces
+   *  write failures as errors so the author notices before data diverges from
+   *  the in-memory state. */
+  async function persistModule(manifest: ParsedManifest): Promise<void> {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    try {
+      await saveModule(manifest, adapter);
+    } catch (err) {
+      setError(`Failed to save ${manifest.filePath}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Import authoring
+  // ---------------------------------------------------------------------------
+
+  async function handleAddImport(source: string, alias: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const imp = { name: alias, source, importKind: classifyImport(source) };
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    const updated = await addImport(
+      state.workspace,
+      state.activeModulePath,
+      imp,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+    const newManifest = updated.modules.get(state.activeModulePath);
+    if (newManifest) await persistModule(newManifest);
+    setState((s) => ({ ...s, workspace: updated }));
+  }
+
+  async function handleRemoveImport(name: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const current = state.workspace.modules.get(state.activeModulePath);
+    if (!current) return;
+    const updated = {
+      ...current,
+      imports: current.imports.filter((i) => i.name !== name),
+    };
+    await persistModule(updated);
+    setState((s) => {
+      if (!s.workspace || !s.activeModulePath) return s;
+      const modules = new Map(s.workspace.modules);
+      modules.set(s.activeModulePath, updated);
+      return { ...s, workspace: { ...s.workspace, modules } };
+    });
+  }
+
+  async function handleUpgradeImport(name: string, newSource: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+
+    const modules = new Map(state.workspace.modules);
     const current = modules.get(state.activeModulePath);
     if (!current) return;
 
-    // Remove old import and prune its graph
     modules.set(state.activeModulePath, {
       ...current,
       imports: current.imports.filter((i) => i.name !== name),
     });
-    const pruned = pruneUnreachableModules({ ...state.application, modules });
+    const afterRemove: Workspace = { ...state.workspace, modules };
 
-    // Re-add with new source to re-resolve the graph
     const imp = { name, source: newSource, importKind: classifyImport(newSource) };
-    const adapter = adapterRef.current ?? noopAdapter;
-    const updated = await addModuleImport(
-      pruned,
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    const updated = await addImport(
+      afterRemove,
       state.activeModulePath,
       imp,
       adapter,
       createRegistryAdapters(settings),
     );
 
-    setState((s) => {
-      const navigationStack = sanitizeNavigationStack(
-        s.navigationStack,
-        updated.modules as Map<string, unknown>,
-        updated.rootPath,
-      );
-      return { ...s, application: updated, navigationStack };
-    });
+    const newManifest = updated.modules.get(state.activeModulePath);
+    if (newManifest) await persistModule(newManifest);
+
+    setState((s) => ({ ...s, workspace: updated }));
   }
 
   // ---------------------------------------------------------------------------
-  // Navigation
+  // Navigation (direct set, no stack)
   // ---------------------------------------------------------------------------
 
   function handleOpenModule(filePath: string) {
@@ -327,26 +310,10 @@ export function Editor() {
     setState((s) => ({
       ...s,
       activeModulePath: filePath,
+      graphContext: null,
       selectedResource: null,
       panelStack: [],
-      navigationStack: [...s.navigationStack, { type: "module", filePath, graphContext: null }],
     }));
-  }
-
-  function handlePopTo(index: number) {
-    setSelection(null);
-    setState((s) => {
-      const entry = s.navigationStack[index];
-      if (!entry || entry.type !== "module") return s;
-      const newStack = s.navigationStack.slice(0, index + 1);
-      return {
-        ...s,
-        navigationStack: newStack,
-        activeModulePath: entry.filePath,
-        selectedResource: null,
-        panelStack: [],
-      };
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -369,35 +336,23 @@ export function Editor() {
 
   function handleNavigateResource(kind: string, name: string) {
     setSelection(null);
-    setState((s) => {
-      const nextStack = [...s.navigationStack];
-      const current = nextStack.at(-1);
-      if (!current || current.type !== "module") return s;
-
-      nextStack[nextStack.length - 1] = {
-        ...current,
-        graphContext: { kind, name },
-      };
-
-      return {
-        ...s,
-        activeView: "topology" as ViewId,
-        navigationStack: nextStack,
-        selectedResource: { kind, name },
-        panelStack: [{ type: "resource", kind, name }],
-      };
-    });
+    setState((s) => ({
+      ...s,
+      activeView: "topology" as ViewId,
+      graphContext: { kind, name },
+      selectedResource: { kind, name },
+      panelStack: [{ type: "resource", kind, name }],
+    }));
   }
 
   // ---------------------------------------------------------------------------
   // Resource creation
   // ---------------------------------------------------------------------------
 
-  // Stable view data contract — consumed by all views
   const viewData =
-    state.application && activeManifest
+    state.workspace && activeManifest
       ? buildModuleViewData(
-          state.application,
+          state.workspace,
           activeManifest,
           state.diagnosticsByResource.get(state.activeModulePath!),
         )
@@ -405,22 +360,26 @@ export function Editor() {
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
 
-
-  function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
-    if (!state.application || !state.activeModulePath) return;
-    const modules = new Map(state.application.modules);
-    const current = modules.get(state.activeModulePath)!;
-    const newResource = { kind, name, fields };
-    modules.set(state.activeModulePath, {
+  async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const current = state.workspace.modules.get(state.activeModulePath);
+    if (!current) return;
+    const updated = {
       ...current,
-      resources: [...current.resources, newResource],
+      resources: [...current.resources, { kind, name, fields }],
+    };
+    await persistModule(updated);
+    setState((s) => {
+      if (!s.workspace || !s.activeModulePath) return s;
+      const modules = new Map(s.workspace.modules);
+      modules.set(s.activeModulePath, updated);
+      return {
+        ...s,
+        workspace: { ...s.workspace, modules },
+        selectedResource: { kind, name },
+        panelStack: [{ type: "resource", kind, name }],
+      };
     });
-    setState((s) => ({
-      ...s,
-      application: { ...s.application!, modules },
-      selectedResource: { kind, name },
-      panelStack: [{ type: "resource", kind, name }],
-    }));
     setSelection(null);
     setCreateResourceOpen(false);
   }
@@ -434,35 +393,44 @@ export function Editor() {
     }));
   }
 
-  function handleUpdateResource(kind: string, name: string, fields: Record<string, unknown>) {
-    if (!state.application || !state.activeModulePath) return;
-    const modules = new Map(state.application.modules);
-    const current = modules.get(state.activeModulePath);
+  async function handleUpdateResource(kind: string, name: string, fields: Record<string, unknown>) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const current = state.workspace.modules.get(state.activeModulePath);
     if (!current) return;
 
-    modules.set(state.activeModulePath, {
+    const updated = {
       ...current,
       resources: current.resources.map((resource) =>
         resource.kind === kind && resource.name === name ? { ...resource, fields } : resource,
       ),
+    };
+    await persistModule(updated);
+    setState((s) => {
+      if (!s.workspace || !s.activeModulePath) return s;
+      const modules = new Map(s.workspace.modules);
+      modules.set(s.activeModulePath, updated);
+      return { ...s, workspace: { ...s.workspace, modules } };
     });
-
-    setState((s) => ({ ...s, application: { ...s.application!, modules } }));
   }
 
   async function handleReplaceManifest(manifest: typeof activeManifest & {}) {
-    if (!state.application || !state.activeModulePath) return;
+    if (!state.workspace || !state.activeModulePath) return;
 
-    const modules = new Map(state.application.modules);
+    await persistModule(manifest);
+
+    const modules = new Map(state.workspace.modules);
     modules.set(state.activeModulePath, manifest);
-    let app: Application = { ...state.application, modules };
+    let workspace: Workspace = { ...state.workspace, modules };
 
-    // Load sub-graphs for any new/changed imports, then prune removed ones
-    const adapter = adapterRef.current ?? noopAdapter;
-    app = await reconcileImports(app, state.activeModulePath, adapter, createRegistryAdapters(settings));
-    app = pruneUnreachableModules(app);
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    workspace = await reconcileImports(
+      workspace,
+      state.activeModulePath,
+      adapter,
+      createRegistryAdapters(settings),
+    );
 
-    setState((s) => ({ ...s, application: app }));
+    setState((s) => ({ ...s, workspace }));
   }
 
   // ---------------------------------------------------------------------------
@@ -472,12 +440,15 @@ export function Editor() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white dark:bg-zinc-950">
       <TopBar
-        application={state.application}
-        navigationStack={state.navigationStack}
-        onNew={() => setCreating(true)}
+        workspace={state.workspace}
+        activeManifest={activeManifest}
         onOpen={handleOpen}
-        onPopTo={handlePopTo}
         onOpenSettings={() => setSettingsOpen(true)}
+        onRun={
+          activeManifest?.kind === "Application"
+            ? () => handleRunModule(activeManifest.filePath)
+            : undefined
+        }
       />
 
       {error && (
@@ -493,30 +464,36 @@ export function Editor() {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
+          workspace={state.workspace}
           activeManifest={activeManifest}
+          activeModulePath={state.activeModulePath}
           selectedResource={state.selectedResource}
-          graphContext={graphContext}
+          graphContext={state.graphContext}
           registryServers={settings.registryServers}
           viewData={viewData}
           onSelectResource={handleSelectResource}
           onNavigateResource={handleNavigateResource}
           onOpenModule={handleOpenModule}
-          onPickModuleFile={isInTauri() && adapterRef.current ? handleBrowseForModule : null}
-          onAddModule={handleAddModule}
+          onCreateModule={handleCreateModule}
+          onDeleteModule={handleDeleteModule}
+          onRunModule={handleRunModule}
           onAddImport={handleAddImport}
           onRemoveImport={handleRemoveImport}
           onUpgradeImport={handleUpgradeImport}
           onCreateResource={() => setCreateResourceOpen(true)}
         />
-        {!state.application || creating ? (
-          <AppLifecyclePanel
-            hasApplication={state.application !== null}
-            creating={creating}
-            onCreate={handleCreate}
-            onCancelCreate={() => setCreating(false)}
-            onNew={() => setCreating(true)}
-            onOpen={handleOpen}
-          />
+        {!state.workspace ? (
+          <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
+        ) : state.workspace.modules.size === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              This workspace is empty
+            </p>
+            <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
+              Add your first module using the <strong>+</strong> next to Applications or Libraries
+              in the sidebar.
+            </p>
+          </div>
         ) : viewData ? (
           <ViewContainer
             activeView={state.activeView}
@@ -524,7 +501,7 @@ export function Editor() {
             viewProps={{
               viewData,
               selectedResource: state.selectedResource,
-              graphContext,
+              graphContext: state.graphContext,
               onSelectResource: handleSelectResource,
               onNavigateResource: handleNavigateResource,
               onUpdateResource: handleUpdateResource,
@@ -533,7 +510,11 @@ export function Editor() {
               onReplaceManifest: handleReplaceManifest,
             }}
           />
-        ) : null}
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
+            Select a module from the workspace tree.
+          </div>
+        )}
         <DetailPanel
           selectedResource={state.selectedResource}
           selection={selection}
