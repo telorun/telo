@@ -17,6 +17,8 @@ interface FieldControlProps {
   onFieldBlur?: (name: string) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
+  /** Propagated to `ReferenceSelectField` so ref chips can open the peek panel. */
+  onSelectResource?: (kind: string, name: string) => void;
 }
 
 export function inferType(prop: JsonSchemaProperty): string {
@@ -35,6 +37,7 @@ export function FieldControl({
   onFieldBlur,
   resolvedResources,
   rootCelEval,
+  onSelectResource,
 }: FieldControlProps) {
   const kind = inferType(prop);
   const onBlur = () => onFieldBlur?.(rootFieldName);
@@ -56,6 +59,7 @@ export function FieldControl({
           onValueChange={onValueChange}
           onBlur={onBlur}
           resolvedResources={resolvedResources}
+          onSelectResource={onSelectResource}
         />
       );
     }
@@ -71,6 +75,7 @@ export function FieldControl({
           onFieldBlur={onFieldBlur}
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
+          onSelectResource={onSelectResource}
         />
       );
     }
@@ -86,6 +91,7 @@ export function FieldControl({
           onFieldBlur={onFieldBlur}
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
+          onSelectResource={onSelectResource}
         />
       );
     }

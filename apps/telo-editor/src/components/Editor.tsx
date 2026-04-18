@@ -340,8 +340,8 @@ export function Editor() {
       ...s,
       activeView: "topology" as ViewId,
       graphContext: { kind, name },
-      selectedResource: { kind, name },
-      panelStack: [{ type: "resource", kind, name }],
+      selectedResource: null,
+      panelStack: [],
     }));
   }
 
@@ -456,6 +456,12 @@ export function Editor() {
           {error}
         </div>
       )}
+      {activeManifest?.loadError && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          <strong className="font-semibold">Module failed to parse.</strong> Edit the raw YAML in
+          the Source tab to fix it. Error: {activeManifest.loadError}
+        </div>
+      )}
       {loading && (
         <div className="border-b border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-400">
           Loading…
@@ -517,9 +523,13 @@ export function Editor() {
         )}
         <DetailPanel
           selectedResource={state.selectedResource}
+          graphContext={state.graphContext}
           selection={selection}
           viewData={viewData}
           onUpdateResource={handleUpdateResource}
+          onSelectResource={handleSelectResource}
+          onSelect={handleSelect}
+          onNavigateResource={handleNavigateResource}
         />
       </div>
       <SettingsModal

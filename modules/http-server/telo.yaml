@@ -204,14 +204,21 @@ schema:
         invoke:
           title: Invoke
           description: Resource invoked to generate not-found response data.
-          type: "object"
-          properties:
-            kind:
-              title: Kind
-              description: Kind of resource used for fallback invocation.
+          x-telo-ref: "telo#Invocable"
+          oneOf:
+            - title: Invoke Reference
+              description: String reference to an invocable fallback handler.
               type: "string"
-          required: ["kind"]
-          additionalProperties: true
+            - type: "object"
+              title: Invoke Object
+              description: Object reference to an invocable fallback handler.
+              properties:
+                kind:
+                  title: Kind
+                  description: Kind of resource used for fallback invocation.
+                  type: "string"
+              required: ["kind"]
+              additionalProperties: true
         response:
           title: Response
           description: Response selection rules for not-found handling.
@@ -223,6 +230,7 @@ schema:
             properties:
               status:
                 title: Status
+                default: 404
                 description: HTTP status code for this response entry.
                 type: "integer"
                 minimum: 100
@@ -246,7 +254,6 @@ schema:
                 title: Body
                 description: "CEL expression or object mapping for response body"
             required: ["status"]
-      required: ["invoke"]
   required: ["port", "mounts"]
 ---
 kind: "Telo.Definition"

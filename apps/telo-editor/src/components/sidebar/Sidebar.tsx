@@ -78,7 +78,6 @@ export function Sidebar({
         viewData={viewData}
         selectedResource={selectedResource}
         graphContext={graphContext}
-        onSelectResource={onSelectResource}
         onNavigateResource={onNavigateResource}
         onCreateResource={onCreateResource}
       />

@@ -608,6 +608,41 @@ export function classifyImport(source: string): ImportKind {
   return "local";
 }
 
+/** Builds a placeholder manifest for a module whose YAML couldn't be parsed.
+ *  Keeps the module visible in the workspace tree so the user can open Source
+ *  view and fix the issue. Best-effort name extraction from the raw text; if
+ *  that fails too, fall back to the file's parent directory name. */
+export async function buildFailureManifest(
+  filePath: string,
+  error: unknown,
+  adapter: WorkspaceAdapter,
+): Promise<ParsedManifest> {
+  let rawYaml = "";
+  try {
+    rawYaml = await adapter.readFile(filePath);
+  } catch {
+    // If we can't even read the raw file, keep rawYaml empty; the source view
+    // will show an empty editor and the banner will still explain the error.
+  }
+
+  const kindMatch = /^\s*kind:\s*Telo\.(Library|Application)\b/m.exec(rawYaml);
+  const kind: ModuleKind = kindMatch?.[1] === "Library" ? "Library" : "Application";
+
+  const nameMatch = /metadata:\s*\n(?:\s+[^\n]*\n)*?\s+name:\s*["']?([^"'\n]+)["']?/m.exec(rawYaml);
+  const fallbackName = filePath.split("/").slice(-2, -1)[0] ?? "module";
+
+  return {
+    filePath,
+    kind,
+    metadata: { name: (nameMatch?.[1] ?? fallbackName).trim() },
+    targets: [],
+    imports: [],
+    resources: [],
+    loadError: error instanceof Error ? error.message : String(error),
+    rawYaml,
+  };
+}
+
 export function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
   const moduleDoc = docs.find((r) => isModuleKind(r.kind));
   const moduleKind: ModuleKind = moduleDoc?.kind === "Telo.Library" ? "Library" : "Application";
@@ -868,6 +903,9 @@ export async function loadWorkspace(
       modules.set(filePath, buildParsedManifest(filePath, docs));
     } catch (err) {
       console.error(`Failed to load workspace module ${filePath}:`, err);
+      // Register a placeholder so the module still appears in the workspace
+      // tree and the user can open its source to fix the parse issue.
+      modules.set(filePath, await buildFailureManifest(filePath, err, workspaceAdapter));
     }
   }
 
@@ -1085,14 +1123,36 @@ export function isWorkspaceModule(workspace: Workspace, filePath: string): boole
 // YAML rendering
 // ---------------------------------------------------------------------------
 
+/** Patterns that force a string to be quoted when serialized as a YAML scalar.
+ *  Covers every indicator that would change the meaning of the scalar on
+ *  re-parse: YAML indicator chars in leading position (`*` alias, `&` anchor,
+ *  `!` tag, `|`/`>` block scalar, `%` directive, `@`/`` ` `` reserved, `?`
+ *  complex key, `,`/`[`/`]`/`{`/`}` flow indicators, `"`/`'` quotes, `#`
+ *  comment, `-` list marker), colons / hashes / newlines anywhere (they change
+ *  structure), leading or trailing whitespace (stripped by parser), and
+ *  strings that would otherwise parse as non-strings (YAML booleans/nulls,
+ *  numbers, hex/octal literals). */
+const YAML_QUOTE_REQUIRED = [
+  /^[-?:,[\]{}#&*!|>'"%@`]/,
+  /[:#\n]/,
+  /^\s|\s$/,
+  /^(~|null|true|false|yes|no|on|off)$/i,
+  /^[-+]?\d+(\.\d+)?([eE][-+]?\d+)?$/,
+  /^0[xX][0-9a-fA-F]+$/,
+  /^0o[0-7]+$/,
+];
+
+function needsYamlQuote(text: string): boolean {
+  if (text === "") return true;
+  return YAML_QUOTE_REQUIRED.some((pattern) => pattern.test(text));
+}
+
 function yamlScalar(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "null";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   const text = String(value);
-  if (text === "" || /[:#\-\[\]{}\n]|^\s|\s$/.test(text)) {
-    return JSON.stringify(text);
-  }
+  if (needsYamlQuote(text)) return JSON.stringify(text);
   return text;
 }
 

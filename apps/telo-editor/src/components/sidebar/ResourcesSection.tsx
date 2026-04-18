@@ -6,7 +6,6 @@ interface ResourcesSectionProps {
   viewData: ModuleViewData | null;
   selectedResource: { kind: string; name: string } | null;
   graphContext: { kind: string; name: string } | null;
-  onSelectResource: (kind: string, name: string) => void;
   onNavigateResource: (kind: string, name: string) => void;
   onCreateResource: () => void;
 }
@@ -16,7 +15,6 @@ export function ResourcesSection({
   viewData,
   selectedResource,
   graphContext,
-  onSelectResource,
   onNavigateResource,
   onCreateResource,
 }: ResourcesSectionProps) {
@@ -42,13 +40,7 @@ export function ResourcesSection({
           <div
             key={`${r.kind}/${r.name}`}
             className={`${rowBase} ${stateCls} cursor-pointer`}
-            onClick={() => {
-              if (kind?.topology) {
-                onNavigateResource(r.kind, r.name);
-                return;
-              }
-              onSelectResource(r.kind, r.name);
-            }}
+            onClick={() => onNavigateResource(r.kind, r.name)}
           >
             <span className="min-w-0 truncate">
               <span className="text-zinc-400 dark:text-zinc-500">{r.kind.split(".")[0]}.</span>

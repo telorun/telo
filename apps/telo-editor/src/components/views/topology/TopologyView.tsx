@@ -1,15 +1,16 @@
+import { useMemo } from "react";
+import type { ResolvedResourceOption } from "../../resource-schema-form/types";
+import { PickCanvas } from "../pick-canvas";
 import type { ViewProps } from "../types";
-import { RouterTopologyCanvas } from "./RouterTopologyCanvas";
-import { SequenceTopologyCanvas } from "./SequenceTopologyCanvas";
 
 export function TopologyView({
   viewData,
   graphContext,
   onUpdateResource,
+  onSelectResource,
   onSelect,
   onClearSelection,
 }: ViewProps) {
-  // Derive topology-specific state from the shared view data
   const graphResource = graphContext
     ? (viewData.manifest.resources.find(
         (r) => r.kind === graphContext.kind && r.name === graphContext.name,
@@ -20,24 +21,25 @@ export function TopologyView({
   const graphTopology = graphKind?.topology;
   const graphSchema = graphKind?.schema;
 
-  if (graphTopology === "Router" && graphResource && graphSchema) {
-    return (
-      <RouterTopologyCanvas
-        resource={graphResource}
-        schema={graphSchema}
-        onUpdateResource={onUpdateResource}
-        onSelect={onSelect}
-        onBackgroundClick={onClearSelection}
-      />
-    );
-  }
+  const resolvedResources = useMemo<ResolvedResourceOption[]>(
+    () =>
+      viewData.manifest.resources.map((r) => ({
+        kind: r.kind,
+        name: r.name,
+        capability: viewData.kinds.get(r.kind)?.capability || undefined,
+      })),
+    [viewData],
+  );
 
-  if (graphTopology === "Sequence" && graphResource && graphSchema) {
+  if (graphResource && graphSchema) {
     return (
-      <SequenceTopologyCanvas
+      <PickCanvas
         resource={graphResource}
         schema={graphSchema}
+        topology={graphTopology}
+        resolvedResources={resolvedResources}
         onUpdateResource={onUpdateResource}
+        onSelectResource={onSelectResource}
         onSelect={onSelect}
         onBackgroundClick={onClearSelection}
       />
@@ -50,9 +52,7 @@ export function TopologyView({
       onClick={onClearSelection}
     >
       <span className="text-sm text-zinc-400 dark:text-zinc-600 pointer-events-none">
-        {graphResource
-          ? `${graphResource.kind} does not have a canvas renderer yet`
-          : "Select a topology-aware resource to open its canvas"}
+        Select a resource to open its canvas
       </span>
     </div>
   );

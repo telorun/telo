@@ -11,6 +11,7 @@ export interface ResourceSchemaFormProps {
   onParseStateChange?: (hasErrors: boolean) => void;
   resolvedResources?: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
+  onSelectResource?: (kind: string, name: string) => void;
 }
 
 export type { ResolvedResourceOption } from "./types";
@@ -23,6 +24,7 @@ export function ResourceSchemaForm({
   onParseStateChange,
   resolvedResources = [],
   rootCelEval,
+  onSelectResource,
 }: ResourceSchemaFormProps) {
   const typedSchema = schema as JsonSchema;
   const properties = useMemo(() => typedSchema.properties ?? {}, [typedSchema.properties]);
@@ -50,7 +52,7 @@ export function ResourceSchemaForm({
       {fields.map(({ name, prop, kind }) => (
         <div key={name} className="flex flex-col gap-1">
           <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {name}
+            {typeof prop.title === "string" ? prop.title : name}
             {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
             <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
           </label>
@@ -63,6 +65,7 @@ export function ResourceSchemaForm({
             onFieldBlur={onFieldBlur}
             resolvedResources={resolvedResources}
             rootCelEval={rootCelEval}
+            onSelectResource={onSelectResource}
           />
           {typeof prop.description === "string" && (
             <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>

@@ -11,6 +11,7 @@ interface ObjectFieldProps {
   onFieldBlur?: (name: string) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
+  onSelectResource?: (kind: string, name: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,6 +41,7 @@ export function ObjectField({
   onFieldBlur,
   resolvedResources,
   rootCelEval,
+  onSelectResource,
 }: ObjectFieldProps) {
   const objectValue = isRecord(value) ? value : {};
   const objectRequired = new Set(prop.required ?? []);
@@ -54,7 +56,7 @@ export function ObjectField({
         return (
           <div key={`${fieldPath}.${childName}`} className="flex flex-col gap-1">
             <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              {childName}
+              {typeof childProp.title === "string" ? childProp.title : childName}
               {objectRequired.has(childName) ? <span className="ml-1 text-red-500">*</span> : null}
               <span className="ml-1 text-zinc-400 dark:text-zinc-600">({childKind})</span>
             </label>
@@ -67,6 +69,7 @@ export function ObjectField({
               onFieldBlur={onFieldBlur}
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
+              onSelectResource={onSelectResource}
             />
             {typeof childProp.description === "string" && (
               <span className="text-xs text-zinc-400 dark:text-zinc-500">

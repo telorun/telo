@@ -43,6 +43,11 @@ export interface ParsedManifest {
   imports: ParsedImport[];
   resources: ParsedResource[];
   include?: string[];
+  /** Populated only when the module could not be parsed. The editor still
+   *  lists the module so the user can open its source and fix the issue;
+   *  `rawYaml` is the unparsed text read from disk. */
+  loadError?: string;
+  rawYaml?: string;
 }
 
 export type ImportKind = "local" | "registry" | "remote";

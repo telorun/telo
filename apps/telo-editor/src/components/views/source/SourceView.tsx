@@ -42,8 +42,16 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
 
-  // When the manifest changes externally and we're not dirty, reset
-  const canonicalYaml = snapshots.length === 1 ? snapshots[0].yaml : null;
+  // When the manifest changes externally and we're not dirty, reset.
+  // For failed-load modules the parsed snapshot is empty — show the raw
+  // YAML from disk instead so the user can actually fix the file.
+  const rawYaml = viewData.manifest.rawYaml;
+  const canonicalYaml =
+    rawYaml != null
+      ? rawYaml
+      : snapshots.length === 1
+        ? snapshots[0].yaml
+        : null;
   useEffect(() => {
     if (!dirty && canonicalYaml != null) {
       setLocalText(canonicalYaml);
@@ -117,6 +125,45 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
     editorRef.current = editor;
     monacoRef.current = monaco;
   };
+
+  // Failed-load modules: render the raw YAML directly so the user can fix it.
+  if (rawYaml != null) {
+    const displayText = dirty ? localText : rawYaml;
+    return (
+      <div className="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
+        <div className="flex h-8 shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
+          <span
+            className="truncate text-xs text-zinc-500 dark:text-zinc-400"
+            title={viewData.manifest.filePath}
+          >
+            {viewData.manifest.filePath}
+          </span>
+          {parseError && (
+            <span className="truncate text-xs text-red-500 dark:text-red-400" title={parseError}>
+              Parse error
+            </span>
+          )}
+        </div>
+        <div className="min-h-0 flex-1">
+          <Editor
+            height="100%"
+            language="yaml"
+            value={displayText}
+            onChange={handleChange}
+            onMount={handleEditorMount}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 12,
+              wordWrap: "on",
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (snapshots.length === 0) {
     return (

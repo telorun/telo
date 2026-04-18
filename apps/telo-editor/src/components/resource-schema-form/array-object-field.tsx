@@ -1,5 +1,6 @@
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType } from "./field-control";
+import { inferRefMode, resolveRefCandidates, toRefValue } from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 interface ArrayObjectFieldProps {
@@ -11,52 +12,11 @@ interface ArrayObjectFieldProps {
   onFieldBlur?: (name: string) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
+  onSelectResource?: (kind: string, name: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getRefValueMode(prop: JsonSchemaProperty): "string" | "object" {
-  const oneOfTypes = (prop.oneOf ?? []).map((candidate) => candidate.type);
-  const hasString = oneOfTypes.includes("string");
-  const hasObject = oneOfTypes.includes("object");
-  if (hasObject && !hasString) return "object";
-  return "string";
-}
-
-function toResourceRefString(kind: string, name: string): string {
-  return `${kind}.${name}`;
-}
-
-function normalizeCapability(capability: string): string {
-  return capability.trim().toLowerCase();
-}
-
-function parseRefTarget(refTarget: string): { scope: string; symbol: string } | null {
-  const hashIndex = refTarget.indexOf("#");
-  if (hashIndex < 1 || hashIndex === refTarget.length - 1) return null;
-  return {
-    scope: refTarget.slice(0, hashIndex).toLowerCase(),
-    symbol: refTarget.slice(hashIndex + 1),
-  };
-}
-
-function filterResolvedResourcesByRef(
-  refTarget: string,
-  resolvedResources: ResolvedResourceOption[],
-): ResolvedResourceOption[] {
-  const parsed = parseRefTarget(refTarget);
-  if (!parsed) return [];
-
-  if (parsed.scope === "kernel") {
-    const capability = normalizeCapability(`Telo.${parsed.symbol}`);
-    return resolvedResources.filter((resource) =>
-      resource.capability ? normalizeCapability(resource.capability) === capability : false,
-    );
-  }
-
-  return resolvedResources.filter((resource) => resource.kind.endsWith(`.${parsed.symbol}`));
 }
 
 function buildDefaultValue(
@@ -67,12 +27,9 @@ function buildDefaultValue(
 
   const refTarget = prop["x-telo-ref"];
   if (typeof refTarget === "string") {
-    const options = filterResolvedResourcesByRef(refTarget, resolvedResources);
+    const options = resolveRefCandidates([refTarget], resolvedResources);
     if (options.length === 0) return undefined;
-    const mode = getRefValueMode(prop);
-    const first = options[0];
-    if (mode === "object") return { kind: first.kind, name: first.name };
-    return toResourceRefString(first.kind, first.name);
+    return toRefValue(options[0], inferRefMode(prop));
   }
 
   const kind = inferType(prop);
@@ -107,6 +64,7 @@ export function ArrayObjectField({
   onFieldBlur,
   resolvedResources,
   rootCelEval,
+  onSelectResource,
 }: ArrayObjectFieldProps) {
   const itemSchema = prop.items as JsonSchemaProperty;
   const entries = Array.isArray(value) ? value : [];
@@ -154,7 +112,7 @@ export function ArrayObjectField({
                 return (
                   <div key={`${fieldPath}.${index}.${itemName}`} className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      {itemName}
+                      {typeof itemProp.title === "string" ? itemProp.title : itemName}
                       {itemRequired.has(itemName) ? (
                         <span className="ml-1 text-red-500">*</span>
                       ) : null}
@@ -174,6 +132,7 @@ export function ArrayObjectField({
                       onFieldBlur={onFieldBlur}
                       resolvedResources={resolvedResources}
                       rootCelEval={rootCelEval}
+                      onSelectResource={onSelectResource}
                     />
                     {typeof itemProp.description === "string" && (
                       <span className="text-xs text-zinc-400 dark:text-zinc-500">
