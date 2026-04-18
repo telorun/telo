@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default capabilities for telo-editor","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open","fs:default","fs:allow-read-text-file","fs:allow-write-text-file","fs:allow-read-dir","fs:allow-mkdir","fs:allow-remove","fs:allow-exists",{"identifier":"fs:scope","allow":[{"path":"$HOME/**"}]}]}}

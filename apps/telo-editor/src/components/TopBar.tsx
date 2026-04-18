@@ -1,4 +1,5 @@
 import type { ParsedManifest, Workspace } from "../model";
+import type { RunStatus } from "../run";
 import { Button } from "./ui/button";
 
 function formatSubPath(workspace: Workspace | null, manifest: ParsedManifest | null): string {
@@ -18,6 +19,10 @@ interface TopBarProps {
   onOpen: () => void;
   onOpenSettings: () => void;
   onRun?: () => void;
+  /** Latest status of the active run, or null when no run is active.
+   *  Drives the Run button's spinner (in-flight) / dot (terminal). */
+  runStatus?: RunStatus | null;
+  onOpenRunView?: () => void;
 }
 
 export function TopBar({
@@ -26,10 +31,16 @@ export function TopBar({
   onOpen,
   onOpenSettings,
   onRun,
+  runStatus,
+  onOpenRunView,
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
   const subPath = formatSubPath(workspace, activeManifest);
   const canRun = activeManifest?.kind === "Application";
+  const runInFlight = runStatus?.kind === "starting" || runStatus?.kind === "running";
+  const runTerminal =
+    runStatus?.kind === "exited" || runStatus?.kind === "failed" || runStatus?.kind === "stopped";
+  const runTerminalOk = runStatus?.kind === "exited" && runStatus.code === 0;
 
   return (
     <div className="flex h-10 items-center border-b border-zinc-200 bg-white px-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -56,9 +67,28 @@ export function TopBar({
         <Button
           variant={canRun ? "default" : "ghost"}
           size="sm"
-          onClick={canRun ? onRun : undefined}
-          disabled={!canRun}
+          onClick={
+            runInFlight || runTerminal
+              ? onOpenRunView
+              : canRun
+                ? onRun
+                : undefined
+          }
+          disabled={!canRun && !runInFlight && !runTerminal}
         >
+          {runInFlight ? (
+            <span
+              className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+              aria-hidden
+            />
+          ) : runTerminal ? (
+            <span
+              className={`mr-1 inline-block h-2 w-2 rounded-full ${
+                runTerminalOk ? "bg-green-500" : "bg-red-500"
+              }`}
+              aria-hidden
+            />
+          ) : null}
           Run
         </Button>
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>

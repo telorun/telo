@@ -4,7 +4,12 @@ const KEY = "telo-editor-v2";
 const SETTINGS_KEY = "telo-editor-settings-v1";
 const LEGACY_KEYS = ["telo-editor-v1"];
 
-const VALID_VIEWS: Set<string> = new Set<ViewId>(["topology", "inventory", "source"]);
+const VALID_VIEWS: Set<string> = new Set<ViewId>([
+  "topology",
+  "inventory",
+  "source",
+  "deployment",
+]);
 
 // Only lightweight cross-session state is persisted. The workspace itself
 // is rebuilt by `loadWorkspace` on launch, not serialized.

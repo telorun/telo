@@ -1,4 +1,9 @@
-import type { ModuleViewData, ParsedManifest, Selection } from "../../model";
+import type {
+  DeploymentEnvironment,
+  ModuleViewData,
+  ParsedManifest,
+  Selection,
+} from "../../model";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
@@ -13,4 +18,11 @@ export interface ViewProps {
   onClearSelection: () => void;
   /** Replace the active module's manifest wholesale (used by source editing). */
   onReplaceManifest: (manifest: ParsedManifest) => void;
+  /** Deployment config for the active Application. For Libraries this is still
+   *  populated (with a fresh ephemeral environment) but the Deployment tab is
+   *  hidden so it goes unused. */
+  deployment: {
+    activeEnvironment: DeploymentEnvironment;
+    onSetEnvVars: (env: Record<string, string>) => void;
+  };
 }

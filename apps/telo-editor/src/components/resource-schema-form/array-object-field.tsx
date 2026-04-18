@@ -139,6 +139,7 @@ export function ArrayObjectField({
                       rootCelEval={rootCelEval}
                       onSelectResource={onSelectResource}
                       label={itemLabel}
+                      required={itemRequired.has(itemName)}
                     />
                     {typeof itemProp.description === "string" && (
                       <span className="text-xs text-zinc-400 dark:text-zinc-500">

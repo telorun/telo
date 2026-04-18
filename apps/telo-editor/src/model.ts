@@ -9,6 +9,12 @@ export interface RegistryServer {
 
 export interface AppSettings {
   registryServers: RegistryServer[];
+  /** Id of the run adapter the Run button uses. Each adapter's opaque config
+   *  lives under `runAdapterConfig[id]`; adapters resolve a fallback to their
+   *  `defaultConfig` when the key is missing, so partial-migration of older
+   *  persisted settings is safe. */
+  activeRunAdapterId: string;
+  runAdapterConfig: Record<string, unknown>;
 }
 
 export interface AvailableKind {
@@ -24,6 +30,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   registryServers: [
     { id: "default", url: "https://registry.telo.run", label: "Official Registry", enabled: true },
   ],
+  activeRunAdapterId: "tauri-docker",
+  runAdapterConfig: {},
 };
 
 export type ModuleKind = "Application" | "Library";
@@ -101,7 +109,23 @@ export interface DirEntry {
   isDirectory: boolean;
 }
 
-export type ViewId = "topology" | "inventory" | "source";
+export type ViewId = "topology" | "inventory" | "source" | "deployment";
+
+/** Per-Application deployment configuration. Holds one or more named
+ *  environments; v1 auto-creates a single `local` environment. Future work
+ *  (multi-env, per-env adapter override, secrets refs) extends this shape
+ *  without breaking v1 persisted state. Stored workspace-scoped in a
+ *  separate localStorage key — see `storage-deployments.ts`. */
+export interface ApplicationDeployment {
+  activeEnvironmentId: string;
+  environments: Record<string, DeploymentEnvironment>;
+}
+
+export interface DeploymentEnvironment {
+  id: string;
+  name: string;
+  env: Record<string, string>;
+}
 
 /** Stable data contract consumed by all editor views. */
 export interface ModuleViewData {
@@ -123,6 +147,10 @@ export interface EditorState {
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];
   diagnosticsByResource: Map<string, Map<string, AnalysisDiagnostic[]>>;
+  /** Per-Application deployment config, keyed by Application filePath.
+   *  Hydrated from `storage-deployments.ts` on workspace load and persisted
+   *  on every mutation. */
+  deploymentsByApp: Record<string, ApplicationDeployment>;
 }
 
 export type PanelEntry =

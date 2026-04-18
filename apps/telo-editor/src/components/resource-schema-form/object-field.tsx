@@ -17,6 +17,9 @@ interface ObjectFieldProps {
    *  `title`. Passed in by the parent (the property name it would otherwise
    *  have rendered as a label). */
   label?: string;
+  /** Whether this field is required by the parent schema. When false, the
+   *  header exposes a Clear button that unsets the whole object. */
+  required?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,6 +51,7 @@ export function ObjectField({
   rootCelEval,
   onSelectResource,
   label,
+  required,
 }: ObjectFieldProps) {
   const objectValue = isRecord(value) ? value : {};
   const objectRequired = new Set(prop.required ?? []);
@@ -55,27 +59,41 @@ export function ObjectField({
   const propertyCount = Object.keys(properties).length;
   const triggerTitle =
     (typeof prop.title === "string" ? prop.title : undefined) ?? label ?? "object";
+  const canClear = !required && value !== undefined && value !== null;
 
   return (
     <CollapsiblePrimitive.Root className="group rounded border border-zinc-200 dark:border-zinc-800">
-      <CollapsiblePrimitive.Trigger className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60">
-        <span
-          aria-hidden="true"
-          className="w-3 text-zinc-500 group-data-[state=open]:hidden dark:text-zinc-500"
-        >
-          ▸
-        </span>
-        <span
-          aria-hidden="true"
-          className="hidden w-3 text-zinc-500 group-data-[state=open]:inline dark:text-zinc-500"
-        >
-          ▾
-        </span>
-        <span>{triggerTitle}</span>
-        <span className="ml-auto text-xs font-normal text-zinc-400 dark:text-zinc-500">
-          {propertyCount} field{propertyCount === 1 ? "" : "s"}
-        </span>
-      </CollapsiblePrimitive.Trigger>
+      <div className="flex items-stretch">
+        <CollapsiblePrimitive.Trigger className="flex flex-1 items-center gap-2 px-2 py-1 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60">
+          <span
+            aria-hidden="true"
+            className="w-3 text-zinc-500 group-data-[state=open]:hidden dark:text-zinc-500"
+          >
+            ▸
+          </span>
+          <span
+            aria-hidden="true"
+            className="hidden w-3 text-zinc-500 group-data-[state=open]:inline dark:text-zinc-500"
+          >
+            ▾
+          </span>
+          <span>{triggerTitle}</span>
+          <span className="ml-auto text-xs font-normal text-zinc-400 dark:text-zinc-500">
+            {propertyCount} field{propertyCount === 1 ? "" : "s"}
+          </span>
+        </CollapsiblePrimitive.Trigger>
+        {canClear && (
+          <button
+            type="button"
+            onClick={() => onValueChange(undefined)}
+            onBlur={() => onFieldBlur?.(rootFieldName)}
+            className="px-2 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+            title="Clear this field"
+          >
+            Clear
+          </button>
+        )}
+      </div>
       <CollapsiblePrimitive.Content className="flex flex-col gap-2 border-t border-zinc-200 p-2 dark:border-zinc-800">
         {Object.entries(properties).map(([childName, childProp]) => {
           const childValue = objectValue[childName];
@@ -108,6 +126,7 @@ export function ObjectField({
                 rootCelEval={rootCelEval}
                 onSelectResource={onSelectResource}
                 label={childLabel}
+                required={objectRequired.has(childName)}
               />
               {typeof childProp.description === "string" && (
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">

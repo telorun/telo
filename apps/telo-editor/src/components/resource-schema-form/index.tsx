@@ -72,6 +72,7 @@ export function ResourceSchemaForm({
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
               label={labelText}
+              required={required.has(name)}
             />
             {typeof prop.description === "string" && (
               <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
