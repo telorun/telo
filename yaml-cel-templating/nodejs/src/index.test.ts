@@ -84,7 +84,7 @@ describe("CEL-YAML Templating Engine", () => {
         greeting: { $eval: "${{name}}" },
         years: { $eval: "${{age}}" },
       });
-      expect(result).toEqual({ greeting: "John", years: 30 });
+      expect(result).toEqual({ greeting: "John", years: 30n });
     });
 
     it("should shadow parent variables", () => {
@@ -382,7 +382,7 @@ describe("CEL-YAML Templating Engine", () => {
       const result = compile(
         {
           $let: {
-            multiplier: "2",
+            multiplier: "2.0",
           },
           $assert: "base_value > 0",
           $if: "base_value > 0",
@@ -445,8 +445,8 @@ describe("CEL-YAML Templating Engine", () => {
       expect(result.kind).toBe("List");
       expect(result.items).toHaveLength(2);
       expect(result.items[0].metadata.name).toBe("cart-us-east-1");
-      expect(result.items[0].replicas).toBe(3);
-      expect(result.items[1].replicas).toBe(1);
+      expect(result.items[0].replicas).toBe(3n);
+      expect(result.items[1].replicas).toBe(1n);
     });
 
     it("should handle complex nested conditionals and loops", () => {

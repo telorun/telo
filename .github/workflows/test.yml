@@ -57,5 +57,8 @@ jobs:
       - name: Build for Node.js
         run: pnpm -r run build
 
+      - name: Run package unit tests
+        run: pnpm -r test
+
       - name: Run tests (node)
         run: pnpm run test:node
