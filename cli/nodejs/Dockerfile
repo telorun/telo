@@ -1,4 +1,4 @@
-FROM node:24-alpine as build
+FROM node:24-slim as build
 
 WORKDIR /build
 ENV CI=true
@@ -8,10 +8,10 @@ RUN --mount=type=cache,target=/pnpm pnpm fetch
 
 COPY . /build
 RUN --mount=type=cache,target=/pnpm pnpm install --frozen-lockfile
-RUN pnpm --filter=...@telorun/cli run build
+RUN pnpm --filter=@telorun/cli... run build
 RUN pnpm --filter=cli --prod deploy --legacy /deploy
 
-FROM node:24-alpine
+FROM node:24-slim
 
 WORKDIR /telo
 COPY --from=build /deploy/ /telo/

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModuleViewData, Selection } from "../model";
+import { summarizeResource } from "../diagnostics-aggregate";
 import type { CelEvalMode } from "./resource-schema-form/cel-utils";
+import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
+import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
 import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
@@ -155,6 +158,9 @@ export function DetailPanel({
   const resourceTopology = resourceKind?.topology;
   const isGraphContext =
     graphContext?.kind === resource.kind && graphContext?.name === resource.name;
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+  const detailSummary = summarizeResource(diagState, filePaths, resource.name);
 
   return (
     <div className="flex h-full w-xl flex-col overflow-hidden border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -168,6 +174,7 @@ export function DetailPanel({
           <span className="shrink-0 rounded bg-zinc-100 px-1 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
             {resource.kind}
           </span>
+          <DiagnosticBadge summary={detailSummary} size="md" stopPropagation={false} />
         </div>
         {!selectionContext && !isGraphContext && (
           <Button

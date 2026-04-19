@@ -1,5 +1,8 @@
 import { parseRegistryRef } from "../../loader";
 import type { ParsedImport } from "../../model";
+import { summarizeResource } from "../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
+import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { Button } from "../ui/button";
 import { rowBase, rowHover } from "./primitives";
 import type { ImportUpgradeState } from "./useImportUpgrade";
@@ -12,13 +15,19 @@ function importIcon(kind: ParsedImport["importKind"]): string {
 
 interface ImportRowProps {
   imp: ParsedImport;
+  /** The set of files the owning module spans (owner + partials). Used to
+   *  locate diagnostics that target this import resource — the import
+   *  declaration may live in the owner or in a partial. */
+  filePaths: string[];
   upgrade: ImportUpgradeState;
   onRemove: (name: string) => void;
 }
 
-export function ImportRow({ imp, upgrade, onRemove }: ImportRowProps) {
+export function ImportRow({ imp, filePaths, upgrade, onRemove }: ImportRowProps) {
   const ref = imp.importKind === "registry" ? parseRegistryRef(imp.source) : null;
   const isUpgrading = upgrade.upgradingName === imp.name;
+  const diagState = useDiagnosticsState();
+  const summary = summarizeResource(diagState, filePaths, imp.name);
 
   return (
     <div className="relative" data-upgrade-dropdown={isUpgrading || undefined}>
@@ -43,6 +52,7 @@ export function ImportRow({ imp, upgrade, onRemove }: ImportRowProps) {
           )}
         </span>
         <span className="flex-1 truncate">{imp.name}</span>
+        <DiagnosticBadge summary={summary} size="sm" />
         {ref && (
           <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-600">
             {ref.version}

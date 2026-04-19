@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ParsedManifest, RegistryServer } from "../../model";
+import { getModuleFiles } from "../../diagnostics-aggregate";
 import { AddImportForm } from "./AddImportForm";
 import { ImportRow } from "./ImportRow";
 import { EmptyHint, SectionHeader } from "./primitives";
@@ -23,6 +24,7 @@ export function ImportsSection({
   const [adding, setAdding] = useState(false);
   const upgrade = useImportUpgrade(registryServers, onUpgradeImport);
   const imports = activeManifest?.imports ?? [];
+  const filePaths = activeManifest ? getModuleFiles(activeManifest) : [];
 
   async function handleSubmit(source: string, alias: string) {
     await onAddImport(source, alias);
@@ -37,7 +39,13 @@ export function ImportsSection({
       />
       {imports.length === 0 && !adding && <EmptyHint text="No imports" />}
       {imports.map((imp) => (
-        <ImportRow key={imp.name} imp={imp} upgrade={upgrade} onRemove={onRemoveImport} />
+        <ImportRow
+          key={imp.name}
+          imp={imp}
+          filePaths={filePaths}
+          upgrade={upgrade}
+          onRemove={onRemoveImport}
+        />
       ))}
       {adding && (
         <AddImportForm

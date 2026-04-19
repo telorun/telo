@@ -1,5 +1,11 @@
 import { useMemo } from "react";
 import type { Selection, ParsedResource } from "../../../model";
+import { summarizeResource } from "../../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
+import {
+  useActiveFilePaths,
+  useDiagnosticsState,
+} from "../../diagnostics/DiagnosticsContext";
 import { Button } from "../../ui/button";
 
 interface RouterTopologyCanvasProps {
@@ -186,6 +192,9 @@ export function RouterTopologyCanvas({
     const value = resource.fields[schemaInfo.entriesField];
     return Array.isArray(value) ? value : [];
   }, [resource.fields, schemaInfo.entriesField]);
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+  const routerSummary = summarizeResource(diagState, filePaths, resource.name);
 
   function handleAddRoute() {
     if (!schemaInfo.entriesField) return;
@@ -212,9 +221,12 @@ export function RouterTopologyCanvas({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
               Router Topology
             </p>
-            <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-              {resource.name}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                {resource.name}
+              </h2>
+              <DiagnosticBadge summary={routerSummary} size="md" stopPropagation={false} />
+            </div>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{resource.kind}</p>
           </div>
           <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">

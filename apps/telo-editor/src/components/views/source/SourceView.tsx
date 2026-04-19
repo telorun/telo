@@ -31,9 +31,10 @@ interface TabState {
  *  if the tab isn't dirty and the canonical text differs from what the tab
  *  last showed, we update. */
 
-export function SourceView({ viewData, onSourceEdit }: ViewProps) {
+export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps) {
   const sourceFiles = viewData.sourceFiles;
   const firstFilePath = sourceFiles[0]?.filePath;
+  const lastConsumedNonceRef = useRef<number | null>(null);
 
   // Active tab is tracked explicitly so module-change resets to owner, and
   // so we can focus a specific tab on parse error when a future "block
@@ -143,6 +144,46 @@ export function SourceView({ viewData, onSourceEdit }: ViewProps) {
       for (const t of Object.values(timers)) clearTimeout(t);
     };
   }, []);
+
+  // Reveal-request effect. `navigateToDiagnostic` in Editor bumps a monotonic
+  // nonce; we consume it once per value. Remounts (view switch → back) see
+  // the same nonce and skip via `lastConsumedNonceRef` so we don't re-reveal
+  // after the user has scrolled away.
+  useEffect(() => {
+    if (!revealRequest) return;
+    if (revealRequest.nonce === lastConsumedNonceRef.current) return;
+    const { filePath, range, nonce } = revealRequest;
+    const fileExists = sourceFiles.some((f) => f.filePath === filePath);
+    if (!fileExists) return;
+
+    if (activeTab !== filePath) setActiveTab(filePath);
+
+    const tryReveal = (attempt: number) => {
+      const editor = editorsRef.current[filePath];
+      if (!editor) {
+        if (attempt < 20) {
+          requestAnimationFrame(() => tryReveal(attempt + 1));
+        }
+        return;
+      }
+      if (range) {
+        const mr = {
+          startLineNumber: range.start.line + 1,
+          startColumn: range.start.character + 1,
+          endLineNumber: range.end.line + 1,
+          endColumn: range.end.character + 1,
+        };
+        editor.revealRangeInCenter(mr);
+        editor.setSelection(mr);
+        editor.focus();
+      }
+      lastConsumedNonceRef.current = nonce;
+    };
+    tryReveal(0);
+    // Intentionally keyed on nonce only — object-identity deps would fire
+    // on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealRequest?.nonce]);
 
   function setMarker(filePath: string, message: string | null) {
     const editor = editorsRef.current[filePath];

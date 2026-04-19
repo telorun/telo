@@ -1,4 +1,7 @@
 import type { ModuleViewData, ParsedManifest } from "../../model";
+import { getModuleFiles, summarizeResource } from "../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
+import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { EmptyHint, SectionHeader, rowBase, rowHover } from "./primitives";
 
 interface ResourcesSectionProps {
@@ -20,6 +23,8 @@ export function ResourcesSection({
 }: ResourcesSectionProps) {
   const userResources = activeManifest?.resources.filter((r) => !r.kind.startsWith("Telo.")) ?? [];
   const kindsByFullKind = viewData?.kinds ?? new Map();
+  const diagState = useDiagnosticsState();
+  const filePaths = activeManifest ? getModuleFiles(activeManifest) : [];
 
   return (
     <div className="pb-1 pt-2">
@@ -36,6 +41,7 @@ export function ResourcesSection({
           : isGraphContext
             ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
             : `text-zinc-600 dark:text-zinc-400 ${rowHover}`;
+        const summary = summarizeResource(diagState, filePaths, r.name);
         return (
           <div
             key={`${r.kind}/${r.name}`}
@@ -46,6 +52,7 @@ export function ResourcesSection({
               <span className="text-zinc-400 dark:text-zinc-500">{r.kind.split(".")[0]}.</span>
               {r.name}
             </span>
+            <DiagnosticBadge summary={summary} size="sm" />
             {kind?.topology && (
               <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-900/60 dark:text-amber-200">
                 {kind.topology}

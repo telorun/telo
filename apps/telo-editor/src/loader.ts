@@ -161,6 +161,37 @@ function createInMemoryManifestAdapter(
   };
 }
 
+/** Combines a local disk adapter with registry/extra adapters into a single
+ *  adapter whose `read()` routes each URL to the first adapter that `supports()`
+ *  it (extras first, local last). Used when populating `ModuleDocument`s for
+ *  imported modules — the local adapter alone can't read registry URLs, and
+ *  `populateModuleDocument` only takes one adapter. */
+function createChainedManifestAdapter(
+  localAdapter: ManifestAdapter,
+  extraAdapters: ManifestAdapter[],
+): ManifestAdapter {
+  return {
+    supports(url: string): boolean {
+      return extraAdapters.some((a) => a.supports(url)) || localAdapter.supports(url);
+    },
+    async read(url: string): Promise<{ text: string; source: string }> {
+      for (const a of extraAdapters) {
+        if (a.supports(url)) return a.read(url);
+      }
+      return localAdapter.read(url);
+    },
+    resolveRelative(base: string, relative: string): string {
+      return localAdapter.resolveRelative(base, relative);
+    },
+    expandGlob: localAdapter.expandGlob
+      ? (base, patterns) => localAdapter.expandGlob!(base, patterns)
+      : undefined,
+    resolveOwnerOf: localAdapter.resolveOwnerOf
+      ? (url) => localAdapter.resolveOwnerOf!(url)
+      : undefined,
+  };
+}
+
 function createEditorLoader(localAdapter: ManifestAdapter, registryAdapters: ManifestAdapter[]): Loader {
   try {
     return new LoaderCtor({
@@ -386,6 +417,11 @@ async function mergeSubGraph(
     actualRoot = subGraph.keys().next().value as string;
   }
 
+  // Chained adapter so ModuleDocument population can read registry URLs —
+  // the bare local adapter only supports disk paths and silently fails for
+  // anything served by a registry/remote extra adapter.
+  const chainedAdapter = createChainedManifestAdapter(adapter, extraAdapters);
+
   for (const [filePath, docs] of subGraph) {
     if (modules.has(filePath)) continue;
     const parsed = buildParsedManifest(filePath, docs);
@@ -405,9 +441,9 @@ async function mergeSubGraph(
     // Populate ModuleDocument for the newly loaded module (owner file plus
     // any partial files it declared via `include:`).
     if (!documents.has(normalizePath(filePath))) {
-      await populateModuleDocument(filePath, documents, adapter);
+      await populateModuleDocument(filePath, documents, chainedAdapter);
     }
-    await collectPartialDocuments(docs, filePath, documents, adapter);
+    await collectPartialDocuments(docs, filePath, documents, chainedAdapter);
   }
 
   return actualRoot;
@@ -1411,6 +1447,10 @@ export async function loadWorkspace(
 
   // Phase 2a: load external (registry/remote) import targets into the modules
   // map so Phase 2b can resolve every edge without recursive sub-graph calls.
+  // Populate a ModuleDocument for each imported owner so `analyzeWorkspace`
+  // (which routes through `documents`) sees their Telo.Definition docs — the
+  // bare `manifestAdapter` can't read registry URLs, so chain in extras.
+  const chainedAdapter = createChainedManifestAdapter(manifestAdapter, extraAdapters);
   for (const parsed of modules.values()) {
     for (const imp of parsed.imports) {
       if (imp.importKind === "local") continue;
@@ -1423,7 +1463,10 @@ export async function loadWorkspace(
         for (const [subPath, subDocs] of subGraph) {
           if (modules.has(subPath)) continue;
           modules.set(subPath, buildParsedManifest(subPath, subDocs));
-          await collectPartialDocuments(subDocs, subPath, documents, manifestAdapter);
+          if (!documents.has(normalizePath(subPath))) {
+            await populateModuleDocument(subPath, documents, chainedAdapter);
+          }
+          await collectPartialDocuments(subDocs, subPath, documents, chainedAdapter);
         }
       } catch (err) {
         console.error(`Failed to resolve import ${imp.source} in ${parsed.filePath}:`, err);

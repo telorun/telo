@@ -1,23 +1,12 @@
-import { DiagnosticSeverity, type AnalysisDiagnostic } from "@telorun/analyzer";
+import { DiagnosticSeverity } from "@telorun/analyzer";
+import { summarizeResource, type DiagnosticsSummary } from "../../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
+import {
+  useActiveFilePaths,
+  useDiagnosticsState,
+} from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
-
-function DiagnosticIndicator({ diagnostics }: { diagnostics: AnalysisDiagnostic[] }) {
-  if (diagnostics.length === 0) return null;
-
-  const hasError = diagnostics.some((d) => d.severity === DiagnosticSeverity.Error);
-  const iconColor = hasError
-    ? "text-red-500 dark:text-red-400"
-    : "text-amber-500 dark:text-amber-400";
-
-  const tooltip = diagnostics.map((d) => d.message).join("\n");
-
-  return (
-    <span className={`cursor-help ${iconColor}`} title={tooltip}>
-      {hasError ? "●" : "▲"}
-    </span>
-  );
-}
 
 function capabilityLabel(cap: string): string {
   const dot = cap.lastIndexOf(".");
@@ -60,18 +49,23 @@ export function InventoryView({
 }: ViewProps) {
   const userResources = viewData.manifest.resources.filter((r) => !r.kind.startsWith("Telo."));
   const definitions = viewData.manifest.resources.filter((r) => r.kind === "Telo.Definition");
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
 
-  function rowClassName(kind: string, name: string): string {
+  function rowClassName(
+    kind: string,
+    name: string,
+    summary: DiagnosticsSummary | null,
+  ): string {
     const isSelected = selectedResource?.kind === kind && selectedResource?.name === name;
     const isGraphContext = graphContext?.kind === kind && graphContext?.name === name;
-    const hasDiagnostics = (viewData.diagnostics.get(name)?.length ?? 0) > 0;
-    const hasError = viewData.diagnostics.get(name)?.some((d) => d.severity === DiagnosticSeverity.Error);
 
-    const border = hasDiagnostics
-      ? hasError
+    const border =
+      summary?.worstSeverity === DiagnosticSeverity.Error
         ? "border-l-2 border-l-red-400 dark:border-l-red-500"
-        : "border-l-2 border-l-amber-400 dark:border-l-amber-500"
-      : "border-l-2 border-l-transparent";
+        : summary
+          ? "border-l-2 border-l-amber-400 dark:border-l-amber-500"
+          : "border-l-2 border-l-transparent";
 
     if (isSelected) return `${border} bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100`;
     if (isGraphContext) return `${border} bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200`;
@@ -123,15 +117,15 @@ export function InventoryView({
                       {userResources.map((r) => {
                         const kind = viewData.kinds.get(r.kind);
                         const hasTopology = !!kind?.topology;
-                        const diagnostics = viewData.diagnostics.get(r.name) ?? [];
+                        const summary = summarizeResource(diagState, filePaths, r.name);
                         return (
                           <tr
                             key={`${r.kind}/${r.name}`}
-                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
+                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name, summary)}`}
                             onClick={() => onSelectResource(r.kind, r.name)}
                           >
                             <td className="py-1.5 w-5 text-center">
-                              <DiagnosticIndicator diagnostics={diagnostics} />
+                              <DiagnosticBadge summary={summary} size="sm" showCount={false} />
                             </td>
                             <td className="py-1.5 pr-3">
                               <div className="flex items-center gap-1.5">
@@ -191,15 +185,15 @@ export function InventoryView({
                           typeof r.fields.capability === "string" ? r.fields.capability : "";
                         const topology =
                           typeof r.fields.topology === "string" ? r.fields.topology : undefined;
-                        const diagnostics = viewData.diagnostics.get(r.name) ?? [];
+                        const summary = summarizeResource(diagState, filePaths, r.name);
                         return (
                           <tr
                             key={r.name}
-                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name)}`}
+                            className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name, summary)}`}
                             onClick={() => onSelectResource(r.kind, r.name)}
                           >
                             <td className="py-1.5 w-5 text-center">
-                              <DiagnosticIndicator diagnostics={diagnostics} />
+                              <DiagnosticBadge summary={summary} size="sm" showCount={false} />
                             </td>
                             <td className="py-1.5 pr-3 font-medium">{r.name}</td>
                             <td className="py-1.5 pr-3">

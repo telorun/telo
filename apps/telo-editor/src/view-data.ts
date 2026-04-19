@@ -1,4 +1,3 @@
-import type { AnalysisDiagnostic } from "@telorun/analyzer";
 import { getAvailableKinds, normalizePath } from "./loader";
 import type {
   AvailableKind,
@@ -13,15 +12,10 @@ import type {
  *
  * Merges imported kinds (from `getAvailableKinds`) and locally-defined kinds
  * (from `Telo.Definition` resources in the manifest) into a single map.
- *
- * @param moduleDiagnostics — the inner map from
- *   `EditorState.diagnosticsByResource.get(activeModulePath)`, or undefined if
- *   no diagnostics are available. The caller unwraps by module path.
  */
 export function buildModuleViewData(
   workspace: Workspace,
   manifest: ParsedManifest,
-  moduleDiagnostics: Map<string, AnalysisDiagnostic[]> | undefined,
 ): ModuleViewData {
   const kinds = new Map<string, AvailableKind>();
 
@@ -47,7 +41,6 @@ export function buildModuleViewData(
   return {
     manifest,
     kinds,
-    diagnostics: moduleDiagnostics ?? new Map(),
     sourceFiles: collectSourceFiles(workspace, manifest),
   };
 }

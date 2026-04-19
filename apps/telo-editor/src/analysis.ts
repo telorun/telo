@@ -51,7 +51,7 @@ function toAnalysisManifests(app: Workspace): ResourceManifest[] {
       }
     }
 
-    emitDocsFor(ownerDoc, ownerPath, undefined, result);
+    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, result);
     for (const partialKey of partialKeys) {
       const partialDoc = app.documents.get(partialKey);
       if (!partialDoc) continue;
@@ -79,10 +79,16 @@ function emitDocsFor(
       source: filePath,
     };
 
-    // Partial-file resources inherit the owner's module name when they
-    // don't already declare one — matches the analyzer Loader's
-    // loadPartialFile stamping.
-    if (ownerModuleName && !meta.module && projected.kind !== "Telo.Library") {
+    // Owner + partial-file resources inherit the owner's module name when they
+    // don't already declare one — matches the analyzer ManifestLoader's
+    // post-load stamping. Module kinds themselves (Telo.Application /
+    // Telo.Library) are excluded; their `metadata.name` *is* the module name.
+    if (
+      ownerModuleName &&
+      !meta.module &&
+      projected.kind !== "Telo.Library" &&
+      projected.kind !== "Telo.Application"
+    ) {
       meta.module = ownerModuleName;
     }
 
@@ -90,17 +96,35 @@ function emitDocsFor(
   }
 }
 
+/** Sentinel key used in `WorkspaceDiagnostics.byFile` when the analyzer emits
+ *  a diagnostic that cannot be tied to any file (no `data.resource` and no
+ *  `data.filePath`). Surfaced only by `summarizeWorkspace`; UI sites that key
+ *  on file/resource identity skip it. */
+export const UNKNOWN_FILE_KEY = "__unknown__";
+
+export interface WorkspaceDiagnostics {
+  /** filePath → resourceName → diagnostics. Only diagnostics with
+   *  `data.resource.{kind,name}` that resolves to a known manifest. */
+  byResource: Map<string, Map<string, AnalysisDiagnostic[]>>;
+  /** filePath → diagnostics NOT tied to a named resource. Includes
+   *  `UNKNOWN_FILE_KEY` when the analyzer gives us nothing to route on. */
+  byFile: Map<string, AnalysisDiagnostic[]>;
+}
+
 /**
  * Runs static analysis on the entire Workspace and returns diagnostics
- * organized as `Map<filePath, Map<resourceName, AnalysisDiagnostic[]>>`.
+ * routed into resource-scoped and file-scoped buckets.
  *
- * Groups diagnostics using the `source` filePath stamped on each manifest's
- * metadata during conversion, avoiding a reverse lookup that could collide
- * when two modules define resources with the same kind+name.
+ * Routing rules:
+ *   1. `data.resource.{kind,name}` resolves via sourceByManifest → byResource.
+ *   2. `data.filePath` present → byFile[filePath].
+ *   3. Else → byFile[UNKNOWN_FILE_KEY].
+ *
+ * The file-scoped bucket replaces the pre-`diagnostics-everywhere` behavior
+ * of silently dropping unscoped diagnostics — notably MISSING_KIND_OR_NAME
+ * on manifests that never reach a resource identity.
  */
-export function analyzeWorkspace(
-  app: Workspace,
-): Map<string, Map<string, AnalysisDiagnostic[]>> {
+export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
   const manifests = toAnalysisManifests(app);
 
   // Enrich Telo.Import metadata with resolved module identity from the
@@ -124,10 +148,6 @@ export function analyzeWorkspace(
   const analyzer = new StaticAnalyzer();
   const diagnostics = analyzer.analyze(manifests);
 
-  // Build a lookup from kind/name → source filePath using the manifests we
-  // just created (which carry the source stamp). Each manifest belongs to
-  // exactly one file, so even if two modules share a kind/name the lookup
-  // stays per-manifest rather than colliding.
   const sourceByManifest = new Map<string, string>();
   for (const m of manifests) {
     const source = (m.metadata as EnrichedMetadata).source;
@@ -136,22 +156,49 @@ export function analyzeWorkspace(
     }
   }
 
-  const result = new Map<string, Map<string, AnalysisDiagnostic[]>>();
+  const byResource = new Map<string, Map<string, AnalysisDiagnostic[]>>();
+  const byFile = new Map<string, AnalysisDiagnostic[]>();
+
+  const appendByFile = (filePath: string, diag: AnalysisDiagnostic) => {
+    let bucket = byFile.get(filePath);
+    if (!bucket) {
+      bucket = [];
+      byFile.set(filePath, bucket);
+    }
+    bucket.push(diag);
+  };
 
   for (const diag of diagnostics) {
-    const data = diag.data as { resource?: { kind?: string; name?: string } } | undefined;
+    const data = diag.data as
+      | { resource?: { kind?: string; name?: string }; filePath?: string }
+      | undefined;
     const kind = data?.resource?.kind;
     const name = data?.resource?.name;
-    if (!kind || !name) continue;
 
-    const filePath = sourceByManifest.get(`${kind}/${name}`);
-    if (!filePath) continue;
+    if (kind && name) {
+      const filePath = sourceByManifest.get(`${kind}/${name}`);
+      if (filePath) {
+        let moduleMap = byResource.get(filePath);
+        if (!moduleMap) {
+          moduleMap = new Map();
+          byResource.set(filePath, moduleMap);
+        }
+        let list = moduleMap.get(name);
+        if (!list) {
+          list = [];
+          moduleMap.set(name, list);
+        }
+        list.push(diag);
+        continue;
+      }
+      // Fall through: resource stamp exists but doesn't resolve to a loaded
+      // manifest — route by data.filePath if the analyzer provided it,
+      // otherwise the unknown-file bucket.
+    }
 
-    if (!result.has(filePath)) result.set(filePath, new Map());
-    const moduleMap = result.get(filePath)!;
-    if (!moduleMap.has(name)) moduleMap.set(name, []);
-    moduleMap.get(name)!.push(diag);
+    const stampedPath = data?.filePath;
+    appendByFile(stampedPath ?? UNKNOWN_FILE_KEY, diag);
   }
 
-  return result;
+  return { byResource, byFile };
 }

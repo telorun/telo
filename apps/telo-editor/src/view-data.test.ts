@@ -39,7 +39,7 @@ describe("buildModuleViewData.sourceFiles", () => {
       { path: "/ws/app/telo.yaml", text: "kind: Telo.Application\nmetadata:\n  name: app\n" },
     ]);
     const manifest = makeManifest("/ws/app/telo.yaml");
-    const viewData = buildModuleViewData(workspace, manifest, undefined);
+    const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles).toHaveLength(1);
     expect(viewData.sourceFiles[0]).toMatchObject({
@@ -58,7 +58,7 @@ describe("buildModuleViewData.sourceFiles", () => {
       { kind: "Http.Route", name: "home", sourceFile: "/ws/app/routes.yaml" },
       { kind: "Http.Handler", name: "h", sourceFile: "/ws/app/handlers.yaml" },
     ]);
-    const viewData = buildModuleViewData(workspace, manifest, undefined);
+    const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles.map((f) => f.filePath)).toEqual([
       "/ws/app/telo.yaml",
@@ -76,7 +76,7 @@ describe("buildModuleViewData.sourceFiles", () => {
       },
     ]);
     const manifest = makeManifest("/ws/app/telo.yaml");
-    const viewData = buildModuleViewData(workspace, manifest, undefined);
+    const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles[0].parseError).toBe("simulated");
   });
@@ -89,7 +89,7 @@ describe("buildModuleViewData.sourceFiles", () => {
     const manifest = makeManifest("/ws/app/telo.yaml", [
       { kind: "Ghost", name: "g", sourceFile: "/ws/app/missing.yaml" },
     ]);
-    const viewData = buildModuleViewData(workspace, manifest, undefined);
+    const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles).toHaveLength(1);
     expect(viewData.sourceFiles[0].filePath).toBe("/ws/app/telo.yaml");
@@ -103,7 +103,7 @@ describe("buildModuleViewData.sourceFiles", () => {
     const manifest = makeManifest("/ws/app/telo.yaml", [
       { kind: "Http.Server", name: "main", sourceFile: "/ws/app/telo.yaml" },
     ]);
-    const viewData = buildModuleViewData(workspace, manifest, undefined);
+    const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles).toHaveLength(1);
   });

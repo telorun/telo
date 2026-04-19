@@ -326,13 +326,14 @@ export class StaticAnalyzer {
 
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
+      const filePath = (m.metadata as { source?: string } | undefined)?.source;
       if (!m.kind || !m.metadata?.name) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "MISSING_KIND_OR_NAME",
           source: SOURCE,
           message: "Resource is missing required 'kind' or 'metadata.name' field.",
-          data: { path: !m.kind ? "kind" : "metadata.name" },
+          data: { filePath, path: !m.kind ? "kind" : "metadata.name" },
         });
         continue;
       }
@@ -360,7 +361,7 @@ export class StaticAnalyzer {
           code: "UNDEFINED_KIND",
           source: SOURCE,
           message: `No Telo.Definition found for kind '${m.kind}'.${hint}`,
-          data: { resource, path: "kind" },
+          data: { resource, filePath, path: "kind" },
         });
         continue;
       }
@@ -392,7 +393,7 @@ export class StaticAnalyzer {
             code: "SCHEMA_VIOLATION",
             source: SOURCE,
             message: `${m.kind}/${resource.name}: ${issue.message}`,
-            data: { resource, path: issue.path },
+            data: { resource, filePath, path: issue.path },
           });
         }
       }
@@ -403,6 +404,7 @@ export class StaticAnalyzer {
     // Validate CEL syntax and context variable access in all manifests
     for (const m of allManifests) {
       const resource = { kind: m.kind, name: m.metadata?.name as string };
+      const filePath = (m.metadata as { source?: string } | undefined)?.source;
 
       const resolvedKind = aliases.resolveKind(m.kind);
       const mDefinition =
@@ -427,7 +429,7 @@ export class StaticAnalyzer {
             code: "CEL_SYNTAX_ERROR",
             source: SOURCE,
             message: `CEL syntax error at ${path}: ${e instanceof Error ? e.message : String(e)}`,
-            data: { resource, path },
+            data: { resource, filePath, path },
           });
           return;
         }
@@ -485,7 +487,7 @@ export class StaticAnalyzer {
             code: "CEL_UNKNOWN_FIELD",
             source: SOURCE,
             message: `${m.kind}/${resource.name}: CEL at '${path}': ${err}`,
-            data: { resource, path },
+            data: { resource, filePath, path },
           });
         }
       });

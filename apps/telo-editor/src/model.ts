@@ -1,5 +1,6 @@
-import type { AnalysisDiagnostic } from "@telorun/analyzer";
+import type { Range } from "@telorun/analyzer";
 import type { Document } from "yaml";
+import type { WorkspaceDiagnostics } from "./analysis";
 
 export interface RegistryServer {
   id: string;
@@ -192,8 +193,6 @@ export interface ModuleViewData {
   manifest: ParsedManifest;
   /** fullKind → merged local + imported kind metadata */
   kinds: Map<string, AvailableKind>;
-  /** resourceName → diagnostics (flat projection for the active module) */
-  diagnostics: Map<string, AnalysisDiagnostic[]>;
   /** Per-file source text for every file the module spans (owner + partials).
    *  Populated from `workspace.documents`; consumed by the source view to
    *  seed its per-tab Monaco buffers. */
@@ -210,11 +209,25 @@ export interface EditorState {
   graphContext: { kind: string; name: string } | null;
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];
-  diagnosticsByResource: Map<string, Map<string, AnalysisDiagnostic[]>>;
+  diagnostics: WorkspaceDiagnostics;
+  /** Transient request for SourceView to activate a tab and reveal a range.
+   *  Written by `navigateToDiagnostic` in Editor; consumed by SourceView
+   *  (keyed on `nonce` for idempotency across remounts). Never cleared — the
+   *  view tracks its last-consumed nonce. */
+  sourceRevealRequest: SourceRevealRequest | null;
   /** Per-Application deployment config, keyed by Application filePath.
    *  Hydrated from `storage-deployments.ts` on workspace load and persisted
    *  on every mutation. */
   deploymentsByApp: Record<string, ApplicationDeployment>;
+}
+
+export interface SourceRevealRequest {
+  filePath: string;
+  range?: Range;
+  /** Monotonically-increasing counter. Incrementing on repeat navigation to
+   *  the same diagnostic is what re-fires the reveal effect even though the
+   *  filePath+range are unchanged. */
+  nonce: number;
 }
 
 export type PanelEntry =
