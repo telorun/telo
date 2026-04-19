@@ -31,9 +31,8 @@
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
     "test:docker": "docker build -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm -v \"$PWD\":/srv -w /srv telo:ci ./test-suite.yaml",
     "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*.yaml && pnpm run test && pnpm -r build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
-    "release": "node scripts/release.mjs",
-    "release:modules": "node scripts/release-modules.mjs",
-    "release:platform": "node scripts/release.mjs"
+    "version-packages": "node scripts/version-packages.mjs",
+    "release": "node scripts/publish-packages.mjs"
   },
   "devDependencies": {
     "bun": "^1.3.9",
