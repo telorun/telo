@@ -1,5 +1,8 @@
 import type { ParsedManifest, Workspace } from "../model";
+import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import type { RunStatus } from "../run";
+import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
+import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
 
 function formatSubPath(workspace: Workspace | null, manifest: ParsedManifest | null): string {
@@ -36,6 +39,10 @@ export function TopBar({
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
   const subPath = formatSubPath(workspace, activeManifest);
+  const diagState = useDiagnosticsState();
+  const topBarSummary = activeManifest
+    ? summarizeFiles(diagState, getModuleFiles(activeManifest))
+    : null;
   const canRun = activeManifest?.kind === "Application";
   const runInFlight = runStatus?.kind === "starting" || runStatus?.kind === "running";
   const runTerminal =
@@ -50,6 +57,7 @@ export function TopBar({
         {workspace && (
           <>
             <span className="truncate text-zinc-700 dark:text-zinc-300">{label}</span>
+            <DiagnosticBadge summary={topBarSummary} size="sm" stopPropagation={false} />
             {subPath && (
               <span className="truncate text-xs text-zinc-400 dark:text-zinc-600">{subPath}</span>
             )}

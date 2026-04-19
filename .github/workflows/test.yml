@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [24]
 
     steps:
       - name: Checkout code
@@ -62,3 +62,6 @@ jobs:
 
       - name: Run tests (node)
         run: pnpm run test:node
+
+      - name: Run tests (docker image)
+        run: pnpm run test:docker

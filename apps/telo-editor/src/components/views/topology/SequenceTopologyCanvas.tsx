@@ -35,6 +35,12 @@ import {
 } from "../../ui/dropdown-menu";
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { Selection, ParsedResource } from "../../../model";
+import { summarizeResource } from "../../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
+import {
+  useActiveFilePaths,
+  useDiagnosticsState,
+} from "../../diagnostics/DiagnosticsContext";
 import {
   buildEditableSchema,
   getTopologyRole,
@@ -716,6 +722,9 @@ export function SequenceTopologyCanvas({
   onBackgroundClick,
 }: SequenceTopologyCanvasProps) {
   const steps = Array.isArray(resource.fields.steps) ? resource.fields.steps : [];
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+  const sequenceSummary = summarizeResource(diagState, filePaths, resource.name);
 
   const stepSchema = useMemo(() => getStepSchema(schema), [schema]);
   const variants = useMemo(
@@ -877,9 +886,12 @@ export function SequenceTopologyCanvas({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">
               Sequence Topology
             </p>
-            <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-              {resource.name}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                {resource.name}
+              </h2>
+              <DiagnosticBadge summary={sequenceSummary} size="md" stopPropagation={false} />
+            </div>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{resource.kind}</p>
           </div>
           <div className="rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-900/50 dark:text-violet-200">

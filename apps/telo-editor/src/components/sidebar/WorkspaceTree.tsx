@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { hasApplicationImporter, isWorkspaceModule } from "../../loader";
 import type { ModuleKind, ParsedManifest, Workspace } from "../../model";
+import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
+import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -295,6 +298,8 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
   const isLibrary = node.manifest.kind === "Library";
   const dim = isLibrary && !hasApplicationImporter(workspace, node.manifest.filePath);
   const icon = isLibrary ? "□" : "▷";
+  const diagState = useDiagnosticsState();
+  const summary = summarizeFiles(diagState, getModuleFiles(node.manifest));
 
   const base = "flex items-center gap-1.5 px-4 py-0.5 cursor-pointer select-none group";
   const hoverOrActive = active
@@ -305,6 +310,7 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
     <div className={`${base} ${hoverOrActive} ${dim ? "opacity-50" : ""}`} onClick={onOpen}>
       <span className="text-zinc-400">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{node.manifest.metadata.name}</span>
+      <DiagnosticBadge summary={summary} size="sm" />
       {dim && (
         <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
           no importers

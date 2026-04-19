@@ -8,6 +8,17 @@ const importAnalysisCache = new Map<
   { signature: string; errors: string[] }
 >();
 
+// Only resolve relative/absolute-path sources against the importer's URL. Registry refs
+// (std/foo@1.2.3) and absolute URLs (https://, file://) must pass through unchanged so the
+// loader's adapter chain can dispatch them — otherwise `new URL("std/foo@1", "file:///srv/telo.yaml")`
+// turns a registry ref into a bogus file path and LocalFileAdapter ENOENTs on it.
+function resolveImportSource(source: string, baseSource: string): string {
+  if (source.startsWith(".") || source.startsWith("/")) {
+    return new URL(source, baseSource).toString();
+  }
+  return source;
+}
+
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
 
@@ -16,7 +27,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Validate the imported module and all its transitive imports before loading for runtime.
   // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
-  const resolvedUrl = new URL(moduleSource, ctx.moduleContext.source).toString();
+  const resolvedUrl = resolveImportSource(moduleSource, ctx.moduleContext.source);
   const analysisManifests = await ctx.loadManifests(resolvedUrl);
   const signature = JSON.stringify(analysisManifests);
   const cached = importAnalysisCache.get(resolvedUrl);
@@ -42,12 +53,9 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Load target module manifests for runtime. Inject variables/secrets as compile context so
   // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
-  const manifests = await ctx.loadModule(
-    new URL(moduleSource, ctx.moduleContext.source).toString(),
-    {
-      compile: true,
-    },
-  );
+  const manifests = await ctx.loadModule(resolvedUrl, {
+    compile: true,
+  });
   // Import targets must be Telo.Library — Applications are run directly, not imported.
   const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library");
   if (!moduleManifest) {

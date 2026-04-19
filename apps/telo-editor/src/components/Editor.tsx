@@ -48,10 +48,13 @@ import { buildModuleViewData } from "../view-data";
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
+import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
+import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
 import { TopBar } from "./TopBar";
 import { ViewContainer } from "./views/ViewContainer";
+import type { Range } from "@telorun/analyzer";
 
 const INITIAL_STATE: EditorState = {
   workspace: null,
@@ -60,7 +63,8 @@ const INITIAL_STATE: EditorState = {
   graphContext: null,
   selectedResource: null,
   panelStack: [],
-  diagnosticsByResource: new Map(),
+  diagnostics: { byResource: new Map(), byFile: new Map() },
+  sourceRevealRequest: null,
   deploymentsByApp: {},
 };
 
@@ -177,10 +181,10 @@ export function Editor() {
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     const workspace = state.workspace;
     analysisTimerRef.current = setTimeout(() => {
-      const diagnosticsByResource = analyzeWorkspace(workspace);
+      const diagnostics = analyzeWorkspace(workspace);
       setState((s) => {
         if (s.workspace !== workspace) return s;
-        return { ...s, diagnosticsByResource };
+        return { ...s, diagnostics };
       });
     }, 300);
     return () => {
@@ -504,17 +508,39 @@ export function Editor() {
     }));
   }
 
+  const revealNonceRef = useRef(0);
+  function navigateToDiagnostic(filePath: string, range?: Range) {
+    // UNKNOWN_FILE_KEY is not a real path — surfaced only in the future
+    // Problems panel and never in resource-anchored UI. Guard here in case
+    // a call site slips through.
+    if (filePath === "__unknown__") return;
+    const workspace = state.workspace;
+    if (!workspace) return;
+    const normalized = normalizePath(filePath);
+    let ownerPath: string | null = null;
+    for (const [modulePath, manifest] of workspace.modules) {
+      if (getModuleFiles(manifest).includes(normalized)) {
+        ownerPath = modulePath;
+        break;
+      }
+    }
+    if (!ownerPath) ownerPath = state.activeModulePath;
+    revealNonceRef.current += 1;
+    setState((s) => ({
+      ...s,
+      activeModulePath: ownerPath,
+      activeView: "source" as ViewId,
+      sourceRevealRequest: { filePath: normalized, range, nonce: revealNonceRef.current },
+    }));
+  }
+
   // ---------------------------------------------------------------------------
   // Resource creation
   // ---------------------------------------------------------------------------
 
   const viewData =
     state.workspace && activeManifest
-      ? buildModuleViewData(
-          state.workspace,
-          activeManifest,
-          state.diagnosticsByResource.get(state.activeModulePath!),
-        )
+      ? buildModuleViewData(state.workspace, activeManifest)
       : null;
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
@@ -590,7 +616,16 @@ export function Editor() {
     // but lookups only ever use the canonical key.
     const key = normalizePath(filePath);
     const documents = new Map(state.workspace.documents);
-    documents.set(key, moduleDoc);
+    // Preserve the previous `loadedJson` as the save baseline. A source-edit
+    // produces a fresh `parseModuleDocument` whose `loadedJson` matches its
+    // own `docs.map(toJSON)`, which would make `saveModuleFromDocuments`
+    // see "no change" and skip the disk write — silently dropping the edit
+    // on the next workspace reload.
+    const prevDoc = state.workspace.documents.get(key);
+    documents.set(key, {
+      ...moduleDoc,
+      loadedJson: prevDoc?.loadedJson ?? moduleDoc.loadedJson,
+    });
 
     let workspace: Workspace = { ...state.workspace, documents };
     const prevInclude = state.workspace.modules.get(state.activeModulePath)?.include ?? [];
@@ -608,6 +643,21 @@ export function Editor() {
     }
 
     workspace = await persistModule(workspace, state.activeModulePath);
+
+    // `saveModuleFromDocuments` replaces `modDoc.text` with the re-serialized
+    // output of `serializeModuleDocument`. For source edits the user's typed
+    // text is authoritative — if the serializer reformats it (adds leading
+    // `---`, normalizes whitespace, etc.), the SourceView's resync effect
+    // would push the reformatted text into Monaco via `setValue`, which
+    // jumps the cursor to the top. Restore the user's text so the buffer
+    // stays stable; disk still holds the serialized form, and `loadedJson`
+    // already reflects the persisted snapshot for future change detection.
+    const persistedDoc = workspace.documents.get(key);
+    if (persistedDoc && persistedDoc.text !== moduleDoc.text) {
+      const patched = new Map(workspace.documents);
+      patched.set(key, { ...persistedDoc, text: moduleDoc.text });
+      workspace = { ...workspace, documents: patched };
+    }
 
     // A source-edit that changed the owner's `include:` list can pull in
     // new partial files that `rebuildManifestFromDocuments` won't see —
@@ -639,6 +689,11 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   return (
+    <DiagnosticsProvider
+      navigate={navigateToDiagnostic}
+      diagnostics={state.diagnostics}
+      activeFilePaths={activeManifest ? getModuleFiles(activeManifest) : []}
+    >
     <div className="flex h-screen flex-col overflow-hidden bg-white dark:bg-zinc-950">
       <TopBar
         workspace={state.workspace}
@@ -728,6 +783,7 @@ export function Editor() {
                     ),
                     onSetEnvVars: handleSetDeploymentEnvVars,
                   },
+                  revealRequest: state.sourceRevealRequest,
                 }}
               />
             ) : (
@@ -761,5 +817,6 @@ export function Editor() {
         onCreate={handleCreateResource}
       />
     </div>
+    </DiagnosticsProvider>
   );
 }

@@ -1,5 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ParsedResource } from "../../../model";
+import { summarizeResource } from "../../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
+import {
+  useActiveFilePaths,
+  useDiagnosticsState,
+} from "../../diagnostics/DiagnosticsContext";
 import {
   FieldControl,
   inferType,
@@ -91,6 +97,9 @@ export function ResourceCanvas({
   hideHeader = false,
 }: ResourceCanvasProps) {
   const [fields, setFields] = useState<Record<string, unknown>>(resource.fields);
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+  const diagnosticsSummary = summarizeResource(diagState, filePaths, resource.name);
 
   // Resync local fields only when the selected resource's identity changes
   // (different kind or name). Resyncing on every `resource` object change
@@ -345,9 +354,12 @@ export function ResourceCanvas({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
               Resource
             </p>
-            <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-              {resource.name}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                {resource.name}
+              </h2>
+              <DiagnosticBadge summary={diagnosticsSummary} size="md" stopPropagation={false} />
+            </div>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{resource.kind}</p>
           </div>
         </div>

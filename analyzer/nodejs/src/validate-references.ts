@@ -91,6 +91,7 @@ export function validateReferences(
 
     const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
     const resourceData = { kind: r.kind, name: r.metadata.name as string };
+    const filePath = (r.metadata as { source?: string } | undefined)?.source;
 
     // Collect scope visibility prefixes (JSON Pointer → dot prefix) and their manifests.
     // scope field path → flat array of ResourceManifest declared in that scope.
@@ -160,7 +161,7 @@ export function validateReferences(
               code: "UNRESOLVED_REFERENCE",
               source: SOURCE,
               message: `${resourceLabel}: reference at '${fieldPath}' → resource '${val}' not found`,
-              data: { resource: resourceData, path: fieldPath },
+              data: { resource: resourceData, filePath, path: fieldPath },
             });
             continue;
           }
@@ -171,7 +172,7 @@ export function validateReferences(
               code: "REFERENCE_KIND_MISMATCH",
               source: SOURCE,
               message: `${resourceLabel}: reference at '${fieldPath}' → ${kindErrors.join("; ")}`,
-              data: { resource: resourceData, path: fieldPath },
+              data: { resource: resourceData, filePath, path: fieldPath },
             });
           }
           continue;
@@ -190,7 +191,7 @@ export function validateReferences(
             code: "INVALID_REFERENCE",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${fieldPath}' must have string 'kind' and 'name' fields`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
           continue;
         }
@@ -203,7 +204,7 @@ export function validateReferences(
             code: "REFERENCE_KIND_MISMATCH",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${fieldPath}' → ${kindErrors.join("; ")}`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
         }
 
@@ -217,7 +218,7 @@ export function validateReferences(
             code: "UNRESOLVED_REFERENCE",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${fieldPath}' → resource '${refVal.name}' not found`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
         }
       }
@@ -236,6 +237,7 @@ export function validateReferences(
 
     const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
     const resourceData = { kind: r.kind, name: r.metadata.name as string };
+    const filePath = (r.metadata as { source?: string } | undefined)?.source;
 
     for (const [fieldPath, entry] of fieldMap) {
       if (!isSchemaFromEntry(entry)) continue;
@@ -250,7 +252,7 @@ export function validateReferences(
           code: "INVALID_SCHEMA_FROM",
           source: SOURCE,
           message: `${resourceLabel}: x-telo-schema-from "${schemaFrom}" must contain at least one "/" to separate anchor from JSON Pointer`,
-          data: { resource: resourceData, path: fieldPath },
+          data: { resource: resourceData, filePath, path: fieldPath },
         });
         continue;
       }
@@ -293,7 +295,7 @@ export function validateReferences(
             code: "SCHEMA_FROM_MISSING_PATH",
             source: SOURCE,
             message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
           continue;
         }
@@ -305,7 +307,7 @@ export function validateReferences(
             code: "SCHEMA_FROM_MISSING_PATH",
             source: SOURCE,
             message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
           continue;
         }
@@ -317,7 +319,7 @@ export function validateReferences(
             code: "DEPENDENT_SCHEMA_MISMATCH",
             source: SOURCE,
             message: `${resourceLabel}: '${fieldPath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
-            data: { resource: resourceData, path: fieldPath },
+            data: { resource: resourceData, filePath, path: fieldPath },
           });
         }
       }

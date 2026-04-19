@@ -3,6 +3,7 @@ import type {
   ModuleDocument,
   ModuleViewData,
   Selection,
+  SourceRevealRequest,
 } from "../../model";
 
 /** Common props interface passed to every view. Views use what they need. */
@@ -30,4 +31,8 @@ export interface ViewProps {
     activeEnvironment: DeploymentEnvironment;
     onSetEnvVars: (env: Record<string, string>) => void;
   };
+  /** When set, SourceView opens the given tab and reveals the range. The
+   *  nonce lets repeated clicks on the same diagnostic re-fire the reveal
+   *  effect; SourceView tracks the last-consumed nonce internally. */
+  revealRequest: SourceRevealRequest | null;
 }
