@@ -3,20 +3,27 @@ import { useEffect, useRef, useState } from "react";
 import { analyzeWorkspace } from "../analysis";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
-  addImport,
+  addImportViaAst,
   classifyImport,
   createModule,
   createRegistryAdapters,
+  createResourceViaAst,
   deleteModule,
+  hasUnresolvedImports,
   isWorkspaceModule,
   loadWorkspace,
   noopAdapter,
+  normalizePath,
   openWorkspaceDirectory,
+  persistWorkspaceModule,
+  rebuildManifestFromDocuments,
   reconcileImports,
+  removeImportViaAst,
   reopenWorkspaceAt,
-  saveModule,
+  setResourceFields,
+  upgradeImportViaAst,
 } from "../loader";
-import type { ParsedManifest } from "../model";
+import type { ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
   ModuleKind,
@@ -56,6 +63,16 @@ const INITIAL_STATE: EditorState = {
   diagnosticsByResource: new Map(),
   deploymentsByApp: {},
 };
+
+/** Shallow, order-sensitive equality for `include:` lists. Used to detect
+ *  source-edits that changed the owner module's partial-file set so Editor
+ *  can trigger a full workspace reload — `rebuildManifestFromDocuments`
+ *  alone doesn't re-run `include:` glob expansion. */
+function includesEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 function pickInitialActiveModule(workspace: Workspace): string | null {
   const entries = [...workspace.modules.entries()].filter(([path]) =>
@@ -364,16 +381,21 @@ export function Editor() {
   // render output.
   handleRunModuleRef.current = handleRunModule;
 
-  /** Persists a single module to disk via the workspace adapter. Surfaces
-   *  write failures as errors so the author notices before data diverges from
-   *  the in-memory state. */
-  async function persistModule(manifest: ParsedManifest): Promise<void> {
+  /** Persists a single module to disk. Takes a prospective `workspace` so the
+   *  AST-based save path can serialize from `workspace.documents.get(path).docs`
+   *  directly; the legacy path reads the `ParsedManifest` from `workspace.modules`
+   *  behind the scenes. Returns the workspace the caller should put in state —
+   *  possibly enriched with updated `ModuleDocument.text` / `loadedJson` when
+   *  the AST path wrote. Surfaces write failures via setError so the author
+   *  notices before data diverges from the in-memory state. */
+  async function persistModule(workspace: Workspace, filePath: string): Promise<Workspace> {
     const adapter = workspaceAdapterRef.current;
-    if (!adapter) return;
+    if (!adapter) return workspace;
     try {
-      await saveModule(manifest, adapter);
+      return await persistWorkspaceModule(workspace, filePath, adapter);
     } catch (err) {
-      setError(`Failed to save ${manifest.filePath}: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Failed to save ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+      return workspace;
     }
   }
 
@@ -385,62 +407,44 @@ export function Editor() {
     if (!state.workspace || !state.activeModulePath) return;
     const imp = { name: alias, source, importKind: classifyImport(source) };
     const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const updated = await addImport(
+    const updated = await addImportViaAst(
       state.workspace,
       state.activeModulePath,
       imp,
       adapter,
       createRegistryAdapters(settings),
     );
-    const newManifest = updated.modules.get(state.activeModulePath);
-    if (newManifest) await persistModule(newManifest);
-    setState((s) => ({ ...s, workspace: updated }));
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
   }
 
   async function handleRemoveImport(name: string) {
     if (!state.workspace || !state.activeModulePath) return;
-    const current = state.workspace.modules.get(state.activeModulePath);
-    if (!current) return;
-    const updated = {
-      ...current,
-      imports: current.imports.filter((i) => i.name !== name),
-    };
-    await persistModule(updated);
-    setState((s) => {
-      if (!s.workspace || !s.activeModulePath) return s;
-      const modules = new Map(s.workspace.modules);
-      modules.set(s.activeModulePath, updated);
-      return { ...s, workspace: { ...s.workspace, modules } };
-    });
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    const updated = await removeImportViaAst(
+      state.workspace,
+      state.activeModulePath,
+      name,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
   }
 
   async function handleUpgradeImport(name: string, newSource: string) {
     if (!state.workspace || !state.activeModulePath) return;
-
-    const modules = new Map(state.workspace.modules);
-    const current = modules.get(state.activeModulePath);
-    if (!current) return;
-
-    modules.set(state.activeModulePath, {
-      ...current,
-      imports: current.imports.filter((i) => i.name !== name),
-    });
-    const afterRemove: Workspace = { ...state.workspace, modules };
-
-    const imp = { name, source: newSource, importKind: classifyImport(newSource) };
     const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const updated = await addImport(
-      afterRemove,
+    const updated = await upgradeImportViaAst(
+      state.workspace,
       state.activeModulePath,
-      imp,
+      name,
+      newSource,
       adapter,
       createRegistryAdapters(settings),
     );
-
-    const newManifest = updated.modules.get(state.activeModulePath);
-    if (newManifest) await persistModule(newManifest);
-
-    setState((s) => ({ ...s, workspace: updated }));
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
   }
 
   // ---------------------------------------------------------------------------
@@ -517,24 +521,20 @@ export function Editor() {
 
   async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
-    const current = state.workspace.modules.get(state.activeModulePath);
-    if (!current) return;
-    const updated = {
-      ...current,
-      resources: [...current.resources, { kind, name, fields }],
-    };
-    await persistModule(updated);
-    setState((s) => {
-      if (!s.workspace || !s.activeModulePath) return s;
-      const modules = new Map(s.workspace.modules);
-      modules.set(s.activeModulePath, updated);
-      return {
-        ...s,
-        workspace: { ...s.workspace, modules },
-        selectedResource: { kind, name },
-        panelStack: [{ type: "resource", kind, name }],
-      };
-    });
+    const updated = createResourceViaAst(
+      state.workspace,
+      state.activeModulePath,
+      kind,
+      name,
+      fields,
+    );
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({
+      ...s,
+      workspace: persisted,
+      selectedResource: { kind, name },
+      panelStack: [{ type: "resource", kind, name }],
+    }));
     setSelection(null);
     setCreateResourceOpen(false);
   }
@@ -550,22 +550,19 @@ export function Editor() {
 
   async function handleUpdateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
-    const current = state.workspace.modules.get(state.activeModulePath);
-    if (!current) return;
-
-    const updated = {
-      ...current,
-      resources: current.resources.map((resource) =>
-        resource.kind === kind && resource.name === name ? { ...resource, fields } : resource,
-      ),
-    };
-    await persistModule(updated);
-    setState((s) => {
-      if (!s.workspace || !s.activeModulePath) return s;
-      const modules = new Map(s.workspace.modules);
-      modules.set(s.activeModulePath, updated);
-      return { ...s, workspace: { ...s.workspace, modules } };
-    });
+    const manifest = state.workspace.modules.get(state.activeModulePath);
+    const prev = manifest?.resources.find((r) => r.kind === kind && r.name === name);
+    if (!prev) return;
+    const updated = setResourceFields(
+      state.workspace,
+      state.activeModulePath,
+      kind,
+      name,
+      prev.fields,
+      fields,
+    );
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
   }
 
   function handleSetDeploymentEnvVars(env: Record<string, string>) {
@@ -577,22 +574,62 @@ export function Editor() {
     }));
   }
 
-  async function handleReplaceManifest(manifest: typeof activeManifest & {}) {
+  /** Commits a source-view edit for one file in the active module. Replaces
+   *  that file's `ModuleDocument` with a fresh parse, re-derives the
+   *  ParsedManifest from the updated AST, reconciles imports whose source
+   *  may have changed, and persists via the AST save path. Works for the
+   *  module's owner file and any included partial file indistinguishably —
+   *  per-file granularity matters because a partial's AST edit must land
+   *  on the partial, not spill into the owner. */
+  async function handleSourceEdit(filePath: string, moduleDoc: ModuleDocument) {
     if (!state.workspace || !state.activeModulePath) return;
 
-    await persistModule(manifest);
+    // All writes to `documents` go through the canonical `normalizePath`
+    // key, matching every other mutation site. The `ModuleDocument.filePath`
+    // field carries the display path for disk writes (adapter.writeFile),
+    // but lookups only ever use the canonical key.
+    const key = normalizePath(filePath);
+    const documents = new Map(state.workspace.documents);
+    documents.set(key, moduleDoc);
 
-    const modules = new Map(state.workspace.modules);
-    modules.set(state.activeModulePath, manifest);
-    let workspace: Workspace = { ...state.workspace, modules };
+    let workspace: Workspace = { ...state.workspace, documents };
+    const prevInclude = state.workspace.modules.get(state.activeModulePath)?.include ?? [];
+    workspace = rebuildManifestFromDocuments(workspace, state.activeModulePath);
+    const nextInclude = workspace.modules.get(state.activeModulePath)?.include ?? [];
 
     const adapter = manifestAdapterRef.current ?? noopAdapter;
-    workspace = await reconcileImports(
-      workspace,
-      state.activeModulePath,
-      adapter,
-      createRegistryAdapters(settings),
-    );
+    if (hasUnresolvedImports(workspace, state.activeModulePath)) {
+      workspace = await reconcileImports(
+        workspace,
+        state.activeModulePath,
+        adapter,
+        createRegistryAdapters(settings),
+      );
+    }
+
+    workspace = await persistModule(workspace, state.activeModulePath);
+
+    // A source-edit that changed the owner's `include:` list can pull in
+    // new partial files that `rebuildManifestFromDocuments` won't see —
+    // that function uses existing `resources[].sourceFile` to discover
+    // partials, not glob expansion. Reload the whole workspace so the
+    // analyzer re-expands `include:` via the in-memory adapter and the
+    // new partials get tracked in `workspace.documents`.
+    if (!includesEqual(prevInclude, nextInclude)) {
+      const workspaceAdapter = workspaceAdapterRef.current;
+      if (workspaceAdapter) {
+        try {
+          workspace = await loadWorkspace(
+            workspace.rootDir,
+            adapter,
+            workspaceAdapter,
+            createRegistryAdapters(settings),
+          );
+        } catch (err) {
+          console.error(`Failed to reload workspace after include change:`, err);
+        }
+      }
+    }
 
     setState((s) => ({ ...s, workspace }));
   }
@@ -683,7 +720,7 @@ export function Editor() {
                   onUpdateResource: handleUpdateResource,
                   onSelect: handleSelect,
                   onClearSelection: handleClearSelection,
-                  onReplaceManifest: handleReplaceManifest,
+                  onSourceEdit: handleSourceEdit,
                   deployment: {
                     activeEnvironment: readActiveEnvironment(
                       state.deploymentsByApp,

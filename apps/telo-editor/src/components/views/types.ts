@@ -1,7 +1,7 @@
 import type {
   DeploymentEnvironment,
+  ModuleDocument,
   ModuleViewData,
-  ParsedManifest,
   Selection,
 } from "../../model";
 
@@ -16,8 +16,13 @@ export interface ViewProps {
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   onSelect: (selection: Selection) => void;
   onClearSelection: () => void;
-  /** Replace the active module's manifest wholesale (used by source editing). */
-  onReplaceManifest: (manifest: ParsedManifest) => void;
+  /** Commit a source-view edit for one specific file in the active module.
+   *  The caller has already parsed `text` into a `ModuleDocument` (SourceView
+   *  needs the parsed form to show error markers) — passing it through
+   *  avoids a second parse in Editor. Per-file granularity is required for
+   *  multi-file modules: edits to a partial must land on the partial, not
+   *  the owner. */
+  onSourceEdit: (filePath: string, moduleDoc: ModuleDocument) => void;
   /** Deployment config for the active Application. For Libraries this is still
    *  populated (with a fresh ephemeral environment) but the Deployment tab is
    *  hidden so it goes unused. */

@@ -41,6 +41,10 @@ schema:
       title: Create If Missing
       type: boolean
       description: Create the bucket during init if it does not already exist. Intended for self-hosted/dev backends; leave false for managed clouds where the app lacks CreateBucket permission.
+    publicRead:
+      title: Public Read
+      type: boolean
+      description: When true, apply a bucket policy during init that grants anonymous s3:GetObject on all keys. Portable across AWS S3, MinIO, and RustFS via PutBucketPolicy. Not effective on Cloudflare R2 (configure public access through the Cloudflare dashboard instead).
   required:
     - bucketName
     - endpoint

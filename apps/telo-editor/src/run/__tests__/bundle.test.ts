@@ -49,7 +49,14 @@ function makeWorkspace(modules: ParsedManifest[]): Workspace {
       importedBy.get(imp.resolvedPath)!.add(m.filePath);
     }
   }
-  return { rootDir: "/ws", modules: modMap, importGraph, importedBy };
+  return {
+    rootDir: "/ws",
+    modules: modMap,
+    importGraph,
+    importedBy,
+    documents: new Map(),
+    resourceDocIndex: new Map(),
+  };
 }
 
 function stubReadFile(contents: Record<string, string> = {}) {

@@ -1,6 +1,12 @@
 import type { AnalysisDiagnostic } from "@telorun/analyzer";
-import { getAvailableKinds } from "./loader";
-import type { AvailableKind, ModuleViewData, ParsedManifest, Workspace } from "./model";
+import { getAvailableKinds, normalizePath } from "./loader";
+import type {
+  AvailableKind,
+  ModuleSourceFile,
+  ModuleViewData,
+  ParsedManifest,
+  Workspace,
+} from "./model";
 
 /**
  * Builds the stable view data contract from application state.
@@ -42,5 +48,43 @@ export function buildModuleViewData(
     manifest,
     kinds,
     diagnostics: moduleDiagnostics ?? new Map(),
+    sourceFiles: collectSourceFiles(workspace, manifest),
   };
+}
+
+/** Collects the per-file source text for every file the module spans. Owner
+ *  first, then partials in deterministic (alphabetical) order. Skips files
+ *  that aren't tracked in `workspace.documents` (shouldn't happen under
+ *  normal load, but defensively so we don't crash the source view). */
+function collectSourceFiles(workspace: Workspace, manifest: ParsedManifest): ModuleSourceFile[] {
+  const ownerKey = normalizePath(manifest.filePath);
+  const partialKeys = new Set<string>();
+  for (const r of manifest.resources) {
+    if (r.sourceFile) {
+      const key = normalizePath(r.sourceFile);
+      if (key !== ownerKey) partialKeys.add(key);
+    }
+  }
+
+  const out: ModuleSourceFile[] = [];
+  const ownerDoc = workspace.documents.get(ownerKey);
+  if (ownerDoc) {
+    out.push({
+      filePath: ownerDoc.filePath,
+      text: ownerDoc.text,
+      ...(ownerDoc.parseError ? { parseError: ownerDoc.parseError } : {}),
+    });
+  }
+
+  for (const key of [...partialKeys].sort()) {
+    const doc = workspace.documents.get(key);
+    if (!doc) continue;
+    out.push({
+      filePath: doc.filePath,
+      text: doc.text,
+      ...(doc.parseError ? { parseError: doc.parseError } : {}),
+    });
+  }
+
+  return out;
 }

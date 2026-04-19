@@ -1,4 +1,5 @@
 import type { AnalysisDiagnostic } from "@telorun/analyzer";
+import type { Document } from "yaml";
 
 export interface RegistryServer {
   id: string;
@@ -77,15 +78,64 @@ export interface ParsedResource {
   sourceFile?: string;
 }
 
+/** Per-file YAML AST record. Pairs each workspace file with its parsed
+ *  multi-document AST and the exact source text read from or written to disk.
+ *  The AST preserves comments, formatting, and arbitrary documents (including
+ *  ones with no `kind` field); mutating the AST and re-serializing via the
+ *  `yaml` library's `Document#toString()` is how the editor writes changes
+ *  back without destroying user-authored content. */
+export interface ModuleDocument {
+  filePath: string;
+  /** Exact source text last read from or written to disk. Used to bootstrap
+   *  the source view without re-serializing and to recover the original text
+   *  when a parse fails. */
+  text: string;
+  /** Multi-document AST. Empty when `parseError` is set. */
+  docs: Document[];
+  /** Semantic snapshot of `docs.map(d => d.toJSON())` at load time. Oracle
+   *  for the no-op save guard: compared against the current AST's `.toJSON()`
+   *  to decide whether to write on save. Does not include comments.
+   *
+   *  STABILITY ASSUMPTION: `toJSON()` output must be stable across `yaml`
+   *  library versions for this guard to be correct. A library upgrade that
+   *  changes scalar-type coercion or merge-key handling could cause
+   *  `loadedJson` captured under the old version to diverge from a re-parse
+   *  under the new version, triggering spurious reformats on first save. */
+  loadedJson: unknown[];
+  /** Non-null when parsing failed (syntax error, or any `Document` had
+   *  non-empty `errors[]`). The entry is still created so the source view
+   *  stays operable and the user can fix the file. */
+  parseError?: string;
+}
+
 /** A workspace is a directory tree on disk containing one or more modules.
  *  `modules` holds every module reachable from the scan (workspace-local) or
  *  via transitive imports (registry/remote). `rootDir` distinguishes the two:
- *  workspace-local modules have a filePath under rootDir. */
+ *  workspace-local modules have a filePath under rootDir.
+ *
+ *  `documents` is the AST-layer source of truth for every workspace file
+ *  (owner + included partials). Keys are canonicalized via `normalizePath`.
+ *  `modules` is the analyzer-facing projection derived from `documents`;
+ *  both are maintained in parallel — `modules` carries graph-derived data
+ *  (`resolvedPath` for imports, resolved module names) that the AST alone
+ *  cannot produce. */
 export interface Workspace {
   rootDir: string;
   modules: Map<string, ParsedManifest>;
   importGraph: Map<string, Set<string>>;
   importedBy: Map<string, Set<string>>;
+  /** Per-file AST state. Keyed by absolute file path, normalized via
+   *  `normalizePath`. All lookups route the key through `normalizePath`
+   *  first so kernel-stamped `metadata.source` values (which may contain
+   *  `./`, `..`, or trailing slashes) resolve against the canonical key. */
+  documents: Map<string, ModuleDocument>;
+  /** Per-module side-table mapping `${kind}::${name}` → the document that
+   *  contains the resource/import. Outer key is the owner module's
+   *  canonicalized `filePath`; inner key scopes resource identity to a single
+   *  module so `Http.Server/main` in module A and module B don't collide.
+   *  Enables O(1) lookup from a canvas edit to the AST node to mutate.
+   *  Rebuilt from scratch on every change to `documents`. */
+  resourceDocIndex: Map<string, Map<string, { filePath: string; docIndex: number }>>;
 }
 
 /** Mutation surface for a workspace. Read ops come from the ManifestAdapter
@@ -127,6 +177,16 @@ export interface DeploymentEnvironment {
   env: Record<string, string>;
 }
 
+/** Per-file record projected from `workspace.documents` for the active module.
+ *  Owner file first, then partials in deterministic (alphabetical) order.
+ *  `text` is the authoritative on-disk source text (pre-any-dirty edit);
+ *  `parseError` is non-null when the file's AST couldn't be parsed cleanly. */
+export interface ModuleSourceFile {
+  filePath: string;
+  text: string;
+  parseError?: string;
+}
+
 /** Stable data contract consumed by all editor views. */
 export interface ModuleViewData {
   manifest: ParsedManifest;
@@ -134,6 +194,10 @@ export interface ModuleViewData {
   kinds: Map<string, AvailableKind>;
   /** resourceName → diagnostics (flat projection for the active module) */
   diagnostics: Map<string, AnalysisDiagnostic[]>;
+  /** Per-file source text for every file the module spans (owner + partials).
+   *  Populated from `workspace.documents`; consumed by the source view to
+   *  seed its per-tab Monaco buffers. */
+  sourceFiles: ModuleSourceFile[];
 }
 
 export interface EditorState {

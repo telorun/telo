@@ -44,6 +44,7 @@ createIfMissing: true
 | `secretAccessKey` | string | yes | Secret key. Typically wired from the module's `secretAccessKey` secret. |
 | `forcePathStyle` | boolean | no | Use path-style URLs (`endpoint/bucket/key`) instead of virtual-host style. Required for MinIO, RustFS, and most self-hosted S3. Defaults to `false`. |
 | `createIfMissing` | boolean | no | When `true`, the controller issues `CreateBucket` during init and silently tolerates `BucketAlreadyOwnedByYou` / `BucketAlreadyExists`. Intended for self-hosted/dev backends. Leave `false` on managed clouds where the app may lack `CreateBucket` permission. Defaults to `false`. |
+| `publicRead` | boolean | no | When `true`, the controller applies a bucket policy during init that grants anonymous `s3:GetObject` on all keys. Defaults to `false`. See [`publicRead`](#publicread). |
 
 ---
 
@@ -67,3 +68,32 @@ A convenience for local development and self-hosted storage. When set, init call
 Any other error (auth failure, network, endpoint misconfiguration) fails init — which is the desired behavior, since a broken bucket would otherwise only surface on the first `S3.Put` call at runtime.
 
 Leave `createIfMissing: false` (the default) for production deployments on AWS S3 or Cloudflare R2, where bucket lifecycle is managed out-of-band and the runtime identity typically cannot create buckets.
+
+---
+
+## `publicRead`
+
+When `true`, the controller issues `PutBucketPolicy` during init with a policy granting anonymous `s3:GetObject` on all keys:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::<bucketName>/*"
+    }
+  ]
+}
+```
+
+The policy is applied regardless of `createIfMissing`, so it works for both newly created and pre-existing buckets. The policy grants read access only — `ListBucket` is not included, so the bucket index is not browsable; callers must know the object key.
+
+**Backend support:**
+
+- **AWS S3** — works. Bucket-level "Block Public Access" must be disabled out of band; the controller does not touch that setting.
+- **MinIO, RustFS** — works. Equivalent to `mc anonymous set download` on MinIO.
+- **Cloudflare R2** — not effective. R2 does not honor bucket policies via the S3 API; public access must be configured through the Cloudflare dashboard (custom domain / public bucket URL). Setting `publicRead: true` against R2 will either no-op or error depending on the region.

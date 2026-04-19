@@ -6,6 +6,7 @@ import type {
   AvailableKind,
   DirEntry,
   ImportKind,
+  ModuleDocument,
   ModuleKind,
   ParsedImport,
   ParsedManifest,
@@ -14,6 +15,20 @@ import type {
   Workspace,
   WorkspaceAdapter,
 } from "./model";
+import {
+  addImportDocument,
+  addResourceDocument,
+  applyEdit,
+  buildInitialModuleDocument,
+  diffFields,
+  findDocForResource,
+  parseModuleDocument,
+  removeImportDocument,
+  removeResourceDocument,
+  serializeModuleDocument,
+  type EditOp,
+} from "./yaml-document";
+
 
 // Directory basenames skipped at any depth during workspace scan.
 export const SCAN_EXCLUDED_NAMES: ReadonlySet<string> = new Set([
@@ -114,6 +129,38 @@ const registryFallbackBlocker: ManifestAdapter = {
   },
 };
 
+/** Wraps a disk-backed ManifestAdapter so `read()` first checks a
+ *  `ModuleDocument` map and serves the in-memory text when present. Falls
+ *  through to disk for files not yet tracked (first load, imports, partials
+ *  before Phase-1 post-processing adds them). All other adapter methods
+ *  (`resolveRelative`, `expandGlob`, `resolveOwnerOf`) delegate to the disk
+ *  adapter because glob expansion and path resolution still require real
+ *  filesystem knowledge.
+ *
+ *  The map is passed by reference, so callers that mutate `documents` after
+ *  constructing the adapter see the updates on subsequent `read()` calls —
+ *  which is how Phase-1 post-processing populates partial ASTs mid-load. */
+function createInMemoryManifestAdapter(
+  documents: Map<string, ModuleDocument>,
+  disk: ManifestAdapter,
+): ManifestAdapter {
+  return {
+    supports(url: string): boolean {
+      return disk.supports(url);
+    },
+    async read(url: string): Promise<{ text: string; source: string }> {
+      const doc = documents.get(normalizePath(url));
+      if (doc) return { text: doc.text, source: url };
+      return disk.read(url);
+    },
+    resolveRelative(base: string, relative: string): string {
+      return disk.resolveRelative(base, relative);
+    },
+    expandGlob: disk.expandGlob ? (base, patterns) => disk.expandGlob!(base, patterns) : undefined,
+    resolveOwnerOf: disk.resolveOwnerOf ? (url) => disk.resolveOwnerOf!(url) : undefined,
+  };
+}
+
 function createEditorLoader(localAdapter: ManifestAdapter, registryAdapters: ManifestAdapter[]): Loader {
   try {
     return new LoaderCtor({
@@ -168,7 +215,7 @@ function pathRelative(from: string, to: string): string {
   return rel || ".";
 }
 
-function normalizePath(p: string): string {
+export function normalizePath(p: string): string {
   const abs = p.startsWith("/");
   const parts = p.split("/");
   const stack: string[] = [];
@@ -177,6 +224,108 @@ function normalizePath(p: string): string {
     else if (seg !== "" && seg !== ".") stack.push(seg);
   }
   return (abs ? "/" : "") + stack.join("/");
+}
+
+// ---------------------------------------------------------------------------
+// Glob matching (browser-safe; no minimatch dependency)
+// ---------------------------------------------------------------------------
+
+/** Converts a glob pattern to a regex. Handles `*` (any chars except `/`),
+ *  `**` (any chars including `/`), and `?` (single char except `/`). Brace
+ *  and character-class expansion are intentionally unsupported — they are not
+ *  required by current include patterns and would bloat this function. */
+function globToRegExp(pattern: string): RegExp {
+  let re = "";
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        re += ".*";
+        i += 2;
+        if (pattern[i] === "/") i++;
+      } else {
+        re += "[^/]*";
+        i++;
+      }
+    } else if (c === "?") {
+      re += "[^/]";
+      i++;
+    } else if ("\\^$+.()=!|:{}[]".includes(c)) {
+      re += "\\" + c;
+      i++;
+    } else {
+      re += c;
+      i++;
+    }
+  }
+  return new RegExp("^" + re + "$");
+}
+
+/** True when a pattern contains any glob metacharacter. */
+export function hasGlobChars(pattern: string): boolean {
+  return /[*?]/.test(pattern);
+}
+
+/** Recursively collects all file paths under a directory via a
+ *  WorkspaceAdapter's `listDir`. Directories listed in SCAN_EXCLUDED_NAMES
+ *  are skipped. Returned paths are absolute (joined with the input dir). */
+async function listAllFilesRecursive(
+  dir: string,
+  adapter: WorkspaceAdapter,
+): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(current: string): Promise<void> {
+    let entries: DirEntry[];
+    try {
+      entries = await adapter.listDir(current);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (SCAN_EXCLUDED_NAMES.has(entry.name)) continue;
+      const full = pathJoin(current, entry.name);
+      if (entry.isDirectory) {
+        await walk(full);
+      } else {
+        out.push(full);
+      }
+    }
+  }
+  await walk(dir);
+  return out;
+}
+
+/** Generic glob expander. Given a `base` source (an owner telo.yaml path),
+ *  expands each pattern relative to the base's directory and returns matching
+ *  absolute file paths. Used by all three browser-side adapters to avoid
+ *  duplicating the walk-and-match logic three times. `listFiles` is the
+ *  adapter-specific piece that enumerates the directory tree. */
+async function expandGlobViaList(
+  base: string,
+  patterns: string[],
+  listFiles: (dir: string) => Promise<string[]>,
+): Promise<string[]> {
+  const baseDir = pathDirname(base);
+  const allFiles = await listFiles(baseDir);
+  const normalizedPatterns = patterns.map((p) => p.replace(/^\.\//, ""));
+  const regexps = normalizedPatterns.map((p) =>
+    hasGlobChars(p) ? globToRegExp(p) : null,
+  );
+
+  const matched = new Set<string>();
+  for (const file of allFiles) {
+    const rel = pathRelative(baseDir, file);
+    for (let i = 0; i < normalizedPatterns.length; i++) {
+      const re = regexps[i];
+      if (re) {
+        if (re.test(rel)) matched.add(file);
+      } else if (rel === normalizedPatterns[i]) {
+        matched.add(file);
+      }
+    }
+  }
+  return [...matched].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -221,10 +370,12 @@ async function mergeSubGraph(
   modules: Map<string, ParsedManifest>,
   importGraph: Map<string, Set<string>>,
   importedBy: Map<string, Set<string>>,
+  documents: Map<string, ModuleDocument>,
   adapter: ManifestAdapter,
   extraAdapters: ManifestAdapter[],
 ): Promise<string> {
-  const loader = createEditorLoader(adapter, extraAdapters);
+  const inMemoryAdapter = createInMemoryManifestAdapter(documents, adapter);
+  const loader = createEditorLoader(inMemoryAdapter, extraAdapters);
   const subGraph = await loader.loadModuleGraph(entryPath, (url, err) => {
     console.error(`Failed to load module ${url}:`, err);
   });
@@ -250,52 +401,16 @@ async function mergeSubGraph(
     });
     modules.set(filePath, { ...parsed, imports: resolvedImports });
     importGraph.set(filePath, subDeps);
+
+    // Populate ModuleDocument for the newly loaded module (owner file plus
+    // any partial files it declared via `include:`).
+    if (!documents.has(normalizePath(filePath))) {
+      await populateModuleDocument(filePath, documents, adapter);
+    }
+    await collectPartialDocuments(docs, filePath, documents, adapter);
   }
 
   return actualRoot;
-}
-
-// Appends an import to the active module and loads the target module graph
-// if the target isn't already known (registry/remote imports).
-export async function addImport(
-  workspace: Workspace,
-  fromPath: string,
-  imp: ParsedImport,
-  adapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[] = [],
-): Promise<Workspace> {
-  const modules = new Map(workspace.modules);
-  const importGraph = new Map(workspace.importGraph);
-  const importedBy = new Map(workspace.importedBy);
-
-  const fromModule = modules.get(fromPath);
-  if (!fromModule) return workspace;
-
-  let resolvedPath = imp.resolvedPath ?? resolveDepPath(adapter, fromPath, imp.source);
-
-  if (!modules.has(resolvedPath)) {
-    const actualRoot = await mergeSubGraph(
-      resolvedPath,
-      modules,
-      importGraph,
-      importedBy,
-      adapter,
-      extraAdapters,
-    );
-    resolvedPath = actualRoot;
-  }
-
-  const resolvedImp: ParsedImport = { ...imp, resolvedPath };
-  modules.set(fromPath, { ...fromModule, imports: [...fromModule.imports, resolvedImp] });
-
-  const deps = new Set(importGraph.get(fromPath) ?? []);
-  deps.add(resolvedPath);
-  importGraph.set(fromPath, deps);
-
-  if (!importedBy.has(resolvedPath)) importedBy.set(resolvedPath, new Set());
-  importedBy.get(resolvedPath)!.add(fromPath);
-
-  return { rootDir: workspace.rootDir, modules, importGraph, importedBy };
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +466,10 @@ class TauriFsAdapter implements ManifestAdapter, WorkspaceAdapter {
     const resolved = pathResolve(base, relative);
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;
     return resolved;
+  }
+
+  async expandGlob(base: string, patterns: string[]): Promise<string[]> {
+    return expandGlobViaList(base, patterns, (dir) => listAllFilesRecursive(dir, this));
   }
 }
 
@@ -442,6 +561,10 @@ class FsaAdapter implements ManifestAdapter, WorkspaceAdapter {
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;
     return resolved;
   }
+
+  async expandGlob(base: string, patterns: string[]): Promise<string[]> {
+    return expandGlobViaList(base, patterns, (dir) => listAllFilesRecursive(dir, this));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -517,6 +640,10 @@ class LocalStorageAdapter implements ManifestAdapter, WorkspaceAdapter {
     const resolved = pathResolve(base, relative);
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;
     return resolved;
+  }
+
+  async expandGlob(base: string, patterns: string[]): Promise<string[]> {
+    return expandGlobViaList(base, patterns, (dir) => listAllFilesRecursive(dir, this));
   }
 
   get root(): string {
@@ -648,7 +775,16 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
   const moduleKind: ModuleKind = moduleDoc?.kind === "Telo.Library" ? "Library" : "Application";
 
   const imports: ParsedImport[] = docs
-    .filter((r) => r.kind === "Telo.Import")
+    // Require string name + source so transient source-view typing
+    // (user hasn't finished typing `name:` or `source:` yet) doesn't
+    // surface as null-identified ParsedImport entries that downstream
+    // views would crash on.
+    .filter((r) => {
+      if (r.kind !== "Telo.Import") return false;
+      const name = (r.metadata as { name?: unknown } | undefined)?.name;
+      const source = (r as Record<string, unknown>).source;
+      return typeof name === "string" && typeof source === "string";
+    })
     .map((r) => ({
       name: r.metadata.name as string,
       source: (r as Record<string, unknown>).source as string,
@@ -658,7 +794,17 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     }));
 
   const resources: ParsedResource[] = docs
-    .filter((r) => !isModuleKind(r.kind) && r.kind !== "Telo.Import")
+    // Require a string `kind` and a string `metadata.name` before projecting
+    // a doc into the resources array. Transient source-view typing states
+    // (e.g. `kind:` with value not yet entered → null, or a kind-less
+    // standalone doc) would otherwise produce ParsedResource entries with
+    // null/undefined identifiers that downstream views can't render.
+    .filter((r) => {
+      if (typeof r.kind !== "string") return false;
+      if (isModuleKind(r.kind) || r.kind === "Telo.Import") return false;
+      const name = (r.metadata as { name?: unknown } | undefined)?.name;
+      return typeof name === "string";
+    })
     .map((r) => {
       const { kind, metadata, ...rest } = r as Record<string, unknown> & {
         kind: string;
@@ -775,6 +921,340 @@ function resolveDepPath(adapter: ManifestAdapter, filePath: string, source: stri
     : source;
 }
 
+/** Rebuilds the per-module `${kind}::${name}` → `{filePath, docIndex}` side
+ *  table from scratch. Outer key is the owner module's canonicalized filePath;
+ *  inner key scopes resource identity to a single module so resources with the
+ *  same kind/name in different modules don't collide.
+ *
+ *  Incremental patching would be fragile under resource renames (a
+ *  `metadata.name` change shifts the key) and doc-index shifts (add / remove
+ *  shifts everything after it). A full rebuild on every `documents` change is
+ *  one pass over the docs array per module; cheap at workspace sizes of up
+ *  to thousands of modules. */
+function buildResourceDocIndex(
+  modules: Map<string, ParsedManifest>,
+  documents: Map<string, ModuleDocument>,
+): Map<string, Map<string, { filePath: string; docIndex: number }>> {
+  const index = new Map<string, Map<string, { filePath: string; docIndex: number }>>();
+  for (const [modulePath, manifest] of modules) {
+    const ownerKey = normalizePath(modulePath);
+    const inner = new Map<string, { filePath: string; docIndex: number }>();
+
+    // Imports are not indexed: `addImportViaAst` / `removeImportViaAst`
+    // locate the owner doc via `documents.get(modulePath)` and look up
+    // Telo.Import docs directly with `findDocForResource`. Adding them to
+    // this side-table would be dead state.
+
+    for (const r of manifest.resources) {
+      const sourceKey = normalizePath(r.sourceFile ?? modulePath);
+      const modDoc = documents.get(sourceKey);
+      if (!modDoc) continue;
+      const docIndex = findDocForResource(modDoc.docs, r.kind, r.name);
+      if (docIndex === undefined) continue;
+      inner.set(`${r.kind}::${r.name}`, { filePath: sourceKey, docIndex });
+    }
+
+    index.set(ownerKey, inner);
+  }
+  return index;
+}
+
+/** Re-derives the `ParsedManifest` for a module from its AST (`workspace.documents`).
+ *  Used after every form-driven AST mutation (Phase 3) and after source-view
+ *  edits (Phase 4) so views see the new state without directly mutating
+ *  `ParsedManifest`. Also rebuilds `resourceDocIndex` because resource
+ *  add/remove shifts the inner map.
+ *
+ *  Graph-derived fields are preserved across the re-projection:
+ *   - For imports unchanged in `name` + `source`, `resolvedPath` is copied
+ *     forward from the previous projection.
+ *   - For imports whose `source` changed (or new imports), `resolvedPath`
+ *     is left `undefined` so the caller can decide whether to trigger
+ *     `reconcileImports` to load the new target graph.
+ *
+ *  Partial-file discovery is taken from `prev.resources[].sourceFile` — we
+ *  don't re-run `include:` glob expansion here. Source-view edits that
+ *  change the module's `include:` list must explicitly re-resolve via a
+ *  full workspace reload or a targeted re-include pass (out of scope). */
+export function rebuildManifestFromDocuments(
+  workspace: Workspace,
+  modulePath: string,
+): Workspace {
+  const prev = workspace.modules.get(modulePath);
+  if (!prev) return workspace;
+
+  const partialPaths = new Set<string>();
+  for (const r of prev.resources) {
+    if (r.sourceFile && normalizePath(r.sourceFile) !== normalizePath(modulePath)) {
+      partialPaths.add(r.sourceFile);
+    }
+  }
+
+  const synthetic = astToResourceManifests(
+    modulePath,
+    workspace.documents,
+    [...partialPaths],
+  );
+  const fresh = buildParsedManifest(modulePath, synthetic);
+
+  const prevImportByName = new Map(prev.imports.map((imp) => [imp.name, imp]));
+  const importsWithResolved = fresh.imports.map((imp) => {
+    const p = prevImportByName.get(imp.name);
+    if (p && p.source === imp.source) {
+      return { ...imp, resolvedPath: p.resolvedPath };
+    }
+    return { ...imp, resolvedPath: undefined };
+  });
+
+  const modules = new Map(workspace.modules);
+  modules.set(modulePath, { ...fresh, imports: importsWithResolved });
+  const resourceDocIndex = buildResourceDocIndex(modules, workspace.documents);
+  return { ...workspace, modules, resourceDocIndex };
+}
+
+/** True when at least one import in the module has `resolvedPath === undefined`
+ *  — signals to the caller that `reconcileImports` should be run to load the
+ *  new import target's sub-graph. */
+export function hasUnresolvedImports(workspace: Workspace, modulePath: string): boolean {
+  const manifest = workspace.modules.get(modulePath);
+  if (!manifest) return false;
+  return manifest.imports.some((imp) => !imp.resolvedPath);
+}
+
+/** Replaces a single `ModuleDocument` entry in the workspace. Produces a
+ *  fresh `documents` Map so React consumers that key off Map identity see
+ *  the change. Does NOT rebuild `modules` or `resourceDocIndex` — call
+ *  `rebuildManifestFromDocuments` afterwards when the mutation changed
+ *  resource/import structure, or skip the rebuild for field-only edits
+ *  where the ParsedManifest structure is stable. */
+function withModuleDocument(
+  workspace: Workspace,
+  filePath: string,
+  modDoc: ModuleDocument,
+): Workspace {
+  const documents = new Map(workspace.documents);
+  documents.set(normalizePath(filePath), modDoc);
+  return { ...workspace, documents };
+}
+
+/** Applies a sequence of EditOps to one document inside the workspace's AST
+ *  layer. The ops mutate `docs[docIndex]` in place (preserving comments on
+ *  unchanged nodes); the result is bundled into a fresh `ModuleDocument` +
+ *  fresh `documents` Map so React consumers see a new reference. The
+ *  returned workspace has updated `documents` only — callers that also need
+ *  a refreshed `ParsedManifest` / `resourceDocIndex` should follow up with
+ *  `rebuildManifestFromDocuments`. */
+export function applyOpsToDocument(
+  workspace: Workspace,
+  filePath: string,
+  docIndex: number,
+  ops: EditOp[],
+): Workspace {
+  if (ops.length === 0) return workspace;
+  const key = normalizePath(filePath);
+  const modDoc = workspace.documents.get(key);
+  if (!modDoc) return workspace;
+
+  let docs = modDoc.docs;
+  for (const op of ops) {
+    docs = applyEdit(docs, docIndex, op);
+  }
+  return withModuleDocument(workspace, filePath, { ...modDoc, docs });
+}
+
+/** Updates a resource's body fields in the AST. Diffs `oldFields` against
+ *  `newFields` (convention: `undefined` → delete, `null` → explicit null,
+ *  `""` → empty string, other → set), translates to EditOps rooted at the
+ *  resource's document, applies them, and re-derives the ParsedManifest.
+ *  Returns the original workspace when the resource has no AST entry
+ *  (stale resourceDocIndex after a rename, parse error on the file, etc.). */
+export function setResourceFields(
+  workspace: Workspace,
+  modulePath: string,
+  kind: string,
+  name: string,
+  oldFields: Record<string, unknown>,
+  newFields: Record<string, unknown>,
+): Workspace {
+  const indexEntry = workspace.resourceDocIndex
+    .get(normalizePath(modulePath))
+    ?.get(`${kind}::${name}`);
+  if (!indexEntry) return workspace;
+
+  const ops = diffFields(oldFields, newFields, "");
+  if (ops.length === 0) return workspace;
+
+  const updated = applyOpsToDocument(workspace, indexEntry.filePath, indexEntry.docIndex, ops);
+  return rebuildManifestFromDocuments(updated, modulePath);
+}
+
+/** Appends a new resource document to the owner module's AST and re-derives
+ *  the ParsedManifest. New resources always land in the owner file (not in
+ *  a partial) — matches the current `handleCreateResource` behavior and
+ *  keeps "moving resources between files" out of this path. */
+export function createResourceViaAst(
+  workspace: Workspace,
+  modulePath: string,
+  kind: string,
+  name: string,
+  fields: Record<string, unknown>,
+): Workspace {
+  const key = normalizePath(modulePath);
+  const modDoc = workspace.documents.get(key);
+  if (!modDoc) return workspace;
+
+  const docs = addResourceDocument(modDoc.docs, kind, name, fields);
+  const updated = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  return rebuildManifestFromDocuments(updated, modulePath);
+}
+
+/** Inserts a `Telo.Import` document into the owner module's AST, re-derives
+ *  the ParsedManifest (which projects the new import with
+ *  `resolvedPath: undefined`), then reconciles imports to resolve the new
+ *  target's sub-graph and wire `importGraph` / `importedBy` edges.
+ *
+ *  Routing through `reconcileImports` (not the legacy `addImport`) is
+ *  deliberate: `rebuildManifestFromDocuments` already places the new
+ *  import into `manifest.imports` from the AST, so any helper that
+ *  *appends* to that list would produce a duplicate entry.
+ *  `reconcileImports` iterates the existing import list, resolves each
+ *  one, and updates graph state without appending. */
+export async function addImportViaAst(
+  workspace: Workspace,
+  modulePath: string,
+  imp: ParsedImport,
+  manifestAdapter: ManifestAdapter,
+  extraAdapters: ManifestAdapter[] = [],
+): Promise<Workspace> {
+  const key = normalizePath(modulePath);
+  const modDoc = workspace.documents.get(key);
+  if (!modDoc) return workspace;
+
+  const docs = addImportDocument(modDoc.docs, imp.name, imp.source, {
+    variables: imp.variables,
+    secrets: imp.secrets,
+  });
+  const astOnly = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  const rebuilt = rebuildManifestFromDocuments(astOnly, modulePath);
+  return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
+}
+
+/** Removes a `Telo.Import` document from the owner module's AST and
+ *  reconciles the import graph (pruning reverse edges for the dropped
+ *  target). */
+export async function removeImportViaAst(
+  workspace: Workspace,
+  modulePath: string,
+  name: string,
+  manifestAdapter: ManifestAdapter,
+  extraAdapters: ManifestAdapter[] = [],
+): Promise<Workspace> {
+  const key = normalizePath(modulePath);
+  const modDoc = workspace.documents.get(key);
+  if (!modDoc) return workspace;
+
+  const docs = removeImportDocument(modDoc.docs, name);
+  if (docs === modDoc.docs) return workspace;
+
+  const astOnly = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  const rebuilt = rebuildManifestFromDocuments(astOnly, modulePath);
+  return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
+}
+
+/** Removes the old import and inserts a new one with the same alias but a
+ *  different source. Resolves the new target's sub-graph via
+ *  `addImportViaAst`'s reconcile step. */
+export async function upgradeImportViaAst(
+  workspace: Workspace,
+  modulePath: string,
+  name: string,
+  newSource: string,
+  manifestAdapter: ManifestAdapter,
+  extraAdapters: ManifestAdapter[] = [],
+): Promise<Workspace> {
+  const after = await removeImportViaAst(
+    workspace,
+    modulePath,
+    name,
+    manifestAdapter,
+    extraAdapters,
+  );
+  return addImportViaAst(
+    after,
+    modulePath,
+    { name, source: newSource, importKind: classifyImport(newSource) },
+    manifestAdapter,
+    extraAdapters,
+  );
+}
+
+/** Walks `workspace.documents` for the module's owner + listed partials and
+ *  emits `ResourceManifest[]` enriched with `metadata.source` (canonical
+ *  per-file path) and `metadata.module` (owner module name, stamped on
+ *  resources declared in partials — mirrors what the analyzer Loader does in
+ *  `loadPartialFile`). The output feeds straight into `buildParsedManifest`.
+ */
+function astToResourceManifests(
+  ownerPath: string,
+  documents: Map<string, ModuleDocument>,
+  partialPaths: string[],
+): ResourceManifest[] {
+  const out: ResourceManifest[] = [];
+  const ownerDoc = documents.get(normalizePath(ownerPath));
+  if (!ownerDoc) return out;
+
+  let ownerModuleName: string | undefined;
+  for (const d of ownerDoc.docs) {
+    const json = d.toJSON() as Record<string, unknown> | null;
+    if (!json) continue;
+    const kind = json.kind;
+    if (typeof kind === "string" && isModuleKind(kind)) {
+      const meta = json.metadata as Record<string, unknown> | undefined;
+      if (meta && typeof meta.name === "string") ownerModuleName = meta.name;
+    }
+    const meta: Record<string, unknown> = {
+      ...(json.metadata as Record<string, unknown> | undefined),
+      source: ownerPath,
+    };
+    out.push({ ...json, metadata: meta } as ResourceManifest);
+  }
+
+  for (const partial of partialPaths) {
+    const partialDoc = documents.get(normalizePath(partial));
+    if (!partialDoc) continue;
+    for (const d of partialDoc.docs) {
+      const json = d.toJSON() as Record<string, unknown> | null;
+      if (!json) continue;
+      const meta: Record<string, unknown> = {
+        ...(json.metadata as Record<string, unknown> | undefined),
+        source: partial,
+      };
+      if (ownerModuleName && meta.module === undefined) meta.module = ownerModuleName;
+      out.push({ ...json, metadata: meta } as ResourceManifest);
+    }
+  }
+  return out;
+}
+
+/** Reads a file's text and parses it into a ModuleDocument, storing the
+ *  result under `normalizePath(filePath)`. Safe to call repeatedly with the
+ *  same path; re-parsing replaces the previous entry. On read failure the
+ *  ModuleDocument is omitted entirely (not stored as a stub) so downstream
+ *  `documents.get(...)` miss-vs-hit semantics stay unambiguous. */
+async function populateModuleDocument(
+  filePath: string,
+  documents: Map<string, ModuleDocument>,
+  adapter: ManifestAdapter,
+): Promise<void> {
+  const key = normalizePath(filePath);
+  try {
+    const { text } = await adapter.read(filePath);
+    documents.set(key, parseModuleDocument(filePath, text));
+  } catch (err) {
+    console.error(`Failed to read ${filePath} for ModuleDocument:`, err);
+  }
+}
+
 /**
  * Walks the workspace root and returns paths of every `telo.yaml` found,
  * skipping SCAN_EXCLUSIONS directories.
@@ -831,6 +1311,7 @@ export async function reconcileImports(
   const modules = new Map(workspace.modules);
   const importGraph = new Map(workspace.importGraph);
   const importedBy = new Map(workspace.importedBy);
+  const documents = new Map(workspace.documents);
   const prevDeps = new Set(importGraph.get(modulePath) ?? []);
   const deps = new Set<string>();
 
@@ -845,6 +1326,7 @@ export async function reconcileImports(
           modules,
           importGraph,
           importedBy,
+          documents,
           adapter,
           extraAdapters,
         );
@@ -875,7 +1357,8 @@ export async function reconcileImports(
   }
 
   importGraph.set(modulePath, deps);
-  return { rootDir: workspace.rootDir, modules, importGraph, importedBy };
+  const resourceDocIndex = buildResourceDocIndex(modules, documents);
+  return { rootDir: workspace.rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
 }
 
 /**
@@ -891,16 +1374,33 @@ export async function loadWorkspace(
 ): Promise<Workspace> {
   const modulePaths = await scanWorkspace(rootDir, workspaceAdapter);
 
-  const loader = createEditorLoader(manifestAdapter, extraAdapters);
   const modules = new Map<string, ParsedManifest>();
   const importGraph = new Map<string, Set<string>>();
   const importedBy = new Map<string, Set<string>>();
+  const documents = new Map<string, ModuleDocument>();
+
+  // Phase 0: pre-populate documents for every scanned owner file. One disk
+  // read per file; the in-memory adapter below serves subsequent reads of the
+  // same file (including from inside the analyzer Loader) from this cache.
+  for (const filePath of modulePaths) {
+    await populateModuleDocument(filePath, documents, manifestAdapter);
+  }
+
+  // Fresh Loader per loadWorkspace call, backed by an in-memory adapter that
+  // reads from `documents` and falls through to disk for files not yet
+  // tracked (partial include targets, external imports). See the plan's
+  // "Analyzer Loader is instantiated fresh per call" decision.
+  const inMemoryAdapter = createInMemoryManifestAdapter(documents, manifestAdapter);
+  const loader = createEditorLoader(inMemoryAdapter, extraAdapters);
 
   // Phase 1: parse every discovered module (includes expand during loadModule).
+  // After each load, walk the returned manifests for any partial-file source
+  // paths (from `include:` expansion) and populate their ModuleDocument too.
   for (const filePath of modulePaths) {
     try {
       const docs = (await loader.loadModule(filePath)) as ResourceManifest[];
       modules.set(filePath, buildParsedManifest(filePath, docs));
+      await collectPartialDocuments(docs, filePath, documents, manifestAdapter);
     } catch (err) {
       console.error(`Failed to load workspace module ${filePath}:`, err);
       // Register a placeholder so the module still appears in the workspace
@@ -923,6 +1423,7 @@ export async function loadWorkspace(
         for (const [subPath, subDocs] of subGraph) {
           if (modules.has(subPath)) continue;
           modules.set(subPath, buildParsedManifest(subPath, subDocs));
+          await collectPartialDocuments(subDocs, subPath, documents, manifestAdapter);
         }
       } catch (err) {
         console.error(`Failed to resolve import ${imp.source} in ${parsed.filePath}:`, err);
@@ -951,7 +1452,31 @@ export async function loadWorkspace(
     importGraph.set(filePath, deps);
   }
 
-  return { rootDir, modules, importGraph, importedBy };
+  const resourceDocIndex = buildResourceDocIndex(modules, documents);
+  return { rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
+}
+
+/** After loadModule returns, walk the ResourceManifest[] for distinct
+ *  `metadata.source` values and populate a ModuleDocument for any source
+ *  path not already tracked. This catches partial files expanded from
+ *  `include:` patterns — they're not in `modulePaths` (scanWorkspace only
+ *  finds telo.yaml files), so without this pass they'd have no AST entry
+ *  and post-load edits that target resources in partials would fail. */
+async function collectPartialDocuments(
+  docs: ResourceManifest[],
+  ownerPath: string,
+  documents: Map<string, ModuleDocument>,
+  adapter: ManifestAdapter,
+): Promise<void> {
+  const sources = new Set<string>();
+  for (const doc of docs) {
+    const src = (doc.metadata as { source?: unknown })?.source;
+    if (typeof src === "string" && src !== ownerPath) sources.add(src);
+  }
+  for (const src of sources) {
+    if (documents.has(normalizePath(src))) continue;
+    await populateModuleDocument(src, documents, adapter);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -992,7 +1517,8 @@ export async function createModule(
     imports: [],
     resources: [],
   };
-  const yaml = renderManifestYaml(manifest);
+  const initialDoc = buildInitialModuleDocument(kind, name);
+  const yaml = serializeModuleDocument([initialDoc]);
   await adapter.writeFile(filePath, yaml);
 
   const modules = new Map(workspace.modules);
@@ -1001,20 +1527,92 @@ export async function createModule(
   importGraph.set(filePath, new Set());
   const importedBy = new Map(workspace.importedBy);
 
-  return { rootDir: workspace.rootDir, modules, importGraph, importedBy };
+  const documents = new Map(workspace.documents);
+  documents.set(normalizePath(filePath), parseModuleDocument(filePath, yaml));
+  const resourceDocIndex = buildResourceDocIndex(modules, documents);
+
+  return { rootDir: workspace.rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
 }
 
-/** Writes the module's YAML back to disk — owner file + any partial files
- *  resolved via `include:`. Uses getMultiFileSnapshots so include ownership
- *  is preserved for modules split across multiple files. */
-export async function saveModule(
-  manifest: ParsedManifest,
+/** Writes the module's YAML back to disk by serializing each tracked
+ *  `ModuleDocument` via `serializeModuleDocument`. No custom serializer; the
+ *  `yaml` library's `Document#toString()` preserves comments, anchors,
+ *  quoting, flow vs block style, and multi-document separators.
+ *
+ *  Discovers the module's files from the same two sources the loader
+ *  populates: the owner `modulePath`, plus any `sourceFile` stamped on a
+ *  resource by the analyzer (include-expanded partials).
+ *
+ *  Semantic-equality guard: skips the write for any file whose AST
+ *  `.toJSON()` deep-equals the snapshot captured at load time
+ *  (`ModuleDocument.loadedJson`). This prevents a no-op save from
+ *  reformatting every file — the first save of a non-canonical file still
+ *  reformats it once (YAML library normalizes quoting / whitespace on
+ *  `String(doc)`), but that is a one-time cost per file.
+ *
+ *  Returns a new Workspace with updated `ModuleDocument` entries
+ *  (`text` + `loadedJson`) for every file actually written, so subsequent
+ *  save calls see the new state as canonical. Returns the input workspace
+ *  unchanged when nothing was written. */
+export async function saveModuleFromDocuments(
+  workspace: Workspace,
+  modulePath: string,
   adapter: WorkspaceAdapter,
-): Promise<void> {
-  const snapshots = getMultiFileSnapshots(manifest);
-  for (const { filePath, yaml } of snapshots) {
-    await adapter.writeFile(filePath, yaml);
+): Promise<Workspace> {
+  const manifest = workspace.modules.get(modulePath);
+  if (!manifest) return workspace;
+
+  const fileKeys = new Set<string>([normalizePath(modulePath)]);
+  for (const r of manifest.resources) {
+    if (r.sourceFile) fileKeys.add(normalizePath(r.sourceFile));
   }
+
+  const documents = new Map(workspace.documents);
+  let anyWritten = false;
+
+  for (const key of fileKeys) {
+    const modDoc = documents.get(key);
+    if (!modDoc) continue;
+    // A file with a parse error has its last-good docs attached; writing
+    // them would destroy user edits-in-progress. Skip until the user fixes
+    // the file via the source view.
+    if (modDoc.parseError) continue;
+
+    const currentJson = modDoc.docs.map((d) => d.toJSON());
+    if (jsonDeepEqual(currentJson, modDoc.loadedJson)) continue;
+
+    const text = serializeModuleDocument(modDoc.docs);
+    await adapter.writeFile(modDoc.filePath, text);
+    documents.set(key, { ...modDoc, text, loadedJson: currentJson });
+    anyWritten = true;
+  }
+
+  if (!anyWritten) return workspace;
+  return { ...workspace, documents };
+}
+
+/** Semantic deep-equality for AST snapshots. `yaml.Document#toJSON()` produces
+ *  plain JSON-compatible structures (no Map/Set/Date/function), so stringify
+ *  comparison is sound. Key order is preserved by `yaml` across repeated
+ *  calls on the same document, so two snapshots of an unmutated document
+ *  stringify identically. */
+function jsonDeepEqual(a: unknown[], b: unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Persists a module via the AST-based save path. Thin alias over
+ *  `saveModuleFromDocuments` kept for call-site clarity in Editor.tsx —
+ *  "persist this workspace's view of this module" reads better than
+ *  "save module from documents". Returns the workspace with updated
+ *  `documents` entries (new `text` + `loadedJson` for every file actually
+ *  written) so the caller's next save sees the advanced state. */
+export async function persistWorkspaceModule(
+  workspace: Workspace,
+  modulePath: string,
+  adapter: WorkspaceAdapter,
+): Promise<Workspace> {
+  return saveModuleFromDocuments(workspace, modulePath, adapter);
 }
 
 /** Deletes a module directory from disk and removes any references to it
@@ -1030,22 +1628,50 @@ export async function deleteModule(
   const modules = new Map(workspace.modules);
   modules.delete(filePath);
 
-  // Drop imports in every importer that point at the deleted module.
+  // Drop ModuleDocument entries that live under the deleted module's
+  // directory. Covers the owner telo.yaml plus any partials colocated with
+  // it. A future phase that persists importers via the AST can build on
+  // this by only pruning keys we no longer own.
+  const documents = new Map(workspace.documents);
+  const dirPrefix = normalizePath(moduleDir) + "/";
+  for (const key of [...documents.keys()]) {
+    if (key === normalizePath(filePath) || key.startsWith(dirPrefix)) {
+      documents.delete(key);
+    }
+  }
+
+  // Drop imports in every importer that point at the deleted module —
+  // prune both the ParsedManifest projection (for views) and the AST
+  // (for the save path). Collect the importer paths here; the actual
+  // disk writes happen after the new workspace is fully constructed so
+  // `saveModuleFromDocuments` sees the final state.
   const importers = workspace.importedBy.get(filePath);
+  const importersToSave: string[] = [];
   if (importers) {
     for (const importerPath of importers) {
       const importer = modules.get(importerPath);
       if (!importer) continue;
+
+      const importsToRemove = importer.imports
+        .filter((imp) => imp.resolvedPath === filePath)
+        .map((imp) => imp.name);
+
+      const importerKey = normalizePath(importerPath);
+      const importerDoc = documents.get(importerKey);
+      if (importerDoc) {
+        let docs = importerDoc.docs;
+        for (const name of importsToRemove) docs = removeImportDocument(docs, name);
+        if (docs !== importerDoc.docs) {
+          documents.set(importerKey, { ...importerDoc, docs });
+        }
+      }
+
       const updated = {
         ...importer,
         imports: importer.imports.filter((imp) => imp.resolvedPath !== filePath),
       };
       modules.set(importerPath, updated);
-      try {
-        await saveModule(updated, adapter);
-      } catch (err) {
-        console.error(`Failed to persist updated importer ${importerPath}:`, err);
-      }
+      importersToSave.push(importerPath);
     }
   }
 
@@ -1063,7 +1689,28 @@ export async function deleteModule(
     }
   }
 
-  return { rootDir: workspace.rootDir, modules, importGraph, importedBy };
+  const resourceDocIndex = buildResourceDocIndex(modules, documents);
+  let next: Workspace = {
+    rootDir: workspace.rootDir,
+    modules,
+    importGraph,
+    importedBy,
+    documents,
+    resourceDocIndex,
+  };
+
+  // Persist each importer via the AST path. Each save advances that file's
+  // `loadedJson`, so threading the returned workspace forward keeps the
+  // no-op-write guard accurate for subsequent operations.
+  for (const importerPath of importersToSave) {
+    try {
+      next = await saveModuleFromDocuments(next, importerPath, adapter);
+    } catch (err) {
+      console.error(`Failed to persist updated importer ${importerPath}:`, err);
+    }
+  }
+
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -1119,196 +1766,3 @@ export function isWorkspaceModule(workspace: Workspace, filePath: string): boole
   return filePath.startsWith(root);
 }
 
-// ---------------------------------------------------------------------------
-// YAML rendering
-// ---------------------------------------------------------------------------
-
-/** Patterns that force a string to be quoted when serialized as a YAML scalar.
- *  Covers every indicator that would change the meaning of the scalar on
- *  re-parse: YAML indicator chars in leading position (`*` alias, `&` anchor,
- *  `!` tag, `|`/`>` block scalar, `%` directive, `@`/`` ` `` reserved, `?`
- *  complex key, `,`/`[`/`]`/`{`/`}` flow indicators, `"`/`'` quotes, `#`
- *  comment, `-` list marker), colons / hashes / newlines anywhere (they change
- *  structure), leading or trailing whitespace (stripped by parser), and
- *  strings that would otherwise parse as non-strings (YAML booleans/nulls,
- *  numbers, hex/octal literals). */
-const YAML_QUOTE_REQUIRED = [
-  /^[-?:,[\]{}#&*!|>'"%@`]/,
-  /[:#\n]/,
-  /^\s|\s$/,
-  /^(~|null|true|false|yes|no|on|off)$/i,
-  /^[-+]?\d+(\.\d+)?([eE][-+]?\d+)?$/,
-  /^0[xX][0-9a-fA-F]+$/,
-  /^0o[0-7]+$/,
-];
-
-function needsYamlQuote(text: string): boolean {
-  if (text === "") return true;
-  return YAML_QUOTE_REQUIRED.some((pattern) => pattern.test(text));
-}
-
-function yamlScalar(value: unknown): string {
-  if (value === null) return "null";
-  if (value === undefined) return "null";
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  const text = String(value);
-  if (needsYamlQuote(text)) return JSON.stringify(text);
-  return text;
-}
-
-function yamlBlockScalar(text: string, indent: number): string {
-  const pad = " ".repeat(indent);
-  const blockLines = text.split("\n");
-  const hasTrailingNewline = text.endsWith("\n");
-  const contentLines = hasTrailingNewline ? blockLines.slice(0, -1) : blockLines;
-  const header = hasTrailingNewline ? "|" : "|-";
-  return header + "\n" + contentLines.map((l) => (l.length > 0 ? `${pad}${l}` : "")).join("\n");
-}
-
-function pushYaml(lines: string[], value: unknown, indent: number): void {
-  const pad = " ".repeat(indent);
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      lines.push(`${pad}[]`);
-      return;
-    }
-    for (const item of value) {
-      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
-        lines.push(`${pad}-`);
-        pushYaml(lines, item, indent + 2);
-      } else if (Array.isArray(item)) {
-        lines.push(`${pad}-`);
-        pushYaml(lines, item, indent + 2);
-      } else {
-        lines.push(`${pad}- ${yamlScalar(item)}`);
-      }
-    }
-    return;
-  }
-
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) {
-      lines.push(`${pad}{}`);
-      return;
-    }
-
-    for (const [key, entry] of entries) {
-      if (Array.isArray(entry) || (entry !== null && typeof entry === "object")) {
-        lines.push(`${pad}${key}:`);
-        pushYaml(lines, entry, indent + 2);
-      } else if (typeof entry === "string" && entry.includes("\n")) {
-        lines.push(`${pad}${key}: ${yamlBlockScalar(entry, indent + 2)}`);
-      } else {
-        lines.push(`${pad}${key}: ${yamlScalar(entry)}`);
-      }
-    }
-    return;
-  }
-
-  if (typeof value === "string" && value.includes("\n")) {
-    lines.push(`${pad}${yamlBlockScalar(value, indent + 2)}`);
-    return;
-  }
-  lines.push(`${pad}${yamlScalar(value)}`);
-}
-
-function dumpYamlDoc(doc: Record<string, unknown>): string {
-  const lines: string[] = [];
-  pushYaml(lines, doc, 0);
-  return lines.join("\n");
-}
-
-export function toManifestDocs(manifest: ParsedManifest): Record<string, unknown>[] {
-  const moduleDoc: Record<string, unknown> = {
-    kind: manifest.kind === "Application" ? "Telo.Application" : "Telo.Library",
-    metadata: {
-      name: manifest.metadata.name,
-      ...(manifest.metadata.version ? { version: manifest.metadata.version } : {}),
-      ...(manifest.metadata.description ? { description: manifest.metadata.description } : {}),
-    },
-  };
-
-  if (manifest.metadata.namespace) (moduleDoc.metadata as Record<string, unknown>).namespace = manifest.metadata.namespace;
-  if (manifest.metadata.variables) moduleDoc.variables = manifest.metadata.variables;
-  if (manifest.metadata.secrets) moduleDoc.secrets = manifest.metadata.secrets;
-  if (manifest.include?.length) moduleDoc.include = manifest.include;
-  if (manifest.kind === "Application" && manifest.targets.length > 0) moduleDoc.targets = manifest.targets;
-
-  const importDocs = manifest.imports.map((imp) => ({
-    kind: "Telo.Import",
-    metadata: { name: imp.name },
-    source: imp.source,
-    ...(imp.variables ? { variables: imp.variables } : {}),
-    ...(imp.secrets ? { secrets: imp.secrets } : {}),
-  }));
-
-  const resourceDocs = manifest.resources.map((resource) => ({
-    kind: resource.kind,
-    metadata: {
-      name: resource.name,
-      ...(resource.module ? { module: resource.module } : {}),
-    },
-    ...resource.fields,
-  }));
-
-  return [moduleDoc, ...importDocs, ...resourceDocs];
-}
-
-export function renderManifestYaml(manifest: ParsedManifest): string {
-  const docs = toManifestDocs(manifest);
-  if (docs.length === 0) return "";
-  return docs.map((doc) => dumpYamlDoc(doc)).join("\n---\n");
-}
-
-/** Per-file YAML snapshots for a multi-file module. Resources are written
- *  back to their originating sourceFile rather than collapsed into the owner.
- *
- *  Keys are normalized before grouping so a kernel-stamped metadata.source
- *  that differs cosmetically from manifest.filePath (extra slashes, `./`,
- *  etc.) still groups with the owner rather than leaking into a header-less
- *  partial snapshot. */
-export function getMultiFileSnapshots(
-  manifest: ParsedManifest,
-): Array<{ filePath: string; yaml: string }> {
-  const ownerKey = normalizePath(manifest.filePath);
-  const groups = new Map<string, ParsedResource[]>();
-  for (const r of manifest.resources) {
-    const file = normalizePath(r.sourceFile ?? manifest.filePath);
-    let list = groups.get(file);
-    if (!list) {
-      list = [];
-      groups.set(file, list);
-    }
-    list.push(r);
-  }
-
-  const snapshots: Array<{ filePath: string; yaml: string }> = [];
-
-  const ownerResources = groups.get(ownerKey) ?? [];
-  const ownerManifest: ParsedManifest = { ...manifest, resources: ownerResources };
-  const ownerDocs = toManifestDocs(ownerManifest);
-  snapshots.push({
-    filePath: manifest.filePath,
-    yaml: ownerDocs.map((doc) => dumpYamlDoc(doc)).join("\n---\n"),
-  });
-
-  for (const [file, resources] of groups) {
-    if (file === ownerKey) continue;
-    const docs = resources.map((r) => ({
-      kind: r.kind,
-      metadata: {
-        name: r.name,
-        ...(r.module ? { module: r.module } : {}),
-      },
-      ...r.fields,
-    }));
-    snapshots.push({
-      filePath: file,
-      yaml: docs.map((doc) => dumpYamlDoc(doc)).join("\n---\n"),
-    });
-  }
-
-  return snapshots;
-}

@@ -51,12 +51,17 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
         value={typeof value === "number" || typeof value === "string" ? String(value) : ""}
         onChange={(e) => {
           const raw = e.target.value;
+          // Cleared number → explicit YAML null. v1 canvas never emits
+          // `undefined` for backspace-clears, per null-vs-missing-key
+          // convention: cleared inputs should not silently delete the
+          // key. Null is the nearest-empty representation for a
+          // non-string field.
           if (raw === "") {
-            onValueChange(undefined);
+            onValueChange(null);
             return;
           }
           const parsed = Number(raw);
-          onValueChange(Number.isFinite(parsed) ? parsed : undefined);
+          onValueChange(Number.isFinite(parsed) ? parsed : null);
         }}
         onBlur={onBlur}
         className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
@@ -68,7 +73,11 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
     <input
       type="text"
       value={typeof value === "string" ? value : value == null ? "" : String(value)}
-      onChange={(e) => onValueChange(e.target.value === "" ? undefined : e.target.value)}
+      // Cleared text → "" (not undefined). Per the v1 null-vs-missing-key
+      // convention, only the deferred "remove field" affordance should
+      // produce a key deletion; a backspace-clear preserves the key as
+      // an explicit empty string.
+      onChange={(e) => onValueChange(e.target.value)}
       onBlur={onBlur}
       className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
     />

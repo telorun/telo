@@ -1,79 +1,162 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { parseAllDocuments } from "yaml";
-import type { ResourceManifest } from "@telorun/sdk";
-import { buildParsedManifest, getMultiFileSnapshots } from "../../../loader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
+import { parseModuleDocument } from "../../../yaml-document";
 
 const DEBOUNCE_MS = 500;
 
-/**
- * Parses a multi-document YAML string into ResourceManifest[].
- * Returns an error string on failure.
- */
-function parseYamlToManifests(text: string): { docs: ResourceManifest[] } | { error: string } {
-  try {
-    const parsed = parseAllDocuments(text);
-    const errors = parsed.flatMap((d) => d.errors);
-    if (errors.length > 0) {
-      return { error: errors.map((e) => e.message).join("\n") };
-    }
-    const docs = parsed
-      .map((d) => d.toJSON())
-      .filter((d): d is ResourceManifest => d != null && typeof d === "object" && d.kind);
-    return { docs };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
+type MonacoEditor = Parameters<OnMount>[0];
+type Monaco = Parameters<OnMount>[1];
+
+interface TabState {
+  /** The user's current Monaco buffer for this tab. Seeded from
+   *  `viewData.sourceFiles[i].text` on first activation and whenever the
+   *  external on-disk text changes while the tab is not dirty. Authoritative
+   *  source of the displayed text when `dirty === true`. */
+  localText: string;
+  /** True once the user types in this tab; flips back to false after a
+   *  successful debounce-fire parse (which also commits via onSourceEdit). */
+  dirty: boolean;
+  /** Parser error message when the latest debounce-fire failed to parse
+   *  the tab's text. Non-null means the tab shows a red marker and we've
+   *  skipped calling onSourceEdit for this tab's last committed attempt. */
+  parseError: string | null;
 }
 
-export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
-  const snapshots = useMemo(
-    () => getMultiFileSnapshots(viewData.manifest),
-    [viewData.manifest],
-  );
+/** Detects whether the incoming canonical text for a tab has advanced past
+ *  what the tab previously recorded. Used to distinguish "external update
+ *  we should absorb" from "our own prior commit bouncing back through
+ *  workspace.documents" — though in practice this is a simple string diff:
+ *  if the tab isn't dirty and the canonical text differs from what the tab
+ *  last showed, we update. */
 
-  // Track whether the user is actively editing to avoid overwriting their text
-  const [dirty, setDirty] = useState(false);
-  const [localText, setLocalText] = useState("");
-  const [parseError, setParseError] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+export function SourceView({ viewData, onSourceEdit }: ViewProps) {
+  const sourceFiles = viewData.sourceFiles;
+  const firstFilePath = sourceFiles[0]?.filePath;
 
-  // When the manifest changes externally and we're not dirty, reset.
-  // For failed-load modules the parsed snapshot is empty — show the raw
-  // YAML from disk instead so the user can actually fix the file.
-  const rawYaml = viewData.manifest.rawYaml;
-  const canonicalYaml =
-    rawYaml != null
-      ? rawYaml
-      : snapshots.length === 1
-        ? snapshots[0].yaml
-        : null;
+  // Active tab is tracked explicitly so module-change resets to owner, and
+  // so we can focus a specific tab on parse error when a future "block
+  // module switch on dirty-and-invalid" flow is added.
+  const [activeTab, setActiveTab] = useState<string | undefined>(firstFilePath);
+
+  // Reset active tab when the module changes (different owner path or tab
+  // list). Without this, switching modules keeps a stale tab id that no
+  // longer exists in the current sourceFiles list.
   useEffect(() => {
-    if (!dirty && canonicalYaml != null) {
-      setLocalText(canonicalYaml);
-      setParseError(null);
-      clearMarkers();
-    }
-  }, [canonicalYaml, dirty]);
+    if (activeTab && sourceFiles.some((f) => f.filePath === activeTab)) return;
+    setActiveTab(firstFilePath);
+  }, [activeTab, firstFilePath, sourceFiles]);
 
-  function clearMarkers() {
-    if (editorRef.current && monacoRef.current) {
-      const model = editorRef.current.getModel();
-      if (model) monacoRef.current.editor.setModelMarkers(model, "yaml-parse", []);
-    }
-  }
+  // Per-tab state indexed by filePath. Initialized lazily on first render;
+  // hydrated / invalidated when the external canonical text changes while a
+  // tab is not dirty.
+  const [tabStates, setTabStates] = useState<Record<string, TabState>>({});
 
-  function setErrorMarkers(message: string) {
-    if (!editorRef.current || !monacoRef.current) return;
-    const model = editorRef.current.getModel();
+  // Per-tab debounce timers. Kept as a ref because they're imperative — we
+  // don't want a state update on every timer schedule.
+  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Monaco editor + monaco instance refs keyed by filePath. Used to set /
+  // clear error markers per tab.
+  const editorsRef = useRef<Record<string, MonacoEditor>>({});
+  const monacoRef = useRef<Monaco | null>(null);
+
+  // Keep tabStates in sync with external (form-edit) ModuleDocument.text
+  // changes. Rule: a non-dirty tab tracks the AST; a dirty tab owns its
+  // text until the user commits. This is where the Phase 4 flicker fix
+  // lives — we replace `localText` only when the tab isn't dirty AND the
+  // canonical text actually differs.
+  useEffect(() => {
+    setTabStates((prev) => {
+      let changed = false;
+      const next: Record<string, TabState> = {};
+      const seen = new Set<string>();
+
+      for (const file of sourceFiles) {
+        seen.add(file.filePath);
+        const existing = prev[file.filePath];
+        if (!existing) {
+          next[file.filePath] = {
+            localText: file.text,
+            dirty: false,
+            parseError: file.parseError ?? null,
+          };
+          changed = true;
+          continue;
+        }
+        // Dirty tab: don't touch buffer. Clear a stale parseError only if
+        // the AST is clean and we're no longer showing an error the user
+        // has since fixed — but we already track parseError locally and
+        // update it from debounce parse, so leave it alone here.
+        if (existing.dirty) {
+          next[file.filePath] = existing;
+          continue;
+        }
+        // Non-dirty: resync localText when canonical text differs.
+        if (existing.localText !== file.text) {
+          next[file.filePath] = {
+            localText: file.text,
+            dirty: false,
+            parseError: file.parseError ?? null,
+          };
+          changed = true;
+          continue;
+        }
+        // Canonical text unchanged — keep existing (including any live
+        // parseError so the marker doesn't flicker).
+        next[file.filePath] = existing;
+      }
+
+      // Drop entries for files no longer in the module. Needed when the
+      // active module changes or when a partial is removed via an edit.
+      for (const key of Object.keys(prev)) {
+        if (!seen.has(key)) changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [sourceFiles]);
+
+  // When a non-dirty tab's localText changes (via the useEffect above from
+  // an upstream workspace edit), push that text into the tab's Monaco
+  // editor via setValue so the visible buffer matches. Monaco's default
+  // setValue preserves cursor position. We don't push when dirty — the
+  // user's typing wins.
+  useEffect(() => {
+    for (const [filePath, state] of Object.entries(tabStates)) {
+      if (state.dirty) continue;
+      const editor = editorsRef.current[filePath];
+      if (!editor) continue;
+      const model = editor.getModel();
+      if (!model) continue;
+      if (model.getValue() !== state.localText) {
+        model.setValue(state.localText);
+      }
+    }
+  }, [tabStates]);
+
+  // Cleanup debounce timers on unmount (module switch, workspace close).
+  useEffect(() => {
+    const timers = debounceRefs.current;
+    return () => {
+      for (const t of Object.values(timers)) clearTimeout(t);
+    };
+  }, []);
+
+  function setMarker(filePath: string, message: string | null) {
+    const editor = editorsRef.current[filePath];
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
     if (!model) return;
-    monacoRef.current.editor.setModelMarkers(model, "yaml-parse", [
+    if (message == null) {
+      monaco.editor.setModelMarkers(model, "yaml-parse", []);
+      return;
+    }
+    monaco.editor.setModelMarkers(model, "yaml-parse", [
       {
-        severity: monacoRef.current.MarkerSeverity.Error,
+        severity: monaco.MarkerSeverity.Error,
         message,
         startLineNumber: 1,
         startColumn: 1,
@@ -83,89 +166,76 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
     ]);
   }
 
-  const handleChange = useCallback(
-    (value: string | undefined) => {
-      if (value == null) return;
-      setDirty(true);
-      setLocalText(value);
-
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        const result = parseYamlToManifests(value);
-        if ("error" in result) {
-          setParseError(result.error);
-          setErrorMarkers(result.error);
-          return;
-        }
-
-        setParseError(null);
-        clearMarkers();
-
-        const manifest = buildParsedManifest(viewData.manifest.filePath, result.docs);
-        // Preserve fields that buildParsedManifest doesn't reconstruct from YAML
-        manifest.metadata.variables = manifest.metadata.variables ?? viewData.manifest.metadata.variables;
-        manifest.metadata.secrets = manifest.metadata.secrets ?? viewData.manifest.metadata.secrets;
-        manifest.metadata.namespace = manifest.metadata.namespace ?? viewData.manifest.metadata.namespace;
-
-        onReplaceManifest(manifest);
-        setDirty(false);
-      }, DEBOUNCE_MS);
-    },
-    [viewData.manifest, onReplaceManifest],
+  const handleMount = useCallback(
+    (filePath: string): OnMount =>
+      (editor, monaco) => {
+        editorsRef.current[filePath] = editor;
+        monacoRef.current = monaco;
+      },
+    [],
   );
 
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+  // Not memoized via useCallback: the inner `commit` closure and the
+  // `onSourceEdit` prop both change identity across renders, and a
+  // first-render-captured handleChange would fire its debounce timer
+  // against stale state. Re-creating this function each render is cheap
+  // (Monaco's <Editor> doesn't memoize on onChange identity), and it
+  // guarantees that when the 500ms timer fires it calls the latest
+  // `commit` / `onSourceEdit`.
+  function handleChange(filePath: string, value: string | undefined) {
+    if (value == null) return;
+    setTabStates((prev) => ({
+      ...prev,
+      [filePath]: {
+        localText: value,
+        dirty: true,
+        parseError: prev[filePath]?.parseError ?? null,
+      },
+    }));
 
-  const handleEditorMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-  };
-
-  // Failed-load modules: render the raw YAML directly so the user can fix it.
-  if (rawYaml != null) {
-    const displayText = dirty ? localText : rawYaml;
-    return (
-      <div className="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
-        <div className="flex h-8 shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
-          <span
-            className="truncate text-xs text-zinc-500 dark:text-zinc-400"
-            title={viewData.manifest.filePath}
-          >
-            {viewData.manifest.filePath}
-          </span>
-          {parseError && (
-            <span className="truncate text-xs text-red-500 dark:text-red-400" title={parseError}>
-              Parse error
-            </span>
-          )}
-        </div>
-        <div className="min-h-0 flex-1">
-          <Editor
-            height="100%"
-            language="yaml"
-            value={displayText}
-            onChange={handleChange}
-            onMount={handleEditorMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 12,
-              wordWrap: "on",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              tabSize: 2,
-            }}
-          />
-        </div>
-      </div>
-    );
+    const existing = debounceRefs.current[filePath];
+    if (existing) clearTimeout(existing);
+    debounceRefs.current[filePath] = setTimeout(() => {
+      delete debounceRefs.current[filePath];
+      commit(filePath, value);
+    }, DEBOUNCE_MS);
   }
 
-  if (snapshots.length === 0) {
+  function commit(filePath: string, text: string) {
+    // Single parse: `parseModuleDocument` packages the parse result +
+    // error aggregation into a `ModuleDocument` that is handed straight
+    // to `onSourceEdit`, so the Editor doesn't re-parse.
+    const moduleDoc = parseModuleDocument(filePath, text);
+    if (moduleDoc.parseError) {
+      setTabStates((prev) => ({
+        ...prev,
+        [filePath]: {
+          localText: text,
+          dirty: true,
+          parseError: moduleDoc.parseError ?? null,
+        },
+      }));
+      setMarker(filePath, moduleDoc.parseError ?? null);
+      return;
+    }
+
+    setMarker(filePath, null);
+    setTabStates((prev) => ({
+      ...prev,
+      [filePath]: {
+        localText: text,
+        dirty: false,
+        parseError: null,
+      },
+    }));
+    onSourceEdit(filePath, moduleDoc);
+  }
+
+  // Prepare a list of tabs to render. Avoids re-computing on every keystroke
+  // by memoizing on sourceFiles.
+  const tabs = useMemo(() => sourceFiles, [sourceFiles]);
+
+  if (tabs.length === 0) {
     return (
       <div className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900">
         <span className="text-sm text-zinc-400 dark:text-zinc-600">No manifest to display</span>
@@ -173,28 +243,32 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
     );
   }
 
-  // Single file — editable
-  if (snapshots.length === 1) {
-    const displayText = dirty ? localText : snapshots[0].yaml;
+  // Single-file module: skip the tab strip chrome.
+  if (tabs.length === 1) {
+    const file = tabs[0];
+    const state = tabStates[file.filePath];
+    const displayText = state?.localText ?? file.text;
+    const errorToShow = state?.parseError ?? file.parseError ?? null;
     return (
       <div className="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
         <div className="flex h-8 shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
-          <span className="truncate text-xs text-zinc-500 dark:text-zinc-400" title={snapshots[0].filePath}>
-            {snapshots[0].filePath}
+          <span className="truncate text-xs text-zinc-500 dark:text-zinc-400" title={file.filePath}>
+            {file.filePath}
           </span>
-          {parseError && (
-            <span className="truncate text-xs text-red-500 dark:text-red-400" title={parseError}>
+          {errorToShow && (
+            <span className="truncate text-xs text-red-500 dark:text-red-400" title={errorToShow}>
               Parse error
             </span>
           )}
         </div>
         <div className="min-h-0 flex-1">
           <Editor
+            key={file.filePath}
             height="100%"
             language="yaml"
-            value={displayText}
-            onChange={handleChange}
-            onMount={handleEditorMount}
+            defaultValue={displayText}
+            onChange={(value) => handleChange(file.filePath, value)}
+            onMount={handleMount(file.filePath)}
             options={{
               minimap: { enabled: false },
               fontSize: 12,
@@ -209,11 +283,12 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
     );
   }
 
-  // Multi-file — tabs, read-only for now (editing included files is complex)
+  // Multi-file module: editable tab per file.
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
       <Tabs
-        defaultValue={snapshots[0].filePath}
+        value={activeTab}
+        onValueChange={setActiveTab}
         orientation="vertical"
         className="min-h-0 flex-1 !flex-row gap-0"
       >
@@ -221,35 +296,55 @@ export function SourceView({ viewData, onReplaceManifest }: ViewProps) {
           variant="line"
           className="h-auto w-48 shrink-0 flex-col items-stretch justify-start overflow-y-auto rounded-none border-r border-zinc-200 p-0 dark:border-zinc-800"
         >
-          {snapshots.map((s) => (
-            <TabsTrigger
-              key={s.filePath}
-              value={s.filePath}
-              className="h-auto flex-none justify-start rounded-none border-b border-zinc-100 px-2 py-2 text-left text-xs data-[state=active]:bg-zinc-100 data-[state=active]:text-zinc-900 dark:border-zinc-800 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-zinc-100"
-              title={s.filePath}
-            >
-              <span className="line-clamp-2 break-all">{s.filePath}</span>
-            </TabsTrigger>
-          ))}
+          {tabs.map((file) => {
+            const state = tabStates[file.filePath];
+            const hasError = !!(state?.parseError ?? file.parseError);
+            return (
+              <TabsTrigger
+                key={file.filePath}
+                value={file.filePath}
+                className="h-auto flex-none justify-start rounded-none border-b border-zinc-100 px-2 py-2 text-left text-xs data-[state=active]:bg-zinc-100 data-[state=active]:text-zinc-900 dark:border-zinc-800 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-zinc-100"
+                title={file.filePath}
+              >
+                <span className="line-clamp-2 break-all">
+                  {file.filePath}
+                  {state?.dirty ? " •" : ""}
+                  {hasError ? " ⚠" : ""}
+                </span>
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
-        {snapshots.map((s) => (
-          <TabsContent key={s.filePath} value={s.filePath} className="min-h-0 min-w-0">
-            <Editor
-              height="100%"
-              language="yaml"
-              value={s.yaml}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 12,
-                wordWrap: "on",
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-              }}
-            />
-          </TabsContent>
-        ))}
+        {tabs.map((file) => {
+          const state = tabStates[file.filePath];
+          const displayText = state?.localText ?? file.text;
+          return (
+            <TabsContent
+              key={file.filePath}
+              value={file.filePath}
+              forceMount
+              className="min-h-0 min-w-0 data-[state=inactive]:hidden"
+            >
+              <Editor
+                key={file.filePath}
+                height="100%"
+                language="yaml"
+                defaultValue={displayText}
+                onChange={(value) => handleChange(file.filePath, value)}
+                onMount={handleMount(file.filePath)}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 12,
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                }}
+              />
+            </TabsContent>
+          );
+        })}
       </Tabs>
     </div>
   );

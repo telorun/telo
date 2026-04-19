@@ -42,7 +42,11 @@ function setByPath(
   const [head, ...rest] = path;
   if (rest.length === 0) {
     const next = { ...root };
-    if (value === undefined || value === null || value === "") delete next[head];
+    // Contract (Phase 3): only `undefined` triggers a key deletion. `null`
+    // and `""` pass through so the AST layer can distinguish "explicit
+    // null" / "empty string" from "unset". Key-deletion from the canvas is
+    // reserved for a future explicit "remove field" affordance.
+    if (value === undefined) delete next[head];
     else next[head] = value;
     return next;
   }
@@ -88,9 +92,15 @@ export function ResourceCanvas({
 }: ResourceCanvasProps) {
   const [fields, setFields] = useState<Record<string, unknown>>(resource.fields);
 
+  // Resync local fields only when the selected resource's identity changes
+  // (different kind or name). Resyncing on every `resource` object change
+  // would clobber in-flight keystrokes after each upstream ParsedManifest
+  // re-derivation — Phase 3's AST mutation produces a new `ParsedResource`
+  // on every commit, which under `[resource]` deps would race with typing.
   useEffect(() => {
     setFields(resource.fields);
-  }, [resource]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resource.kind, resource.name]);
 
   const properties = useMemo(() => {
     const raw = isRecord(schema.properties) ? schema.properties : {};

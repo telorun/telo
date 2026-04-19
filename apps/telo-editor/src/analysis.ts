@@ -1,13 +1,15 @@
 import { StaticAnalyzer, type AnalysisDiagnostic } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
-import { toManifestDocs } from "./loader";
-import type { Workspace } from "./model";
+import { normalizePath } from "./loader";
+import type { ModuleDocument, Workspace } from "./model";
+import { toAnalysisManifest } from "./yaml-document";
 
 interface EnrichedMetadata {
   name: string;
   source?: string;
   resolvedModuleName?: string;
   resolvedNamespace?: string | null;
+  module?: string;
   [key: string]: unknown;
 }
 
@@ -15,35 +17,77 @@ interface EnrichedMetadata {
  * Converts all modules in the Workspace to ResourceManifest[], enriching
  * Telo.Import documents with resolvedModuleName/resolvedNamespace so the
  * analyzer can correctly register import aliases and module identities.
+ *
+ * Iterates `workspace.modules` (not `workspace.documents` directly) so
+ * analysis preserves the per-module grouping the analyzer expects — each
+ * module's owner + partial docs are flattened into a single module-scoped
+ * batch, mirroring what the analyzer Loader produces on its own path.
+ *
+ * Partial-file discovery reads `manifest.resources[].sourceFile` to rebuild
+ * the set of files that belong to the module; no re-expansion of
+ * `include:` patterns is required because Phase 1 already populated
+ * `workspace.documents` for every tracked partial.
  */
 function toAnalysisManifests(app: Workspace): ResourceManifest[] {
   const result: ResourceManifest[] = [];
 
-  for (const [filePath, manifest] of app.modules) {
-    const docs = toManifestDocs(manifest);
+  for (const [ownerPath, manifest] of app.modules) {
+    const ownerKey = normalizePath(ownerPath);
+    const ownerDoc = app.documents.get(ownerKey);
+    if (!ownerDoc) continue;
 
-    for (const doc of docs) {
-      const meta = doc.metadata as EnrichedMetadata;
-      meta.source = filePath;
+    // Owner module name — used to stamp `metadata.module` on resources
+    // declared in partial files, mirroring the analyzer Loader's
+    // loadPartialFile behavior.
+    const ownerModuleName = manifest.metadata.name;
 
-      // Enrich Telo.Import with resolved module metadata from the imported module
-      if (doc.kind === "Telo.Import") {
-        const imp = manifest.imports.find((i) => i.name === meta.name);
-        const resolvedPath = imp?.resolvedPath;
-        if (resolvedPath) {
-          const importedModule = app.modules.get(resolvedPath);
-          if (importedModule) {
-            meta.resolvedModuleName = importedModule.metadata.name;
-            meta.resolvedNamespace = importedModule.metadata.namespace ?? null;
-          }
-        }
+    // Collect partials this module spans from resources[].sourceFile. The
+    // same partial may be referenced by many resources; dedupe.
+    const partialKeys = new Set<string>();
+    for (const r of manifest.resources) {
+      if (r.sourceFile) {
+        const key = normalizePath(r.sourceFile);
+        if (key !== ownerKey) partialKeys.add(key);
       }
+    }
 
-      result.push(doc as ResourceManifest);
+    emitDocsFor(ownerDoc, ownerPath, undefined, result);
+    for (const partialKey of partialKeys) {
+      const partialDoc = app.documents.get(partialKey);
+      if (!partialDoc) continue;
+      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, result);
     }
   }
 
   return result;
+}
+
+function emitDocsFor(
+  modDoc: ModuleDocument,
+  filePath: string,
+  ownerModuleName: string | undefined,
+  out: ResourceManifest[],
+): void {
+  for (const d of modDoc.docs) {
+    const projected = toAnalysisManifest(d);
+    if (!projected) continue;
+
+    const existingMeta = projected.metadata as EnrichedMetadata | undefined;
+    const meta: EnrichedMetadata = {
+      ...(existingMeta ?? {}),
+      name: existingMeta?.name ?? "",
+      source: filePath,
+    };
+
+    // Partial-file resources inherit the owner's module name when they
+    // don't already declare one — matches the analyzer Loader's
+    // loadPartialFile stamping.
+    if (ownerModuleName && !meta.module && projected.kind !== "Telo.Library") {
+      meta.module = ownerModuleName;
+    }
+
+    out.push({ ...projected, metadata: meta } as ResourceManifest);
+  }
 }
 
 /**
@@ -58,6 +102,25 @@ export function analyzeWorkspace(
   app: Workspace,
 ): Map<string, Map<string, AnalysisDiagnostic[]>> {
   const manifests = toAnalysisManifests(app);
+
+  // Enrich Telo.Import metadata with resolved module identity from the
+  // cross-module projection (workspace.modules). Done post-emission so we
+  // have the whole workspace's import-target names at hand.
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Import") continue;
+    const meta = m.metadata as EnrichedMetadata;
+    const ownerSource = meta.source;
+    if (!ownerSource) continue;
+    const ownerManifest = app.modules.get(ownerSource);
+    const imp = ownerManifest?.imports.find((i) => i.name === meta.name);
+    const resolvedPath = imp?.resolvedPath;
+    if (!resolvedPath) continue;
+    const importedModule = app.modules.get(resolvedPath);
+    if (!importedModule) continue;
+    meta.resolvedModuleName = importedModule.metadata.name;
+    meta.resolvedNamespace = importedModule.metadata.namespace ?? null;
+  }
+
   const analyzer = new StaticAnalyzer();
   const diagnostics = analyzer.analyze(manifests);
 

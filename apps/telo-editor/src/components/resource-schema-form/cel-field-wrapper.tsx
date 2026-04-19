@@ -72,9 +72,14 @@ export function CelFieldWrapper({
         <input
           type="text"
           value={rawExpression}
+          // Cleared CEL expression → "" (not undefined). Per the v1
+          // null-vs-missing-key convention, backspace-clear preserves the
+          // key as an explicit empty string; deleting the key is reserved
+          // for the deferred "remove field" affordance (toggleMode handles
+          // mode switching, not key removal).
           onChange={(e) => {
             setRawExpression(e.target.value);
-            onValueChange(e.target.value === "" ? undefined : e.target.value);
+            onValueChange(e.target.value);
           }}
           onBlur={onBlur}
           placeholder={'${{ variables.value }}'}
