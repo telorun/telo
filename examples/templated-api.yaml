@@ -40,7 +40,7 @@ routes:
       name: SayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
-    response:
+    returns:
       - status: 200
         schema:
           body:

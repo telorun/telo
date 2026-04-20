@@ -50,6 +50,8 @@ const config: Config = {
             "yaml-cel-templating/README.md",
             "modules/README.md",
             "modules/http-server/README.md",
+            "modules/http-server/docs/returns-and-catches.md",
+            "modules/run/docs/structured-errors.md",
             "modules/http-client/README.md",
             "modules/assert/docs/manifest.md",
             "modules/s3/docs/bucket.md",

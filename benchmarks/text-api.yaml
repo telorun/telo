@@ -68,7 +68,7 @@ routes:
   - request:
       path: /ping
       method: GET
-    response:
+    returns:
       - status: 200
         body:
           ok: true
@@ -88,7 +88,7 @@ routes:
       name: Analyze
       inputs:
         text: "${{ request.body.text }}"
-    response:
+    returns:
       - status: 200
         body: "${{ result }}"
 
@@ -110,6 +110,6 @@ routes:
       inputs:
         text: "${{ request.body.text }}"
         op: "${{ request.body.op }}"
-    response:
+    returns:
       - status: 200
         body: "${{ result }}"

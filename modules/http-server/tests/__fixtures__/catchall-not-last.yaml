@@ -1,10 +1,7 @@
 kind: Telo.Library
 metadata:
-  name: ValidGlobalsAccess
+  name: CatchAllNotLastFixture
   version: 1.0.0
-variables:
-  apiKey:
-    type: string
 ---
 kind: Telo.Import
 metadata:
@@ -16,36 +13,27 @@ metadata:
   name: JavaScript
 source: ../../../javascript
 ---
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../../../type
----
 kind: JavaScript.Script
 metadata:
   name: Handler
 code: |
   function main(input) { return { ok: true } }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      ok: { type: boolean }
 ---
+# A no-when returns: entry followed by a when:-qualified entry — the later
+# entry is unreachable → CATCHALL_NOT_LAST.
 kind: Http.Api
 metadata:
-  name: TestApi
+  name: CatchAllApi
 routes:
   - request:
-      path: /test
+      path: /x
       method: GET
     handler:
       kind: JavaScript.Script
       name: Handler
-    inputs:
-      key: "${{ variables.apiKey }}"
     returns:
       - status: 200
-        body:
-          ok: "${{ result.ok }}"
+        body: { ok: true }
+      - status: 201
+        when: "${{ result.ok }}"
+        body: { ok: true }

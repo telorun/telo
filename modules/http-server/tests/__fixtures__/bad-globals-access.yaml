@@ -45,7 +45,7 @@ routes:
       name: Handler
     inputs:
       key: "${{ variables.nonExistent }}"
-    response:
+    returns:
       - status: 200
         body:
           ok: "${{ result.ok }}"

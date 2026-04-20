@@ -23,6 +23,7 @@ import {
   validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateReferences } from "./validate-references.js";
+import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
@@ -495,6 +496,9 @@ export class StaticAnalyzer {
 
     // Validate resource references (Phase 3)
     diagnostics.push(...validateReferences(allManifests, { aliases, definitions: defs }));
+
+    // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
+    diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases));
 
     return diagnostics;
   }

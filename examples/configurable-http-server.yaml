@@ -48,7 +48,7 @@ routes:
     inputs:
       apiKey: "${{ resources.Config.stripeSecretKey }}"
       baseUrl: "${{ resources.Config.apiBaseUrl }}"
-    response:
+    returns:
       - status: 200
         body:
           message: Payment accepted

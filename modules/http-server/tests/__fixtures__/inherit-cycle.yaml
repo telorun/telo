@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: InheritCycleFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+# Two sequences invoke each other transitively. The resolver must detect this
+# without infinite recursion and still produce a clean diagnostic set.
+kind: Run.Sequence
+metadata:
+  name: CyclicA
+steps:
+  - name: callB
+    invoke:
+      kind: Run.Sequence
+      name: CyclicB
+---
+kind: Run.Sequence
+metadata:
+  name: CyclicB
+steps:
+  - name: callA
+    invoke:
+      kind: Run.Sequence
+      name: CyclicA
+---
+kind: Http.Api
+metadata:
+  name: CycleApi
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler:
+      kind: Run.Sequence
+      name: CyclicA
+    returns:
+      - status: 200
+        body: { ok: true }

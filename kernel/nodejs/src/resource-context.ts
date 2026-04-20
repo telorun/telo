@@ -1,6 +1,7 @@
 import {
   NoopValidator,
   ResourceContext,
+  ResourceInstance,
   ResourceManifest,
   RuntimeError,
   RuntimeResource,
@@ -133,6 +134,15 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.invoke(kind, name, inputs);
   }
 
+  invokeResolved<TInputs>(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    inputs: TInputs,
+  ): Promise<any> {
+    return this.moduleContext.invokeResolved(kind, name, instance, inputs);
+  }
+
   async run(name: string) {
     await this.moduleContext.run(name);
   }
@@ -181,12 +191,24 @@ export class ResourceContextImpl implements ResourceContext {
       resourceName ??
       `Unnamed${Math.random().toString(16).slice(2, 8)}`;
 
-    // If resource has properties beyond kind/name, it's a definition - register it
-    const definitionKeys = Object.keys(resource).filter(
+    // Register an inline manifest when:
+    //  - the ref carries definition properties (clearly an inline definition), or
+    //  - the ref is bare `{kind}` with no explicit name and the caller supplied
+    //    a `resourceName` (the slot is known-inline — e.g. a Run.Sequence step
+    //    with `invoke: {kind: Run.Throw}` — and wants a fresh stateless
+    //    instance registered under the generated name).
+    // Pure references (`{kind, name}` pointing at an existing resource) carry
+    // an explicit name and skip registration.
+    const hasInlineProperties = Object.keys(resource).some(
       (k) => k !== "kind" && k !== "name" && k !== "metadata",
     );
+    const hasExplicitName =
+      resource.name !== undefined || resource.metadata?.name !== undefined;
+    const shouldRegister =
+      (hasInlineProperties || (!hasExplicitName && resourceName !== undefined)) &&
+      !this.moduleContext.hasManifest(name);
 
-    if (definitionKeys.length > 0 && !this.moduleContext.hasManifest(name)) {
+    if (shouldRegister) {
       this.registerManifest({
         ...resource,
         metadata: {

@@ -1,6 +1,7 @@
 import type { ScopeHandle } from "./ref.js";
 import type { ResourceInstance } from "./resource-instance.js";
 import type { ResourceManifest } from "./resource-manifest.js";
+import type { ResourceDefinition } from "./types.js";
 
 export type EmitEvent = (event: string, payload?: any) => void | Promise<void>;
 
@@ -67,6 +68,10 @@ export interface EvaluationContext {
 
   preInitHook?: PreInitHook;
 
+  /** Looks up a registered resource definition by fully-qualified kind.
+   *  Set by the kernel; used for declared-throw-union checks. */
+  getDefinition?: (kind: string) => ResourceDefinition | undefined;
+
   readonly createInstance: InstanceFactory;
   readonly context: Record<string, unknown>;
   readonly secretValues: Set<string>;
@@ -81,6 +86,12 @@ export interface EvaluationContext {
   teardownResources(): Promise<void>;
   transientChild(context: Record<string, any>): EvaluationContext;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any>;
+  invokeResolved<TInputs>(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    inputs: TInputs,
+  ): Promise<any>;
   run(name: string): Promise<void>;
   expand(value: unknown): unknown;
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown;

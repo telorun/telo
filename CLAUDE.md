@@ -163,6 +163,10 @@ YAML directives: `$let`, `$if`, `$for`, `$eval`, `$include` — see `yaml-cel-te
    - Add a sidebar entry in `pages/sidebars.ts`
    - Add `sidebar_label` frontmatter to the markdown file
 
+## Changesets — MANDATORY
+
+**Every change to a published package MUST ship a changeset** — CI gates on `pnpm changeset status --since=origin/main`. Add one file under `.changeset/` (one per logical change, listing every affected package) and `git add` it so the diff against `main` sees it. Use `pnpm changeset add --empty` when a change genuinely needs no release.
+
 ## Keep CLAUDE.md up to date
 
 Sync this file after any significant architectural change.

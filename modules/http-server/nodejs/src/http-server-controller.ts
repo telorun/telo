@@ -1,16 +1,23 @@
 import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
-import type {
-  Invocable,
-  KindRef,
-  ResourceContext,
-  ResourceInstance,
-  RuntimeResource,
+import {
+  isInvokeError,
+  type Invocable,
+  type KindRef,
+  type ResourceContext,
+  type ResourceInstance,
+  type RuntimeResource,
 } from "@telorun/sdk";
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
-import { dispatchResponse, HttpServerApi, ResponseEntry } from "./http-api-controller.js";
+import {
+  CatchEntry,
+  dispatchCatches,
+  dispatchReturns,
+  HttpServerApi,
+  ReturnEntry,
+} from "./http-api-controller.js";
 
 type CorsOptions = {
   origin?: string | boolean | string[];
@@ -46,7 +53,8 @@ type HttpServerResource = RuntimeResource & {
   }>;
   notFoundHandler?: {
     invoke: KindRef<Invocable>;
-    response?: ResponseEntry[];
+    returns?: ReturnEntry[];
+    catches?: CatchEntry[];
   };
 };
 
@@ -54,7 +62,8 @@ type ResolvedHandler = {
   kind: string;
   name: string;
   inputs: Record<string, any>;
-  response?: ResponseEntry[];
+  returns?: ReturnEntry[];
+  catches?: CatchEntry[];
 };
 
 class HttpServer implements ResourceInstance {
@@ -203,10 +212,25 @@ class HttpServer implements ResourceInstance {
             body: request.body,
           },
         };
-        const result = await this.ctx.invoke(handler.kind, handler.name, requestContext);
-        if (handler.response) {
-          return dispatchResponse(
-            handler.response,
+
+        let result: any;
+        try {
+          result = await this.ctx.invoke(handler.kind, handler.name, requestContext);
+        } catch (err) {
+          if (!isInvokeError(err)) throw err;
+          return dispatchCatches(
+            handler.catches,
+            { code: err.code, message: err.message, data: err.data },
+            requestContext,
+            this.ctx.moduleContext,
+            this.ctx.validateSchema.bind(this.ctx),
+            reply,
+          );
+        }
+
+        if (handler.returns) {
+          return dispatchReturns(
+            handler.returns,
             result,
             requestContext,
             this.ctx.moduleContext,
@@ -262,12 +286,23 @@ export async function create(
 ): Promise<ResourceInstance | null> {
   let resolvedNotFoundHandler: ResolvedHandler | null = null;
   if (resource.notFoundHandler) {
-    const resolved = ctx.resolveChildren(resource.notFoundHandler.invoke);
+    const invoke = resource.notFoundHandler.invoke as unknown;
+    let kind = "";
+    let name = "";
+    if (typeof invoke === "object" && invoke !== null) {
+      const resolved = ctx.resolveChildren(invoke);
+      kind = resolved.kind;
+      name = resolved.name;
+    } else if (typeof invoke === "string") {
+      // String form (schema oneOf: string | object) — resource name only.
+      name = invoke;
+    }
     resolvedNotFoundHandler = {
-      kind: resolved.kind,
-      name: resolved.name,
-      inputs: (resource.notFoundHandler.invoke as any).inputs ?? {},
-      response: resource.notFoundHandler.response,
+      kind,
+      name,
+      inputs: (invoke as any)?.inputs ?? {},
+      returns: resource.notFoundHandler.returns,
+      catches: resource.notFoundHandler.catches,
     };
   }
   return new HttpServer(resource, ctx, resolvedNotFoundHandler);

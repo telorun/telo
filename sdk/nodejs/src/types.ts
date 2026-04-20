@@ -14,6 +14,22 @@ export interface ExecContext {
   [key: string]: any;
 }
 
+export interface ThrowCodeSpec {
+  description: string;
+  data?: Record<string, any>;
+}
+
+/**
+ * Declared throw contract for a Telo.Invocable or Telo.Runnable definition.
+ * Codes-only (explicit contract) in Phase 1; `inherit` and `passthrough` land
+ * in Phase 2 together with the analyzer dataflow pass.
+ */
+export interface ThrowsSpec {
+  codes?: Record<string, ThrowCodeSpec>;
+  inherit?: boolean;
+  passthrough?: boolean;
+}
+
 export interface ResourceDefinition {
   kind: string;
   metadata: {
@@ -27,6 +43,8 @@ export interface ResourceDefinition {
     runtime: string;
     entry: string;
   }>;
+  /** Declared throw contract — only valid on Telo.Invocable / Telo.Runnable. */
+  throws?: ThrowsSpec;
 }
 
 /**
