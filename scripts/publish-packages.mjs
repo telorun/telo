@@ -2,7 +2,9 @@
 // Run by `changesets/action` as the `publish` script after the Version PR merges.
 // 1. `changeset publish` — publishes npm packages whose versions moved and pushes git tags.
 // 2. For each modules/<name>/telo.yaml that changed vs HEAD^, push it to the Telo registry
-//    via `telo publish` (no --bump: versions and PURLs were already synced by version-packages.mjs).
+//    via `telo publish --skip-controllers` (controllers were already built/published and
+//    PURLs synced by version-packages.mjs; this step only runs static analysis and PUTs the
+//    manifest to the registry).
 //
 // Usage: node scripts/publish-packages.mjs
 // Env: TELO_REGISTRY (default: https://registry.telo.run)
@@ -75,5 +77,7 @@ for (const m of manifests) console.log(`  ${m.replace(ROOT + "/", "")}`);
 console.log("");
 
 for (const m of manifests) {
-  runLive(`node ./cli/nodejs/bin/telo.mjs publish --registry=${registry} ${m}`);
+  runLive(
+    `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ${m}`,
+  );
 }

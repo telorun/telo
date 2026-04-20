@@ -49,3 +49,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_REGISTRY: ${{ vars.TELO_REGISTRY }}
+          TELO_REGISTRY_TOKEN: ${{ secrets.TELO_REGISTRY_TOKEN }}
