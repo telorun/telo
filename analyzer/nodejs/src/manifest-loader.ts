@@ -1,7 +1,9 @@
+import type { Environment } from "@marcbachmann/cel-js";
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpAdapter } from "./adapters/http-adapter.js";
 import { RegistryAdapter } from "./adapters/registry-adapter.js";
+import { buildCelEnvironment } from "./cel-environment.js";
 import { isModuleKind } from "./module-kinds.js";
 import { precompileDoc } from "./precompile.js";
 import {
@@ -27,6 +29,7 @@ export class Loader {
   >();
 
   protected adapters: ManifestAdapter[];
+  private readonly celEnv: Environment;
 
   constructor(extraAdaptersOrOptions: ManifestAdapter[] | LoaderInitOptions = []) {
     const options: LoaderInitOptions = Array.isArray(extraAdaptersOrOptions)
@@ -43,6 +46,8 @@ export class Loader {
     if (options.extraAdapters?.length) {
       this.adapters.unshift(...options.extraAdapters);
     }
+
+    this.celEnv = buildCelEnvironment(options.celHandlers);
   }
 
   register(adapter: ManifestAdapter): this {
@@ -85,7 +90,7 @@ export class Loader {
       let compiledDocs: unknown[];
       if (options?.compile) {
         try {
-          const result = precompileDoc(rawDoc);
+          const result = precompileDoc(rawDoc, this.celEnv);
           compiledDocs = Array.isArray(result) ? result : [result];
         } catch (error) {
           throw new Error(
@@ -213,7 +218,7 @@ export class Loader {
       let compiledDocs: unknown[];
       if (options?.compile) {
         try {
-          const result = precompileDoc(rawDoc);
+          const result = precompileDoc(rawDoc, this.celEnv);
           compiledDocs = Array.isArray(result) ? result : [result];
         } catch (error) {
           throw new Error(

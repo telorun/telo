@@ -15,9 +15,9 @@ metadata:
   name: Assert
 source: ../../assert
 ---
-# Run.Throw throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
+# A `throw:` step throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
 # The enclosing try/catch binds it to `error` — we verify every field is
-# surfaced (code, message, data, step) and the kernel emits InvokeRejected.
+# surfaced (code, message, data, step).
 kind: Run.Sequence
 metadata:
   name: TestCaught
@@ -25,8 +25,7 @@ steps:
   - name: outer
     try:
       - name: boom
-        invoke: { kind: Run.Throw }
-        inputs:
+        throw:
           code: "UNAUTHORIZED"
           message: "bad token"
           data:
@@ -49,16 +48,3 @@ steps:
           message: "${{ error.message }}"
           step: "${{ error.step }}"
           reason: "${{ error.data.reason }}"
----
-# Kernel emits a scoped InvokeRejected event at the Run.Throw call site
-# whenever an InvokeError flies. Payload carries the structured fields.
-kind: Assert.Events
-metadata:
-  name: ExpectEvents
-filter:
-  - type: Run.Throw.*.InvokeRejected
-expect:
-  - event: Run.Throw.*.InvokeRejected
-    payload:
-      code: "UNAUTHORIZED"
-      message: "bad token"

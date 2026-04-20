@@ -6,6 +6,7 @@ metadata:
   version: 1.0.0
 targets:
   - Migrations
+  - SeedRootPublishToken
   - RegistryServer
 ---
 # ── Imports ──────────────────────────────────────────────────────────────────
@@ -81,6 +82,9 @@ secrets:
   secretAccessKey:
     env: S3_SECRET_ACCESS_KEY
     type: string
+  publishToken:
+    env: TELO_PUBLISH_TOKEN
+    type: string
 
 ---
 # ── Storage ───────────────────────────────────────────────────────────────────
@@ -124,6 +128,73 @@ sql: |
     published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (namespace, name, version)
   )
+---
+kind: Sql.Migration
+metadata:
+  name: 20260419100000_CreateUsers
+sql: |
+  CREATE TABLE users (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    username   TEXT        UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+---
+kind: Sql.Migration
+metadata:
+  name: 20260419100100_CreateNamespaces
+sql: |
+  CREATE TABLE namespaces (
+    name       TEXT        PRIMARY KEY,
+    owner_id   UUID        NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+---
+kind: Sql.Migration
+metadata:
+  name: 20260419100200_CreateTokens
+sql: |
+  CREATE TABLE tokens (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash    TEXT        UNIQUE NOT NULL,
+    label         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at  TIMESTAMPTZ,
+    expires_at    TIMESTAMPTZ,
+    UNIQUE (user_id, label)
+  )
+---
+kind: Sql.Migration
+metadata:
+  name: 20260419100300_SeedRootUserAndStdNamespace
+sql: |
+  INSERT INTO users (username) VALUES ('root') ON CONFLICT (username) DO NOTHING;
+  INSERT INTO namespaces (name, owner_id)
+    SELECT 'std', id FROM users WHERE username = 'root'
+    ON CONFLICT (name) DO NOTHING
+---
+# Boot-time token seed. Single atomic UPSERT keyed on (user_id, label): on
+# rotation the existing 'root-publish-token' row has its token_hash overwritten
+# in place. Atomicity matters — a delete-then-insert pair could leave the
+# registry with zero valid tokens if the insert fails between steps. Wrapped in
+# a Run.Sequence so it can be an Application target (Sql.Exec is Invocable only).
+kind: Run.Sequence
+metadata:
+  name: SeedRootPublishToken
+steps:
+  - name: upsert
+    invoke:
+      kind: Sql.Exec
+      connection:
+        kind: Sql.Connection
+        name: Db
+    inputs:
+      sql: >-
+        INSERT INTO tokens (user_id, token_hash, label)
+        SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root'
+        ON CONFLICT (user_id, label) DO UPDATE SET token_hash = EXCLUDED.token_hash
+      bindings:
+        - "${{ sha256(resources.AppConfig.publishToken) }}"
 
 ---
 kind: Http.Server
@@ -149,6 +220,8 @@ openapi:
 mounts:
   - path: /
     type: Http.Api.PublicApi
+  - path: /health
+    type: Http.Api.Health
 notFoundHandler:
   invoke:
     kind: HttpClient.Request
@@ -212,11 +285,124 @@ outputType:
       rowCount: { type: integer }
 
 ---
+# Publish handler — extracted as a top-level Run.Sequence so its CEL context is
+# not constrained by the route's handler:-field x-telo-context (which would hide
+# `error` inside catch blocks).
+kind: Run.Sequence
+metadata:
+  name: PublishHandler
+steps:
+  - name: checkHeader
+    if: "${{ !inputs.authorization.startsWith('Bearer ') }}"
+    then:
+      - name: rejectHeader
+        throw:
+          code: UNAUTHORIZED
+          message: Missing or malformed Authorization header
+
+  - name: verifyToken
+    invoke:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+    inputs:
+      # Data-modifying CTE: match the token, touch last_used_at, and return the
+      # owning user in a single atomic statement. No match → matched is empty →
+      # update is a no-op → zero rows returned → checkToken rejects.
+      sql: >-
+        WITH matched AS (
+          SELECT t.id AS token_id, u.id AS user_id, u.username
+          FROM tokens t
+          JOIN users u ON u.id = t.user_id
+          JOIN namespaces n ON n.owner_id = u.id
+          WHERE t.token_hash = $1 AND n.name = $2
+            AND (t.expires_at IS NULL OR t.expires_at > NOW())
+          LIMIT 1
+        ), touched AS (
+          UPDATE tokens SET last_used_at = NOW()
+          WHERE id IN (SELECT token_id FROM matched)
+        )
+        SELECT user_id, username FROM matched
+      bindings:
+        - "${{ sha256(inputs.authorization.substring(7)) }}"
+        - "${{ inputs.namespace }}"
+
+  - name: checkToken
+    if: "${{ steps.verifyToken.result.rows.size() == 0 }}"
+    then:
+      - name: rejectToken
+        throw:
+          code: UNAUTHORIZED
+          message: Invalid token or namespace not owned
+
+  - name: upload
+    try:
+      - name: doUpload
+        invoke:
+          kind: S3.Put
+          bucketRef:
+            name: ModuleStore
+        inputs:
+          key: "${{ inputs.fileKey }}"
+          body: "${{ inputs.body }}"
+          contentType: "text/yaml"
+    catch:
+      - name: rethrowUpload
+        throw:
+          code: UPLOAD_FAILED
+          message: "${{ error.message }}"
+
+  - name: record
+    try:
+      - name: doRecord
+        invoke:
+          kind: Sql.Exec
+          connection:
+            kind: Sql.Connection
+            name: Db
+        inputs:
+          sql: >-
+            INSERT INTO modules (namespace, name, version, file_key)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
+          bindings:
+            - "${{ inputs.namespace }}"
+            - "${{ inputs.name }}"
+            - "${{ inputs.version }}"
+            - "${{ inputs.fileKey }}"
+    catch:
+      - name: rethrowRecord
+        throw:
+          code: RECORD_FAILED
+          message: "${{ error.message }}"
+outputs:
+  published: "${{ inputs.published }}"
+---
 kind: HttpClient.Client
 metadata:
   name: S3Client
 baseUrl: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName }}"
 
+---
+kind: Http.Api
+metadata:
+  name: Health
+routes:
+  - request:
+      path: /readiness
+      method: GET
+    returns:
+      - status: 200
+        body:
+          status: "ok"
+  - request:
+      path: /liveness
+      method: GET
+    returns:
+      - status: 200
+        body:
+          status: "ok"
 ---
 # Public API — unauthenticated.
 # GET /search                       full-text search across modules.
@@ -412,35 +598,9 @@ routes:
           type: string
     handler:
       kind: Run.Sequence
-      steps:
-        - name: upload
-          invoke:
-            kind: S3.Put
-            bucketRef:
-              name: ModuleStore
-          inputs:
-            key: "${{ inputs.fileKey }}"
-            body: "${{ inputs.body }}"
-            contentType: "text/yaml"
-        - name: record
-          invoke:
-            kind: Sql.Exec
-            connection:
-              kind: Sql.Connection
-              name: Db
-          inputs:
-            sql: >-
-              INSERT INTO modules (namespace, name, version, file_key)
-              VALUES ($1, $2, $3, $4)
-              ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
-            bindings:
-              - "${{ inputs.namespace }}"
-              - "${{ inputs.name }}"
-              - "${{ inputs.version }}"
-              - "${{ inputs.fileKey }}"
-      outputs:
-        published: "${{ inputs.published }}"
+      name: PublishHandler
     inputs:
+      authorization: "${{ has(request.headers.authorization) ? request.headers.authorization : '' }}"
       namespace: "${{ request.params.namespace }}"
       name: "${{ request.params.name }}"
       version: "${{ request.params.version }}"
@@ -451,6 +611,16 @@ routes:
       - status: 201
         body:
           published: "${{ result.published }}"
-      - status: 500
+    catches:
+      - when: "${{ error.code == 'UNAUTHORIZED' }}"
+        status: 401
         body:
-          error: "Publish failed"
+          error:
+            code: "${{ error.code }}"
+            message: "${{ error.message }}"
+      - when: "${{ error.code == 'UPLOAD_FAILED' || error.code == 'RECORD_FAILED' }}"
+        status: 500
+        body:
+          error:
+            code: "${{ error.code }}"
+            message: "${{ error.message }}"

@@ -26,6 +26,7 @@ CMD ["apps/registry/telo.yaml"]
 
 FROM telorun/telo:nodejs as production
 
+WORKDIR /srv
 COPY --from=build /build /srv
 
 CMD ["apps/registry/telo.yaml"]

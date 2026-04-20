@@ -13,15 +13,14 @@ metadata:
   name: Run
 source: ../../../run
 ---
-# Handler's resolved throw union is {FOO} (via Run.Throw passthrough). A
+# Handler's resolved throw union is {FOO} (via `throw:` step literal code). A
 # catches: entry referencing 'BOGUS' is not in that union → UNDECLARED_THROW_CODE.
 kind: Run.Sequence
 metadata:
   name: AlwaysThrowsFoo
 steps:
   - name: boom
-    invoke: { kind: Run.Throw }
-    inputs:
+    throw:
       code: "FOO"
       message: "always throws"
 ---

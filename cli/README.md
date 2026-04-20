@@ -50,6 +50,14 @@ telo publish ./modules/my-module/telo.yaml --dry-run
 - `--registry <url>` — Telo registry base URL (default: `https://registry.telo.run`)
 - `--dry-run` — Show what would happen without writing files or publishing anything.
 
+**Environment:**
+
+- `TELO_REGISTRY_TOKEN` — Bearer token for the registry's publish endpoint. The CLI adds it as `Authorization: Bearer <token>` on each PUT; without it, the server returns 401. Operators receive a token from whoever administers the registry (see `apps/registry/README.md` for provisioning). Example:
+
+  ```bash
+  TELO_REGISTRY_TOKEN=<token> telo publish ./modules/my-module/telo.yaml
+  ```
+
 **Example output:**
 
 ```

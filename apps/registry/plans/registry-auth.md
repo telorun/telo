@@ -2,40 +2,40 @@
 
 ## Goal
 
-Gate the Telo module registry's publish endpoint (`PUT /{namespace}/{name}/{version}`) behind bearer-token authentication while keeping every read endpoint anonymous. Tokens are issued declaratively through a telo manifest — never via imperative side-scripts — and bound to a user who owns one or more namespaces. The CLI sends a token it reads from `TELO_REGISTRY_TOKEN`; the registry verifies it in the first step of the existing `Run.Sequence` publish handler. Failed verification throws a structured `InvokeError("UNAUTHORIZED")` that the sequence inherits and the route's `catches:` list maps to HTTP 401.
+Gate the Telo module registry's publish endpoint (`PUT /{namespace}/{name}/{version}`) behind bearer-token authentication while keeping every read endpoint anonymous. The CLI sends a token it reads from `TELO_REGISTRY_TOKEN`; the registry verifies it in the first step of the existing `Run.Sequence` publish handler. Failed verification throws a structured `InvokeError("UNAUTHORIZED")` that the route's `catches:` list maps to HTTP 401.
 
-The data model is the "full" shape from day one (`users`, `namespaces`, `tokens`) even though v1 will seed exactly one user (`root`) and one namespace (`std`). This avoids a future migration when additional users, tokens, or namespaces need to exist.
+The data model is the "full" shape from day one (`users`, `namespaces`, `tokens`) even though v1 seeds exactly one user (`root`) and one namespace (`std`). This avoids a future migration when additional users, tokens, or namespaces need to exist.
 
 ## Non-goals
 
 - **No user registration / self-service token UI.** v1 provisions exactly one user and one token through the registry manifest at boot. Any additional users/tokens require a manifest edit and redeploy.
-- **No editor integration.** [apps/telo-editor/](apps/telo-editor/) does not publish today; no token storage, no login flow, no credential UI changes. A later plan can add this once the editor gains a publish action.
-- **No credentials dotfile (`~/.config/telo/credentials.json`, `.telorc`, etc.).** Env var only. Adding a file-based credential store is a follow-up once more than one registry or more than one token matters.
-- **No per-route middleware on `Http.Server` / `Http.Api`.** The auth check lives inside the publish handler's `Run.Sequence`. We are explicitly not introducing a pre-handler/interceptor concept to [modules/http-server/](modules/http-server/) for this one use case.
-- **No token scopes beyond namespace ownership.** Tokens carry no action granularity (publish/yank/admin). Ownership of the namespace is the sole authorization axis. A `scopes` column is not added speculatively.
-- **No rate limiting, audit log, or token revocation UI.** Revocation happens by removing the `Auth.Token` resource from the manifest (or changing its `value`). `last_used_at` is updated on successful verification but we don't build dashboards on it.
-- **No read-path auth.** Every GET stays anonymous. The `notFoundHandler` S3 fallback stays anonymous. Future private-module support would need its own design.
+- **No editor integration.** [apps/telo-editor/](apps/telo-editor/) does not publish today; no token storage, no login flow, no credential UI changes.
+- **No credentials dotfile.** Env var only.
+- **No per-route middleware.** The auth check lives inside the publish handler's `Run.Sequence` — no pre-handler/interceptor concept added to [modules/http-server/](modules/http-server/).
+- **No token scopes beyond namespace ownership.** Ownership of the namespace is the sole authorization axis.
+- **No rate limiting, audit log, or token revocation UI.** Revocation happens by changing `TELO_PUBLISH_TOKEN` and redeploying (the seed step deletes the old row by label before inserting the new one). `last_used_at` is updated on successful verification but we don't build dashboards on it.
+- **No read-path auth.** Every GET stays anonymous.
 
 ## Principles
 
-1. **Declarative over imperative.** Tokens are state, not actions. They are upserted by a reconciling controller that reads a plaintext value from a configuration source (env var) and ensures the DB row matches. Rotation = change the env var and restart.
-2. **Auth is a sequence step, not a framework layer.** The publish handler is a `Run.Sequence`. Adding the auth check as the first step keeps the whole publish flow visible in one YAML block and reuses the existing try/catch + route `catches:` machinery.
-3. **Crypto lives in a controller, not in CEL.** CEL (`@marcbachmann/cel-js`) has no hash function and we are not extending it here. Hashing and DB verification are bundled inside an `Auth.VerifyToken` invocable; the sequence just calls it.
-4. **Full schema from the start; narrow provisioning surface.** The migrations create `users`, `namespaces`, `tokens` with foreign keys as if we had multiple of each. The provisioning layer (`Auth.Token`) only exposes one-user-one-token in v1, but the DB is ready for more.
-5. **Structured failure via `InvokeError`.** `Auth.VerifyToken` signals unauthorized by throwing `InvokeError("UNAUTHORIZED", ...)`. The surrounding `Run.Sequence` inherits it automatically (`throws: { inherit: true }`), and the route's `catches:` list keys on `error.code == 'UNAUTHORIZED'` to render 401. No ad-hoc `{ authorized: false }` discriminator field — the error channel is the contract. This is the mechanism defined by the invocable-errors plan ([sdk/nodejs/plans/invocable-errors.md](../../../sdk/nodejs/plans/invocable-errors.md)).
+1. **Declarative over imperative.** Tokens are upserted at boot by a `Sql.Exec` target that reads a plaintext value from env and hashes it inline via a CEL expression. Rotation = change `TELO_PUBLISH_TOKEN` and restart.
+2. **Auth is a sequence step, not a framework layer.** Adding the auth check as the first step of the existing `Run.Sequence` keeps the whole publish flow visible in one YAML block.
+3. **`sha256` in CEL, handlers passed via constructor.** `StaticAnalyzer` and `Loader` accept an optional `celHandlers: { sha256: (s: string) => string }` in their constructors. The kernel passes a `node:crypto`-backed impl; the browser (VS Code extension, Docusaurus) constructs with no arguments and gets throwing stubs. No mutable global state, dependency visible at the call site.
+4. **Full schema from the start; narrow provisioning surface.** The migrations create `users`, `namespaces`, `tokens` with foreign keys as if we had multiple of each. The DB is ready for more without future migrations.
+5. **Structured failure via `InvokeError`.** `VerifyToken` throws `InvokeError("UNAUTHORIZED", ...)` on every failure mode. The route's `catches:` maps it to 401. No ad-hoc `{ authorized: false }` discriminator — the error channel is the contract, per the invocable-errors plan ([sdk/nodejs/plans/invocable-errors.md](../../../sdk/nodejs/plans/invocable-errors.md)).
 
 ## Architectural decisions
 
-- **New module location: [modules/auth/](modules/auth/).** Sits next to [modules/sql/](modules/sql/), [modules/s3/](modules/s3/), etc. Exports two kinds: `Auth.Token` (provider / reconciler) and `Auth.VerifyToken` (invocable). Controllers in `modules/auth/nodejs/src/`. Schema in `modules/auth/telo.yaml`. Docs in `modules/auth/docs/`.
-- **Hash algorithm: SHA-256, hex-encoded.** `crypto.createHash("sha256").update(plaintext).digest("hex")`. Deterministic, no per-token salt. A salt buys nothing here because tokens are high-entropy random strings (not user-chosen passwords) and the threat model is DB exfiltration → rainbow-table lookup, which doesn't apply to 32+ bytes of entropy.
-- **Token format: opaque 32-byte base64url string.** ~43 chars. Produced by the operator (e.g. `openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`) or generated by `Auth.Token` when no `value` is provided (printed once at boot — see "Open questions"). Not JWT. Not self-describing. The server is always authoritative.
-- **Header format: `Authorization: Bearer <token>`.** Any other header (including the absent case) maps to unauthorized. Parsing is `startsWith("Bearer ") ? slice(7) : ""` — no tolerance for extra whitespace or alternative casing (case-insensitive Bearer is allowed since Node's Fastify lowercases header names).
-- **Error channel: `InvokeError`.** `Auth.VerifyToken` declares `throws: { codes: { UNAUTHORIZED: {...} } }` on its `Telo.Definition` and throws an `InvokeError("UNAUTHORIZED", "...")` on every failure mode (missing header, malformed scheme, unknown hash, namespace not owned, expired). No new step kind on `Run.Sequence` is needed — the invocable-errors work (Phase 1 + 2) already provides: structured-error propagation through `Run.Sequence` (via `throws: { inherit: true }`), analyzer-enforced coverage of declared codes against each route's `catches:` list, and HTTP-level dispatch from thrown codes to status + body. See [modules/run/docs/structured-errors.md](../../../modules/run/docs/structured-errors.md) and [modules/http-server/docs/returns-and-catches.md](../../../modules/http-server/docs/returns-and-catches.md).
-- **Ownership is per-namespace, not per-(namespace, name).** A token for `std` can publish any module under `std/*`. We are not tracking package-level ownership in v1; `namespaces` is the only ownership table.
+- **No new kind.** Token verification is expressed inline in the publish handler's `Run.Sequence` using `if/throw` steps. `Run.Sequence` gains a first-class `throw` step variant (`throw: { code, message?, data? }`) that throws `InvokeError` directly — replacing the existing `Run.Throw` invocable.
+- **CEL stdlib: `sha256(string): string`.** `StaticAnalyzer` and `Loader` accept `celHandlers?: { sha256: (s: string) => string }` in their constructors; each builds its `Environment` from the provided handlers, defaulting to throwing stubs. `precompile.ts` stops importing the module-level singleton and instead receives the `Environment` as a parameter. The module-level `celEnvironment` export is removed. Browser callers (`new StaticAnalyzer()`) get stubs and are unaffected.
+- **Hash algorithm: SHA-256, hex-encoded.** Deterministic, no per-token salt. A salt buys nothing here because tokens are high-entropy random strings (not user-chosen passwords) and the threat model is DB exfiltration → rainbow-table lookup, which doesn't apply to 32+ bytes of entropy.
+- **Token format: opaque 32-byte base64url string.** ~43 chars. Produced by the operator (e.g. `openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`). Not JWT. Not self-describing. The server is always authoritative.
+- **Header format: `Authorization: Bearer <token>`.** Any other header (including the absent case) maps to unauthorized.
+- **Ownership is per-namespace, not per-(namespace, name).** A token for `std` can publish any module under `std/*`.
 
 ## Data model
 
-Three new migrations in [apps/registry/telo.yaml](apps/registry/telo.yaml), adjacent to the existing `20260331143022_CreateModules`. Migration naming follows the `YYYYMMDDHHMMSS_Name` convention already in use.
+Four new migrations in [apps/registry/telo.yaml](apps/registry/telo.yaml), after the existing `20260331143022_CreateModules`.
 
 ### `20260419100000_CreateUsers`
 
@@ -57,7 +57,7 @@ CREATE TABLE namespaces (
 );
 ```
 
-`ON DELETE RESTRICT` on `owner_id` — orphaning a namespace is explicit admin work, not a side-effect of deleting a user.
+`ON DELETE RESTRICT` — orphaning a namespace is explicit admin work, not a side-effect of deleting a user.
 
 ### `20260419100200_CreateTokens`
 
@@ -71,147 +71,42 @@ CREATE TABLE tokens (
   last_used_at  TIMESTAMPTZ,
   expires_at    TIMESTAMPTZ
 );
-CREATE INDEX tokens_token_hash_idx ON tokens (token_hash);
 ```
 
-`ON DELETE CASCADE` for `user_id`: removing a user kills their tokens — correct because tokens are scoped by user identity.
+`ON DELETE CASCADE` for `user_id`: removing a user kills their tokens. `expires_at` is nullable (= never expires). The seed step does not populate it in v1. The verification query checks it from day one (`AND (t.expires_at IS NULL OR t.expires_at > NOW())`), so expiry enforcement is free when the field is eventually populated.
 
-`expires_at` is nullable (= never expires). Unused in v1, populated but unchecked until we want it. Checking now costs nothing extra in the SQL `WHERE`.
+### `20260419100300_SeedRootUserAndStdNamespace`
 
-### What does NOT go into the schema
-
-- No `token_scopes` table. Namespace ownership is the only scope.
-- No `package_owners` table. Ownership is per-namespace.
-- No `publish_events` / audit log. Deferred.
-
-## New resource kinds
-
-### `Auth.Token` — provisioner
-
-Declarative resource that reconciles a token row at init. Capability: `Telo.Service` (runs `init()`, holds no runtime behavior after that — a provider-shaped service).
-
-```yaml
-kind: Auth.Token
-metadata:
-  name: RootPublishToken
-connection:
-  kind: Sql.Connection
-  name: Db
-user: root                                        # username; must exist in users
-namespaces: [std]                                 # each must be owned by `user`
-value: "${{ resources.AppConfig.publishToken }}"  # plaintext, required
-label: "root-publish-token"                       # optional, stored in tokens.label
+```sql
+INSERT INTO users (username) VALUES ('root') ON CONFLICT (username) DO NOTHING;
+INSERT INTO namespaces (name, owner_id)
+  SELECT 'std', id FROM users WHERE username = 'root'
+  ON CONFLICT (name) DO NOTHING;
 ```
 
-`init()` behavior (all in one transaction):
+## `Run.Sequence` — `throw` step
 
-1. `SELECT id FROM users WHERE username = $user`. If missing, throw — provisioning is the operator's job via seed migration, not this controller.
-2. For each `namespace` in `namespaces`: `SELECT owner_id FROM namespaces WHERE name = $namespace`. Every row must exist AND have `owner_id = user.id`. If any fails → throw.
-3. `hash = sha256Hex(value)`.
-4. `INSERT INTO tokens (user_id, token_hash, label) VALUES (...) ON CONFLICT (token_hash) DO UPDATE SET label = EXCLUDED.label, user_id = EXCLUDED.user_id`.
-5. Log `"Auth.Token <name>: upserted token for user=<user> namespaces=<list>"`. Do not log the plaintext or the hash.
-
-Idempotent: same `value` → same `hash` → `ON CONFLICT DO UPDATE` updates label only.
-
-Rotation story: change `TELO_PUBLISH_TOKEN`, restart. The old hash row remains — we **do not** delete it here, because this resource doesn't know whether the old value is still in flight on a staging deployment. Cleaning up old tokens is a separate concern (see Open questions).
-
-Schema annotations: `value` carries `x-telo-eval: compile` (it's a secret-shaped input, evaluated once at load). `connection` uses `x-telo-ref: "std/sql#Connection"`. `namespaces` is `type: array, items: { type: string }`.
-
-### `Auth.VerifyToken` — invocable
-
-Used inside the publish handler's `Run.Sequence` as the first step.
-
-Definition declares the throw contract:
+Add a `throw` step variant to [modules/run/telo.yaml](../../../modules/run/telo.yaml) and [modules/run/nodejs/src/sequence.ts](../../../modules/run/nodejs/src/sequence.ts):
 
 ```yaml
-kind: Telo.Definition
-metadata: { name: VerifyToken }
-capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/auth@0.1.0?local_path=./nodejs#verify-token
-throws:
-  codes:
-    UNAUTHORIZED:
-      description: Missing / malformed header, unknown token, or namespace not owned by the token's user.
-schema:
-  type: object
-  additionalProperties: false
+- title: throw
+  description: Throws an InvokeError unconditionally.
   properties:
-    connection:
-      x-telo-ref: "std/sql#Connection"
-  required: [connection]
+    throw:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        data: {}
+      required: [code]
+  required: [throw]
 ```
 
-Manifest instance (declared once at module level — see "Mount-side instance" below):
-
-```yaml
-kind: Auth.VerifyToken
-metadata:
-  name: VerifyPublishToken
-connection:
-  kind: Sql.Connection
-  name: Db
-```
-
-Inputs (from the invoking step):
-
-- `authorization: string` — raw header value, may be `""` or undefined.
-- `namespace: string` — the namespace being published to.
-
-Outputs (on success):
-
-- `userId: string`
-- `username: string`
-
-On failure, throws `InvokeError("UNAUTHORIZED", "<message>")`. No `authorized: boolean` discriminator — the error channel is the contract, and the analyzer enforces that every route with this handler in its chain covers `UNAUTHORIZED` in `catches:`.
-
-Logic:
-
-1. If `authorization` doesn't start with `"Bearer "` (case-insensitive match on scheme), throw `InvokeError("UNAUTHORIZED", "Missing or malformed Authorization header")`.
-2. `token = authorization.slice(7)`. If empty, same throw.
-3. `hash = sha256Hex(token)`.
-4. Single query:
-
-   ```sql
-   SELECT u.id AS user_id, u.username
-   FROM tokens t
-   JOIN users u ON u.id = t.user_id
-   JOIN namespaces n ON n.owner_id = u.id
-   WHERE t.token_hash = $1
-     AND n.name = $2
-     AND (t.expires_at IS NULL OR t.expires_at > NOW())
-   LIMIT 1
-   ```
-
-5. If no row: throw `InvokeError("UNAUTHORIZED", "Invalid token or namespace not owned")`.
-6. Otherwise, `UPDATE tokens SET last_used_at = NOW() WHERE token_hash = $1` (fire-and-forget; log and continue if it fails). Return `{ userId, username }`.
-
-Timing: both the no-row and header-missing paths differ slightly in time, but the threat model here doesn't care — there's no user-enumeration risk because the API doesn't disclose which check failed, and hash lookup is constant-time-ish at the DB level.
-
-## `Run.Sequence` changes
-
-None. The invocable-errors work (Phase 1 + 2) already gives `Run.Sequence` everything this plan needs:
-
-- `throws: { inherit: true }` on the sequence definition — the sequence's effective throw union is the union of its steps' declared codes, resolved by the analyzer's dataflow pass.
-- In-sequence `try` / `catch` with `error.code` / `error.message` / `error.data` / `error.step` context — fully catchable inside sequences, per the existing try step.
-- `Run.Throw` — an invocable whose throw union is its `inputs.code` at the call site, for re-raising inside catch blocks.
-
-The registry doesn't need any of those here — `Auth.VerifyToken` throws directly and the route catches directly. The sequence just propagates.
+Runtime: `executeThrowStep` reads `code`/`message`/`data` from the expanded step and throws `InvokeError`. Works inside catch blocks too via `code: "${{ error.code }}"`.
 
 ## Registry manifest changes
 
 Edits to [apps/registry/telo.yaml](apps/registry/telo.yaml).
-
-### Imports
-
-Add:
-
-```yaml
-kind: Telo.Import
-metadata:
-  name: Auth
-source: ../../modules/auth
-```
 
 ### `Config.Env` — add publish-token secret
 
@@ -225,95 +120,115 @@ publishToken:
 
 ### Migrations
 
-Add three new `Sql.Migration` resources (see **Data model** above) after the existing `20260331143022_CreateModules`.
+Add the four migrations from **Data model** above after `20260331143022_CreateModules`.
 
-### Seed user + namespace
-
-Add a fourth migration that seeds the `root` user and `std` namespace:
+### Boot-time token seed
 
 ```yaml
-kind: Sql.Migration
+kind: Sql.Exec
 metadata:
-  name: 20260419100300_SeedRootUserAndStdNamespace
-sql: |
-  INSERT INTO users (username) VALUES ('root') ON CONFLICT (username) DO NOTHING;
-  INSERT INTO namespaces (name, owner_id)
-    SELECT 'std', id FROM users WHERE username = 'root'
-    ON CONFLICT (name) DO NOTHING;
-```
-
-Idempotent. Safe to re-run. No other users / namespaces exist in v1.
-
-### `Auth.Token` resource
-
-After migrations and before `RegistryServer`:
-
-```yaml
-kind: Auth.Token
-metadata:
-  name: RootPublishToken
+  name: SeedRootPublishToken
 connection:
   kind: Sql.Connection
   name: Db
-user: root
-namespaces: [std]
-value: "${{ resources.AppConfig.publishToken }}"
-label: "root-publish-token"
+sql: |
+  DELETE FROM tokens
+  WHERE user_id = (SELECT id FROM users WHERE username = 'root')
+    AND label = 'root-publish-token';
+  INSERT INTO tokens (user_id, token_hash, label)
+  SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root';
+bindings:
+  - "${{ sha256(resources.AppConfig.publishToken) }}"
 ```
 
-Added to `Telo.Application.targets` so it initializes after `Migrations`:
+`sha256()` runs once at boot when the seed target invokes, against the already-resolved `AppConfig.publishToken`. The DELETE + INSERT under the same label means rotation leaves no stale rows.
+
+`Telo.Application.targets`:
 
 ```yaml
 targets:
   - Migrations
-  - RootPublishToken
+  - SeedRootPublishToken
   - RegistryServer
 ```
 
-(Telo will order by `x-telo-ref` dependency; listing here makes intent explicit.)
-
 ### PUT handler — verify then publish
-
-The existing PUT route handler becomes:
 
 ```yaml
 handler:
   kind: Run.Sequence
   steps:
-    - name: auth
+    - name: checkHeader
+      if: "${{ !request.headers.authorization.startsWith('Bearer ') }}"
+      then:
+        - name: rejectHeader
+          throw: { code: UNAUTHORIZED, message: Missing or malformed Authorization header }
+
+    - name: verifyToken
       invoke:
-        kind: Auth.VerifyToken
-        name: VerifyPublishToken
-      inputs:
-        authorization: "${{ request.headers.authorization }}"
-        namespace: "${{ request.params.namespace }}"
-    - name: upload
-      invoke:
-        kind: S3.Put
-        bucketRef: { name: ModuleStore }
-      inputs:
-        key: "${{ inputs.fileKey }}"
-        body: "${{ inputs.body }}"
-        contentType: "text/yaml"
-    - name: record
-      invoke:
-        kind: Sql.Exec
+        kind: Sql.Query
         connection: { kind: Sql.Connection, name: Db }
       inputs:
         sql: >-
-          INSERT INTO modules (namespace, name, version, file_key)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
+          SELECT u.id AS user_id, u.username
+          FROM tokens t
+          JOIN users u ON u.id = t.user_id
+          JOIN namespaces n ON n.owner_id = u.id
+          WHERE t.token_hash = $1 AND n.name = $2
+            AND (t.expires_at IS NULL OR t.expires_at > NOW())
+          LIMIT 1
         bindings:
-          - "${{ inputs.namespace }}"
-          - "${{ inputs.name }}"
-          - "${{ inputs.version }}"
-          - "${{ inputs.fileKey }}"
+          - "${{ sha256(request.headers.authorization.slice(7)) }}"
+          - "${{ request.params.namespace }}"
+
+    - name: checkToken
+      if: "${{ steps.verifyToken.result.rows.size() == 0 }}"
+      then:
+        - name: rejectToken
+          throw: { code: UNAUTHORIZED, message: Invalid token or namespace not owned }
+
+    - name: upload
+      try:
+        - name: doUpload
+          invoke:
+            kind: S3.Put
+            bucketRef: { name: ModuleStore }
+          inputs:
+            key: "${{ inputs.fileKey }}"
+            body: "${{ inputs.body }}"
+            contentType: "text/yaml"
+      catch:
+        - name: rethrow
+          throw:
+            code: UPLOAD_FAILED
+            message: "${{ error.message }}"
+
+    - name: record
+      try:
+        - name: doRecord
+          invoke:
+            kind: Sql.Exec
+            connection: { kind: Sql.Connection, name: Db }
+          inputs:
+            sql: >-
+              INSERT INTO modules (namespace, name, version, file_key)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
+            bindings:
+              - "${{ inputs.namespace }}"
+              - "${{ inputs.name }}"
+              - "${{ inputs.version }}"
+              - "${{ inputs.fileKey }}"
+      catch:
+        - name: rethrow
+          throw:
+            code: RECORD_FAILED
+            message: "${{ error.message }}"
   outputs:
     published: "${{ inputs.published }}"
 ```
 
-No `guard` step — an `Auth.VerifyToken` failure throws `InvokeError("UNAUTHORIZED")` that `Run.Sequence` propagates (`throws: { inherit: true }`). Subsequent steps (upload, record) never run on failure.
+The outer `inputs:` block on the route is unchanged. No new kinds or controllers — only existing `Sql.Query`, `S3.Put`, `Sql.Exec`, and the new `throw` step. Operational failures from S3 and SQL are wrapped as `InvokeError` with domain codes (`UPLOAD_FAILED`, `RECORD_FAILED`) so every error exits through the route's `catches:` list — there is no "plain error" fall-through path.
 
 ### Route outcomes
 
@@ -328,33 +243,15 @@ catches:
     status: 401
     body:
       error: "${{ error.message }}"
+  - when: "${{ error.code == 'UPLOAD_FAILED' || error.code == 'RECORD_FAILED' }}"
+    status: 500
+    body:
+      error: "${{ error.message }}"
 ```
-
-The analyzer resolves the handler's throw union via `inherit:` — it sees `{UNAUTHORIZED}` flowing through the auth step. The `catches:` list covers it (coverage-proving `when:` clause; rule 1 satisfied, rule 4 satisfied). S3 / SQL failures are plain errors (not `InvokeError`), so they skip `catches:` entirely and land in Fastify's default 5xx renderer — the operational-vs-domain split the error plan defines. No explicit 500 entry needed.
-
-### Mount-side `Auth.VerifyToken` instance
-
-Declared once at module level (not inline in the handler) so the DB connection is shared:
-
-```yaml
-kind: Auth.VerifyToken
-metadata:
-  name: VerifyPublishToken
-connection:
-  kind: Sql.Connection
-  name: Db
-```
-
-Placed alongside `SearchModules` / `S3Client` in [apps/registry/telo.yaml](apps/registry/telo.yaml).
 
 ## CLI changes
 
 Edits to [cli/nodejs/src/commands/publish.ts:172-223](cli/nodejs/src/commands/publish.ts#L172-L223) — the `pushToTeloRegistry` function.
-
-Two changes:
-
-1. Read `process.env.TELO_REGISTRY_TOKEN` at the top of the function.
-2. When present, add `Authorization: Bearer <token>` to the `fetch` call's headers.
 
 ```ts
 const token = process.env.TELO_REGISTRY_TOKEN;
@@ -364,96 +261,71 @@ if (token) headers.authorization = `Bearer ${token}`;
 res = await fetch(url, { method: "PUT", headers, body: content });
 ```
 
-On 401, surface the server's error message (already handled by the existing `!res.ok` branch — no change needed beyond the body already being JSON).
+On 401, the existing `!res.ok` branch surfaces the error body — no further change needed.
 
-No client-side validation: if the env var is unset, we still send the request. The server's 401 response is the source of truth for the error shown to the user.
+Update CLI docs with `TELO_REGISTRY_TOKEN` env var meaning and example usage.
 
-### Documentation
+## Documentation
 
-Update `cli/nodejs/README.md` (or `cli/nodejs/docs/`, matching the existing doc location) with:
-
-- `TELO_REGISTRY_TOKEN` env var meaning
-- Example `TELO_REGISTRY_TOKEN=... telo publish`
-- Note that it is only used for `publish`; reads stay anonymous.
-
-## Module documentation
-
-CLAUDE.md rule: every module change ships docs.
-
-New: `modules/auth/docs/index.md`, wired into `pages/docusaurus.config.ts` and `pages/sidebars.ts` per project convention.
-
-Updated: `apps/registry/README.md` — add an "Authentication" section explaining that PUT requires a bearer token and how operators provision one via `TELO_PUBLISH_TOKEN`.
-
-No changes needed to `modules/run/docs/` — [structured-errors.md](../../../modules/run/docs/structured-errors.md) already covers the try/catch + `InvokeError` flow this plan relies on.
+Update `apps/registry/README.md` — add an "Authentication" section explaining that PUT requires a bearer token and how operators provision one via `TELO_PUBLISH_TOKEN`.
 
 ## Phases
 
-Ordered so each phase is independently testable and reviewable.
+### Phase 0 — CEL stdlib: `sha256`
 
-### Phase 1 — `modules/auth` module
+- Add `celHandlers?: { sha256: (s: string) => string }` to `StaticAnalyzer` and `Loader` constructors; each builds its `Environment` internally from the provided handlers (stubs if omitted).
+- Refactor `precompile.ts` to accept the `Environment` as a parameter rather than importing the module-level singleton. Remove the `celEnvironment` module export.
+- Kernel constructs `new StaticAnalyzer({ celHandlers })` and `new Loader({ registryUrl, celHandlers })` where `celHandlers = { sha256: (s) => createHash("sha256").update(s).digest("hex") }`.
+- Unit test: `sha256("hello")` returns correct hex when handlers are passed; throws when constructed without handlers.
 
-- `modules/auth/telo.yaml` with `Telo.Library`, `Auth.Token`, and `Auth.VerifyToken` (with `throws: { codes: { UNAUTHORIZED: ... } }`).
-- `modules/auth/nodejs/src/` with two controllers. `Auth.VerifyToken.invoke()` throws `InvokeError("UNAUTHORIZED", ...)` on every failure path; returns `{ userId, username }` on success.
-- `modules/auth/tests/` — YAML manifests that spin up `Sql.Connection` against Postgres (integration-style, matching the repo's existing SQL test pattern).
-- `modules/auth/docs/`.
+### Phase 1 — `Run.Sequence` throw step
 
-No dependency on the registry. Can ship standalone.
+- Add `ThrowStep` interface, `isThrowStep` guard, and `executeThrowStep` to [modules/run/nodejs/src/sequence.ts](../../../modules/run/nodejs/src/sequence.ts).
+- Add `throw` variant to `$defs/step` oneOf in [modules/run/telo.yaml](../../../modules/run/telo.yaml).
+- Remove `Run.Throw` kind from `telo.yaml`, `throw.ts`, and `exports`; migrate existing `invoke: { kind: Run.Throw }` usages in `modules/run/tests/` and `modules/http-server/tests/` to `throw:` steps.
+- Unit tests in `modules/run/tests/`.
+
+No dependency on registry or CEL changes. Can ship standalone.
 
 ### Phase 2 — Registry integration
 
-- Add migrations, seed, `Auth.Token` resource, `Auth.VerifyToken` instance.
-- Rewrite the PUT handler: `auth` → `upload` → `record`. No `guard` step.
-- Rewrite the route: `returns:` for 201, `catches:` for `UNAUTHORIZED` → 401.
-- Add `TELO_PUBLISH_TOKEN` to `Config.Env`.
-- Integration test (see below).
+**Prerequisite: invocable-errors Phase 2** (`resolve-throws-union.ts`) must be merged before this ships. `Run.Sequence` propagating `UNAUTHORIZED` via `throws: { inherit: true }` is a Phase 2 analyzer feature. Workaround if shipping earlier: declare `throws: { codes: { UNAUTHORIZED: {...} } }` explicitly on the sequence manifest instance.
+
+- Add four migrations.
+- Add `SeedRootPublishToken` Sql.Exec target, `TELO_PUBLISH_TOKEN` secret.
+- Rewrite the PUT handler with inline `if/throw` auth steps and route outcomes.
+- Integration tests (see below).
+
+Requires Phase 0 and Phase 1.
 
 ### Phase 3 — CLI publish
 
-- Read `TELO_REGISTRY_TOKEN` in `pushToTeloRegistry`.
-- Add bearer header.
+- Read `TELO_REGISTRY_TOKEN`, add bearer header.
 - Update CLI docs.
 
-## Testing strategy
+## Testing
 
-**Auth module tests** — YAML manifests in `modules/auth/tests/` against a real Postgres (project convention). Cover:
+**Registry integration tests** — new YAML in `apps/registry/tests/`. Boot the registry, use `HttpClient.Request` to:
 
-- `Auth.Token` upsert is idempotent (run twice, one row exists).
-- `Auth.Token` throws (plain `RuntimeError`, boot-time failure) when the referenced user is missing.
-- `Auth.Token` throws when any referenced namespace is not owned by the user.
-- `Auth.VerifyToken` returns `{ userId, username }` for a valid token + owned namespace.
-- `Auth.VerifyToken` throws `InvokeError("UNAUTHORIZED")` for a valid token + foreign namespace.
-- `Auth.VerifyToken` throws `InvokeError("UNAUTHORIZED")` for a missing / malformed header.
-- `Auth.VerifyToken` updates `last_used_at` on success.
-- `Assert.Events` asserts the thrown-error paths emit `Auth.VerifyToken.<name>.InvokeRejected` with `code: "UNAUTHORIZED"` (kernel emits this from the single invoke-wrapper; good signal that the structured-error contract is honored end-to-end).
-
-**Registry integration test** — new YAML in `apps/registry/tests/` (create dir if missing). Boot the registry, use `HttpClient.Request` to:
 - PUT without a token → 401.
 - PUT with a wrong token → 401.
 - PUT with the right token to the wrong namespace → 401.
 - PUT with the right token to the owned namespace → 201.
-- GET after a successful PUT still works anonymously.
-
-**CLI test** — existing CLI publish tests should be extended with a case where `TELO_REGISTRY_TOKEN` is set vs. unset, verifying the header is attached. If no such tests exist, skip — this is covered by the integration test above.
+- GET after a successful PUT works anonymously.
+- Boot twice with the same token → one row in `tokens` (seed is idempotent).
+- Boot with a rotated token → old token rejected, new token accepted.
 
 ## Open questions
 
-These need alignment before implementation starts.
-
-1. **Token generation.** Should `Auth.Token` auto-generate a token and print it on first boot when `value` is absent? Or require the operator to always supply one? Current plan: require `value` (simpler, more declarative). Confirm?
-2. **Revocation semantics.** When an `Auth.Token` resource is removed from the manifest, does the controller delete the row on next deploy? Current plan: **no** — stale rows stay, to be pruned manually. This is defensive (avoids nuking a token still in use by CI). Acceptable, or should we add explicit `lifecycle: delete-on-removal`?
-3. **Error body shape.** On 401, the `catches:` entry renders `{ error: "<error.message>" }` — the single-string shape already used by other Telo error responses. npm returns `{ error: "...", reason: "..." }`; Cargo returns `{ errors: [{ detail: "..." }] }`. If we want the code too (e.g. `{ error: { code, message } }`), that's a one-line body change — `error.code`, `error.message`, and `error.data` are all in scope inside `catches:` CEL. Confirm the minimal shape is fine or suggest a richer one.
-4. **Schema for `Config.Env` publishToken**. It's a secret. Confirm the `secrets:` block (not `variables:`) is correct — registry currently puts `accessKeyId` / `secretAccessKey` under `secrets`, so this follows pattern.
-5. **`namespaces` schema on `Auth.Token`.** Array of strings today. Should it support cross-referencing `namespaces` table rows declaratively? e.g. require a matching `Namespace` resource to exist? Current plan: no — namespaces are seeded by migration, not by `Auth.*` kinds. Revisit when multiple namespaces exist.
+1. **Error body shape.** Current plan renders `{ error: "<error.message>" }`. If the code is also wanted (`{ error: { code, message } }`), that's a one-line body change — `error.code` and `error.message` are both in scope in `catches:` CEL.
 
 ## Out-of-scope follow-ups
 
-Items intentionally deferred but worth recording so they aren't re-designed from scratch later.
-
-- **`telo login` command** + `~/.config/telo/credentials.json` — per-registry token store. Would mirror `npm login`.
-- **Editor publish UI** — once the editor has a publish action, it can read from the credentials file above.
+- **`telo login` command** + `~/.config/telo/credentials.json` — per-registry token store.
+- **Editor publish UI** — reads from the credentials file above.
 - **`Namespace` resource kind** — declarative namespace creation (replaces the seed migration).
-- **Token scopes** — `publish`, `yank`, `admin` on the `tokens` table.
-- **Token expiration** — populate `expires_at` from `Auth.Token.expiresIn`, enforce in `Auth.VerifyToken`.
-- **Audit log** — `publish_events (token_id, namespace, name, version, at)` for traceability.
-- **Rate limiting** — per-token publish limits. Likely as a new `Http.RateLimit` capability.
-- **Private modules / read-path auth** — an entire design on its own; requires GET handlers to also consult auth.
+- **Token scopes** — `publish`, `yank`, `admin`.
+- **Token expiration** — populate `expires_at` in the seed step.
+- **Audit log** — `publish_events (token_id, namespace, name, version, at)`.
+- **Rate limiting** — per-token publish limits.
+- **Private modules / read-path auth.**

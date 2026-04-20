@@ -1,4 +1,5 @@
 import {
+  InvokeError,
   isInvokeError,
   type Invocable,
   type KindRef,
@@ -53,7 +54,16 @@ interface TryStep {
   finally?: Step[];
 }
 
-type Step = InvokeStep | IfStep | WhileStep | SwitchStep | TryStep;
+interface ThrowStep {
+  name: string;
+  throw: {
+    code: string;
+    message?: string;
+    data?: unknown;
+  };
+}
+
+type Step = InvokeStep | IfStep | WhileStep | SwitchStep | TryStep | ThrowStep;
 
 interface RunSequenceManifest {
   metadata: Record<string, string | number | boolean>;
@@ -85,6 +95,9 @@ function isSwitchStep(step: Step): step is SwitchStep {
 }
 function isTryStep(step: Step): step is TryStep {
   return "try" in step;
+}
+function isThrowStep(step: Step): step is ThrowStep {
+  return "throw" in step;
 }
 
 class RunSequence {
@@ -205,6 +218,7 @@ class RunSequence {
     else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx);
     else if (isSwitchStep(step)) await this.executeSwitchStep(step, steps, scope, extraCtx);
     else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx);
+    else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
   }
 
@@ -286,6 +300,32 @@ class RunSequence {
     } else {
       throw new Error(`Switch step "${step.name}": no matching case for "${key}" and no default`);
     }
+  }
+
+  private executeThrowStep(
+    step: ThrowStep,
+    steps: Record<string, unknown>,
+    extraCtx: Record<string, unknown>,
+  ): never {
+    const cel = { steps, ...extraCtx };
+    const expanded = this.ctx.expandValue(step.throw, cel) as {
+      code: unknown;
+      message?: unknown;
+      data?: unknown;
+    };
+    const code = expanded?.code;
+    if (typeof code !== "string" || code.length === 0) {
+      // Structured error (not plain Error) so the failure stays in the InvokeError
+      // channel and a route's `catches:` list can still map it. The alternative —
+      // a plain Error — would skip catches: entirely and fall through to a 500.
+      throw new InvokeError(
+        "INVALID_THROW_STEP",
+        `Run.Sequence step "${step.name}": throw.code is required and must resolve to a non-empty string`,
+        { step: step.name, code },
+      );
+    }
+    const message = typeof expanded.message === "string" ? expanded.message : code;
+    throw new InvokeError(code, message, expanded.data);
   }
 
   private async executeTryStep(

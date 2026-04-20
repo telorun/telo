@@ -16,7 +16,7 @@ RUN pnpm run --filter @telorun/docker-runner build
 # workspace package at /out, rewriting workspace:* deps and pruning devDeps.
 # Sidesteps the isolated-node-linker / symlinked-store issue in a
 # single-stage copy.
-RUN pnpm deploy --filter=@telorun/docker-runner --prod /out
+RUN pnpm deploy --legacy --filter=@telorun/docker-runner --prod /out
 
 FROM node:24-slim AS production
 

@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: BadCelOverload
+  version: 1.0.0
+targets:
+  - TestBadOverload
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+# `.slice(int)` is not a CEL string method — the overload is `string.substring(int)`.
+# The analyzer's env.check() must catch this as a type error and surface a
+# SCHEMA_VIOLATION diagnostic with a "CEL type error" message.
+kind: Run.Sequence
+metadata:
+  name: TestBadOverload
+steps:
+  - name: Typo
+    inputs:
+      value: "${{ inputs.s.slice(7) }}"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main(input) { return input }

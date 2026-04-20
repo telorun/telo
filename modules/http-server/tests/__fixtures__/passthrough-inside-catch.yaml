@@ -13,9 +13,8 @@ metadata:
   name: Run
 source: ../../../run
 ---
-# try block throws A or B; catch logs (doesn't affect throws) then re-raises
-# via Run.Throw with `${{ error.code }}`. Resolver must see that the sequence's
-# propagated union equals the try block's {A, B}.
+# try block throws A or B; catch re-raises via `throw: {code: "${{ error.code }}"}`.
+# Resolver must see that the sequence's propagated union equals the try block's {A, B}.
 kind: Run.Sequence
 metadata:
   name: CatchAndRethrow
@@ -26,16 +25,13 @@ steps:
         if: "${{ true }}"
         then:
           - name: throwA
-            invoke: { kind: Run.Throw }
-            inputs: { code: "A", message: "a" }
+            throw: { code: "A", message: "a" }
         else:
           - name: throwB
-            invoke: { kind: Run.Throw }
-            inputs: { code: "B", message: "b" }
+            throw: { code: "B", message: "b" }
     catch:
       - name: rethrow
-        invoke: { kind: Run.Throw }
-        inputs:
+        throw:
           code: "${{ error.code }}"
           message: "${{ error.message }}"
 ---
