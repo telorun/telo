@@ -1,5 +1,12 @@
 # @telorun/javascript
 
+## 0.1.11
+
+### Patch Changes
+
+- Updated dependencies [3c4ac58]
+  - @telorun/sdk@0.3.2
+
 ## 0.1.10
 
 ### Patch Changes
