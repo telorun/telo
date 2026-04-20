@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: ThrowsCoverageTests
+  version: 1.0.0
+targets:
+  - TestUndeclaredCode
+  - TestUncoveredCode
+  - TestCatchAllNotLast
+  - TestPassthroughInsideCatch
+  - TestInheritCycle
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# A catches: entry references a code not in the handler's declared / resolved
+# throw union → UNDECLARED_THROW_CODE.
+kind: Assert.Manifest
+metadata:
+  name: TestUndeclaredCode
+source: ./__fixtures__/undeclared-code.yaml
+expect:
+  errors:
+    - code: UNDECLARED_THROW_CODE
+      message: BOGUS
+---
+# Handler declares two codes, catches: covers only one (no catch-all) →
+# UNCOVERED_THROW_CODE on the missing code.
+kind: Assert.Manifest
+metadata:
+  name: TestUncoveredCode
+source: ./__fixtures__/uncovered-code.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'B'"
+---
+# A no-when entry followed by a when:-qualified entry in returns: →
+# CATCHALL_NOT_LAST.
+kind: Assert.Manifest
+metadata:
+  name: TestCatchAllNotLast
+source: ./__fixtures__/catchall-not-last.yaml
+expect:
+  errors:
+    - code: CATCHALL_NOT_LAST
+---
+# Run.Throw with `${{ error.code }}` inside a catch propagates the enclosing
+# try block's union. Route covers both codes → zero analyzer errors.
+kind: Assert.Manifest
+metadata:
+  name: TestPassthroughInsideCatch
+source: ./__fixtures__/passthrough-inside-catch.yaml
+expect:
+  errors: []
+---
+# Sequences referencing each other transitively must not hang or crash — the
+# resolver's cycle detection returns an empty union and the analysis finishes.
+kind: Assert.Manifest
+metadata:
+  name: TestInheritCycle
+source: ./__fixtures__/inherit-cycle.yaml
+expect:
+  errors: []

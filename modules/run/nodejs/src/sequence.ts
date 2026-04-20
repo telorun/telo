@@ -1,4 +1,12 @@
-import type { Invocable, KindRef, ResourceContext, ScopeContext, ScopeHandle } from "@telorun/sdk";
+import {
+  isInvokeError,
+  type Invocable,
+  type KindRef,
+  type ResourceContext,
+  type ResourceInstance,
+  type ScopeContext,
+  type ScopeHandle,
+} from "@telorun/sdk";
 
 interface RetryPolicy {
   attempts?: number;
@@ -59,6 +67,7 @@ interface RunSequenceManifest {
 interface SequenceError {
   message: string;
   code: string | null;
+  data?: unknown;
   step: string;
 }
 
@@ -217,7 +226,8 @@ class RunSequence {
     } else {
       const ref = raw as KindRef<Invocable>;
       if (scope) {
-        result = await (scope.getInstance(ref.name) as unknown as Invocable).invoke(inputs);
+        const instance = scope.getInstance(ref.name) as unknown as ResourceInstance;
+        result = await this.ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
       } else {
         result = await this.ctx.invoke(ref.kind, ref.name, inputs, { retry: step.retry });
       }
@@ -329,12 +339,11 @@ class RunSequence {
 }
 
 function toSequenceError(err: unknown, stepName: string): SequenceError {
+  if (isInvokeError(err)) {
+    return { message: err.message, code: err.code, data: err.data, step: stepName };
+  }
   const message = err instanceof Error ? err.message : String(err);
-  const code =
-    err instanceof Error && (err as Error & { code?: string }).code != null
-      ? (err as Error & { code?: string }).code!
-      : null;
-  return { message, code, step: stepName };
+  return { message, code: null, data: undefined, step: stepName };
 }
 
 export function register(): void {}

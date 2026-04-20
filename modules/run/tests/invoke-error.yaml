@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: InvokeErrorTests
+  version: 1.0.0
+targets:
+  - TestCaught
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# Run.Throw throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
+# The enclosing try/catch binds it to `error` — we verify every field is
+# surfaced (code, message, data, step) and the kernel emits InvokeRejected.
+kind: Run.Sequence
+metadata:
+  name: TestCaught
+steps:
+  - name: outer
+    try:
+      - name: boom
+        invoke: { kind: Run.Throw }
+        inputs:
+          code: "UNAUTHORIZED"
+          message: "bad token"
+          data:
+            reason: "expired"
+    catch:
+      - name: checkFields
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code, message, step, reason]
+            properties:
+              code: { type: string, const: "UNAUTHORIZED" }
+              message: { type: string, const: "bad token" }
+              step: { type: string, const: "outer" }
+              reason: { type: string, const: "expired" }
+        inputs:
+          code: "${{ error.code }}"
+          message: "${{ error.message }}"
+          step: "${{ error.step }}"
+          reason: "${{ error.data.reason }}"
+---
+# Kernel emits a scoped InvokeRejected event at the Run.Throw call site
+# whenever an InvokeError flies. Payload carries the structured fields.
+kind: Assert.Events
+metadata:
+  name: ExpectEvents
+filter:
+  - type: Run.Throw.*.InvokeRejected
+expect:
+  - event: Run.Throw.*.InvokeRejected
+    payload:
+      code: "UNAUTHORIZED"
+      message: "bad token"

@@ -77,21 +77,19 @@ with:
           name: GreetingHandler
           inputs:
             name: "${{ request.query.name }}"
-        response:
-          status: 200
-          statuses:
-            "200":
-              schema:
-                body:
-                  type: object
-                  properties:
-                    message:
-                      type: string
-                  required: ["message"]
-              headers:
-                Content-Type: application/json
+        returns:
+          - status: 200
+            schema:
               body:
-                message: "${{ result.greeting }}"
+                type: object
+                properties:
+                  message:
+                    type: string
+                required: ["message"]
+            headers:
+              Content-Type: application/json
+            body:
+              message: "${{ result.greeting }}"
   - kind: Http.Server
     metadata:
       name: TestServer

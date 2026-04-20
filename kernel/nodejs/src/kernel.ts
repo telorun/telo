@@ -175,6 +175,11 @@ export class Kernel implements IKernel {
     this.rootContext.preInitHook = (resource, getInstance) =>
       this._injectDependencies(resource, getInstance);
 
+    // Expose definition lookup so invoke()/invokeResolved() can check thrown
+    // InvokeError.code against the declared throw union (rule 9). Propagates
+    // through spawnChild() to module imports and scoped handles.
+    this.rootContext.getDefinition = (kind) => this.controllers.getDefinition(kind);
+
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
     const staticManifests = await this.loader.loadManifests(sourceUrl);

@@ -7,6 +7,7 @@ metadata:
 exports:
   kinds:
     - Sequence
+    - Throw
 ---
 kind: Telo.Definition
 metadata:
@@ -15,6 +16,8 @@ capability: Telo.Runnable
 topology: Sequence
 controllers:
   - pkg:npm/@telorun/run@0.1.3?local_path=./nodejs#sequence
+throws:
+  inherit: true
 schema:
   type: object
   $defs:
@@ -224,3 +227,16 @@ schema:
         $ref: "#/$defs/step"
   required:
     - steps
+---
+kind: Telo.Definition
+metadata:
+  name: Throw
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/run@0.1.3?local_path=./nodejs#throw
+throws:
+  passthrough: true
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}

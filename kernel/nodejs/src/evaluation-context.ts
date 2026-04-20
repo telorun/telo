@@ -1,11 +1,13 @@
 import {
   isCompiledValue,
+  isInvokeError,
   resourceKey,
   type EvaluationContext as IEvaluationContext,
   type EmitEvent,
   type InstanceFactory,
   type LifecycleState,
   type PreInitHook,
+  type ResourceDefinition,
   type ResourceInstance,
   type ResourceManifest,
   type RuntimeDiagnostic,
@@ -61,6 +63,13 @@ export class EvaluationContext implements IEvaluationContext {
    * Set by the kernel to inject live instances into reference fields.
    */
   preInitHook?: PreInitHook;
+
+  /**
+   * Optional definition lookup used by invoke()/invokeResolved() to check
+   * thrown InvokeError.code against the declared throw union (rule 9).
+   * Set by the kernel; propagates through spawnChild() like preInitHook.
+   */
+  getDefinition?: (kind: string) => ResourceDefinition | undefined;
 
   constructor(
     readonly source: string,
@@ -138,6 +147,9 @@ export class EvaluationContext implements IEvaluationContext {
     // in Phase 5 injection. createScopeHandle overrides this with an extended version.
     if (this.preInitHook && !child.preInitHook) {
       child.preInitHook = this.preInitHook;
+    }
+    if (this.getDefinition && !child.getDefinition) {
+      child.getDefinition = this.getDefinition;
     }
     return child;
   }
@@ -362,27 +374,98 @@ export class EvaluationContext implements IEvaluationContext {
 
   /**
    * Invoke a resource by kind and name within this context's resourceInstances.
-   * Emits a scoped Invoked event via the injected emit callback after invocation.
+   * Emits a scoped Invoked/InvokeRejected/InvokeFailed event via the injected
+   * emit callback. The single emission point for invoke-level events — callers
+   * holding an already-resolved instance should use invokeResolved() instead.
    */
   async invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
     const entry = this.resourceInstances.get(name);
 
-    if (entry) {
-      if (typeof entry.instance.invoke !== "function") {
-        throw new RuntimeError(
-          "ERR_RESOURCE_NOT_INVOKABLE",
-          `Resource ${kind}.${name} does not have an invoke method`,
-        );
-      }
-      const outputs = await entry.instance.invoke(inputs as any);
-      await this.emit(`${kind}.${name}.Invoked`, { outputs });
-      return outputs;
+    if (!entry) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_NOT_FOUND",
+        `Resource not found for invocation: ${kind}.${name}. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+      );
     }
 
-    throw new RuntimeError(
-      "ERR_RESOURCE_NOT_FOUND",
-      `Resource not found for invocation: ${kind}.${name}. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
-    );
+    if (typeof entry.instance.invoke !== "function") {
+      throw new RuntimeError(
+        "ERR_RESOURCE_NOT_INVOKABLE",
+        `Resource ${kind}.${name} does not have an invoke method`,
+      );
+    }
+
+    return this.runInvoke(kind, name, entry.instance, inputs);
+  }
+
+  /**
+   * Like invoke(), but the caller has already resolved the instance (e.g. the
+   * scope path in Run.Sequence, or the live-injected Http.Api route handler).
+   * Shares the single emission point so events fire exactly once per call
+   * regardless of which path reached the instance.
+   */
+  async invokeResolved<TInputs>(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    inputs: TInputs,
+  ): Promise<any> {
+    if (typeof instance.invoke !== "function") {
+      throw new RuntimeError(
+        "ERR_RESOURCE_NOT_INVOKABLE",
+        `Resource ${kind}.${name} does not have an invoke method`,
+      );
+    }
+    return this.runInvoke(kind, name, instance, inputs);
+  }
+
+  private async runInvoke<TInputs>(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    inputs: TInputs,
+  ): Promise<any> {
+    try {
+      const outputs = await (instance.invoke as (i: any) => any)(inputs as any);
+      await this.emit(`${kind}.${name}.Invoked`, { outputs });
+      return outputs;
+    } catch (err) {
+      if (isInvokeError(err)) {
+        const payload = { code: err.code, message: err.message, data: err.data };
+        await this.emit(`${kind}.${name}.InvokeRejected`, payload);
+        const declaredCodes = this.getDeclaredThrowCodes(kind);
+        if (declaredCodes && !declaredCodes.has(err.code)) {
+          await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload);
+        }
+      } else if (err instanceof Error) {
+        await this.emit(`${kind}.${name}.InvokeFailed`, {
+          name: err.name,
+          message: err.message,
+        });
+      } else {
+        await this.emit(`${kind}.${name}.InvokeFailed`, {
+          name: "UnknownError",
+          message: String(err),
+        });
+      }
+      throw err;
+    }
+  }
+
+  private getDeclaredThrowCodes(kind: string): Set<string> | null {
+    if (!this.getDefinition) return null;
+    const def = this.getDefinition(kind);
+    if (!def) return null;
+    const throws = def.throws;
+    if (!throws) return new Set();
+    // inherit / passthrough unions are dynamic — resolved statically by the
+    // analyzer, not re-derivable here without a manifest-wide traversal. Skip
+    // the rule 9 check rather than mis-report every propagated code as
+    // undeclared at runtime.
+    if (throws.inherit || throws.passthrough) return null;
+    const codes = throws.codes;
+    if (!codes) return new Set();
+    return new Set(Object.keys(codes));
   }
 
   async run(name: string): Promise<void> {

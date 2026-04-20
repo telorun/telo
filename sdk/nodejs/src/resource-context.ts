@@ -1,6 +1,7 @@
 import { ControllerContext } from "./controller-context.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
+import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
 
@@ -38,6 +39,12 @@ export interface ResourceContext extends ControllerContext {
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
+  invokeResolved<TInputs>(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    inputs: TInputs,
+  ): Promise<any>;
   run(kind: string, name: string): Promise<void>;
   getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;

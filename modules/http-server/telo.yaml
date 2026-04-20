@@ -219,31 +219,63 @@ schema:
                   type: "string"
               required: ["kind"]
               additionalProperties: true
-        response:
-          title: Response
-          description: Response selection rules for not-found handling.
+        returns:
+          title: Returns
+          description: Rendering rules for values the handler resolved with.
           type: "array"
+          x-telo-outcome-list: returns
           items:
-            title: Response Entry
-            description: Conditional response mapping entry.
+            title: Return Entry
+            description: Conditional rendering entry for a successful return.
             type: "object"
             properties:
               status:
                 title: Status
                 default: 404
-                description: HTTP status code for this response entry.
+                description: HTTP status code for this entry.
                 type: "integer"
                 minimum: 100
                 maximum: 599
               when:
                 title: When
-                description: CEL condition that selects this response entry.
+                description: CEL condition that selects this entry.
                 type: "boolean"
               mode:
                 title: Mode
                 description: Response mode; buffer or stream.
                 type: "string"
                 enum: ["buffer", "stream"]
+              headers:
+                title: Headers
+                description: Response headers.
+                type: "object"
+                additionalProperties:
+                  type: "string"
+              body:
+                title: Body
+                description: "CEL expression or object mapping for response body"
+            required: ["status"]
+        catches:
+          title: Catches
+          description: Rendering rules for structured (InvokeError) throws from the handler.
+          type: "array"
+          x-telo-outcome-list: catches
+          x-telo-catches-for: invoke
+          items:
+            title: Catch Entry
+            description: Conditional rendering entry for a thrown InvokeError.
+            type: "object"
+            properties:
+              status:
+                title: Status
+                description: HTTP status code for this entry.
+                type: "integer"
+                minimum: 100
+                maximum: 599
+              when:
+                title: When
+                description: CEL condition that selects this entry (sees `error` and `request`).
+                type: "boolean"
               headers:
                 title: Headers
                 description: Response headers.
@@ -355,10 +387,11 @@ schema:
                     title: Type
                     description: Optional handler type hint.
                     type: "string"
-          response:
-            title: Response
-            description: Ordered response mapping entries.
+          returns:
+            title: Returns
+            description: Rendering rules for values the handler resolved with.
             type: "array"
+            x-telo-outcome-list: returns
             x-telo-context:
               type: object
               additionalProperties: false
@@ -374,14 +407,14 @@ schema:
                   type: object
                   additionalProperties: true
             items:
-              title: Response Entry
-              description: Conditional response mapping entry.
+              title: Return Entry
+              description: Conditional rendering entry for a successful return.
               type: "object"
               additionalProperties: false
               properties:
                 status:
                   title: Status
-                  description: HTTP status code for this response entry.
+                  description: HTTP status code for this entry.
                   type: "integer"
                   minimum: 100
                   maximum: 599
@@ -408,4 +441,58 @@ schema:
                   title: Body
                   description: "CEL expression or object mapping for response body"
               required: ["status"]
+          catches:
+            title: Catches
+            description: Rendering rules for structured (InvokeError) throws from the handler.
+            type: "array"
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    path: { type: string }
+                    method: { type: string }
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code: { type: string }
+                    message: { type: string }
+                    data: { type: object, additionalProperties: true }
+            items:
+              title: Catch Entry
+              description: Conditional rendering entry for a thrown InvokeError.
+              type: "object"
+              additionalProperties: false
+              properties:
+                status:
+                  title: Status
+                  description: HTTP status code for this entry.
+                  type: "integer"
+                  minimum: 100
+                  maximum: 599
+                when:
+                  title: When
+                  type: "boolean"
+                  description: "CEL expression; sees `error` and `request`"
+                schema:
+                  title: Schema
+                  description: JSON Schema used to validate the response body.
+                  type: "object"
+                headers:
+                  title: Headers
+                  description: Response headers.
+                  type: "object"
+                  additionalProperties:
+                    type: "string"
+                body:
+                  title: Body
+                  description: "CEL expression or object mapping for response body"
+              required: ["status"]
+        required: ["request", "returns"]
   required: ["routes"]

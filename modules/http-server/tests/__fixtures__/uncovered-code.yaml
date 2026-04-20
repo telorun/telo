@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: UncoveredCodeFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+# Handler resolves to union {A, B} via passthrough in both branches. The route
+# covers A but neither B nor a catch-all → UNCOVERED_THROW_CODE on B.
+kind: Run.Sequence
+metadata:
+  name: ThrowsAOrB
+steps:
+  - name: branch
+    if: "${{ true }}"
+    then:
+      - name: throwA
+        invoke: { kind: Run.Throw }
+        inputs:
+          code: "A"
+          message: "throws A"
+    else:
+      - name: throwB
+        invoke: { kind: Run.Throw }
+        inputs:
+          code: "B"
+          message: "throws B"
+---
+kind: Http.Api
+metadata:
+  name: UncoveredApi
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler:
+      kind: Run.Sequence
+      name: ThrowsAOrB
+    returns:
+      - status: 200
+        body: { ok: true }
+    catches:
+      - when: "${{ error.code == 'A' }}"
+        status: 400
+        body: { error: "${{ error.message }}" }

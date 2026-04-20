@@ -62,8 +62,30 @@ const sidebars: SidebarsConfig = {
       label: "Standard Library",
       items: [
         { type: "doc", id: "modules/README", label: "Overview" },
-        { type: "doc", id: "modules/http-server/README", label: "HTTP Server" },
+        {
+          type: "category",
+          label: "HTTP Server",
+          items: [
+            { type: "doc", id: "modules/http-server/README", label: "Overview" },
+            {
+              type: "doc",
+              id: "modules/http-server/docs/returns-and-catches",
+              label: "returns & catches",
+            },
+          ],
+        },
         { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
+        {
+          type: "category",
+          label: "Run",
+          items: [
+            {
+              type: "doc",
+              id: "modules/run/docs/structured-errors",
+              label: "Structured Errors",
+            },
+          ],
+        },
         { type: "doc", id: "modules/assert/docs/manifest", label: "Assert.Manifest" },
         {
           type: "category",

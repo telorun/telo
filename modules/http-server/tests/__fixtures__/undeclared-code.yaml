@@ -1,0 +1,46 @@
+kind: Telo.Library
+metadata:
+  name: UndeclaredCodeFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+# Handler's resolved throw union is {FOO} (via Run.Throw passthrough). A
+# catches: entry referencing 'BOGUS' is not in that union → UNDECLARED_THROW_CODE.
+kind: Run.Sequence
+metadata:
+  name: AlwaysThrowsFoo
+steps:
+  - name: boom
+    invoke: { kind: Run.Throw }
+    inputs:
+      code: "FOO"
+      message: "always throws"
+---
+kind: Http.Api
+metadata:
+  name: BadApi
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler:
+      kind: Run.Sequence
+      name: AlwaysThrowsFoo
+    returns:
+      - status: 200
+        body: { ok: true }
+    catches:
+      - when: "${{ error.code == 'BOGUS' }}"
+        status: 401
+        body: { error: "${{ error.message }}" }
+      - status: 500
+        body: { error: "${{ error.message }}" }

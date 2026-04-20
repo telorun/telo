@@ -159,7 +159,7 @@ notFoundHandler:
     inputs:
       method: "${{ request.method }}"
       url: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName + request.path }}"
-  response:
+  returns:
     - status: 200
       mode: stream
 
@@ -258,7 +258,7 @@ routes:
       id: "${{ request.query.id }}"
       limit: "${{ request.query.limit }}"
       offset: "${{ request.query.offset }}"
-    response:
+    returns:
       - status: 200
         body:
           results: "${{ result.rows }}"
@@ -290,7 +290,7 @@ routes:
     inputs:
       namespace: "${{ request.params.namespace }}"
       name: "${{ request.params.name }}"
-    response:
+    returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
         body:
@@ -324,7 +324,7 @@ routes:
       bindings:
         - "${{ request.params.namespace }}"
         - "${{ request.params.name }}"
-    response:
+    returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
         body:
@@ -357,7 +357,7 @@ routes:
         - "${{ request.params.namespace }}"
         - "${{ request.params.name }}"
         - "${{ request.params.version }}"
-    response:
+    returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
         body:
@@ -391,7 +391,7 @@ routes:
         url: "${{ '/' + inputs.path + '/telo.yaml' }}"
     inputs:
       path: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version }}"
-    response:
+    returns:
       - status: 200
         mode: stream
         headers:
@@ -447,7 +447,7 @@ routes:
       body: "${{ request.body }}"
       fileKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
       published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
-    response:
+    returns:
       - status: 201
         body:
           published: "${{ result.published }}"
