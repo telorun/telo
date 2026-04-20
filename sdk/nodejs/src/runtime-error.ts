@@ -2,6 +2,8 @@ export interface RuntimeDiagnostic {
   severity?: "error" | "warning";
   message: string;
   resource?: string;
+  kind?: string;
+  details?: string;
   code?: string;
 }
 

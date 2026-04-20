@@ -175,7 +175,7 @@ export class EvaluationContext implements IEvaluationContext {
    */
   async initializeResources(): Promise<void> {
     const MAX_PASSES = 10;
-    const errors = new Map<string, string>();
+    const errors = new Map<string, { message: string; code?: string; details?: string }>();
 
     let pass = 1;
     do {
@@ -202,7 +202,7 @@ export class EvaluationContext implements IEvaluationContext {
           }
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
-          errors.set(name, error instanceof Error ? error.message : String(error));
+          errors.set(name, formatErrorForDiagnostic(error));
         }
       }
 
@@ -224,7 +224,7 @@ export class EvaluationContext implements IEvaluationContext {
           progress = true;
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
-          errors.set(name, error instanceof Error ? error.message : String(error));
+          errors.set(name, formatErrorForDiagnostic(error));
         }
       }
 
@@ -234,21 +234,37 @@ export class EvaluationContext implements IEvaluationContext {
 
     if (this.pendingResources.length > 0 || this.createdInstances.size > 0) {
       const diagnostics: RuntimeDiagnostic[] = [
-        ...this.pendingResources.map((r) => ({
-          resource: r.metadata.name,
-          message: errors.get(r.metadata.name) ?? "Unknown error",
-        })),
-        ...[...this.createdInstances.keys()].map((name) => ({
-          resource: name,
-          message: errors.get(name) ?? "Unknown error",
-        })),
+        ...this.pendingResources.map((r) => {
+          const info = errors.get(r.metadata.name) ?? { message: "Unknown error" };
+          return {
+            resource: r.metadata.name,
+            kind: r.kind,
+            message: info.message,
+            details: info.details,
+            code: info.code,
+          };
+        }),
+        ...[...this.createdInstances].map(([name, { resource }]) => {
+          const info = errors.get(name) ?? { message: "Unknown error" };
+          return {
+            resource: name,
+            kind: resource.kind,
+            message: info.message,
+            details: info.details,
+            code: info.code,
+          };
+        }),
       ];
-      const details = diagnostics
-        .map((d) => `  ${d.resource}: ${d.message}`)
+      const textDetails = diagnostics
+        .map((d) => {
+          const head = `  ${d.kind ? `${d.kind} ` : ""}${d.resource}: ${d.message}${d.code ? ` [${d.code}]` : ""}`;
+          const extra = d.details ? "\n" + d.details.split("\n").map((l) => `    ${l}`).join("\n") : "";
+          return head + extra;
+        })
         .join("\n");
       throw new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
-        `Unable to process resources:\n${details}`,
+        `Unable to process resources:\n${textDetails}`,
         diagnostics,
       );
     }
@@ -576,4 +592,94 @@ function setNestedValue(obj: Record<string, unknown>, parts: string[], value: un
     current = next as Record<string, unknown>;
   }
   current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Build a detailed diagnostic from an arbitrary error. Walks the `cause` chain
+ * and surfaces structured fields from well-known error shapes (AWS SDK
+ * ServiceException, pg DatabaseError, Node system errors) so the user sees the
+ * actual failure instead of just an opaque summary string.
+ */
+function formatErrorForDiagnostic(err: unknown): {
+  message: string;
+  code?: string;
+  details?: string;
+} {
+  if (!(err instanceof Error)) {
+    return { message: String(err) };
+  }
+
+  const detailLines: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  let depth = 0;
+  let topCode: string | undefined;
+  let topMessage = "";
+
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const info = extractErrorInfo(current);
+    if (depth === 0) {
+      topMessage = info.summary;
+      topCode = info.code;
+    } else {
+      detailLines.push(`Caused by: ${info.summary}`);
+    }
+    for (const field of info.fields) {
+      detailLines.push(field);
+    }
+    current = (current as { cause?: unknown }).cause;
+    depth++;
+  }
+
+  return {
+    message: topMessage || err.message || err.name || String(err),
+    code: topCode,
+    details: detailLines.length ? detailLines.join("\n") : undefined,
+  };
+}
+
+function extractErrorInfo(e: Error): { summary: string; code?: string; fields: string[] } {
+  const fields: string[] = [];
+  const anyE = e as unknown as Record<string, unknown>;
+
+  const name = e.name && e.name.toLowerCase() !== "error" ? e.name : undefined;
+  const code = anyE.code !== undefined && anyE.code !== null ? String(anyE.code) : undefined;
+  const message = e.message && e.message.trim() ? e.message : "(no message)";
+
+  const summary = name ? `${name}: ${message}` : message;
+
+  const metadata = anyE.$metadata as Record<string, unknown> | undefined;
+  if (metadata && typeof metadata === "object") {
+    if (metadata.httpStatusCode != null) fields.push(`HTTP status: ${metadata.httpStatusCode}`);
+    if (metadata.requestId) fields.push(`Request ID: ${metadata.requestId}`);
+    if (metadata.extendedRequestId) fields.push(`Extended request ID: ${metadata.extendedRequestId}`);
+    if (metadata.cfId) fields.push(`CF ID: ${metadata.cfId}`);
+    if (metadata.attempts != null) fields.push(`Attempts: ${metadata.attempts}`);
+    if (metadata.totalRetryDelay != null) fields.push(`Total retry delay: ${metadata.totalRetryDelay}ms`);
+  }
+  if (anyE.$fault) fields.push(`Fault: ${String(anyE.$fault)}`);
+
+  if (anyE.severity) fields.push(`Severity: ${String(anyE.severity)}`);
+  if (anyE.detail) fields.push(`Detail: ${String(anyE.detail)}`);
+  if (anyE.hint) fields.push(`Hint: ${String(anyE.hint)}`);
+  if (anyE.schema) fields.push(`Schema: ${String(anyE.schema)}`);
+  if (anyE.table) fields.push(`Table: ${String(anyE.table)}`);
+  if (anyE.column) fields.push(`Column: ${String(anyE.column)}`);
+  if (anyE.dataType) fields.push(`Data type: ${String(anyE.dataType)}`);
+  if (anyE.constraint) fields.push(`Constraint: ${String(anyE.constraint)}`);
+  if (anyE.routine) fields.push(`Routine: ${String(anyE.routine)}`);
+  if (anyE.where) fields.push(`Where: ${String(anyE.where)}`);
+  if (anyE.position) fields.push(`Position: ${String(anyE.position)}`);
+  if (anyE.internalPosition) fields.push(`Internal position: ${String(anyE.internalPosition)}`);
+  if (anyE.internalQuery) fields.push(`Internal query: ${String(anyE.internalQuery)}`);
+
+  if (anyE.syscall) fields.push(`Syscall: ${String(anyE.syscall)}`);
+  if (anyE.errno != null) fields.push(`Errno: ${String(anyE.errno)}`);
+  if (anyE.address) fields.push(`Address: ${String(anyE.address)}`);
+  if (anyE.port != null) fields.push(`Port: ${String(anyE.port)}`);
+  if (anyE.hostname) fields.push(`Hostname: ${String(anyE.hostname)}`);
+  if (anyE.path && !anyE.routine) fields.push(`Path: ${String(anyE.path)}`);
+
+  return { summary, code, fields };
 }
