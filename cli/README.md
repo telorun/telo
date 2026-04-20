@@ -42,6 +42,7 @@ telo publish ./modules/my-module/telo.yaml
 telo publish ./modules/my-module/telo.yaml --bump=patch
 telo publish ./modules/a/telo.yaml ./modules/b/telo.yaml --bump=minor
 telo publish ./modules/my-module/telo.yaml --dry-run
+telo publish ./modules/my-module/telo.yaml --skip-controllers
 ```
 
 **Options:**
@@ -49,6 +50,7 @@ telo publish ./modules/my-module/telo.yaml --dry-run
 - `--bump patch|minor|major` — Bump all controller package versions before publishing. Also bumps `metadata.version` in the manifest.
 - `--registry <url>` — Telo registry base URL (default: `https://registry.telo.run`)
 - `--dry-run` — Show what would happen without writing files or publishing anything.
+- `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the manifest to the Telo registry. Use this when controller packages have already been published by another tool (e.g. Changesets in CI). Mutually exclusive with `--bump`.
 
 **Environment:**
 

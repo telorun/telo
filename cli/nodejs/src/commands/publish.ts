@@ -257,6 +257,7 @@ async function publishOne(
   registry: string,
   bump: BumpLevel | undefined,
   dryRun: boolean,
+  skipControllers: boolean,
   log: Logger,
 ): Promise<boolean> {
   let content: string;
@@ -276,7 +277,7 @@ async function publishOne(
     if (!byLocalPath.has(c.localPath)) byLocalPath.set(c.localPath, c);
   }
 
-  const uniqueControllers = Array.from(byLocalPath.values());
+  const uniqueControllers = skipControllers ? [] : Array.from(byLocalPath.values());
 
   // --- Controller packages ---
   for (const ctrl of uniqueControllers) {
@@ -421,14 +422,27 @@ export async function publish(argv: {
   registry: string;
   bump?: BumpLevel;
   dryRun: boolean;
+  skipControllers: boolean;
 }): Promise<void> {
+  if (argv.bump && argv.skipControllers) {
+    console.error("error: --bump and --skip-controllers are mutually exclusive");
+    process.exit(1);
+  }
+
   const log = createLogger(false);
   let failed = false;
   for (const p of argv.paths) {
     const filePath = path.resolve(process.cwd(), p);
     const relPath = path.relative(process.cwd(), filePath);
     console.log(`\nPublishing ${log.dim(relPath)}`);
-    const ok = await publishOne(filePath, argv.registry, argv.bump, argv.dryRun, log);
+    const ok = await publishOne(
+      filePath,
+      argv.registry,
+      argv.bump,
+      argv.dryRun,
+      argv.skipControllers,
+      log,
+    );
     if (!ok) failed = true;
   }
   console.log("");
@@ -461,6 +475,12 @@ export function publishCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe: "Show what would happen without making any changes",
+        })
+        .option("skip-controllers", {
+          type: "boolean",
+          default: false,
+          describe:
+            "Skip controller build/publish/PURL rewrite; only run static analysis and push the manifest to the Telo registry",
         }),
     async (argv) => {
       await publish(argv as any);
