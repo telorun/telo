@@ -1,5 +1,11 @@
 # @telorun/cli
 
+## 0.3.1
+
+### Patch Changes
+
+- 2d866be: Add `--skip-controllers` flag to `telo publish`. When set, skips the controller build/publish/PURL-rewrite loop and only runs static analysis and pushes the manifest to the Telo registry. Used by the Changesets-driven CI release flow, where controller packages are already published by `changeset publish`.
+
 ## 0.3.0
 
 ### Minor Changes
