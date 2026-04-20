@@ -32,9 +32,29 @@ export function formatDiagnostics(
 ): void {
   for (const d of diagnostics) {
     const severityLabel = d.severity === "warning" ? log.warn("warning") : log.error("error");
-    const who = d.resource ? `${d.resource}: ` : "";
     const code = d.code ? `  ${log.dim(d.code)}` : "";
-    console.error(`${displayPath}  ${severityLabel}  ${who}${d.message}${code}`);
+
+    if (d.resource) {
+      // Runtime diagnostic — the failure is pinned to a resource, so the entry
+      // manifest path adds no information. Show kind + name + message and any
+      // structured details indented below.
+      const who = `${d.kind ? `${log.dim(d.kind)} ` : ""}${d.resource}`;
+      console.error(`  ${severityLabel}  ${who}: ${d.message}${code}`);
+      if (d.details) {
+        for (const line of d.details.split("\n")) {
+          console.error(`           ${log.dim(line)}`);
+        }
+      }
+    } else {
+      // Non-resource diagnostic (e.g. loader/parse failure) — keep the file path
+      // since it is the only location cue we have.
+      console.error(`${displayPath}  ${severityLabel}  ${d.message}${code}`);
+      if (d.details) {
+        for (const line of d.details.split("\n")) {
+          console.error(`  ${log.dim(line)}`);
+        }
+      }
+    }
   }
 }
 
