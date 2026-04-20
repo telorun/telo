@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: http-client
   namespace: std
-  version: 0.1.0
+  version: 0.1.1
   description: HTTP request client for testing and orchestration
 ---
 kind: "Telo.Definition"
@@ -10,7 +10,7 @@ metadata:
   name: "Client"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-client
+  - pkg:npm/@telorun/http-client@0.1.5?local_path=./nodejs#http-client
 schema:
   type: "object"
   properties:
@@ -41,7 +41,7 @@ metadata:
   name: "Request"
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/http-client@0.1.4?local_path=./nodejs#http-request
+  - pkg:npm/@telorun/http-client@0.1.5?local_path=./nodejs#http-request
 schema:
   type: "object"
   properties:

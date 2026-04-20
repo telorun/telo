@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-client",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Telo HTTP Client module - HTTP client resource kinds for Telo manifests.",
   "keywords": [
     "telo",
