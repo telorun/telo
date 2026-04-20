@@ -1,6 +1,6 @@
 {
   "name": "@telorun/tracing",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Telo Tracing module - Tracing and observability for Telo manifests.",
   "keywords": [
     "telo",

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql
   namespace: std
-  version: 0.1.0
+  version: 0.1.1
   description: SQL database access — PostgreSQL and SQLite
 ---
 kind: Telo.Definition
@@ -10,7 +10,7 @@ metadata:
   name: Connection
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-connection
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-connection
 schema:
   type: object
   required:
@@ -84,7 +84,7 @@ metadata:
   name: Query
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-query
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-query
 schema:
   type: object
   properties:
@@ -116,7 +116,7 @@ metadata:
   name: Exec
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-exec
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-exec
 schema:
   type: object
   properties:
@@ -148,7 +148,7 @@ metadata:
   name: Transaction
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-transaction
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-transaction
 schema:
   type: object
   required:
@@ -173,7 +173,7 @@ metadata:
   name: Select
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-select
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-select
 schema:
   type: object
   required: [from]
@@ -282,7 +282,7 @@ metadata:
   name: Migration
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-migration
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-migration
 schema:
   type: object
   required: [sql]
@@ -297,7 +297,7 @@ metadata:
   name: Migrations
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/sql@0.1.3?local_path=./nodejs#sql-migrations
+  - pkg:npm/@telorun/sql@0.1.4?local_path=./nodejs#sql-migrations
 schema:
   type: object
   required: [connection]
