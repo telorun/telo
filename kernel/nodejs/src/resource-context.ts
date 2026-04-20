@@ -195,7 +195,7 @@ export class ResourceContextImpl implements ResourceContext {
     //  - the ref carries definition properties (clearly an inline definition), or
     //  - the ref is bare `{kind}` with no explicit name and the caller supplied
     //    a `resourceName` (the slot is known-inline — e.g. a Run.Sequence step
-    //    with `invoke: {kind: Run.Throw}` — and wants a fresh stateless
+    //    with `invoke: {kind: SomeInvocable}` — and wants a fresh stateless
     //    instance registered under the generated name).
     // Pure references (`{kind, name}` pointing at an existing resource) carry
     // an explicit name and skip registration.

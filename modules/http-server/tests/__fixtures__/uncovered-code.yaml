@@ -23,14 +23,12 @@ steps:
     if: "${{ true }}"
     then:
       - name: throwA
-        invoke: { kind: Run.Throw }
-        inputs:
+        throw:
           code: "A"
           message: "throws A"
     else:
       - name: throwB
-        invoke: { kind: Run.Throw }
-        inputs:
+        throw:
           code: "B"
           message: "throws B"
 ---

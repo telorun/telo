@@ -46,8 +46,8 @@ expect:
   errors:
     - code: CATCHALL_NOT_LAST
 ---
-# Run.Throw with `${{ error.code }}` inside a catch propagates the enclosing
-# try block's union. Route covers both codes → zero analyzer errors.
+# A `throw:` step with `code: "${{ error.code }}"` inside a catch propagates the
+# enclosing try block's union. Route covers both codes → zero analyzer errors.
 kind: Assert.Manifest
 metadata:
   name: TestPassthroughInsideCatch

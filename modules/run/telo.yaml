@@ -7,7 +7,6 @@ metadata:
 exports:
   kinds:
     - Sequence
-    - Throw
 ---
 kind: Telo.Definition
 metadata:
@@ -189,6 +188,32 @@ schema:
                 $ref: "#/$defs/step"
           required:
             - try
+
+        - title: throw
+          description: >-
+            Throws an InvokeError unconditionally. Works inside catch blocks via CEL
+            (e.g. code set to `"${{ error.code }}"`).
+          properties:
+            throw:
+              title: Throw
+              description: InvokeError descriptor; code is required, message/data optional.
+              type: object
+              properties:
+                code:
+                  title: Code
+                  description: Structured error code; uppercase SNAKE_CASE by convention.
+                  type: string
+                message:
+                  title: Message
+                  description: Human-readable error message. Defaults to `code` when omitted.
+                  type: string
+                data:
+                  title: Data
+                  description: Optional structured payload attached to the error.
+              required:
+                - code
+          required:
+            - throw
       required:
         - name
 
@@ -227,16 +252,3 @@ schema:
         $ref: "#/$defs/step"
   required:
     - steps
----
-kind: Telo.Definition
-metadata:
-  name: Throw
-capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/run@0.1.3?local_path=./nodejs#throw
-throws:
-  passthrough: true
-schema:
-  type: object
-  additionalProperties: false
-  properties: {}

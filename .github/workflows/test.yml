@@ -57,6 +57,9 @@ jobs:
       - name: Check example manifests
         run: pnpm run check examples/*.yaml
 
+      - name: Check apps manifests
+        run: pnpm run check apps/*/telo.yaml
+
       - name: Run tests (bun)
         run: pnpm test
 

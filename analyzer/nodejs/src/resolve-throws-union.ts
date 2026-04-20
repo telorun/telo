@@ -176,6 +176,10 @@ function collectStepThrows(
     return resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx);
   }
 
+  if (step.throw && typeof step.throw === "object") {
+    return resolveThrowStepCode(step.throw as Record<string, any>, enclosingTryCodes);
+  }
+
   if (Array.isArray(step.try)) {
     const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx);
     let propagated: ThrowsUnion;
@@ -286,7 +290,7 @@ function resolveStepInvokeThrows(
   return { codes, unbounded };
 }
 
-/** Resolve `Run.Throw`-style passthrough at a specific step. Recognised forms
+/** Resolve a passthrough-style invocable at a specific call site. Recognised forms
  *  (see "passthrough: true" in the plan):
  *  - constant literal (no template) → `{ <literal> }`
  *  - `${{ 'FOO' }}` constant expression → `{ FOO }`
@@ -296,7 +300,22 @@ function resolvePassthroughAtCallSite(
   step: Record<string, any>,
   enclosingTryCodes: Set<string> | undefined,
 ): ThrowsUnion {
-  const codeInput = step.inputs?.code;
+  return resolveCodeExpression(step.inputs?.code, enclosingTryCodes);
+}
+
+/** Resolve the `code:` of a `throw:` step to a throws union. Uses the same
+ *  recognised forms as passthrough call sites. */
+function resolveThrowStepCode(
+  throwSpec: Record<string, any>,
+  enclosingTryCodes: Set<string> | undefined,
+): ThrowsUnion {
+  return resolveCodeExpression(throwSpec.code, enclosingTryCodes);
+}
+
+function resolveCodeExpression(
+  codeInput: unknown,
+  enclosingTryCodes: Set<string> | undefined,
+): ThrowsUnion {
   if (typeof codeInput !== "string" || codeInput.length === 0) {
     return { codes: new Map(), unbounded: true };
   }

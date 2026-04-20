@@ -1,7 +1,6 @@
-import type { ASTNode } from "@marcbachmann/cel-js";
+import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
-import { celEnvironment } from "./cel-environment.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   createResolveCtx,
@@ -9,8 +8,8 @@ import {
   type ThrowsCodeMeta,
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
-import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
@@ -36,7 +35,12 @@ function collectOutcomeLists(
   manifest: ResourceManifest,
   schema: Record<string, any> | undefined,
   onReturns: (loc: ReturnsLocation) => void,
-  onCatches: (arr: OutcomeEntry[], arrayPath: string, siblingData: Record<string, any>, catchesFor: string) => void,
+  onCatches: (
+    arr: OutcomeEntry[],
+    arrayPath: string,
+    siblingData: Record<string, any>,
+    catchesFor: string,
+  ) => void,
 ): void {
   if (!schema) return;
   walkSchemaData(schema, manifest as Record<string, any>, "", {
@@ -113,9 +117,7 @@ function walkSchemaData(
 
 /** Read a referenced handler's `{kind, name}` from a sibling field. Handles
  *  both `"Alias.Kind"` strings and `{ kind, name? }` objects. */
-function resolveHandlerRef(
-  sibling: unknown,
-): { kind: string; name?: string } | null {
+function resolveHandlerRef(sibling: unknown): { kind: string; name?: string } | null {
   if (!sibling) return null;
   if (typeof sibling === "string") return { kind: sibling };
   if (typeof sibling === "object") {
@@ -136,12 +138,13 @@ function resolveHandlerRef(
  *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
 function extractCoveredCodes(
   whenExpr: string,
+  env: Environment,
 ): { proven: boolean; codes: Set<string> } {
   const match = whenExpr.match(/\$\{\{\s*([^}]+?)\s*\}\}/);
   if (!match) return { proven: false, codes: new Set() };
   let ast: ASTNode;
   try {
-    ast = celEnvironment.parse(match[1].trim()).ast;
+    ast = env.parse(match[1].trim()).ast;
   } catch {
     return { proven: false, codes: new Set() };
   }
@@ -221,6 +224,7 @@ function checkCatchesCoverage(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
+  env: Environment,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const declaredCodes = new Set(union.codes.keys());
@@ -234,7 +238,7 @@ function checkCatchesCoverage(
       hasCatchAll = true;
       continue;
     }
-    const { proven, codes } = extractCoveredCodes(e.when);
+    const { proven, codes } = extractCoveredCodes(e.when, env);
     if (proven) {
       for (const c of codes) {
         if (!declaredCodes.has(c)) {
@@ -291,6 +295,7 @@ function checkTypedErrorData(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
+  env: Environment,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   // If the union is unbounded we can't narrow data schemas reliably — skip
@@ -308,7 +313,7 @@ function checkTypedErrorData(
     const e = entries[i];
     if (!e) continue;
     const covered = e.when
-      ? extractCoveredCodes(e.when)
+      ? extractCoveredCodes(e.when, env)
       : { proven: false, codes: new Set<string>() };
     // Codes applicable to this entry:
     //  - coverage-proving `when:` → exactly those codes
@@ -317,20 +322,20 @@ function checkTypedErrorData(
       ? [...covered.codes].filter((c) => c in dataByCode)
       : allCodes;
     if (applicable.length === 0) continue;
-    const schemas = applicable
-      .map((c) => dataByCode[c])
-      .filter(Boolean) as Record<string, any>[];
+    const schemas = applicable.map((c) => dataByCode[c]).filter(Boolean) as Record<string, any>[];
     if (schemas.length === 0) continue;
     const dataSchema = intersectDataSchemas(schemas);
     // Walk CEL expressions inside this entry's body / headers — only
     // string-valued fields can contain CEL templates.
     collectCelStrings(e.body, `${arrayPath}[${i}].body`).forEach((entry) => {
-      diagnostics.push(...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath));
+      diagnostics.push(
+        ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env),
+      );
     });
     if (e.headers) {
       collectCelStrings(e.headers, `${arrayPath}[${i}].headers`).forEach((entry) => {
         diagnostics.push(
-          ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath),
+          ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env),
         );
       });
     }
@@ -399,10 +404,11 @@ function checkCelChainAgainstDataSchema(
   dataSchema: Record<string, any>,
   resource: { kind: string; name: string },
   filePath: string | undefined,
+  env: Environment,
 ): AnalysisDiagnostic[] {
   let ast: ASTNode;
   try {
-    ast = celEnvironment.parse(entry.expr).ast;
+    ast = env.parse(entry.expr).ast;
   } catch {
     return [];
   }
@@ -483,6 +489,7 @@ export function validateThrowsCoverage(
   manifests: ResourceManifest[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
+  env: Environment,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
@@ -514,10 +521,10 @@ export function validateThrowsCoverage(
         const handlerRef = resolveHandlerRef(siblingData[catchesFor]);
         const union = handlerRefUnion(handlerRef, manifests, resolveCtx);
         diagnostics.push(
-          ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath),
+          ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath, env),
         );
         diagnostics.push(
-          ...checkTypedErrorData(entries, union, resource, filePath, arrayPath),
+          ...checkTypedErrorData(entries, union, resource, filePath, arrayPath, env),
         );
       },
     );

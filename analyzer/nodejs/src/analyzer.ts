@@ -1,7 +1,12 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import type { Environment } from "@marcbachmann/cel-js";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
-import { buildTypedCelEnvironment, celEnvironment } from "./cel-environment.js";
+import {
+  buildCelEnvironment,
+  buildTypedCelEnvironment,
+  type CelHandlers,
+} from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
@@ -176,7 +181,8 @@ function collectCelTypeIssues(
   path: string,
   definition: { schema?: Record<string, any> },
   manifest: ResourceManifest,
-  baseEnv: ReturnType<typeof buildTypedCelEnvironment>,
+  baseTypedEnv: Environment,
+  rootEnv: Environment,
 ): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
 
@@ -186,11 +192,11 @@ function collectCelTypeIssues(
       const expr = exprMatch[1].trim();
 
       // Merge x-telo-context variables for this path if applicable
-      let typedEnv = baseEnv;
+      let typedEnv = baseTypedEnv;
       if (definition.schema) {
         for (const ctx of extractContextsFromSchema(definition.schema)) {
           if (!pathMatchesScope(path, ctx.scope)) continue;
-          typedEnv = buildTypedCelEnvironment(manifest, ctx.schema);
+          typedEnv = buildTypedCelEnvironment(rootEnv, manifest, ctx.schema);
           break;
         }
       }
@@ -202,7 +208,15 @@ function collectCelTypeIssues(
         /* degrade gracefully */
       }
 
-      if (checkResult?.valid && checkResult.type && schema) {
+      if (checkResult?.valid === false && checkResult.error) {
+        // env.check() rejected the expression itself — e.g. wrong method, wrong
+        // argument types, wrong operator overload. Surface the first line of the
+        // error message; the tail is a source-code caret diagram we don't need.
+        const message = String((checkResult.error as { message?: string }).message ?? checkResult.error)
+          .split("\n")[0]
+          .trim();
+        issues.push({ message: `CEL type error: ${message}`, path });
+      } else if (checkResult?.valid && checkResult.type && schema) {
         const celType = checkResult.type.split("<")[0]!;
         if (!celTypeSatisfiesJsonSchema(celType, schema)) {
           issues.push({
@@ -225,7 +239,8 @@ function collectCelTypeIssues(
           `${path}[${i}]`,
           definition,
           manifest,
-          baseEnv,
+          baseTypedEnv,
+          rootEnv,
         ),
       );
     }
@@ -239,7 +254,8 @@ function collectCelTypeIssues(
           path ? `${path}.${k}` : k,
           definition,
           manifest,
-          baseEnv,
+          baseTypedEnv,
+          rootEnv,
         ),
       );
     }
@@ -248,7 +264,17 @@ function collectCelTypeIssues(
   return issues;
 }
 
+export interface StaticAnalyzerOptions {
+  celHandlers?: CelHandlers;
+}
+
 export class StaticAnalyzer {
+  private readonly celEnv: Environment;
+
+  constructor(options: StaticAnalyzerOptions = {}) {
+    this.celEnv = buildCelEnvironment(options.celHandlers);
+  }
+
   analyze(
     manifests: ResourceManifest[],
     options?: AnalysisOptions,
@@ -383,8 +409,8 @@ export class StaticAnalyzer {
               }
             : definition.schema;
         // Phase 1: CEL type checking — walk data+schema together, check env.check() return types
-        const baseEnv = buildTypedCelEnvironment(m);
-        const celIssues = collectCelTypeIssues(m, schema, "", definition, m, baseEnv);
+        const baseTypedEnv = buildTypedCelEnvironment(this.celEnv, m);
+        const celIssues = collectCelTypeIssues(m, schema, "", definition, m, baseTypedEnv, this.celEnv);
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
         const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
         const issues = [...celIssues, ...ajvIssues];
@@ -421,9 +447,9 @@ export class StaticAnalyzer {
         : undefined;
 
       walkCelExpressions(m, "", (expr, path) => {
-        let parsed: ReturnType<typeof celEnvironment.parse> | undefined;
+        let parsed: ReturnType<typeof this.celEnv.parse> | undefined;
         try {
-          parsed = celEnvironment.parse(expr);
+          parsed = this.celEnv.parse(expr);
         } catch (e) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -498,7 +524,7 @@ export class StaticAnalyzer {
     diagnostics.push(...validateReferences(allManifests, { aliases, definitions: defs }));
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
-    diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases));
+    diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));
 
     return diagnostics;
   }

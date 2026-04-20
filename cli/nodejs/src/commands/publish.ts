@@ -198,11 +198,15 @@ async function pushToTeloRegistry(
   const url = `${registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
   const label = `${namespace}/${name}@${version}`;
 
+  const headers: Record<string, string> = { "content-type": "text/yaml" };
+  const token = process.env.TELO_REGISTRY_TOKEN;
+  if (token) headers.authorization = `Bearer ${token}`;
+
   let res: Response;
   try {
     res = await fetch(url, {
       method: "PUT",
-      headers: { "content-type": "text/yaml" },
+      headers,
       body: content,
     });
   } catch (err) {

@@ -74,6 +74,9 @@ export interface LoaderInitOptions {
   includeRegistryAdapter?: boolean;
   /** Base URL used by built-in RegistryAdapter when enabled. */
   registryUrl?: string;
+  /** Handlers for CEL stdlib functions (e.g. `sha256`). Analyzer-only callers may
+   *  omit this and get throwing stubs; runtime callers (kernel) must supply real impls. */
+  celHandlers?: import("./cel-environment.js").CelHandlers;
 }
 
 export interface AnalysisOptions {

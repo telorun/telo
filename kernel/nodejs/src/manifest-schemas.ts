@@ -44,7 +44,7 @@ const throwsSchema = {
     //  one `x-telo-step-context` array.
     inherit: { type: "boolean" },
     // "my throw union is whatever `inputs.code` resolves to statically." Used
-    // on Run.Throw. Analyzer resolves per call site.
+    // by passthrough-style adapters. Analyzer resolves per call site.
     passthrough: { type: "boolean" },
   },
 };

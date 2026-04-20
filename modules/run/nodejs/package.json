@@ -26,10 +26,6 @@
     "./sequence": {
       "bun": "./src/sequence.ts",
       "import": "./dist/sequence.js"
-    },
-    "./throw": {
-      "bun": "./src/throw.ts",
-      "import": "./dist/throw.js"
     }
   },
   "scripts": {

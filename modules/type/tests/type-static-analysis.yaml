@@ -6,6 +6,7 @@ targets:
   - TestBadFieldAccess
   - TestValidFieldAccess
   - TestUntypedStepAccess
+  - TestBadCelOverload
 ---
 kind: Telo.Import
 metadata:
@@ -37,3 +38,20 @@ metadata:
 source: ./__fixtures__/untyped-step-access.yaml
 expect:
   errors: []
+---
+# Invalid CEL method overload (`.slice(int)` instead of `.substring(int)`) —
+# env.check() rejects the expression itself. The analyzer must surface this as
+# SCHEMA_VIOLATION with the type-checker's message.
+kind: Assert.Manifest
+metadata:
+  name: TestBadCelOverload
+source: ./__fixtures__/bad-cel-overload.yaml
+expect:
+  # Two loose substring expectations instead of an exact upstream phrasing —
+  # @marcbachmann/cel-js wording may change between versions, but both "CEL
+  # type error" (our prefix) and "slice" (the offending method) should remain.
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "CEL type error"
+    - code: SCHEMA_VIOLATION
+      message: "slice"

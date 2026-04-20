@@ -14,6 +14,7 @@ import {
   type ModuleContext as IModuleContext,
   type ParsedArgs,
 } from "@telorun/sdk";
+import { createHash } from "node:crypto";
 import { ModuleContext } from "./module-context.js";
 import * as path from "path";
 import { parseArgs } from "util";
@@ -40,9 +41,13 @@ export interface KernelOptions {
  * Kernel: Central orchestrator managing lifecycle and message bus
  * Handles resource loading, initialization, and execution through controllers
  */
+const celHandlers = {
+  sha256: (s: string) => createHash("sha256").update(s).digest("hex"),
+};
+
 export class Kernel implements IKernel {
   private readonly loader: Loader;
-  private readonly analyzer = new StaticAnalyzer();
+  private readonly analyzer = new StaticAnalyzer({ celHandlers });
   private readonly registry = new AnalysisRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
@@ -69,7 +74,7 @@ export class Kernel implements IKernel {
     this.env = options.env ?? process.env;
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
-    this.loader = new Loader({ registryUrl: this.registryUrl });
+    this.loader = new Loader({ registryUrl: this.registryUrl, celHandlers });
     this.loader.register(new LocalFileAdapter());
     this.setupEventStreaming();
   }
