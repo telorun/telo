@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { Selection, ParsedResource } from "../../../model";
 import { summarizeResource } from "../../../diagnostics-aggregate";
+import { getTopologyRole } from "../../../schema-utils";
+import { isRecord } from "../../../lib/utils";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import {
   useActiveFilePaths,
@@ -22,17 +24,6 @@ interface RouterSchemaInfo {
   handlerField: string | null;
   entriesSchema: Record<string, unknown> | null;
   matcherSchema: Record<string, unknown> | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getTopologyRole(value: unknown): string | null {
-  if (!isRecord(value)) return null;
-  return typeof value["x-telo-topology-role"] === "string"
-    ? (value["x-telo-topology-role"] as string)
-    : null;
 }
 
 function getRouterSchemaInfo(schema: Record<string, unknown>): RouterSchemaInfo {

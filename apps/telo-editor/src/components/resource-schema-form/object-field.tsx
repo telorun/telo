@@ -1,4 +1,5 @@
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
+import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
@@ -20,10 +21,6 @@ interface ObjectFieldProps {
   /** Whether this field is required by the parent schema. When false, the
    *  header exposes a Clear button that unsets the whole object. */
   required?: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function setObjectChild(

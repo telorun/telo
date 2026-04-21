@@ -1,10 +1,11 @@
-import type {
-  AvailabilityReport,
-  ConfigIssue,
-  RunAdapter,
-  RunEvent,
-  RunSession,
-  RunStatus,
+import {
+  isTerminal,
+  type AvailabilityReport,
+  type ConfigIssue,
+  type RunAdapter,
+  type RunEvent,
+  type RunSession,
+  type RunStatus,
 } from "../../types";
 import {
   dockerApiConfigSchema,
@@ -27,10 +28,6 @@ interface ErrorResponse {
   message?: string;
   stage?: string;
   daemonMessage?: string;
-}
-
-function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
 }
 
 function validateBaseUrl(raw: string): ConfigIssue | null {

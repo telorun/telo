@@ -60,3 +60,7 @@ export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
   | { type: "status"; status: RunStatus };
+
+export function isTerminal(status: RunStatus): boolean {
+  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
+}

@@ -1,4 +1,5 @@
 import { collectRefTargets } from "../../resource-schema-form/ref-candidates";
+import { isRecord } from "../../../lib/utils";
 
 /** A top-level ref-bearing array on a resource schema, surfaced as a "rack"
  *  row in the right-hand bindings pane of `ResourceCanvas`.
@@ -40,10 +41,6 @@ export interface BindingDescriptor {
    *     they'd be silently uneditable if the form were hidden, so the form
    *     must stay visible alongside the rack. */
   complete: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function getString(record: Record<string, unknown>, key: string): string | undefined {

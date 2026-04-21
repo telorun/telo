@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { RunAdapter, RunEvent, RunRequest, RunSession, RunStatus } from "./types";
+import { isTerminal, type RunAdapter, type RunEvent, type RunRequest, type RunSession, type RunStatus } from "./types";
 
 const MAX_LOG_LINES = 10_000;
 
@@ -249,6 +249,3 @@ function handleRunEvent(
   });
 }
 
-function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
-}

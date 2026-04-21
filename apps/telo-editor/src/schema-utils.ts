@@ -1,6 +1,4 @@
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
+import { isRecord } from "./lib/utils";
 
 const TOPOLOGY_ROLE_ALIASES: Record<string, string> = {
   branchList: "branch-list",

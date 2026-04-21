@@ -1,4 +1,4 @@
-import type { RunEvent, RunStatus } from "../../types";
+import { isTerminal, type RunEvent } from "../../types";
 
 const STORAGE_PREFIX = "telo-editor:sse-last-event-id:";
 
@@ -110,10 +110,6 @@ function isRunEvent(value: unknown): value is RunEvent {
   if (!value || typeof value !== "object") return false;
   const v = value as { type?: unknown };
   return v.type === "stdout" || v.type === "stderr" || v.type === "status";
-}
-
-function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
 }
 
 function readPersistedId(key: string): number | null {

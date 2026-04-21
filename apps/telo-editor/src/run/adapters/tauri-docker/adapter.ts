@@ -1,13 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type {
-  AvailabilityReport,
-  ConfigIssue,
-  RunAdapter,
-  RunEvent,
-  RunSession,
-  RunStatus,
+import {
+  isTerminal,
+  type AvailabilityReport,
+  type ConfigIssue,
+  type RunAdapter,
+  type RunEvent,
+  type RunSession,
+  type RunStatus,
 } from "../../types";
 import {
   tauriDockerConfigSchema,
@@ -15,10 +16,6 @@ import {
   type TauriDockerConfig,
 } from "./config-schema";
 import type { OutputChunkPayload } from "./protocol";
-
-function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
-}
 
 export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
   id: "tauri-docker",

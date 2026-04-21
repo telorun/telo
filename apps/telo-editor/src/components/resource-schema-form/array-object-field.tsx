@@ -1,3 +1,4 @@
+import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
 import { inferRefMode, resolveRefCandidates, toRefValue } from "./ref-candidates";
@@ -13,10 +14,6 @@ interface ArrayObjectFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildDefaultValue(

@@ -4,7 +4,7 @@ Goal: every resource opens in a canvas. The generic canvas is a two-pane view �
 
 ## Motivation
 
-Today, selecting a resource like `http-server.Server` in the sidebar opens the DetailPanel but shows "does not have a canvas renderer yet" on the main canvas — the empty center is a UX wart. Wiring refs (mounts, not-found handler, parsers) requires dropping into the YAML. And [ARCHITECTURE.md:30](apps/telo-editor/ARCHITECTURE.md#L30)'s "topology is required for navigation" rule means the main canvas can never fill in for topology-less kinds.
+Today, selecting a resource like `http-server.Server` in the sidebar opens the DetailPanel but shows "does not have a canvas renderer yet" on the main canvas — the empty center is a UX wart. Wiring refs (mounts, not-found handler, parsers) requires dropping into the YAML. And the existing "topology is required for navigation" rule means the main canvas can never fill in for topology-less kinds.
 
 The unifying primitive across HTTP mounts, MCP tools, agent tools, not-found handlers, content-type parsers, and any future host is **binding an `x-telo-ref` to a target**. A generic canvas that pairs the form with per-field binding widgets handles all of them in one view — schema-driven, no kind hardcoding.
 
@@ -18,7 +18,7 @@ Every resource is navigable. `TopologyView` picks the renderer from the kind's `
 2. `topology === "Sequence"` → `SequenceTopologyCanvas` (unchanged, full-canvas)
 3. else → `ResourceCanvas` (new, the generic form + bindings view)
 
-The existing "topology is required for navigation" rule in [ARCHITECTURE.md:30](apps/telo-editor/ARCHITECTURE.md#L30) goes away. Every kind produces a canvas.
+The existing "topology is required for navigation" rule goes away. Every kind produces a canvas.
 
 ### ResourceCanvas layout
 
@@ -78,7 +78,7 @@ Single-level for now: panel shows the most recent sub-selection, no navigation s
 
 ## Step 0 — Analyzer-backed capability resolution
 
-`DefinitionRegistry.getByExtends(abstractKind)` at [definition-registry.ts:151](analyzer/nodejs/src/definition-registry.ts#L151) already does transitive capability lookup — do **not** add a parallel `getByCapability`. The stale doc references in [ARCHITECTURE.md:301,374](apps/telo-editor/ARCHITECTURE.md#L301) to `registry.getByCapability()` are fixed in Step 7.
+`DefinitionRegistry.getByExtends(abstractKind)` at [definition-registry.ts:151](analyzer/nodejs/src/definition-registry.ts#L151) already does transitive capability lookup — do **not** add a parallel `getByCapability`.
 
 What the editor needs:
 
@@ -217,10 +217,11 @@ If the form-state duplication becomes a problem, we'll re-visit the single-surfa
 
 ## Step 7 — ARCHITECTURE.md reconciliation
 
-Two edits in [apps/telo-editor/ARCHITECTURE.md](apps/telo-editor/ARCHITECTURE.md):
+`apps/telo-editor/ARCHITECTURE.md` was never checked in, so there are no edits
+to make here. If/when that document is authored, it should encode:
 
-1. Retire the "topology is required for navigation" rule at line 30. Replace with: *"Every resource is navigable. The renderer used for the canvas is chosen from the kind's `topology`; kinds without a topology render in the generic `ResourceCanvas` (form + bindings)."*
-2. Reconcile §4 "Connectable mode" (lines ~297-335). The bindings pane **is** the realization of connectable mode for resource editing. Rewrite §4 to describe the bindings pane as the mechanism for every kind *except* workflow topology — the React-Flow graph canvas with edges is retained **only** as the planned renderer for a future `topology: Workflow` and does not apply to general resource display. Fix the stale `registry.getByCapability()` references — the registry method is `getByExtends`.
+1. The "topology is required for navigation" rule is retired: *"Every resource is navigable. The renderer used for the canvas is chosen from the kind's `topology`; kinds without a topology render in the generic `ResourceCanvas` (form + bindings)."*
+2. The bindings pane **is** the realization of connectable mode for resource editing. The React-Flow graph canvas with edges is retained **only** as the planned renderer for a future `topology: Workflow` and does not apply to general resource display. The registry method is `getByExtends`, not `getByCapability`.
 
 ---
 
