@@ -281,6 +281,6 @@ kernel.execute("Run.Sequence.TestCalculator", {})
 
 ## See Also
 
-- [Examples](../examples/) - Complete working test examples
+- [Examples](https://github.com/telorun/telo/tree/main/examples) - Complete working test examples
 - [Kernel Documentation](../kernel/README.md) - How Telo kernel works
 - [Module Documentation](../modules/README.md) - Module structure and resources

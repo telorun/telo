@@ -1,5 +1,26 @@
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
+import sidebars from "./sidebars";
+
+function collectDocIds(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  const ids: string[] = [];
+  for (const item of items) {
+    if (typeof item === "string") {
+      ids.push(item);
+    } else if (item && typeof item === "object") {
+      const rec = item as Record<string, unknown>;
+      if (rec.type === "doc" && typeof rec.id === "string") {
+        ids.push(rec.id);
+      } else if (rec.type === "category") {
+        ids.push(...collectDocIds(rec.items));
+      }
+    }
+  }
+  return ids;
+}
+
+const docInclude = collectDocIds(sidebars.docs).map((id) => `${id}.md`);
 
 const config: Config = {
   title: "Telo",
@@ -24,44 +45,7 @@ const config: Config = {
           // Read directly from original markdown files — no copies
           path: "..",
           routeBasePath: "/",
-          include: [
-            "README.md",
-            "guides/style-guide.md",
-            "guides/templating.md",
-            "cli/README.md",
-            "kernel/README.md",
-            "kernel/docs/resource-definition.md",
-            "kernel/docs/capabilities.md",
-            "kernel/docs/capabilities/invocable.md",
-            "kernel/docs/topology.md",
-            "kernel/docs/topologies/sequence.md",
-            "kernel/docs/topologies/router.md",
-            "kernel/docs/topologies/workflow.md",
-            "kernel/docs/inheritance.md",
-            "kernel/docs/resource-lifecycle.md",
-            "kernel/docs/resource-references.md",
-            "kernel/docs/controllers.md",
-            "kernel/docs/modules.md",
-            "kernel/docs/module-grants.md",
-            "kernel/docs/evaluation-context.md",
-            "kernel/docs/signals.md",
-            "kernel/docs/data-types.md",
-            "kernel/docs/telemetry-and-observability.md",
-            "yaml-cel-templating/README.md",
-            "modules/README.md",
-            "modules/http-server/README.md",
-            "modules/http-server/docs/returns-and-catches.md",
-            "modules/run/docs/structured-errors.md",
-            "modules/http-client/README.md",
-            "modules/assert/docs/manifest.md",
-            "modules/s3/docs/bucket.md",
-            "modules/s3/docs/put.md",
-            "modules/s3/docs/list.md",
-            "modules/test/docs/suite.md",
-            "sdk/README.md",
-            "sdk/nodejs/README.md",
-            "tests/README.md",
-          ],
+          include: docInclude,
           sidebarPath: "./sidebars.ts",
         },
         blog: false,
