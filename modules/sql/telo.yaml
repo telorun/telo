@@ -287,6 +287,17 @@ schema:
   type: object
   required: [sql]
   properties:
+    version:
+      title: Version
+      type: string
+      description: >-
+        Durable ledger key written to the migrations tracking table. Must be
+        unique across all migrations in the run and MUST NOT change after the
+        migration has been applied anywhere — renaming it would cause the
+        migration to re-run. Conventionally a timestamp-prefixed slug
+        (e.g. `20260419100200_CreateTokens`). Distinct from `metadata.name`,
+        which is the in-manifest resource handle. When omitted, the controller
+        falls back to `metadata.name` for backwards compatibility.
     sql:
       title: SQL
       type: string

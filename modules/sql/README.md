@@ -141,7 +141,8 @@ connection:
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260401120000_CreateUsers
+  name: Migration_20260401120000_CreateUsers
+version: 20260401120000_CreateUsers
 sql: |
   CREATE TABLE users (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -150,6 +151,8 @@ sql: |
   )
 ```
 
-The runner tracks applied migrations in a metadata table and is idempotent — already-applied migrations are skipped. Use timestamp-prefixed names so the order is stable.
+`version` is the durable key written to the migrations tracking table. It decides run order (lexicographic) and identifies the migration forever after — renaming a `version` makes the migrator think it's a new migration and try to re-run it. Conventionally a timestamp-prefixed slug. If omitted, the controller falls back to `metadata.name`, but note that `metadata.name` must satisfy Telo's resource-name rules (`^[a-zA-Z_][a-zA-Z0-9_]*$`, no leading digit), which is why new migrations should set `version` explicitly and give `metadata.name` a `Migration_`-prefixed handle.
+
+The runner tracks applied migrations in a metadata table and is idempotent — already-applied migrations are skipped.
 
 Make the Application `targets` list include `Migrate` so schema evolution happens before services start serving traffic.

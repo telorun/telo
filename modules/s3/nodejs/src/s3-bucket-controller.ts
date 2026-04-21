@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  HeadBucketCommand,
   PutBucketPolicyCommand,
   S3Client,
   S3ServiceException,
@@ -53,18 +54,35 @@ export async function create(
     await ensureBucket(instance);
   }
   if (resource.publicRead) {
-    await applyPublicReadPolicy(instance);
+    // await applyPublicReadPolicy(instance);
   }
   return instance;
 }
 
 async function ensureBucket(instance: S3BucketResource): Promise<void> {
+  if (await bucketExists(instance)) {
+    return;
+  }
   try {
     await instance.getClient().send(new CreateBucketCommand({ Bucket: instance.bucketName }));
   } catch (err) {
     if (err instanceof S3ServiceException) {
       if (err.name === "BucketAlreadyOwnedByYou" || err.name === "BucketAlreadyExists") {
         return;
+      }
+    }
+    throw err;
+  }
+}
+
+async function bucketExists(instance: S3BucketResource): Promise<boolean> {
+  try {
+    await instance.getClient().send(new HeadBucketCommand({ Bucket: instance.bucketName }));
+    return true;
+  } catch (err) {
+    if (err instanceof S3ServiceException) {
+      if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
+        return false;
       }
     }
     throw err;

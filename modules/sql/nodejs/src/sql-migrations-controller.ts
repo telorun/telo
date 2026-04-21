@@ -49,8 +49,9 @@ class SqlMigrationsResource implements ResourceInstance {
     const migrations: MigrationEntry[] = [];
     for (const [, { resource }] of this.ctx.moduleContext.resourceInstances) {
       if (resource.kind === "Sql.Migration") {
+        const version = (resource.version ?? resource.metadata.name) as string;
         migrations.push({
-          name: resource.metadata.name as string,
+          name: version,
           sql: resource.sql as string,
         });
       }
