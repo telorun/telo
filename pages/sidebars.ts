@@ -62,6 +62,11 @@ const sidebars: SidebarsConfig = {
       label: "Standard Library",
       items: [
         { type: "doc", id: "modules/README", label: "Overview" },
+        { type: "doc", id: "modules/assert/docs/manifest", label: "Assert" },
+        { type: "doc", id: "modules/benchmark/README", label: "Benchmark" },
+        { type: "doc", id: "modules/config/README", label: "Config" },
+        { type: "doc", id: "modules/console/README", label: "Console" },
+        { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
         {
           type: "category",
           label: "HTTP Server",
@@ -74,7 +79,7 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
-        { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
+        { type: "doc", id: "modules/javascript/README", label: "JavaScript" },
         {
           type: "category",
           label: "Run",
@@ -86,7 +91,6 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
-        { type: "doc", id: "modules/assert/docs/manifest", label: "Assert.Manifest" },
         {
           type: "category",
           label: "S3",
@@ -96,7 +100,21 @@ const sidebars: SidebarsConfig = {
             { type: "doc", id: "modules/s3/docs/list", label: "S3.List" },
           ],
         },
+        {
+          type: "category",
+          label: "SQL",
+          items: [
+            { type: "doc", id: "modules/sql/README", label: "Overview" },
+            { type: "doc", id: "modules/sql/select", label: "Sql.Select" },
+          ],
+        },
+        { type: "doc", id: "modules/sql-repository/README", label: "SQL Repository" },
+        { type: "doc", id: "modules/starlark/README", label: "Starlark" },
         { type: "doc", id: "modules/test/docs/suite", label: "Test.Suite" },
+        { type: "doc", id: "modules/tracing/README", label: "Tracing" },
+        { type: "doc", id: "modules/type/README", label: "Type" },
+        { type: "doc", id: "modules/workflow/README", label: "Workflow" },
+        { type: "doc", id: "modules/workflow-temporal/README", label: "Workflow (Temporal)" },
       ],
     },
     {

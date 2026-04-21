@@ -131,8 +131,6 @@ register(ctx)   — called once before any resource is initialized; optional
 create(resource, ctx) → instance | null   — called once per resource; required
 ```
 
-Full interface is defined in [README.md § 5](README.md#5-controller-interface).
-
 The loader validates the loaded module against this contract and throws if neither
 `create` nor `register` is exported.
 

@@ -140,3 +140,42 @@ variables:
 - A key not listed in the store's `keys` cannot be read, even in a CEL expression — it will fail at init time.
 - Multiple maps can reference the same store.
 - CEL expressions have access only to the keys declared in the referenced store.
+
+---
+
+## Config.Env
+
+A compact shortcut that collapses store, variables, and secrets into a single resource — useful for small apps and examples where the three-piece layout is overkill. Each entry declares the source environment variable, its type, and an optional default.
+
+```yaml
+kind: Config.Env
+metadata:
+  name: AppConfig
+variables:
+  port:
+    env: PORT
+    type: integer
+    default: 3000
+  logLevel:
+    env: LOG_LEVEL
+    type: string
+    default: info
+secrets:
+  dbConnection:
+    env: DB_CONNECTION
+    type: string
+  apiKey:
+    env: STRIPE_KEY
+    type: string
+```
+
+Downstream resources reference values the same way as with `Config.Variables` / `Config.Secrets`:
+
+```yaml
+connectionString: "${{ resources.AppConfig.dbConnection }}"
+port: "${{ resources.AppConfig.port }}"
+```
+
+Types supported: `string`, `integer`, `number`, `boolean`. Missing variables without a `default` are a hard boot-time error — identical to the store/map split. Values declared under `secrets` are redacted in logs and error messages.
+
+Pick `Config.Env` for a single-module app that reads the environment directly. Pick the store + map split when multiple maps share a store, when you need CEL composition across keys, or when different key groups are imported into different child modules.

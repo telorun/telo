@@ -147,7 +147,7 @@ routes:
 
 Role annotations are required whenever a `topology` is declared, regardless of whether a controller is also present. The controller replaces runtime execution but the editor and analyzer still read role annotations.
 
-For the role names defined per topology, see [topology.md § Topology Role Annotations](topology.md#topology-role-annotations).
+For the role names defined per topology, see [topology.md § Role Annotations](topology.md#role-annotations).
 
 #### `x-telo-schema-from`
 
