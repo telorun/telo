@@ -1,3 +1,7 @@
+---
+description: "Tracing module (planned): kernel event export to observability backends with Tracing.Provider fan-out and Tracing.FileExporter"
+---
+
 # Tracing
 
 **Wardning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.

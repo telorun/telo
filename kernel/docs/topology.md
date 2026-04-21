@@ -1,3 +1,7 @@
+---
+description: "Topology design: composition patterns (Sequence, Router, Workflow) that drive kernel execution and editor rendering"
+---
+
 # Topology
 
 **Status:** Design proposal — not yet implemented.

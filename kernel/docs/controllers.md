@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec: controller loader resolves Package URLs (PURLs) to implementations with type, namespace, version, qualifiers"
+---
+
 # Telo Controller Loader Specification (v1.0 Draft)
 
 ## Overview

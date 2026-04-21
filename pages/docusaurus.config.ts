@@ -56,7 +56,7 @@ const config: Config = {
     ],
   ],
 
-  plugins: ["./plugins/llms-txt"],
+  plugins: [["./plugins/llms-txt", { sidebar: sidebars.docs }]],
 
   themeConfig: {
     navbar: {

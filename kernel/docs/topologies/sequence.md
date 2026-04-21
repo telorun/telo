@@ -1,3 +1,7 @@
+---
+description: "Sequence topology: ordered step execution with invoke, if/elseif/else, while, switch, and try/catch control flow"
+---
+
 # Topology: Sequence
 
 An ordered, nestable tree of steps. Each step either invokes an invocable or applies a control flow operation (`if`, `while`, `switch`, `try`) that contains nested child steps.

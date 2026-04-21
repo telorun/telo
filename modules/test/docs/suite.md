@@ -1,4 +1,5 @@
 ---
+description: "Test.Suite: discovers and runs test manifests in isolated kernel instances with result aggregation and CLI filtering"
 sidebar_label: Test.Suite
 ---
 

@@ -1,3 +1,7 @@
+---
+description: "Console I/O: Console.WriteLine writes output lines, Console.ReadLine reads stdin with prompt for interactive CLI applications"
+---
+
 # Console
 
 Direct access to the process's standard streams. Useful for CLI-style manifests, interactive demos, and tests that want to print without a logger layer.

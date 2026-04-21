@@ -1,3 +1,7 @@
+---
+description: "Ambient context injection for OpenTelemetry tracing: engine-automated instrumentation with resource-level domain enrichment"
+---
+
 # Telo Engine Specification: Telemetry & Observability
 
 ## 1. Core Principles

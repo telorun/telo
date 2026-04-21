@@ -1,3 +1,7 @@
+---
+description: "Zero-cost point-to-point signals for business events with static routing, module boundary translation, and CEL payloads"
+---
+
 # Telo Signals
 
 ## 1. Core Principles

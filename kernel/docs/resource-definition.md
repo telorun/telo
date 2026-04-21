@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec for Telo.Definition: schema, capability, topology, invocation contract, and controller declarations"
+---
+
 # `Telo.Definition` Specification
 
 ## Overview

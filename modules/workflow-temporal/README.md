@@ -1,3 +1,7 @@
+---
+description: "Temporal backend (planned): Workflow.Temporal.Backend connects to Temporal server for durable, replayable workflow execution"
+---
+
 # Workflow Temporal
 
 **Wardning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.

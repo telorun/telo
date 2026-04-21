@@ -1,4 +1,5 @@
 ---
+description: "S3.Put: invocable for uploading objects to bucket with key, body, and optional MIME type"
 sidebar_label: S3.Put
 ---
 

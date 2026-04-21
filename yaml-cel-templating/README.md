@@ -1,3 +1,7 @@
+---
+description: "v1.0 CEL-YAML templating spec: $let, $if, $for, $eval, $include directives for compile-time manifest generation"
+---
+
 # CEL-YAML Templating Specification (v1.0)
 
 ## 1. Core Principles

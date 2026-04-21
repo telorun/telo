@@ -1,4 +1,5 @@
 ---
+description: "Assert.Manifest: runs static analyzer on YAML and asserts on diagnostic codes/messages for negative testing"
 sidebar_label: Assert.Manifest
 ---
 

@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec: Http.Request contract for outgoing calls with standardized request/response objects and network error handling"
+---
+
 # Telo HTTP Client Standard Specification (v1.0 Draft)
 
 ## Overview

@@ -1,3 +1,7 @@
+---
+description: "Naming conventions for Telo identifiers, kinds, imports, and variables to ensure CEL expression correctness"
+---
+
 # Telo Official Style Guide: Naming Conventions
 
 Welcome to the Telo Style Guide! While the Telo engine is designed to be highly flexible, following a consistent naming convention ensures that your declarative manifests are readable, maintainable, and seamlessly integrate with the broader Telo module ecosystem.

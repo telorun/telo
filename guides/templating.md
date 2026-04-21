@@ -1,3 +1,7 @@
+---
+description: "Guide to authoring parameterized Telo template modules with JSON Schema contracts, CEL-YAML directives, and typed exports"
+---
+
 # Telo Template Modules: Developer Guide
 
 In Telo, a "template" is fundamentally a parameterized Module. By defining a strict contract and utilizing CEL-YAML directives, you can create reusable, encapsulated components that dynamically generate resources based on provided inputs.

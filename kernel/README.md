@@ -1,3 +1,7 @@
+---
+description: "Telo Kernel: declarative execution host that loads YAML, compiles CEL expressions, indexes resources, and orchestrates execution"
+---
+
 # Telo Kernel
 
 **Target:** Node.js (Rust/Go ports planned)

@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec for resource references: x-telo-ref keyword, module identity lookup, kind constraints, and resolution phases"
+---
+
 # Telo Kernel Resource References Specification
 
 ## Overview

@@ -1,3 +1,7 @@
+---
+description: "v1.0 Http.Server and Http.Api spec: routing, normalized request/response I/O, OpenAPI path syntax, framework-agnostic"
+---
+
 # Telo HTTP Standard Specification (v1.0 Draft)
 
 ## Overview

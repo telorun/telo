@@ -1,3 +1,7 @@
+---
+description: "SqlRepository: domain-shaped CRUD (Read/Create/Delete) expanding to Sql.Query with equality filters and typed inputs"
+---
+
 # SQL Repository
 
 Domain-shaped CRUD over a table. `SqlRepository.Read`, `SqlRepository.Create`, and `SqlRepository.Delete` each take a table name and a connection and expose a typed invocable whose inputs describe the operation in domain terms (`filters`, `data`) rather than SQL.

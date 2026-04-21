@@ -1,4 +1,5 @@
 ---
+description: "Run.Sequence error handling: try/catch/finally with InvokeError.code/message/data binding and rethrow step capability"
 sidebar_label: Structured Errors
 ---
 

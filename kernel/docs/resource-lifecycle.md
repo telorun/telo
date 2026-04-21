@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec: resource lifecycle stages (Validated, Initialized, Draining, Teardown) and topological ordering across dependency graphs"
+---
+
 # Telo Resource Lifecycle Specification (v1.0 Draft)
 
 ## 1. Overview

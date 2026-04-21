@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec: default-deny sandbox with explicit grants for net, filesystem, system, and native capabilities per module import"
+---
+
 # Telo Module Grants Specification (v1.0 Draft)
 
 ## 1. Overview and Philosophy

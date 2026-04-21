@@ -1,3 +1,7 @@
+---
+description: "Type module: Type.JsonSchema for named reusable types with optional inheritance and CEL-based business rules"
+---
+
 # Type
 
 Named data types for Telo. A `Type.JsonSchema` resource defines a reusable type — a JSON Schema body, optional inheritance from other named types, and optional CEL-based business rules. Any invocable that accepts `inputType` or `outputType` (`JavaScript.Script`, `Starlark.Script`, `Sql.Select`, HTTP handlers) can reference it by name.

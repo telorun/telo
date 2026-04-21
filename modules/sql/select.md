@@ -1,3 +1,7 @@
+---
+description: "Sql.Select: declarative SELECT builder with columns, filters, ordering, pagination, and aggregates without raw SQL strings"
+---
+
 # Sql.Select
 
 A declarative `SELECT` builder. Expresses query structure as data — columns, filters, ordering, pagination — without writing SQL strings.

@@ -1,4 +1,5 @@
 ---
+description: "S3.Bucket: S3-compatible bucket provider for AWS S3, Cloudflare R2, MinIO with endpoint, credentials, and path style options"
 sidebar_label: S3.Bucket
 ---
 

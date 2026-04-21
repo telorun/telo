@@ -1,3 +1,7 @@
+---
+description: "Inheritance via extends: abstract interface declaration (Telo.Abstract) and implementation pattern for pluggable subsystems"
+---
+
 # Inheritance
 
 `extends` on a `Telo.Definition` declares that the kind **fulfills an abstract interface** declared by another module. This is the extension point for pluggable subsystems: one module defines the contract, other modules provide implementations.
