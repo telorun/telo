@@ -402,11 +402,6 @@ export function ResourceCanvas({
                   <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
                 </label>
               );
-            const description =
-              typeof prop.description === "string" ? (
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
-              ) : null;
-
             const formControl = (
               <FieldControl
                 rootFieldName={name}
@@ -430,7 +425,6 @@ export function ResourceCanvas({
                   {showTopDivider && divider}
                   <div className="col-span-full flex flex-col gap-1">
                     {formControl}
-                    {description}
                   </div>
                   {showBottomDivider && divider}
                 </Fragment>
@@ -445,7 +439,6 @@ export function ResourceCanvas({
                     {label}
                     {binding && renderBinding(binding)}
                     {!hideFormControl && formControl}
-                    {description}
                   </div>
                   {showBottomDivider && divider}
                 </Fragment>
@@ -458,7 +451,6 @@ export function ResourceCanvas({
                 <div className="flex flex-col gap-1">
                   {label}
                   {!hideFormControl && formControl}
-                  {description}
                 </div>
                 <div className="flex min-h-8 flex-col gap-1">
                   {binding ? renderBinding(binding) : null}

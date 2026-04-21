@@ -1,0 +1,77 @@
+kind: Telo.Application
+metadata:
+  name: JavaScriptInlineTypeTest
+  version: 1.0.0
+targets:
+  - TestInlineInputOutputType
+
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ..
+---
+kind: Telo.Import
+metadata:
+  name: Type
+source: ../../type
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+
+---
+# Inline {kind, schema} for both inputType and outputType — the analyzer
+# normalizes these into synthesized Type.JsonSchema resources. The kernel
+# must resolve the resulting {kind, name} ref to the registered schema
+# instead of trying to compile it as a JSON Schema literal.
+kind: JavaScript.Script
+metadata:
+  name: Greet
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties:
+      name: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [message]
+    properties:
+      message: { type: string }
+code: |
+  function main({ name }) {
+    return { message: `Hello ${name}!` }
+  }
+
+---
+kind: Run.Sequence
+metadata:
+  name: TestInlineInputOutputType
+steps:
+  - name: Call
+    inputs:
+      name: "World"
+    invoke:
+      kind: JavaScript.Script
+      name: Greet
+  - name: VerifyMessage
+    inputs:
+      message: "${{ steps.Call.result.message }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
+            const: "Hello World!"

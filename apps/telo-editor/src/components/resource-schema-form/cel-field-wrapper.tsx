@@ -1,3 +1,4 @@
+import { CodeIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isCelExpression, type CelEvalMode } from "./cel-utils";
 
@@ -58,9 +59,7 @@ export function CelFieldWrapper({
           }`}
           title={`${expressionMode ? "Switch to static value" : "Switch to CEL expression"} (${modeLabel})`}
         >
-          <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M5 3 2 8l3 5M11 3l3 5-3 5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <CodeIcon className="size-3" />
           {"${{ }}"}
         </button>
         {expressionMode && (

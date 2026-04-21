@@ -11,6 +11,7 @@ export function RunView() {
   const {
     activeRun,
     unavailableRun,
+    isStarting,
     stopRun,
     clearLog,
     closeRunView,
@@ -30,8 +31,18 @@ export function RunView() {
 
   if (!activeRun) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
-        No active run.
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+        {isStarting ? (
+          <>
+            <span
+              className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"
+              aria-hidden
+            />
+            <span>Starting run…</span>
+          </>
+        ) : (
+          <span className="text-zinc-400 dark:text-zinc-600">No active run.</span>
+        )}
       </div>
     );
   }

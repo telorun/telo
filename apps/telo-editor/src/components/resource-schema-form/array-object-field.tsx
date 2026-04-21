@@ -138,11 +138,6 @@ export function ArrayObjectField({
                       label={itemLabel}
                       required={itemRequired.has(itemName)}
                     />
-                    {typeof itemProp.description === "string" && (
-                      <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                        {itemProp.description}
-                      </span>
-                    )}
                   </div>
                 );
               })}

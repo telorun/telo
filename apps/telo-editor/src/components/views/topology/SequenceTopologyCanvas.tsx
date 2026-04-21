@@ -16,6 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Trash2Icon } from "lucide-react";
 import { Button } from "../../ui/button";
 import {
   ContextMenu,
@@ -436,12 +437,7 @@ function StepCardContent({
             onRemove();
           }}
         >
-          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M3.5 4.5h9" strokeLinecap="round" />
-            <path d="M6.5 2.5h3" strokeLinecap="round" />
-            <path d="M5 4.5v7.25a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M6.75 6.75v3.5M9.25 6.75v3.5" strokeLinecap="round" />
-          </svg>
+          <Trash2Icon />
         </Button>
       )}
       <span

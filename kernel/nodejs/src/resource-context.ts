@@ -72,25 +72,40 @@ export class ResourceContextImpl implements ResourceContext {
   createTypeValidator(typeRef: string | Record<string, any> | undefined) {
     if (!typeRef) return new NoopValidator();
 
-    // String reference: look up registered type schema by name
-    if (typeof typeRef === "string") {
-      const schema = this.validator.getSchema(typeRef);
+    // String ref, or {kind, name} ref object produced by inline-resource
+    // normalization (before Phase 5 injection substitutes the live instance).
+    // Both resolve by looking up the registered schema by name.
+    const hasInlineSchema =
+      typeof typeRef !== "string" && typeRef.schema && typeof typeRef.schema === "object";
+    const refName =
+      typeof typeRef === "string"
+        ? typeRef
+        : typeof typeRef.name === "string" && !hasInlineSchema
+          ? typeRef.name
+          : undefined;
+
+    if (refName !== undefined) {
+      const schema = this.validator.getSchema(refName);
       if (!schema) {
         throw new RuntimeError(
           "ERR_TYPE_NOT_FOUND",
-          `Type "${typeRef}" not found in schema registry`,
+          `Type "${refName}" not found in schema registry`,
         );
       }
       const base = this.validator.compile(schema);
-      const rules = this.validator.getTypeRules(typeRef);
+      const rules = this.validator.getTypeRules(refName);
       if (rules && rules.length > 0) {
-        return this.validator.composeWithRules(base, typeRef, rules);
+        return this.validator.composeWithRules(base, refName, rules);
       }
       return base;
     }
 
+    // Strings were handled above. TS can't follow the narrowing through the
+    // compound `refName` expression, so restate it here.
+    if (typeof typeRef === "string") return this.validator.compile(typeRef);
+
     // Inline schema object: if it has a `schema` property, it's a type resource shape
-    if (typeRef.schema && typeof typeRef.schema === "object") {
+    if (hasInlineSchema) {
       const base = this.validator.compile(typeRef.schema);
       const rules = Array.isArray(typeRef.rules) ? typeRef.rules : [];
       if (rules.length > 0) {

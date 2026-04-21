@@ -74,9 +74,6 @@ export function ResourceSchemaForm({
               label={labelText}
               required={required.has(name)}
             />
-            {typeof prop.description === "string" && (
-              <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
-            )}
           </div>
         );
       })}
