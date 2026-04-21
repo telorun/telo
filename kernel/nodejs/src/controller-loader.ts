@@ -8,7 +8,9 @@ import * as path from "path";
 import { promisify } from "util";
 
 const homedir = os.homedir();
-const cacheRoot = path.join(homedir, ".cache", "telo");
+const cacheRoot = process.env.TELO_CACHE_DIR
+  ? path.resolve(process.env.TELO_CACHE_DIR)
+  : path.join(homedir, ".cache", "telo");
 const npmCacheRoot = path.join(cacheRoot, "npm");
 const isBun = typeof (globalThis as any).Bun !== "undefined";
 

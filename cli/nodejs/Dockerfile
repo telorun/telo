@@ -9,16 +9,13 @@ RUN --mount=type=cache,target=/pnpm pnpm fetch
 COPY . /build
 RUN --mount=type=cache,target=/pnpm pnpm install --frozen-lockfile
 RUN pnpm --filter=@telorun/cli... run build
-RUN pnpm --filter=cli --prod deploy --legacy /deploy
+RUN pnpm --filter=@telorun/cli --prod deploy --legacy /deploy
 
-FROM node:24-slim
+FROM node:24-slim as production
 
-WORKDIR /telo
-COPY --from=build /deploy/ /telo/
-ENV PATH="/telo/bin:$PATH"
-RUN chmod +x /telo/bin/telo.mjs
+COPY --from=build /deploy/ /opt/telo/
+RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo
 
-ENTRYPOINT ["/telo/bin/telo.mjs"]
+WORKDIR /srv
 
-
-
+ENTRYPOINT ["telo"]

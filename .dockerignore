@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+.git
+.github
+apps/telo-editor/src-tauri/target
+pages/build
+pages/.docusaurus
+**/.turbo
+**/.next
+**/coverage
+**/*.log
+.env
+.env.*
+.DS_Store
