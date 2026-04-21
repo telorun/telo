@@ -51,6 +51,7 @@ import {
   resolveRef,
   type VariantMeta,
 } from "../../../schema-utils";
+import { isRecord } from "../../../lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,10 +75,6 @@ type ContainerMap = Record<string, StepItem[]>;
 
 let idSeq = 0;
 const uid = () => `s${++idSeq}`;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
 
 function getStepName(step: Record<string, unknown>): string {
   return typeof step.name === "string" && step.name ? step.name : "Unnamed";

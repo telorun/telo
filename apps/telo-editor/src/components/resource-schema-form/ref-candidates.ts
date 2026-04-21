@@ -1,8 +1,5 @@
+import { isRecord } from "../../lib/utils";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** Parsed `x-telo-ref` target, e.g. "telo#Mount" → { scope: "telo", symbol: "Mount" }. */
 interface ParsedRefTarget {

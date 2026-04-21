@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModuleViewData, Selection } from "../model";
 import { summarizeResource } from "../diagnostics-aggregate";
+import { isRecord } from "../lib/utils";
 import type { CelEvalMode } from "./resource-schema-form/cel-utils";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
@@ -18,10 +19,6 @@ interface DetailPanelProps {
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
   onNavigateResource: (kind: string, name: string) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeFields(values: Record<string, unknown>): Record<string, unknown> {

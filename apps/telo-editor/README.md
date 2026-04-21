@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Telo Editor
 
-## Getting Started
+Desktop manifest editor for [Telo](https://github.com/telorun/telo). Opens a
+workspace directory, parses its YAML manifests, runs static analysis through
+the shared `@telorun/analyzer` package, and provides Topology, Inventory,
+Source, and Deployment views for editing resources.
 
-First, run the development server:
+Built as a React + Vite SPA wrapped in a [Tauri](https://tauri.app) shell.
+
+## Development
+
+Run the Vite dev server on its own (browser-only, no native shell):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run the full Tauri desktop shell against the dev server:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm tauri dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Building
 
-## Learn More
+```bash
+pnpm build          # Vite build → dist/
+pnpm tauri build    # Native desktop bundle
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Testing
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm test           # Vitest, one-shot
+pnpm test:watch     # Vitest, watch mode
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Layout
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/` — React app (editor UI, workspace model, analysis adapter, run adapters)
+- `src-tauri/` — Tauri Rust host (native shell, Docker sidecar for running manifests)
+- `index.html` — Vite entry
+- `vite.config.ts` — Vite configuration

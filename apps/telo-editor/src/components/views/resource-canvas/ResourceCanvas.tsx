@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ParsedResource } from "../../../model";
 import { summarizeResource } from "../../../diagnostics-aggregate";
+import { isRecord } from "../../../lib/utils";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import {
   useActiveFilePaths,
@@ -33,10 +34,6 @@ interface ResourceCanvasProps {
   /** When true, skip the resource header row — the embedding container already
    *  shows the resource's identity (e.g. `DetailPanel` in peek mode). */
   hideHeader?: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function setByPath(
