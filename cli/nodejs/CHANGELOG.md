@@ -1,5 +1,13 @@
 # @telorun/cli
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [f75a730]
+- Updated dependencies [f75a730]
+  - @telorun/kernel@0.3.3
+
 ## 0.3.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @telorun/test
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [f75a730]
+- Updated dependencies [f75a730]
+  - @telorun/kernel@0.3.3
+
 ## 0.1.5
 
 ### Patch Changes
