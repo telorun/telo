@@ -1,3 +1,7 @@
+---
+description: "Type system: Type.JsonSchema and Type.Cue resources for structured validation with CEL business rules and fail-fast enforcement"
+---
+
 # Telo Data Types
 
 ## 1. Core Principles

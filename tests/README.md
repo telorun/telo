@@ -1,3 +1,7 @@
+---
+description: "Walkthrough: defining tests as Telo resources (Run.Sequence, JavaScript.Script, Assert) with inline resource steps"
+---
+
 # Testing
 
 Tests for Telo manifests and controllers use Telo resources to orchestrate execution and verify outputs. In other words Telo is used to test Telo.

@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec: two-layer CEL context (Module Context with variables/secrets/resources, Execution Context with request/inputs)"
+---
+
 # Telo Evaluation Context Model (v1.0 Draft)
 
 ## 1. Overview

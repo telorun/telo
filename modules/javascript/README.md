@@ -1,3 +1,7 @@
+---
+description: "JavaScript.Script: inline per-request computation with main function contract, typed inputs/outputs, and async support"
+---
+
 # JavaScript
 
 Inline JavaScript executed by the kernel. Use `JavaScript.Script` for per-request compute that is too complex for a CEL expression but does not warrant a dedicated controller — input transforms, response shaping, ad-hoc arithmetic, glue logic inside a `Run.Sequence`.

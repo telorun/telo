@@ -1,3 +1,7 @@
+---
+description: "Workflow topology: directed graph of task nodes with gateway node kinds (Flow.If, Flow.While, Flow.Switch) for branching"
+---
+
 # Topology: Workflow
 
 A directed graph of task nodes. Steps are nodes and edges represent execution flow between them.

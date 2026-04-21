@@ -1,3 +1,7 @@
+---
+description: "Invocable capability contract: inputs/outputs, controller interface, and kernel invocation with CEL expansion"
+---
+
 # Capability: Invocable
 
 A resource kind declares `capability: Invocable` to signal that its instances can be called with inputs and return outputs. Three distinct layers make up the full invocable system.

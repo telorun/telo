@@ -1,3 +1,7 @@
+---
+description: "Telo Standard Library: HTTP, SQL, scripting, testing, workflow, observability, and data type capabilities"
+---
+
 # Telo Standard Library
 
 Here you can find standard Telo modules ready to use by the kernel. Each module is self‑contained and declared by its own manifest, resources, and definitions.

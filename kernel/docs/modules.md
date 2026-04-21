@@ -1,3 +1,7 @@
+---
+description: "v1.0 spec for modules: Telo.Application and Telo.Library contracts with inputs, exports, and external manifest inclusion"
+---
+
 # Telo Module Specification (v1.0 Draft)
 
 ## Overview

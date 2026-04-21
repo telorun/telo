@@ -1,4 +1,5 @@
 ---
+description: "HTTP route outcome mapping: returns and catches lists render success values or structured domain errors with CEL conditions"
 sidebar_label: returns & catches
 ---
 

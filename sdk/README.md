@@ -1,3 +1,7 @@
+---
+description: "Telo SDKs: language-specific authoring surface for building modules with shared contracts (Node.js currently available)"
+---
+
 # Telo SDKs
 
 Language‑specific SDKs for building Telo modules. Each SDK exposes the same conceptual contract (module lifecycle, contexts, and resource execution) while remaining idiomatic to its language ecosystem.

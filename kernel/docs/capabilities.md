@@ -1,3 +1,7 @@
+---
+description: "Five lifecycle capabilities (Runnable, Service, Invocable, Mount, Provider) assigned per resource definition, mutually exclusive"
+---
+
 # Capabilities
 
 A `capability` declaration on `Telo.Definition` assigns a single **lifecycle role** to instances of that kind. The kernel uses this role to determine when and how to interact with instances during the init loop, run phase, and shutdown.

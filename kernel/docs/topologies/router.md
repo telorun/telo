@@ -1,3 +1,7 @@
+---
+description: "Router topology: matcher-to-handler dispatch where CEL matchers are evaluated in order and first match invokes handler"
+---
+
 # Topology: Router
 
 A collection of entries, each mapping a matcher to a handler invocable.

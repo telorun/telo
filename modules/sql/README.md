@@ -1,3 +1,7 @@
+---
+description: "SQL: PostgreSQL/SQLite access via Sql.Connection, Sql.Query, Sql.Exec, Sql.Select with transactions and migrations"
+---
+
 # SQL
 
 SQL database access for PostgreSQL and SQLite. The module provides a single connection resource, two raw-SQL invocables (`Sql.Query` / `Sql.Exec`), a declarative SELECT builder (`Sql.Select`), transaction scoping, and a migration runner.

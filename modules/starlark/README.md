@@ -1,3 +1,7 @@
+---
+description: "Starlark.Script: deterministic bounded Python-like scripting with run function contract and typed inputs/outputs"
+---
+
 # Starlark
 
 Execute [Starlark](https://github.com/bazelbuild/starlark) code from a Telo resource. `Starlark.Script` reads inputs, runs the script, and returns its result.

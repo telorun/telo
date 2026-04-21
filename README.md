@@ -1,3 +1,7 @@
+---
+description: "Telo: YAML-driven execution engine for declarative backends with micro-kernel architecture and language-agnostic design"
+---
+
 # ⚡ Telo
 
 Runtime for declarative backends.

@@ -1,4 +1,5 @@
 ---
+description: "S3.List: invocable for listing object keys in bucket with optional key prefix filter"
 sidebar_label: S3.List
 ---
 

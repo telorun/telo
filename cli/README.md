@@ -1,3 +1,7 @@
+---
+description: "Command-line interface for Telo kernel: loads and runs YAML manifests locally with watch mode and module publishing"
+---
+
 # Telo CLI
 
 The Telo CLI is the command-line interface for the Telo kernel. It loads YAML manifests and runs them on your local machine.
@@ -104,6 +108,53 @@ On success:
 ```
 ✓  No issues found
 ```
+
+---
+
+### `telo install <paths..>`
+
+Pre-downloads every controller declared by a manifest and its transitive `Telo.Import`s into the on-disk cache. At runtime the kernel finds each controller already installed and skips the boot-time `npm install` — removing the startup delay and the network dependency from production deployments.
+
+Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. Subsequent runs are idempotent — already-cached packages are skipped.
+
+```bash
+telo install ./apps/my-app/telo.yaml
+telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
+```
+
+**Environment:**
+
+- `TELO_CACHE_DIR` — Absolute path to the on-disk cache root. Defaults to `~/.cache/telo` (shared across projects for a user). Override to pin the cache alongside the manifest when producing a self-contained bundle (e.g. a Docker image). The kernel at boot reads from the same variable, so set it in both the install step and the runtime environment.
+
+**Example output:**
+
+```
+Installing 20 controllers for apps/my-app/telo.yaml
+  ✓  pkg:npm/@telorun/http-server@0.2.1?local_path=./nodejs#http-server
+  ✓  pkg:npm/@telorun/http-client@0.1.6?local_path=./nodejs#http-client
+  ...
+
+✓  20 installed in 3.2s
+```
+
+**Typical Dockerfile usage:**
+
+```dockerfile
+FROM telorun/telo:nodejs as build
+WORKDIR /srv
+ENV TELO_CACHE_DIR=/srv/.telo-cache
+COPY apps/my-app/telo.yaml apps/my-app/telo.yaml
+COPY modules/ modules/
+RUN telo install apps/my-app/telo.yaml
+
+FROM telorun/telo:nodejs as production
+WORKDIR /srv
+ENV TELO_CACHE_DIR=/srv/.telo-cache
+COPY --from=build /srv /srv
+CMD ["apps/my-app/telo.yaml"]
+```
+
+The build stage populates the cache; the production stage is a single `COPY` and does no network I/O at boot.
 
 ---
 

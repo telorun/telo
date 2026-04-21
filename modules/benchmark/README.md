@@ -1,3 +1,7 @@
+---
+description: "Benchmark.Suite: load testing driver for invocables with concurrency, duration/request budgets, warmup, and thresholds"
+---
+
 # Benchmark
 
 Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one or more scenarios against a fixed duration or request budget, collects latency and error metrics, and optionally fails the run when thresholds are breached.

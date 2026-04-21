@@ -1,3 +1,7 @@
+---
+description: "Workflow module (planned): Workflow.Graph declaration with pluggable backends (Temporal, local, queue) for durable execution"
+---
+
 # Workflow
 
 **Wardning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
