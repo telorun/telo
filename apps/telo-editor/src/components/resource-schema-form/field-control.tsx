@@ -139,19 +139,30 @@ export function FieldControl({
   }
 
   const inner = renderInner();
+  const wrapped = evalMode ? (
+    <CelFieldWrapper
+      evalMode={evalMode}
+      value={value}
+      onValueChange={onValueChange}
+      onBlur={onBlur}
+    >
+      {inner}
+    </CelFieldWrapper>
+  ) : (
+    inner
+  );
 
-  if (evalMode) {
-    return (
-      <CelFieldWrapper
-        evalMode={evalMode}
-        value={value}
-        onValueChange={onValueChange}
-        onBlur={onBlur}
-      >
-        {inner}
-      </CelFieldWrapper>
-    );
+  // ObjectField renders its own description inside the collapsible header.
+  // Every other field gets the description rendered below it here.
+  const ownsDescription = willRenderAsObjectField(prop);
+  if (ownsDescription || typeof prop.description !== "string") {
+    return wrapped;
   }
 
-  return inner;
+  return (
+    <div className="flex flex-col gap-1">
+      {wrapped}
+      <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
+    </div>
+  );
 }

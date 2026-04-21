@@ -40,13 +40,14 @@ export function LogStream({ lines, truncated, emptyLabel }: LogStreamProps) {
 }
 
 // Why the selection rules are duplicated onto descendants AND use `!`:
-// <Ansi> renders inline `style="color: ..."` on spans. Some browsers honor
-// that during selection and drop the ancestor's ::selection rule, so the
-// highlighted text kept its ANSI color but the selection background never
-// appeared. `[&_*]:` hits descendants' ::selection; `!` forces the color past
-// inline-style specificity so ANSI spans can't win during selection.
+// <Ansi> renders inline `style="color: ...; background-color: ..."` on spans.
+// Some browsers honor those during selection and drop the ancestor's
+// ::selection rule, leaving the ANSI colors in place so selected text becomes
+// unreadable (e.g. black-on-black when ANSI sets a dark background).
+// `[&_*]:` hits descendants' ::selection; `!` forces both color and
+// background past inline-style specificity so ANSI spans can't win.
 const SELECTION_CLASSES =
-  "selection:bg-amber-400 selection:!text-black [&_*]:selection:bg-amber-400 [&_*]:selection:!text-black";
+  "selection:!bg-amber-400 selection:!text-black [&_*]:selection:!bg-amber-400 [&_*]:selection:!text-black";
 
 function LogRow({ line }: { line: LogLine }) {
   // Both stdout and stderr render in the same base color so ANSI escapes

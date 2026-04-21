@@ -1,3 +1,4 @@
+import { CodeField } from "./code-field";
 import type { JsonSchemaProperty } from "./types";
 
 interface ScalarFieldProps {
@@ -9,6 +10,12 @@ interface ScalarFieldProps {
 }
 
 export function ScalarField({ prop, value, kind, onValueChange, onBlur }: ScalarFieldProps) {
+  if (kind === "string" && prop["x-telo-widget"] === "code") {
+    return (
+      <CodeField prop={prop} value={value} onValueChange={onValueChange} onBlur={onBlur} />
+    );
+  }
+
   if (Array.isArray(prop.enum) && prop.enum.length > 0) {
     const options = prop.enum.map((option) => String(option));
     const selected = value == null ? "" : String(value);

@@ -57,6 +57,7 @@ export function ObjectField({
   const triggerTitle =
     (typeof prop.title === "string" ? prop.title : undefined) ?? label ?? "object";
   const canClear = !required && value !== undefined && value !== null;
+  const description = typeof prop.description === "string" ? prop.description : undefined;
 
   return (
     <CollapsiblePrimitive.Root className="group rounded border border-zinc-200 dark:border-zinc-800">
@@ -75,6 +76,11 @@ export function ObjectField({
             ▾
           </span>
           <span>{triggerTitle}</span>
+          {description && (
+            <span className="truncate text-xs font-normal text-zinc-400 dark:text-zinc-500">
+              — {description}
+            </span>
+          )}
           <span className="ml-auto text-xs font-normal text-zinc-400 dark:text-zinc-500">
             {propertyCount} field{propertyCount === 1 ? "" : "s"}
           </span>
@@ -125,11 +131,6 @@ export function ObjectField({
                 label={childLabel}
                 required={objectRequired.has(childName)}
               />
-              {typeof childProp.description === "string" && (
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {childProp.description}
-                </span>
-              )}
             </div>
           );
         })}

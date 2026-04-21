@@ -401,6 +401,94 @@ describe("rebuildManifestFromDocuments", () => {
     expect(documents.has(rawPath)).toBe(false);
   });
 
+  it("routes: add a new route via setResourceFields, then edit its path — the edit must be applied", () => {
+    // Simulates RouterTopologyCanvas.handleAddRoute followed by
+    // DetailPanel.applyPointerEdit.
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "---",
+      "kind: Http.Api",
+      "metadata:",
+      "  name: HelloApi",
+      "routes:",
+      "  - request:",
+      "      path: /hello",
+      "      method: GET",
+      "",
+    ].join("\n");
+    let workspace = makeWorkspace(
+      [{ path: "/ws/app/telo.yaml", text }],
+      [
+        makeManifest("/ws/app/telo.yaml", [
+          {
+            kind: "Http.Api",
+            name: "HelloApi",
+            fields: {
+              routes: [{ request: { path: "/hello", method: "GET" } }],
+            },
+          },
+        ]),
+      ],
+    );
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+
+    // Step 1 — simulate "+ Add route" with default matcher.
+    let prev = workspace.modules.get("/ws/app/telo.yaml")!.resources.find(
+      (r) => r.name === "HelloApi",
+    )!;
+    const afterAdd = {
+      ...prev.fields,
+      routes: [
+        ...(prev.fields.routes as unknown[]),
+        { request: { path: "/", method: "GET" } },
+      ],
+    };
+    workspace = setResourceFields(
+      workspace,
+      "/ws/app/telo.yaml",
+      "Http.Api",
+      "HelloApi",
+      prev.fields,
+      afterAdd,
+    );
+
+    prev = workspace.modules.get("/ws/app/telo.yaml")!.resources.find(
+      (r) => r.name === "HelloApi",
+    )!;
+    const routesAfterAdd = prev.fields.routes as Array<Record<string, unknown>>;
+    expect(routesAfterAdd).toHaveLength(2);
+    expect((routesAfterAdd[1].request as Record<string, unknown>).path).toBe("/");
+
+    // Step 2 — simulate editing the new route's path via the detail panel.
+    const afterEdit = {
+      ...prev.fields,
+      routes: (prev.fields.routes as Array<Record<string, unknown>>).map(
+        (route, i) =>
+          i === 1
+            ? { ...route, request: { path: "/world", method: "GET" } }
+            : route,
+      ),
+    };
+    workspace = setResourceFields(
+      workspace,
+      "/ws/app/telo.yaml",
+      "Http.Api",
+      "HelloApi",
+      prev.fields,
+      afterEdit,
+    );
+
+    const finalRoutes = workspace.modules
+      .get("/ws/app/telo.yaml")!
+      .resources.find((r) => r.name === "HelloApi")!.fields.routes as Array<
+      Record<string, unknown>
+    >;
+    expect(finalRoutes).toHaveLength(2);
+    expect((finalRoutes[1].request as Record<string, unknown>).path).toBe("/world");
+  });
+
   it("createResourceViaAst appends a new resource visible in the re-derived manifest", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
     let workspace = makeWorkspace(

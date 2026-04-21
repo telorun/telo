@@ -1,4 +1,4 @@
-import { Document, isScalar, parseAllDocuments } from "yaml";
+import { Document, isDocument, isNode, isScalar, parseAllDocuments } from "yaml";
 import type { ModuleDocument } from "./model";
 
 /** Parses file text into a ModuleDocument. Captures `loadedJson` — the
@@ -131,7 +131,7 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
       if (node && isScalar(node) && sameLeafJsType(node.value, op.value)) {
         node.value = op.value as never;
       } else {
-        doc.setIn(path, op.value);
+        doc.setIn(path, toYamlNodeIfCollection(doc, op.value));
       }
       break;
     }
@@ -144,9 +144,9 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
       // map-add that setIn covers naturally (creating missing parent nodes).
       const last = path[path.length - 1];
       if (last === "-") {
-        doc.addIn(path.slice(0, -1), op.value);
+        doc.addIn(path.slice(0, -1), toYamlNodeIfCollection(doc, op.value));
       } else {
-        doc.setIn(path, op.value);
+        doc.setIn(path, toYamlNodeIfCollection(doc, op.value));
       }
       break;
     }
@@ -163,6 +163,18 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
   }
 
   return [...docs];
+}
+
+/** `Document.setIn` / `addIn` treat a plain JS object or array as an opaque
+ *  leaf scalar (stored as a `Scalar` whose `.value` is the object itself),
+ *  which breaks later descent into that path (`Expected YAML collection at …`).
+ *  Wrap objects/arrays via `doc.createNode` so they become real `YAMLMap` /
+ *  `YAMLSeq` nodes; primitives (and already-constructed Nodes) pass through. */
+function toYamlNodeIfCollection(doc: Document, value: unknown): unknown {
+  if (value === null) return value;
+  if (typeof value !== "object") return value;
+  if (isNode(value) || isDocument(value)) return value;
+  return doc.createNode(value);
 }
 
 /** True when two JS leaf values have the same primitive type class. Used by

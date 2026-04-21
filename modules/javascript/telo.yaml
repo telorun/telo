@@ -17,6 +17,8 @@ schema:
       title: Code
       description: JavaScript source code executed by this resource.
       type: "string"
+      contentMediaType: "application/javascript"
+      x-telo-widget: "code"
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.

@@ -20,6 +20,7 @@ Follow this strictly:
 - never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js
 - never make architectural decisions (package boundaries, dependency direction, where code lives) without asking first
 - UI primitives must use Radix (`radix-ui` package, same pattern as `apps/telo-editor/src/components/ui/*`); if a needed component isn't wrapped yet, install it via shadcn before rolling your own
+- Icons must come from `lucide-react` (already a dep). No inline `<svg>` paths.
 
 ## Architecture
 
@@ -124,6 +125,7 @@ Inside `Telo.Definition` schema blocks:
 - `x-telo-schema-from: "refProp/$defs/Name"` — derives field validation schema from a sibling `x-telo-ref` resource's definition schema. Used for polymorphic config.
 - `x-telo-context: <JSON Schema>` — annotates a handler field with the CEL context available inside it. Analyzer-only; no runtime effect.
 - `x-telo-step-context: { invoke, outputType }` — on an array field, tells the analyzer to build typed `steps.<name>.result` context from each item's invoked resource's output type.
+- `x-telo-widget: "code"` — on a string field, tells the telo editor to render a Monaco code widget instead of a single-line input. The language is resolved from the field's standard `contentMediaType` (e.g. `application/javascript`) via Monaco's own language registry, so adding a new language is purely a schema change — no editor code to touch.
 
 ## CEL Templates (`${{ }}`)
 

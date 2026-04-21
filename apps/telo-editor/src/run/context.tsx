@@ -51,6 +51,10 @@ interface RunContextValue {
   /** True while a session is `starting` or `running` — drives the TopBar
    *  Run-button spinner. */
   isInFlight: boolean;
+  /** True while `adapter.start` is awaited (before the first `activeRun`
+   *  exists). Lets RunView render a loading indicator instead of the
+   *  "No active run." placeholder during the handoff. */
+  isStarting: boolean;
   startRun(params: {
     adapter: RunAdapter<unknown>;
     config: unknown;
@@ -75,6 +79,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [unavailableRun, setUnavailableRun] = useState<UnavailableRun | null>(null);
   const [isRunViewOpen, setIsRunViewOpen] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   // Line-id counter and per-stream partial-line buffer outlive any single
   // render — pulled out into refs so they aren't re-initialised when the
@@ -133,6 +138,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
       setUnavailableRun(null);
       setIsRunViewOpen(true);
+      setIsStarting(true);
 
       let session: RunSession;
       try {
@@ -142,6 +148,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         // click. If `start` rejects (spawn failed, listen failed, etc.) we
         // close it again so the UI doesn't freeze on "No active run." The
         // caller still sees the rejection and surfaces a banner.
+        setIsStarting(false);
         setIsRunViewOpen(false);
         throw err;
       }
@@ -156,6 +163,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         startedAt: Date.now(),
         session,
       });
+      setIsStarting(false);
 
       unsubscribeRef.current = session.subscribe((event) => {
         handleRunEvent(event, session.id, setActiveRun, lineIdRef, partialRef);
@@ -179,6 +187,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       unavailableRun,
       isRunViewOpen,
       isInFlight,
+      isStarting,
       startRun,
       stopRun,
       showUnavailable,
@@ -191,6 +200,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       unavailableRun,
       isRunViewOpen,
       isInFlight,
+      isStarting,
       startRun,
       stopRun,
       showUnavailable,
