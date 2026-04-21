@@ -117,7 +117,8 @@ connection:
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260331143022_CreateModules
+  name: Migration_20260331143022_CreateModules
+version: 20260331143022_CreateModules
 sql: |
   CREATE TABLE modules (
     namespace    TEXT NOT NULL,
@@ -131,7 +132,8 @@ sql: |
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260419100000_CreateUsers
+  name: Migration_20260419100000_CreateUsers
+version: 20260419100000_CreateUsers
 sql: |
   CREATE TABLE users (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -141,7 +143,8 @@ sql: |
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260419100100_CreateNamespaces
+  name: Migration_20260419100100_CreateNamespaces
+version: 20260419100100_CreateNamespaces
 sql: |
   CREATE TABLE namespaces (
     name       TEXT        PRIMARY KEY,
@@ -151,7 +154,8 @@ sql: |
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260419100200_CreateTokens
+  name: Migration_20260419100200_CreateTokens
+version: 20260419100200_CreateTokens
 sql: |
   CREATE TABLE tokens (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -166,7 +170,8 @@ sql: |
 ---
 kind: Sql.Migration
 metadata:
-  name: 20260419100300_SeedRootUserAndStdNamespace
+  name: Migration_20260419100300_SeedRootUserAndStdNamespace
+version: 20260419100300_SeedRootUserAndStdNamespace
 sql: |
   INSERT INTO users (username) VALUES ('root') ON CONFLICT (username) DO NOTHING;
   INSERT INTO namespaces (name, owner_id)

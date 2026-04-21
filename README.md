@@ -73,6 +73,7 @@ connection:
 kind: Sql.Migration
 metadata:
   name: Migration_20260413_182154_CreateFeedback
+version: 20260413_182154_CreateFeedback
 sql: |
   CREATE TABLE IF NOT EXISTS feedback (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
