@@ -3,6 +3,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { checkCommand } from "./commands/check.js";
+import { installCommand } from "./commands/install.js";
 import { publishCommand } from "./commands/publish.js";
 import { runCommand } from "./commands/run.js";
 
@@ -11,6 +12,7 @@ let cli = yargs(hideBin(process.argv))
   .usage("$0 <command> [options]");
 
 cli = checkCommand(cli) as typeof cli;
+cli = installCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
 cli = runCommand(cli) as typeof cli;
 

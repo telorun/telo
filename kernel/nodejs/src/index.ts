@@ -1,3 +1,4 @@
+export { ControllerLoader } from "./controller-loader.js";
 export { ControllerRegistry } from "./controller-registry.js";
 export { EvaluationContext } from "./evaluation-context.js";
 export { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
