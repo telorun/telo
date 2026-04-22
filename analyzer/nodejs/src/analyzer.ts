@@ -10,6 +10,7 @@ import {
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
+import { computeSuggestKind } from "./kind-suggest.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import {
@@ -377,18 +378,14 @@ export class StaticAnalyzer {
       const definition =
         defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
       if (!definition) {
-        const knownAliases = aliases.knownAliases();
-        const knownKinds = defs.kinds();
-        const parts: string[] = [];
-        if (knownAliases.length > 0) parts.push(`imports: ${knownAliases.join(", ")}`);
-        if (knownKinds.length > 0) parts.push(`kinds: ${knownKinds.join(", ")}`);
-        const hint = parts.length > 0 ? ` Known ${parts.join(" | ")}` : "";
+        const suggestedKind = computeSuggestKind(m.kind, aliases, defs);
+        const hint = suggestedKind ? ` Did you mean '${suggestedKind}'?` : "";
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "UNDEFINED_KIND",
           source: SOURCE,
           message: `No Telo.Definition found for kind '${m.kind}'.${hint}`,
-          data: { resource, filePath, path: "kind" },
+          data: { resource, filePath, path: "kind", suggestedKind },
         });
         continue;
       }

@@ -1,5 +1,6 @@
-import type { AnalysisDiagnostic, PositionIndex } from "@telorun/analyzer";
-import { AnalysisRegistry, DiagnosticSeverity, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import type { PositionIndex } from "@telorun/analyzer";
+import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { normalizeDiagnostic, type NormalizedDiagnostic, DiagnosticSeverity } from "@telorun/ide-support";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -14,22 +15,19 @@ const SEVERITY: Record<number, vscode.DiagnosticSeverity> = {
   [DiagnosticSeverity.Hint]: vscode.DiagnosticSeverity.Hint,
 };
 
-function toDiagnostic(d: AnalysisDiagnostic): vscode.Diagnostic {
-  const range = d.range
-    ? new vscode.Range(
-        d.range.start.line,
-        d.range.start.character,
-        d.range.end.line,
-        d.range.end.character,
-      )
-    : new vscode.Range(0, 0, 0, 0);
+function toVscodeDiagnostic(n: NormalizedDiagnostic): vscode.Diagnostic {
   const diag = new vscode.Diagnostic(
-    range,
-    d.message,
-    SEVERITY[d.severity ?? DiagnosticSeverity.Warning],
+    new vscode.Range(
+      n.range.start.line,
+      n.range.start.character,
+      n.range.end.line,
+      n.range.end.character,
+    ),
+    n.message,
+    SEVERITY[n.severity],
   );
-  diag.source = d.source ?? "telo";
-  if (d.code !== undefined) diag.code = String(d.code);
+  diag.source = n.source;
+  if (n.code) diag.code = n.code;
   return diag;
 }
 
@@ -193,35 +191,16 @@ export function activate(context: vscode.ExtensionContext): void {
       const sourceFile = (m?.metadata as any)?.source as string | undefined;
       const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
       const positionIndex = (m?.metadata as any)?.positionIndex as PositionIndex | undefined;
-      const fieldPath = (d.data as any)?.path as string | undefined;
 
-      // Resolve the target file for this diagnostic
       const targetFile = sourceFile ?? entryFilePath;
-
-      // Resolve position within the target file
-      let resolved: AnalysisDiagnostic = d;
-      if (!d.range) {
-        const fieldRange =
-          fieldPath !== undefined && positionIndex ? positionIndex.get(fieldPath) : undefined;
-        if (fieldRange) {
-          resolved = { ...d, range: fieldRange };
-        } else if (sourceLine !== undefined) {
-          resolved = {
-            ...d,
-            range: {
-              start: { line: sourceLine, character: 0 },
-              end: { line: sourceLine, character: Number.MAX_SAFE_INTEGER },
-            },
-          };
-        }
-      }
+      const normalized = normalizeDiagnostic(d, { registry, positionIndex, sourceLine });
 
       let bucket = diagnosticsByFile.get(targetFile);
       if (!bucket) {
         bucket = [];
         diagnosticsByFile.set(targetFile, bucket);
       }
-      bucket.push(toDiagnostic(resolved));
+      bucket.push(toVscodeDiagnostic(normalized));
     }
 
     // Clear diagnostics from files that had them previously but now have none.

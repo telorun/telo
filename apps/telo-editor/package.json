@@ -38,6 +38,7 @@
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-fs": "^2",
     "@telorun/analyzer": "workspace:*",
+    "@telorun/ide-support": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "ansi-to-react": "^6.1.6",
     "class-variance-authority": "^0.7.1",

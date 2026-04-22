@@ -103,6 +103,9 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../analyzer/nodejs
+      '@telorun/ide-support':
+        specifier: workspace:*
+        version: link:../../packages/ide-support
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
@@ -228,6 +231,9 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../analyzer/nodejs
+      '@telorun/ide-support':
+        specifier: workspace:*
+        version: link:../../packages/ide-support
       minimatch:
         specifier: ^10.0.1
         version: 10.2.5
@@ -528,6 +534,19 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/ide-support:
+    dependencies:
+      '@telorun/analyzer':
+        specifier: workspace:*
+        version: link:../../analyzer/nodejs
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

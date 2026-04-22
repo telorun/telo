@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import { AnalysisRegistry, type ManifestAdapter } from "@telorun/analyzer";
 import { useEffect, useRef, useState } from "react";
 import { analyzeWorkspace } from "../analysis";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
@@ -54,6 +54,7 @@ import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
+import { setActiveRegistry } from "./views/source/register-completion";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -68,7 +69,12 @@ const INITIAL_STATE: EditorState = {
   graphContext: null,
   selectedResource: null,
   panelStack: [],
-  diagnostics: { byResource: new Map(), byFile: new Map() },
+  diagnostics: {
+    byResource: new Map(),
+    byFile: new Map(),
+    registry: new AnalysisRegistry(),
+    manifestsByResource: new Map(),
+  },
   sourceRevealRequest: null,
   deploymentsByApp: {},
 };
@@ -187,6 +193,7 @@ export function Editor() {
     const workspace = state.workspace;
     analysisTimerRef.current = setTimeout(() => {
       const diagnostics = analyzeWorkspace(workspace);
+      setActiveRegistry(diagnostics.registry);
       setState((s) => {
         if (s.workspace !== workspace) return s;
         return { ...s, diagnostics };

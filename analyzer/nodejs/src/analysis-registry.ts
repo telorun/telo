@@ -2,6 +2,7 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import type { AnalysisContext } from "./types.js";
 
@@ -75,6 +76,20 @@ export class AnalysisRegistry {
    *  module name). Empty when no import declares that target. */
   aliasesFor(moduleName: string): string[] {
     return this.aliases.aliasesFor(moduleName);
+  }
+
+  /** Returns every user-facing kind that is legal in the current scope:
+   *  Telo root kinds plus the alias form of each non-abstract imported definition.
+   *  Used by editor hosts to drive completion and by the analyzer to produce
+   *  "did you mean" hints. */
+  validUserFacingKinds(): string[] {
+    return computeValidUserFacingKinds(this.aliases, this.defs);
+  }
+
+  /** Returns the closest user-facing kind to `badKind`, or undefined when nothing
+   *  is close enough (or multiple candidates tie). Case-sensitive. */
+  suggestKind(badKind: string): string | undefined {
+    return computeSuggestKind(badKind, this.aliases, this.defs);
   }
 
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */

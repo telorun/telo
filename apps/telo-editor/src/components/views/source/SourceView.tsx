@@ -1,8 +1,14 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
+import type { PositionIndex } from "@telorun/analyzer";
+import { normalizeDiagnostic } from "@telorun/ide-support";
+import type { ResourceManifest } from "@telorun/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDiagnosticsContext } from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
 import { parseModuleDocument } from "../../../yaml-document";
+import { toMonacoMarker } from "./markers";
+import { registerYamlCompletions } from "./register-completion";
 
 const DEBOUNCE_MS = 500;
 
@@ -207,14 +213,65 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
     ]);
   }
 
+  // Bumped in handleMount so the marker effect runs once editors are actually
+  // attached. Without this, first-render markers would miss (onMount fires
+  // after effects, so `editorsRef.current[filePath]` is undefined on the
+  // initial pass).
+  const [mountTick, setMountTick] = useState(0);
+
   const handleMount = useCallback(
     (filePath: string): OnMount =>
       (editor, monaco) => {
         editorsRef.current[filePath] = editor;
         monacoRef.current = monaco;
+        registerYamlCompletions(monaco);
+        setMountTick((t) => t + 1);
       },
     [],
   );
+
+  // Push analyzer diagnostics to Monaco markers under owner "telo". The
+  // existing `setMarker` path uses owner "yaml-parse" and handles parse
+  // errors — Monaco composes markers across owners per model, so both
+  // coexist. Keyed on diagnostics + file list so each analysis pass writes
+  // fresh markers (including clearing stale ones on files whose diagnostics
+  // dropped to empty).
+  const diagnosticsCtx = useDiagnosticsContext();
+  const workspaceDiagnostics = diagnosticsCtx?.diagnostics;
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco || !workspaceDiagnostics) return;
+
+    for (const file of sourceFiles) {
+      const editor = editorsRef.current[file.filePath];
+      const model = editor?.getModel();
+      if (!model) continue;
+
+      const fileBucket = workspaceDiagnostics.byFile.get(file.filePath) ?? [];
+      const resourceBuckets = Array.from(
+        workspaceDiagnostics.byResource.get(file.filePath)?.values() ?? [],
+      ).flat();
+      const diags = [...fileBucket, ...resourceBuckets];
+
+      const markers = diags.map((d) => {
+        const name = (d.data as { resource?: { name?: string } } | undefined)?.resource?.name;
+        const m: ResourceManifest | undefined = name
+          ? workspaceDiagnostics.manifestsByResource.get(`${file.filePath}::${name}`)
+          : undefined;
+        const meta = m?.metadata as
+          | { positionIndex?: PositionIndex; sourceLine?: number }
+          | undefined;
+        const normalized = normalizeDiagnostic(d, {
+          registry: workspaceDiagnostics.registry,
+          positionIndex: meta?.positionIndex,
+          sourceLine: meta?.sourceLine,
+        });
+        return toMonacoMarker(normalized, monaco);
+      });
+
+      monaco.editor.setModelMarkers(model, "telo", markers);
+    }
+  }, [workspaceDiagnostics, sourceFiles, mountTick]);
 
   // Not memoized via useCallback: the inner `commit` closure and the
   // `onSourceEdit` prop both change identity across renders, and a
