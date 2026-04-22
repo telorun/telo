@@ -80,6 +80,7 @@ export function CodeEditor({
           lineNumbers: "on",
           folding: false,
           readOnly,
+          fixedOverflowWidgets: true,
         }}
       />
     </div>

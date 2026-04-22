@@ -1,6 +1,8 @@
 import { AnalysisRegistry, type ManifestAdapter } from "@telorun/analyzer";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeWorkspace } from "../analysis";
+import { HistoryManager } from "../history/manager";
+import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
   addImportViaAst,
@@ -23,6 +25,7 @@ import {
   setResourceFields,
   upgradeImportViaAst,
 } from "../loader";
+import { parseModuleDocument } from "../yaml-document";
 import type { ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
@@ -117,6 +120,38 @@ export function Editor() {
   const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestoredRef = useRef(false);
+  // History manager lives in state so (a) construction runs in an effect, not
+  // during render, and (b) swapping when rootDir changes triggers a re-render.
+  // `historyVersion` bumps on every recordEdit/undo/redo; `canUndo`/`canRedo`
+  // depend on it via useMemo so mutable manager state projects cleanly back
+  // through React's dep system.
+  const [historyManager, setHistoryManager] = useState<HistoryManager | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
+
+  // Construct (or swap) the HistoryManager when the workspace rootDir changes.
+  // Pruning runs on the fresh manager: drop entries for modules no longer in
+  // the workspace, and within each kept module drop snapshots whose file is
+  // no longer part of the module (so undoing doesn't resurrect files deleted
+  // between sessions).
+  useEffect(() => {
+    const workspace = state.workspace;
+    if (!workspace) {
+      if (historyManager) setHistoryManager(null);
+      return;
+    }
+    if (historyManager && historyManager.rootDir === workspace.rootDir) return;
+    const store = new LocalStorageHistoryStore(workspace.rootDir);
+    const mgr = new HistoryManager(store, workspace.rootDir);
+    mgr.pruneStaleModules(new Set(workspace.modules.keys()));
+    for (const [modPath, manifest] of workspace.modules) {
+      mgr.pruneStaleSnapshots(modPath, new Set(getModuleFiles(manifest)));
+    }
+    setHistoryManager(mgr);
+    setHistoryVersion((v) => v + 1);
+    // `historyManager` intentionally omitted from deps — it's only checked to
+    // skip the swap when rootDir is unchanged; keying on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.workspace]);
   // "Latest ref" for handleRunModule — the recheck callback passed into
   // RunContext outlives the render that created it, so closing over the
   // function declaration directly captures a stale reference to state.
@@ -403,16 +438,60 @@ export function Editor() {
    *  behind the scenes. Returns the workspace the caller should put in state —
    *  possibly enriched with updated `ModuleDocument.text` / `loadedJson` when
    *  the AST path wrote. Surfaces write failures via setError so the author
-   *  notices before data diverges from the in-memory state. */
-  async function persistModule(workspace: Workspace, filePath: string): Promise<Workspace> {
+   *  notices before data diverges from the in-memory state.
+   *
+   *  Records a history snapshot for every file actually written, unless
+   *  `skipHistory` is set (true during undo/redo to avoid re-recording the
+   *  restore itself, which would shadow the redo tail). */
+  async function persistModule(
+    workspace: Workspace,
+    filePath: string,
+    opts?: { skipHistory?: boolean },
+  ): Promise<Workspace> {
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return workspace;
+
+    const mgr = opts?.skipHistory ? null : historyManager;
+    const preTexts = new Map<string, string>();
+    if (mgr) {
+      const manifest = workspace.modules.get(filePath);
+      if (manifest) {
+        // Pre-edit text must come from `state.workspace.documents` (the
+        // closure-captured pre-edit snapshot), not the passed-in workspace —
+        // for source-view edits, the caller has already stamped the user's
+        // typed text into `workspace.documents[fp].text`, so reading from
+        // `workspace` would yield the post-edit text and produce no diff.
+        // Form-edit call sites don't touch `.text`, so both sources agree
+        // for those paths.
+        const prevDocs = state.workspace?.documents;
+        for (const fp of getModuleFiles(manifest)) {
+          const doc = prevDocs?.get(fp) ?? workspace.documents.get(fp);
+          if (doc) preTexts.set(fp, doc.text);
+        }
+      }
+    }
+
+    let next: Workspace;
     try {
-      return await persistWorkspaceModule(workspace, filePath, adapter);
+      next = await persistWorkspaceModule(workspace, filePath, adapter);
     } catch (err) {
       setError(`Failed to save ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
       return workspace;
     }
+
+    if (mgr && preTexts.size > 0) {
+      let recorded = false;
+      const timestamp = Date.now();
+      for (const [fp, before] of preTexts) {
+        const after = next.documents.get(fp)?.text;
+        if (after === undefined || after === before) continue;
+        mgr.recordEdit(filePath, { filePath: fp, before, after, timestamp });
+        recorded = true;
+      }
+      if (recorded) setHistoryVersion((v) => v + 1);
+    }
+
+    return next;
   }
 
   // ---------------------------------------------------------------------------
@@ -628,7 +707,11 @@ export function Editor() {
    *  module's owner file and any included partial file indistinguishably —
    *  per-file granularity matters because a partial's AST edit must land
    *  on the partial, not spill into the owner. */
-  async function handleSourceEdit(filePath: string, moduleDoc: ModuleDocument) {
+  async function handleSourceEdit(
+    filePath: string,
+    moduleDoc: ModuleDocument,
+    opts?: { skipHistory?: boolean },
+  ) {
     if (!state.workspace || !state.activeModulePath) return;
 
     // All writes to `documents` go through the canonical `normalizePath`
@@ -663,7 +746,9 @@ export function Editor() {
       );
     }
 
-    workspace = await persistModule(workspace, state.activeModulePath);
+    workspace = await persistModule(workspace, state.activeModulePath, {
+      skipHistory: opts?.skipHistory,
+    });
 
     // `saveModuleFromDocuments` replaces `modDoc.text` with the re-serialized
     // output of `serializeModuleDocument`. For source edits the user's typed
@@ -706,6 +791,63 @@ export function Editor() {
   }
 
   // ---------------------------------------------------------------------------
+  // Undo / redo
+  // ---------------------------------------------------------------------------
+
+  async function handleUndo() {
+    const modulePath = state.activeModulePath;
+    if (!historyManager || !modulePath || !state.workspace) return;
+    const snap = historyManager.undo(modulePath);
+    if (!snap) return;
+    setHistoryVersion((v) => v + 1);
+    const moduleDoc = parseModuleDocument(snap.filePath, snap.before);
+    if (moduleDoc.parseError) {
+      // Shouldn't happen: `before` was produced by a prior successful
+      // serialization. Log so we notice if it ever does, and bail rather than
+      // letting saveModuleFromDocuments silently skip the write (the cursor
+      // has already advanced; user can redo if they want to try again).
+      console.error(
+        `Undo: snapshot text for ${snap.filePath} failed to re-parse — leaving disk unchanged`,
+        moduleDoc.parseError,
+      );
+      return;
+    }
+    await handleSourceEdit(snap.filePath, moduleDoc, { skipHistory: true });
+  }
+
+  async function handleRedo() {
+    const modulePath = state.activeModulePath;
+    if (!historyManager || !modulePath || !state.workspace) return;
+    const snap = historyManager.redo(modulePath);
+    if (!snap) return;
+    setHistoryVersion((v) => v + 1);
+    const moduleDoc = parseModuleDocument(snap.filePath, snap.after);
+    if (moduleDoc.parseError) {
+      console.error(
+        `Redo: snapshot text for ${snap.filePath} failed to re-parse — leaving disk unchanged`,
+        moduleDoc.parseError,
+      );
+      return;
+    }
+    await handleSourceEdit(snap.filePath, moduleDoc, { skipHistory: true });
+  }
+
+  const canUndo = useMemo(
+    () =>
+      !!historyManager &&
+      !!state.activeModulePath &&
+      historyManager.canUndo(state.activeModulePath),
+    [historyManager, state.activeModulePath, historyVersion],
+  );
+  const canRedo = useMemo(
+    () =>
+      !!historyManager &&
+      !!state.activeModulePath &&
+      historyManager.canRedo(state.activeModulePath),
+    [historyManager, state.activeModulePath, historyVersion],
+  );
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -728,6 +870,10 @@ export function Editor() {
         }
         runStatus={runContext.activeRun?.status ?? null}
         onOpenRunView={runContext.openRunView}
+        onUndo={canUndo ? () => void handleUndo() : undefined}
+        onRedo={canRedo ? () => void handleRedo() : undefined}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       {error && (
