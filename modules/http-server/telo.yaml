@@ -22,7 +22,7 @@ schema:
       description: Host interface for the HTTP server.
       type: "string"
       x-telo-eval: compile
-      default: "localhost"
+      default: "0.0.0.0"
     port:
       title: Port
       description: TCP port used by the HTTP server.

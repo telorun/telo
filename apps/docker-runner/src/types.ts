@@ -26,15 +26,32 @@ export interface RunBundle {
   files: Array<{ relativePath: string; contents: string }>;
 }
 
+export type PortProtocol = "tcp" | "udp";
+
+export interface PortMapping {
+  port: number;
+  protocol: PortProtocol;
+}
+
+/** Sent on the wire as part of `RunStatus.running`. The runner does not know
+ *  the hostname clients use to reach it, so `host` is emitted empty and the
+ *  client adapter fills it from its own baseUrl before surfacing to the UI. */
+export interface RunnerEndpoint {
+  host: string;
+  port: number;
+  protocol: PortProtocol;
+}
+
 export interface StartSessionRequest {
   bundle: RunBundle;
   env: Record<string, string>;
+  ports?: PortMapping[];
   config: SessionConfig;
 }
 
 export type RunStatus =
   | { kind: "starting" }
-  | { kind: "running" }
+  | { kind: "running"; endpoints?: RunnerEndpoint[] }
   | { kind: "exited"; code: number }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };

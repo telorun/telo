@@ -1,5 +1,6 @@
 import { Button } from "../../components/ui/button";
 import { useRun } from "../context";
+import type { RunnerEndpoint } from "../types";
 import { AdapterUnavailable } from "./AdapterUnavailable";
 import { LogStream } from "./LogStream";
 import { RunStatusChip } from "./RunStatusChip";
@@ -57,6 +58,9 @@ export function RunView() {
           {activeRun.adapterDisplayName}
         </span>
         <RunStatusChip status={activeRun.status} />
+        {activeRun.status.kind === "running" && (
+          <EndpointChips endpoints={activeRun.status.endpoints ?? []} />
+        )}
         <div className="flex-1" />
         <Button size="sm" variant="outline" onClick={stopRun} disabled={!isRunning}>
           Stop
@@ -73,4 +77,42 @@ export function RunView() {
       </div>
     </div>
   );
+}
+
+function EndpointChips({ endpoints }: { endpoints: RunnerEndpoint[] }) {
+  if (endpoints.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5">
+      {endpoints.map((endpoint) => {
+        const label = `${formatHost(endpoint.host)}:${endpoint.port}`;
+        if (endpoint.protocol === "tcp") {
+          return (
+            <a
+              key={`${endpoint.host}:${endpoint.port}/${endpoint.protocol}`}
+              href={`http://${label}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[10px] text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            >
+              {label}
+            </a>
+          );
+        }
+        return (
+          <span
+            key={`${endpoint.host}:${endpoint.port}/${endpoint.protocol}`}
+            className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[10px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+          >
+            {label}/{endpoint.protocol}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function formatHost(host: string): string {
+  // IPv6 literals need bracketing when paired with a port.
+  if (host.includes(":") && !host.startsWith("[")) return `[${host}]`;
+  return host;
 }

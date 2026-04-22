@@ -1,4 +1,4 @@
-import type { ApplicationDeployment, DeploymentEnvironment } from "./model";
+import type { ApplicationDeployment, DeploymentEnvironment, PortMapping } from "./model";
 
 /** ID of the auto-created environment that every Application gets in v1.
  *  Kept as a constant so callers don't pin the string in multiple places. */
@@ -82,6 +82,30 @@ export function setActiveEnvironmentEnv(
       environments: {
         ...app.environments,
         [app.activeEnvironmentId]: { ...environment, env },
+      },
+    },
+  };
+}
+
+/** Replace the ports list of the active environment for an Application.
+ *  Seeds a local environment if the Application has no deployment record yet. */
+export function setActiveEnvironmentPorts(
+  deployments: Record<string, ApplicationDeployment>,
+  appFilePath: string,
+  ports: PortMapping[],
+): Record<string, ApplicationDeployment> {
+  const { deployments: seeded, environment } = getOrCreateActiveEnvironment(
+    deployments,
+    appFilePath,
+  );
+  const app = seeded[appFilePath]!;
+  return {
+    ...seeded,
+    [appFilePath]: {
+      ...app,
+      environments: {
+        ...app.environments,
+        [app.activeEnvironmentId]: { ...environment, ports },
       },
     },
   };

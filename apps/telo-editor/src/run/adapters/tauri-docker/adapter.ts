@@ -85,6 +85,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
         sessionId,
         bundle: request.bundle,
         env: request.env ?? {},
+        ports: request.ports ?? [],
         config,
       });
     } catch (err) {

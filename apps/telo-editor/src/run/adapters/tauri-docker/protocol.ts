@@ -11,6 +11,7 @@
  */
 
 import type { AvailabilityReport, RunStatus } from "../../types";
+import type { PortMapping } from "../../../model";
 
 export interface OutputChunkPayload {
   chunk: string;
@@ -26,6 +27,7 @@ export interface RunStartPayload {
     files: Array<{ relativePath: string; contents: string }>;
   };
   env: Record<string, string>;
+  ports: PortMapping[];
   config: unknown;
 }
 

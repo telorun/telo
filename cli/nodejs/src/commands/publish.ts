@@ -169,6 +169,17 @@ function expandAndInlineIncludes(content: string, manifestDir: string): string {
 // Telo registry push
 // ---------------------------------------------------------------------------
 
+const MAX_PUSH_ATTEMPTS = 4;
+const PUSH_BASE_DELAY_MS = 1000;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function pushToTeloRegistry(
   content: string,
   filePath: string,
@@ -202,24 +213,48 @@ async function pushToTeloRegistry(
   const token = process.env.TELO_REGISTRY_TOKEN;
   if (token) headers.authorization = `Bearer ${token}`;
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "PUT",
-      headers,
-      body: content,
-    });
-  } catch (err) {
+  let res: Response | null = null;
+  let networkErr: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
+    networkErr = null;
+    try {
+      res = await fetch(url, { method: "PUT", headers, body: content });
+    } catch (err) {
+      networkErr = err;
+      res = null;
+    }
+
+    const transient = networkErr != null || (res != null && isRetryableStatus(res.status));
+    if (!transient) break;
+    if (attempt === MAX_PUSH_ATTEMPTS) break;
+
+    const reason = networkErr
+      ? `network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`
+      : `HTTP ${res!.status}`;
+
+    // Drain the body so the underlying connection can be reused for the retry.
+    if (res) await res.text().catch(() => {});
+
+    const delay = PUSH_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
     console.error(
-      log.error("error") + `  Network error: ${err instanceof Error ? err.message : String(err)}`,
+      `    ${"retry".padEnd(STEP_WIDTH)}${log.warn(reason)}  attempt ${attempt}/${MAX_PUSH_ATTEMPTS - 1}, waiting ${Math.round(delay / 100) / 10}s`,
+    );
+    await sleep(delay);
+  }
+
+  if (networkErr) {
+    console.error(
+      log.error("error") +
+        `  Network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)} (after ${MAX_PUSH_ATTEMPTS} attempts)`,
     );
     return { ok: false, label, url };
   }
 
-  if (!res.ok) {
-    const contentType = res.headers.get("content-type") ?? "";
-    const body = contentType.includes("application/json") ? await res.json() : await res.text();
-    console.error(log.error("error") + `  Push failed (${res.status}): ${JSON.stringify(body)}`);
+  if (!res!.ok) {
+    const contentType = res!.headers.get("content-type") ?? "";
+    const body = contentType.includes("application/json") ? await res!.json() : await res!.text();
+    console.error(log.error("error") + `  Push failed (${res!.status}): ${JSON.stringify(body)}`);
     return { ok: false, label, url };
   }
 
