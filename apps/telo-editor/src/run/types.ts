@@ -1,5 +1,6 @@
 import type { JSONSchema7 } from "json-schema";
 import type { ComponentType } from "react";
+import type { PortMapping } from "../model";
 
 export interface RunAdapter<Config = unknown> {
   id: string;
@@ -35,6 +36,7 @@ export interface ConfigIssue {
 export interface RunRequest {
   bundle: RunBundle;
   env?: Record<string, string>;
+  ports?: PortMapping[];
 }
 
 export interface RunBundle {
@@ -49,9 +51,15 @@ export interface RunSession {
   stop(): Promise<void>;
 }
 
+export interface RunnerEndpoint {
+  host: string;
+  port: number;
+  protocol: "tcp" | "udp";
+}
+
 export type RunStatus =
   | { kind: "starting" }
-  | { kind: "running" }
+  | { kind: "running"; endpoints?: RunnerEndpoint[] }
   | { kind: "exited"; code: number }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };

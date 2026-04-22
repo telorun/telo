@@ -61,6 +61,32 @@ function trimTrailingSlash(s: string): string {
   return s.endsWith("/") ? s.slice(0, -1) : s;
 }
 
+/** Parses the runner's baseUrl to recover the hostname. Used to fill in the
+ *  `host` field on endpoints announced by the `running` status — the runner
+ *  itself can't know which hostname the client dialled. Falls back to
+ *  "localhost" when the URL is unparseable. */
+function extractHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname || "localhost";
+  } catch {
+    return "localhost";
+  }
+}
+
+/** If `status` is `running`, replaces empty `host` fields on its endpoints
+ *  with `runnerHost`. Runner-sent endpoints come with `host: ""`; the client
+ *  adapter is the first place that knows the hostname the user reached the
+ *  runner on. */
+function fillEndpointHost(status: RunStatus, runnerHost: string): RunStatus {
+  if (status.kind !== "running" || !status.endpoints) return status;
+  return {
+    ...status,
+    endpoints: status.endpoints.map((e) =>
+      e.host === "" ? { ...e, host: runnerHost } : e,
+    ),
+  };
+}
+
 export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
   id: "docker-api",
   displayName: "Docker runner (HTTP)",
@@ -130,6 +156,7 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
 
   async start(request, config): Promise<RunSession> {
     const base = trimTrailingSlash(config.baseUrl);
+    const runnerHost = extractHost(config.baseUrl);
 
     const trimmedRegistryUrl = config.registryUrl?.trim();
     const createRes = await fetchWithTimeout(
@@ -140,6 +167,7 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
         body: JSON.stringify({
           bundle: request.bundle,
           env: request.env ?? {},
+          ports: request.ports ?? [],
           config: {
             image: config.image,
             pullPolicy: config.pullPolicy,
@@ -173,8 +201,11 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
       url: `${base}${streamUrl}`,
       sessionId,
       onEvent: (event) => {
-        if (event.type === "status") currentStatus = event.status;
-        emit(event);
+        const next = event.type === "status"
+          ? { ...event, status: fillEndpointHost(event.status, runnerHost) }
+          : event;
+        if (next.type === "status") currentStatus = next.status;
+        emit(next);
       },
       onError: () => {
         if (isTerminal(currentStatus)) return;

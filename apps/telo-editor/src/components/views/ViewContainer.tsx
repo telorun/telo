@@ -64,6 +64,7 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
           <DeploymentView
             environment={viewProps.deployment.activeEnvironment}
             onSetEnvVars={viewProps.deployment.onSetEnvVars}
+            onSetPorts={viewProps.deployment.onSetPorts}
           />
         )}
       </div>

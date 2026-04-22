@@ -47,6 +47,17 @@ const startBodySchema = {
       type: "object",
       additionalProperties: { type: "string" },
     },
+    ports: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["port", "protocol"],
+        properties: {
+          port: { type: "integer", minimum: 1, maximum: 65535 },
+          protocol: { type: "string", enum: ["tcp", "udp"] },
+        },
+      },
+    },
     config: {
       type: "object",
       required: ["image", "pullPolicy"],
@@ -190,6 +201,7 @@ async function startSession(
       entryRelativePath: `./${entryRelative}`,
       workingDir,
       env: sessionEnv,
+      ports: body.ports ?? [],
       bundleVolume: deps.runnerConfig.bundleVolume,
       childNetwork: deps.runnerConfig.childNetwork,
       onEvent: (event) => deps.registry.emit(sessionId, event),

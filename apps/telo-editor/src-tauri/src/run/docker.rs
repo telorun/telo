@@ -28,11 +28,40 @@ pub enum PullPolicy {
     Never,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PortProtocol {
+    Tcp,
+    Udp,
+}
+
+impl PortProtocol {
+    fn as_str(&self) -> &'static str {
+        match self {
+            PortProtocol::Tcp => "tcp",
+            PortProtocol::Udp => "udp",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct PortMapping {
+    pub port: u16,
+    pub protocol: PortProtocol,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunnerEndpoint {
+    pub host: String,
+    pub port: u16,
+    pub protocol: PortProtocol,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum RunStatus {
     Starting,
-    Running,
+    Running { endpoints: Vec<RunnerEndpoint> },
     Exited { code: i32 },
     Failed { message: String },
     Stopped,
@@ -50,6 +79,7 @@ pub async fn start(
     bundle_dir: BundleWorkdir,
     entry_relative_path: String,
     env: HashMap<String, String>,
+    ports: Vec<PortMapping>,
     config: TauriDockerConfig,
 ) -> Result<(), String> {
     let container_name = format!("telo-run-{session_id}");
@@ -78,6 +108,13 @@ pub async fn start(
     cmd.arg("-e").arg("CLICOLOR_FORCE=1");
     for (key, value) in &env {
         cmd.arg("-e").arg(format!("{key}={value}"));
+    }
+    for mapping in &ports {
+        cmd.arg("-p").arg(format!(
+            "{0}:{0}/{1}",
+            mapping.port,
+            mapping.protocol.as_str()
+        ));
     }
     cmd.arg(&config.image);
     cmd.arg(&entry_arg);
@@ -127,7 +164,8 @@ pub async fn start(
     spawn_reader(app.clone(), stdout, format!("run:{session_id}:stdout"));
     spawn_reader(app.clone(), stderr, format!("run:{session_id}:stderr"));
 
-    emit_status(&app, &session_id, &RunStatus::Running);
+    let endpoints = build_endpoints(&ports, config.docker_host.as_deref());
+    emit_status(&app, &session_id, &RunStatus::Running { endpoints });
 
     let exit_app = app.clone();
     let exit_registry = registry.clone();
@@ -256,6 +294,57 @@ fn split_at_incomplete_utf8(bytes: &[u8]) -> (usize, usize) {
 
 fn emit_status(app: &AppHandle, session_id: &str, status: &RunStatus) {
     let _ = app.emit(&format!("run:{session_id}:status"), status);
+}
+
+fn build_endpoints(ports: &[PortMapping], docker_host: Option<&str>) -> Vec<RunnerEndpoint> {
+    if ports.is_empty() {
+        return Vec::new();
+    }
+    let host = resolve_runner_host(docker_host);
+    ports
+        .iter()
+        .map(|m| RunnerEndpoint {
+            host: host.clone(),
+            port: m.port,
+            protocol: m.protocol,
+        })
+        .collect()
+}
+
+/// Resolves the hostname a user on the host machine should hit to reach a
+/// forwarded container port. For a local socket (unset or `unix://...`) this
+/// is `localhost`. For `tcp://host[:port]` it is the `host` component.
+/// Unparseable values fall back to `localhost`.
+fn resolve_runner_host(docker_host: Option<&str>) -> String {
+    let Some(raw) = docker_host else {
+        return "localhost".to_string();
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.starts_with("unix://") || trimmed.starts_with("npipe://") {
+        return "localhost".to_string();
+    }
+    let without_scheme = trimmed
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(trimmed);
+    let host_part = without_scheme.split('/').next().unwrap_or(without_scheme);
+    // Strip trailing `:port` — but preserve an IPv6 literal like `[::1]:2375`.
+    let host_only = if let Some(stripped) = host_part.strip_prefix('[') {
+        match stripped.split_once(']') {
+            Some((inside, _rest)) => format!("[{inside}]"),
+            None => host_part.to_string(),
+        }
+    } else {
+        match host_part.rsplit_once(':') {
+            Some((h, _)) if !h.is_empty() => h.to_string(),
+            _ => host_part.to_string(),
+        }
+    };
+    if host_only.is_empty() {
+        "localhost".to_string()
+    } else {
+        host_only
+    }
 }
 
 fn fail_missing_pipe(app: &AppHandle, session_id: &str, which: &str) -> Result<(), String> {

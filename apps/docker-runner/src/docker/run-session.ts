@@ -1,7 +1,14 @@
 import { StringDecoder } from "node:string_decoder";
 import { PassThrough } from "node:stream";
 
-import type { RunEvent, RunStatus, SessionConfig, StartFailureStage } from "../types.js";
+import type {
+  PortMapping,
+  RunEvent,
+  RunStatus,
+  RunnerEndpoint,
+  SessionConfig,
+  StartFailureStage,
+} from "../types.js";
 import { SessionStartError } from "../types.js";
 
 export interface SessionDockerContainer {
@@ -43,10 +50,12 @@ export interface CreateContainerOpts {
   Cmd: string[];
   WorkingDir: string;
   Env: string[];
+  ExposedPorts?: Record<string, Record<string, never>>;
   HostConfig: {
     Binds: string[];
     AutoRemove: boolean;
     NetworkMode: string;
+    PortBindings?: Record<string, Array<{ HostIp?: string; HostPort: string }>>;
   };
 }
 
@@ -59,6 +68,7 @@ export interface SpawnSessionArgs {
   entryRelativePath: string;
   workingDir: string;
   env: Record<string, string>;
+  ports: PortMapping[];
   bundleVolume: string;
   childNetwork: string;
   onEvent: (event: RunEvent) => void;
@@ -86,7 +96,10 @@ export async function spawnSession(args: SpawnSessionArgs): Promise<SpawnResult>
   }
 
   args.onEvent({ type: "status", status: { kind: "starting" } });
-  args.onEvent({ type: "status", status: { kind: "running" } });
+  args.onEvent({
+    type: "status",
+    status: { kind: "running", endpoints: buildEndpoints(args.ports) },
+  });
 
   const exit = container.wait().then(
     (info) => {
@@ -163,16 +176,19 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
     "CLICOLOR_FORCE=1",
     ...Object.entries(args.env).map(([k, v]) => `${k}=${v}`),
   ];
+  const { exposedPorts, portBindings } = buildPortBindings(args.ports);
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,
     Cmd: [args.entryRelativePath],
     WorkingDir: args.workingDir,
     Env: envArray,
+    ...(exposedPorts ? { ExposedPorts: exposedPorts } : {}),
     HostConfig: {
       Binds: [`${args.bundleVolume}:/srv`],
       AutoRemove: true,
       NetworkMode: args.childNetwork,
+      ...(portBindings ? { PortBindings: portBindings } : {}),
     },
   };
   try {
@@ -180,6 +196,34 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   } catch (err) {
     throw startError("start_failed", "create", err);
   }
+}
+
+/** Builds the `ExposedPorts` and `HostConfig.PortBindings` fields Docker's
+ *  Engine API uses to publish container ports on the host. Same container port
+ *  is bound to the same host port; `HostIp: ""` publishes on all interfaces.
+ *  Returns empty/undefined bags when `ports` is empty so the resulting
+ *  container spec stays minimal. */
+function buildPortBindings(ports: PortMapping[]): {
+  exposedPorts?: Record<string, Record<string, never>>;
+  portBindings?: Record<string, Array<{ HostIp: string; HostPort: string }>>;
+} {
+  if (ports.length === 0) return {};
+  const exposedPorts: Record<string, Record<string, never>> = {};
+  const portBindings: Record<string, Array<{ HostIp: string; HostPort: string }>> = {};
+  for (const { port, protocol } of ports) {
+    const key = `${port}/${protocol}`;
+    exposedPorts[key] = {};
+    portBindings[key] = [{ HostIp: "", HostPort: String(port) }];
+  }
+  return { exposedPorts, portBindings };
+}
+
+/** Produces the endpoints list announced on the `running` status. `host` is
+ *  left blank — the runner does not know the hostname clients used to reach
+ *  it, so the client adapter fills it from its configured baseUrl before
+ *  surfacing to the UI. */
+function buildEndpoints(ports: PortMapping[]): RunnerEndpoint[] {
+  return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
 }
 
 async function attachContainer(container: SessionDockerContainer): Promise<NodeJS.ReadableStream> {

@@ -9,7 +9,14 @@ import {
   type ReactNode,
 } from "react";
 
-import { isTerminal, type RunAdapter, type RunEvent, type RunRequest, type RunSession, type RunStatus } from "./types";
+import {
+  isTerminal,
+  type RunAdapter,
+  type RunEvent,
+  type RunRequest,
+  type RunSession,
+  type RunStatus,
+} from "./types";
 
 const MAX_LOG_LINES = 10_000;
 

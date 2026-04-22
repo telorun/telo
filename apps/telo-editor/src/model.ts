@@ -172,10 +172,16 @@ export interface ApplicationDeployment {
   environments: Record<string, DeploymentEnvironment>;
 }
 
+export interface PortMapping {
+  port: number;
+  protocol: "tcp" | "udp";
+}
+
 export interface DeploymentEnvironment {
   id: string;
   name: string;
   env: Record<string, string>;
+  ports?: PortMapping[];
 }
 
 /** Per-file record projected from `workspace.documents` for the active module.

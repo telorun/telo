@@ -9,7 +9,7 @@ use tauri::{AppHandle, State};
 
 use availability::AvailabilityReport;
 use bundle::{BundleWorkdir, RunBundlePayload};
-use docker::TauriDockerConfig;
+use docker::{PortMapping, TauriDockerConfig};
 use session::SessionRegistry;
 
 #[tauri::command]
@@ -19,13 +19,24 @@ pub async fn run_start(
     session_id: String,
     bundle: RunBundlePayload,
     env: Option<HashMap<String, String>>,
+    ports: Option<Vec<PortMapping>>,
     config: TauriDockerConfig,
 ) -> Result<(), String> {
     let workdir = BundleWorkdir::write(&bundle)
         .map_err(|e| format!("Failed to write bundle tempdir: {e}"))?;
     let entry = bundle.entry_relative_path.clone();
     let registry = registry.inner().clone();
-    docker::start(app, registry, session_id, workdir, entry, env.unwrap_or_default(), config).await
+    docker::start(
+        app,
+        registry,
+        session_id,
+        workdir,
+        entry,
+        env.unwrap_or_default(),
+        ports.unwrap_or_default(),
+        config,
+    )
+    .await
 }
 
 #[tauri::command]
