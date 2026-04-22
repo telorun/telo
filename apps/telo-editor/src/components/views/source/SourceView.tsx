@@ -64,6 +64,15 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
   // don't want a state update on every timer schedule.
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  // Per-tab flag set immediately before a programmatic `model.setValue()` and
+  // consumed by the next `handleChange` for that tab. Monaco fires `onChange`
+  // synchronously during `setValue`, which would otherwise flip the tab to
+  // `dirty` even though the edit came from upstream (e.g. a form edit flowing
+  // through workspace.documents → sourceFiles). A dirty tab blocks the
+  // useEffect below from resyncing localText, so subsequent external edits
+  // would be invisible in Monaco until the debounce fires.
+  const programmaticUpdateRef = useRef<Set<string>>(new Set());
+
   // Monaco editor + monaco instance refs keyed by filePath. Used to set /
   // clear error markers per tab.
   const editorsRef = useRef<Record<string, MonacoEditor>>({});
@@ -138,6 +147,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
       const model = editor.getModel();
       if (!model) continue;
       if (model.getValue() !== state.localText) {
+        programmaticUpdateRef.current.add(filePath);
         model.setValue(state.localText);
       }
     }
@@ -282,6 +292,10 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
   // `commit` / `onSourceEdit`.
   function handleChange(filePath: string, value: string | undefined) {
     if (value == null) return;
+    if (programmaticUpdateRef.current.has(filePath)) {
+      programmaticUpdateRef.current.delete(filePath);
+      return;
+    }
     setTabStates((prev) => ({
       ...prev,
       [filePath]: {
@@ -374,6 +388,11 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
+              // Re-parent hover/suggest/context widgets to document.body.
+              // Without this, popovers anchored near the top of the buffer
+              // open upward and get clipped by the editor's ancestor
+              // `overflow-hidden` containers (tab strip + flex column).
+              fixedOverflowWidgets: true,
             }}
           />
         </div>

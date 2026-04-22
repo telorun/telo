@@ -1,3 +1,4 @@
+import { Redo2, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import type { RunStatus } from "../run";
@@ -26,6 +27,10 @@ interface TopBarProps {
    *  Drives the Run button's spinner (in-flight) / dot (terminal). */
   runStatus?: RunStatus | null;
   onOpenRunView?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export function TopBar({
@@ -36,6 +41,10 @@ export function TopBar({
   onRun,
   runStatus,
   onOpenRunView,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
   const subPath = formatSubPath(workspace, activeManifest);
@@ -68,6 +77,26 @@ export function TopBar({
       <div className="flex gap-2">
         <Button variant="ghost" size="sm" onClick={onOpen}>
           Open workspace
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Undo"
+          aria-label="Undo"
+        >
+          <Undo2 />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Redo"
+          aria-label="Redo"
+        >
+          <Redo2 />
         </Button>
         <Button variant="ghost" size="sm" disabled>
           Save

@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
-import type { ModuleDocument, ParsedManifest, Workspace } from "./model";
+import { describe, expect, it, vi } from "vitest";
+import {
+  rebuildManifestFromDocuments,
+  saveModuleFromDocuments,
+  setResourceFields,
+} from "./loader";
+import type { ModuleDocument, ParsedManifest, Workspace, WorkspaceAdapter } from "./model";
 import { parseModuleDocument } from "./yaml-document";
 import { buildModuleViewData } from "./view-data";
+
+function stubAdapter(): WorkspaceAdapter {
+  return {
+    readFile: vi.fn(async () => ""),
+    writeFile: vi.fn(async () => {}),
+    listDir: vi.fn(async () => []),
+    createDir: vi.fn(async () => {}),
+    delete: vi.fn(async () => {}),
+  };
+}
 
 function makeWorkspace(entries: Array<{ path: string; text: string; parseError?: string }>): Workspace {
   const documents = new Map<string, ModuleDocument>();
@@ -106,5 +121,60 @@ describe("buildModuleViewData.sourceFiles", () => {
     const viewData = buildModuleViewData(workspace, manifest);
 
     expect(viewData.sourceFiles).toHaveLength(1);
+  });
+
+  it("reflects a setResourceFields + save round-trip — the text SourceView consumes is updated", async () => {
+    // Repro for "when source view and form are both shown, editing the form
+    // doesn't update the source view". The source view renders from
+    // `viewData.sourceFiles[*].text`. This test pins the data-layer contract:
+    // after a form-driven mutation (setResourceFields) and a save, the view
+    // data reflects the new serialized text. If this passes, any "source
+    // view doesn't refresh" bug lives in the React layer (SourceView's
+    // useEffect/Monaco resync), not in the data flow.
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "---",
+      "kind: Http.Server",
+      "metadata:",
+      "  name: main",
+      "port: 8080",
+      "",
+    ].join("\n");
+    let workspace: Workspace = {
+      ...makeWorkspace([{ path: "/ws/app/telo.yaml", text }]),
+      modules: new Map([
+        [
+          "/ws/app/telo.yaml",
+          makeManifest("/ws/app/telo.yaml", [{ kind: "Http.Server", name: "main" }]),
+        ],
+      ]),
+    };
+    // resourceDocIndex is required by setResourceFields — rebuild from the AST.
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+
+    const before = buildModuleViewData(
+      workspace,
+      workspace.modules.get("/ws/app/telo.yaml")!,
+    );
+    expect(before.sourceFiles[0].text).toMatch(/port:\s*8080/);
+
+    workspace = setResourceFields(
+      workspace,
+      "/ws/app/telo.yaml",
+      "Http.Server",
+      "main",
+      { port: 8080 },
+      { port: 9090 },
+    );
+    workspace = await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", stubAdapter());
+
+    const after = buildModuleViewData(
+      workspace,
+      workspace.modules.get("/ws/app/telo.yaml")!,
+    );
+    expect(after.sourceFiles[0].text).toMatch(/port:\s*9090/);
+    expect(after.sourceFiles[0].text).not.toMatch(/port:\s*8080/);
   });
 });
