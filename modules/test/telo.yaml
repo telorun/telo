@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: test
   namespace: std
-  version: 0.1.4
+  version: 0.1.5
   description: Test discovery and execution
 exports:
   kinds:
@@ -13,7 +13,7 @@ metadata:
   name: Suite
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.1.7?local_path=./nodejs#suite
+  - pkg:npm/@telorun/test@0.1.8?local_path=./nodejs#suite
 schema:
   type: object
   properties:

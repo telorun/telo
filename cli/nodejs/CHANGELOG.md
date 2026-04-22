@@ -1,5 +1,15 @@
 # @telorun/cli
 
+## 0.4.1
+
+### Patch Changes
+
+- 2900b1c: `telo publish` now retries transient registry push failures with exponential backoff (up to 4 attempts). Retries on network errors (DNS, reset, `fetch failed`) and on `408`, `425`, `429`, and `5xx` responses so flaky CI pushes no longer fail the whole workflow.
+- Updated dependencies [e35e2ee]
+- Updated dependencies [c97da42]
+  - @telorun/analyzer@0.3.0
+  - @telorun/kernel@0.4.1
+
 ## 0.4.0
 
 ### Minor Changes
