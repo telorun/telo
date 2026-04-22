@@ -239,10 +239,18 @@ function kindCompletions(registry: AnalysisRegistry | undefined): vscode.Complet
   ]);
 
   if (registry) {
+    // Canonical kinds like `http-server.Server` are registry-internal; users reference
+    // imported kinds via the PascalCase import alias (e.g. `Http.Server`). Emit only the
+    // alias form and drop any canonical kind that isn't reachable through an import.
     for (const kind of registry.allKinds()) {
       const def = registry.resolveDefinition(kind);
-      if (def && !ABSTRACT_DEF_KINDS.has(def.kind)) {
-        kinds.add(kind);
+      if (!def || ABSTRACT_DEF_KINDS.has(def.kind)) continue;
+      const dot = kind.indexOf(".");
+      if (dot === -1) continue;
+      const moduleName = kind.slice(0, dot);
+      const typeName = kind.slice(dot + 1);
+      for (const alias of registry.aliasesFor(moduleName)) {
+        kinds.add(`${alias}.${typeName}`);
       }
     }
   }
