@@ -71,6 +71,12 @@ export class AnalysisRegistry {
     return this._context().definitions?.kinds() ?? [];
   }
 
+  /** Returns every import alias that points at `moduleName` (the canonical, kebab-case
+   *  module name). Empty when no import declares that target. */
+  aliasesFor(moduleName: string): string[] {
+    return this.aliases.aliasesFor(moduleName);
+  }
+
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */
   _context(): AnalysisContext {
     return { aliases: this.aliases, definitions: this.defs };

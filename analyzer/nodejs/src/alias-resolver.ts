@@ -34,4 +34,15 @@ export class AliasResolver {
   knownAliases(): string[] {
     return Array.from(this.importAliases.keys());
   }
+
+  /** Returns every alias that currently points at `targetModule`.
+   *  Used by clients that need to convert a canonical kind key (e.g. "http-server.Server")
+   *  back into its user-facing alias form (e.g. "Http.Server"). */
+  aliasesFor(targetModule: string): string[] {
+    const result: string[] = [];
+    for (const [alias, mod] of this.importAliases) {
+      if (mod === targetModule) result.push(alias);
+    }
+    return result;
+  }
 }
