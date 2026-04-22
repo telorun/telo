@@ -10,6 +10,7 @@ packages:
   - yaml-cel-templating/*
   - analyzer/*
   - ide/*
+  - packages/*
 
 onlyBuiltDependencies:
   - better-sqlite3

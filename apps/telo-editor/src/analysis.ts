@@ -1,4 +1,4 @@
-import { StaticAnalyzer, type AnalysisDiagnostic } from "@telorun/analyzer";
+import { AnalysisRegistry, StaticAnalyzer, type AnalysisDiagnostic } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { normalizePath } from "./loader";
 import type { ModuleDocument, Workspace } from "./model";
@@ -109,6 +109,13 @@ export interface WorkspaceDiagnostics {
   /** filePath → diagnostics NOT tied to a named resource. Includes
    *  `UNKNOWN_FILE_KEY` when the analyzer gives us nothing to route on. */
   byFile: Map<string, AnalysisDiagnostic[]>;
+  /** Populated AnalysisRegistry from the pass. Needed by the Monaco
+   *  completion provider and diagnostic normalizer. */
+  registry: AnalysisRegistry;
+  /** Lookup for `positionIndex` / `sourceLine` during diagnostic range
+   *  resolution. Keyed by `${filePath}::${resourceName}`. Mirrors the VS Code
+   *  extension's `manifestByKey` pattern. */
+  manifestsByResource: Map<string, ResourceManifest>;
 }
 
 /**
@@ -146,13 +153,17 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
   }
 
   const analyzer = new StaticAnalyzer();
-  const diagnostics = analyzer.analyze(manifests);
+  const registry = new AnalysisRegistry();
+  const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
   const sourceByManifest = new Map<string, string>();
+  const manifestsByResource = new Map<string, ResourceManifest>();
   for (const m of manifests) {
     const source = (m.metadata as EnrichedMetadata).source;
+    const name = (m.metadata as EnrichedMetadata).name;
     if (source) {
       sourceByManifest.set(`${m.kind}/${m.metadata.name}`, source);
+      if (name) manifestsByResource.set(`${source}::${name}`, m);
     }
   }
 
@@ -200,5 +211,5 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     appendByFile(stampedPath ?? UNKNOWN_FILE_KEY, diag);
   }
 
-  return { byResource, byFile };
+  return { byResource, byFile, registry, manifestsByResource };
 }

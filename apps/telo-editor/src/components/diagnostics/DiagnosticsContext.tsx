@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { Range } from "@telorun/analyzer";
+import { AnalysisRegistry, type Range } from "@telorun/analyzer";
 import type { WorkspaceDiagnostics } from "../../analysis";
 
 export interface DiagnosticsContextValue {
@@ -47,7 +47,14 @@ export function useDiagnosticsContext(): DiagnosticsContextValue | null {
 export function useDiagnosticsState(): { diagnostics: WorkspaceDiagnostics } {
   const ctx = useContext(DiagnosticsContext);
   if (ctx) return { diagnostics: ctx.diagnostics };
-  return { diagnostics: { byResource: new Map(), byFile: new Map() } };
+  return {
+    diagnostics: {
+      byResource: new Map(),
+      byFile: new Map(),
+      registry: new AnalysisRegistry(),
+      manifestsByResource: new Map(),
+    },
+  };
 }
 
 /** Active module's file paths (owner + partials). Empty array when no module

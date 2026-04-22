@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
+    "@telorun/ide-support": "workspace:*",
     "minimatch": "^10.0.1"
   },
   "devDependencies": {
