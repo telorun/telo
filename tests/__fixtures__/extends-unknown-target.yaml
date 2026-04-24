@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: ExtendsUnknownTarget
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: AbstractLib
+source: ./abstract-lib.yaml
+---
+# Alias resolves (AbstractLib → abstract-lib) but that module exports no abstract
+# named `DoesNotExist`.
+kind: Telo.Definition
+metadata:
+  name: Orphan
+  module: OrphanLocal
+capability: Telo.Invocable
+extends: AbstractLib.DoesNotExist
+schema:
+  type: object
+  properties: {}

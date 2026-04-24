@@ -122,6 +122,18 @@ schema:
               message:
                 type: string
                 description: Substring to match in the diagnostic message
+        warnings:
+          type: array
+          description: Expected analysis warnings
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Diagnostic code (e.g. CAPABILITY_SHADOWS_EXTENDS)
+              message:
+                type: string
+                description: Substring to match in the diagnostic message
         loadError:
           type: string
           description: Substring to match in a manifest load error (asserts that loading fails)

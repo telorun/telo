@@ -49,6 +49,16 @@ const throwsSchema = {
   },
 };
 
+/** Alias-form pattern for `extends` values: "<Alias>.<AbstractName>".
+ *  Resolved against the declaring file's `Telo.Import` aliases — identical to how
+ *  kind prefixes work (e.g. `kind: Http.Api` resolves `Http` via the importer's
+ *  alias registration). Identity form (`std/mod#Name`) is intentionally not
+ *  accepted: aliases carry the module version via their `Telo.Import` source,
+ *  which canonical module names can't.
+ *  - Alias: PascalCase (first letter uppercase)
+ *  - Name: PascalCase */
+const EXTENDS_ALIAS_PATTERN = "^[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*$";
+
 const baseDefinition = {
   type: "object",
   required: ["kind", "metadata"],
@@ -56,6 +66,7 @@ const baseDefinition = {
     kind: { const: "Telo.Definition" },
     metadata: metadataSchema,
     capability: { type: "string" },
+    extends: { type: "string", pattern: EXTENDS_ALIAS_PATTERN },
     schema: { type: "object", additionalProperties: true },
     controllers: { type: "array", items: { type: "string" } },
     throws: throwsSchema,
@@ -114,11 +125,33 @@ export const ResourceDefinitionSchema = {
   ],
 };
 
+/** Schema for `kind: Telo.Abstract`. Library-declared abstracts are type blueprints —
+ *  they may carry an optional `capability` (lifecycle inherited by implementations)
+ *  and an optional `schema` (shared base for implementations). `controllers` and `throws`
+ *  are forbidden (no runtime implementation; throws lives on concrete definitions).
+ *  Other fields are permitted for forward compatibility with typed-abstracts work
+ *  (inputType, outputType, …) — Telo.Abstract is an extension point by design. */
+export const ResourceAbstractSchema = {
+  type: "object",
+  required: ["kind", "metadata"],
+  properties: {
+    kind: { const: "Telo.Abstract" },
+    metadata: metadataSchema,
+    capability: { type: "string" },
+    schema: { type: "object", additionalProperties: true },
+  },
+  not: {
+    anyOf: [{ required: ["controllers"] }, { required: ["throws"] }],
+  },
+  additionalProperties: true,
+};
+
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats.default(ajv);
 
 export const validateRuntimeResource = ajv.compile(RuntimeResourceSchema);
 export const validateResourceDefinition = ajv.compile(ResourceDefinitionSchema);
+export const validateResourceAbstract = ajv.compile(ResourceAbstractSchema);
 
 export function formatAjvErrors(errors: any[] | null | undefined): string {
   if (!errors || errors.length === 0) return "Unknown schema error";

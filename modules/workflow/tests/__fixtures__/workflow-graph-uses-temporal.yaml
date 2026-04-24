@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: WorkflowGraphUsesTemporal
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Workflow
+source: ../../../workflow
+---
+kind: Telo.Import
+metadata:
+  name: Temporal
+source: ../../../workflow-temporal
+---
+kind: Telo.Import
+metadata:
+  name: JS
+source: ../../../javascript
+---
+kind: JS.Script
+metadata:
+  name: Noop
+code: |
+  function main() { return {}; }
+---
+# Concrete backend: Temporal.Backend declares `extends: Workflow.Backend` (alias form)
+# in workflow-temporal's telo.yaml. That works because the declaring file resolves the
+# `Workflow` alias against its own imports — same pattern as kind-prefix resolution.
+kind: Temporal.Backend
+metadata:
+  name: TemporalProd
+address: localhost:7233
+namespace: default
+---
+# Workflow.Graph.backend is typed `x-telo-ref: "std/workflow#Backend"` — the analyzer
+# accepts TemporalProd here because Temporal.Backend extends AbstractLib's Greeter abstract
+# (canonically workflow.Backend) via the `extends` edge in the definition registry.
+kind: Workflow.Graph
+metadata:
+  name: TinyGraph
+backend:
+  kind: Temporal.Backend
+  name: TemporalProd
+nodes:
+  - name: DoNothing
+    invoke:
+      kind: JS.Script
+      name: Noop

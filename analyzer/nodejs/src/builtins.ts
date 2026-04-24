@@ -27,9 +27,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           additionalProperties: true,
         },
         capability: { type: "string" },
+        schema: { type: "object", additionalProperties: true },
       },
       required: ["metadata"],
-      additionalProperties: false,
+      // Telo.Abstract is an extension point by design — it must accept forward-compatible
+      // fields (e.g. inputType/outputType from the typed-abstracts plan) without requiring
+      // the analyzer to enumerate them here.
+      additionalProperties: true,
     },
   },
   {

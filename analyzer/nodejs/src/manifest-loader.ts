@@ -389,7 +389,10 @@ export class Loader {
         }
       }
       for (const im of imported) {
-        if (im.kind === "Telo.Definition") importedDefs.push(im);
+        // Forward both Telo.Definition AND Telo.Abstract docs from imported libraries
+        // so cross-package x-telo-ref resolution and `extends` target validation can see
+        // library-declared abstracts (not just Telo.Abstract entries in KERNEL_BUILTINS).
+        if (im.kind === "Telo.Definition" || im.kind === "Telo.Abstract") importedDefs.push(im);
         if (im.kind === "Telo.Import") queue.push(im);
       }
     }

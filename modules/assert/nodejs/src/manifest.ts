@@ -13,6 +13,7 @@ interface ManifestAssertManifest {
   source: string;
   expect: {
     errors?: ExpectError[];
+    warnings?: ExpectError[];
     loadError?: string;
   };
 }
@@ -121,7 +122,9 @@ export async function create(
 
       const diagnostics = analyzer.analyze(manifests);
       const errors = diagnostics.filter((d) => d.severity === 1); // DiagnosticSeverity.Error = 1
+      const warnings = diagnostics.filter((d) => d.severity === 2); // DiagnosticSeverity.Warning = 2
       const expectedErrors = manifest.expect.errors ?? [];
+      const expectedWarnings = manifest.expect.warnings ?? [];
       const failures: string[] = [];
       const matched: string[] = [];
 
@@ -143,7 +146,26 @@ export async function create(
             );
           } else {
             failures.push(
-              `expected ${expected.code ?? "*"}${expected.message ? ` containing "${expected.message}"` : ""} — not found`,
+              `expected error ${expected.code ?? "*"}${expected.message ? ` containing "${expected.message}"` : ""} — not found`,
+            );
+          }
+        }
+      }
+
+      // Warnings are checked only when the caller declares expect.warnings. Unexpected
+      // warnings are not failures (unlike errors) — warnings are advisory and may exist
+      // on manifests that are otherwise valid. When expect.warnings is present, every
+      // listed warning must be found; extras are ignored.
+      if (expectedWarnings.length > 0) {
+        for (const expected of expectedWarnings) {
+          const match = warnings.find((d) => matchesDiagnostic(d, expected));
+          if (match) {
+            matched.push(
+              `warning ${expected.code ?? "*"}${expected.message ? ` (${expected.message})` : ""}`,
+            );
+          } else {
+            failures.push(
+              `expected warning ${expected.code ?? "*"}${expected.message ? ` containing "${expected.message}"` : ""} — not found`,
             );
           }
         }
@@ -152,10 +174,13 @@ export async function create(
       const passedLines = matched.map((m) => `  ${green("✓")} ${dim(m)}\n`).join("");
       if (failures.length > 0) {
         const failedLines = failures.map((f) => `  ${red("✗")} ${f}\n`).join("");
-        const actualLines = errors.length > 0
-          ? `  ${dim("actual errors:")}\n` +
-            errors.map((d) => `    ${dim(`[${d.code}] ${d.message}`)}\n`).join("")
-          : `  ${dim("no errors produced")}\n`;
+        const actualLines =
+          errors.length > 0 || warnings.length > 0
+            ? `  ${dim("actual diagnostics:")}\n` +
+              [...errors, ...warnings]
+                .map((d) => `    ${dim(`[${d.code}] ${d.message}`)}\n`)
+                .join("")
+            : `  ${dim("no diagnostics produced")}\n`;
         ctx.stderr.write(
           bold(red(`Assert.Manifest.${name}: assertion failed`)) + "\n" +
             passedLines + failedLines + actualLines,

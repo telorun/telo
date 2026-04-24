@@ -148,6 +148,10 @@ export class Kernel implements IKernel {
       "Telo.Definition",
       await import("./controllers/resource-definition/resource-definition-controller.js"),
     );
+    this.controllers.registerController(
+      "Telo.Abstract",
+      await import("./controllers/resource-definition/abstract-controller.js"),
+    );
     const moduleController = await import("./controllers/module/module-controller.js");
     this.controllers.registerController("Telo.Application", moduleController);
     this.controllers.registerController("Telo.Library", moduleController);
@@ -539,13 +543,21 @@ export class Kernel implements IKernel {
 
     if (!runtime.length) return { instance, ctx };
 
-    const wrapped: ResourceInstance = {
-      ...instance,
-      invoke: async (inputs: any) => {
-        const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
-        return instance.invoke!(expanded);
+    // Preserve the prototype chain so class-based controllers retain their methods.
+    // `{ ...instance, invoke }` only copies own enumerable properties — methods declared
+    // on the prototype (init/teardown/snapshot/stream/...) would vanish silently. Create
+    // a new object inheriting from the original's prototype, copy own properties, then
+    // shadow invoke with the CEL-expanding wrapper.
+    const wrapped = Object.assign(
+      Object.create(Object.getPrototypeOf(instance)),
+      instance,
+      {
+        invoke: async (inputs: any) => {
+          const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
+          return instance.invoke!(expanded);
+        },
       },
-    };
+    ) as ResourceInstance;
     return { instance: wrapped, ctx };
   }
 

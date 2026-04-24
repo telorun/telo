@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: AbstractImportSmokeTest
+  version: 1.0.0
+targets:
+  - TestAbstractImportClean
+  - TestAbstractXRefResolution
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Asserts that a library declaring a Telo.Abstract plus a canonical `capability +
+# extends` implementation analyzes with zero diagnostics. This is the baseline
+# sanity check for library-declared abstracts.
+kind: Assert.Manifest
+metadata:
+  name: TestAbstractImportClean
+source: ./__fixtures__/abstract-lib.yaml
+expect: {}
+---
+# Asserts that a consumer manifest importing abstract-lib can use x-telo-ref pointing
+# at the library-declared abstract, and that the concrete Shouter (which `extends` the
+# abstract) is accepted as a valid reference target.
+kind: Assert.Manifest
+metadata:
+  name: TestAbstractXRefResolution
+source: ./__fixtures__/abstract-xref-consumer.yaml
+expect: {}

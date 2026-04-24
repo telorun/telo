@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: WorkflowImportSmokeTest
+  version: 1.0.0
+targets:
+  - TestWorkflowImport
+  - TestWorkflowGraphXRef
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# The workflow + workflow-temporal pair is the canonical cross-package abstract example:
+# `Workflow.Backend` is a Telo.Abstract in std/workflow, `Temporal.Backend` is a concrete
+# Telo.Definition in std/workflow-temporal that declares `extends: "std/workflow#Backend"`
+# (post-Part-A migration). This test asserts both packages analyze cleanly — the smoke
+# test for library-declared abstracts working end-to-end.
+kind: Assert.Manifest
+metadata:
+  name: TestWorkflowImport
+source: ../telo.yaml
+expect: {}
+---
+# Exercises the full reference resolution path: an Application imports both std/workflow
+# and std/workflow-temporal, declares a Temporal.Backend, and wires it into a
+# Workflow.Graph.backend slot typed `x-telo-ref: "std/workflow#Backend"`. The analyzer
+# must accept Temporal.Backend via the extendedBy index populated from `extends`.
+kind: Assert.Manifest
+metadata:
+  name: TestWorkflowGraphXRef
+source: ./__fixtures__/workflow-graph-uses-temporal.yaml
+expect: {}
