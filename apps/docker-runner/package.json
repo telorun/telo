@@ -1,6 +1,6 @@
 {
   "name": "@telorun/docker-runner",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Telo Docker Runner - HTTP service that runs Telo Applications in Docker containers on the host daemon.",
   "keywords": [

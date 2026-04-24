@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Telo HTTP Server module - HTTP server and API resource kinds for Telo manifests.",
   "keywords": [
     "telo",

@@ -1,5 +1,15 @@
 # @telorun/analyzer
 
+## 0.3.0
+
+### Minor Changes
+
+- c97da42: Add `AnalysisRegistry.validUserFacingKinds()` and `AnalysisRegistry.suggestKind(badKind)` for editor hosts and diagnostic enrichment. The `UNDEFINED_KIND` diagnostic now appends a `Did you mean '…'?` hint when a close-by valid kind exists (Levenshtein over the alias-form kind list, case-sensitive) and stamps `data.suggestedKind` on the payload so editor hosts can wire CodeActions without re-running the search. The previous verbose `Known imports: … | kinds: …` suffix is removed; CLI users get the concrete suggestion instead.
+
+### Patch Changes
+
+- e35e2ee: Add `AnalysisRegistry.aliasesFor(moduleName)` (and the underlying `AliasResolver.aliasesFor`) so callers can convert a canonical kind key (e.g. `http-server.Server`) back into its user-facing import alias form (e.g. `Http.Server`). Used by the VS Code extension to stop suggesting invalid canonical kinds in `kind:` autocomplete.
+
 ## 0.2.1
 
 ### Patch Changes

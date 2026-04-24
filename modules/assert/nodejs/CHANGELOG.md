@@ -1,5 +1,13 @@
 # @telorun/assert
 
+## 0.1.12
+
+### Patch Changes
+
+- Updated dependencies [e35e2ee]
+- Updated dependencies [c97da42]
+  - @telorun/analyzer@0.3.0
+
 ## 0.1.11
 
 ### Patch Changes
