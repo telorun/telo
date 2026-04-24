@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: CapabilityShadowsExtendsTest
+  version: 1.0.0
+targets:
+  - TestCapabilityShadowsExtends
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Asserts that `capability: <UserAbstract>` emits CAPABILITY_SHADOWS_EXTENDS (warning).
+# Builtin lifecycle capabilities (Telo.Invocable, etc.) must NOT trigger this — verified
+# implicitly since most fixtures declare `capability: Telo.Invocable` without complaint.
+kind: Assert.Manifest
+metadata:
+  name: TestCapabilityShadowsExtends
+source: ./__fixtures__/capability-shadows-extends.yaml
+expect:
+  warnings:
+    - code: CAPABILITY_SHADOWS_EXTENDS

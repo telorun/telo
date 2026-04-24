@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: abstract-lib
+  namespace: std
+  version: 1.0.0
+  description: Test fixture declaring a Telo.Abstract plus a non-abstract companion.
+exports:
+  kinds:
+    - Greeter
+    - Concrete
+---
+# The abstract contract: any Greeter implementation must expose an `invoke` method.
+kind: Telo.Abstract
+metadata:
+  name: Greeter
+capability: Telo.Invocable
+---
+# A second concrete definition that is NOT an abstract. Used to exercise EXTENDS_NON_ABSTRACT.
+kind: Telo.Definition
+metadata:
+  name: Concrete
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: {}
+  additionalProperties: false

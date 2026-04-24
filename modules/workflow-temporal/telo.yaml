@@ -8,10 +8,19 @@ exports:
   kinds:
     - Backend
 ---
+# Import the workflow module so `Workflow.Backend` resolves from `extends` below.
+# Required regardless of whether a consuming application also imports workflow —
+# aliases in `extends` are resolved against this file's own imports.
+kind: Telo.Import
+metadata:
+  name: Workflow
+source: ../workflow
+---
 kind: Telo.Definition
 metadata:
   name: Backend
-capability: Workflow.Backend
+capability: Telo.Provider
+extends: Workflow.Backend
 schema:
   type: object
   properties:

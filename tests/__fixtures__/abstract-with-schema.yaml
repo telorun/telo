@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata:
+  name: abstract-with-schema
+  namespace: std
+  version: 1.0.0
+  description: Fixture verifying that Telo.Abstract accepts `schema` plus forward-compatible fields.
+exports:
+  kinds:
+    - Shaped
+---
+# An abstract carrying a shared `schema` block AND a forward-compatible `inputType`
+# field (placeholder for the typed-abstracts work). Both must pass both the analyzer's
+# Telo.Abstract template schema and the kernel's ResourceAbstractSchema.
+kind: Telo.Abstract
+metadata:
+  name: Shaped
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    tag: { type: string }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      payload: { type: string }
+    required: [payload]

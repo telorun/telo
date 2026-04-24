@@ -39,6 +39,12 @@ export interface ResourceDefinition {
   /** JSON Schema for the resource's compile-time configuration fields. */
   schema?: Record<string, any>;
   capability?: string;
+  /** Alias-form reference to a Telo.Abstract this definition implements, e.g. "Ai.Model".
+   *  Resolved against the declaring file's `Telo.Import` declarations — same pattern as
+   *  kind prefixes (`kind: Http.Api`). Orthogonal to `capability` (lifecycle role); the
+   *  analyzer populates its `extendedBy` index from this field so references typed via
+   *  `x-telo-ref: "<ns>/<mod>#<Abstract>"` accept this definition. */
+  extends?: string;
   controllers?: Array<{
     runtime: string;
     entry: string;

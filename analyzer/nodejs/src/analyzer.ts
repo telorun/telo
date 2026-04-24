@@ -28,6 +28,7 @@ import {
   resolveTypeFieldToSchema,
   validateChainAgainstSchema,
 } from "./validate-cel-context.js";
+import { validateExtends } from "./validate-extends.js";
 import { validateReferences } from "./validate-references.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
@@ -322,19 +323,32 @@ export class StaticAnalyzer {
       }
     }
 
-    // Register definitions from Telo.Definition resources.
-    // Normalize alias-prefixed `capability` to canonical form so extendedBy lookup works
-    // (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known alias).
+    // Register definitions from Telo.Definition AND Telo.Abstract resources.
+    // Abstracts declare contracts that implementations target via `extends` (canonical)
+    // or `capability: <AbstractKind>` (legacy). Until they're registered, validateReferences
+    // can't resolve x-telo-ref entries pointing at library-declared abstracts — so abstracts
+    // must go through register() too, not just the kernel builtins in the constructor.
+    //
+    // Normalize alias-prefixed `capability` and `extends` to canonical form so extendedBy
+    // lookup works (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known
+    // alias). Both fields use the same alias-form syntax and the same resolveKind path —
+    // `capability` for the legacy implements-this-abstract overload, `extends` as the
+    // canonical first-class form.
     for (const m of manifests) {
-      if (m.kind === "Telo.Definition") {
-        const def = m as unknown as ResourceDefinition;
-        const resolvedCapability = def.capability
-          ? (aliases.resolveKind(def.capability) ?? def.capability)
-          : def.capability;
-        defs.register(
-          resolvedCapability !== def.capability ? { ...def, capability: resolvedCapability } : def,
-        );
-      }
+      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      const def = m as unknown as ResourceDefinition;
+      const resolvedCapability = def.capability
+        ? (aliases.resolveKind(def.capability) ?? def.capability)
+        : def.capability;
+      const resolvedExtends = def.extends
+        ? (aliases.resolveKind(def.extends) ?? def.extends)
+        : def.extends;
+      const needsPatch =
+        resolvedCapability !== def.capability || resolvedExtends !== def.extends;
+      const normalized = needsPatch
+        ? { ...def, capability: resolvedCapability, extends: resolvedExtends }
+        : def;
+      defs.register(normalized);
     }
 
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
@@ -519,6 +533,9 @@ export class StaticAnalyzer {
 
     // Validate resource references (Phase 3)
     diagnostics.push(...validateReferences(allManifests, { aliases, definitions: defs }));
+
+    // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
+    diagnostics.push(...validateExtends(allManifests, defs, aliases));
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
     diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));

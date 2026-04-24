@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: ExtendsNonAbstract
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: AbstractLib
+source: ./abstract-lib.yaml
+---
+# `extends` points at AbstractLib.Concrete, which is a Telo.Definition (concrete),
+# not a Telo.Abstract. The analyzer should flag EXTENDS_NON_ABSTRACT.
+kind: Telo.Definition
+metadata:
+  name: SecondHand
+  module: SecondHandLocal
+capability: Telo.Invocable
+extends: AbstractLib.Concrete
+schema:
+  type: object
+  properties: {}

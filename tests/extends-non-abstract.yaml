@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: ExtendsNonAbstractTest
+  version: 1.0.0
+targets:
+  - TestExtendsNonAbstract
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Asserts the analyzer emits EXTENDS_NON_ABSTRACT when `extends` targets a concrete definition.
+kind: Assert.Manifest
+metadata:
+  name: TestExtendsNonAbstract
+source: ./__fixtures__/extends-non-abstract.yaml
+expect:
+  errors:
+    - code: EXTENDS_NON_ABSTRACT

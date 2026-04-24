@@ -32,13 +32,22 @@ export class DefinitionRegistry {
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
     this.fieldMaps.set(key, buildReferenceFieldMap(definition.schema ?? {}));
+    // `capability` populates extendedBy for backward-compat with the legacy pattern where
+    // a concrete definition overloaded `capability: <AbstractKind>` to mean "implements
+    // this abstract." The canonical pattern is `extends` (below). Both populate the index,
+    // unioned — so in-flight modules pre-migration keep working.
     if (definition.capability) {
-      const children = this.extendedBy.get(definition.capability);
-      if (children) {
-        children.push(key);
-      } else {
-        this.extendedBy.set(definition.capability, [key]);
-      }
+      this.addExtendedBy(definition.capability, key);
+    }
+    // `extends` — first-class "implements-this-abstract" edge. Alias-form resolution
+    // happens in the analyzer before register() is called (analyzer.ts pre-resolves
+    // via aliases.resolveKind), so the value here is already the canonical kind string
+    // (e.g. "workflow.Backend"). If the analyzer could not resolve the alias (partial
+    // context, or the declaring file doesn't import the target's alias), the value
+    // stays as the original alias-prefixed form; validateExtends emits EXTENDS_MALFORMED
+    // or EXTENDS_UNKNOWN_TARGET depending on the case.
+    if (definition.extends) {
+      this.addExtendedBy(definition.extends, key);
     }
     // Auto-register the telo identity when any Telo built-in is registered.
     if (definition.kind === "Telo.Abstract" && mod === "Telo") {
@@ -48,6 +57,15 @@ export class DefinitionRegistry {
     // If identity is already known, register the schema in AJV immediately.
     if (mod && definition.schema) {
       this.tryRegisterSchema(mod, name as string, definition.schema as Record<string, any>);
+    }
+  }
+
+  private addExtendedBy(parent: string, child: string): void {
+    const children = this.extendedBy.get(parent);
+    if (children) {
+      if (!children.includes(child)) children.push(child);
+    } else {
+      this.extendedBy.set(parent, [child]);
     }
   }
 

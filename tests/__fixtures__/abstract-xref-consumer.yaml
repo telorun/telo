@@ -1,0 +1,46 @@
+kind: Telo.Application
+metadata:
+  name: AbstractXRefConsumer
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: AbstractLib
+source: ./abstract-lib.yaml
+---
+kind: Telo.Import
+metadata:
+  name: AbstractImpl
+source: ./abstract-impl.yaml
+---
+# A consumer definition declaring an x-telo-ref slot pointing at the library-declared
+# abstract Greeter. The analyzer must accept any definition whose `extends` targets
+# Greeter (e.g. AbstractImpl.Shouter) as a valid reference.
+kind: Telo.Definition
+metadata:
+  name: GreeterUser
+  module: AbstractXRefConsumer
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    greeter:
+      title: Greeter
+      description: Reference to any Greeter implementation.
+      x-telo-ref: "std/abstract-lib#Greeter"
+  required: [greeter]
+  additionalProperties: false
+---
+# An actual consumer resource using the ref. AbstractImpl.Shouter extends AbstractLib.Greeter,
+# so the analyzer accepts it for the greeter field.
+kind: AbstractImpl.Shouter
+metadata:
+  name: MyShouter
+prefix: "HEY "
+---
+kind: AbstractXRefConsumer.GreeterUser
+metadata:
+  name: UsesTheGreeter
+greeter:
+  kind: AbstractImpl.Shouter
+  name: MyShouter

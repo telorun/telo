@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: CapabilityShadowsExtends
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: AbstractLib
+source: ./abstract-lib.yaml
+---
+# Legacy pattern: `capability` overloaded to name a user abstract (via alias).
+# The analyzer still wires this into extendedBy for backward-compat, but emits
+# CAPABILITY_SHADOWS_EXTENDS as a warning.
+kind: Telo.Definition
+metadata:
+  name: Legacy
+  module: LegacyLocal
+capability: AbstractLib.Greeter
+schema:
+  type: object
+  properties: {}
