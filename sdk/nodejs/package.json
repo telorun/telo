@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sdk",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "description": "Telo SDK - Public API for Telo module authors.",
   "keywords": [
     "telo",

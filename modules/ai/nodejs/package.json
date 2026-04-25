@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Telo AI module — Ai.Model abstract + Ai.Completion for single-turn LLM calls.",
   "keywords": [
     "telo",

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/config",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Telo Config module - Configuration and variable providers for Telo manifests.",
   "keywords": [
     "telo",

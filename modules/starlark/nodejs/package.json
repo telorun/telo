@@ -1,6 +1,6 @@
 {
   "name": "@telorun/starlark",
-  "version": "0.1.11",
+  "version": "0.2.0",
   "description": "Telo Starlark module - Starlark script execution for Telo manifests.",
   "keywords": [
     "telo",
