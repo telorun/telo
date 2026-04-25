@@ -118,10 +118,10 @@ function resolveDoc({ id, label }, { docsPath, outDir, siteUrl }) {
   fs.mkdirSync(path.dirname(mdOutputPath), { recursive: true });
   fs.writeFileSync(mdOutputPath, content.trim() + "\n", "utf8");
 
-  const mdUrl = routePath ? `${siteUrl}${routePath}.md` : `${siteUrl}index.md`;
+  const url = routePath ? `${siteUrl}${routePath}` : siteUrl;
   const description = (frontmatter.description || "").replace(/\n/g, " ").trim();
 
-  return { title, url: mdUrl, description, content: content.trim() };
+  return { title, url, description, content: content.trim() };
 }
 
 function writeLlmsTxt(outDir, siteConfig, sections) {
