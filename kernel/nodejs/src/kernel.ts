@@ -543,22 +543,17 @@ export class Kernel implements IKernel {
 
     if (!runtime.length) return { instance, ctx };
 
-    // Preserve the prototype chain so class-based controllers retain their methods.
-    // `{ ...instance, invoke }` only copies own enumerable properties — methods declared
-    // on the prototype (init/teardown/snapshot/stream/...) would vanish silently. Create
-    // a new object inheriting from the original's prototype, copy own properties, then
-    // shadow invoke with the CEL-expanding wrapper.
-    const wrapped = Object.assign(
-      Object.create(Object.getPrototypeOf(instance)),
-      instance,
-      {
-        invoke: async (inputs: any) => {
-          const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
-          return instance.invoke!(expanded);
-        },
-      },
-    ) as ResourceInstance;
-    return { instance: wrapped, ctx };
+    // Override invoke in-place so all lifecycle methods (init/invoke/teardown/snapshot)
+    // share the same `this`. A wrapper object would split identity: state mutated by
+    // init() on the wrapper would be invisible to the original invoke(), which still
+    // runs with `this === instance`. Mutating in place also preserves the prototype
+    // chain — class-declared methods remain reachable.
+    const originalInvoke = instance.invoke!.bind(instance);
+    instance.invoke = async (inputs: any) => {
+      const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
+      return originalInvoke(expanded);
+    };
+    return { instance, ctx };
   }
 
   /**

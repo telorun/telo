@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: AbstractMismatchedAliasesRejectsWrongKindTest
+  version: 1.0.0
+targets:
+  - TestRejectsWrongKind
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Strengthens the mismatched-aliases coverage by asserting that the analyzer
+# *actually validates* the x-telo-ref slot, not just "produces no errors." A
+# wrong-kind reference must fire INVALID_REFERENCE; this only happens when
+# `extendedBy` is keyed under the canonical kind, which in turn requires that
+# transitively-visited (and short-circuited) Telo.Import docs still get stamped
+# with `resolvedModuleName` from the per-URL identity cache.
+kind: Assert.Manifest
+metadata:
+  name: TestRejectsWrongKind
+source: ./__fixtures__/abstract-mismatched-aliases-rejects-wrong-kind.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "does not implement 'abstract-lib.Greeter'"

@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: AbstractMismatchedAliasesRejectsWrongKind
+  version: 1.0.0
+---
+# Same mismatched-alias setup as abstract-mismatched-aliases.yaml: consumer chooses
+# alias names different from the ones abstract-impl uses internally.
+kind: Telo.Import
+metadata:
+  name: AL
+source: ./abstract-lib.yaml
+---
+kind: Telo.Import
+metadata:
+  name: AImpl
+source: ./abstract-impl.yaml
+---
+kind: Telo.Definition
+metadata:
+  name: GreeterUser
+  module: AbstractMismatchedAliasesRejectsWrongKind
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    greeter:
+      x-telo-ref: "std/abstract-lib#Greeter"
+  required: [greeter]
+  additionalProperties: false
+---
+# AL.Concrete is a Telo.Definition in abstract-lib that does NOT extend Greeter.
+# This must be rejected with REFERENCE_KIND_MISMATCH.
+#
+# Catches a subtle loader bug: when abstract-impl's `Telo.Import{AbstractLib}` is
+# transitively visited but then short-circuited because the consumer already
+# loaded abstract-lib, that forwarded import doc must still get `resolvedModuleName`
+# stamped from cache. Without that stamping, the analyzer's per-library alias
+# resolution falls back to `source.split("/").pop()` ("abstract-lib.yaml" instead
+# of "abstract-lib"), populating `extendedBy` under the wrong canonical key. The
+# x-telo-ref check would then find zero implementations and silently skip
+# validation as "partial context" — the wrong-kind reference would pass unchecked.
+kind: AL.Concrete
+metadata:
+  name: NotAGreeter
+---
+kind: AbstractMismatchedAliasesRejectsWrongKind.GreeterUser
+metadata:
+  name: UsesWrongKind
+greeter:
+  kind: AL.Concrete
+  name: NotAGreeter

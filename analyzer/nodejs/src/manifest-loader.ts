@@ -335,8 +335,25 @@ export class Loader {
     const visited = new Set<string>([entryUrl]);
     const entry = await this.loadModule(entryUrl);
 
+    // Forward every Telo.Definition / Telo.Abstract / Telo.Import doc from imported
+    // libraries to the analyzer. Forwarding the imports (not just the defs) is what
+    // lets the analyzer build per-library alias scopes — alias resolution is the
+    // analyzer's job, not the loader's. The loader's only semantic action is stamping
+    // `resolvedModuleName` / `resolvedNamespace` on each import doc, which is just
+    // recording the result of loading its target.
+    //
+    // Module identity is cached per import URL because the same library can be
+    // imported through multiple paths (consumer imports A directly AND library B
+    // imports A transitively, or two libraries import the same dep). Each Telo.Import
+    // doc — including the duplicates — must end up with `resolvedModuleName` stamped,
+    // otherwise the analyzer's per-scope alias resolution falls back to a path-derived
+    // string (e.g. "abstract-lib.yaml") and produces wrong canonical kinds.
     const importedDefs: ResourceManifest[] = [];
     const queue: ResourceManifest[] = [...entry];
+    const moduleIdentityByUrl = new Map<
+      string,
+      { name: string; namespace: string | null }
+    >();
 
     while (queue.length > 0) {
       const m = queue.shift()!;
@@ -348,36 +365,56 @@ export class Loader {
         importSource.startsWith(".") || importSource.startsWith("/")
           ? this.pick(base).resolveRelative(base, importSource)
           : importSource;
-      if (visited.has(importUrl)) continue;
-      visited.add(importUrl);
-      let imported: ResourceManifest[];
-      try {
-        imported = await this.loadModule(importUrl);
-      } catch (err) {
-        const e = err instanceof Error ? err : new Error(String(err));
-        (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
-        throw e;
+
+      if (!visited.has(importUrl)) {
+        visited.add(importUrl);
+        let imported: ResourceManifest[];
+        try {
+          imported = await this.loadModule(importUrl);
+        } catch (err) {
+          const e = err instanceof Error ? err : new Error(String(err));
+          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
+          throw e;
+        }
+        // Import target must be a Telo.Library. Check the Library branch
+        // explicitly rather than "anything that's a module kind" so that a
+        // future third kind can't silently slip past as a valid import target.
+        const importedLibrary = imported.find((im) => im.kind === "Telo.Library");
+        const importedApplication = imported.find((im) => im.kind === "Telo.Application");
+        if (importedApplication) {
+          const e = new Error(
+            `Telo.Import target '${importSource}' is a Telo.Application. ` +
+              `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
+          );
+          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
+          throw e;
+        }
+        if (importedLibrary?.metadata?.name) {
+          moduleIdentityByUrl.set(importUrl, {
+            name: importedLibrary.metadata.name as string,
+            namespace: ((importedLibrary.metadata as any).namespace as string | null) ?? null,
+          });
+        }
+        for (const im of imported) {
+          if (
+            im.kind === "Telo.Definition" ||
+            im.kind === "Telo.Abstract" ||
+            im.kind === "Telo.Import"
+          ) {
+            importedDefs.push(im);
+          }
+          if (im.kind === "Telo.Import") queue.push(im);
+        }
       }
-      // Import target must be a Telo.Library. Check the Library branch
-      // explicitly rather than "anything that's a module kind" so that a
-      // future third kind can't silently slip past as a valid import target.
-      const importedLibrary = imported.find((im) => im.kind === "Telo.Library");
-      const importedApplication = imported.find((im) => im.kind === "Telo.Application");
-      if (importedApplication) {
-        const e = new Error(
-          `Telo.Import target '${importSource}' is a Telo.Application. ` +
-            `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
-        );
-        (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
-        throw e;
-      }
-      const importedModule = importedLibrary;
-      if (importedModule?.metadata?.name) {
+
+      // Stamp m with cached identity (works for both fresh and duplicate visits).
+      const identity = moduleIdentityByUrl.get(importUrl);
+      if (identity) {
         const pi = (m.metadata as any)?.positionIndex;
         m.metadata = {
           ...m.metadata,
-          resolvedModuleName: importedModule.metadata.name as string,
-          resolvedNamespace: (importedModule.metadata as any).namespace ?? null,
+          resolvedModuleName: identity.name,
+          resolvedNamespace: identity.namespace,
         };
         if (pi) {
           Object.defineProperty(m.metadata, "positionIndex", {
@@ -387,13 +424,6 @@ export class Loader {
             configurable: true,
           });
         }
-      }
-      for (const im of imported) {
-        // Forward both Telo.Definition AND Telo.Abstract docs from imported libraries
-        // so cross-package x-telo-ref resolution and `extends` target validation can see
-        // library-declared abstracts (not just Telo.Abstract entries in KERNEL_BUILTINS).
-        if (im.kind === "Telo.Definition" || im.kind === "Telo.Abstract") importedDefs.push(im);
-        if (im.kind === "Telo.Import") queue.push(im);
       }
     }
 
