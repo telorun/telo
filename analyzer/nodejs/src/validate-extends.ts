@@ -35,10 +35,28 @@ export function validateExtends(
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
+  // Defs forwarded from imported libraries carry `metadata.module` set to that
+  // library's name (stamped by the loader). The analyzer's Phase 1 already normalized
+  // their `extends` against the declaring library's own alias scope (`aliasesByModule`
+  // in analyzer.ts), so the canonical-form value is correct. What this validator can't
+  // re-check is whether the original alias was well-formed in the library's source —
+  // that's the library author's concern, surfaced when the library is analyzed as a
+  // root. Re-validating here against the consumer's alias scope (which doesn't know
+  // the library's internal aliases) would produce false-positive EXTENDS_MALFORMED /
+  // EXTENDS_UNKNOWN_TARGET. Skip forwarded defs entirely.
+  const importedModules = new Set<string>();
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Import") continue;
+    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)?.resolvedModuleName;
+    if (resolved) importedModules.add(resolved);
+  }
+
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition") continue;
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
+    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+    if (ownModule && importedModules.has(ownModule)) continue;
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
     const label = `${m.kind}/${name}`;

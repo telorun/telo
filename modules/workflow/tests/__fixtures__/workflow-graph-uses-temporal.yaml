@@ -34,8 +34,8 @@ address: localhost:7233
 namespace: default
 ---
 # Workflow.Graph.backend is typed `x-telo-ref: "std/workflow#Backend"` — the analyzer
-# accepts TemporalProd here because Temporal.Backend extends AbstractLib's Greeter abstract
-# (canonically workflow.Backend) via the `extends` edge in the definition registry.
+# accepts TemporalProd here because Temporal.Backend declares `extends: Workflow.Backend`
+# (canonically workflow.Backend), wiring it into the abstract's extendedBy set.
 kind: Workflow.Graph
 metadata:
   name: TinyGraph

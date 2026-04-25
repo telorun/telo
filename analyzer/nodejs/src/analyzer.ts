@@ -294,9 +294,24 @@ export class StaticAnalyzer {
     // Register module identities and aliases.
     // The root module doc (Telo.Application or Telo.Library) provides its own
     // identity; imported modules surface their identity via resolvedModuleName/
-    // resolvedNamespace stamped onto the Telo.Import by the loader (so we don't
-    // need to include imported module manifests in the analysis set, avoiding false
-    // reference errors in the parent context).
+    // resolvedNamespace stamped onto the Telo.Import by the loader.
+    //
+    // Two alias scopes are tracked:
+    //  - `aliases` — the consumer's aliases, populated from Telo.Imports declared in
+    //    the entry manifest (its own module).
+    //  - `aliasesByModule` — per-imported-library aliases, populated from Telo.Imports
+    //    forwarded by the loader from inside imported libraries. A library may use
+    //    different alias names than the consumer for the same dependency; resolving
+    //    a forwarded def's `extends` / `capability` against the consumer's scope
+    //    would either fail or pick the wrong target. Each forwarded def is normalized
+    //    in its own library's scope.
+    const rootModules = new Set<string>();
+    for (const m of manifests) {
+      if (isModuleKind(m.kind) && m.metadata?.name) {
+        rootModules.add(m.metadata.name as string);
+      }
+    }
+    const aliasesByModule = new Map<string, AliasResolver>();
     for (const m of manifests) {
       if (isModuleKind(m.kind)) {
         const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
@@ -312,12 +327,25 @@ export class StaticAnalyzer {
           | string
           | null
           | undefined;
+        const ownModule = (m.metadata as { module?: string } | undefined)?.module;
         if (alias && source) {
           const targetModule =
             resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;
-          aliases.registerImport(alias, targetModule, exportedKinds);
+          // Module identity is registered globally so x-telo-ref resolution sees
+          // transitively-imported modules regardless of which scope brought them in.
           if (resolvedModuleName) {
             defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
+          }
+          // Alias registration is scoped: consumer imports vs. imported-library imports.
+          if (!ownModule || rootModules.has(ownModule)) {
+            aliases.registerImport(alias, targetModule, exportedKinds);
+          } else {
+            let libResolver = aliasesByModule.get(ownModule);
+            if (!libResolver) {
+              libResolver = new AliasResolver();
+              aliasesByModule.set(ownModule, libResolver);
+            }
+            libResolver.registerImport(alias, targetModule, exportedKinds);
           }
         }
       }
@@ -329,19 +357,23 @@ export class StaticAnalyzer {
     // can't resolve x-telo-ref entries pointing at library-declared abstracts — so abstracts
     // must go through register() too, not just the kernel builtins in the constructor.
     //
-    // Normalize alias-prefixed `capability` and `extends` to canonical form so extendedBy
-    // lookup works (e.g. "Workflow.Backend" → "workflow.Backend" when "Workflow" is a known
-    // alias). Both fields use the same alias-form syntax and the same resolveKind path —
-    // `capability` for the legacy implements-this-abstract overload, `extends` as the
-    // canonical first-class form.
+    // Normalize alias-prefixed `capability` and `extends` to canonical form using the
+    // declaring scope's resolver, so `extendedBy` is keyed by canonical kind regardless
+    // of alias choices. `capability` covers the legacy implements-this-abstract overload;
+    // `extends` is the canonical first-class form.
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
+      const ownModule = (def.metadata as { module?: string } | undefined)?.module;
+      const scopeResolver =
+        ownModule && !rootModules.has(ownModule)
+          ? (aliasesByModule.get(ownModule) ?? new AliasResolver())
+          : aliases;
       const resolvedCapability = def.capability
-        ? (aliases.resolveKind(def.capability) ?? def.capability)
+        ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
         : def.capability;
       const resolvedExtends = def.extends
-        ? (aliases.resolveKind(def.extends) ?? def.extends)
+        ? (scopeResolver.resolveKind(def.extends) ?? def.extends)
         : def.extends;
       const needsPatch =
         resolvedCapability !== def.capability || resolvedExtends !== def.extends;

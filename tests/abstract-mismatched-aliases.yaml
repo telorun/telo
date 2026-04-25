@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: AbstractMismatchedAliasesTest
+  version: 1.0.0
+targets:
+  - TestMismatchedAliases
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Regression: when a consumer imports libraries under different alias names than
+# the ones those libraries use internally for their own dependencies, the loader
+# must pre-resolve forwarded defs' `extends` / `capability` against each source
+# library's own scope. Without that, abstract-impl.yaml's
+# `Shouter extends AbstractLib.Greeter` would fail to populate the consumer's
+# extendedBy under the canonical key, and validateExtends would surface a
+# false-positive EXTENDS_MALFORMED on the forwarded def.
+kind: Assert.Manifest
+metadata:
+  name: TestMismatchedAliases
+source: ./__fixtures__/abstract-mismatched-aliases.yaml
+expect: {}

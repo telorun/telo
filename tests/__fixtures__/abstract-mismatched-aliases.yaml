@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: AbstractMismatchedAliases
+  version: 1.0.0
+---
+# Consumer chooses alias names that DIFFER from the ones abstract-impl.yaml uses
+# internally for the same libraries. The loader must pre-resolve `extends` against
+# each library's own aliases before forwarding, otherwise:
+#   - the forwarded `Shouter.extends: AbstractLib.Greeter` would be re-resolved
+#     against this file's aliases (which has no "AbstractLib"), populating
+#     extendedBy with the wrong canonical key
+#   - validateExtends would emit a false-positive EXTENDS_MALFORMED
+kind: Telo.Import
+metadata:
+  name: AL
+source: ./abstract-lib.yaml
+---
+kind: Telo.Import
+metadata:
+  name: AImpl
+source: ./abstract-impl.yaml
+---
+# x-telo-ref slot still uses identity form, so it resolves regardless of the
+# alias names chosen here. The analyzer must accept AImpl.Shouter through the
+# extendedBy edge populated from Shouter's pre-resolved canonical extends.
+kind: Telo.Definition
+metadata:
+  name: GreeterUser
+  module: AbstractMismatchedAliases
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    greeter:
+      x-telo-ref: "std/abstract-lib#Greeter"
+  required: [greeter]
+  additionalProperties: false
+---
+kind: AImpl.Shouter
+metadata:
+  name: MyShouter
+prefix: "HEY "
+---
+kind: AbstractMismatchedAliases.GreeterUser
+metadata:
+  name: UsesShouter
+greeter:
+  kind: AImpl.Shouter
+  name: MyShouter
