@@ -59,6 +59,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         source: { type: "string" },
         variables: { type: "object" },
         secrets: { type: "object" },
+        runtime: {
+          oneOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
       },
       required: ["metadata", "source"],
       additionalProperties: false,

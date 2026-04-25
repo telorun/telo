@@ -48,6 +48,7 @@ class ResourceDefinition implements ResourceInstance {
       const controllerInstance = await this.controllerLoader.load(
         this.resource.controllers,
         this.resource.metadata.source,
+        ctx.getControllerPolicy(),
       );
       ctx.emit("ControllerLoaded", { schema: controllerInstance.schema });
       ctx.registerDefinition(this.resource);

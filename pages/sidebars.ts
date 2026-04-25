@@ -129,7 +129,18 @@ const sidebars: SidebarsConfig = {
           ],
         },
         { type: "doc", id: "modules/sql-repository/README", label: "SQL Repository" },
-        { type: "doc", id: "modules/starlark/README", label: "Starlark" },
+        {
+          type: "category",
+          label: "Starlark",
+          items: [
+            { type: "doc", id: "modules/starlark/README", label: "Overview" },
+            {
+              type: "doc",
+              id: "modules/starlark/docs/runtime-rust",
+              label: "Rust runtime",
+            },
+          ],
+        },
         { type: "doc", id: "modules/test/docs/suite", label: "Test.Suite" },
         { type: "doc", id: "modules/tracing/README", label: "Tracing" },
         { type: "doc", id: "modules/type/README", label: "Type" },

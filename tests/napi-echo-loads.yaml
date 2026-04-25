@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: NapiEchoLoads
+  version: 1.0.0
+  description: Verifies the kernel's NapiControllerLoader can dispatch a pkg:cargo PURL end-to-end (cargo build, dylib rename, .node load).
+targets:
+  - VerifyKernelStarted
+---
+kind: Telo.Import
+metadata:
+  name: NapiTest
+source: ./__fixtures__/napi-test/telo.yaml
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: NapiTest.Echo
+metadata:
+  name: TheEcho
+---
+kind: Assert.Events
+metadata:
+  name: VerifyKernelStarted
+filter:
+  - type: "Kernel.*"
+expect:
+  - event: Kernel.Initialized

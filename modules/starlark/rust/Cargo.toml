@@ -1,0 +1,13 @@
+[package]
+name = "telorun-starlark"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Native Rust controller for std/starlark, loaded into the Node.js kernel via N-API."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+telorun-sdk = { path = "../../../sdk/rust" }
+serde_json = "1"

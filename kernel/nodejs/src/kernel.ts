@@ -1,6 +1,7 @@
 import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, isModuleKind, Loader, StaticAnalyzer } from "@telorun/analyzer";
 import {
   ControllerContext,
+  ControllerPolicy,
   Kernel as IKernel,
   type LoadOptions,
   ResourceContext,
@@ -23,7 +24,21 @@ import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ResourceContextImpl } from "./resource-context.js";
+import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
+
+/** Walks up the EvaluationContext parent chain to the nearest enclosing
+ *  ModuleContext and returns its controller policy (or undefined). Used to
+ *  pick the right cache entry when a kind has been loaded under multiple
+ *  runtime selections. */
+function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefined {
+  let cur: IEvaluationContext | undefined = ctx;
+  while (cur) {
+    if (cur instanceof ModuleContext) return cur.getControllerPolicy();
+    cur = cur.parent;
+  }
+  return undefined;
+}
 
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
@@ -83,8 +98,13 @@ export class Kernel implements IKernel {
     moduleName: string,
     kindName: string,
     controllerInstance: any,
+    fingerprint?: string,
   ): Promise<void> {
-    this.controllers.registerController(`${moduleName}.${kindName}`, controllerInstance);
+    this.controllers.registerController(
+      `${moduleName}.${kindName}`,
+      controllerInstance,
+      fingerprint,
+    );
     await controllerInstance.register?.(this.createControllerContext(`${moduleName}.${kindName}`));
   }
 
@@ -264,10 +284,12 @@ export class Kernel implements IKernel {
    * Phase 2: Start - Initialize resources
    */
   async start(): Promise<void> {
-    // Call controller register hooks first (before any initialization)
-    for (const kind of this.controllers.getKinds()) {
+    // Call register hooks for controllers actually loaded at this point (built-ins).
+    // User-module kinds load their controllers during Phase 3 (Telo.Definition.init),
+    // and registerController() fires their register hook there.
+    for (const kind of this.controllers.getControllerKinds()) {
       const controller = this.controllers.getController(kind);
-      if (controller?.register) {
+      if (controller.register) {
         await controller.register(this.createControllerContext(`controller:${kind}`));
       }
     }
@@ -479,12 +501,13 @@ export class Kernel implements IKernel {
     // resolveKind() throws with a clear message if the alias or kind is not found.
     const resolvedKind = this.rootContext.resolveKind(kind);
 
-    const controller = this.controllers.getControllerOrUndefined(resolvedKind);
+    const fingerprint = policyFingerprint(findEnclosingPolicy(evalContext));
+    const controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
     if (!controller) {
       const kindInfo =
         resolvedKind !== kind ? `'${kind}' (resolved to '${resolvedKind}')` : `'${kind}'`;
       throw new Error(
-        `No controller registered for kind ${kindInfo}, known controllers are: ${this.controllers.getKinds().join(", ")}`,
+        `No controller registered for kind ${kindInfo} (runtime fingerprint "${fingerprint}"), known controllers are: ${this.controllers.getKinds().join(", ")}`,
       );
     }
 

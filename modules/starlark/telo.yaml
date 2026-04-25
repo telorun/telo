@@ -11,6 +11,7 @@ metadata:
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/starlark@0.1.11?local_path=./nodejs#script
+  - pkg:cargo/telorun-starlark?local_path=./rust
 schema:
   type: object
   properties:

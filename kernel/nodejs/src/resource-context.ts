@@ -6,6 +6,7 @@ import {
   RuntimeError,
   RuntimeResource,
   isCompiledValue,
+  type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
   type LoadOptions,
   type ModuleContext,
@@ -17,6 +18,7 @@ import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
+import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
@@ -261,11 +263,16 @@ export class ResourceContextImpl implements ResourceContext {
     kindName: string,
     controllerInstance: any,
   ): Promise<void> {
-    await this.kernel.registerController(moduleName, kindName, controllerInstance);
+    const fingerprint = policyFingerprint(this.moduleContext.getControllerPolicy());
+    await this.kernel.registerController(moduleName, kindName, controllerInstance, fingerprint);
   }
 
   registerDefinition(def: any) {
     this.kernel.registerResourceDefinition(def);
+  }
+
+  getControllerPolicy(): ControllerPolicy | undefined {
+    return this.moduleContext.getControllerPolicy();
   }
 
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {

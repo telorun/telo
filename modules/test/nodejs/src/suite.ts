@@ -78,15 +78,33 @@ function discoverTests(
   const excludeRe = exclude.map(globToRegex);
 
   const results: string[] = [];
-  for (const entry of entries) {
-    const normalized = entry.replace(/\\/g, "/");
-    if (normalized.includes("node_modules/")) continue;
-    if (!includeRe.some((re) => re.test(normalized))) continue;
-    if (excludeRe.some((re) => re.test(normalized))) continue;
-    if (filter && !normalized.includes(filter)) continue;
-    results.push(path.resolve(baseDir, entry));
-  }
+  // Dedupe by realpath: pnpm symlinks workspace packages into multiple
+  // node_modules locations, so the same test file can be reached via
+  // many paths. Without dedupe, recursive traversal yields the same yaml
+  // dozens of times under different prefixes.
+  const seen = new Set<string>();
 
+  for (const entry of entries) {
+    const rel = entry.replace(/\\/g, "/");
+    // Hard-skip node_modules: those are always symlinked workspace dupes
+    // (or vendored copies that shouldn't run as workspace tests). The
+    // user-facing `exclude` defaults to `__fixtures__` only, but
+    // node_modules is a hard architectural skip.
+    if (rel.split("/").includes("node_modules")) continue;
+    if (!includeRe.some((re) => re.test(rel))) continue;
+    if (excludeRe.some((re) => re.test(rel))) continue;
+    if (filter && !rel.includes(filter)) continue;
+    const abs = path.resolve(baseDir, rel);
+    let real: string;
+    try {
+      real = fs.realpathSync(abs);
+    } catch {
+      real = abs;
+    }
+    if (seen.has(real)) continue;
+    seen.add(real);
+    results.push(abs);
+  }
   results.sort();
   return results;
 }
@@ -95,20 +113,28 @@ function labelFor(testPath: string, baseDir: string): string {
   return path.relative(baseDir, testPath);
 }
 
-/**
- * Parse a .env file into a key-value map.
- * Supports KEY=VALUE lines, ignores comments and blank lines.
- */
-function parseEnvFile(content: string): Record<string, string> {
+function tryReadFile(filePath: string): string | null {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function parseEnvFile(content: string | null): Record<string, string> {
+  if (!content) return {};
   const result: Record<string, string> = {};
-  for (const line of content.split("\n")) {
+  for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const eq = trimmed.indexOf("=");
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     result[key] = value;
@@ -116,17 +142,10 @@ function parseEnvFile(content: string): Record<string, string> {
   return result;
 }
 
-function tryReadFile(filePath: string): string {
-  try {
-    return fs.readFileSync(filePath, "utf8");
-  } catch {
-    return "";
-  }
-}
-
 /**
- * Build an env object for a test manifest by layering .env and .env.local
- * from the manifest's directory on top of the current process.env.
+ * Loads .env and .env.local files (in that order) from the directory of
+ * the manifest, layered under (and overridden by) process.env.
+ *
  * Keys already present in process.env take precedence (same as CLI behaviour).
  */
 function buildEnvForManifest(manifestPath: string): Record<string, string | undefined> {

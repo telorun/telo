@@ -1,4 +1,5 @@
 import type { Invocable } from "./capabilities/invokable.js";
+import type { ControllerPolicy } from "./controller-policy.js";
 import type { EvaluationContext } from "./evaluation-context.js";
 
 /**
@@ -23,6 +24,8 @@ export interface ModuleContext extends EvaluationContext {
   setTargets(vars: string[]): void;
   setSecrets(secrets: Record<string, unknown>): void;
   setResource(name: string, props: Record<string, unknown>): void;
+  setControllerPolicy(policy: ControllerPolicy | undefined): void;
+  getControllerPolicy(): ControllerPolicy | undefined;
 
   registerImport(alias: string, targetModule: string, kinds: string[]): void;
   getInstance(name: string): unknown;

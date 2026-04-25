@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "kernel/nodejs/tests/napi-echo",
+    "sdk/rust",
+    "sdk/rust/macros",
+    "modules/starlark/rust",
+]
