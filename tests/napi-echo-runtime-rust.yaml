@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: NapiEchoRuntimeRust
+  version: 1.0.0
+  description: Verifies that an explicit `runtime: rust` on the Telo.Import resolves to pkg:cargo and loads the addon successfully.
+targets:
+  - VerifyKernelStarted
+---
+kind: Telo.Import
+metadata:
+  name: NapiTest
+source: ./__fixtures__/napi-test/telo.yaml
+runtime: rust
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: NapiTest.Echo
+metadata:
+  name: TheEcho
+---
+kind: Assert.Events
+metadata:
+  name: VerifyKernelStarted
+filter:
+  - type: "Kernel.*"
+expect:
+  - event: Kernel.Initialized

@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: StarlarkRuntimeRust
+  version: 1.0.0
+  description: Verifies that runtime:rust on the starlark Telo.Import resolves to the pkg:cargo controller and the rust controller's marker payload appears in the invoke output.
+targets:
+  - RunScript
+  - VerifyRustMarker
+---
+kind: Telo.Import
+metadata:
+  name: Starlark
+source: ../
+runtime: rust
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: Starlark.Script
+metadata:
+  name: SimpleScript
+code: |
+  def run(input):
+    return {"result": input["value"] * 2}
+---
+kind: Run.Sequence
+metadata:
+  name: RunScript
+steps:
+  - name: Invoke
+    inputs:
+      value: 21
+    invoke:
+      kind: Starlark.Script
+      name: SimpleScript
+---
+kind: Assert.Events
+metadata:
+  name: VerifyRustMarker
+filter:
+  - type: "Starlark.Script.*.Invoked"
+expect:
+  - event: Starlark.Script.*.Invoked
+    payload:
+      outputs:
+        controller: rust
+        input:
+          value: 21

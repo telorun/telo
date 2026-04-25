@@ -1,0 +1,21 @@
+[package]
+name = "napi-echo"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Kernel test fixture for NapiControllerLoader dispatch. Not a real controller."
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["napi"]
+napi = []
+native = []
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"

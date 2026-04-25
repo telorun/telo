@@ -1,74 +1,76 @@
-import { ControllerInstance, ResourceDefinition, RuntimeResource } from "@telorun/sdk";
-import * as path from "path";
+import { ControllerInstance, ResourceDefinition, RuntimeError } from "@telorun/sdk";
+
+const DEFAULT_FINGERPRINT = "default";
 
 /**
  * ControllerRegistry: Manages controller loading and dispatch
- * Maps fully-qualified resource kinds to their controller implementations
+ * Maps fully-qualified resource kinds to their controller implementations.
+ *
+ * Controllers are keyed by `(kind, runtimeFingerprint)` so that two
+ * `Telo.Import`s of the same library with different `runtime:` selections
+ * each get their own cached controller instance — the first winner does not
+ * lock out the second. Definitions remain kind-only; only the loaded
+ * controller instance is policy-scoped.
  */
 export class ControllerRegistry {
-  private controllersByKind: Map<string, ControllerInstance> = new Map();
+  private controllersByKind: Map<string, Map<string, ControllerInstance>> = new Map();
   private definitionsByKind: Map<string, ResourceDefinition> = new Map();
-  private controllerLoaders: Map<string, () => Promise<ControllerInstance>> = new Map();
+
   /**
    * Register a controller definition
    */
-  registerDefinition(
-    definition: ResourceDefinition,
-    // baseDir?: string,
-    // namespace?: string | null,
-  ): void {
-    // Construct fully qualified kind: Namespace.Name
-    // Only add namespace if name is not already qualified (doesn't contain a dot)
+  registerDefinition(definition: ResourceDefinition): void {
     const namespace = definition.metadata.module;
-    const baseDir = null;
     const name = definition.metadata.name;
     const kind = namespace && !name.includes(".") ? `${namespace}.${name}` : name;
-
     this.definitionsByKind.set(kind, definition);
-
-    // If definition has controllers, register loader for them
-    if (definition.controllers && definition.controllers.length > 0 && baseDir) {
-      this.registerControllerLoader(kind, definition, baseDir);
-    }
   }
 
   /**
-   * Get a controller instance for a kind
-   * Lazy-loads controller code on first access
-   * Throws if controller not found
+   * Get a controller instance for a (kind, fingerprint) pair. Lookup order:
+   *  1. Exact match for the requested fingerprint (the common path).
+   *  2. The "default" fingerprint — kernel built-ins register here once and
+   *     should be reachable from any module's fingerprinted lookup.
+   *  3. The first registered entry for this kind, regardless of fingerprint
+   *     — handles the case of a root-context resource referencing a kind
+   *     that an import loaded under its own runtime selection.
+   *
+   * Throws `ERR_CONTROLLER_NOT_LOADED` on full miss.
    */
-  getController(kind: string): ControllerInstance {
-    // Return cached instance if available
-    if (this.controllersByKind.has(kind)) {
-      return this.controllersByKind.get(kind)!;
+  getController(kind: string, fingerprint: string = DEFAULT_FINGERPRINT): ControllerInstance {
+    const cached = this.lookup(kind, fingerprint);
+    if (cached) {
+      return cached;
     }
-
-    // Load controller if loader is registered
-    // const loader = this.controllerLoaders.get(kind);
-    // if (loader) {
-    //   const controller = await loader();
-    //   this.controllersByKind.set(kind, controller);
-    //   return controller;
-    // }
-    return {
-      schema: { type: "object", additionalProperties: false },
-    };
-    // throw new Error(`No controller registered for kind: ${kind}`);
+    throw new RuntimeError(
+      "ERR_CONTROLLER_NOT_LOADED",
+      `No controller loaded for kind "${kind}" (runtime fingerprint "${fingerprint}"). The kind's Telo.Definition must init before its controller is consulted.`,
+    );
   }
 
   /**
-   * Safe get - returns undefined if controller not found
+   * Safe get - returns undefined if controller not found. Same fallback
+   * order as `getController`.
    */
-  getControllerOrUndefined(kind: string): ControllerInstance | undefined {
-    // Return cached instance if available
-    if (this.controllersByKind.has(kind)) {
-      return this.controllersByKind.get(kind);
-    }
-    return undefined;
+  getControllerOrUndefined(
+    kind: string,
+    fingerprint: string = DEFAULT_FINGERPRINT,
+  ): ControllerInstance | undefined {
+    return this.lookup(kind, fingerprint);
+  }
+
+  private lookup(kind: string, fingerprint: string): ControllerInstance | undefined {
+    const byFp = this.controllersByKind.get(kind);
+    if (!byFp) return undefined;
+    return (
+      byFp.get(fingerprint) ??
+      byFp.get(DEFAULT_FINGERPRINT) ??
+      byFp.values().next().value
+    );
   }
 
   /**
-   * Check if a controller exists for this kind (definition or directly registered)
+   * Check if any controller exists for this kind (any fingerprint, or just a definition).
    */
   hasController(kind: string): boolean {
     return this.controllersByKind.has(kind) || this.definitionsByKind.has(kind);
@@ -88,29 +90,27 @@ export class ControllerRegistry {
     return Array.from(this.definitionsByKind.keys());
   }
 
+  /**
+   * Distinct kinds with at least one registered controller. Used by the boot
+   * register-hook loop, which fires once per kind regardless of fingerprint.
+   */
   getControllerKinds(): string[] {
     return Array.from(this.controllersByKind.keys());
   }
 
   /**
-   * Create a resource instance using its controller
+   * Register a controller for a (kind, fingerprint). Multiple registrations
+   * for the same kind with different fingerprints coexist; same fingerprint
+   * overwrites the prior entry.
    */
-  async create(kind: string, resource: RuntimeResource, ctx: any): Promise<any | null> {
-    const controller = this.getController(kind);
-    if (!controller || !controller.create) {
-      return null;
-    }
-    return controller.create(resource, ctx);
-  }
-
-  /**
-   * Register a controller for a kind
-   */
-  registerController(kind: string, controller: ControllerInstance): void {
+  registerController(
+    kind: string,
+    controller: ControllerInstance,
+    fingerprint: string = DEFAULT_FINGERPRINT,
+  ): void {
     if (!this.definitionsByKind.has(kind)) {
       throw new Error(`Cannot register controller for kind ${kind} without definition`);
     }
-    // Ensure controller has schema from definition
     const definition = this.definitionsByKind.get(kind);
     const wrappedController: ControllerInstance = {
       ...controller,
@@ -118,74 +118,11 @@ export class ControllerRegistry {
       inputType: controller.inputType,
       outputType: controller.outputType,
     };
-    this.controllersByKind.set(kind, wrappedController);
-  }
-
-  /**
-   * Private: Register controller loader
-   */
-  private registerControllerLoader(
-    kind: string,
-    definition: ResourceDefinition,
-    moduleDir: string,
-  ): void {
-    const controllerDef = definition.controllers?.[0]; // Use first matching controller for now
-    if (!controllerDef) return;
-
-    this.controllerLoaders.set(kind, async () => {
-      const modulePath = path.resolve(moduleDir, controllerDef.entry);
-      const moduleRuntime = await import(modulePath);
-      const exported = moduleRuntime.default || moduleRuntime.Module || moduleRuntime;
-
-      const registerFn =
-        typeof moduleRuntime.register === "function"
-          ? moduleRuntime.register
-          : typeof exported === "function" && !this.isModuleClass(exported)
-            ? exported
-            : null;
-
-      const createFn =
-        typeof moduleRuntime.create === "function"
-          ? moduleRuntime.create
-          : typeof exported?.create === "function"
-            ? exported.create
-            : null;
-
-      const executeFn =
-        typeof moduleRuntime.execute === "function"
-          ? moduleRuntime.execute
-          : typeof exported?.execute === "function"
-            ? exported.execute
-            : null;
-
-      const compileFn =
-        typeof moduleRuntime.compile === "function"
-          ? moduleRuntime.compile
-          : typeof exported?.compile === "function"
-            ? exported.compile
-            : null;
-
-      if (!registerFn && !executeFn && !createFn && !compileFn) {
-        throw new Error(`Controller for "${kind}" exports no usable handlers`);
-      }
-
-      if (!definition.schema) {
-        throw new Error(`Definition for "${kind}" does not have schema`);
-      }
-
-      return {
-        register: registerFn ?? undefined,
-        create: createFn ?? undefined,
-        execute: executeFn ?? undefined,
-        compile: compileFn ?? undefined,
-        schema: definition.schema,
-      };
-    });
-  }
-
-  private isModuleClass(obj: any): boolean {
-    return (
-      typeof obj === "function" && (obj.name === "Controller" || obj.toString().includes("class"))
-    );
+    let byFp = this.controllersByKind.get(kind);
+    if (!byFp) {
+      byFp = new Map();
+      this.controllersByKind.set(kind, byFp);
+    }
+    byFp.set(fingerprint, wrappedController);
   }
 }

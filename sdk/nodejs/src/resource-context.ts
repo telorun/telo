@@ -1,4 +1,5 @@
 import { ControllerContext } from "./controller-context.js";
+import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceInstance } from "./resource-instance.js";
@@ -64,6 +65,12 @@ export interface ResourceContext extends ControllerContext {
   registerController(moduleName: string, kindName: string, controllerInstance: any): Promise<void>;
   registerDefinition(definition: any): void;
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;
+  /**
+   * Resolved controller-selection policy for the module declaring this resource.
+   * `undefined` when no policy was stamped (root module, or import without
+   * `runtime:`). Consumers should treat undefined as "auto."
+   */
+  getControllerPolicy(): ControllerPolicy | undefined;
   teardownResource(kind: string, name: string): Promise<void>;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */

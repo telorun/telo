@@ -2,6 +2,7 @@ import { DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { ModuleContext } from "../../module-context.js";
+import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 
 const importAnalysisCache = new Map<
   string,
@@ -96,6 +97,20 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
     ),
   );
 
+  // Stamp the resolved controller policy on the child only when the import
+  // specifies a `runtime:` field that resolves to something other than the
+  // canonical default. Omitted, `auto`, and any list that normalizes to the
+  // default shape (e.g. `[nodejs, any]` on the Node.js kernel) all leave the
+  // child policy unstamped — they are equivalent forms of "no preference"
+  // and stamping would make them observably distinct from the omitted form
+  // for no behavioral gain.
+  if (resource.runtime !== undefined) {
+    const policy = normalizeRuntime(resource.runtime as string | string[]);
+    if (!isDefaultPolicy(policy)) {
+      (child as ModuleContext).setControllerPolicy(policy);
+    }
+  }
+
   for (const manifest of manifests) {
     child.registerManifest(manifest);
   }
@@ -161,6 +176,12 @@ export const schema = {
     source: { type: "string" },
     variables: { type: "object" },
     secrets: { type: "object" },
+    runtime: {
+      oneOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" } },
+      ],
+    },
   },
   required: ["metadata", "source"],
   additionalProperties: false,

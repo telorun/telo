@@ -1,4 +1,8 @@
-import type { Invocable, ModuleContext as IModuleContext } from "@telorun/sdk";
+import type {
+  ControllerPolicy,
+  Invocable,
+  ModuleContext as IModuleContext,
+} from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
 import { EvaluationContext } from "./evaluation-context.js";
 
@@ -55,6 +59,15 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   /** Maps import alias → allowed kind names. Absent entry = unrestricted (e.g. Kernel). */
   private readonly importedKinds = new Map<string, Set<string>>();
 
+  /**
+   * Resolved controller-selection policy for this module's `Telo.Definition`s.
+   * Stamped by the parent `Telo.Import` controller from the import's `runtime:`
+   * field; read by `Telo.Definition.init` (via `ResourceContext.getControllerPolicy`)
+   * when invoking `ControllerLoader.load`. `undefined` means "no policy set" —
+   * loader treats it as `auto`.
+   */
+  private _controllerPolicy: ControllerPolicy | undefined;
+
   constructor(
     source: string,
     variables: Record<string, unknown> = {},
@@ -101,6 +114,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   setResource(name: string, props: Record<string, unknown>): void {
     this._resources = { ...this._resources, [name]: props };
     this._rebuildContext();
+  }
+
+  setControllerPolicy(policy: ControllerPolicy | undefined): void {
+    this._controllerPolicy = policy;
+  }
+
+  getControllerPolicy(): ControllerPolicy | undefined {
+    return this._controllerPolicy;
   }
 
   protected override onResourceSnapshotted(name: string, snap: Record<string, unknown>): void {

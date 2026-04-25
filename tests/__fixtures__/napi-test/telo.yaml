@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: napi-test
+  version: 0.0.0
+  description: Wraps the napi-echo fixture as a Telo.Library so kernel tests can import it via Telo.Import.
+exports:
+  kinds:
+    - Echo
+---
+kind: Telo.Definition
+metadata:
+  name: Echo
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/napi-echo?local_path=../../../kernel/nodejs/tests/napi-echo
+schema:
+  type: object
+  properties:
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+  required: [metadata]

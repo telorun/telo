@@ -5,6 +5,7 @@ export * from "./capabilities/provider.js";
 export * from "./capabilities/runnable.js";
 export * from "./context-provider.js";
 export * from "./controller-context.js";
+export * from "./controller-policy.js";
 export * from "./evaluation-context.js";
 export * from "./module-context.js";
 export * from "./resource-context.js";
