@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: CompletionPromptShorthandTest
+  version: 1.0.0
+targets:
+  - TestPromptShorthand
+---
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../
+---
+kind: Telo.Import
+metadata:
+  name: AiEcho
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+---
+kind: Ai.Completion
+metadata:
+  name: Summarize
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+---
+# `inputs.prompt` is shorthand for `messages: [{role: "user", content: prompt}]`.
+# Echo returns the content of the last message verbatim → result.text === prompt.
+kind: Run.Sequence
+metadata:
+  name: TestPromptShorthand
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "hello world"
+    invoke:
+      kind: Ai.Completion
+      name: Summarize
+  - name: AssertText
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            type: string
+            const: "hello world"
+        required: [text]
+  - name: AssertUsage
+    inputs:
+      usage: "${{ steps.Invoke.result.usage }}"
+      finishReason: "${{ steps.Invoke.result.finishReason }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          usage:
+            type: object
+            properties:
+              promptTokens: { type: integer, const: 0 }
+              completionTokens: { type: integer, const: 0 }
+              totalTokens: { type: integer, const: 0 }
+            required: [promptTokens, completionTokens, totalTokens]
+          finishReason:
+            type: string
+            const: stop
+        required: [usage, finishReason]

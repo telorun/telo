@@ -1,0 +1,68 @@
+kind: Telo.Library
+metadata:
+  name: ai-echo
+  namespace: std
+  version: 1.0.0
+  description: Internal Ai.Model test fixture. Echoes the last message back, optionally with a suffix.
+exports:
+  kinds:
+    - EchoModel
+    - StreamCollector
+---
+# Importing the parent @telorun/ai so `Ai` is an alias in scope for `extends: Ai.Model`
+# below. This mirrors exactly how external provider packages (ai-openai, ai-anthropic,
+# ai-ollama) import @telorun/ai — the echo fixture exercises the same code path.
+# Path resolves relative to THIS file (ai-echo.yaml), which lives at
+# modules/ai/tests/__fixtures__/. Two levels up = modules/ai/, the @telorun/ai library.
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../../
+---
+kind: Telo.Definition
+metadata:
+  name: EchoModel
+capability: Telo.Invocable
+extends: Ai.Model
+controllers:
+  - pkg:npm/@telorun/ai@1.0.0?local_path=../../nodejs#echo-model
+schema:
+  type: object
+  properties:
+    suffix:
+      title: Suffix
+      description: Appended to the echoed content. Default empty.
+      type: string
+    failOn:
+      title: Fail-on rule
+      description: |
+        Test-only marker: when the last message's content equals `message`,
+        invoke()/stream() throw InvokeError(code, reason) instead of echoing.
+        Used to exercise provider-error passthrough.
+      type: object
+      properties:
+        message: { type: string }
+        code: { type: string }
+        reason: { type: string }
+      required: [message, code, reason]
+      additionalProperties: false
+  additionalProperties: false
+---
+# Test-support Invocable: takes an Ai.Model reference, calls model.stream(...),
+# collects the StreamPart sequence, and returns it. Lets stream-contract tests
+# exercise the streaming path without a dedicated Ai.Stream consumer kind.
+kind: Telo.Definition
+metadata:
+  name: StreamCollector
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/ai@1.0.0?local_path=../../nodejs#stream-collector
+schema:
+  type: object
+  properties:
+    model:
+      title: Model
+      description: Reference to any Ai.Model implementation whose stream() will be collected.
+      x-telo-ref: "std/ai#Model"
+  required: [model]
+  additionalProperties: false

@@ -1,0 +1,52 @@
+{
+  "name": "@telorun/ai-openai",
+  "version": "1.0.0",
+  "description": "Telo Ai.OpenaiModel — OpenAI provider for Ai.Model (implements both invoke and stream via Vercel AI SDK).",
+  "keywords": [
+    "telo",
+    "ai",
+    "openai",
+    "llm"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/ai-openai/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/openai-model-controller.js",
+  "module": "./dist/openai-model-controller.js",
+  "types": "./dist/openai-model-controller.d.ts",
+  "exports": {
+    "./openai-model": {
+      "types": "./dist/openai-model-controller.d.ts",
+      "bun": "./src/openai-model-controller.ts",
+      "import": "./dist/openai-model-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@telorun/ai": "workspace:*",
+    "ai": "^5.0.0",
+    "@ai-sdk/openai": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

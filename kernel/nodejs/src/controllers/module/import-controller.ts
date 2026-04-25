@@ -24,10 +24,18 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
 
   const moduleSource: string = resource.module ?? resource.source;
 
+  // Resolve relative source paths against the manifest's OWN file URL (stamped onto
+  // `metadata.source` by the loader), not the parent module context's source. When a
+  // Telo.Library imports another library via a relative path, that path is written
+  // relative to the declaring library's file — not relative to whatever root manifest
+  // happens to have imported the chain. Falling back to ctx.moduleContext.source for
+  // manifests that somehow lack a stamped source keeps the old behaviour for edge cases.
+  const base = (resource.metadata?.source as string | undefined) ?? ctx.moduleContext.source;
+
   // Validate the imported module and all its transitive imports before loading for runtime.
   // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
-  const resolvedUrl = resolveImportSource(moduleSource, ctx.moduleContext.source);
+  const resolvedUrl = resolveImportSource(moduleSource, base);
   const analysisManifests = await ctx.loadManifests(resolvedUrl);
   const signature = JSON.stringify(analysisManifests);
   const cached = importAnalysisCache.get(resolvedUrl);

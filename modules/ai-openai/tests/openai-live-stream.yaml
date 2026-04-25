@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveStream
+  version: 1.0.0
+  description: |
+    Live OpenAI streaming integration test. Skips silently when OPENAI_API_KEY
+    is unset (locally: drop a .env.local in this directory; CI: secret on the
+    workflow).
+targets:
+  - LiveStream
+---
+kind: Telo.Import
+metadata: { name: AiOpenai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ../../ai/tests/__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# apiKey is null-coalesced so the resource passes schema validation when env is
+# unset. The model is constructed (Vercel SDK is lazy — no API call until
+# streamText is invoked), but never reached because the run-step is gated.
+kind: AiOpenai.OpenaiModel
+metadata: { name: Live }
+model: gpt-4o-mini
+apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
+options:
+  temperature: 0
+  maxOutputTokens: 32
+---
+# Reuse the @telorun/ai test-support StreamCollector — feed it the live OpenaiModel,
+# iterate stream(), and assert the contract shape (deltas concatenate to text,
+# exactly one finish part, usage populated).
+kind: AiEcho.StreamCollector
+metadata: { name: Collector }
+model:
+  kind: AiOpenai.OpenaiModel
+  name: Live
+---
+kind: Run.Sequence
+metadata:
+  name: LiveStream
+steps:
+  - name: GuardEnv
+    if: "${{ env.OPENAI_API_KEY != null }}"
+    then:
+      - name: Collect
+        inputs:
+          prompt: "Reply with exactly: hello"
+        invoke:
+          kind: AiEcho.StreamCollector
+          name: Collector
+      - name: Assert
+        inputs:
+          deltas: "${{ steps.Collect.result.deltas }}"
+          deltaCount: "${{ steps.Collect.result.deltaCount }}"
+          finishReason: "${{ steps.Collect.result.finishReason }}"
+          promptTokens: "${{ steps.Collect.result.usage.promptTokens }}"
+          completionTokens: "${{ steps.Collect.result.usage.completionTokens }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              deltas: { type: string, minLength: 1 }
+              deltaCount: { type: integer, minimum: 1 }
+              finishReason: { type: string, enum: [stop, length, content-filter, error, other] }
+              promptTokens: { type: integer, minimum: 1 }
+              completionTokens: { type: integer, minimum: 1 }
+            required: [deltas, deltaCount, finishReason, promptTokens, completionTokens]

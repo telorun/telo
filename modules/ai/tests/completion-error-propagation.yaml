@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: CompletionErrorPropagationTest
+  version: 1.0.0
+targets:
+  - TestProviderErrorSurfacesUnchanged
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Echo configured to throw a provider-side InvokeError when it sees the marker
+# message. This is the actual provider error used by the test below.
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+failOn:
+  message: TRIGGER_FAILURE
+  code: ERR_PROVIDER_RATE_LIMITED
+  reason: simulated provider rate-limit from echo fixture
+---
+kind: Ai.Completion
+metadata: { name: C }
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+---
+# When the provider (Echo) throws, the completion controller must surface the
+# error unchanged — same code, same message, no retry, no swallowing, no wrapping.
+kind: Run.Sequence
+metadata:
+  name: TestProviderErrorSurfacesUnchanged
+steps:
+  - name: Try
+    try:
+      - name: Invoke
+        inputs:
+          prompt: TRIGGER_FAILURE
+        invoke:
+          kind: Ai.Completion
+          name: C
+    catch:
+      - name: AssertPassthrough
+        inputs:
+          code: "${{ error.code }}"
+          message: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_PROVIDER_RATE_LIMITED }
+              message: { const: simulated provider rate-limit from echo fixture }
+            required: [code, message]

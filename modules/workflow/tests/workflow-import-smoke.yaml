@@ -13,9 +13,10 @@ source: ../../assert
 ---
 # The workflow + workflow-temporal pair is the canonical cross-package abstract example:
 # `Workflow.Backend` is a Telo.Abstract in std/workflow, `Temporal.Backend` is a concrete
-# Telo.Definition in std/workflow-temporal that declares `extends: "std/workflow#Backend"`
-# (post-Part-A migration). This test asserts both packages analyze cleanly — the smoke
-# test for library-declared abstracts working end-to-end.
+# Telo.Definition in std/workflow-temporal that declares `extends: Workflow.Backend`
+# (alias form, resolved via workflow-temporal's own `Telo.Import name: Workflow`).
+# This test asserts both packages analyze cleanly — the smoke test for library-declared
+# abstracts working end-to-end.
 kind: Assert.Manifest
 metadata:
   name: TestWorkflowImport
