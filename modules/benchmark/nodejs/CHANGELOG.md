@@ -1,5 +1,13 @@
 # @telorun/benchmark
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [f76dd0f]
+- Updated dependencies [fc4a562]
+  - @telorun/sdk@0.5.0
+
 ## 0.1.5
 
 ### Patch Changes

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: run
   namespace: std
-  version: 0.2.1
+  version: 0.2.2
   description: Run sequence of invocable resources with if, while, switch, and try steps
 exports:
   kinds:
@@ -14,7 +14,7 @@ metadata:
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@0.2.1?local_path=./nodejs#sequence
+  - pkg:npm/@telorun/run@0.2.2?local_path=./nodejs#sequence
 throws:
   inherit: true
 schema:

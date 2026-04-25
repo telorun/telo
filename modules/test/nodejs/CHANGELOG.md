@@ -1,5 +1,20 @@
 # @telorun/test
 
+## 0.1.9
+
+### Patch Changes
+
+- fc4a562: `Test.Suite.discoverTests` now hard-skips any path containing a `node_modules/` segment and dedupes results by realpath. Without this, pnpm's symlinked workspace packages caused the same test yaml to be discovered through multiple paths (e.g. once via `kernel/nodejs/tests/foo.yaml` and again through every `**/node_modules/@telorun/kernel/tests/foo.yaml` symlink), inflating "FAIL" counts with non-existent duplicates.
+
+  Hard-skipping `node_modules` is unconditional rather than a default-exclude entry, because vendored test files in dependency packages should never run as workspace tests regardless of the user's `exclude` config.
+
+- Updated dependencies [fc4a562]
+- Updated dependencies [80c3c03]
+- Updated dependencies [f76dd0f]
+- Updated dependencies [fc4a562]
+  - @telorun/kernel@0.5.0
+  - @telorun/sdk@0.5.0
+
 ## 0.1.8
 
 ### Patch Changes

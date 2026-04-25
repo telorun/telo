@@ -2,14 +2,14 @@ kind: Telo.Library
 metadata:
   name: tracing
   namespace: std
-  version: 1.0.2
+  version: 1.0.3
 ---
 kind: "Telo.Definition"
 metadata:
   name: "Provider"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/tracing@0.1.9?local_path=./nodejs#provider
+  - pkg:npm/@telorun/tracing@0.1.10?local_path=./nodejs#provider
 schema:
   type: "object"
   properties:
@@ -73,7 +73,7 @@ metadata:
   name: "FileExporter"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/tracing@0.1.9?local_path=./nodejs#file-exporter
+  - pkg:npm/@telorun/tracing@0.1.10?local_path=./nodejs#file-exporter
 schema:
   type: "object"
   properties:
