@@ -15,7 +15,6 @@ class S3ListResource implements ResourceInstance {
   async invoke(input: any): Promise<{ keys: string[] }> {
     const ctx = this.ctx;
     const m = this.manifest;
-    console.log("invoke", input);
     const bucketRefName = ctx.expandValue(m.bucketRef.name, input ?? {}) as string;
     const prefix = (input?.prefix as string) ?? "";
 
@@ -25,7 +24,6 @@ class S3ListResource implements ResourceInstance {
     }
 
     const client = bucket.getClient();
-    console.log("listing", bucket.bucketName, prefix);
     const result = await client.send(
       new ListObjectsCommand({ Bucket: bucket.bucketName as string, Prefix: prefix }),
     );

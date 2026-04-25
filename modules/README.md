@@ -29,7 +29,6 @@ For a full explanation of how modules are defined, imported, and composed, see t
 | [**sql-repository**](./sql-repository/README.md) | Domain-shaped CRUD over a table via `SqlRepository.Read/Create/Delete` |
 | [**starlark**](./starlark/README.md) | Deterministic, bounded scripting via `Starlark.Script` |
 | [**test**](./test/docs/suite.md) | Test runner for YAML-based test suites |
-| [**tracing**](./tracing/README.md) | Kernel event export via `Tracing.Provider` + exporters |
 | [**type**](./type/README.md) | Named data types via `Type.JsonSchema` |
 | [**workflow**](./workflow/README.md) | Workflow orchestration primitives with pluggable backends |
 | [**workflow-temporal**](./workflow-temporal/README.md) | Temporal backend for `Workflow.Graph` |

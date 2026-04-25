@@ -1,28 +1,34 @@
-import { AnalysisRegistry, DEFAULT_MANIFEST_FILENAME, isModuleKind, Loader, StaticAnalyzer } from "@telorun/analyzer";
+import {
+  AnalysisRegistry,
+  DEFAULT_MANIFEST_FILENAME,
+  isModuleKind,
+  Loader,
+  StaticAnalyzer,
+} from "@telorun/analyzer";
 import {
   ControllerContext,
   ControllerPolicy,
   Kernel as IKernel,
-  type LoadOptions,
+  isCompiledValue,
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
   ResourceManifest,
   RuntimeError,
   RuntimeEvent,
-  isCompiledValue,
   type EvaluationContext as IEvaluationContext,
   type ModuleContext as IModuleContext,
+  type LoadOptions,
   type ParsedArgs,
 } from "@telorun/sdk";
 import { createHash } from "node:crypto";
-import { ModuleContext } from "./module-context.js";
 import * as path from "path";
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
+import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
@@ -31,13 +37,17 @@ import { SchemaValidator } from "./schema-validator.js";
  *  ModuleContext and returns its controller policy (or undefined). Used to
  *  pick the right cache entry when a kind has been loaded under multiple
  *  runtime selections. */
-function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefined {
+function findEnclosingModule(ctx: IEvaluationContext): ModuleContext | undefined {
   let cur: IEvaluationContext | undefined = ctx;
   while (cur) {
-    if (cur instanceof ModuleContext) return cur.getControllerPolicy();
+    if (cur instanceof ModuleContext) return cur;
     cur = cur.parent;
   }
   return undefined;
+}
+
+function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefined {
+  return findEnclosingModule(ctx)?.getControllerPolicy();
 }
 
 export interface KernelOptions {
@@ -114,24 +124,6 @@ export class Kernel implements IKernel {
   registerResourceDefinition(definition: ResourceDefinition): void {
     this.controllers.registerDefinition(definition);
     this.registry.registerDefinition(definition);
-  }
-
-  getModuleContext(_moduleName: string): ModuleContext {
-    return this.rootContext;
-  }
-
-  resolveModuleAlias(_declaringModule: string, alias: string): string | undefined {
-    return this.rootContext.importAliases.get(alias);
-  }
-
-  registerModuleImport(
-    _declaringModule: string,
-    alias: string,
-    targetModule: string,
-    kinds: string[],
-  ): void {
-    this.rootContext.registerImport(alias, targetModule, kinds);
-    this.registry.registerImport(alias, targetModule, kinds);
   }
 
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
@@ -407,10 +399,6 @@ export class Kernel implements IKernel {
     return {
       on: (event: string, handler: (event: RuntimeEvent) => void | Promise<void>) =>
         this.eventBus.on(event, handler),
-      once: (event: string, handler: (event: RuntimeEvent) => void | Promise<void>) =>
-        this.eventBus.once(event, handler),
-      off: (event: string, handler: (event: RuntimeEvent) => void | Promise<void>) =>
-        this.eventBus.off(event, handler),
       emit: (event: string, payload?: any) => {
         const namespaced = event.includes(".") ? event : `${kind}.${event}`;
         void this.eventBus.emit(namespaced, payload);
@@ -497,9 +485,11 @@ export class Kernel implements IKernel {
   ): Promise<{ instance: ResourceInstance; ctx: ResourceContext } | null> {
     const kind = resource.kind;
 
-    // Resolve the alias-prefixed kind to its real fully-qualified kind.
-    // resolveKind() throws with a clear message if the alias or kind is not found.
-    const resolvedKind = this.rootContext.resolveKind(kind);
+    // Resolve the alias-prefixed kind to its real fully-qualified kind against the
+    // declaring module's own scope. resolveKind() walks up the parent chain so root
+    // built-ins (like `Telo`) remain visible from inside imported libraries; sibling
+    // modules stay isolated because they're not in the chain.
+    const resolvedKind = (findEnclosingModule(evalContext) ?? this.rootContext).resolveKind(kind);
 
     const fingerprint = policyFingerprint(findEnclosingPolicy(evalContext));
     const controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
@@ -663,7 +653,11 @@ function resolveSchemaRef(
   schema: Record<string, unknown>,
   root: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (schema.$ref && typeof schema.$ref === "string" && (schema.$ref as string).startsWith("#/$defs/")) {
+  if (
+    schema.$ref &&
+    typeof schema.$ref === "string" &&
+    (schema.$ref as string).startsWith("#/$defs/")
+  ) {
     const defName = (schema.$ref as string).slice("#/$defs/".length);
     const defs = root.$defs as Record<string, Record<string, unknown>> | undefined;
     const resolved = defs?.[defName];
@@ -681,7 +675,9 @@ function collectSchemaProperties(
   };
   for (const sub of (schema.oneOf ?? schema.anyOf ?? []) as Record<string, unknown>[]) {
     if (sub && typeof sub === "object" && sub.properties) {
-      for (const [k, v] of Object.entries(sub.properties as Record<string, Record<string, unknown>>)) {
+      for (const [k, v] of Object.entries(
+        sub.properties as Record<string, Record<string, unknown>>,
+      )) {
         if (!(k in props)) props[k] = v;
       }
     }
@@ -702,10 +698,7 @@ function stripCompiledValues(
 
   if (isCompiledValue(v)) return placeholderForSchema(resolved);
   if (Array.isArray(v)) {
-    const itemSchema = resolveSchemaRef(
-      (resolved.items ?? {}) as Record<string, unknown>,
-      root,
-    );
+    const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
     return v.map((item) => stripCompiledValues(item, itemSchema, root));
   }
   if (v !== null && typeof v === "object") {

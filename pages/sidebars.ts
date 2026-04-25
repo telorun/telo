@@ -142,7 +142,6 @@ const sidebars: SidebarsConfig = {
           ],
         },
         { type: "doc", id: "modules/test/docs/suite", label: "Test.Suite" },
-        { type: "doc", id: "modules/tracing/README", label: "Tracing" },
         { type: "doc", id: "modules/type/README", label: "Type" },
         { type: "doc", id: "modules/workflow/README", label: "Workflow" },
         { type: "doc", id: "modules/workflow-temporal/README", label: "Workflow (Temporal)" },

@@ -47,7 +47,6 @@ export interface ResourceContext extends ControllerContext {
     inputs: TInputs,
   ): Promise<any>;
   run(kind: string, name: string): Promise<void>;
-  getResources(kind: string): RuntimeResource[];
   getResourcesByName(kind: string, name: string): RuntimeResource | null;
   registerManifest(resource: any): void;
   spawnChildContext(): EvaluationContext;
@@ -71,7 +70,6 @@ export interface ResourceContext extends ControllerContext {
    * `runtime:`). Consumers should treat undefined as "auto."
    */
   getControllerPolicy(): ControllerPolicy | undefined;
-  teardownResource(kind: string, name: string): Promise<void>;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

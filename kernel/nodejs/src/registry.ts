@@ -15,7 +15,6 @@ export class ManifestRegistry {
   register(resource: RuntimeResource): void {
     const { kind, metadata } = resource;
     const { name } = metadata;
-    console.log("Registering resource:", kind, name);
     if (!this.resources.has(kind)) {
       this.resources.set(kind, new Map());
     }

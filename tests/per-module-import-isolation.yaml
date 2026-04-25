@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: PerModuleImportIsolation
+  version: 1.0.0
+targets:
+  - VerifyRootKeepsItsOwnSnapshot
+---
+kind: Telo.Import
+metadata:
+  name: MyAssert
+source: ../modules/assert
+---
+# Root imports `Tiny` with root-specific data.
+kind: Telo.Import
+metadata:
+  name: Tiny
+source: ./__fixtures__/tiny-module.yaml
+variables:
+  product:
+    id: "11111111-1111-1111-1111-111111111111"
+    name: "from-root"
+    price: 1
+    inStock: true
+secrets:
+  password: "root-pwd"
+---
+# Sibling library declares its OWN internal `Tiny` alias with conflicting data.
+# With per-module isolation, the library's import lives on the library's
+# ModuleContext — it must not pollute root's alias table or snapshot.
+kind: Telo.Import
+metadata:
+  name: SiblingLib
+source: ./__fixtures__/sibling-lib-with-shared-alias.yaml
+---
+# Root's snapshot of Tiny must still reflect root's variables/secrets — proves the
+# sibling library's identically-named import did not leak into root's scope.
+kind: MyAssert.ModuleContext
+metadata:
+  name: VerifyRootKeepsItsOwnSnapshot
+resources:
+  Tiny:
+    variables:
+      product:
+        id: "11111111-1111-1111-1111-111111111111"
+        name: "from-root"
+        price: 1
+        inStock: true
+    secrets:
+      password: "root-pwd"

@@ -13,9 +13,9 @@ import {
   type ParsedArgs,
   type TypeRule,
 } from "@telorun/sdk";
-import { EvaluationContext } from "./evaluation-context.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
+import { EvaluationContext } from "./evaluation-context.js";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { policyFingerprint } from "./runtime-registry.js";
@@ -219,8 +219,7 @@ export class ResourceContextImpl implements ResourceContext {
     const hasInlineProperties = Object.keys(resource).some(
       (k) => k !== "kind" && k !== "name" && k !== "metadata",
     );
-    const hasExplicitName =
-      resource.name !== undefined || resource.metadata?.name !== undefined;
+    const hasExplicitName = resource.name !== undefined || resource.metadata?.name !== undefined;
     const shouldRegister =
       (hasInlineProperties || (!hasExplicitName && resourceName !== undefined)) &&
       !this.moduleContext.hasManifest(name);
@@ -237,20 +236,6 @@ export class ResourceContextImpl implements ResourceContext {
     }
 
     return { kind, name };
-  }
-
-  teardownResource(kind: string, name: string): Promise<void> {
-    throw new Error("Method teardownResource not implemented.");
-    // const parts = kind.split(".");
-    // if (parts.length > 2) {
-    //   return this.kernel.teardownResource(parts[0], parts.slice(1).join("."), name);
-    // }
-    // return this.kernel.teardownResource(this.metadata.module, kind, name);
-  }
-
-  getResources(kind: string): RuntimeResource[] {
-    throw new Error("Method teardownResource not implemented.");
-    // return this.kernel.getResourcesByKind(kind);
   }
 
   getResourcesByName(_kind: string, name: string): RuntimeResource | null {
@@ -279,14 +264,6 @@ export class ResourceContextImpl implements ResourceContext {
     this.kernel.on(event, handler);
   }
 
-  once(event: string, handler: (payload?: any) => void | Promise<void>): void {
-    throw new Error("Method once not implemented.");
-  }
-
-  off(event: string, handler: (payload?: any) => void | Promise<void>): void {
-    throw new Error("Method off not implemented.");
-  }
-
   async emit(event: string, payload?: any) {
     await this.kernel.emitRuntimeEvent(`${this.metadata.name}.${event}`, payload);
   }
@@ -308,16 +285,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   registerModuleImport(alias: string, targetModule: string, kinds: string[]): void {
-    const declaringModule = (this.metadata as any).module as string | undefined;
-    this.kernel.registerModuleImport(declaringModule ?? "", alias, targetModule, kinds);
-  }
-
-  resolveModuleAlias(declaringModule: string, alias: string): string | undefined {
-    return this.kernel.resolveModuleAlias(declaringModule, alias);
-  }
-
-  getModuleContext(moduleName: string): ModuleContext {
-    return this.kernel.getModuleContext(moduleName);
+    this.moduleContext.registerImport(alias, targetModule, kinds);
   }
 
   /**
