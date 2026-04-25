@@ -333,27 +333,36 @@ export class Loader {
 
   async loadManifests(entryUrl: string): Promise<ResourceManifest[]> {
     const visited = new Set<string>([entryUrl]);
-    const entry = await this.loadModule(entryUrl);
-
-    // Forward every Telo.Definition / Telo.Abstract / Telo.Import doc from imported
-    // libraries to the analyzer. Forwarding the imports (not just the defs) is what
-    // lets the analyzer build per-library alias scopes — alias resolution is the
-    // analyzer's job, not the loader's. The loader's only semantic action is stamping
-    // `resolvedModuleName` / `resolvedNamespace` on each import doc, which is just
-    // recording the result of loading its target.
-    //
-    // Module identity is cached per import URL because the same library can be
-    // imported through multiple paths (consumer imports A directly AND library B
-    // imports A transitively, or two libraries import the same dep). Each Telo.Import
-    // doc — including the duplicates — must end up with `resolvedModuleName` stamped,
-    // otherwise the analyzer's per-scope alias resolution falls back to a path-derived
-    // string (e.g. "abstract-lib.yaml") and produces wrong canonical kinds.
-    const importedDefs: ResourceManifest[] = [];
-    const queue: ResourceManifest[] = [...entry];
-    const moduleIdentityByUrl = new Map<
+    // Cache resolved library identity per import URL so a Telo.Import re-encountered
+    // through a different chain still gets `resolvedModuleName` / `resolvedNamespace`
+    // stamped — without re-loading the target. The early `visited` short-circuit used
+    // to silently leave duplicate Telo.Imports unstamped, which broke alias resolution
+    // when the same library was imported by two different files in the same analysis set.
+    const libraryIdentityByUrl = new Map<
       string,
       { name: string; namespace: string | null }
     >();
+    const entry = await this.loadModule(entryUrl);
+
+    // Forward Telo.Definition, Telo.Abstract, AND Telo.Import docs from imported
+    // libraries to the analyzer so its downstream passes can see them:
+    //  - Definitions / Abstracts feed cross-package `x-telo-ref` resolution and
+    //    `extends` target validation.
+    //  - Imports feed the per-library alias resolver — alias-form `extends` inside
+    //    a library (e.g. ai-openai's `extends: Ai.Model`) resolves against THAT
+    //    library's own `Telo.Import` declarations, not the root manifest's. Without
+    //    forwarding the imports, importing such a library would surface a spurious
+    //    EXTENDS_MALFORMED for an alias the library legitimately uses internally.
+    // Alias resolution itself stays in the analyzer; the loader's only semantic
+    // action is stamping `resolvedModuleName` / `resolvedNamespace` — recording the
+    // result of loading. Identity is cached per URL (see libraryIdentityByUrl above)
+    // because the same library can be reached through multiple chains, and every
+    // Telo.Import doc — including the duplicates short-circuited by `visited` —
+    // must end up stamped, otherwise per-scope alias resolution falls back to a
+    // path-derived string (e.g. "abstract-lib.yaml") and produces wrong canonical
+    // kinds.
+    const importedDefs: ResourceManifest[] = [];
+    const queue: ResourceManifest[] = [...entry];
 
     while (queue.length > 0) {
       const m = queue.shift()!;
@@ -390,7 +399,7 @@ export class Loader {
           throw e;
         }
         if (importedLibrary?.metadata?.name) {
-          moduleIdentityByUrl.set(importUrl, {
+          libraryIdentityByUrl.set(importUrl, {
             name: importedLibrary.metadata.name as string,
             namespace: ((importedLibrary.metadata as any).namespace as string | null) ?? null,
           });
@@ -408,7 +417,7 @@ export class Loader {
       }
 
       // Stamp m with cached identity (works for both fresh and duplicate visits).
-      const identity = moduleIdentityByUrl.get(importUrl);
+      const identity = libraryIdentityByUrl.get(importUrl);
       if (identity) {
         const pi = (m.metadata as any)?.positionIndex;
         m.metadata = {

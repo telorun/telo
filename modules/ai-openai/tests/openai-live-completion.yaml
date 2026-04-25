@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveCompletion
+  version: 1.0.0
+  description: |
+    Live OpenAI integration test. Skips silently when OPENAI_API_KEY is unset
+    (locally: drop a .env.local in this directory; CI: secret on the workflow).
+targets:
+  - LiveCompletion
+---
+kind: Telo.Import
+metadata: { name: AiOpenai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../../ai
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# apiKey is null-coalesced so the resource passes schema validation when env is
+# unset. The model is constructed (Vercel SDK is lazy — no API call until
+# generateText is invoked), but never reached because the run-step is gated.
+kind: AiOpenai.OpenaiModel
+metadata: { name: Live }
+model: gpt-4o-mini
+apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
+options:
+  temperature: 0
+  maxOutputTokens: 32
+---
+kind: Ai.Completion
+metadata: { name: C }
+model:
+  kind: AiOpenai.OpenaiModel
+  name: Live
+---
+kind: Run.Sequence
+metadata:
+  name: LiveCompletion
+steps:
+  - name: GuardEnv
+    if: "${{ env.OPENAI_API_KEY != null }}"
+    then:
+      - name: Invoke
+        inputs:
+          prompt: "Say the single word: pong."
+        invoke:
+          kind: Ai.Completion
+          name: C
+      - name: Assert
+        inputs:
+          text: "${{ steps.Invoke.result.text }}"
+          promptTokens: "${{ steps.Invoke.result.usage.promptTokens }}"
+          completionTokens: "${{ steps.Invoke.result.usage.completionTokens }}"
+          finishReason: "${{ steps.Invoke.result.finishReason }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              text: { type: string, minLength: 1 }
+              promptTokens: { type: integer, minimum: 1 }
+              completionTokens: { type: integer, minimum: 1 }
+              finishReason: { type: string, enum: [stop, length, content-filter, error, other] }
+            required: [text, promptTokens, completionTokens, finishReason]

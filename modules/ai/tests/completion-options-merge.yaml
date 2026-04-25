@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: CompletionOptionsMergeTest
+  version: 1.0.0
+targets:
+  - TestOptionsMergeReachesModel
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Echo doesn't surface options in its output — the smoke test is just that a call
+# with per-call, per-completion, AND per-model options survives the merge and
+# produces a valid completion result. Echo's snapshot/invoke don't echo options
+# back, so deep introspection of merged values is left to provider integration
+# tests and typed-abstracts work later.
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+suffix: ""
+---
+kind: Ai.Completion
+metadata: { name: C }
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+options:
+  temperature: 0.2
+  maxTokens: 100
+---
+kind: Run.Sequence
+metadata:
+  name: TestOptionsMergeReachesModel
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "merge"
+      options:
+        temperature: 0.9
+        topP: 0.5
+    invoke:
+      kind: Ai.Completion
+      name: C
+  - name: Assert
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+      finishReason: "${{ steps.Invoke.result.finishReason }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "merge" }
+          finishReason: { const: stop }
+        required: [text, finishReason]

@@ -1,0 +1,46 @@
+kind: Telo.Library
+metadata:
+  name: ai-openai
+  namespace: std
+  version: 1.0.0
+  description: OpenAI provider for Ai.Model (implements invoke and stream via Vercel AI SDK).
+exports:
+  kinds:
+    - OpenaiModel
+---
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../ai
+---
+kind: Telo.Definition
+metadata:
+  name: OpenaiModel
+capability: Telo.Invocable
+extends: Ai.Model
+controllers:
+  - pkg:npm/@telorun/ai-openai@1.0.0?local_path=./nodejs#openai-model
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: Model-level defaults (temperature, maxTokens, topP, …). Merged beneath Ai.Completion.options and per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [model, apiKey]
+  additionalProperties: false

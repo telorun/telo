@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: CompletionInputExclusivityTest
+  version: 1.0.0
+targets:
+  - TestBothPromptAndMessagesRejected
+  - TestNeitherPromptNorMessagesRejected
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+kind: Ai.Completion
+metadata: { name: C }
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+---
+# Both prompt AND messages → throws.
+kind: Run.Sequence
+metadata:
+  name: TestBothPromptAndMessagesRejected
+steps:
+  - name: Try
+    try:
+      - name: Invoke
+        inputs:
+          prompt: "x"
+          messages:
+            - { role: user, content: "y" }
+        invoke:
+          kind: Ai.Completion
+          name: C
+      - name: NotReached
+        inputs: { note: "should not get here" }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [note] }
+    catch:
+      - name: AssertCaught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [code]
+---
+# Neither prompt NOR messages → throws.
+kind: Run.Sequence
+metadata:
+  name: TestNeitherPromptNorMessagesRejected
+steps:
+  - name: Try
+    try:
+      - name: Invoke
+        inputs: {}
+        invoke:
+          kind: Ai.Completion
+          name: C
+      - name: NotReached
+        inputs: { note: "should not get here" }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [note] }
+    catch:
+      - name: AssertCaught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [code]

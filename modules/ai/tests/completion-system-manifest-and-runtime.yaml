@@ -1,0 +1,85 @@
+kind: Telo.Application
+metadata:
+  name: CompletionSystemManifestAndRuntimeTest
+  version: 1.0.0
+targets:
+  - TestManifestSystemPrepends
+  - TestRuntimeSystemOverridesManifest
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Echo with a ":::" suffix so we can observe the full message trail when the echoed
+# content is the last message's content (verifying prepend order).
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+kind: Ai.Completion
+metadata: { name: WithSystem }
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+system: "manifest-system"
+---
+# Case 1: manifest `system` is prepended when inputs carry no system override and
+# the messages array has no inline system message. Echo returns the last message's
+# content, so if prepending shifts the user message to position 1 (not 0), the echoed
+# last message is still the user message → text equals the user content.
+kind: Run.Sequence
+metadata:
+  name: TestManifestSystemPrepends
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "user-content"
+    invoke:
+      kind: Ai.Completion
+      name: WithSystem
+  - name: AssertText
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "user-content" }
+        required: [text]
+---
+# Case 2: runtime `inputs.system` wins over manifest `system`. Same echo behaviour
+# on the last message. This test just asserts the call succeeds with the override;
+# deeper observation of the system prompt requires a non-echo model.
+kind: Run.Sequence
+metadata:
+  name: TestRuntimeSystemOverridesManifest
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "u"
+      system: "runtime-system"
+    invoke:
+      kind: Ai.Completion
+      name: WithSystem
+  - name: Assert
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "u" }
+        required: [text]

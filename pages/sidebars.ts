@@ -62,6 +62,26 @@ const sidebars: SidebarsConfig = {
       label: "Standard Library",
       items: [
         { type: "doc", id: "modules/README", label: "Overview" },
+        {
+          type: "category",
+          label: "AI",
+          items: [
+            { type: "doc", id: "modules/ai/README", label: "Overview" },
+            { type: "doc", id: "modules/ai/docs/ai-model", label: "Ai.Model" },
+            { type: "doc", id: "modules/ai/docs/ai-completion", label: "Ai.Completion" },
+            {
+              type: "category",
+              label: "Providers",
+              items: [
+                {
+                  type: "doc",
+                  id: "modules/ai-openai/docs/ai-openai-model",
+                  label: "Ai.OpenaiModel",
+                },
+              ],
+            },
+          ],
+        },
         { type: "doc", id: "modules/assert/docs/manifest", label: "Assert" },
         { type: "doc", id: "modules/benchmark/README", label: "Benchmark" },
         { type: "doc", id: "modules/config/README", label: "Config" },

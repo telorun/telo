@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: CompletionMessagesArrayTest
+  version: 1.0.0
+targets:
+  - TestMessagesArray
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+kind: Ai.Completion
+metadata: { name: C }
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+---
+# Full `messages` array is passed through unchanged; Echo returns the last message's
+# content. Verifies multi-turn shape without relying on prompt shorthand.
+kind: Run.Sequence
+metadata:
+  name: TestMessagesArray
+steps:
+  - name: Invoke
+    inputs:
+      messages:
+        - role: user
+          content: "first"
+        - role: assistant
+          content: "ack"
+        - role: user
+          content: "second"
+    invoke:
+      kind: Ai.Completion
+      name: C
+  - name: Assert
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { type: string, const: "second" }
+        required: [text]
