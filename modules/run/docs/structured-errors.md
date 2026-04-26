@@ -5,6 +5,8 @@ sidebar_label: Structured Errors
 
 # Structured Errors in `Run.Sequence`
 
+> Examples below assume this module is imported with `Telo.Import` alias `Run`. Kind references (`Run.Sequence`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 `Run.Sequence` composes invocables and surfaces their structured failures (`InvokeError`) through `try` / `catch`. This page covers the three pieces that make that work end-to-end:
 
 - `try:` / `catch:` step binding the `error` context

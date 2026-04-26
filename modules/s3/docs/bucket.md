@@ -5,6 +5,8 @@ sidebar_label: S3.Bucket
 
 # S3.Bucket
 
+> Examples below assume this module is imported with `Telo.Import` alias `S3`. Kind references (`S3.Bucket`, `S3.Put`, `S3.List`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 Declares an S3-compatible bucket. Constructs and owns the S3 client used by `S3.Put`, `S3.List`, and any other resource that references it via `bucketRef`. Works against AWS S3, Cloudflare R2, MinIO, RustFS, or any other S3-compatible endpoint.
 
 `S3.Bucket` is a `Telo.Provider` — its snapshot exposes nothing publicly; other resources reach it through `bucketRef: { name: ... }`.

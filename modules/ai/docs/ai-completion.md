@@ -5,6 +5,8 @@ sidebar_label: Ai.Completion
 
 # `Ai.Completion`
 
+> Examples below assume this module is imported with `Telo.Import` alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Completion`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+
 `Ai.Completion` is a `Telo.Invocable` that delegates a single-turn LLM call to any `Ai.Model` implementation. It owns message-building, system-prompt handling, and option-merging; the model handles the HTTP call.
 
 ```yaml

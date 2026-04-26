@@ -5,6 +5,8 @@ sidebar_label: Assert.Manifest
 
 # Assert.Manifest
 
+> Examples below assume this module is imported with `Telo.Import` alias `Assert`. Kind references (`Assert.Manifest`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 Runs the static analyzer on a target manifest file and asserts on the diagnostics it produces. Use this to test that the analyzer correctly catches errors (negative tests) or produces no false positives (positive tests).
 
 ---

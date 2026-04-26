@@ -5,6 +5,8 @@ sidebar_label: Rust runtime
 
 # Starlark — Rust runtime
 
+> Examples below assume this module is imported with `Telo.Import` alias `Starlark`. If you import the module under a different name, substitute your alias accordingly.
+
 The `std/starlark` module ships two controller implementations:
 
 | Implementation | Declared as                    | Backed by               |
