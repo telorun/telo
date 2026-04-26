@@ -1,5 +1,13 @@
 # @telorun/starlark
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [dccd3a6]
+- Updated dependencies [2e0ad31]
+  - @telorun/sdk@0.6.0
+
 ## 0.2.0
 
 ### Minor Changes

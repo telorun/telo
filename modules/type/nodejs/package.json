@@ -1,6 +1,6 @@
 {
   "name": "@telorun/type",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Telo Type module - Type definition resource kinds for Telo manifests.",
   "keywords": [
     "telo",

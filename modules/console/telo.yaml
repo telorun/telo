@@ -2,14 +2,14 @@ kind: Telo.Library
 metadata:
   name: console
   namespace: std
-  version: 1.1.3
+  version: 1.1.4
 ---
 kind: Telo.Definition
 metadata:
   name: WriteLine
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/console@0.1.10?local_path=./nodejs#writeline
+  - pkg:npm/@telorun/console@0.1.11?local_path=./nodejs#writeline
 schema:
   type: object
   properties:
@@ -24,7 +24,7 @@ metadata:
   name: ReadLine
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/console@0.1.10?local_path=./nodejs#readline
+  - pkg:npm/@telorun/console@0.1.11?local_path=./nodejs#readline
 schema:
   type: object
   properties:
