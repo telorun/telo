@@ -1,0 +1,20 @@
+kind: Telo.Library
+metadata:
+  name: sibling-lib-with-shared-alias
+  version: 1.0.0
+---
+# Internal import using the SAME alias name (`Tiny`) the test fixture's root also uses.
+# Per-module isolation means this must register on this library's ModuleContext only,
+# never spilling into the root's alias table or overwriting root's Tiny snapshot.
+kind: Telo.Import
+metadata:
+  name: Tiny
+source: ./tiny-module.yaml
+variables:
+  product:
+    id: "22222222-2222-2222-2222-222222222222"
+    name: "from-sibling"
+    price: 99
+    inStock: false
+secrets:
+  password: "sibling-pwd"

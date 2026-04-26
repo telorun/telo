@@ -50,14 +50,13 @@ export async function create(
   return {
     run: async () => {
       const { bold, red, green, yellow, dim } = createColors(ctx.stderr);
-      const declaringModule = manifest.metadata.module ?? "default";
       const resourcesToCheck = manifest.resources ?? {};
       const failures: string[] = [];
       const passed: string[] = [];
       const { resources } = ctx.moduleContext;
       for (const [alias, expected] of Object.entries(resourcesToCheck)) {
-        if (!(ctx as any).resolveModuleAlias(declaringModule, alias)) {
-          failures.push(`Import alias '${alias}' not found in module '${declaringModule}'`);
+        if (!ctx.moduleContext.hasImport(alias)) {
+          failures.push(`Import alias '${alias}' not found in declaring module`);
           continue;
         }
 

@@ -17,8 +17,8 @@ export interface ModuleContext extends EvaluationContext {
   readonly secrets: Record<string, unknown>;
   readonly resources: Record<string, unknown>;
 
-  /** Maps import alias -> real module name for kind resolution. */
-  readonly importAliases: Map<string, string>;
+  /** True if `alias` was registered via `registerImport()` on this module. */
+  hasImport(alias: string): boolean;
 
   setVariables(vars: Record<string, unknown>): void;
   setTargets(vars: string[]): void;

@@ -215,7 +215,7 @@ export class EvaluationContext implements IEvaluationContext {
           }
           if (instance.init) await instance.init(ctx);
           if (instance.snapshot) {
-            const snap = await Promise.resolve(instance.snapshot()).catch(() => ({}));
+            const snap = await Promise.resolve(instance.snapshot());
             this.onResourceSnapshotted(name, (snap as Record<string, unknown>) ?? {});
           }
           this.resourceInstances.set(name, { resource, instance });

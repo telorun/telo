@@ -54,7 +54,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   private _resources: Record<string, unknown>;
 
   /** Maps import alias → real module name for kind resolution. */
-  readonly importAliases = new Map<string, string>();
+  private readonly importAliases = new Map<string, string>();
 
   /** Maps import alias → allowed kind names. Absent entry = unrestricted (e.g. Kernel). */
   private readonly importedKinds = new Map<string, Set<string>>();
@@ -139,6 +139,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     }
   }
 
+  hasImport(alias: string): boolean {
+    return this.importAliases.has(alias);
+  }
+
   getInstance(name: string): unknown {
     const entry = this.resourceInstances.get(name);
     if (!entry) {
@@ -163,7 +167,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   /**
    * Resolve a fully-qualified kind like "Http.Server" to its real kind "http-server.Server".
    * Splits on the first dot, looks up the prefix in importAliases, validates against
-   * importedKinds (if set), and reconstructs the resolved kind.
+   * importedKinds (if set), and reconstructs the resolved kind. When the alias is not
+   * present locally, walks up the lifecycle parent chain so children inherit ancestors'
+   * imports (notably the root's `Telo` built-in). Sibling modules — being absent from the
+   * chain — remain isolated.
    * Throws with a clear message if the alias is unknown or the kind is not exported.
    */
   resolveKind(kind: string): string {
@@ -175,6 +182,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     const suffix = kind.slice(dot + 1);
     const realModule = this.importAliases.get(prefix);
     if (!realModule) {
+      let cur = this.parent;
+      while (cur) {
+        if (cur instanceof ModuleContext) return cur.resolveKind(kind);
+        cur = cur.parent;
+      }
       const known = [...this.importAliases.keys()].join(", ") || "(none)";
       throw new Error(
         `Kind '${kind}': no module imported with alias '${prefix}'. Known aliases: ${known}`,
