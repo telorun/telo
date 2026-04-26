@@ -5,6 +5,8 @@ sidebar_label: Test.Suite
 
 # Test.Suite
 
+> Examples below assume this module is imported with `Telo.Import` alias `Test`. Kind references (`Test.Suite`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 Discovers and runs test manifests, aggregates results, and reports pass/fail. Replaces the bash test runner with a Telo-native mechanism.
 
 Each test runs in an isolated `Kernel` instance with its own controllers, event bus, and evaluation context.

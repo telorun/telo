@@ -5,6 +5,8 @@ sidebar_label: Ai.OpenaiModel
 
 # `Ai.OpenaiModel`
 
+> Examples below assume this module is imported with `Telo.Import` alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Completion`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+
 OpenAI provider for the `Ai.Model` abstract. Implements the full `AiModelInstance` runtime contract via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
 
 ```yaml

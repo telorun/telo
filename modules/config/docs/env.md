@@ -1,5 +1,7 @@
 # Config.Env
 
+> Examples below assume this module is imported with `Telo.Import` alias `Config`. Kind references (`Config.Env`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 Reads values from environment variables and exposes them as named, typed config values to the rest of the module.
 
 Declare `variables` for plain config and `secrets` for sensitive values. Secrets are redacted in logs and error messages. Both sections are resolved at boot time — missing required values are a hard error before anything else starts.

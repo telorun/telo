@@ -5,6 +5,8 @@ sidebar_label: Ai.Model
 
 # `Ai.Model` — the provider contract
 
+> Examples below assume this module is imported with `Telo.Import` alias `Ai`. Kind references (`Ai.Model`, `Ai.Completion`, …) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+
 `Ai.Model` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.Model`** and ship as a drop-in provider for `Ai.Completion` (and any future consumer like `Ai.Stream`).
 
 The `@telorun/ai-openai` package is the canonical first-party implementation. This page is the **contract** every implementation must honour.
