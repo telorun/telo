@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
 import {
@@ -10,11 +10,11 @@ import {
 } from "../paths";
 
 // ---------------------------------------------------------------------------
-// TauriFsAdapter — implements both ManifestAdapter and WorkspaceAdapter via
+// TauriFsAdapter — implements both ManifestSource and WorkspaceAdapter via
 // @tauri-apps/plugin-fs. Single code path for all filesystem operations.
 // ---------------------------------------------------------------------------
 
-export class TauriFsAdapter implements ManifestAdapter, WorkspaceAdapter {
+export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
   supports(url: string): boolean {
     return !url.startsWith("http") && !url.startsWith("pkg:");
   }

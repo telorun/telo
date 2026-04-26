@@ -1,4 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "@telorun/analyzer";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -12,7 +12,7 @@ function toFileUrl(filePath: string): string {
   return pathToFileURL(filePath).href;
 }
 
-export class LocalFileAdapter implements ManifestAdapter {
+export class LocalFileSource implements ManifestSource {
   supports(pathOrUrl: string): boolean {
     return (
       pathOrUrl.startsWith("file://") ||

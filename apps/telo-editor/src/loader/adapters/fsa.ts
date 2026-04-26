@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
 import {
@@ -12,7 +12,7 @@ import {
 // FsaAdapter — File System Access API (Chrome/Edge). Read + write.
 // ---------------------------------------------------------------------------
 
-export class FsaAdapter implements ManifestAdapter, WorkspaceAdapter {
+export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
   // rootAbs is the absolute path prefix under which `root` is mounted. All
   // incoming paths start with this prefix; we strip it to walk the FSA tree.
   // Stored without trailing slash so prefix arithmetic is consistent regardless

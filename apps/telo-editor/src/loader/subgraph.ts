@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { Loader, isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
@@ -26,17 +26,17 @@ import {
 // ---------------------------------------------------------------------------
 
 type LoaderOptionsCompat = {
-  extraAdapters?: ManifestAdapter[];
-  includeHttpAdapter?: boolean;
-  includeRegistryAdapter?: boolean;
+  extraSources?: ManifestSource[];
+  includeHttpSource?: boolean;
+  includeRegistrySource?: boolean;
   registryUrl?: string;
 };
 
 const LoaderCtor = Loader as unknown as new (
-  extraAdaptersOrOptions?: ManifestAdapter[] | LoaderOptionsCompat,
+  extraSourcesOrOptions?: ManifestSource[] | LoaderOptionsCompat,
 ) => Loader;
 
-const registryFallbackBlocker: ManifestAdapter = {
+const registryFallbackBlocker: ManifestSource = {
   supports(url: string): boolean {
     return isRegistryImportSource(url);
   },
@@ -50,13 +50,13 @@ const registryFallbackBlocker: ManifestAdapter = {
   },
 };
 
-function resolveDepPath(adapter: ManifestAdapter, filePath: string, source: string): string {
+function resolveDepPath(adapter: ManifestSource, filePath: string, source: string): string {
   return source.startsWith(".") || source.startsWith("/")
     ? adapter.resolveRelative(filePath, source)
     : source;
 }
 
-/** Wraps a disk-backed ManifestAdapter so `read()` first checks a
+/** Wraps a disk-backed ManifestSource so `read()` first checks a
  *  `ModuleDocument` map and serves the in-memory text when present. Falls
  *  through to disk for files not yet tracked (first load, imports, partials
  *  before Phase-1 post-processing adds them). All other adapter methods
@@ -67,10 +67,10 @@ function resolveDepPath(adapter: ManifestAdapter, filePath: string, source: stri
  *  The map is passed by reference, so callers that mutate `documents` after
  *  constructing the adapter see the updates on subsequent `read()` calls —
  *  which is how Phase-1 post-processing populates partial ASTs mid-load. */
-export function createInMemoryManifestAdapter(
+export function createInMemoryManifestSource(
   documents: Map<string, ModuleDocument>,
-  disk: ManifestAdapter,
-): ManifestAdapter {
+  disk: ManifestSource,
+): ManifestSource {
   return {
     supports(url: string): boolean {
       return disk.supports(url);
@@ -93,10 +93,10 @@ export function createInMemoryManifestAdapter(
  *  it (extras first, local last). Used when populating `ModuleDocument`s for
  *  imported modules — the local adapter alone can't read registry URLs, and
  *  `populateModuleDocument` only takes one adapter. */
-export function createChainedManifestAdapter(
-  localAdapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[],
-): ManifestAdapter {
+export function createChainedManifestSource(
+  localAdapter: ManifestSource,
+  extraAdapters: ManifestSource[],
+): ManifestSource {
   return {
     supports(url: string): boolean {
       return extraAdapters.some((a) => a.supports(url)) || localAdapter.supports(url);
@@ -120,13 +120,13 @@ export function createChainedManifestAdapter(
 }
 
 export function createEditorLoader(
-  localAdapter: ManifestAdapter,
-  registryAdapters: ManifestAdapter[],
+  localAdapter: ManifestSource,
+  registryAdapters: ManifestSource[],
 ): Loader {
   try {
     return new LoaderCtor({
-      extraAdapters: [...registryAdapters, localAdapter],
-      includeRegistryAdapter: false,
+      extraSources: [...registryAdapters, localAdapter],
+      includeRegistrySource: false,
     });
   } catch {
     const legacyAdapters = registryAdapters.length
@@ -148,7 +148,7 @@ export function createEditorLoader(
 export async function populateModuleDocument(
   filePath: string,
   documents: Map<string, ModuleDocument>,
-  adapter: ManifestAdapter,
+  adapter: ManifestSource,
 ): Promise<void> {
   const key = normalizePath(filePath);
   try {
@@ -169,7 +169,7 @@ export async function collectPartialDocuments(
   docs: ResourceManifest[],
   ownerPath: string,
   documents: Map<string, ModuleDocument>,
-  adapter: ManifestAdapter,
+  adapter: ManifestSource,
 ): Promise<void> {
   const sources = new Set<string>();
   for (const doc of docs) {
@@ -188,7 +188,7 @@ export async function collectPartialDocuments(
 
 export async function readModuleMetadata(
   filePath: string,
-  adapter: ManifestAdapter,
+  adapter: ManifestSource,
 ): Promise<string | null> {
   try {
     const loader = createEditorLoader(adapter, []);
@@ -215,10 +215,10 @@ async function mergeSubGraph(
   importGraph: Map<string, Set<string>>,
   importedBy: Map<string, Set<string>>,
   documents: Map<string, ModuleDocument>,
-  adapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[],
+  adapter: ManifestSource,
+  extraAdapters: ManifestSource[],
 ): Promise<string> {
-  const inMemoryAdapter = createInMemoryManifestAdapter(documents, adapter);
+  const inMemoryAdapter = createInMemoryManifestSource(documents, adapter);
   const loader = createEditorLoader(inMemoryAdapter, extraAdapters);
   const subGraph = await loader.loadModuleGraph(entryPath, (url, err) => {
     console.error(`Failed to load module ${url}:`, err);
@@ -233,7 +233,7 @@ async function mergeSubGraph(
   // Chained adapter so ModuleDocument population can read registry URLs —
   // the bare local adapter only supports disk paths and silently fails for
   // anything served by a registry/remote extra adapter.
-  const chainedAdapter = createChainedManifestAdapter(adapter, extraAdapters);
+  const chainedAdapter = createChainedManifestSource(adapter, extraAdapters);
 
   for (const [filePath, docs] of subGraph) {
     if (modules.has(filePath)) continue;
@@ -274,8 +274,8 @@ async function mergeSubGraph(
 export async function reconcileImports(
   workspace: Workspace,
   modulePath: string,
-  adapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[] = [],
+  adapter: ManifestSource,
+  extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
   const manifest = workspace.modules.get(modulePath);
   if (!manifest) return workspace;
@@ -352,8 +352,8 @@ export async function addImportViaAst(
   workspace: Workspace,
   modulePath: string,
   imp: ParsedImport,
-  manifestAdapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[] = [],
+  manifestAdapter: ManifestSource,
+  extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
   const key = normalizePath(modulePath);
   const modDoc = workspace.documents.get(key);
@@ -375,8 +375,8 @@ export async function removeImportViaAst(
   workspace: Workspace,
   modulePath: string,
   name: string,
-  manifestAdapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[] = [],
+  manifestAdapter: ManifestSource,
+  extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
   const key = normalizePath(modulePath);
   const modDoc = workspace.documents.get(key);
@@ -398,8 +398,8 @@ export async function upgradeImportViaAst(
   modulePath: string,
   name: string,
   newSource: string,
-  manifestAdapter: ManifestAdapter,
-  extraAdapters: ManifestAdapter[] = [],
+  manifestAdapter: ManifestSource,
+  extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
   const after = await removeImportViaAst(
     workspace,

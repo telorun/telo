@@ -1,5 +1,5 @@
 import { Loader } from "@telorun/analyzer";
-import { ControllerLoader, LocalFileAdapter } from "@telorun/kernel";
+import { ControllerLoader, LocalFileSource } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import type { Argv } from "yargs";
@@ -51,7 +51,7 @@ async function installOne(inputPath: string, log: Logger): Promise<boolean> {
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
   const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
 
-  const loader = new Loader([new LocalFileAdapter()]);
+  const loader = new Loader([new LocalFileSource()]);
   let manifests: ResourceManifest[];
   try {
     manifests = await loader.loadManifests(entryPath);

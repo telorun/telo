@@ -1,9 +1,9 @@
 import {
   AnalysisRegistry,
-  DEFAULT_MANIFEST_FILENAME,
   isModuleKind,
   Loader,
   StaticAnalyzer,
+  type ManifestSource,
 } from "@telorun/analyzer";
 import {
   ControllerContext,
@@ -22,12 +22,10 @@ import {
   type ParsedArgs,
 } from "@telorun/sdk";
 import { createHash } from "node:crypto";
-import * as path from "path";
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
-import { LocalFileAdapter } from "./manifest-adapters/local-file-adapter.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { policyFingerprint } from "./runtime-registry.js";
@@ -56,7 +54,12 @@ export interface KernelOptions {
   stderr?: NodeJS.WritableStream;
   env?: Record<string, string | undefined>;
   argv?: string[];
-  /** Base URL for the registry adapter. When unset, the RegistryAdapter
+  /** Manifest sources the kernel uses to resolve URLs passed to `load()`.
+   *  Required: pass an explicit list (`[]` is allowed but means every URL
+   *  fails to dispatch). Order matters — later entries take priority over
+   *  earlier ones (sources are unshifted onto the dispatch chain). */
+  sources: ManifestSource[];
+  /** Base URL for the registry source. When unset, the `RegistrySource`
    *  default applies. Callers (e.g. the CLI) are responsible for resolving
    *  `TELO_REGISTRY_URL` or any other env-based fallback before passing. */
   registryUrl?: string;
@@ -92,7 +95,7 @@ export class Kernel implements IKernel {
   readonly argv: string[];
   readonly registryUrl: string | undefined;
 
-  constructor(options: KernelOptions = {}) {
+  constructor(options: KernelOptions) {
     this.stdin = options.stdin ?? process.stdin;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
@@ -100,7 +103,9 @@ export class Kernel implements IKernel {
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
     this.loader = new Loader({ registryUrl: this.registryUrl, celHandlers });
-    this.loader.register(new LocalFileAdapter());
+    for (const source of options.sources) {
+      this.loader.register(source);
+    }
     this.setupEventStreaming();
   }
 
@@ -174,11 +179,12 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Load from runtime configuration file
+   * Load a manifest by URL. The URL is dispatched through the registered
+   * `ManifestSource` chain (file://, http://, pkg:, memory://, …); URL-shape
+   * normalization is each source's responsibility.
    */
-  async loadFromConfig(runtimeYamlPath: string): Promise<void> {
-    const resolvedUrl = new URL(runtimeYamlPath, `file://${process.cwd()}/`).href;
-    const sourceUrl = await this.loader.resolveEntryPoint(resolvedUrl);
+  async load(url: string): Promise<void> {
+    const sourceUrl = await this.loader.resolveEntryPoint(url);
     this.rootContext = new ModuleContext(
       sourceUrl,
       {},
@@ -260,16 +266,6 @@ export class Kernel implements IKernel {
       }
       this.rootContext.registerManifest(manifest);
     }
-  }
-
-  /**
-   * Phase 1: Load - Ingest files from directory and load runtime config
-   * @deprecated Use loadFromConfig instead
-   */
-  async loadDirectory(dirPath: string): Promise<void> {
-    const configYamlPath = path.join(dirPath, DEFAULT_MANIFEST_FILENAME);
-
-    await this.loadFromConfig(configYamlPath);
   }
 
   /**

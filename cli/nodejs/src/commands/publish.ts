@@ -3,7 +3,7 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { minimatch } from "minimatch";
 import { Loader, StaticAnalyzer } from "@telorun/analyzer";
-import { LocalFileAdapter } from "@telorun/kernel";
+import { LocalFileSource } from "@telorun/kernel";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
@@ -415,7 +415,7 @@ async function publishOne(
   // Static analysis pre-flight: validate the manifest (with includes) before publishing.
   // This catches schema errors, bad references, CEL issues, and system-kind violations
   // in partial files — all before the artifact reaches the registry.
-  const analysisLoader = new Loader([new LocalFileAdapter()]);
+  const analysisLoader = new Loader([new LocalFileSource()]);
   let analysisManifests;
   try {
     analysisManifests = await analysisLoader.loadManifests(filePath);

@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
@@ -18,9 +18,9 @@ import { buildFailureManifest, buildParsedManifest } from "./loader/parse";
 import { buildResourceDocIndex } from "./loader/ast-ops";
 import {
   collectPartialDocuments,
-  createChainedManifestAdapter,
+  createChainedManifestSource,
   createEditorLoader,
-  createInMemoryManifestAdapter,
+  createInMemoryManifestSource,
   populateModuleDocument,
   resolveDepPath,
 } from "./loader/subgraph";
@@ -133,9 +133,9 @@ export async function scanWorkspace(
  */
 export async function loadWorkspace(
   rootDir: string,
-  manifestAdapter: ManifestAdapter,
+  manifestAdapter: ManifestSource,
   workspaceAdapter: WorkspaceAdapter,
-  extraAdapters: ManifestAdapter[] = [],
+  extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
   const modulePaths = await scanWorkspace(rootDir, workspaceAdapter);
 
@@ -156,7 +156,7 @@ export async function loadWorkspace(
   // tracked (partial include targets, external imports). See the plan's
   // "Analyzer Loader is instantiated fresh per call" decision.
   const loader = createEditorLoader(
-    createInMemoryManifestAdapter(documents, manifestAdapter),
+    createInMemoryManifestSource(documents, manifestAdapter),
     extraAdapters,
   );
 
@@ -181,7 +181,7 @@ export async function loadWorkspace(
   // Populate a ModuleDocument for each imported owner so `analyzeWorkspace`
   // (which routes through `documents`) sees their Telo.Definition docs — the
   // bare `manifestAdapter` can't read registry URLs, so chain in extras.
-  const chainedAdapter = createChainedManifestAdapter(manifestAdapter, extraAdapters);
+  const chainedAdapter = createChainedManifestSource(manifestAdapter, extraAdapters);
   for (const parsed of modules.values()) {
     for (const imp of parsed.imports) {
       if (imp.importKind === "local") continue;

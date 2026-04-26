@@ -41,19 +41,19 @@ export interface AnalysisDiagnostic {
   data?: unknown;
 }
 
-export interface ManifestAdapter {
+export interface ManifestSource {
   supports(url: string): boolean;
   read(url: string): Promise<{ text: string; source: string }>;
   resolveRelative(base: string, relative: string): string;
 
   /** Expand glob patterns relative to a base source. Returns sources in the same
    *  format as read().source — suitable to pass back into read() / resolveRelative().
-   *  Optional — only filesystem-capable adapters implement this. */
+   *  Optional — only filesystem-capable sources implement this. */
   expandGlob?(base: string, patterns: string[]): Promise<string[]>;
 
   /** Walk parent directories from fileUrl looking for the nearest telo.yaml.
    *  Returns the source in the same format as read().source, or null if none found.
-   *  Optional — only filesystem-capable adapters implement this. */
+   *  Optional — only filesystem-capable sources implement this. */
   resolveOwnerOf?(fileUrl: string): Promise<string | null>;
 }
 
@@ -66,13 +66,13 @@ export interface LoadOptions {
 }
 
 export interface LoaderInitOptions {
-  /** Adapters inserted with highest priority before built-ins. */
-  extraAdapters?: ManifestAdapter[];
-  /** Include built-in HttpAdapter. Defaults to true. */
-  includeHttpAdapter?: boolean;
-  /** Include built-in RegistryAdapter. Defaults to true. */
-  includeRegistryAdapter?: boolean;
-  /** Base URL used by built-in RegistryAdapter when enabled. */
+  /** Sources inserted with highest priority before built-ins. */
+  extraSources?: ManifestSource[];
+  /** Include built-in HttpSource. Defaults to true. */
+  includeHttpSource?: boolean;
+  /** Include built-in RegistrySource. Defaults to true. */
+  includeRegistrySource?: boolean;
+  /** Base URL used by built-in RegistrySource when enabled. */
   registryUrl?: string;
   /** Handlers for CEL stdlib functions (e.g. `sha256`). Analyzer-only callers may
    *  omit this and get throwing stubs; runtime callers (kernel) must supply real impls. */

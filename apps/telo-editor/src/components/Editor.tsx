@@ -1,4 +1,4 @@
-import { AnalysisRegistry, type ManifestAdapter } from "@telorun/analyzer";
+import { AnalysisRegistry, type ManifestSource } from "@telorun/analyzer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
@@ -116,7 +116,7 @@ export function Editor() {
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
 
-  const manifestAdapterRef = useRef<ManifestAdapter | null>(null);
+  const manifestAdapterRef = useRef<ManifestSource | null>(null);
   const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestoredRef = useRef(false);

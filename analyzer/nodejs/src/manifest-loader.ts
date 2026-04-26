@@ -1,8 +1,8 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
-import { HttpAdapter } from "./adapters/http-adapter.js";
-import { RegistryAdapter } from "./adapters/registry-adapter.js";
+import { HttpSource } from "./sources/http-source.js";
+import { RegistrySource } from "./sources/registry-source.js";
 import { buildCelEnvironment } from "./cel-environment.js";
 import { isModuleKind } from "./module-kinds.js";
 import { precompileDoc } from "./precompile.js";
@@ -10,7 +10,7 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   type LoadOptions,
   type LoaderInitOptions,
-  type ManifestAdapter,
+  type ManifestSource,
   type Position,
   type PositionIndex,
 } from "./types.js";
@@ -23,42 +23,42 @@ const SYSTEM_KINDS = new Set([
 ]);
 
 export class Loader {
-  private static readonly moduleCache = new Map<
+  private readonly moduleCache = new Map<
     string,
     { text: string; manifests: ResourceManifest[] }
   >();
 
-  protected adapters: ManifestAdapter[];
+  protected sources: ManifestSource[];
   private readonly celEnv: Environment;
 
-  constructor(extraAdaptersOrOptions: ManifestAdapter[] | LoaderInitOptions = []) {
-    const options: LoaderInitOptions = Array.isArray(extraAdaptersOrOptions)
-      ? { extraAdapters: extraAdaptersOrOptions }
-      : extraAdaptersOrOptions;
+  constructor(extraSourcesOrOptions: ManifestSource[] | LoaderInitOptions = []) {
+    const options: LoaderInitOptions = Array.isArray(extraSourcesOrOptions)
+      ? { extraSources: extraSourcesOrOptions }
+      : extraSourcesOrOptions;
 
-    const includeHttpAdapter = options.includeHttpAdapter ?? true;
-    const includeRegistryAdapter = options.includeRegistryAdapter ?? true;
+    const includeHttpSource = options.includeHttpSource ?? true;
+    const includeRegistrySource = options.includeRegistrySource ?? true;
 
-    this.adapters = [];
-    if (includeHttpAdapter) this.adapters.push(new HttpAdapter());
-    if (includeRegistryAdapter) this.adapters.push(new RegistryAdapter(options.registryUrl));
+    this.sources = [];
+    if (includeHttpSource) this.sources.push(new HttpSource());
+    if (includeRegistrySource) this.sources.push(new RegistrySource(options.registryUrl));
 
-    if (options.extraAdapters?.length) {
-      this.adapters.unshift(...options.extraAdapters);
+    if (options.extraSources?.length) {
+      this.sources.unshift(...options.extraSources);
     }
 
     this.celEnv = buildCelEnvironment(options.celHandlers);
   }
 
-  register(adapter: ManifestAdapter): this {
-    this.adapters.unshift(adapter);
+  register(source: ManifestSource): this {
+    this.sources.unshift(source);
     return this;
   }
 
-  private pick(url: string): ManifestAdapter {
-    const a = this.adapters.find((a) => a.supports(url));
-    if (!a) throw new Error(`No adapter found for: ${url}`);
-    return a;
+  private pick(url: string): ManifestSource {
+    const s = this.sources.find((s) => s.supports(url));
+    if (!s) throw new Error(`No source found for: ${url}`);
+    return s;
   }
 
   async resolveEntryPoint(url: string): Promise<string> {
@@ -69,7 +69,7 @@ export class Loader {
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
     const cacheKey = `${options?.compile ? "compiled" : "raw"}:${source}`;
-    const cached = Loader.moduleCache.get(cacheKey);
+    const cached = this.moduleCache.get(cacheKey);
     if (cached && cached.text === text) {
       return cloneManifestArray(cached.manifests);
     }
@@ -152,8 +152,8 @@ export class Loader {
       const includePatterns = (moduleManifest as any).include as string[] | undefined;
       if (includePatterns?.length) {
         hasIncludes = true;
-        const adapter = this.pick(source);
-        const includedFiles = await this.resolveIncludes(source, includePatterns, adapter);
+        const picked = this.pick(source);
+        const includedFiles = await this.resolveIncludes(source, includePatterns, picked);
         for (const includedUrl of includedFiles) {
           const partialManifests = await this.loadPartialFile(includedUrl, moduleName, options);
           resolved.push(...partialManifests);
@@ -162,7 +162,7 @@ export class Loader {
     }
 
     if (!hasIncludes) {
-      Loader.moduleCache.set(cacheKey, { text, manifests: resolved });
+      this.moduleCache.set(cacheKey, { text, manifests: resolved });
     }
     return cloneManifestArray(resolved);
   }
@@ -170,21 +170,21 @@ export class Loader {
   private async resolveIncludes(
     ownerSource: string,
     patterns: string[],
-    adapter: ManifestAdapter,
+    source: ManifestSource,
   ): Promise<string[]> {
     const hasGlobs = patterns.some((p) => /[*?{}\[\]]/.test(p));
     if (hasGlobs) {
-      if (!adapter.expandGlob) {
+      if (!source.expandGlob) {
         throw new Error(
-          `Include patterns in '${ownerSource}' contain globs but the adapter for this source ` +
+          `Include patterns in '${ownerSource}' contain globs but the source for this URL ` +
             `does not support glob expansion. Use explicit file paths instead of patterns like: ` +
             patterns.filter((p) => /[*?{}\[\]]/.test(p)).join(", "),
         );
       }
-      return adapter.expandGlob(ownerSource, patterns);
+      return source.expandGlob(ownerSource, patterns);
     }
     // Literal relative paths — deduplicate in case the same file appears under multiple patterns.
-    return [...new Set(patterns.map((p) => adapter.resolveRelative(ownerSource, p)))];
+    return [...new Set(patterns.map((p) => source.resolveRelative(ownerSource, p)))];
   }
 
   private async loadPartialFile(
@@ -280,9 +280,9 @@ export class Loader {
     }
 
     // Find the owning telo.yaml via parent-directory traversal
-    const adapter = this.pick(fileUrl);
-    if (!adapter.resolveOwnerOf) return null;
-    const ownerUrl = await adapter.resolveOwnerOf(fileUrl);
+    const source = this.pick(fileUrl);
+    if (!source.resolveOwnerOf) return null;
+    const ownerUrl = await source.resolveOwnerOf(fileUrl);
     if (!ownerUrl) return null;
 
     // Load the owner module (which will load included files via include expansion)
