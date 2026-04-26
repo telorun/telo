@@ -1,4 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, type AnalysisDiagnostic, type ManifestAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
 import type { ResourceContext, Runnable } from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -18,7 +18,7 @@ interface ManifestAssertManifest {
   };
 }
 
-class LocalFileAdapter implements ManifestAdapter {
+class LocalFileSource implements ManifestSource {
   supports(p: string): boolean {
     return (
       p.startsWith("file://") ||
@@ -78,7 +78,7 @@ export async function create(
       const dim = (t: string) => c("2", t);
 
       const name = manifest.metadata.name;
-      const loader = new Loader([new LocalFileAdapter()]);
+      const loader = new Loader([new LocalFileSource()]);
       const analyzer = new StaticAnalyzer();
 
       const resolvedUrl = new URL(manifest.source, ctx.moduleContext.source).toString();

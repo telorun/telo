@@ -1,4 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
+import type { languages } from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,7 @@ type Monaco = Parameters<OnMount>[1];
 function resolveLanguageId(monaco: Monaco, mimeType: string | undefined): string {
   if (!mimeType) return "plaintext";
   const match = monaco.languages.getLanguages().find(
-    (lang) => lang.mimetypes?.includes(mimeType),
+    (lang: languages.ILanguageExtensionPoint) => lang.mimetypes?.includes(mimeType),
   );
   return match?.id ?? "plaintext";
 }

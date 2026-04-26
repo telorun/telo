@@ -139,7 +139,7 @@ export interface Workspace {
   resourceDocIndex: Map<string, Map<string, { filePath: string; docIndex: number }>>;
 }
 
-/** Mutation surface for a workspace. Read ops come from the ManifestAdapter
+/** Mutation surface for a workspace. Read ops come from the ManifestSource
  *  (shared with the runtime); WorkspaceAdapter adds the write/list/delete
  *  ops the editor needs. Kept split so analyzer code never sees mutations. */
 export interface WorkspaceAdapter {

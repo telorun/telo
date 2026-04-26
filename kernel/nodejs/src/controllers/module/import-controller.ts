@@ -11,8 +11,8 @@ const importAnalysisCache = new Map<
 
 // Only resolve relative/absolute-path sources against the importer's URL. Registry refs
 // (std/foo@1.2.3) and absolute URLs (https://, file://) must pass through unchanged so the
-// loader's adapter chain can dispatch them — otherwise `new URL("std/foo@1", "file:///srv/telo.yaml")`
-// turns a registry ref into a bogus file path and LocalFileAdapter ENOENTs on it.
+// loader's source chain can dispatch them — otherwise `new URL("std/foo@1", "file:///srv/telo.yaml")`
+// turns a registry ref into a bogus file path and LocalFileSource ENOENTs on it.
 function resolveImportSource(source: string, baseSource: string): string {
   if (source.startsWith(".") || source.startsWith("/")) {
     return new URL(source, baseSource).toString();

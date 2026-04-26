@@ -1,4 +1,4 @@
-import { Kernel, type RuntimeDiagnostic } from "@telorun/kernel";
+import { Kernel, LocalFileSource, type RuntimeDiagnostic } from "@telorun/kernel";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -116,10 +116,14 @@ export async function run(argv: {
 
   try {
     // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
-    // RegistryAdapter default. The kernel itself does no env lookup — programmatic
+    // RegistrySource default. The kernel itself does no env lookup — programmatic
     // callers (tests, SDK) pass registryUrl explicitly when they need one.
     const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
-    const kernel = new Kernel({ argv: argv["--"], registryUrl });
+    const kernel = new Kernel({
+      argv: argv["--"],
+      registryUrl,
+      sources: [new LocalFileSource()],
+    });
     if (argv.verbose) {
       kernel.on("*", (event: any) => {
         log.info(`${event.name}: ${JSON.stringify(event.payload)}`);
@@ -158,7 +162,7 @@ export async function run(argv: {
     }
 
     loadEnvFiles(argv.path);
-    await kernel.loadFromConfig(argv.path);
+    await kernel.load(argv.path);
 
     await kernel.start();
     if (kernel.exitCode !== 0) {

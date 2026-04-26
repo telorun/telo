@@ -93,7 +93,7 @@ export interface ControllerInstance<
 }
 
 export interface Kernel {
-  loadFromConfig(runtimeYamlPath: string): Promise<void>;
+  load(url: string): Promise<void>;
   start(): Promise<void>;
   acquireHold(reason?: string): () => void;
   waitForIdle(): Promise<void>;

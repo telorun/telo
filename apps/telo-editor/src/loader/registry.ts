@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { AppSettings, RegistryServer } from "../model";
 
@@ -61,9 +61,9 @@ export async function fetchAvailableVersions(
   return merged;
 }
 
-// Creates ManifestAdapters for all enabled registry servers in settings.
-export function createRegistryAdapters(settings: AppSettings): ManifestAdapter[] {
-  function createSettingsRegistryAdapter(registryUrl: string): ManifestAdapter {
+// Creates ManifestSources for all enabled registry servers in settings.
+export function createRegistryAdapters(settings: AppSettings): ManifestSource[] {
+  function createSettingsRegistryAdapter(registryUrl: string): ManifestSource {
     const baseUrl = registryUrl.replace(/\/+$/, "");
     return {
       supports(url: string): boolean {

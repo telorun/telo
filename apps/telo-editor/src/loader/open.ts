@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import type { WorkspaceAdapter } from "../model";
 import { TauriFsAdapter } from "./adapters/tauri-fs";
 import { FsaAdapter } from "./adapters/fsa";
@@ -17,9 +17,9 @@ function supportsDirectoryPicker(): boolean {
 }
 
 // A no-op local adapter — supports nothing, used when only registry adapters are needed.
-export const noopAdapter: ManifestAdapter = {
+export const noopAdapter: ManifestSource = {
   supports: () => false,
-  read: (url) => Promise.reject(new Error(`No adapter for: ${url}`)),
+  read: (url) => Promise.reject(new Error(`No source for: ${url}`)),
   resolveRelative: (_base, relative) => relative,
 };
 
@@ -28,7 +28,7 @@ export const noopAdapter: ManifestAdapter = {
 // ---------------------------------------------------------------------------
 
 export interface OpenedWorkspace {
-  manifestAdapter: ManifestAdapter;
+  manifestAdapter: ManifestSource;
   workspaceAdapter: WorkspaceAdapter;
   rootDir: string;
 }

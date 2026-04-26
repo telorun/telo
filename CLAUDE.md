@@ -18,7 +18,7 @@ Follow this strictly:
 - never use `cat` nor `sed` to read files — read them directly
 - never modify files in `dist` directories
 - never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js
-- never make architectural decisions (package boundaries, dependency direction, where code lives) without asking first
+- never make architectural decisions alone (package boundaries, dependency direction, where code lives), propose best fit and ask to choose from options
 - UI primitives must use Radix (`radix-ui` package, same pattern as `apps/telo-editor/src/components/ui/*`); if a needed component isn't wrapped yet, install it via shadcn before rolling your own
 - Icons must come from `lucide-react` (already a dep). No inline `<svg>` paths.
 

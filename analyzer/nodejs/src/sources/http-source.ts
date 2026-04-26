@@ -1,6 +1,6 @@
-import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "../types.js";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "../types.js";
 
-export class HttpAdapter implements ManifestAdapter {
+export class HttpSource implements ManifestSource {
   supports(url: string): boolean {
     return url.startsWith("http://") || url.startsWith("https://");
   }

@@ -1,4 +1,4 @@
-import { Kernel } from "@telorun/kernel";
+import { Kernel, LocalFileSource } from "@telorun/kernel";
 import type { ResourceContext, Runnable } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import * as fs from "fs";
@@ -165,8 +165,13 @@ async function runOneTest(
   const stdout = captureOutput ? new BufferedWritable() : parentStdout;
   const stderr = captureOutput ? new BufferedWritable() : parentStderr;
   try {
-    const kernel = new Kernel({ env: buildEnvForManifest(testPath), stdout, stderr });
-    await kernel.loadFromConfig(testPath);
+    const kernel = new Kernel({
+      env: buildEnvForManifest(testPath),
+      stdout,
+      stderr,
+      sources: [new LocalFileSource()],
+    });
+    await kernel.load(testPath);
     await kernel.start();
     return {
       path: testPath,

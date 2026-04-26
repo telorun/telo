@@ -1,4 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, type ManifestAdapter } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "@telorun/analyzer";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -8,8 +8,8 @@ function toFilePath(url: string): string {
   return url.startsWith("file://") ? fileURLToPath(url) : url;
 }
 
-/** Node.js fs-based ManifestAdapter for local files. */
-export class NodeAdapter implements ManifestAdapter {
+/** Node.js fs-based ManifestSource for local files. */
+export class NodeAdapter implements ManifestSource {
   constructor(private readonly cwd: string = process.cwd()) {}
 
   supports(url: string): boolean {

@@ -1,4 +1,4 @@
-import { RegistryAdapter, isModuleKind } from "@telorun/analyzer";
+import { RegistrySource, isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   ImportKind,
@@ -10,7 +10,7 @@ import type {
 } from "../model";
 import { isRegistryImportSource } from "./registry";
 
-const registryImportMatcher = new RegistryAdapter();
+const registryImportMatcher = new RegistrySource();
 
 export function classifyImport(source: string): ImportKind {
   if (source.startsWith("pkg:") || /^https?:\/\//.test(source)) return "remote";

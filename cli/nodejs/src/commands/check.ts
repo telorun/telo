@@ -1,5 +1,5 @@
 import { Loader, StaticAnalyzer } from "@telorun/analyzer";
-import { LocalFileAdapter } from "@telorun/kernel";
+import { LocalFileSource } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";
 import { createLogger, formatAnalysisDiagnostics, formatDiagnostics, type Logger } from "../logger.js";
@@ -11,7 +11,7 @@ async function checkOne(
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
 
-  const loader = new Loader([new LocalFileAdapter()]);
+  const loader = new Loader([new LocalFileSource()]);
 
   let manifests;
   try {

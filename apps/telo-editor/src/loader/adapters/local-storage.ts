@@ -1,4 +1,4 @@
-import type { ManifestAdapter } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
 import {
@@ -15,7 +15,7 @@ import {
 
 const LS_WORKSPACE_PREFIX = "telo-editor-workspace:";
 
-export class LocalStorageAdapter implements ManifestAdapter, WorkspaceAdapter {
+export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
   constructor(private readonly rootDir: string) {}
 
   supports(url: string): boolean {

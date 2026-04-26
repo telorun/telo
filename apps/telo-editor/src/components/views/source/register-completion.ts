@@ -1,4 +1,5 @@
 import type { OnMount } from "@monaco-editor/react";
+import type { editor, Position } from "monaco-editor";
 import type { AnalysisRegistry } from "@telorun/analyzer";
 import { buildCompletions } from "@telorun/ide-support";
 
@@ -30,7 +31,7 @@ export function registerYamlCompletions(monaco: Monaco): void {
 
   monaco.languages.registerCompletionItemProvider("yaml", {
     triggerCharacters: [" ", ":"],
-    provideCompletionItems(model, position) {
+    provideCompletionItems(model: editor.ITextModel, position: Position) {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
