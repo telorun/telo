@@ -1,5 +1,14 @@
 # @telorun/s3
 
+## 1.0.8
+
+### Patch Changes
+
+- dccd3a6: Removed leftover debug `console.log` calls from `S3.List` controller (`invoke` and pre-`ListObjectsCommand` traces).
+- Updated dependencies [dccd3a6]
+- Updated dependencies [2e0ad31]
+  - @telorun/sdk@0.6.0
+
 ## 1.0.7
 
 ### Patch Changes

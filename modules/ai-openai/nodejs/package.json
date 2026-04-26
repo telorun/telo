@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai-openai",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Telo Ai.OpenaiModel — OpenAI provider for Ai.Model (implements both invoke and stream via Vercel AI SDK).",
   "keywords": [
     "telo",

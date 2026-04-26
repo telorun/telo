@@ -1,5 +1,13 @@
 # @telorun/http-client
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [dccd3a6]
+- Updated dependencies [2e0ad31]
+  - @telorun/sdk@0.6.0
+
 ## 0.1.7
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/benchmark",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Telo Benchmark module - Benchmarking resource kinds for Telo manifests.",
   "keywords": [
     "telo",

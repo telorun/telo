@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: type
   namespace: std
-  version: "1.0.3"
+  version: "1.0.4"
 exports:
   kinds:
     - JsonSchema
@@ -12,7 +12,7 @@ metadata:
   name: JsonSchema
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/type@0.0.6?local_path=./nodejs#type
+  - pkg:npm/@telorun/type@0.0.7?local_path=./nodejs#type
 schema:
   type: object
   properties:

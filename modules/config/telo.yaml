@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "config"
   namespace: std
-  version: "0.1.3"
+  version: "0.1.4"
 exports:
   kinds:
     - EnvironmentVariableStore
@@ -15,7 +15,7 @@ metadata:
   name: "EnvironmentVariableStore"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.8?local_path=./nodejs#env-variable-store-controller
+  - pkg:npm/@telorun/config@0.1.9?local_path=./nodejs#env-variable-store-controller
 schema:
   type: "object"
   properties:
@@ -33,7 +33,7 @@ metadata:
   name: "Variables"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.8?local_path=./nodejs#variables-controller
+  - pkg:npm/@telorun/config@0.1.9?local_path=./nodejs#variables-controller
 schema:
   type: "object"
   properties:
@@ -62,7 +62,7 @@ metadata:
   name: "Secrets"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.8?local_path=./nodejs#secrets-controller
+  - pkg:npm/@telorun/config@0.1.9?local_path=./nodejs#secrets-controller
 schema:
   type: "object"
   properties:
@@ -91,7 +91,7 @@ metadata:
   name: "Env"
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/config@0.1.8?local_path=./nodejs#env-controller
+  - pkg:npm/@telorun/config@0.1.9?local_path=./nodejs#env-controller
 schema:
   type: object
   properties:
