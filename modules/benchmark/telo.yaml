@@ -4,6 +4,9 @@ metadata:
   namespace: std
   version: 1.0.4
   description: Load benchmarking for any invocable Telo resource
+exports:
+  kinds:
+    - Suite
 ---
 kind: Telo.Definition
 metadata:
@@ -104,7 +107,12 @@ schema:
             additionalProperties: true
           validate:
             title: Validate
-            type: string
-            description: "CEL expression evaluated against `result`; false counts as error"
+            type: boolean
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                result: {}
+            description: "CEL boolean expression evaluated against `result`; false counts as error"
         required: [name, invoke]
   required: [metadata, scenarios]

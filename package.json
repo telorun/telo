@@ -30,7 +30,7 @@
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
     "test:docker": "docker build -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/srv -w /srv telo:ci ./test-suite.yaml",
-    "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*.yaml && pnpm run check apps/*/telo.yaml && pnpm run test && pnpm -r build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
+    "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*.yaml && pnpm run check apps/*/telo.yaml && pnpm run check benchmarks/*/api.yaml && pnpm run check benchmarks/*/benchmark.yaml && pnpm run test && pnpm -r build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
     "version-packages": "node scripts/version-packages.mjs",
     "release": "node scripts/publish-packages.mjs"
   },

@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: ScoreBenchmark
+  version: 1.0.0
+targets:
+  - ScoreLoad
+---
+kind: Telo.Import
+metadata:
+  name: Bench
+source: ../../modules/benchmark
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: ScoreLoad
+  module: ScoreBenchmark
+duration: 30s
+concurrency: 10
+warmup: 3s
+report:
+  format: json
+  thresholds:
+    - errorRate: 0.001
+scenarios:
+  - name: Score
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/score
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          lead:
+            email: alice.johnson@acme-corp.com
+            company:
+              name: Acme Corp
+              employees: 850
+              country: US
+              industry: saas
+              founded: 2015
+            plan: growth
+            signupDate: "2026-03-12"
+            attrs:
+              source: organic
+              utm:
+                campaign: spring2026
+                medium: search
+            events:
+              - { type: signup, ts: "2026-03-12T10:00:00Z" }
+              - { type: pricing_view, ts: "2026-03-12T10:05:00Z" }
+              - { type: docs_view, ts: "2026-03-12T10:08:00Z" }
+              - { type: demo_request, ts: "2026-03-13T14:30:00Z" }
+              - { type: pricing_view, ts: "2026-03-15T09:15:00Z" }
+              - { type: docs_view, ts: "2026-03-16T11:00:00Z" }
+              - { type: contact_sales, ts: "2026-03-18T16:45:00Z" }
+              - { type: docs_view, ts: "2026-03-20T08:30:00Z" }
+              - { type: pricing_view, ts: "2026-03-21T13:20:00Z" }
+              - { type: webinar_attended, ts: "2026-03-22T15:00:00Z" }
+    validate: "${{ result.status == 200 }}"

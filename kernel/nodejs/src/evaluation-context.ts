@@ -453,7 +453,9 @@ export class EvaluationContext implements IEvaluationContext {
         if (declaredCodes && !declaredCodes.has(err.code)) {
           await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload);
         }
-      } else if (err instanceof Error) {
+        throw err;
+      }
+      if (err instanceof Error) {
         await this.emit(`${kind}.${name}.InvokeFailed`, {
           name: err.name,
           message: err.message,
@@ -464,7 +466,18 @@ export class EvaluationContext implements IEvaluationContext {
           message: String(err),
         });
       }
-      throw err;
+      // Already enriched at an inner invoke: keep the innermost (most
+      // specific) resource as the failure location.
+      if (err instanceof RuntimeError && err.diagnostics?.length) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error ? err.name : undefined;
+      // Keep `message` raw so callers (Run.Sequence catch blocks, assertions)
+      // see the original error text unchanged. Resource context lives only on
+      // the attached diagnostic, which the CLI's formatter renders as the
+      // location prefix.
+      throw new RuntimeError("ERR_EXECUTION_FAILED", message, [
+        { kind, resource: name, message, code },
+      ]);
     }
   }
 

@@ -14,7 +14,7 @@ const ScenarioEntry = Type.Object(
     name: Type.String(),
     weight: Type.Optional(Type.Integer()),
     invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "telo#Invocable" }),
-    validate: Type.Optional(Type.String()),
+    validate: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: true },
 );
@@ -42,7 +42,9 @@ type ResolvedScenario = {
   kind: string;
   name: string;
   weight: number;
-  validate?: string;
+  // Runtime value is a CompiledValue (CEL), resolved per invocation via ctx.expandValue.
+  validate?: unknown;
+  inputs: Record<string, unknown>;
 };
 
 function parseDuration(str: string): number {
@@ -96,13 +98,16 @@ class BenchmarkSuite {
   async init() {
     for (const scenario of this.resource.scenarios) {
       const uniqueName = `${this.resource.metadata.name}_${scenario.name}`;
-      const ref = this.ctx.resolveChildren(scenario.invoke as any, uniqueName);
+      const invoke = scenario.invoke as unknown as Record<string, unknown>;
+      const ref = this.ctx.resolveChildren(invoke, uniqueName);
+      const inputs = (invoke.inputs as Record<string, unknown> | undefined) ?? {};
       this.resolved.push({
         scenarioName: scenario.name,
         kind: ref.kind,
         name: ref.name,
         weight: scenario.weight ?? 1,
         validate: scenario.validate,
+        inputs,
       });
       this.samples.set(scenario.name, []);
       this.errorCounts.set(scenario.name, 0);
@@ -145,7 +150,7 @@ class BenchmarkSuite {
       let result: unknown;
       let isError = false;
       try {
-        result = await this.ctx.invoke(scenario.kind, scenario.name, {});
+        result = await this.ctx.invoke(scenario.kind, scenario.name, scenario.inputs);
         if (scenario.validate) {
           const ok = this.ctx.expandValue(scenario.validate, { result });
           if (!ok) isError = true;
@@ -305,10 +310,10 @@ class BenchmarkSuite {
       }
     }
 
-    if (!failed) {
-      this.ctx.stdout.write(this.green("All thresholds passed.\n"));
-    } else {
+    if (failed) {
       this.ctx.requestExit(1);
+    } else if (thresholds.length > 0) {
+      this.ctx.stdout.write(this.green("All thresholds passed.\n"));
     }
   }
 }
