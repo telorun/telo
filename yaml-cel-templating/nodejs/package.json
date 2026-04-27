@@ -39,7 +39,7 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.5.3",
+    "@marvec/cel-vm": "^1.0.6",
     "chevrotain": "^11.1.1",
     "@sinclair/typebox": "^0.34.48",
     "ajv": "^8.17.1"

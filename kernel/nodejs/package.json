@@ -51,7 +51,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.5.3",
+    "@marvec/cel-vm": "^1.0.6",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",
     "@telorun/sdk": "workspace:*",

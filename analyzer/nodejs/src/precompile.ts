@@ -1,5 +1,5 @@
 import type { CompiledValue } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import { program as celProgram, type Environment } from "@marvec/cel-vm";
 
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
@@ -29,11 +29,19 @@ export function precompileDoc(doc: unknown, env: Environment): unknown {
 function compileString(s: string, env: Environment): unknown {
   if (!s.includes("${{")) return s;
 
+  // celProgram(expr, { env }) returns a closure with the program already decoded and
+  // the function table already resolved — strictly less work per call than the
+  // env.compile + env.evaluate pair, which re-decodes and re-fetches the config on
+  // every invocation.
+  const envConfig = env.toConfig();
   const exact = s.match(EXACT_TEMPLATE_REGEX);
   if (exact) {
     const expr = exact[1].trim();
-    const fn = env.parse(expr);
-    return { __compiled: true, source: expr, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue;
+    return {
+      __compiled: true,
+      source: expr,
+      call: celProgram(expr, { env: envConfig }) as (ctx: Record<string, unknown>) => unknown,
+    } satisfies CompiledValue;
   }
 
   // Interpolated template — collect literal parts + compiled sub-expressions
@@ -42,8 +50,11 @@ function compileString(s: string, env: Environment): unknown {
   for (const m of s.matchAll(TEMPLATE_REGEX)) {
     if (m.index! > last) parts.push(s.slice(last, m.index));
     const expr = m[1].trim();
-    const fn = env.parse(expr);
-    parts.push({ __compiled: true, source: expr, call: (ctx: Record<string, unknown>) => fn(ctx) } satisfies CompiledValue);
+    parts.push({
+      __compiled: true,
+      source: expr,
+      call: celProgram(expr, { env: envConfig }) as (ctx: Record<string, unknown>) => unknown,
+    } satisfies CompiledValue);
     last = m.index! + m[0].length;
   }
   if (last < s.length) parts.push(s.slice(last));

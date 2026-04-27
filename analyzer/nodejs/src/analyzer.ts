@@ -1,5 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import type { Environment } from "@marvec/cel-vm";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
@@ -175,8 +175,10 @@ function buildStepContextSchema(
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
 
-/** Recursively walk `data`+`schema` together, type-checking every pure CEL template
- *  string via `env.check()`. Returns `SchemaIssue[]` for any type mismatches found. */
+/** Recursively walk `data`+`schema` together. cel-vm has no `env.check()` for return-type
+ *  inference, so on this branch we only catch *syntax / arity / undeclared-function* errors
+ *  via `env.compile()`. Mismatches between a CEL expression's actual return type and the
+ *  declaring field's JSON-schema type are NOT detected. */
 function collectCelTypeIssues(
   data: unknown,
   schema: Record<string, any>,
@@ -192,8 +194,6 @@ function collectCelTypeIssues(
     const exprMatch = data.match(CEL_EXPR_RE);
     if (exprMatch) {
       const expr = exprMatch[1].trim();
-
-      // Merge x-telo-context variables for this path if applicable
       let typedEnv = baseTypedEnv;
       if (definition.schema) {
         for (const ctx of extractContextsFromSchema(definition.schema)) {
@@ -202,30 +202,11 @@ function collectCelTypeIssues(
           break;
         }
       }
-
-      let checkResult: ReturnType<typeof typedEnv.check> | undefined;
       try {
-        checkResult = typedEnv.check(expr);
-      } catch {
-        /* degrade gracefully */
-      }
-
-      if (checkResult?.valid === false && checkResult.error) {
-        // env.check() rejected the expression itself — e.g. wrong method, wrong
-        // argument types, wrong operator overload. Surface the first line of the
-        // error message; the tail is a source-code caret diagram we don't need.
-        const message = String((checkResult.error as { message?: string }).message ?? checkResult.error)
-          .split("\n")[0]
-          .trim();
+        typedEnv.compile(expr);
+      } catch (e) {
+        const message = String(e instanceof Error ? e.message : e).split("\n")[0].trim();
         issues.push({ message: `CEL type error: ${message}`, path });
-      } else if (checkResult?.valid && checkResult.type && schema) {
-        const celType = checkResult.type.split("<")[0]!;
-        if (!celTypeSatisfiesJsonSchema(celType, schema)) {
-          issues.push({
-            message: `CEL returns '${checkResult.type}' but field expects '${schema.type ?? "unknown"}'`,
-            path,
-          });
-        }
       }
     }
     return issues;
@@ -490,9 +471,8 @@ export class StaticAnalyzer {
         : undefined;
 
       walkCelExpressions(m, "", (expr, path) => {
-        let parsed: ReturnType<typeof this.celEnv.parse> | undefined;
         try {
-          parsed = this.celEnv.parse(expr);
+          this.celEnv.compile(expr);
         } catch (e) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -504,7 +484,7 @@ export class StaticAnalyzer {
           return;
         }
 
-        const accessChains = extractAccessChains(parsed.ast);
+        const accessChains = extractAccessChains(expr);
 
         const contexts = mDefinition?.schema ? extractContextsFromSchema(mDefinition.schema) : [];
         const invocationContext = (m.metadata as any)?.xTeloInvocationContext as

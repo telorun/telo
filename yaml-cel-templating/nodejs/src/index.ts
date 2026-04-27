@@ -1,6 +1,16 @@
-import { evaluate as evaluateCEL } from "@marcbachmann/cel-js";
+import { program } from "@marvec/cel-vm";
 import AjvModule from "ajv";
 const Ajv = (AjvModule as any).default ?? AjvModule;
+
+const programCache = new Map<string, (activation?: Record<string, unknown>) => unknown>();
+function evaluateCEL(expr: string, ctx: Record<string, unknown>): unknown {
+  let fn = programCache.get(expr);
+  if (!fn) {
+    fn = program(expr);
+    programCache.set(expr, fn);
+  }
+  return fn(ctx);
+}
 
 /**
  * Type definitions for the templating engine

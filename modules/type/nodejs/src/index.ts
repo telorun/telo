@@ -1,6 +1,16 @@
-import { evaluate } from "@marcbachmann/cel-js";
+import { program } from "@marvec/cel-vm";
 import type { ResourceContext, ResourceManifest, TypeRule } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+
+const programCache = new Map<string, (activation?: Record<string, unknown>) => unknown>();
+function evaluate(expr: string, ctx: Record<string, unknown>): unknown {
+  let fn = programCache.get(expr);
+  if (!fn) {
+    fn = program(expr);
+    programCache.set(expr, fn);
+  }
+  return fn(ctx);
+}
 
 class TypeResource {
   constructor(

@@ -41,7 +41,7 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.5.3",
+    "@marvec/cel-vm": "^1.0.6",
     "@telorun/sdk": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",

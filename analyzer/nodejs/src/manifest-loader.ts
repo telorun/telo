@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { Environment } from "@marvec/cel-vm";
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpSource } from "./sources/http-source.js";

@@ -1,10 +1,20 @@
-import { evaluate } from "@marcbachmann/cel-js";
+import { program } from "@marvec/cel-vm";
 import { DataValidator, RuntimeError, TypeRule } from "@telorun/sdk";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { formatAjvErrors } from "./manifest-schemas.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
+
+const programCache = new Map<string, (activation?: Record<string, unknown>) => unknown>();
+function evaluate(expr: string, ctx: Record<string, unknown>): unknown {
+  let fn = programCache.get(expr);
+  if (!fn) {
+    fn = program(expr);
+    programCache.set(expr, fn);
+  }
+  return fn(ctx);
+}
 
 export class SchemaValidator {
   private ajv: InstanceType<typeof Ajv>;

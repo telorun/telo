@@ -1,6 +1,5 @@
-import { Environment } from "@marcbachmann/cel-js";
+import { Environment } from "@marvec/cel-vm";
 import type { ResourceManifest } from "@telorun/sdk";
-import { jsonSchemaToCelType } from "./schema-compat.js";
 
 export interface CelHandlers {
   sha256: (s: string) => string;
@@ -17,79 +16,35 @@ const STUB_HANDLERS: CelHandlers = {
   sha256: stub("sha256"),
 };
 
-/** Build a CEL `Environment` with Telo's stdlib of functions. Always registers the
- *  same function signatures (so `env.check()` succeeds for type-inference) — the
- *  handlers govern what the function does when called at runtime. Analyzer-only
- *  callers can omit handlers; runtime callers (kernel) must supply real ones. */
+/** Build a CEL `Environment` with Telo's stdlib of functions. cel-vm's `registerFunction`
+ *  takes (name, arity, impl) — there are no typed signatures and no `env.check()` for
+ *  type inference, so all CEL type-checking is delegated to the VM at compile time
+ *  (which only validates arity / undeclared identifiers in strict mode). */
 export function buildCelEnvironment(handlers: CelHandlers = STUB_HANDLERS): Environment {
-  return new Environment({ unlistedVariablesAreDyn: true })
-    .registerFunction("join(list, string): string", (list: unknown[], sep: string) =>
-      list.map(String).join(sep),
-    )
-    .registerFunction("keys(map): list", (map: unknown) => {
-      if (map instanceof Map) return [...map.keys()];
-      return Object.keys(map as Record<string, unknown>);
-    })
-    .registerFunction("values(map): list", (map: unknown) => {
-      if (map instanceof Map) return [...map.values()];
-      return Object.values(map as Record<string, unknown>);
-    })
-    .registerFunction("sha256(string): string", (s: string) => handlers.sha256(s));
+  const env = new Environment();
+  env.registerFunction("join", 2, (list: unknown, sep: unknown) =>
+    (list as unknown[]).map(String).join(String(sep)),
+  );
+  env.registerFunction("keys", 1, (map: unknown) => {
+    if (map instanceof Map) return [...map.keys()];
+    return Object.keys(map as Record<string, unknown>);
+  });
+  env.registerFunction("values", 1, (map: unknown) => {
+    if (map instanceof Map) return [...map.values()];
+    return Object.values(map as Record<string, unknown>);
+  });
+  env.registerFunction("sha256", 1, (s: unknown) => handlers.sha256(String(s)));
+  return env;
 }
 
-/** Clone `baseEnv` and register typed variable declarations so that
- *  `env.check(expr)` can infer return types for expressions referencing known variables.
- *
- *  - `variables`: typed from the manifest's `variables` field if it is a schema map
- *    (only module-identity docs — `Telo.Application` / `Telo.Library` — carry this); otherwise registered as `map` (dyn).
- *  - `secrets`, `resources`, `env`: always `map` (dyn — output schemas unknown).
- *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
- *
- *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
- *  in kernel-globals.ts, which is used for chain-access validation. */
+/** Stub: cel-vm has no `env.check()` for return-type inference, and no `env.clone()`,
+ *  so per-manifest typed environments aren't built. Returned env is the base env;
+ *  callers that previously relied on `env.check()` should treat results as if the
+ *  expression were untyped. */
 export function buildTypedCelEnvironment(
   baseEnv: Environment,
-  manifest: ResourceManifest,
-  extraContextSchema?: Record<string, any> | null,
+  _manifest: ResourceManifest,
+  _extraContextSchema?: Record<string, any> | null,
 ): Environment {
-  try {
-    const env = baseEnv.clone();
-
-    // Build typed ObjectSchema from manifest.variables if it looks like a schema map
-    const vars = (manifest as Record<string, unknown>).variables;
-    if (vars !== null && typeof vars === "object" && !Array.isArray(vars)) {
-      const entries = Object.entries(vars as Record<string, unknown>).filter(
-        ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
-      );
-      if (entries.length > 0) {
-        const schema: Record<string, string> = {};
-        for (const [k, v] of entries) {
-          schema[k] = jsonSchemaToCelType(v as Record<string, any>);
-        }
-        (env as any).registerVariable({ name: "variables", schema });
-      } else {
-        env.registerVariable("variables", "map");
-      }
-    } else {
-      env.registerVariable("variables", "map");
-    }
-
-    env.registerVariable("secrets", "map");
-    env.registerVariable("resources", "map");
-    env.registerVariable("env", "map");
-
-    if (extraContextSchema?.properties) {
-      for (const [name, propSchema] of Object.entries(
-        extraContextSchema.properties as Record<string, any>,
-      )) {
-        if (!env.hasVariable(name)) {
-          env.registerVariable(name, jsonSchemaToCelType(propSchema as Record<string, any>));
-        }
-      }
-    }
-
-    return env;
-  } catch {
-    return baseEnv.clone();
-  }
+  return baseEnv;
 }

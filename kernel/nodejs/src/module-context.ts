@@ -7,7 +7,7 @@ import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
 import { EvaluationContext } from "./evaluation-context.js";
 
 /** Wraps process.env so that missing keys return null instead of throwing in CEL.
- * cel-js uses Object.hasOwn(obj, key) before accessing obj[key], so we must
+ * Some CEL backends use Object.hasOwn(obj, key) before accessing obj[key], so we
  * intercept getOwnPropertyDescriptor to report every string key as "own". */
 function lenientEnv(env: Record<string, string | undefined>): Record<string, string | null> {
   return new Proxy(env as Record<string, string | null>, {

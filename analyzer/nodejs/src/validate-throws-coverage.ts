@@ -1,4 +1,4 @@
-import type { ASTNode, Environment } from "@marcbachmann/cel-js";
+import type { Environment } from "@marvec/cel-vm";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -9,7 +9,6 @@ import {
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
-import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
@@ -137,57 +136,14 @@ function resolveHandlerRef(sibling: unknown): { kind: string; name?: string } | 
  *  Parenthesised nestings of `||` over equality/in are flattened.
  *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
 function extractCoveredCodes(
-  whenExpr: string,
-  env: Environment,
+  _whenExpr: string,
+  _env: Environment,
 ): { proven: boolean; codes: Set<string> } {
-  const match = whenExpr.match(/\$\{\{\s*([^}]+?)\s*\}\}/);
-  if (!match) return { proven: false, codes: new Set() };
-  let ast: ASTNode;
-  try {
-    ast = env.parse(match[1].trim()).ast;
-  } catch {
-    return { proven: false, codes: new Set() };
-  }
-  const codes = new Set<string>();
-  const proven = extractFromNode(ast, codes);
-  return { proven, codes };
-}
-
-function extractFromNode(node: ASTNode, codes: Set<string>): boolean {
-  if (node.op === "||") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    return extractFromNode(l, codes) && extractFromNode(r, codes);
-  }
-  if (node.op === "==") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    const lit = readErrorCodeEq(l, r) ?? readErrorCodeEq(r, l);
-    if (lit === null) return false;
-    codes.add(lit);
-    return true;
-  }
-  if (node.op === "in") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    if (!isErrorCodeRef(l) || r.op !== "list") return false;
-    for (const item of r.args as ASTNode[]) {
-      if (item.op !== "value" || typeof item.args !== "string") return false;
-      codes.add(item.args);
-    }
-    return true;
-  }
-  return false;
-}
-
-function readErrorCodeEq(ref: ASTNode, lit: ASTNode): string | null {
-  if (!isErrorCodeRef(ref)) return null;
-  if (lit.op !== "value" || typeof lit.args !== "string") return null;
-  return lit.args;
-}
-
-function isErrorCodeRef(node: ASTNode): boolean {
-  if (node.op !== ".") return false;
-  const [obj, field] = node.args as [ASTNode, string];
-  if (field !== "code") return false;
-  return obj.op === "id" && obj.args === "error";
+  // cel-vm has no public AST; throws-coverage proof from `when:` clauses is
+  // disabled on this branch. Returning `proven: false` is the conservative
+  // outcome — every entry is treated as non-coverage-proving, so coverage
+  // checks that depend on this fall back to whatever the catch-all path yields.
+  return { proven: false, codes: new Set() };
 }
 
 /** Rule 7: within an outcome list, a no-`when:` entry must be the last entry. */
@@ -400,36 +356,16 @@ function collectCelStrings(value: unknown, path: string): CelString[] {
 }
 
 function checkCelChainAgainstDataSchema(
-  entry: CelString,
-  dataSchema: Record<string, any>,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  env: Environment,
+  _entry: CelString,
+  _dataSchema: Record<string, any>,
+  _resource: { kind: string; name: string },
+  _filePath: string | undefined,
+  _env: Environment,
 ): AnalysisDiagnostic[] {
-  let ast: ASTNode;
-  try {
-    ast = env.parse(entry.expr).ast;
-  } catch {
-    return [];
-  }
-  const chains = extractAccessChains(ast);
-  const diagnostics: AnalysisDiagnostic[] = [];
-  for (const chain of chains) {
-    // Only interested in chains that start with error.data.*
-    if (chain[0] !== "error" || chain[1] !== "data" || chain.length <= 2) continue;
-    const subChain = chain.slice(2); // strip "error", "data"
-    const err = validateChainAgainstSchema(subChain, dataSchema);
-    if (err) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "CEL_UNKNOWN_FIELD",
-        source: SOURCE,
-        message: `${resource.kind}/${resource.name}: CEL at '${entry.path}': error.data.${err}`,
-        data: { resource, filePath, path: entry.path },
-      });
-    }
-  }
-  return diagnostics;
+  // cel-vm has no public AST, so we cannot extract `error.data.*` access chains
+  // from `when:` expressions on this branch. Disable the chain-vs-data-schema
+  // check until a parser-based replacement lands.
+  return [];
 }
 
 /** Rule 8 extension: `inherit: true` only makes sense on a definition whose
