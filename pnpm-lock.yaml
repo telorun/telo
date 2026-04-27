@@ -192,6 +192,44 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(lightningcss@1.32.0)(terser@5.46.0)
 
+  benchmarks/feedback:
+    dependencies:
+      better-sqlite3:
+        specifier: ^12.8.0
+        version: 12.8.0
+      fastify:
+        specifier: ^5.7.2
+        version: 5.7.2
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.0.0
+        version: 7.6.13
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  benchmarks/score:
+    dependencies:
+      fastify:
+        specifier: ^5.7.2
+        version: 5.7.2
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   cli/nodejs:
     dependencies:
       '@telorun/analyzer':

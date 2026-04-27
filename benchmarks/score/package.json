@@ -1,0 +1,23 @@
+{
+  "name": "@telorun/bench-score",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lead scoring API benchmark — designed to exercise as much CEL as possible per request, with a fastify mirror for native baseline comparison.",
+  "type": "module",
+  "scripts": {
+    "serve:native": "tsx api.ts",
+    "serve:telo": "node ../../cli/nodejs/bin/telo.mjs ./api.yaml",
+    "bench": "node ../scripts/run-bench.mjs --server telo --port 8845 --bench ./benchmark.yaml",
+    "bench:native": "node ../scripts/run-bench.mjs --server native --port 8845 --bench ./benchmark.yaml",
+    "compare": "node ../scripts/run-bench.mjs --compare --port 8845 --bench ./benchmark.yaml",
+    "test": "node ../scripts/run-bench.mjs --server telo --port 8845 --bench ./test-benchmark.yaml"
+  },
+  "dependencies": {
+    "fastify": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.0.0"
+  }
+}

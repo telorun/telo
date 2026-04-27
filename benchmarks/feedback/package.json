@@ -1,0 +1,25 @@
+{
+  "name": "@telorun/bench-feedback",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Feedback collection REST API benchmark — compares the same SQLite-backed API implemented in native TypeScript (Fastify + better-sqlite3) and as a Telo manifest.",
+  "type": "module",
+  "scripts": {
+    "serve:native": "tsx api.ts",
+    "serve:telo": "node ../../cli/nodejs/bin/telo.mjs ./api.yaml",
+    "bench": "node ../scripts/run-bench.mjs --server telo --port 8844 --bench ./benchmark.yaml",
+    "bench:native": "node ../scripts/run-bench.mjs --server native --port 8844 --bench ./benchmark.yaml",
+    "compare": "node ../scripts/run-bench.mjs --compare --port 8844 --bench ./benchmark.yaml",
+    "test": "node ../scripts/run-bench.mjs --server telo --port 8844 --bench ./test-benchmark.yaml"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "fastify": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.0.0"
+  }
+}

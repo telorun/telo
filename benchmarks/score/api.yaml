@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: ScoreApi
+  version: 1.0.0
+  description: Lead scoring API — designed to exercise as much CEL as possible per request.
+targets:
+  - Server
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../../modules/http-server
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../modules/javascript
+---
+# Pure passthrough — keeps the handler trivial so per-request time is dominated
+# by CEL evaluation in the route-level inputs and returns blocks.
+kind: JavaScript.Script
+metadata:
+  name: PassThrough
+  module: ScoreApi
+code: |
+  function main(input) { return input }
+---
+kind: Http.Server
+metadata:
+  name: Server
+  module: ScoreApi
+baseUrl: http://localhost:8845
+port: 8845
+logger: false
+mounts:
+  - path: /v1
+    type: Http.Api.Routes
+---
+kind: Http.Api
+metadata:
+  name: Routes
+  module: ScoreApi
+routes:
+  # POST /score — lead scoring, ~70 CEL expressions per request.
+  #
+  # Type discipline: JSON-parsed numbers come into CEL as dyn<double>; literal
+  # ints in CEL are int. CEL has no overload for `int OP dyn<double>`, so
+  # numeric literals here use `.0` suffix to stay in the double domain.
+  # `size()` returns BigInt — wrap with `double()` before it ever reaches
+  # response.body, since fastify can't JSON-serialize BigInt.
+  - request:
+      path: /score
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [lead]
+          properties:
+            lead:
+              type: object
+    handler:
+      kind: JavaScript.Script
+      name: PassThrough
+    # Route-level inputs (~20 CEL) — pre-compute reusable signals once and
+    # pass them to the handler. The handler returns them verbatim so the
+    # `returns` block sees them as `result.*`.
+    inputs:
+      email: "${{ request.body.lead.email }}"
+      domain: "${{ request.body.lead.email.split('@')[1] }}"
+      validEmail: "${{ request.body.lead.email.contains('@') && double(size(request.body.lead.email)) > 5.0 }}"
+      companyName: "${{ request.body.lead.company.name }}"
+      companySize: "${{ request.body.lead.company.employees }}"
+      companyAge: "${{ 2026.0 - request.body.lead.company.founded }}"
+      country: "${{ request.body.lead.company.country }}"
+      industry: "${{ request.body.lead.company.industry }}"
+      plan: "${{ request.body.lead.plan }}"
+      source: "${{ request.body.lead.attrs.source }}"
+      hasUtm: "${{ has(request.body.lead.attrs.utm) }}"
+      utmCampaign: "${{ has(request.body.lead.attrs.utm) ? request.body.lead.attrs.utm.campaign : 'none' }}"
+      eventCount: "${{ double(size(request.body.lead.events)) }}"
+      eventTypes: "${{ request.body.lead.events.map(e, e.type) }}"
+      demoCount: "${{ double(size(request.body.lead.events.filter(e, e.type == 'demo_request'))) }}"
+      pricingCount: "${{ double(size(request.body.lead.events.filter(e, e.type == 'pricing_view'))) }}"
+      contactCount: "${{ double(size(request.body.lead.events.filter(e, e.type == 'contact_sales'))) }}"
+      intentCount: "${{ double(size(request.body.lead.events.filter(e, e.type == 'demo_request' || e.type == 'pricing_view' || e.type == 'contact_sales'))) }}"
+      hasIntent: "${{ request.body.lead.events.exists(e, e.type == 'demo_request' || e.type == 'pricing_view' || e.type == 'contact_sales') }}"
+      allEventsValid: "${{ request.body.lead.events.all(e, has(e.type) && double(size(e.type)) > 0.0) }}"
+    returns:
+      - status: 200
+        # Returns body (~50 CEL) — derive a rich response from `result.*`
+        # (which is whatever inputs computed, since the handler is passthrough).
+        body:
+          lead:
+            email: "${{ result.email }}"
+            domain: "${{ result.domain }}"
+            validEmail: "${{ result.validEmail }}"
+            corporateDomain: "${{ result.domain.endsWith('.com') || result.domain.endsWith('.io') || result.domain.endsWith('.co') }}"
+            personal: "${{ result.domain in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com'] }}"
+          company:
+            name: "${{ result.companyName }}"
+            employees: "${{ result.companySize }}"
+            sizeBand: "${{ result.companySize > 1000.0 ? 'enterprise' : result.companySize > 100.0 ? 'mid' : result.companySize > 10.0 ? 'smb' : 'startup' }}"
+            ageYears: "${{ result.companyAge }}"
+            established: "${{ result.companyAge > 5.0 }}"
+            new: "${{ result.companyAge <= 2.0 }}"
+            country: "${{ result.country }}"
+            region: "${{ result.country == 'US' || result.country in ['CA', 'MX'] ? 'NA' : result.country in ['DE', 'FR', 'NL', 'UK', 'IE', 'ES', 'IT'] ? 'EU' : result.country in ['JP', 'SG', 'AU', 'IN'] ? 'APAC' : 'OTHER' }}"
+            priorityCountry: "${{ result.country in ['US', 'DE', 'UK', 'JP', 'CA'] }}"
+            industry: "${{ result.industry }}"
+            isB2B: "${{ result.industry in ['saas', 'fintech', 'enterprise', 'manufacturing'] }}"
+          events:
+            total: "${{ result.eventCount }}"
+            demos: "${{ result.demoCount }}"
+            pricing: "${{ result.pricingCount }}"
+            contact: "${{ result.contactCount }}"
+            intent: "${{ result.intentCount }}"
+            types: "${{ result.eventTypes }}"
+            hasIntent: "${{ result.hasIntent }}"
+            allValid: "${{ result.allEventsValid }}"
+            engaged: "${{ result.eventCount > 5.0 }}"
+            veryEngaged: "${{ result.eventCount > 15.0 }}"
+            intentRatio: "${{ result.eventCount > 0.0 ? result.intentCount / result.eventCount : 0.0 }}"
+          plan:
+            current: "${{ result.plan }}"
+            paid: "${{ result.plan != 'free' && result.plan != 'trial' }}"
+            tier: "${{ result.plan == 'enterprise' ? 4.0 : result.plan == 'growth' ? 3.0 : result.plan == 'starter' ? 2.0 : result.plan == 'trial' ? 1.0 : 0.0 }}"
+            isPremium: "${{ result.plan == 'enterprise' || result.plan == 'growth' }}"
+          attrs:
+            source: "${{ result.source }}"
+            organic: "${{ result.source in ['organic', 'direct', 'referral'] }}"
+            paid: "${{ result.source in ['ppc', 'sem', 'social', 'display'] }}"
+            hasUtm: "${{ result.hasUtm }}"
+            utmCampaign: "${{ result.utmCampaign }}"
+          score:
+            company: "${{ result.companySize > 1000.0 ? 50.0 : result.companySize > 100.0 ? 30.0 : result.companySize > 10.0 ? 15.0 : 5.0 }}"
+            engagement: "${{ result.eventCount * 3.0 + result.intentCount * 10.0 }}"
+            plan: "${{ result.plan == 'enterprise' ? 40.0 : result.plan == 'growth' ? 25.0 : result.plan == 'starter' ? 10.0 : 0.0 }}"
+            geo: "${{ result.country == 'US' ? 20.0 : result.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15.0 : 5.0 }}"
+            source: "${{ result.source in ['organic', 'direct', 'referral'] ? 10.0 : 5.0 }}"
+            industry: "${{ result.industry in ['saas', 'fintech', 'enterprise'] ? 15.0 : 5.0 }}"
+            email: "${{ result.validEmail ? 5.0 : 0.0 }}"
+            total: "${{ (result.companySize > 1000.0 ? 50.0 : result.companySize > 100.0 ? 30.0 : result.companySize > 10.0 ? 15.0 : 5.0) + (result.eventCount * 3.0 + result.intentCount * 10.0) + (result.plan == 'enterprise' ? 40.0 : result.plan == 'growth' ? 25.0 : result.plan == 'starter' ? 10.0 : 0.0) + (result.country == 'US' ? 20.0 : result.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15.0 : 5.0) + (result.source in ['organic', 'direct', 'referral'] ? 10.0 : 5.0) + (result.industry in ['saas', 'fintech', 'enterprise'] ? 15.0 : 5.0) + (result.validEmail ? 5.0 : 0.0) }}"
+          tier: "${{ ((result.companySize > 1000.0 ? 50.0 : result.companySize > 100.0 ? 30.0 : result.companySize > 10.0 ? 15.0 : 5.0) + (result.eventCount * 3.0 + result.intentCount * 10.0) + (result.plan == 'enterprise' ? 40.0 : result.plan == 'growth' ? 25.0 : result.plan == 'starter' ? 10.0 : 0.0) + (result.country == 'US' ? 20.0 : result.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15.0 : 5.0) + (result.source in ['organic', 'direct', 'referral'] ? 10.0 : 5.0) + (result.industry in ['saas', 'fintech', 'enterprise'] ? 15.0 : 5.0) + (result.validEmail ? 5.0 : 0.0)) > 120.0 ? 'A' : ((result.companySize > 1000.0 ? 50.0 : result.companySize > 100.0 ? 30.0 : result.companySize > 10.0 ? 15.0 : 5.0) + (result.eventCount * 3.0 + result.intentCount * 10.0) + (result.plan == 'enterprise' ? 40.0 : result.plan == 'growth' ? 25.0 : result.plan == 'starter' ? 10.0 : 0.0) + (result.country == 'US' ? 20.0 : 5.0) + (result.source in ['organic', 'direct', 'referral'] ? 10.0 : 5.0) + (result.industry in ['saas', 'fintech', 'enterprise'] ? 15.0 : 5.0) + (result.validEmail ? 5.0 : 0.0)) > 80.0 ? 'B' : 'C' }}"
+          summary: "${{ result.companyName + ' (' + (result.companySize > 1000.0 ? 'enterprise' : result.companySize > 100.0 ? 'mid' : 'small') + ', ' + result.country + ') — ' + string(result.eventCount) + ' events on ' + result.plan + ' plan' }}"

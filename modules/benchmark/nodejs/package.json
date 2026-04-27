@@ -19,8 +19,13 @@
     "url": "https://github.com/telorun/telo/issues"
   },
   "type": "module",
+  "main": "./src/suite.ts",
+  "module": "./src/suite.ts",
   "exports": {
-    "./suite": "./src/suite.ts"
+    "./suite": {
+      "bun": "./src/suite.ts",
+      "import": "./dist/suite.js"
+    }
   },
   "files": [
     "dist",

@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: ScoreTestBenchmark
+  version: 1.0.0
+targets:
+  - ScoreSmoke
+---
+kind: Telo.Import
+metadata:
+  name: Bench
+source: ../../modules/benchmark
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: ScoreSmoke
+  module: ScoreTestBenchmark
+requests: 200
+concurrency: 2
+report:
+  format: json
+  thresholds:
+    - errorRate: 0.05
+scenarios:
+  - name: Score
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/score
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          lead:
+            email: smoke@example.com
+            company:
+              name: Smoke Inc
+              employees: 250
+              country: US
+              industry: saas
+              founded: 2020
+            plan: starter
+            attrs:
+              source: organic
+            events:
+              - { type: signup }
+              - { type: pricing_view }
+              - { type: demo_request }
+    validate: "${{ result.status == 200 }}"
