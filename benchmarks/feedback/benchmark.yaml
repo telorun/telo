@@ -8,12 +8,12 @@ targets:
 kind: Telo.Import
 metadata:
   name: Bench
-source: ../modules/benchmark
+source: ../../modules/benchmark
 ---
 kind: Telo.Import
 metadata:
   name: Http
-source: ../modules/http-client
+source: ../../modules/http-client
 ---
 kind: Bench.Suite
 metadata:
@@ -23,7 +23,7 @@ duration: 30s
 concurrency: 10
 warmup: 3s
 report:
-  format: table
+  format: json
   thresholds:
     - scenario: PostFeedback
       p99: 200

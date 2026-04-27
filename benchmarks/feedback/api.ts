@@ -1,9 +1,11 @@
 import Fastify from "fastify";
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
+import { mkdirSync } from "node:fs";
 
+mkdirSync("./tmp", { recursive: true });
 const db = new Database("./tmp/feedback.db");
 
-db.run(`
+db.exec(`
   CREATE TABLE IF NOT EXISTS feedback (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     text       TEXT    NOT NULL,

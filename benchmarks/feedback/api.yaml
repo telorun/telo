@@ -12,17 +12,17 @@ targets:
 kind: Telo.Import
 metadata:
   name: Http
-source: ../modules/http-server
+source: ../../modules/http-server
 ---
 kind: Telo.Import
 metadata:
   name: Sql
-source: ../modules/sql
+source: ../../modules/sql
 ---
 kind: Telo.Import
 metadata:
   name: Run
-source: ../modules/run
+source: ../../modules/run
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection
@@ -30,7 +30,7 @@ metadata:
   name: Db
   module: FeedbackApi
 driver: sqlite
-file: ./tmp/feedback.db
+file: /tmp/feedback.db
 ---
 # Startup migration: runs once before the server accepts requests
 kind: Run.Sequence
@@ -39,21 +39,20 @@ metadata:
   module: FeedbackApi
 steps:
   - name: CreateTable
-    inputs: {}
     invoke:
       kind: Sql.Exec
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: |
-          CREATE TABLE IF NOT EXISTS feedback (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            text      TEXT    NOT NULL,
-            source    TEXT,
-            score     INTEGER NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
+    inputs:
+      sql: |
+        CREATE TABLE IF NOT EXISTS feedback (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          text      TEXT    NOT NULL,
+          source    TEXT,
+          score     INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
 ---
 kind: Http.Server
 metadata:
@@ -94,12 +93,12 @@ routes:
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
-        bindings:
-          - "${{ request.body.text }}"
-          - "${{ request.body.source }}"
-          - "${{ size(request.body.text) }}"
+    inputs:
+      sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
+      bindings:
+        - "${{ request.body.text }}"
+        - "${{ request.body.source }}"
+        - "${{ size(request.body.text) }}"
     returns:
       - status: 201
         headers:
@@ -117,8 +116,8 @@ routes:
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
+    inputs:
+      sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     returns:
       - status: 200
         headers:
@@ -141,10 +140,10 @@ routes:
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
-        bindings:
-          - "${{ request.params.id }}"
+    inputs:
+      sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
+      bindings:
+        - "${{ request.params.id }}"
     returns:
       - status: 200
         when: "${{ size(result.rows) > 0 }}"
