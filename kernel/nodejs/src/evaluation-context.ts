@@ -18,6 +18,52 @@ import { RuntimeError } from "@telorun/sdk";
 
 export { resourceKey };
 
+type Walker = (ctx: Record<string, unknown>) => unknown;
+
+/** Compile a manifest subtree into a tightly-bound walker closure. The returned
+ *  function takes an activation object and rebuilds a fresh container of the
+ *  same shape with all `${{ }}` CompiledValues evaluated against the activation.
+ *  Per-call overhead is one closure invocation per node — no isCompiledValue /
+ *  Array.isArray / typeof / Object.entries checks at runtime. */
+function compileWalker(value: unknown): Walker {
+  if (isCompiledValue(value)) {
+    const compiled = value;
+    return (ctx) => {
+      try {
+        return compiled.call(ctx);
+      } catch (error) {
+        const expr = compiled.source ? `\${{ ${compiled.source} }}` : "unknown expression";
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new Error(`Expression ${expr} failed: ${msg}`);
+      }
+    };
+  }
+  if (Array.isArray(value)) {
+    const childWalkers = value.map(compileWalker);
+    const n = childWalkers.length;
+    return (ctx) => {
+      const out = new Array(n);
+      for (let i = 0; i < n; i++) out[i] = childWalkers[i]!(ctx);
+      return out;
+    };
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).map(
+      ([k, v]) => [k, compileWalker(v)] as const,
+    );
+    const n = entries.length;
+    return (ctx) => {
+      const out: Record<string, unknown> = {};
+      for (let i = 0; i < n; i++) {
+        const [k, fn] = entries[i]!;
+        out[k] = fn(ctx);
+      }
+      return out;
+    };
+  }
+  return () => value;
+}
+
 /**
  * Base class for all evaluation contexts. Owns template
  * expansion, secrets redaction, and the generic resource lifecycle tree.
@@ -453,7 +499,9 @@ export class EvaluationContext implements IEvaluationContext {
         if (declaredCodes && !declaredCodes.has(err.code)) {
           await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload);
         }
-      } else if (err instanceof Error) {
+        throw err;
+      }
+      if (err instanceof Error) {
         await this.emit(`${kind}.${name}.InvokeFailed`, {
           name: err.name,
           message: err.message,
@@ -464,7 +512,22 @@ export class EvaluationContext implements IEvaluationContext {
           message: String(err),
         });
       }
-      throw err;
+      // Already enriched at an inner invoke: keep the innermost (most
+      // specific) resource as the failure location.
+      if (err instanceof RuntimeError && err.diagnostics?.length) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error ? err.name : undefined;
+      // Keep `message` raw so callers (Run.Sequence catch blocks, assertions)
+      // see the original error text unchanged. Resource context lives only on
+      // the attached diagnostic, which the CLI's formatter renders as the
+      // location prefix. Attach the original error as `cause` so
+      // formatErrorForDiagnostic walks the chain and surfaces the underlying
+      // stack and well-known error fields (AWS, pg, Node system errors).
+      const wrapped = new RuntimeError("ERR_EXECUTION_FAILED", message, [
+        { kind, resource: name, message, code },
+      ]);
+      (wrapped as { cause?: unknown }).cause = err;
+      throw wrapped;
     }
   }
 
@@ -497,47 +560,61 @@ export class EvaluationContext implements IEvaluationContext {
 
   /**
    * Expand a value that may contain precompiled ${{ }} templates.
-   * Works recursively over CompiledValues, arrays, and objects.
+   *
+   * Hot path: each unique manifest subtree is compiled once into a tightly-bound
+   * walker closure (no per-call `isCompiledValue` / `Array.isArray` / `typeof` /
+   * `Object.entries` overhead, no recursive method dispatch). The walker tree is
+   * cached by the input value's identity in `walkerCache`, so subsequent calls
+   * with the same manifest data reuse it. The walker reads from `this._context`
+   * — which `expandWith` mutates in place — and emits a fresh container per call
+   * to preserve the original recursive `expand`'s semantics.
    */
   expand(value: unknown): unknown {
-    if (isCompiledValue(value)) {
-      try {
-        return value.call(this._context);
-      } catch (error) {
-        const expr = value.source ? `\${{ ${value.source} }}` : "unknown expression";
-        const msg = error instanceof Error ? error.message : String(error);
-        throw new Error(`Expression ${expr} failed: ${msg}`);
-      }
-    }
-    if (Array.isArray(value)) {
-      return value.map((entry) => this.expand(entry));
-    }
-    if (value !== null && typeof value === "object") {
-      const resolved: Record<string, unknown> = {};
-      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        resolved[key] = this.expand(entry);
-      }
-      return resolved;
-    }
-    return value;
+    if (value === null || typeof value !== "object") return value;
+    const cached = this.walkerCache.get(value as object);
+    if (cached) return cached(this._context);
+    const walker = compileWalker(value);
+    this.walkerCache.set(value as object, walker);
+    return walker(this._context);
   }
 
   /**
    * Expand a value using this context merged with additional properties.
-   * Equivalent to merge(extraContext).expand(value) without allocating a context object.
+   *
+   * Hot path optimisation: rather than allocate a fresh prototype-less object
+   * per call (one allocation + N property copies for N keys in the saved
+   * context), we mutate `_context` in place — adding or overwriting only the
+   * `extraContext` keys — and restore the previous values on exit. Safe because
+   * `expand` is synchronous; cel-vm closures only read from the activation.
    */
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown {
-    const saved = this._context;
-    this._context = Object.assign(Object.create(null), saved, extraContext) as Record<
-      string,
-      unknown
-    >;
+    const ctx = this._context as Record<string, unknown>;
+    const keys = Object.keys(extraContext);
+    const savedValues: unknown[] = new Array(keys.length);
+    const hadKey: boolean[] = new Array(keys.length);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      hadKey[i] = k in ctx;
+      if (hadKey[i]) savedValues[i] = ctx[k];
+      ctx[k] = extraContext[k];
+    }
     try {
       return this.expand(value);
     } finally {
-      this._context = saved;
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]!;
+        if (hadKey[i]) ctx[k] = savedValues[i];
+        else delete ctx[k];
+      }
     }
   }
+
+  /** Cache of compiled walker closures keyed on the manifest subtree they walk.
+   *  WeakMap so entries are GC'd if the manifest is reloaded. */
+  private readonly walkerCache = new WeakMap<
+    object,
+    (ctx: Record<string, unknown>) => unknown
+  >();
 
 /**
    * Expand specific dot-paths within an object. '**' expands the entire object.

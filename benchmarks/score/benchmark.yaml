@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: ScoreBenchmark
+  version: 1.0.0
+targets:
+  - ScoreLoad
+---
+kind: Telo.Import
+metadata:
+  name: Bench
+source: ../../modules/benchmark
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: ScoreLoad
+  module: ScoreBenchmark
+duration: 30s
+concurrency: 10
+warmup: 3s
+report:
+  format: json
+  thresholds:
+    - errorRate: 0.001
+scenarios:
+  - name: Score
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8845/v1/score
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          lead:
+            email: alice.johnson@acme-corp.com
+            company:
+              name: Acme Corp
+              employees: 850
+              country: US
+              industry: saas
+              founded: 2015
+            plan: growth
+            signupDate: "2026-03-12"
+            attrs:
+              source: organic
+              utm:
+                campaign: spring2026
+                medium: search
+            events:
+              - { type: signup, ts: "2026-03-12T08:00:00Z", score: 0, tags: ["priority"] }
+              - { type: docs_view, ts: "2026-03-13T09:07:00Z", score: 17, tags: ["high", "engaged"] }
+              - { type: pricing_view, ts: "2026-03-14T10:14:00Z", score: 34, tags: ["engaged", "returning", "mobile"] }
+              - { type: demo_request, ts: "2026-03-15T11:21:00Z", score: 51, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-16T12:28:00Z", score: 68, tags: ["mobile"] }
+              - { type: webinar_attended, ts: "2026-03-17T13:35:00Z", score: 85, tags: ["desktop", "enterprise"] }
+              - { type: feature_used, ts: "2026-03-18T14:42:00Z", score: 2, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: login, ts: "2026-03-19T15:49:00Z", score: 19, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-20T16:56:00Z", score: 36, tags: ["priority"] }
+              - { type: support_ticket, ts: "2026-03-21T17:03:00Z", score: 53, tags: ["high", "engaged"] }
+              - { type: signup, ts: "2026-03-22T18:10:00Z", score: 70, tags: ["engaged", "returning", "mobile"] }
+              - { type: docs_view, ts: "2026-03-23T19:17:00Z", score: 87, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: pricing_view, ts: "2026-03-24T08:24:00Z", score: 4, tags: ["mobile"] }
+              - { type: demo_request, ts: "2026-03-25T09:31:00Z", score: 21, tags: ["desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-26T10:38:00Z", score: 38, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: webinar_attended, ts: "2026-03-27T11:45:00Z", score: 55, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: feature_used, ts: "2026-03-28T12:52:00Z", score: 72, tags: ["priority"] }
+              - { type: login, ts: "2026-03-29T13:59:00Z", score: 89, tags: ["high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-12T14:06:00Z", score: 6, tags: ["engaged", "returning", "mobile"] }
+              - { type: support_ticket, ts: "2026-03-13T15:13:00Z", score: 23, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: signup, ts: "2026-03-14T16:20:00Z", score: 40, tags: ["mobile"] }
+              - { type: docs_view, ts: "2026-03-15T17:27:00Z", score: 57, tags: ["desktop", "enterprise"] }
+              - { type: pricing_view, ts: "2026-03-16T18:34:00Z", score: 74, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: demo_request, ts: "2026-03-17T19:41:00Z", score: 91, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: contact_sales, ts: "2026-03-18T08:48:00Z", score: 8, tags: ["priority"] }
+              - { type: webinar_attended, ts: "2026-03-19T09:55:00Z", score: 25, tags: ["high", "engaged"] }
+              - { type: feature_used, ts: "2026-03-20T10:02:00Z", score: 42, tags: ["engaged", "returning", "mobile"] }
+              - { type: login, ts: "2026-03-21T11:09:00Z", score: 59, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: integration_added, ts: "2026-03-22T12:16:00Z", score: 76, tags: ["mobile"] }
+              - { type: support_ticket, ts: "2026-03-23T13:23:00Z", score: 93, tags: ["desktop", "enterprise"] }
+              - { type: signup, ts: "2026-03-24T14:30:00Z", score: 10, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: docs_view, ts: "2026-03-25T15:37:00Z", score: 27, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: pricing_view, ts: "2026-03-26T16:44:00Z", score: 44, tags: ["priority"] }
+              - { type: demo_request, ts: "2026-03-27T17:51:00Z", score: 61, tags: ["high", "engaged"] }
+              - { type: contact_sales, ts: "2026-03-28T18:58:00Z", score: 78, tags: ["engaged", "returning", "mobile"] }
+              - { type: webinar_attended, ts: "2026-03-29T19:05:00Z", score: 95, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: feature_used, ts: "2026-03-12T08:12:00Z", score: 12, tags: ["mobile"] }
+              - { type: login, ts: "2026-03-13T09:19:00Z", score: 29, tags: ["desktop", "enterprise"] }
+              - { type: integration_added, ts: "2026-03-14T10:26:00Z", score: 46, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: support_ticket, ts: "2026-03-15T11:33:00Z", score: 63, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: signup, ts: "2026-03-16T12:40:00Z", score: 80, tags: ["priority"] }
+              - { type: docs_view, ts: "2026-03-17T13:47:00Z", score: 97, tags: ["high", "engaged"] }
+              - { type: pricing_view, ts: "2026-03-18T14:54:00Z", score: 14, tags: ["engaged", "returning", "mobile"] }
+              - { type: demo_request, ts: "2026-03-19T15:01:00Z", score: 31, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-20T16:08:00Z", score: 48, tags: ["mobile"] }
+              - { type: webinar_attended, ts: "2026-03-21T17:15:00Z", score: 65, tags: ["desktop", "enterprise"] }
+              - { type: feature_used, ts: "2026-03-22T18:22:00Z", score: 82, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: login, ts: "2026-03-23T19:29:00Z", score: 99, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-24T08:36:00Z", score: 16, tags: ["priority"] }
+              - { type: support_ticket, ts: "2026-03-25T09:43:00Z", score: 33, tags: ["high", "engaged"] }
+              - { type: signup, ts: "2026-03-26T10:50:00Z", score: 50, tags: ["engaged", "returning", "mobile"] }
+              - { type: docs_view, ts: "2026-03-27T11:57:00Z", score: 67, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: pricing_view, ts: "2026-03-28T12:04:00Z", score: 84, tags: ["mobile"] }
+              - { type: demo_request, ts: "2026-03-29T13:11:00Z", score: 1, tags: ["desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-12T14:18:00Z", score: 18, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: webinar_attended, ts: "2026-03-13T15:25:00Z", score: 35, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: feature_used, ts: "2026-03-14T16:32:00Z", score: 52, tags: ["priority"] }
+              - { type: login, ts: "2026-03-15T17:39:00Z", score: 69, tags: ["high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-16T18:46:00Z", score: 86, tags: ["engaged", "returning", "mobile"] }
+              - { type: support_ticket, ts: "2026-03-17T19:53:00Z", score: 3, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: signup, ts: "2026-03-18T08:00:00Z", score: 20, tags: ["mobile"] }
+              - { type: docs_view, ts: "2026-03-19T09:07:00Z", score: 37, tags: ["desktop", "enterprise"] }
+              - { type: pricing_view, ts: "2026-03-20T10:14:00Z", score: 54, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: demo_request, ts: "2026-03-21T11:21:00Z", score: 71, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: contact_sales, ts: "2026-03-22T12:28:00Z", score: 88, tags: ["priority"] }
+              - { type: webinar_attended, ts: "2026-03-23T13:35:00Z", score: 5, tags: ["high", "engaged"] }
+              - { type: feature_used, ts: "2026-03-24T14:42:00Z", score: 22, tags: ["engaged", "returning", "mobile"] }
+              - { type: login, ts: "2026-03-25T15:49:00Z", score: 39, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: integration_added, ts: "2026-03-26T16:56:00Z", score: 56, tags: ["mobile"] }
+              - { type: support_ticket, ts: "2026-03-27T17:03:00Z", score: 73, tags: ["desktop", "enterprise"] }
+              - { type: signup, ts: "2026-03-28T18:10:00Z", score: 90, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: docs_view, ts: "2026-03-29T19:17:00Z", score: 7, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: pricing_view, ts: "2026-03-12T08:24:00Z", score: 24, tags: ["priority"] }
+              - { type: demo_request, ts: "2026-03-13T09:31:00Z", score: 41, tags: ["high", "engaged"] }
+              - { type: contact_sales, ts: "2026-03-14T10:38:00Z", score: 58, tags: ["engaged", "returning", "mobile"] }
+              - { type: webinar_attended, ts: "2026-03-15T11:45:00Z", score: 75, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: feature_used, ts: "2026-03-16T12:52:00Z", score: 92, tags: ["mobile"] }
+              - { type: login, ts: "2026-03-17T13:59:00Z", score: 9, tags: ["desktop", "enterprise"] }
+              - { type: integration_added, ts: "2026-03-18T14:06:00Z", score: 26, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: support_ticket, ts: "2026-03-19T15:13:00Z", score: 43, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: signup, ts: "2026-03-20T16:20:00Z", score: 60, tags: ["priority"] }
+              - { type: docs_view, ts: "2026-03-21T17:27:00Z", score: 77, tags: ["high", "engaged"] }
+              - { type: pricing_view, ts: "2026-03-22T18:34:00Z", score: 94, tags: ["engaged", "returning", "mobile"] }
+              - { type: demo_request, ts: "2026-03-23T19:41:00Z", score: 11, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-24T08:48:00Z", score: 28, tags: ["mobile"] }
+              - { type: webinar_attended, ts: "2026-03-25T09:55:00Z", score: 45, tags: ["desktop", "enterprise"] }
+              - { type: feature_used, ts: "2026-03-26T10:02:00Z", score: 62, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: login, ts: "2026-03-27T11:09:00Z", score: 79, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-28T12:16:00Z", score: 96, tags: ["priority"] }
+              - { type: support_ticket, ts: "2026-03-29T13:23:00Z", score: 13, tags: ["high", "engaged"] }
+              - { type: signup, ts: "2026-03-12T14:30:00Z", score: 30, tags: ["engaged", "returning", "mobile"] }
+              - { type: docs_view, ts: "2026-03-13T15:37:00Z", score: 47, tags: ["returning", "mobile", "desktop", "enterprise"] }
+              - { type: pricing_view, ts: "2026-03-14T16:44:00Z", score: 64, tags: ["mobile"] }
+              - { type: demo_request, ts: "2026-03-15T17:51:00Z", score: 81, tags: ["desktop", "enterprise"] }
+              - { type: contact_sales, ts: "2026-03-16T18:58:00Z", score: 98, tags: ["enterprise", "evaluation", "priority"] }
+              - { type: webinar_attended, ts: "2026-03-17T19:05:00Z", score: 15, tags: ["evaluation", "priority", "high", "engaged"] }
+              - { type: feature_used, ts: "2026-03-18T08:12:00Z", score: 32, tags: ["priority"] }
+              - { type: login, ts: "2026-03-19T09:19:00Z", score: 49, tags: ["high", "engaged"] }
+              - { type: integration_added, ts: "2026-03-20T10:26:00Z", score: 66, tags: ["engaged", "returning", "mobile"] }
+              - { type: support_ticket, ts: "2026-03-21T11:33:00Z", score: 83, tags: ["returning", "mobile", "desktop", "enterprise"] }
+    validate: "${{ result.status == 200 }}"
