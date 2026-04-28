@@ -39,7 +39,35 @@ export class ControllerEnvMissingError extends Error {
  * crate path (not on the caller's baseUri) ensures two distinct paths that
  * point at the same crate share one cache entry.
  */
-const _napiModuleCache = new Map<string, ControllerInstance>();
+/**
+ * Holds the *raw* `require()`'d module object — i.e. the flat export bag
+ * returned by the napi addon — keyed by canonical crate path. The PURL
+ * fragment (`#entry`) projects out a sub-export at call time; caching the
+ * raw module here means two PURLs that differ only by fragment share one
+ * cargo build / one mmap of the dylib, instead of paying for either twice.
+ */
+const _napiModuleCache = new Map<string, any>();
+
+/**
+ * Which branch of the resolver served this load.
+ *
+ * - `cache`      — process-lifetime in-memory hit on `_napiModuleCache`.
+ * - `local`      — `local_path` qualifier; cargo was invoked but the work
+ *                  is conceptually equivalent to "found source on disk and
+ *                  used it" (parallel to the npm `local_path` branch). The
+ *                  CLI silences these by default; the first cold build on
+ *                  a fresh checkout is silent for the same reason.
+ * - `cargo-build`— reserved for distribution-mode resolution (fetch from a
+ *                  registry + compile). Not produced today; the dispatcher
+ *                  errors with `ControllerEnvMissingError` for non-local
+ *                  PURLs (see [napi-loader.ts:62-66] in this file).
+ */
+export type NapiResolveSource = "cache" | "local" | "cargo-build";
+
+export interface NapiLoadResult {
+  instance: ControllerInstance;
+  source: NapiResolveSource;
+}
 
 export class NapiControllerLoader {
   /**
@@ -52,9 +80,19 @@ export class NapiControllerLoader {
    *
    * Distribution mode (no local_path): out of scope for the PoC; the hook is
    * left in place so the dispatcher reports env-missing and falls through.
+   *
+   * Fragment (`#entry`) is optional. When absent, the whole `require()`'d
+   * module is returned as the controller — the legacy single-export
+   * convention. When present, the fragment is treated as a property name on
+   * the loaded module: e.g. `pkg:cargo/foo?local_path=...#bar` returns
+   * `module.bar` as the controller. This mirrors the npm `#entry` semantics
+   * but indexes into the flat napi export bag instead of opening a different
+   * file. The convention is "one source file per controller, top-level
+   * export name matches the file" — files-as-controllers in spirit, even
+   * though all exports come from one linked dylib.
    */
-  async load(purl: string, baseUri: string): Promise<ControllerInstance> {
-    const [, , name, , qualifiers] = PackageURL.parseString(purl);
+  async load(purl: string, baseUri: string): Promise<NapiLoadResult> {
+    const [, , name, , qualifiers, entry] = PackageURL.parseString(purl);
     const localPath = (qualifiers as any)?.get("local_path");
 
     const isLocalManifest =
@@ -82,7 +120,7 @@ export class NapiControllerLoader {
     const cacheKey = canonicalCratePath;
     const cached = _napiModuleCache.get(cacheKey);
     if (cached) {
-      return cached;
+      return { instance: project(cached, entry, cratePath), source: "cache" };
     }
 
     try {
@@ -122,9 +160,9 @@ export class NapiControllerLoader {
     const nodePath = path.join(path.dirname(dylibPath), `${libName}.node`);
     await fs.copyFile(dylibPath, nodePath);
 
-    let module: any;
+    let rawModule: any;
     try {
-      module = requireFromHere(nodePath);
+      rawModule = requireFromHere(nodePath);
     } catch (err: any) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
@@ -132,15 +170,50 @@ export class NapiControllerLoader {
       );
     }
 
-    if (!module || (!module.create && !module.register)) {
+    _napiModuleCache.set(cacheKey, rawModule);
+    // `local` rather than `cargo-build` because the only mode currently
+    // wired up is `local_path` dev-mode — cargo's incremental cache means
+    // every run after the first is ~50ms of cargo-startup with no real
+    // compilation, conceptually the same as the npm `local_path` branch
+    // that just imports source already on disk. Distribution mode (when
+    // implemented) will return `cargo-build` from its own branch.
+    return { instance: project(rawModule, entry, nodePath), source: "local" };
+  }
+}
+
+/**
+ * Pick the controller out of the raw napi module. With no fragment, the
+ * whole module *is* the controller (legacy single-export shape). With a
+ * fragment, look up `module[entry]` — convention: one source file per
+ * controller, top-level export name matches the file.
+ */
+function project(module: any, entry: string | undefined, where: string): ControllerInstance {
+  if (!module) {
+    throw new RuntimeError("ERR_CONTROLLER_INVALID", `napi module from ${where} is empty`);
+  }
+  if (!entry) {
+    if (!module.create && !module.register) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
-        `pkg:cargo controller at ${nodePath} exports neither create nor register`,
+        `pkg:cargo controller at ${where} exports neither create nor register`,
       );
     }
-    _napiModuleCache.set(cacheKey, module);
     return module;
   }
+  const sub = module[entry];
+  if (!sub) {
+    throw new RuntimeError(
+      "ERR_CONTROLLER_INVALID",
+      `pkg:cargo controller at ${where}#${entry}: module has no export named "${entry}"`,
+    );
+  }
+  if (!sub.create && !sub.register) {
+    throw new RuntimeError(
+      "ERR_CONTROLLER_INVALID",
+      `pkg:cargo controller at ${where}#${entry} exports neither create nor register`,
+    );
+  }
+  return sub;
 }
 
 async function resolveCrateMetadata(
