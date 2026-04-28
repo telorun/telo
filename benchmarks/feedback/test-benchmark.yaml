@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: FeedbackTestBenchmark
+  version: 1.0.0
+targets:
+  - FeedbackSmoke
+---
+kind: Telo.Import
+metadata:
+  name: Bench
+source: ../../modules/benchmark
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../../modules/http-client
+---
+kind: Bench.Suite
+metadata:
+  name: FeedbackSmoke
+  module: FeedbackTestBenchmark
+requests: 200
+concurrency: 2
+report:
+  format: json
+  thresholds:
+    - errorRate: 0.05
+scenarios:
+  - name: PostFeedback
+    weight: 3
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8844/v1/feedback
+        method: POST
+        headers:
+          content-type: application/json
+        body:
+          text: "Smoke feedback"
+          source: smoke
+    validate: "${{ result.status == 201 }}"
+  - name: GetAll
+    weight: 1
+    invoke:
+      kind: Http.Request
+      inputs:
+        url: http://localhost:8844/v1/feedback
+        method: GET
+    validate: "${{ result.status == 200 }}"

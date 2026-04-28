@@ -20,7 +20,10 @@
   },
   "type": "module",
   "exports": {
-    "./suite": "./src/suite.ts"
+    "./suite": {
+      "bun": "./src/suite.ts",
+      "import": "./dist/suite.js"
+    }
   },
   "files": [
     "dist",
