@@ -59,6 +59,7 @@ pnpm run test --filter=run-sequence
 | `include` | string[] | no | Glob patterns to discover test manifests. Resolved relative to this manifest's directory. Defaults to `["**/tests/*.yaml"]`. |
 | `exclude` | string[] | no | Glob patterns to exclude. Defaults to `["**/__fixtures__/**"]`. |
 | `filter` | string | no | Substring filter applied to discovered paths. Can also be passed via CLI args (see below). |
+| `concurrency` | integer | no | Maximum number of tests to run in parallel (minimum `1`). Defaults to `3` — small enough that Node's single JS thread isn't the bottleneck (which would inflate per-test wall-clock without meaningfully shortening the total), large enough to overlap I/O across a few tests. Each test still runs in its own isolated kernel. When more than one test is in the run, each test's stdout/stderr is buffered per-test and emitted only if the test fails (passing tests' output is dropped); single-test runs stream output live to the parent without buffering. |
 
 ## CLI Arguments
 
@@ -76,10 +77,10 @@ CLI args take precedence over the `filter` manifest field.
 
 1. Discovers test manifests by scanning the filesystem with `include`/`exclude` patterns.
 2. Applies the filter (from `ctx.args`, positional arg, or manifest field).
-3. For each test, creates a fresh `Kernel` instance with `.env` file support (loads `.env` and `.env.local` from the test's directory).
-4. Runs `loadFromConfig()` + `start()` on the child kernel.
-5. Captures stdout/stderr when running multiple tests (output only shown for failures or single-test runs).
-6. Reports PASS/FAIL per test with timing, and a summary at the end.
+3. Runs up to `concurrency` tests in parallel (default `3`). Each test gets a fresh `Kernel` instance with `.env` file support (loads `.env` and `.env.local` from the test's directory).
+4. Runs `kernel.load(testPath)` + `kernel.start()` on the child kernel.
+5. When more than one test is in the run, captures the child kernel's stdout/stderr per-test and emits it only on failure (passing tests' output is dropped). Single-test runs stream output live to the parent without buffering.
+6. Reports PASS/FAIL per test with timing **as each test completes** (so order is non-deterministic when `concurrency > 1`), and a summary at the end.
 7. Exits non-zero if any test fails.
 
 ## Kernel Arguments (`ctx.args`)

@@ -6,6 +6,8 @@ import * as path from "path";
 import { Writable } from "stream";
 import { fileURLToPath } from "url";
 
+const DEFAULT_CONCURRENCY = 3;
+
 class BufferedWritable extends Writable {
   private chunks: Buffer[] = [];
 
@@ -34,6 +36,7 @@ export const schema = Type.Object({
     Type.Array(Type.String()),
   ),
   filter: Type.Optional(Type.String()),
+  concurrency: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 
 type SuiteManifest = Static<typeof schema>;
@@ -219,24 +222,35 @@ export async function create(
       const singleTest = tests.length === 1;
       const results: TestResult[] = [];
 
-      for (const testPath of tests) {
-        const label = labelFor(testPath, baseDir);
-        const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr);
-        result.label = label;
-        results.push(result);
+      const requestedConcurrency = manifest.concurrency ?? DEFAULT_CONCURRENCY;
+      const concurrency = singleTest ? 1 : Math.max(1, Math.min(requestedConcurrency, tests.length));
 
-        if (result.passed) {
-          ctx.stdout.write(green("PASS") + " " + dim(label) + " " + dim(`(${result.durationMs}ms)`) + "\n");
-        } else {
-          ctx.stderr.write(red("FAIL") + " " + label + " " + dim(`(${result.durationMs}ms)`) + "\n");
-          if (result.output) {
-            ctx.stderr.write(result.output);
-          }
-          if (result.error) {
-            ctx.stderr.write(dim(`  ${result.error}`) + "\n");
+      let nextIdx = 0;
+      const worker = async () => {
+        while (true) {
+          const i = nextIdx++;
+          if (i >= tests.length) return;
+          const testPath = tests[i];
+          const label = labelFor(testPath, baseDir);
+          const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr);
+          result.label = label;
+          results.push(result);
+
+          if (result.passed) {
+            ctx.stdout.write(green("PASS") + " " + dim(label) + " " + dim(`(${result.durationMs}ms)`) + "\n");
+          } else {
+            // Compose the whole FAIL block into one write so a parallel
+            // worker's output can't interleave between the header, captured
+            // output, and error line on stderr.
+            let block = red("FAIL") + " " + label + " " + dim(`(${result.durationMs}ms)`) + "\n";
+            if (result.output) block += result.output;
+            if (result.error) block += dim(`  ${result.error}`) + "\n";
+            ctx.stderr.write(block);
           }
         }
-      }
+      };
+
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
       const passed = results.filter((r) => r.passed);
       const failed = results.filter((r) => !r.passed);

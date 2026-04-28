@@ -48,6 +48,37 @@ export class ControllerEnvMissingError extends Error {
  */
 const _napiModuleCache = new Map<string, any>();
 
+interface BuildAndLoadResult {
+  rawModule: any;
+  nodePath: string;
+}
+
+/**
+ * Single-flight dedupe for concurrent loads of the same crate. Without this,
+ * two callers (e.g. parallel test kernels) both miss the module cache, both
+ * run cargo + `fs.copyFile` over the same `.node` file, and the second
+ * `copyFile` overwrites a dylib Node has already mmapped — leading to a
+ * segfault when napi finalize callbacks run against torn pages. Keeping the
+ * in-flight promise here lets late arrivals await the in-progress load and
+ * read from the populated module cache when it resolves.
+ */
+const _napiInFlight = new Map<string, Promise<BuildAndLoadResult>>();
+
+/**
+ * @internal Slow-path entry counter — the regression test for concurrent
+ * loads asserts this stays at 1 across N parallel callers, proving the
+ * single-flight gate held. Production code never reads it.
+ */
+let _napiBuildAttempts = 0;
+export function __getNapiBuildAttempts(): number {
+  return _napiBuildAttempts;
+}
+export function __resetNapiLoaderForTest(): void {
+  _napiBuildAttempts = 0;
+  _napiModuleCache.clear();
+  _napiInFlight.clear();
+}
+
 /**
  * Which branch of the resolver served this load.
  *
@@ -123,6 +154,41 @@ export class NapiControllerLoader {
       return { instance: project(cached, entry, cratePath), source: "cache" };
     }
 
+    // Concurrent callers for the same crate await one shared build. They
+    // report `local` (not `cache`): they paid the same wall-clock cost as
+    // the originator, just by sharing one cargo invocation rather than
+    // running their own. Reporting `cache` here would mislead metrics/event
+    // consumers into thinking it was a sub-ms hit.
+    const existingInFlight = _napiInFlight.get(cacheKey);
+    if (existingInFlight) {
+      const { rawModule } = await existingInFlight;
+      return { instance: project(rawModule, entry, cratePath), source: "local" };
+    }
+
+    const buildPromise = this.buildAndLoad(cratePath, name ?? "", cacheKey);
+    _napiInFlight.set(cacheKey, buildPromise);
+    let rawModule: any;
+    let nodePath: string;
+    try {
+      ({ rawModule, nodePath } = await buildPromise);
+    } finally {
+      _napiInFlight.delete(cacheKey);
+    }
+    // `local` rather than `cargo-build` because the only mode currently
+    // wired up is `local_path` dev-mode — cargo's incremental cache means
+    // every run after the first is ~50ms of cargo-startup with no real
+    // compilation, conceptually the same as the npm `local_path` branch
+    // that just imports source already on disk. Distribution mode (when
+    // implemented) will return `cargo-build` from its own branch.
+    return { instance: project(rawModule, entry, nodePath), source: "local" };
+  }
+
+  private async buildAndLoad(
+    cratePath: string,
+    fallbackName: string,
+    cacheKey: string,
+  ): Promise<BuildAndLoadResult> {
+    _napiBuildAttempts++;
     try {
       await execFileAsync("rustc", ["--version"]);
     } catch {
@@ -147,7 +213,7 @@ export class NapiControllerLoader {
       );
     }
 
-    const { targetDir, libName } = await resolveCrateMetadata(cratePath, name ?? "");
+    const { targetDir, libName } = await resolveCrateMetadata(cratePath, fallbackName);
 
     const dylibPath = await findDylib(targetDir, libName);
     if (!dylibPath) {
@@ -171,13 +237,7 @@ export class NapiControllerLoader {
     }
 
     _napiModuleCache.set(cacheKey, rawModule);
-    // `local` rather than `cargo-build` because the only mode currently
-    // wired up is `local_path` dev-mode — cargo's incremental cache means
-    // every run after the first is ~50ms of cargo-startup with no real
-    // compilation, conceptually the same as the npm `local_path` branch
-    // that just imports source already on disk. Distribution mode (when
-    // implemented) will return `cargo-build` from its own branch.
-    return { instance: project(rawModule, entry, nodePath), source: "local" };
+    return { rawModule, nodePath };
   }
 }
 

@@ -13,6 +13,7 @@ Follow this strictly:
 - never look at commit history
 - never use git stash
 - never fix linting problems, and never mention it
+- keep code comments very concise and add them only when necessary; prefer self-documenting code and module documentation
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
 - never use `cat` nor `sed` to read files — read them directly
@@ -147,7 +148,7 @@ Inside `Telo.Definition` schema blocks:
 - `x-telo-context: <JSON Schema>` — annotates a handler field with the CEL context available inside it. Analyzer-only; no runtime effect.
 - `x-telo-step-context: { invoke, outputType }` — on an array field, tells the analyzer to build typed `steps.<name>.result` context from each item's invoked resource's output type.
 - `x-telo-widget: "code"` — on a string field, tells the telo editor to render a Monaco code widget instead of a single-line input. The language is resolved from the field's standard `contentMediaType` (e.g. `application/javascript`) via Monaco's own language registry, so adding a new language is purely a schema change — no editor code to touch.
-- `x-telo-stream: true` — on a property in an `inputType` or `outputType` schema, marks it as carrying a `Stream<T>` (the class exported by `@telorun/sdk`). Producers wrap their `AsyncIterable` in `new Stream(...)` so the value's constructor is recognized — CEL's runtime type-checker rejects unrecognized object constructors, and the analyzer's `buildCelEnvironment` registers `Stream` so `${{ steps.X.result.output }}` evaluations pass through as opaque values. The analyzer's chain validator forbids member access *past* a stream-marked property (`result.output` is fine; `result.output.text` / `result.output[0]` are diagnostics). Convention: streaming Invocables put their stream on the `input` property of `inputs` and the `output` property of the result. Consumers iterate with `for await`. Forward-compatible: today a boolean; later may evolve to `x-telo-stream: { items: <JsonSchema> }` for element-type validation under the typed-abstracts plan, with `true` aliasing to `{ items: any }`.
+- `x-telo-stream: true` — on a property in an `inputType` or `outputType` schema, marks it as carrying a `Stream<T>` (the class exported by `@telorun/sdk`). Producers wrap their `AsyncIterable` in `new Stream(...)` so the value's constructor is recognized — CEL's runtime type-checker rejects unrecognized object constructors, and the analyzer's `buildCelEnvironment` registers `Stream` so `${{ steps.X.result.output }}` evaluations pass through as opaque values. The analyzer's chain validator forbids member access _past_ a stream-marked property (`result.output` is fine; `result.output.text` / `result.output[0]` are diagnostics). Convention: streaming Invocables put their stream on the `input` property of `inputs` and the `output` property of the result. Consumers iterate with `for await`. Forward-compatible: today a boolean; later may evolve to `x-telo-stream: { items: <JsonSchema> }` for element-type validation under the typed-abstracts plan, with `true` aliasing to `{ items: any }`.
 
 ## CEL Templates (`${{ }}`)
 
