@@ -14,13 +14,26 @@ const cacheRoot = process.env.TELO_CACHE_DIR
 const npmCacheRoot = path.join(cacheRoot, "npm");
 const isBun = typeof (globalThis as any).Bun !== "undefined";
 
+/**
+ * Tells the dispatcher (and any UI consumer downstream) which branch the
+ * resolver actually took. `npm-install` is the only one that hits the network;
+ * the rest are sub-second cache/local lookups, so the CLI uses this to decide
+ * whether a "downloading…" line was honest or should be silently dropped.
+ */
+export type NpmResolveSource = "local" | "node_modules" | "npm-install" | "cache";
+
+export interface NpmLoadResult {
+  instance: ControllerInstance;
+  source: NpmResolveSource;
+}
+
 export class NpmControllerLoader {
   /**
    * Resolve a `pkg:npm/...` PURL to a controller module instance. Tries, in order:
    * a relative `local_path` qualifier, the workspace's `node_modules`, and finally
    * an isolated install under `~/.cache/telo/npm/<hash>`.
    */
-  async load(purl: string, baseUri: string): Promise<ControllerInstance> {
+  async load(purl: string, baseUri: string): Promise<NpmLoadResult> {
     const [, namespace, name, versionSpec, qualifiers, entry] = PackageURL.parseString(purl);
 
     const localPath = (qualifiers as any)?.get("local_path");
@@ -28,6 +41,7 @@ export class NpmControllerLoader {
     const installDir = path.join(npmCacheRoot, cacheKey);
 
     let packageRoot: string;
+    let source: NpmResolveSource;
     const isLocalManifest =
       baseUri && !baseUri.startsWith("http://") && !baseUri.startsWith("https://");
     if (localPath && isLocalManifest) {
@@ -36,12 +50,14 @@ export class NpmControllerLoader {
       const resolvedLocalPath = path.resolve(manifestDir, localPath);
       if (await this.pathExists(resolvedLocalPath)) {
         packageRoot = resolvedLocalPath;
+        source = "local";
       } else {
         const nodeModulesPath = await this.findInNodeModules(`${namespace}/${name}`);
         if (nodeModulesPath) {
           packageRoot = nodeModulesPath;
+          source = "node_modules";
         } else {
-          await this.ensureNpmPackageInstalled(installDir, `${namespace}/${name}@${versionSpec}`);
+          source = await this.ensureNpmPackageInstalled(installDir, `${namespace}/${name}@${versionSpec}`);
           packageRoot = this.getInstalledPackageRoot(installDir, `${namespace}/${name}`);
         }
       }
@@ -49,8 +65,9 @@ export class NpmControllerLoader {
       const nodeModulesPath = await this.findInNodeModules(`${namespace}/${name}`);
       if (nodeModulesPath) {
         packageRoot = nodeModulesPath;
+        source = "node_modules";
       } else {
-        await this.ensureNpmPackageInstalled(installDir, `${namespace}/${name}@${versionSpec}`);
+        source = await this.ensureNpmPackageInstalled(installDir, `${namespace}/${name}@${versionSpec}`);
         packageRoot = this.getInstalledPackageRoot(installDir, `${namespace}/${name}`);
       }
     }
@@ -62,10 +79,13 @@ export class NpmControllerLoader {
         `Invalid controller loaded from "${purl}": missing create or register function`,
       );
     }
-    return instance;
+    return { instance, source };
   }
 
-  private async ensureNpmPackageInstalled(installDir: string, packageSpec: string): Promise<void> {
+  private async ensureNpmPackageInstalled(
+    installDir: string,
+    packageSpec: string,
+  ): Promise<"cache" | "npm-install"> {
     const packageName = this.getPackageName(
       packageSpec.startsWith(".") || path.isAbsolute(packageSpec)
         ? await this.getLocalPackageName(packageSpec)
@@ -74,7 +94,7 @@ export class NpmControllerLoader {
     const packageRoot = this.getInstalledPackageRoot(installDir, packageName);
     const packageJsonPath = path.join(packageRoot, "package.json");
     if (await this.pathExists(packageJsonPath)) {
-      return;
+      return "cache";
     }
 
     await fs.mkdir(installDir, { recursive: true });
@@ -98,6 +118,7 @@ export class NpmControllerLoader {
     ];
 
     await execFileAsync("npm", args);
+    return "npm-install";
   }
 
   private getPackageName(packageSpec: string): string {

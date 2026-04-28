@@ -27,10 +27,7 @@ type ResourceDefinitionResource = RuntimeResource & {
 class ResourceDefinition implements ResourceInstance {
   readonly kind: "ResourceDefinition" = "ResourceDefinition";
 
-  constructor(
-    readonly resource: ResourceDefinitionResource,
-    private controllerLoader: ControllerLoader,
-  ) {}
+  constructor(readonly resource: ResourceDefinitionResource) {}
 
   async init(ctx: ResourceContext) {
     if (!this.resource.controllers?.length) {
@@ -43,24 +40,25 @@ class ResourceDefinition implements ResourceInstance {
       );
       return;
     }
-    ctx.emit("ControllerLoading", { controllers: this.resource.controllers });
-    try {
-      const controllerInstance = await this.controllerLoader.load(
-        this.resource.controllers,
-        this.resource.metadata.source,
-        ctx.getControllerPolicy(),
-      );
-      ctx.emit("ControllerLoaded", { schema: controllerInstance.schema });
-      ctx.registerDefinition(this.resource);
-      await ctx.registerController(
-        this.resource.metadata.module,
-        this.resource.metadata.name,
-        controllerInstance,
-      );
-    } catch (err) {
-      ctx.emit("ControllerLoadFailed", { error: (err as Error).message });
-      throw err;
-    }
+    // The loader owns ControllerLoading / ControllerLoaded / ControllerLoadFailed
+    // emission so it can fire one event per attempted candidate (env-missing
+    // fallback chains), and so the payload can include the actually-picked PURL,
+    // which branch resolved it (`source`), and timing — none of which are known
+    // here at the call site.
+    const loader = new ControllerLoader({
+      emit: (e) => ctx.emit(e.name, e.payload),
+    });
+    const controllerInstance = await loader.load(
+      this.resource.controllers,
+      this.resource.metadata.source,
+      ctx.getControllerPolicy(),
+    );
+    ctx.registerDefinition(this.resource);
+    await ctx.registerController(
+      this.resource.metadata.module,
+      this.resource.metadata.name,
+      controllerInstance,
+    );
   }
 }
 
@@ -78,7 +76,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
 
   // Return a fully-formed ResourceDefinition instance
   const definition = resource as unknown as ResourceDefinitionResource;
-  return new ResourceDefinition(definition, new ControllerLoader());
+  return new ResourceDefinition(definition);
 }
 
 export const schema = {

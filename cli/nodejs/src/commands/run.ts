@@ -5,6 +5,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { attachControllerProgress } from "../controller-progress.js";
 
 /**
  * Load .env and .env.local from the manifest's directory into process.env.
@@ -124,11 +125,10 @@ export async function run(argv: {
       registryUrl,
       sources: [new LocalFileSource()],
     });
-    if (argv.verbose) {
-      kernel.on("*", (event: any) => {
-        log.info(`${event.name}: ${JSON.stringify(event.payload)}`);
-      });
-    }
+    // Pretty controller-download progress. With --verbose, always render
+    // (so captured logs/CI output get the lines too); otherwise gate on TTY
+    // so CI and the docker service stay silent.
+    attachControllerProgress(kernel, log, { force: argv.verbose });
 
     if (argv.debug) {
       const debugDir = path.join(process.cwd(), ".telo-debug");

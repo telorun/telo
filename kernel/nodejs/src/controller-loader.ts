@@ -6,6 +6,48 @@ import { ControllerPolicy, DEFAULT_POLICY, POLICY_WILDCARD } from "./runtime-reg
 export type { ControllerPolicy } from "./runtime-registry.js";
 
 /**
+ * Which branch the per-scheme loader actually took. Cache/local hits resolve
+ * in milliseconds; `npm-install` and `cargo-build` are the only branches that
+ * do real (network or compile) work. The CLI uses this to decide whether a
+ * "downloading…" line was honest or should be erased.
+ */
+export type ControllerResolveSource =
+  | "local"
+  | "node_modules"
+  | "cache"
+  | "npm-install"
+  | "cargo-build";
+
+export type ControllerLoaderEvent =
+  | { name: "ControllerLoading"; payload: { purl: string } }
+  | {
+      name: "ControllerLoaded";
+      payload: { purl: string; source: ControllerResolveSource; durationMs: number };
+    }
+  | { name: "ControllerLoadFailed"; payload: { purl: string; error: string } }
+  /**
+   * The candidate at `purl` couldn't be tried in this environment (e.g.
+   * `pkg:cargo` with no `rustc` on PATH, or an unsupported scheme) and the
+   * dispatcher has moved on to the next candidate. Distinct from `Failed`,
+   * which is non-recoverable. Consumers that opened a UI element on the
+   * matching `ControllerLoading` should close it out here.
+   */
+  | { name: "ControllerLoadSkipped"; payload: { purl: string; reason: string } };
+
+/**
+ * The dispatcher awaits each emission, so the callback may be async without
+ * risking out-of-order delivery (concurrent definition loads emit in
+ * parallel; the await pins each pair of `Loading`/`Loaded` events to the
+ * same async chain). The kernel's `ctx.emit` is async, hence `Promise<void>`
+ * is allowed.
+ */
+export type ControllerLoaderEmit = (event: ControllerLoaderEvent) => void | Promise<void>;
+
+export interface ControllerLoaderOptions {
+  emit?: ControllerLoaderEmit;
+}
+
+/**
  * Top-level controller-loader dispatcher. Picks a per-scheme sub-loader by
  * PURL type and applies the resolved selection policy:
  *
@@ -17,10 +59,19 @@ export type { ControllerPolicy } from "./runtime-registry.js";
  * Recovery: env-missing failures (`ControllerEnvMissingError`) advance to the
  * next candidate. User-code failures (`RuntimeError("ERR_CONTROLLER_BUILD_FAILED" | "ERR_CONTROLLER_INVALID")`)
  * fail hard regardless of remaining candidates.
+ *
+ * Lifecycle events are emitted per *attempt*, so a fallback chain produces one
+ * `ControllerLoading` per candidate tried plus a final `ControllerLoaded` (or
+ * `ControllerLoadFailed`) for the one that won.
  */
 export class ControllerLoader {
   private npmLoader = new NpmControllerLoader();
   private napiLoader = new NapiControllerLoader();
+  private emit?: ControllerLoaderEmit;
+
+  constructor(options: ControllerLoaderOptions = {}) {
+    this.emit = options.emit;
+  }
 
   async load(
     purlCandidates: string[],
@@ -41,23 +92,48 @@ export class ControllerLoader {
 
     const errors: string[] = [];
     for (const purl of ordered) {
+      await this.emit?.({ name: "ControllerLoading", payload: { purl } });
+      const startedAt = Date.now();
       try {
-        return await this.dispatchOne(purl, baseUri);
+        const { instance, source } = await this.dispatchOne(purl, baseUri);
+        await this.emit?.({
+          name: "ControllerLoaded",
+          payload: { purl, source, durationMs: Date.now() - startedAt },
+        });
+        return instance;
       } catch (err) {
         if (err instanceof ControllerEnvMissingError) {
           errors.push(`${purl}: ${err.message}`);
+          // Env-missing isn't a hard failure — the dispatcher will try the
+          // next candidate. We still emit a terminal event for *this* attempt
+          // so consumers (notably the CLI progress renderer) can close out
+          // the UI state opened by the matching ControllerLoading. Without
+          // this, every fallback attempt would leak a pending `⬇` line.
+          await this.emit?.({
+            name: "ControllerLoadSkipped",
+            payload: { purl, reason: err.message },
+          });
           continue;
         }
+        await this.emit?.({
+          name: "ControllerLoadFailed",
+          payload: { purl, error: err instanceof Error ? err.message : String(err) },
+        });
         throw err;
       }
     }
-    throw new RuntimeError(
-      "ERR_CONTROLLER_NOT_FOUND",
-      `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`,
-    );
+    const aggregated = `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`;
+    await this.emit?.({
+      name: "ControllerLoadFailed",
+      payload: { purl: ordered[ordered.length - 1], error: aggregated },
+    });
+    throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", aggregated);
   }
 
-  private async dispatchOne(purl: string, baseUri: string): Promise<ControllerInstance> {
+  private async dispatchOne(
+    purl: string,
+    baseUri: string,
+  ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
     if (purl.startsWith("pkg:npm")) {
       return this.npmLoader.load(purl, baseUri);
     }

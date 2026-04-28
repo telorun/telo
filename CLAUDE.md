@@ -8,10 +8,10 @@ Implementation plans should live in the package they affect the most, eg. `apps/
 
 Follow this strictly:
 
-- never build anything
+- when the user asks a question, answer it — do not jump to editing files. Implementation requires an explicit go-ahead; discussing options or proposing approaches is not permission.
 - never add underscores to unused function arguments
 - never look at commit history
-- never stash changes to investigate anything
+- never use git stash
 - never fix linting problems
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
