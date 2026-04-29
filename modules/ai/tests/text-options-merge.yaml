@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionOptionsMergeTest
+  name: TextOptionsMergeTest
   version: 1.0.0
 targets:
   - TestOptionsMergeReachesModel
@@ -30,7 +30,7 @@ kind: AiEcho.EchoModel
 metadata: { name: Echo }
 suffix: ""
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: C }
 model:
   kind: AiEcho.EchoModel
@@ -50,7 +50,7 @@ steps:
         temperature: 0.9
         topP: 0.5
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: C
   - name: Assert
     inputs:

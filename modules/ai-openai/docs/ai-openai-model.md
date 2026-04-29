@@ -5,7 +5,7 @@ sidebar_label: Ai.OpenaiModel
 
 # `Ai.OpenaiModel`
 
-> Examples below assume this module is imported with `Telo.Import` alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Completion`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with `Telo.Import` alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
 OpenAI provider for the `Ai.Model` abstract. Implements the full `AiModelInstance` runtime contract via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
 
@@ -26,7 +26,7 @@ options:
 The resource is then referenced from any `Ai.Model` consumer:
 
 ```yaml
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: Summarizer }
 model:
   kind: AiOpenai.OpenaiModel
@@ -64,7 +64,7 @@ Vercel's finish reasons map straight into the Ai contract:
 | `error`           | `error`                 |
 | anything else     | `other`                 |
 
-`tool-calls` maps to `other` because `Ai.Completion` doesn't expose tool choices — when (and if) `Ai.Agent` lands, that surface gets dedicated handling.
+`tool-calls` maps to `other` because neither `Ai.Text` nor `Ai.TextStream` exposes tool choices — when (and if) `Ai.Agent` lands, that surface gets dedicated handling.
 
 ## Options
 

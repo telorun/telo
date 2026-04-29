@@ -39,7 +39,7 @@ schema:
       x-telo-eval: compile
     options:
       title: Options
-      description: Model-level defaults (temperature, maxTokens, topP, …). Merged beneath Ai.Completion.options and per-call inputs.options; downstream wins.
+      description: Model-level defaults (temperature, maxTokens, topP, …). Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
       type: object
       additionalProperties: true
   required: [model, apiKey]

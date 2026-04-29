@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: SseCodecSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for sse-codec. Pipes a small AsyncIterable of typed records through
+    Sse.Encoder and asserts the byte-exact SSE wire output. Byte→string conversion
+    happens in a JS.Script Drain — keeps the test self-contained, no cross-module
+    decoder dependency.
+targets:
+  - TestEncode
+---
+kind: Telo.Import
+metadata: { name: Sse }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: Source }
+code: |
+  async function main() {
+    async function* gen() {
+      yield { type: "text-delta", delta: "h" };
+      yield { type: "text-delta", delta: "i" };
+      yield { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" };
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: Drain }
+code: |
+  async function main({ bytes }) {
+    const chunks = [];
+    for await (const chunk of bytes) chunks.push(Buffer.from(chunk));
+    return { text: Buffer.concat(chunks).toString("utf8") };
+  }
+---
+kind: Sse.Encoder
+metadata: { name: Encoder }
+---
+kind: Run.Sequence
+metadata: { name: TestEncode }
+steps:
+  - name: Source
+    invoke: { kind: JS.Script, name: Source }
+  - name: Encode
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: Sse.Encoder, name: Encoder }
+  - name: Drain
+    inputs:
+      bytes: "${{ steps.Encode.result.output }}"
+    invoke: { kind: JS.Script, name: Drain }
+  - name: Assert
+    inputs:
+      text: "${{ steps.Drain.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
+        required: [text]

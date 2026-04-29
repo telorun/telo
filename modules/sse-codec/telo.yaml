@@ -1,0 +1,31 @@
+kind: Telo.Library
+metadata:
+  name: sse-codec
+  namespace: std
+  version: 1.0.0
+  description: |
+    Server-Sent Events codec — event-record stream ↔ byte iterables. Encoder
+    produces one SSE frame per item: `event: <type>\ndata: <json>\n\n`. Decoder
+    (frame-buffered, stream-out) is planned but not in this initial release.
+    Pair with Content-Type `text/event-stream`.
+exports:
+  kinds:
+    - Encoder
+---
+kind: Telo.Import
+metadata: { name: Codec }
+source: ../codec
+---
+# Encoder: `{type, ...rest}` records → SSE frame bytes. Bare strings frame as
+# `message` events. Mid-stream upstream errors emit a final
+# `event: error\ndata: {"message":"..."}\n\n` then end.
+kind: Telo.Definition
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+extends: Codec.Encoder
+controllers:
+  - pkg:npm/@telorun/sse-codec@1.0.0?local_path=./nodejs#encoder
+schema:
+  type: object
+  additionalProperties: false

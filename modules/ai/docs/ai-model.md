@@ -5,9 +5,9 @@ sidebar_label: Ai.Model
 
 # `Ai.Model` — the provider contract
 
-> Examples below assume this module is imported with `Telo.Import` alias `Ai`. Kind references (`Ai.Model`, `Ai.Completion`, …) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> Examples below assume this module is imported with `Telo.Import` alias `Ai`. Kind references (`Ai.Model`, `Ai.Text`, `Ai.TextStream`, …) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-`Ai.Model` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.Model`** and ship as a drop-in provider for `Ai.Completion` (and any future consumer like `Ai.Stream`).
+`Ai.Model` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.Model`** and ship as a drop-in provider for both `Ai.Text` (buffered) and `Ai.TextStream` (streaming).
 
 The `@telorun/ai-openai` package is the canonical first-party implementation. This page is the **contract** every implementation must honour.
 
@@ -18,13 +18,13 @@ metadata:
 capability: Telo.Invocable
 ```
 
-The abstract carries `inputType` / `outputType` declarations for the buffered `invoke` path (see `modules/ai/telo.yaml`). When the typed-abstracts work lands, those become enforced; today they're documentation backed by runtime validation in `Ai.Completion`.
+The abstract carries `inputType` / `outputType` declarations for the buffered `invoke` path (see `modules/ai/telo.yaml`). When the typed-abstracts work lands, those become enforced; today they're documentation backed by runtime validation in `Ai.Text`.
 
 ---
 
 ## Runtime instance contract
 
-A provider's controller `create()` must return an object exposing **two methods** plus the usual `ResourceInstance` hooks. The consumer kind (`Ai.Completion` vs future `Ai.Stream`) chooses which method to call — there is no `stream: boolean` flag.
+A provider's controller `create()` must return an object exposing **two methods** plus the usual `ResourceInstance` hooks. The consumer kind (`Ai.Text` vs `Ai.TextStream`) chooses which method to call — there is no `stream: boolean` flag.
 
 ```ts
 type Role = "system" | "user" | "assistant";
@@ -160,6 +160,6 @@ export const schema = { type: "object", additionalProperties: true };
 ### 3. Tests
 
 - **Hermetic snapshot test** — boot with sentinel apiKey, assert `resources.<name>.apiKey` is absent.
-- **Live integration tests** — env-gated. Place under `tests/__fixtures__/` so the auto-discovered suite skips them; run manually with `pnpm run telo modules/ai-<provider>/tests/__fixtures__/<provider>-live-completion.yaml` when you have credentials.
+- **Live integration tests** — env-gated. Place under `tests/__fixtures__/` so the auto-discovered suite skips them; run manually with `pnpm run telo modules/ai-<provider>/tests/__fixtures__/<provider>-live-text.yaml` when you have credentials.
 
-That's it. The provider integrates with `Ai.Completion` and any future `Ai.Stream` consumer with no further changes.
+That's it. The provider integrates with both `Ai.Text` and `Ai.TextStream` with no further changes.

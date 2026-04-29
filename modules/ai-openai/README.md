@@ -4,7 +4,7 @@ description: "@telorun/ai-openai — OpenAI provider for Ai.Model. Implements bo
 
 # Telo Ai.OpenaiModel
 
-OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`. Implements both the buffered `invoke` path (used by `Ai.Completion`) and the streaming `stream` path (reserved for the future `Ai.Stream` consumer kind) via the Vercel AI SDK.
+OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`. Implements both the buffered `invoke` path (used by `Ai.Text`) and the streaming `stream` path (used by `Ai.TextStream`) via the Vercel AI SDK.
 
 ## Install
 
@@ -38,7 +38,7 @@ options:
   temperature: 0.2
   maxOutputTokens: 800
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: Summarizer }
 model:
   kind: AiOpenai.OpenaiModel

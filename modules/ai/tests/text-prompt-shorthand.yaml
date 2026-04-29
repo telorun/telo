@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionPromptShorthandTest
+  name: TextPromptShorthandTest
   version: 1.0.0
 targets:
   - TestPromptShorthand
@@ -29,7 +29,7 @@ kind: AiEcho.EchoModel
 metadata:
   name: Echo
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata:
   name: Summarize
 model:
@@ -46,7 +46,7 @@ steps:
     inputs:
       prompt: "hello world"
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: Summarize
   - name: AssertText
     inputs:

@@ -1,0 +1,55 @@
+kind: Telo.Library
+metadata:
+  name: plain-text-codec
+  namespace: std
+  version: 1.0.0
+  description: |
+    Plain-text codec — UTF-8 string ↔ byte iterables. Encoder accepts
+    `{delta: string}` (the AI streaming shape), bare strings, or `Uint8Array`
+    pass-through; emits UTF-8 bytes. Decoder collects a `Stream<Uint8Array>`
+    into a single UTF-8 string. Pair with Content-Type `text/plain;
+    charset=utf-8`.
+exports:
+  kinds:
+    - Encoder
+    - Decoder
+---
+kind: Telo.Import
+metadata: { name: Codec }
+source: ../codec
+---
+# Encoder: records → UTF-8 bytes. Accepts `{delta: string}`, bare strings,
+# and Uint8Array pass-through. Other shapes throw.
+kind: Telo.Definition
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+extends: Codec.Encoder
+controllers:
+  - pkg:npm/@telorun/plain-text-codec@1.0.0?local_path=./nodejs#encoder
+schema:
+  type: object
+  additionalProperties: false
+---
+# Decoder: byte stream → single UTF-8 string. Accepts `Uint8Array` chunks
+# (Buffer is a subtype) and bare strings as a pass-through convenience.
+kind: Telo.Definition
+metadata:
+  name: Decoder
+capability: Telo.Invocable
+extends: Codec.Decoder
+controllers:
+  - pkg:npm/@telorun/plain-text-codec@1.0.0?local_path=./nodejs#decoder
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text:
+        type: string
+        description: UTF-8 string formed by concatenating every chunk in `input`.
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionSystemManifestAndRuntimeTest
+  name: TextSystemManifestAndRuntimeTest
   version: 1.0.0
 targets:
   - TestManifestSystemPrepends
@@ -27,7 +27,7 @@ source: ../../assert
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: WithSystem }
 model:
   kind: AiEcho.EchoModel
@@ -46,7 +46,7 @@ steps:
     inputs:
       prompt: "user-content"
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: WithSystem
   - name: AssertText
     inputs:
@@ -71,7 +71,7 @@ steps:
       prompt: "u"
       system: "runtime-system"
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: WithSystem
   - name: Assert
     inputs:

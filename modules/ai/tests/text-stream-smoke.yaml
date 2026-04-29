@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: TextStreamSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Ai.TextStream's new shape: invoke returns
+    `{output: Stream<StreamPart>}`. The consumer pipes that through a
+    format-specific encoder (here Ndjson.Encoder) and decodes the resulting
+    bytes via PlainText.Decoder. Replaces the controller's internal wire-format
+    logic that lived inline before format-codec packages shipped — encoding is
+    now the consumer's job.
+targets:
+  - TestNdjson
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Ndjson }
+source: ../../ndjson-codec
+---
+kind: Telo.Import
+metadata: { name: PlainText }
+source: ../../plain-text-codec
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+kind: Ai.TextStream
+metadata: { name: ChatStream }
+model: { kind: AiEcho.EchoModel, name: Echo }
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: PlainText.Decoder
+metadata: { name: TextDec }
+---
+kind: Run.Sequence
+metadata: { name: TestNdjson }
+steps:
+  - name: TextStream
+    inputs:
+      prompt: "hi"
+    invoke: { kind: Ai.TextStream, name: ChatStream }
+  - name: Encode
+    inputs:
+      input: "${{ steps.TextStream.result.output }}"
+    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+  - name: Decode
+    inputs:
+      input: "${{ steps.Encode.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: TextDec }
+  - name: Assert
+    inputs:
+      text: "${{ steps.Decode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            const: |
+              {"type":"text-delta","delta":"h"}
+              {"type":"text-delta","delta":"i"}
+              {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
+        required: [text]

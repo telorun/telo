@@ -1,7 +1,7 @@
 {
   "name": "@telorun/ai",
   "version": "1.1.1",
-  "description": "Telo AI module — Ai.Model abstract + Ai.Completion for single-turn LLM calls.",
+  "description": "Telo AI module — Ai.Model abstract + Ai.Text (buffered) and Ai.TextStream (streaming) consumers.",
   "keywords": [
     "telo",
     "ai",
@@ -31,10 +31,15 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
-    "./completion": {
-      "types": "./dist/ai-completion-controller.d.ts",
-      "bun": "./src/ai-completion-controller.ts",
-      "import": "./dist/ai-completion-controller.js"
+    "./text": {
+      "types": "./dist/ai-text-controller.d.ts",
+      "bun": "./src/ai-text-controller.ts",
+      "import": "./dist/ai-text-controller.js"
+    },
+    "./text-stream": {
+      "types": "./dist/ai-text-stream-controller.d.ts",
+      "bun": "./src/ai-text-stream-controller.ts",
+      "import": "./dist/ai-text-stream-controller.js"
     },
     "./echo-model": {
       "types": "./dist/ai-echo-controller.d.ts",

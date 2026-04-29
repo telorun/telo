@@ -68,7 +68,8 @@ const sidebars: SidebarsConfig = {
           items: [
             { type: "doc", id: "modules/ai/README", label: "Overview" },
             { type: "doc", id: "modules/ai/docs/ai-model", label: "Ai.Model" },
-            { type: "doc", id: "modules/ai/docs/ai-completion", label: "Ai.Completion" },
+            { type: "doc", id: "modules/ai/docs/ai-text", label: "Ai.Text" },
+            { type: "doc", id: "modules/ai/docs/ai-text-stream", label: "Ai.TextStream" },
             {
               type: "category",
               label: "Providers",

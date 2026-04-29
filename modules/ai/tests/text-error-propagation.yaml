@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionErrorPropagationTest
+  name: TextErrorPropagationTest
   version: 1.0.0
 targets:
   - TestProviderErrorSurfacesUnchanged
@@ -30,7 +30,7 @@ failOn:
   code: ERR_PROVIDER_RATE_LIMITED
   reason: simulated provider rate-limit from echo fixture
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: C }
 model:
   kind: AiEcho.EchoModel
@@ -48,7 +48,7 @@ steps:
         inputs:
           prompt: TRIGGER_FAILURE
         invoke:
-          kind: Ai.Completion
+          kind: Ai.Text
           name: C
     catch:
       - name: AssertPassthrough

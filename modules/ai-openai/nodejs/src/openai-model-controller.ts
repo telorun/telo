@@ -18,8 +18,8 @@ import { createOpenAI } from "@ai-sdk/openai";
  *
  * Options merging: provider-hardcoded defaults (none — we defer to the SDK's defaults)
  * → Ai.OpenaiModel.options (this manifest's field, merged here) → caller-supplied options
- * (already pre-merged by Ai.Completion before it reaches `invoke`/`stream`). Shallow merge,
- * downstream wins.
+ * (already pre-merged by Ai.Text / Ai.TextStream before it reaches `invoke`/`stream`).
+ * Shallow merge, downstream wins.
  */
 interface OpenaiResource {
   metadata: { name: string; module?: string };
@@ -115,8 +115,8 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
       // breaks consumers that rely on the part-based path. We yield because it
       // preserves any already-emitted text-delta parts: SSE forwarders can flush
       // a partial response plus an error frame without losing data.
-      const error = err instanceof Error ? err : new Error(String(err));
-      yield { type: "error", error };
+      const message = err instanceof Error ? err.message : String(err);
+      yield { type: "error", error: { message } };
     }
   }
 
