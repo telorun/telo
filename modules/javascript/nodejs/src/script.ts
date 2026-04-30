@@ -1,4 +1,5 @@
 import {
+    Stream,
     type ControllerContext,
     type DataValidator,
     type ResourceContext,
@@ -18,12 +19,15 @@ class JavaScript {
     readonly ctx: ResourceContext,
     readonly inputValidator: DataValidator,
     readonly outputValidator: DataValidator,
-    readonly compiled: (input: any, context: any) => Promise<void>,
+    readonly compiled: (input: any, telo: any) => Promise<any>,
   ) {}
 
   async invoke(input: any) {
     this.inputValidator.validate(input);
-    const output = await this.compiled(input, {});
+    // `telo` exposes Telo runtime primitives (currently `Stream` for wrapping
+    // AsyncIterables on stream-typed properties). Adding more entries is a
+    // non-breaking, additive change — scripts destructure what they need.
+    const output = await this.compiled(input, { Stream });
     this.outputValidator.validate(output);
     return output;
   }
@@ -46,11 +50,11 @@ export async function create(
   );
 }
 
-function compileJavaScriptModule(code: string): (input: any, ctx: any) => Promise<any> {
+function compileJavaScriptModule(code: string): (input: any, telo: any) => Promise<any> {
   const wrapped =
-    `"use strict";\n${code}\n` +
+    `"use strict";\nconst { Stream } = telo;\n${code}\n` +
     `if (typeof main !== "function") { throw new Error("JavaScript resource must export main(input)"); }\n` +
     `return main(input);`;
-  const fn = new Function("input", wrapped) as (input: any, ctx: any) => Promise<any>;
+  const fn = new Function("input", "telo", wrapped) as (input: any, telo: any) => Promise<any>;
   return fn;
 }

@@ -82,8 +82,8 @@ class StreamCollector implements ResourceInstance<StreamCollectorInputs, StreamC
         }
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      parts.push({ type: "error", error });
+      const message = err instanceof Error ? err.message : String(err);
+      parts.push({ type: "error", error: { message } });
       errorCount++;
     }
 

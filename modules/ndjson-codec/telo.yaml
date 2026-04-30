@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: ndjson-codec
+  namespace: std
+  version: 1.0.0
+  description: |
+    NDJSON codec — JSON-record stream ↔ byte iterables. Encoder produces one
+    JSON-encoded record per line (`JSON.stringify(item) + "\n"`). Decoder
+    (line-buffered, stream-out) is planned but not in this initial release.
+    Pair with Content-Type `application/x-ndjson`.
+exports:
+  kinds:
+    - Encoder
+---
+kind: Telo.Import
+metadata: { name: Codec }
+source: ../codec
+---
+# Encoder: any JSON-serializable record → NDJSON line bytes. If the upstream
+# iterable throws, emits a final `{"type":"error","error":{"message":...}}` line
+# and ends — consumers see a well-formed NDJSON stream that terminates with an
+# error record.
+kind: Telo.Definition
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+extends: Codec.Encoder
+controllers:
+  - pkg:npm/@telorun/ndjson-codec@1.0.0?local_path=./nodejs#encoder
+schema:
+  type: object
+  additionalProperties: false

@@ -107,7 +107,16 @@ function isASTNode(v: unknown): v is ASTNode {
   return v !== null && typeof v === "object" && "op" in (v as object);
 }
 
-/** Returns the member-access chain for a node if it is purely an id or "." chain; else null. */
+// Sentinel used in extracted chains to represent an `[index]` access. The
+// validator treats it like any other deeper segment, so a chain that reaches
+// past an `x-telo-stream`-marked property via `[N]` is rejected the same way
+// `.field` access is. The actual index expression is opaque to the chain
+// validator (it only checks property names against the schema).
+const INDEX_SEGMENT = "[*]";
+
+/** Returns the member-access chain for a node if it is purely an id, ".", or
+ *  "[]" chain; else null. Bracket index access is captured as `INDEX_SEGMENT`
+ *  so it counts as a chain extension for the stream-property opacity rule. */
 function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
   if (node.op === "id") {
     const name = node.args as string;
@@ -119,13 +128,19 @@ function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
     const parent = extractChain(obj, boundVars);
     if (parent !== null) return [...parent, field];
   }
+  if (node.op === "[]") {
+    const [obj] = node.args as [ASTNode, ASTNode];
+    const parent = extractChain(obj, boundVars);
+    if (parent !== null) return [...parent, INDEX_SEGMENT];
+  }
   return null;
 }
 
 /**
  * Check whether a member-access chain accesses only fields declared in a JSON Schema.
  * Returns an error string if a field is unknown in a schema that declares explicit
- * properties without `additionalProperties: true`.
+ * properties without `additionalProperties: true`, or if the chain attempts to
+ * reach inside an `x-telo-stream: true` property.
  * Returns null when the chain is valid or the schema is too open to judge.
  */
 export function validateChainAgainstSchema(
@@ -139,8 +154,22 @@ export function validateChainAgainstSchema(
     const props: Record<string, any> | undefined = current.properties;
     if (!props) return null;
     if (key in props) {
+      const propSchema = props[key];
+      // Stream-typed properties are opaque: pass through by reference, no
+      // member access inside. Reaching `result.output` is fine; reaching
+      // `result.output.text` is a wiring mistake — the consumer either iterates
+      // the stream in a JS.Script step or pipes it through an Encoder.
+      if (
+        propSchema &&
+        typeof propSchema === "object" &&
+        propSchema["x-telo-stream"] === true &&
+        i < chain.length - 1
+      ) {
+        const path = chain.slice(0, i + 1).join(".");
+        return `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`;
+      }
       // Known property — drill into it even if additionalProperties is true
-      current = props[key];
+      current = propSchema;
       continue;
     }
     // Unknown property — only flag if schema is closed

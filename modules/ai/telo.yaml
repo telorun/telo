@@ -7,12 +7,13 @@ metadata:
 exports:
   kinds:
     - Model
-    - Completion
+    - Text
+    - TextStream
 ---
 # The abstract contract every LLM provider implements. Carries the input/output
 # schemas so the typed-abstracts plan (see kernel/nodejs/plans/typed-abstracts.md)
-# can enforce them once it ships — meanwhile the completion controller validates
-# output shape at runtime.
+# can enforce them once it ships — meanwhile Ai.Text validates output shape at
+# runtime, and Ai.TextStream enforces the StreamPart contract on the wire.
 kind: Telo.Abstract
 metadata:
   name: Model
@@ -63,10 +64,10 @@ outputType:
 ---
 kind: Telo.Definition
 metadata:
-  name: Completion
+  name: Text
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@1.1.1?local_path=./nodejs#completion
+  - pkg:npm/@telorun/ai@1.1.1?local_path=./nodejs#text
 schema:
   type: object
   properties:
@@ -81,6 +82,48 @@ schema:
     options:
       title: Options
       description: Completion-level option overrides. Shallow-merged between the model's options and runtime inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [model]
+  additionalProperties: false
+---
+# Streaming consumer. Drives Ai.Model.stream() and forwards the StreamPart
+# iterable on `result.output` per the streaming-Invocable convention. Encoding
+# (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility —
+# pipe through a format-codec encoder (Ndjson.Encoder from @telorun/ndjson-codec,
+# Sse.Encoder from @telorun/sse-codec, PlainText.Encoder from @telorun/plain-text-codec,
+# Octet.Encoder from @telorun/octet-codec), or iterate `result.output` directly
+# in a JS.Script step.
+kind: Telo.Definition
+metadata:
+  name: TextStream
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/ai@1.1.1?local_path=./nodejs#text-stream
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Async iterable of StreamPart records (text-delta | finish | error).
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    model:
+      title: Model
+      description: Reference to any Ai.Model implementation.
+      x-telo-ref: "std/ai#Model"
+    system:
+      title: System prompt
+      description: Default system message. Runtime inputs.system takes precedence when set.
+      type: string
+    options:
+      title: Options
+      description: Per-resource option overrides. Shallow-merged with the model's options and runtime inputs.options; downstream wins.
       type: object
       additionalProperties: true
   required: [model]

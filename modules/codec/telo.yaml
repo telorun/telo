@@ -1,0 +1,66 @@
+kind: Telo.Library
+metadata:
+  name: codec
+  namespace: std
+  version: 1.0.0
+  description: |
+    The Encoder and Decoder abstracts — Invocable contracts every concrete
+    stream codec implements. Format-specific codec packages (plain-text-codec,
+    ndjson-codec, sse-codec, octet-codec, third-party formats) extend these
+    abstracts.
+exports:
+  kinds:
+    - Encoder
+    - Decoder
+---
+# Encoder abstract — record/byte iterables to byte iterables.
+#
+# Encoders are plain Telo.Invocables; the streaming dimension lives in the
+# schema via `x-telo-stream: true` on the `input` and `output` properties.
+# Encoders carry no MIME declaration — the consumer (e.g. an Http.Api route's
+# `content[mime]` map key) is the only Content-Type source. Transport-neutral.
+kind: Telo.Abstract
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable of records (or bytes) to encode.
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Async iterable of Uint8Array chunks ready for transport.
+    required: [output]
+    additionalProperties: false
+---
+# Decoder abstract — byte iterables to structured values (or record streams).
+#
+# The output shape varies per concrete decoder: simple decoders collect to a
+# single value (`{text: string}`, `{bytes: Uint8Array}`); streaming decoders
+# emit another `Stream<...>` (`{records: Stream<unknown>}`). The abstract
+# leaves outputType open; concrete kinds declare their own.
+kind: Telo.Abstract
+metadata:
+  name: Decoder
+capability: Telo.Invocable
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable of Uint8Array chunks to decode.
+    required: [input]
+    additionalProperties: false

@@ -1,0 +1,51 @@
+kind: Telo.Library
+metadata:
+  name: octet-codec
+  namespace: std
+  version: 1.0.0
+  description: |
+    Raw-bytes codec — Uint8Array stream ↔ Uint8Array. Encoder passes byte
+    chunks through unchanged. Decoder collects every chunk into a single
+    `Uint8Array`. Pair with Content-Type `application/octet-stream`.
+exports:
+  kinds:
+    - Encoder
+    - Decoder
+---
+kind: Telo.Import
+metadata: { name: Codec }
+source: ../codec
+---
+# Encoder: byte stream → byte stream (identity).
+kind: Telo.Definition
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+extends: Codec.Encoder
+controllers:
+  - pkg:npm/@telorun/octet-codec@1.0.0?local_path=./nodejs#encoder
+schema:
+  type: object
+  additionalProperties: false
+---
+# Decoder: byte stream → single Uint8Array (collect).
+kind: Telo.Definition
+metadata:
+  name: Decoder
+capability: Telo.Invocable
+extends: Codec.Decoder
+controllers:
+  - pkg:npm/@telorun/octet-codec@1.0.0?local_path=./nodejs#decoder
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      bytes:
+        type: object
+        description: Single Uint8Array formed by concatenating every chunk in `input`.
+    required: [bytes]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

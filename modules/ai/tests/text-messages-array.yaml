@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionMessagesArrayTest
+  name: TextMessagesArrayTest
   version: 1.0.0
 targets:
   - TestMessagesArray
@@ -24,7 +24,7 @@ source: ../../assert
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: C }
 model:
   kind: AiEcho.EchoModel
@@ -46,7 +46,7 @@ steps:
         - role: user
           content: "second"
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: C
   - name: Assert
     inputs:

@@ -3,8 +3,9 @@
  * honours is `AiModelInstance` — two methods (`invoke` for buffered output, `stream`
  * for chunked output) plus the usual ResourceInstance hooks.
  *
- * Providers import these types to type their controller returns; callers (currently
- * just Ai.Completion) import them to type the injected `resource.model`.
+ * Providers import these types to type their controller returns; callers
+ * (`Ai.Text` for buffered, `Ai.TextStream` for streaming) import them to type
+ * the injected `resource.model`.
  */
 
 /** Message roles supported by the core contract. Multimodal / tool roles are out of scope
@@ -43,19 +44,25 @@ export interface ModelInvokeInput {
 }
 
 /** Tagged part emitted by a streaming invocation. Consumers iterate until the stream
- *  ends; a `finish` part (or `error`) signals completion. */
+ *  ends; a `finish` part (or `error`) signals completion.
+ *
+ *  `error` carries a JSON-serializable shape (not a native `Error`) so generic
+ *  encoders (`Encode.Ndjson`, `Encode.Sse`) can serialize the part without a
+ *  bespoke translation step. Provider controllers translate native Errors to
+ *  this shape at yield time. */
+export type StreamPartError = { message: string; code?: string; data?: unknown };
 export type StreamPart =
   | { type: "text-delta"; delta: string }
   | { type: "finish"; usage: Usage; finishReason: FinishReason }
-  | { type: "error"; error: Error };
+  | { type: "error"; error: StreamPartError };
 
 /**
  * Runtime contract every Ai.Model implementation exposes.
  *
- * - `invoke` — buffered path used by Ai.Completion.
- * - `stream` — chunked path reserved for the future Ai.Stream consumer; providers
- *   implement it today so Ai.Stream lands as a pure additive change later. Returns
- *   an `AsyncIterable<StreamPart>` — one handle the caller iterates.
+ * - `invoke` — buffered path used by Ai.Text.
+ * - `stream` — chunked path used by Ai.TextStream. Returns an `AsyncIterable<StreamPart>`
+ *   — one handle the caller iterates until the terminator (a `finish` part, an `error`
+ *   part, or a thrown error from the iterator itself).
  * - `snapshot` — must redact secrets (see `redact.ts`) before returning.
  */
 export interface AiModelInstance {

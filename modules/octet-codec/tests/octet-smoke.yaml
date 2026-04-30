@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: OctetCodecSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for octet-codec. Roundtrips a small AsyncIterable of byte chunks
+    through Octet.Encoder (pass-through) → Octet.Decoder (collect) and asserts
+    the final concatenated bytes via a JS.Script that decodes them as UTF-8 for
+    inspection. Self-contained: depends only on this codec module + JS/Run/Assert.
+targets:
+  - TestRoundtrip
+---
+kind: Telo.Import
+metadata: { name: Octet }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: Source }
+code: |
+  async function main() {
+    async function* gen() {
+      yield Buffer.from("hi", "utf8");
+      yield Buffer.from("!", "utf8");
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+# Octet.Decoder returns { bytes: Uint8Array } — convert to a UTF-8 string in
+# JS.Script so Assert.Schema can compare against a string literal.
+kind: JS.Script
+metadata: { name: ToText }
+code: |
+  async function main({ bytes }) {
+    return { text: Buffer.from(bytes).toString("utf8"), length: bytes.length };
+  }
+---
+kind: Octet.Encoder
+metadata: { name: Encoder }
+---
+kind: Octet.Decoder
+metadata: { name: Decoder }
+---
+kind: Run.Sequence
+metadata: { name: TestRoundtrip }
+steps:
+  - name: Source
+    invoke: { kind: JS.Script, name: Source }
+  - name: Encode
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: Octet.Encoder, name: Encoder }
+  - name: Decode
+    inputs:
+      input: "${{ steps.Encode.result.output }}"
+    invoke: { kind: Octet.Decoder, name: Decoder }
+  - name: ToText
+    inputs:
+      bytes: "${{ steps.Decode.result.bytes }}"
+    invoke: { kind: JS.Script, name: ToText }
+  - name: Assert
+    inputs:
+      text: "${{ steps.ToText.result.text }}"
+      length: "${{ steps.ToText.result.length }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "hi!" }
+          length: { const: 3 }
+        required: [text, length]

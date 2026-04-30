@@ -1,12 +1,12 @@
 kind: Telo.Application
 metadata:
-  name: OpenaiLiveCompletion
+  name: OpenaiLiveText
   version: 1.0.0
   description: |
     Live OpenAI integration test. Skips silently when OPENAI_API_KEY is unset
     (locally: drop a .env.local in this directory; CI: secret on the workflow).
 targets:
-  - LiveCompletion
+  - LiveText
 ---
 kind: Telo.Import
 metadata: { name: AiOpenai }
@@ -35,7 +35,7 @@ options:
   temperature: 0
   maxOutputTokens: 32
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: C }
 model:
   kind: AiOpenai.OpenaiModel
@@ -43,7 +43,7 @@ model:
 ---
 kind: Run.Sequence
 metadata:
-  name: LiveCompletion
+  name: LiveText
 steps:
   - name: GuardEnv
     if: "${{ env.OPENAI_API_KEY != null }}"
@@ -52,7 +52,7 @@ steps:
         inputs:
           prompt: "Say the single word: pong."
         invoke:
-          kind: Ai.Completion
+          kind: Ai.Text
           name: C
       - name: Assert
         inputs:

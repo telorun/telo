@@ -34,6 +34,41 @@ import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
+const SELF_PREFIX = "Self.";
+
+/** Resolve an alias-prefixed kind value (e.g. `Self.Encoder` or `Ai.Model`)
+ *  to its canonical form. `Self.<Name>` resolves to `<ownModule>.<Name>` —
+ *  the magic alias for "this library's own module" — and other prefixes
+ *  resolve through the declaring file's Telo.Import aliases. */
+function resolveSelfOrAlias(
+  value: string,
+  ownModule: string | undefined,
+  scopeResolver: AliasResolver,
+): string | undefined {
+  if (value.startsWith(SELF_PREFIX) && ownModule) {
+    return `${ownModule}.${value.slice(SELF_PREFIX.length)}`;
+  }
+  return scopeResolver.resolveKind(value);
+}
+
+/** Look up a top-level field (`outputType`, `inputType`) on a kind's
+ *  `Telo.Definition`. Used as a fallback by `buildStepContextSchema` when the
+ *  invoked resource manifest doesn't carry the field inline — most kinds
+ *  declare result shape on the definition, not the resource. */
+function lookupDefinitionTypeField(
+  invokedKind: string,
+  fieldName: string,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  allManifests: Record<string, any>[],
+): Record<string, any> | undefined {
+  const canonical = aliases.resolveKind(invokedKind) ?? invokedKind;
+  const def = defs.resolve(canonical);
+  if (!def) return undefined;
+  const value = (def as unknown as Record<string, unknown>)[fieldName];
+  return resolveTypeFieldToSchema(value, allManifests);
+}
+
 function walkCelExpressions(
   value: unknown,
   path: string,
@@ -95,11 +130,25 @@ function extractContextsFromSchema(
  * Build a `steps` context schema from `x-telo-step-context` annotation.
  * Walks each step in the manifest array, resolves the invoked resource's outputType,
  * and builds `steps.<name>.result` context entries.
+ *
+ * outputType resolution falls through three layers:
+ *   1. The invoked resource manifest's own `outputType` field (rare — most
+ *      resources don't declare outputType inline).
+ *   2. The kind's `Telo.Definition` outputType (the common case for kinds that
+ *      declare a stable result shape, e.g. `Ai.TextStream` ↦ `{output: stream}`).
+ *   3. Permissive `{type: object, additionalProperties: true}` if neither
+ *      yields a schema.
+ *
+ * Layer 2 is what makes `x-telo-stream` properties on definitions actually
+ * govern step-result chain validation — without it, the validator falls back
+ * to permissive and the stream-opacity rule never fires.
  */
 function buildStepContextSchema(
   manifest: Record<string, any>,
   defSchema: Record<string, any>,
   allManifests: Record<string, any>[],
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
 ): Record<string, any> | undefined {
   const props = defSchema.properties as Record<string, any> | undefined;
   if (!props) return undefined;
@@ -138,6 +187,17 @@ function buildStepContextSchema(
               }
             } else {
               outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
+            }
+            // Fallback: pull outputType from the kind's Telo.Definition. The
+            // resource manifest typically doesn't carry outputType; the def does.
+            if (!outputSchema && invokedKind) {
+              outputSchema = lookupDefinitionTypeField(
+                invokedKind,
+                outputTypeField,
+                defs,
+                aliases,
+                allManifests,
+              );
             }
           }
           stepProperties[name] = {
@@ -317,6 +377,25 @@ export class StaticAnalyzer {
         const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
         const moduleName = m.metadata.name as string;
         if (moduleName) defs.registerModuleIdentity(namespace, moduleName);
+        // Auto-register `Self` as an alias for this library's own module name.
+        // Lets same-library `extends:` work (e.g. `extends: Self.Encoder` for a
+        // concrete kind whose abstract lives in the same Telo.Library) without
+        // requiring a self-import (which would loop the loader). Resolves
+        // through the same alias machinery as user-declared Telo.Imports —
+        // honours the library's `exports.kinds` list, no special cases.
+        if (moduleName) {
+          const exportedKinds: string[] = ((m as any).exports?.kinds as string[] | undefined) ?? [];
+          if (rootModules.has(moduleName)) {
+            aliases.registerImport("Self", moduleName, exportedKinds);
+          } else {
+            let libResolver = aliasesByModule.get(moduleName);
+            if (!libResolver) {
+              libResolver = new AliasResolver();
+              aliasesByModule.set(moduleName, libResolver);
+            }
+            libResolver.registerImport("Self", moduleName, exportedKinds);
+          }
+        }
       }
       if (m.kind === "Telo.Import") {
         const alias = m.metadata.name as string;
@@ -486,6 +565,8 @@ export class StaticAnalyzer {
             m as Record<string, any>,
             mDefinition.schema as Record<string, any>,
             allManifests as Record<string, any>[],
+            defs,
+            aliases,
           )
         : undefined;
 

@@ -405,6 +405,19 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/codec/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/config/nodejs:
     dependencies:
       '@telorun/sdk':
@@ -491,6 +504,45 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/ndjson-codec/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/octet-codec/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/plain-text-codec/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/run/nodejs:
     dependencies:
       '@telorun/sdk':
@@ -550,6 +602,19 @@ importers:
       '@types/pg':
         specifier: ^8.0.0
         version: 8.18.0
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/sse-codec/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
       typescript:
         specifier: ^5.0.0
         version: 5.9.3

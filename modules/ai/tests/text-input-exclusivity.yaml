@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionInputExclusivityTest
+  name: TextInputExclusivityTest
   version: 1.0.0
 targets:
   - TestBothPromptAndMessagesRejected
@@ -25,7 +25,7 @@ source: ../../assert
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: C }
 model:
   kind: AiEcho.EchoModel
@@ -44,7 +44,7 @@ steps:
           messages:
             - { role: user, content: "y" }
         invoke:
-          kind: Ai.Completion
+          kind: Ai.Text
           name: C
       - name: NotReached
         inputs: { note: "should not get here" }
@@ -73,7 +73,7 @@ steps:
       - name: Invoke
         inputs: {}
         invoke:
-          kind: Ai.Completion
+          kind: Ai.Text
           name: C
       - name: NotReached
         inputs: { note: "should not get here" }

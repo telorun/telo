@@ -12,7 +12,7 @@ Follow this strictly:
 - never add underscores to unused function arguments
 - never look at commit history
 - never use git stash
-- never fix linting problems
+- never fix linting problems, and never mention it
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
 - never use `cat` nor `sed` to read files — read them directly
@@ -25,6 +25,26 @@ Follow this strictly:
 ## Architecture
 
 Telo is a declarative runtime: YAML manifests describe desired state, the kernel resolves resource dependencies via a multi-pass init loop, and controllers implement each resource kind. CEL expressions in `${{ }}` are compiled before execution.
+
+**Scope: everything is on the table.** Telo is intended to support every transport, every protocol, every backend domain — HTTP, MCP, gRPC, WebSocket, message queues, databases, file I/O, AI providers, workflow engines, and whatever else lands. Design abstractions for breadth, not for the current consumer. When choosing between a generic primitive and a use-case-specific shortcut, **default to the generic primitive**. "We'll only need it for X" is the wrong question — assume any transport-neutral concept (encoders, codecs, streams, schedulers, retry policies, etc.) will eventually be reused across multiple modules, and shape the API and package layout accordingly. Do not YAGNI on cross-cutting primitives.
+
+**Cross-cutting concerns Telo intends to cover** (non-exhaustive — when in doubt, assume it's in scope):
+
+- **Data shape**: encoders, codecs, serialization (JSON, Protobuf, Avro, CBOR, MessagePack), validation, schemas, content negotiation, compression (gzip/brotli/zstd).
+- **Streaming & I/O**: async iterators, channels, backpressure, chunked transfer, framing, multiplexing, file/stdio/network pipes.
+- **Reliability**: retry / backoff, circuit breakers, timeouts, deadlines, idempotency, graceful shutdown, dead-letter queues.
+- **Performance**: caching (response, query, computation), connection pooling, batching, rate limiting, throttling, debouncing, deduplication.
+- **Observability**: structured logging (levels, sinks, correlation IDs), metrics (counters, gauges, histograms), distributed tracing (OpenTelemetry, spans, baggage), audit logs, profiling, health checks (liveness/readiness), alerting hooks.
+- **Security**: authentication (OAuth, OIDC, API keys, JWT, mTLS, SAML), authorization (RBAC, ABAC, policy engines), secrets management (vault integrations, rotation), encryption at rest / in transit, signing/verification, CSRF/CORS.
+- **Time & scheduling**: cron, intervals, delayed jobs, leases, time-zone handling, deadlines, clock skew tolerance.
+- **Coordination**: distributed locking, leader election, queues (FIFO / priority), pub/sub, event sourcing, sagas / workflow orchestration, transactional outbox.
+- **Configuration**: env, file, remote config, feature flags, dynamic reload, multi-tenancy, environment promotion.
+- **Lifecycle**: migrations (DB, config, schema), versioning, rollouts, blue/green, canary, drain/shed.
+- **Internationalization**: localization, pluralization, time-zone formatting, locale negotiation.
+- **Inputs & boundaries**: pagination, filtering, sorting, partial responses, file uploads (multipart, chunked, resumable), webhooks (inbound + outbound), bulk operations.
+- **Errors**: structured error contracts, error codes, retryable vs terminal classification, error mapping across boundaries, partial-failure aggregation.
+
+When designing a new module or capability, ask: which of the above does this resource genuinely need to declare or compose with? If the answer touches more than one consumer, the concern belongs in a shared primitive (kernel built-in capability or transport-neutral package), not buried inside the current module.
 
 **Topology-driven constraint:** The analyzer and telo editor must never hardcode knowledge about specific resource kinds. All resource-specific behaviour must be expressed via `x-telo-*` schema annotations in `Telo.Definition` schemas and resolved generically.
 
@@ -100,7 +120,8 @@ Loads a `Telo.Library` into the current scope under a PascalCase alias.
 Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
 - `metadata.name` — kind suffix; full kind = `<module-name>.<Name>`
-- `capability` — one of the kernel capabilities (see below)
+- `capability` — one of the kernel capabilities (see below). Names the lifecycle role only; never a user-declared abstract kind.
+- `extends` — alias-form reference to a `Telo.Abstract` this definition implements (e.g. `Ai.Model`, `Self.Encoder`). The prefix must be a `Telo.Import` declared in the same file. **`Self`** is auto-registered as an alias pointing at the declaring library's own module name — use `extends: Self.<Abstract>` when the abstract lives in the same `Telo.Library` as the definition (no Telo.Import to alias against, since a self-import would loop the loader). Honours the library's `exports.kinds` list, so `Self.<Abstract>` only resolves to abstracts the library has chosen to export.
 - `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development
 - `schema` — JSON Schema with `x-telo-*` annotations
 
@@ -126,6 +147,7 @@ Inside `Telo.Definition` schema blocks:
 - `x-telo-context: <JSON Schema>` — annotates a handler field with the CEL context available inside it. Analyzer-only; no runtime effect.
 - `x-telo-step-context: { invoke, outputType }` — on an array field, tells the analyzer to build typed `steps.<name>.result` context from each item's invoked resource's output type.
 - `x-telo-widget: "code"` — on a string field, tells the telo editor to render a Monaco code widget instead of a single-line input. The language is resolved from the field's standard `contentMediaType` (e.g. `application/javascript`) via Monaco's own language registry, so adding a new language is purely a schema change — no editor code to touch.
+- `x-telo-stream: true` — on a property in an `inputType` or `outputType` schema, marks it as carrying a `Stream<T>` (the class exported by `@telorun/sdk`). Producers wrap their `AsyncIterable` in `new Stream(...)` so the value's constructor is recognized — CEL's runtime type-checker rejects unrecognized object constructors, and the analyzer's `buildCelEnvironment` registers `Stream` so `${{ steps.X.result.output }}` evaluations pass through as opaque values. The analyzer's chain validator forbids member access *past* a stream-marked property (`result.output` is fine; `result.output.text` / `result.output[0]` are diagnostics). Convention: streaming Invocables put their stream on the `input` property of `inputs` and the `output` property of the result. Consumers iterate with `for await`. Forward-compatible: today a boolean; later may evolve to `x-telo-stream: { items: <JsonSchema> }` for element-type validation under the typed-abstracts plan, with `true` aliasing to `{ items: any }`.
 
 ## CEL Templates (`${{ }}`)
 

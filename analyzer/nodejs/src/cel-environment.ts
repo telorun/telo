@@ -1,5 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
-import type { ResourceManifest } from "@telorun/sdk";
+import { Stream, type ResourceManifest } from "@telorun/sdk";
 import { jsonSchemaToCelType } from "./schema-compat.js";
 
 export interface CelHandlers {
@@ -20,7 +20,16 @@ const STUB_HANDLERS: CelHandlers = {
 /** Build a CEL `Environment` with Telo's stdlib of functions. Always registers the
  *  same function signatures (so `env.check()` succeeds for type-inference) — the
  *  handlers govern what the function does when called at runtime. Analyzer-only
- *  callers can omit handlers; runtime callers (kernel) must supply real ones. */
+ *  callers can omit handlers; runtime callers (kernel) must supply real ones.
+ *
+ *  Also registers the `Stream` object type, backed by the `Stream` class from
+ *  `@telorun/sdk`. CEL's type-checker rejects values whose constructor isn't
+ *  Object/Map/Array/Set/registered; producers that need to expose an
+ *  `AsyncIterable` through a stream-typed property must wrap the iterable in
+ *  `new Stream(...)` so its constructor is the registered class. The type has
+ *  no fields, so terminal access (passing the value through CEL) succeeds but
+ *  member access raises a CEL error at runtime — matching the analyzer's
+ *  static check on `x-telo-stream`-marked properties. */
 export function buildCelEnvironment(handlers: CelHandlers = STUB_HANDLERS): Environment {
   return new Environment({ unlistedVariablesAreDyn: true })
     .registerFunction("join(list, string): string", (list: unknown[], sep: string) =>
@@ -34,7 +43,8 @@ export function buildCelEnvironment(handlers: CelHandlers = STUB_HANDLERS): Envi
       if (map instanceof Map) return [...map.values()];
       return Object.values(map as Record<string, unknown>);
     })
-    .registerFunction("sha256(string): string", (s: string) => handlers.sha256(s));
+    .registerFunction("sha256(string): string", (s: string) => handlers.sha256(s))
+    .registerType("Stream", Stream as unknown as new (...args: unknown[]) => unknown);
 }
 
 /** Clone `baseEnv` and register typed variable declarations so that

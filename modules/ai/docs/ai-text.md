@@ -1,13 +1,13 @@
 ---
-description: "Ai.Completion: single-turn LLM call. Manifest fields, invocation inputs (prompt vs messages, system override, options), output shape, and Run.Sequence integration."
-sidebar_label: Ai.Completion
+description: "Ai.Text: single-turn buffered LLM call. Manifest fields, invocation inputs (prompt vs messages, system override, options), output shape, and Run.Sequence integration."
+sidebar_label: Ai.Text
 ---
 
-# `Ai.Completion`
+# `Ai.Text`
 
-> Examples below assume this module is imported with `Telo.Import` alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Completion`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with `Telo.Import` alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Text`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
-`Ai.Completion` is a `Telo.Invocable` that delegates a single-turn LLM call to any `Ai.Model` implementation. It owns message-building, system-prompt handling, and option-merging; the model handles the HTTP call.
+`Ai.Text` is a `Telo.Invocable` that delegates a single-turn, buffered LLM call to any `Ai.Model` implementation. It owns message-building, system-prompt handling, and option-merging; the model handles the HTTP call. For chunked output, see [Ai.TextStream](./ai-text-stream.md).
 
 ```yaml
 kind: Telo.Import
@@ -23,7 +23,7 @@ metadata: { name: Gpt4o }
 model: gpt-4o
 apiKey: "${{ secrets.OPENAI_API_KEY }}"
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata: { name: Summarizer }
 model:
   kind: AiOpenai.OpenaiModel
@@ -41,7 +41,7 @@ options:
 | --------- | ------ | -------- | ------------------------------------------------------------------------------------ |
 | `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: "std/ai#Model"`.      |
 | `system`  | string | no       | Default system prompt. Runtime `inputs.system` wins when set.                        |
-| `options` | object | no       | Completion-level option defaults. Merged beneath `inputs.options` (downstream wins). |
+| `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).   |
 
 The `model` field uses identity-form `x-telo-ref` because the schema is part of `@telorun/ai`'s public surface — it must resolve regardless of who imports it. (`extends`, by contrast, uses alias-form because it's evaluated in the declaring file's own import scope. See `kernel/docs/inheritance.md`.)
 
@@ -66,7 +66,7 @@ Validation: passing both `prompt` and `messages`, or neither, throws `InvokeErro
 }
 ```
 
-The completion controller validates the model's return value before forwarding; if a provider deviates, it throws `InvokeError("ERR_CONTRACT_VIOLATION", …)`.
+The controller validates the model's return value before forwarding; if a provider deviates, it throws `InvokeError("ERR_CONTRACT_VIOLATION", …)`.
 
 ## Option layering
 
@@ -76,8 +76,8 @@ Four conceptual layers, three of them user-visible. Shallow merge; downstream wi
 | - | --------------------------------------- | ---------------------------------------------------- |
 | 0 | Provider hard defaults (controller)     | Inside the provider, before vendor call.             |
 | 1 | `Ai.<Provider>Model.options` (manifest) | Inside the provider, on top of layer 0.              |
-| 2 | `Ai.Completion.options` (manifest)      | Inside the completion controller, before delegating. |
-| 3 | `inputs.options` at invocation time     | Inside the completion controller, on top of layer 2. |
+| 2 | `Ai.Text.options` (manifest)            | Inside the Ai.Text controller, before delegating.    |
+| 3 | `inputs.options` at invocation time     | Inside the Ai.Text controller, on top of layer 2.    |
 
 The provider receives layers 2+3 as the `options` bag and merges layers 0+1 internally.
 
@@ -91,7 +91,7 @@ If the messages array already starts with `role: system`, a runtime/manifest sys
 
 ## Run.Sequence integration
 
-`Ai.Completion` is a regular Invocable, so it slots straight into `Run.Sequence`:
+`Ai.Text` is a regular Invocable, so it slots straight into `Run.Sequence`:
 
 ```yaml
 kind: Run.Sequence
@@ -101,7 +101,7 @@ steps:
     inputs:
       prompt: "Summarize:\n${{ vars.articleText }}"
     invoke:
-      kind: Ai.Completion
+      kind: Ai.Text
       name: Summarizer
   - name: Save
     inputs:
@@ -118,6 +118,6 @@ steps:
 
 ## What's NOT here
 
-- **Streaming.** `Ai.Completion` is buffered. Streaming consumers (HTTP SSE, etc.) will land as a separate `Ai.Stream` kind sharing the same provider resources. Providers already implement `stream()`, so no provider work will be needed when that ships.
+- **Streaming.** `Ai.Text` is buffered; chunked output lives in [Ai.TextStream](./ai-text-stream.md), which shares the same provider resources via `Ai.Model`.
 - **Tool use / function calling.** Lives in the future `Ai.Agent` / `Ai.Worker` kinds.
 - **Multimodal input.** `content` is a string today. Widening to `string | ContentPart[]` later is non-breaking.

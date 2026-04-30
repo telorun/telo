@@ -8,18 +8,18 @@ import type {
 } from "./types.js";
 
 /**
- * Shape of the Ai.Completion manifest after Phase 5 ref injection.
+ * Shape of the Ai.Text manifest after Phase 5 ref injection.
  * `model` is replaced in-place with the live `AiModelInstance` returned by the
  * referenced provider's controller.
  */
-interface AiCompletionResource {
+interface AiTextResource {
   metadata: { name: string; module?: string };
   model: AiModelInstance;
   system?: string;
   options?: Record<string, unknown>;
 }
 
-interface CompletionInputs {
+interface AiTextInputs {
   prompt?: string;
   messages?: Message[];
   system?: string;
@@ -29,10 +29,10 @@ interface CompletionInputs {
 const VALID_ROLES = new Set(["system", "user", "assistant"]);
 const VALID_FINISH_REASONS = new Set(["stop", "length", "content-filter", "error", "other"]);
 
-class AiCompletion implements ResourceInstance<CompletionInputs, CompletionResult> {
-  constructor(private readonly resource: AiCompletionResource) {}
+class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
+  constructor(private readonly resource: AiTextResource) {}
 
-  async invoke(inputs: CompletionInputs = {}): Promise<CompletionResult> {
+  async invoke(inputs: AiTextInputs = {}): Promise<CompletionResult> {
     const name = this.resource.metadata.name;
     const hasPrompt = typeof inputs.prompt === "string";
     const hasMessages = Array.isArray(inputs.messages);
@@ -42,8 +42,8 @@ class AiCompletion implements ResourceInstance<CompletionInputs, CompletionResul
       throw new InvokeError(
         "ERR_INVALID_INPUT",
         hasPrompt
-          ? `Ai.Completion "${name}": exactly one of 'prompt' or 'messages' may be provided, not both.`
-          : `Ai.Completion "${name}": one of 'prompt' or 'messages' is required.`,
+          ? `Ai.Text "${name}": exactly one of 'prompt' or 'messages' may be provided, not both.`
+          : `Ai.Text "${name}": one of 'prompt' or 'messages' is required.`,
       );
     }
 
@@ -75,7 +75,7 @@ class AiCompletion implements ResourceInstance<CompletionInputs, CompletionResul
       if (typeof inputs.options !== "object" || Array.isArray(inputs.options)) {
         throw new InvokeError(
           "ERR_INVALID_INPUT",
-          `Ai.Completion "${name}": 'options' must be an object.`,
+          `Ai.Text "${name}": 'options' must be an object.`,
         );
       }
     }
@@ -89,7 +89,7 @@ class AiCompletion implements ResourceInstance<CompletionInputs, CompletionResul
     if (!model || typeof model.invoke !== "function") {
       throw new InvokeError(
         "ERR_INVALID_REFERENCE",
-        `Ai.Completion "${name}": 'model' is not a live Ai.Model instance — check that Phase 5 injection ran and the referenced resource exists.`,
+        `Ai.Text "${name}": 'model' is not a live Ai.Model instance — check that Phase 5 injection ran and the referenced resource exists.`,
       );
     }
     const result = await model.invoke({ messages, options: mergedOptions });
@@ -103,41 +103,41 @@ class AiCompletion implements ResourceInstance<CompletionInputs, CompletionResul
   }
 }
 
-function validateMessages(messages: Message[], completionName: string): Message[] {
+function validateMessages(messages: Message[], resourceName: string): Message[] {
   if (messages.length === 0) {
     throw new InvokeError(
       "ERR_INVALID_INPUT",
-      `Ai.Completion "${completionName}": 'messages' must contain at least one message.`,
+      `Ai.Text "${resourceName}": 'messages' must contain at least one message.`,
     );
   }
   for (const [i, m] of messages.entries()) {
     if (!m || typeof m !== "object") {
       throw new InvokeError(
         "ERR_INVALID_INPUT",
-        `Ai.Completion "${completionName}": messages[${i}] is not an object.`,
+        `Ai.Text "${resourceName}": messages[${i}] is not an object.`,
       );
     }
     if (typeof m.role !== "string" || !VALID_ROLES.has(m.role)) {
       throw new InvokeError(
         "ERR_INVALID_INPUT",
-        `Ai.Completion "${completionName}": messages[${i}].role must be 'system' | 'user' | 'assistant'.`,
+        `Ai.Text "${resourceName}": messages[${i}].role must be 'system' | 'user' | 'assistant'.`,
       );
     }
     if (typeof m.content !== "string") {
       throw new InvokeError(
         "ERR_INVALID_INPUT",
-        `Ai.Completion "${completionName}": messages[${i}].content must be a string.`,
+        `Ai.Text "${resourceName}": messages[${i}].content must be a string.`,
       );
     }
   }
   return messages;
 }
 
-function validateCompletionResult(result: unknown, completionName: string): asserts result is CompletionResult {
+function validateCompletionResult(result: unknown, resourceName: string): asserts result is CompletionResult {
   const bad = (detail: string): never => {
     throw new InvokeError(
       "ERR_CONTRACT_VIOLATION",
-      `Ai.Completion "${completionName}": model returned a value that does not match the Ai.Model output contract — ${detail}.`,
+      `Ai.Text "${resourceName}": model returned a value that does not match the Ai.Model output contract — ${detail}.`,
     );
   };
   if (!result || typeof result !== "object") return bad("expected an object");
@@ -159,10 +159,10 @@ function validateCompletionResult(result: unknown, completionName: string): asse
 export function register(_ctx: ControllerContext): void {}
 
 export async function create(
-  resource: AiCompletionResource,
+  resource: AiTextResource,
   _ctx: ResourceContext,
-): Promise<AiCompletion> {
-  return new AiCompletion(resource);
+): Promise<AiText> {
+  return new AiText(resource);
 }
 
 export const schema = {

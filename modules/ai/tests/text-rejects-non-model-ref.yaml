@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionRejectsNonModelRefTest
+  name: TextRejectsNonModelRefTest
   version: 1.0.0
 targets:
   - TestAnalyzerRejectsNonModelRef
@@ -9,13 +9,13 @@ kind: Telo.Import
 metadata: { name: Assert }
 source: ../../assert
 ---
-# The analyzer must reject an Ai.Completion whose `model` field references a resource
-# whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Completion.model
+# The analyzer must reject an Ai.Text whose `model` field references a resource
+# whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Text.model
 # is typed as `std/ai#Model`, so only definitions extending that abstract are accepted.
 kind: Assert.Manifest
 metadata:
   name: TestAnalyzerRejectsNonModelRef
-source: ./__fixtures__/completion-wrong-model-kind.yaml
+source: ./__fixtures__/text-wrong-model-kind.yaml
 expect:
   errors:
     - code: REFERENCE_KIND_MISMATCH

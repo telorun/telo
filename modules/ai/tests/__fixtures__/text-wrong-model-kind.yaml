@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: CompletionWrongModelKind
+  name: TextWrongModelKind
   version: 1.0.0
 ---
 kind: Telo.Import
@@ -19,14 +19,14 @@ metadata: { name: JS }
 source: ../../../javascript
 ---
 # JavaScript.Script is Telo.Invocable but does NOT extend Ai.Model.
-# Referencing it from Ai.Completion.model is a REFERENCE_KIND_MISMATCH.
+# Referencing it from Ai.Text.model is a REFERENCE_KIND_MISMATCH.
 kind: JS.Script
 metadata:
   name: NotAModel
 code: |
   function main() { return { text: "x", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }; }
 ---
-kind: Ai.Completion
+kind: Ai.Text
 metadata:
   name: Bad
 model:

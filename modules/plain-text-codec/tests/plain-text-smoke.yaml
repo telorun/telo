@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: PlainTextCodecSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for plain-text-codec. Roundtrips a small AsyncIterable of delta
+    records through PlainText.Encoder → PlainText.Decoder and asserts the final
+    UTF-8 string. Self-contained: depends only on this codec module + JS/Run/Assert.
+targets:
+  - TestRoundtrip
+---
+kind: Telo.Import
+metadata: { name: PlainText }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: Source }
+code: |
+  async function main() {
+    async function* gen() {
+      yield { delta: "h" };
+      yield { delta: "i" };
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: PlainText.Encoder
+metadata: { name: Encoder }
+---
+kind: PlainText.Decoder
+metadata: { name: Decoder }
+---
+kind: Run.Sequence
+metadata: { name: TestRoundtrip }
+steps:
+  - name: Source
+    invoke: { kind: JS.Script, name: Source }
+  - name: Encode
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: PlainText.Encoder, name: Encoder }
+  - name: Decode
+    inputs:
+      input: "${{ steps.Encode.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: Decoder }
+  - name: Assert
+    inputs:
+      text: "${{ steps.Decode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "hi" }
+        required: [text]
