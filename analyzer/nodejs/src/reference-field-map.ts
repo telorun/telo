@@ -48,19 +48,43 @@ export function isSchemaFromEntry(entry: FieldMapEntry): entry is SchemaFromFiel
 export const REFERENCE_KEYS = new Set(["kind", "name", "metadata"]);
 
 /** True when `val` is an inline resource definition rather than a named reference.
- *  A named reference (has string `name`) may carry extra keys (e.g. `inputs`) that
- *  are runtime call parameters — those are never inline resources. */
+ *  Three shapes flow through here:
+ *   - `{kind, name}` (optionally with runtime call args) → named reference, NOT inline.
+ *   - `{kind, ...config}` with no name → inline definition with config; extract.
+ *   - `{kind}` alone (bare kind, no name) → inline singleton — extract a fresh
+ *     stateless resource. Lets simple stateless kinds be used inline without
+ *     boilerplate (e.g. `encoder: {kind: Ndjson.Encoder}`, `invoke: {kind: Run.Throw}`).
+ *
+ *  A named reference (has string `name`) may carry extra keys (e.g. `inputs`)
+ *  that are runtime call parameters — those are never inline resources. */
 export function isInlineResource(val: Record<string, unknown>): boolean {
   if (typeof val.name === "string") return false;
-  return Object.keys(val).some((k) => !REFERENCE_KEYS.has(k));
+  if (typeof val.kind !== "string") return false;
+  return true;
 }
 
 /** Resolves all values at a field map path in a resource config.
- *  `[]` in a path segment means "iterate array at this key". */
+ *  Path-segment markers:
+ *   - `[]`  iterate array values at this key
+ *   - `{}`  iterate map values (every value in an `additionalProperties`-typed
+ *           object — used for fields like `content[mime]` whose schema declares
+ *           a key-as-MIME map). The path is `<key>.{}.<rest>`. */
 export function resolveFieldValues(obj: unknown, path: string): unknown[] {
   const parts = path.split(".");
   let current: unknown[] = [obj];
   for (const part of parts) {
+    if (part === "{}") {
+      // Iterate the values of every map currently in `current`.
+      const next: unknown[] = [];
+      for (const item of current) {
+        if (!item || typeof item !== "object") continue;
+        for (const v of Object.values(item as Record<string, unknown>)) {
+          if (v != null) next.push(v);
+        }
+      }
+      current = next;
+      continue;
+    }
     const isArray = part.endsWith("[]");
     const key = isArray ? part.slice(0, -2) : part;
     const next: unknown[] = [];
@@ -143,5 +167,16 @@ function traverseNode(node: Record<string, any>, path: string, map: ReferenceFie
     for (const [key, propSchema] of Object.entries(node.properties)) {
       traverseNode(propSchema as Record<string, any>, `${path}.${key}`, map);
     }
+  }
+
+  // Map — `additionalProperties: { ... }` describes every value in an
+  // open-keyed object. Encoder refs nested inside `content[mime]` map
+  // entries reach Phase 5 through this branch.
+  if (
+    node.additionalProperties &&
+    typeof node.additionalProperties === "object" &&
+    !Array.isArray(node.additionalProperties)
+  ) {
+    traverseNode(node.additionalProperties as Record<string, any>, `${path}.{}`, map);
   }
 }

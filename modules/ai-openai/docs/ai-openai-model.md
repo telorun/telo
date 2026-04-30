@@ -94,6 +94,8 @@ inputs:
 
 Vendor errors bubble through unchanged — rate limits, authentication failures, malformed prompts, etc. surface with their original messages. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
 
+For streaming calls, mid-stream failures from the provider are translated into a `StreamPart` of shape `{ type: "error", error: { message, code?, data? } }` and yielded as the terminator — generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) frame this as an in-band error record without a bespoke serialization step. The native `Error` instance never reaches the wire (it isn't JSON-serializable). Already-emitted text-delta parts are preserved; consumers see partial output plus a structured error record.
+
 ## Azure OpenAI / OpenAI-compatible gateways
 
 Set `baseUrl` to override the endpoint:

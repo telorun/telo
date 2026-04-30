@@ -36,10 +36,16 @@ routes:
       name: AlwaysThrowsFoo
     returns:
       - status: 200
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }
     catches:
       - when: "${{ error.code == 'BOGUS' }}"
         status: 401
-        body: { error: "${{ error.message }}" }
+        content:
+          application/json:
+            body: { error: "${{ error.message }}" }
       - status: 500
-        body: { error: "${{ error.message }}" }
+        content:
+          application/json:
+            body: { error: "${{ error.message }}" }

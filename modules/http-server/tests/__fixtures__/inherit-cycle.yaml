@@ -45,4 +45,6 @@ routes:
       name: CyclicA
     returns:
       - status: 200
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }

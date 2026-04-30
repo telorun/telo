@@ -55,21 +55,18 @@ routes:
       name: "${{ request.query.name }}" # CEL expression
     returns:
       - status: 200
-        schema:
-          body:
-            type: object
-            properties:
-              greeting:
-                type: string
-              nice:
-                type: string
-            required: ["greeting", "nice"]
-            additionalProperties: false
-        headers:
-          Content-Type: application/json
-        body:
-          greeting: "${{ result.message }}!"
-          nice: "WOW"
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                greeting: { type: string }
+                nice: { type: string }
+              required: [greeting, nice]
+              additionalProperties: false
+            body:
+              greeting: "${{ result.message }}!"
+              nice: "WOW"
 ---
 kind: JS.Script
 metadata:

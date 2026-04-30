@@ -50,7 +50,11 @@ kind: Telo.Import
 metadata:
   name: Run
 source: ../../modules/run
-
+---
+kind: Telo.Import
+metadata:
+  name: Octet
+source: ../../modules/octet-codec
 ---
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -240,6 +244,9 @@ notFoundHandler:
   returns:
     - status: 200
       mode: stream
+      content:
+        application/octet-stream:
+          encoder: { kind: Octet.Encoder }
 
 ---
 kind: Sql.Select
@@ -399,15 +406,19 @@ routes:
       method: GET
     returns:
       - status: 200
-        body:
-          status: "ok"
+        content:
+          application/json:
+            body:
+              status: "ok"
   - request:
       path: /liveness
       method: GET
     returns:
       - status: 200
-        body:
-          status: "ok"
+        content:
+          application/json:
+            body:
+              status: "ok"
 ---
 # Public API — unauthenticated.
 # GET /search                       full-text search across modules.
@@ -451,9 +462,11 @@ routes:
       offset: "${{ request.query.offset }}"
     returns:
       - status: 200
-        body:
-          results: "${{ result.rows }}"
-          count: "${{ result.rowCount }}"
+        content:
+          application/json:
+            body:
+              results: "${{ result.rows }}"
+              count: "${{ result.rowCount }}"
 
   - request:
       path: /{namespace}/{name}
@@ -484,13 +497,17 @@ routes:
     returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
-        body:
-          name: "${{ request.params.namespace + '/' + request.params.name }}"
-          version: "${{ result.rows[result.rows.size() - 1].version }}"
-          versions: "${{ result.rows.map(r, r.version) }}"
+        content:
+          application/json:
+            body:
+              name: "${{ request.params.namespace + '/' + request.params.name }}"
+              version: "${{ result.rows[result.rows.size() - 1].version }}"
+              versions: "${{ result.rows.map(r, r.version) }}"
       - status: 404
-        body:
-          error: "Module not found"
+        content:
+          application/json:
+            body:
+              error: "Module not found"
 
   - request:
       path: /{namespace}/{name}/versions
@@ -518,11 +535,15 @@ routes:
     returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
-        body:
-          items: "${{ result.rows }}"
+        content:
+          application/json:
+            body:
+              items: "${{ result.rows }}"
       - status: 404
-        body:
-          error: "Module not found"
+        content:
+          application/json:
+            body:
+              error: "Module not found"
 
   - request:
       path: /{namespace}/{name}/{version}
@@ -551,16 +572,20 @@ routes:
     returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
-        body:
-          id: "${{ result.rows[0].namespace + '/' + result.rows[0].name + '@' + result.rows[0].version }}"
-          namespace: "${{ result.rows[0].namespace }}"
-          name: "${{ result.rows[0].name }}"
-          version: "${{ result.rows[0].version }}"
-          description: "${{ result.rows[0].description }}"
-          publishedAt: "${{ result.rows[0].published_at }}"
+        content:
+          application/json:
+            body:
+              id: "${{ result.rows[0].namespace + '/' + result.rows[0].name + '@' + result.rows[0].version }}"
+              namespace: "${{ result.rows[0].namespace }}"
+              name: "${{ result.rows[0].name }}"
+              version: "${{ result.rows[0].version }}"
+              description: "${{ result.rows[0].description }}"
+              publishedAt: "${{ result.rows[0].published_at }}"
       - status: 404
-        body:
-          error: "Module not found"
+        content:
+          application/json:
+            body:
+              error: "Module not found"
 
   - request:
       path: /{namespace}/{name}/{version}/telo.yaml
@@ -585,8 +610,9 @@ routes:
     returns:
       - status: 200
         mode: stream
-        headers:
-          Content-Type: text/yaml
+        content:
+          text/yaml:
+            encoder: { kind: Octet.Encoder }
 
   - request:
       path: /{namespace}/{name}/{version}
@@ -614,18 +640,24 @@ routes:
       published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
     returns:
       - status: 201
-        body:
-          published: "${{ result.published }}"
+        content:
+          application/json:
+            body:
+              published: "${{ result.published }}"
     catches:
       - when: "${{ error.code == 'UNAUTHORIZED' }}"
         status: 401
-        body:
-          error:
-            code: "${{ error.code }}"
-            message: "${{ error.message }}"
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
       - when: "${{ error.code == 'UPLOAD_FAILED' || error.code == 'RECORD_FAILED' }}"
         status: 500
-        body:
-          error:
-            code: "${{ error.code }}"
-            message: "${{ error.message }}"
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"

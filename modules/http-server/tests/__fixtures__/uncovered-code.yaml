@@ -44,8 +44,12 @@ routes:
       name: ThrowsAOrB
     returns:
       - status: 200
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }
     catches:
       - when: "${{ error.code == 'A' }}"
         status: 400
-        body: { error: "${{ error.message }}" }
+        content:
+          application/json:
+            body: { error: "${{ error.message }}" }

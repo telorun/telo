@@ -242,22 +242,54 @@ schema:
                 type: "boolean"
               mode:
                 title: Mode
-                description: Response mode; buffer or stream.
+                description: "buffer (default): CEL body expansion + schema validation. stream: pipe handler.result.output through content[mime].encoder, then bytes to the response."
                 type: "string"
                 enum: ["buffer", "stream"]
               headers:
                 title: Headers
-                description: Response headers.
+                description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
                 type: "object"
                 additionalProperties:
                   type: "string"
-              body:
-                title: Body
-                description: "CEL expression or object mapping for response body"
+              content:
+                title: Content
+                description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
+                type: "object"
+                additionalProperties:
+                  type: "object"
+                  additionalProperties: false
+                  properties:
+                    body:
+                      title: Body
+                      description: CEL expression or object mapping for response body (buffer mode).
+                    schema:
+                      title: Schema
+                      description: JSON Schema used to validate the rendered body (buffer mode).
+                      type: "object"
+                    encoder:
+                      title: Encoder
+                      description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
+                      x-telo-ref: "std/codec#Encoder"
+                      oneOf:
+                        - title: Encoder Reference
+                          type: "string"
+                        - type: "object"
+                          title: Encoder Object
+                          properties:
+                            kind: { title: Kind, type: "string" }
+                            name: { title: Name, type: "string" }
+                          required: ["kind"]
+                          additionalProperties: true
+                    headers:
+                      title: Headers
+                      description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                      type: "object"
+                      additionalProperties:
+                        type: "string"
             required: ["status"]
         catches:
           title: Catches
-          description: Rendering rules for structured (InvokeError) throws from the handler.
+          description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
           type: "array"
           x-telo-outcome-list: catches
           x-telo-catches-for: invoke
@@ -278,13 +310,31 @@ schema:
                 type: "boolean"
               headers:
                 title: Headers
-                description: Response headers.
+                description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
                 type: "object"
                 additionalProperties:
                   type: "string"
-              body:
-                title: Body
-                description: "CEL expression or object mapping for response body"
+              content:
+                title: Content
+                description: Per-MIME error-body shape. Buffer-mode only.
+                type: "object"
+                additionalProperties:
+                  type: "object"
+                  additionalProperties: false
+                  properties:
+                    body:
+                      title: Body
+                      description: CEL expression or object mapping for the error body.
+                    schema:
+                      title: Schema
+                      description: JSON Schema used to validate the rendered body.
+                      type: "object"
+                    headers:
+                      title: Headers
+                      description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                      type: "object"
+                      additionalProperties:
+                        type: "string"
             required: ["status"]
   required: ["port", "mounts"]
 ---
@@ -421,29 +471,57 @@ schema:
                 when:
                   title: When
                   type: "boolean"
-                  description: "CEL expression; entry is selected if this evaluates to true"
+                  description: "CEL expression; entry is selected if this evaluates to true. In stream mode, `result.*` is unavailable (the handler result is an unconsumed Stream); reference only `request.*`."
                 mode:
                   title: Mode
                   type: "string"
                   enum: ["buffer", "stream"]
-                  description: "buffer (default): CEL body expansion + schema validation. stream: pipe result directly, skipping both"
-                schema:
-                  title: Schema
-                  description: JSON Schema used to validate buffered response body.
-                  type: "object"
+                  description: "buffer (default): CEL body expansion + schema validation per matched MIME. stream: pipe handler.result.output through content[mime].encoder, then bytes to the response."
                 headers:
                   title: Headers
-                  description: Response headers.
+                  description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
                   type: "object"
                   additionalProperties:
                     type: "string"
-                body:
-                  title: Body
-                  description: "CEL expression or object mapping for response body"
+                content:
+                  title: Content
+                  description: Per-MIME response shape. Map key is the canonical Content-Type — the server sets Content-Type from the matched key automatically, with Accept-header negotiation across keys when there are multiple. Required when the status carries a body; omit for 204/304-style empty responses.
+                  type: "object"
+                  additionalProperties:
+                    type: "object"
+                    additionalProperties: false
+                    properties:
+                      body:
+                        title: Body
+                        description: CEL expression or object mapping for response body (buffer mode).
+                      schema:
+                        title: Schema
+                        description: JSON Schema used to validate the rendered body (buffer mode).
+                        type: "object"
+                      encoder:
+                        title: Encoder
+                        description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
+                        x-telo-ref: "std/codec#Encoder"
+                        oneOf:
+                          - title: Encoder Reference
+                            type: "string"
+                          - type: "object"
+                            title: Encoder Object
+                            properties:
+                              kind: { title: Kind, type: "string" }
+                              name: { title: Name, type: "string" }
+                            required: ["kind"]
+                            additionalProperties: true
+                      headers:
+                        title: Headers
+                        description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                        type: "object"
+                        additionalProperties:
+                          type: "string"
               required: ["status"]
           catches:
             title: Catches
-            description: Rendering rules for structured (InvokeError) throws from the handler.
+            description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
             type: "array"
             x-telo-outcome-list: catches
             x-telo-catches-for: handler
@@ -480,19 +558,33 @@ schema:
                   title: When
                   type: "boolean"
                   description: "CEL expression; sees `error` and `request`"
-                schema:
-                  title: Schema
-                  description: JSON Schema used to validate the response body.
-                  type: "object"
                 headers:
                   title: Headers
-                  description: Response headers.
+                  description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
                   type: "object"
                   additionalProperties:
                     type: "string"
-                body:
-                  title: Body
-                  description: "CEL expression or object mapping for response body"
+                content:
+                  title: Content
+                  description: Per-MIME error-body shape. Buffer-mode only.
+                  type: "object"
+                  additionalProperties:
+                    type: "object"
+                    additionalProperties: false
+                    properties:
+                      body:
+                        title: Body
+                        description: CEL expression or object mapping for the error body.
+                      schema:
+                        title: Schema
+                        description: JSON Schema used to validate the rendered body.
+                        type: "object"
+                      headers:
+                        title: Headers
+                        description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                        type: "object"
+                        additionalProperties:
+                          type: "string"
               required: ["status"]
         required: ["request", "returns"]
   required: ["routes"]

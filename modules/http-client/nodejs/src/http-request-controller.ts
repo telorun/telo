@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { Stream, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { PassThrough, Readable } from "stream";
 
 const MAX_REDIRECTS = 5;
@@ -195,7 +195,7 @@ class HttpRequestResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: any): Promise<TeloResponse | Readable> {
+  async invoke(input: any): Promise<TeloResponse | { output: Stream<Uint8Array> }> {
     const ctx = this.ctx;
     const m = this.manifest;
 
@@ -297,7 +297,12 @@ class HttpRequestResource implements ResourceInstance {
     }
 
     if (m.mode === "stream") {
-      return response.body as Readable;
+      // Wrap the upstream Readable in a Stream so the value's constructor is
+      // recognized by CEL and the result fits the streaming-Invocable
+      // convention ({output: Stream<...>}). HTTP server consumers pipe through
+      // a format-codec encoder (Octet.Encoder for raw bytes) to write to the
+      // response.
+      return { output: new Stream(response.body as Readable) };
     }
 
     return response;

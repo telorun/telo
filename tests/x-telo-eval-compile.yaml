@@ -40,10 +40,10 @@ with:
           method: GET
         returns:
           - status: 200
-            headers:
-              Content-Type: application/json
-            body:
-              pong: true
+            content:
+              application/json:
+                body:
+                  pong: true
   - kind: Http.Server
     metadata:
       name: TestServer

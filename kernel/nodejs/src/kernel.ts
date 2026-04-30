@@ -766,6 +766,27 @@ function injectAtPath(
   function traverse(obj: unknown, partsLeft: string[]): void {
     if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
     const [head, ...rest] = partsLeft;
+
+    // Map iteration: descend into every value of the current object (used for
+    // schema fields with `additionalProperties` like `content[mime]`).
+    if (head === "{}") {
+      const container = obj as Record<string, unknown>;
+      for (const mapKey of Object.keys(container)) {
+        const elem = container[mapKey];
+        if (!elem || typeof elem !== "object") continue;
+        if (rest.length === 0) {
+          const ref = elem as Record<string, unknown>;
+          if (typeof ref.kind === "string" && typeof ref.name === "string") {
+            const instance = getInstance(ref.name);
+            if (instance) container[mapKey] = instance;
+          }
+        } else {
+          traverse(elem, rest);
+        }
+      }
+      return;
+    }
+
     const isArr = head.endsWith("[]");
     const key = isArr ? head.slice(0, -2) : head;
     const container = obj as Record<string, unknown>;

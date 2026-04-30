@@ -79,17 +79,15 @@ with:
             name: "${{ request.query.name }}"
         returns:
           - status: 200
-            schema:
-              body:
-                type: object
-                properties:
-                  message:
-                    type: string
-                required: ["message"]
-            headers:
-              Content-Type: application/json
-            body:
-              message: "${{ result.greeting }}"
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    message: { type: string }
+                  required: [message]
+                body:
+                  message: "${{ result.greeting }}"
   - kind: Http.Server
     metadata:
       name: TestServer

@@ -48,8 +48,12 @@ routes:
       name: CatchAndRethrow
     returns:
       - status: 200
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }
     catches:
       - when: "${{ error.code in ['A', 'B'] }}"
         status: 400
-        body: { error: "${{ error.message }}" }
+        content:
+          application/json:
+            body: { error: "${{ error.message }}" }
