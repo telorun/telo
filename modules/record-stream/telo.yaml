@@ -1,0 +1,127 @@
+kind: Telo.Library
+metadata:
+  name: record-stream
+  namespace: std
+  version: 0.2.0
+  description: |
+    Stream operations on structured records. Generic, format-neutral
+    transformers / sources / sinks that operate on `Stream<record>`.
+    Inhabitants: `RecordStream.ExtractText` projects a discriminated stream
+    of records down to a `Stream<string>` using a per-variant action map;
+    `RecordStream.Tee` fans one input stream out to two consumers.
+exports:
+  kinds:
+    - ExtractText
+    - Tee
+---
+# Project a discriminated stream of records to a `Stream<string>`.
+#
+# Each item in `input` is matched on `record[discriminator]` against the
+# `records` map. The matched entry's `do` action selects behaviour:
+#
+#   - `do: emit` — yield `record[field]` (which must be a string) downstream
+#   - `do: drop` — silently skip the record
+#   - `do: throw` — throw using `record[field]?.message ?? String(record[field])`
+#
+# Records whose discriminator value isn't listed throw `ERR_UNKNOWN_RECORD`.
+kind: Telo.Definition
+metadata:
+  name: ExtractText
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/record-stream@0.2.0?local_path=./nodejs#extract-text
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable of records to project.
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Async iterable of strings produced by the configured projection.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    discriminator:
+      title: Discriminator
+      description: |
+        Field name in each record whose value selects the action via the
+        `records` map. Defaults to `type` (the universal JSON tagged-union
+        convention).
+      type: string
+      default: type
+    records:
+      title: Records
+      description: |
+        Map from discriminator value to the action that handles it. Every
+        record observed in the stream must have its discriminator value listed
+        here, or the encoder throws `ERR_UNKNOWN_RECORD`.
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          do:
+            title: Action
+            description: |
+              `emit` extracts `record[field]` (must be a string) downstream.
+              `drop` silently skips. `throw` raises with `record[field]?.message
+              ?? String(record[field])`.
+            type: string
+            enum: [emit, drop, throw]
+          field:
+            title: Field
+            description: |
+              Record-key whose value is extracted by `emit` or referenced by
+              `throw`. Required for those actions; ignored for `drop`.
+            type: string
+        required: [do]
+        additionalProperties: false
+  required: [records]
+  additionalProperties: false
+---
+# Fan one input stream out to two consumers. Each output sees every item.
+# When one consumer iterates ahead of the other, items are buffered in memory
+# for the lagging consumer; bounded by the input stream's length.
+kind: Telo.Definition
+metadata:
+  name: Tee
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/record-stream@0.2.0?local_path=./nodejs#tee
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable to fan out.
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      outputA:
+        x-telo-stream: true
+        description: First fan-out branch — every item from `input` in order.
+      outputB:
+        x-telo-stream: true
+        description: Second fan-out branch — every item from `input` in order.
+    required: [outputA, outputB]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

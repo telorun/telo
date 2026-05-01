@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleWriteStreamSmoke
+  version: 1.0.0
+  description: |
+    Smoke tests for Console.WriteStream. Verifies it accepts string streams,
+    Uint8Array streams, and rejects invalid item shapes.
+targets:
+  - TestStringStream
+  - TestBytesStream
+  - TestInvalidInput
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: StringSource }
+code: |
+  async function main() {
+    async function* gen() { yield "hi "; yield "there"; yield "\n"; }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: BytesSource }
+code: |
+  async function main() {
+    async function* gen() {
+      yield Buffer.from("by", "utf8");
+      yield Buffer.from("tes", "utf8");
+      yield Buffer.from("\n", "utf8");
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: BadSource }
+code: |
+  async function main() {
+    async function* gen() { yield 42; }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: Console.WriteStream
+metadata: { name: Stdout }
+---
+kind: Run.Sequence
+metadata: { name: TestStringStream }
+steps:
+  - name: StringSrc
+    invoke: { kind: JS.Script, name: StringSource }
+  - name: StringWrite
+    inputs:
+      input: "${{ steps.StringSrc.result.output }}"
+    invoke: { kind: Console.WriteStream, name: Stdout }
+  - name: AssertStringReached
+    inputs:
+      reached: true
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { reached: { const: true } }
+        required: [reached]
+---
+kind: Run.Sequence
+metadata: { name: TestBytesStream }
+steps:
+  - name: BytesSrc
+    invoke: { kind: JS.Script, name: BytesSource }
+  - name: BytesWrite
+    inputs:
+      input: "${{ steps.BytesSrc.result.output }}"
+    invoke: { kind: Console.WriteStream, name: Stdout }
+  - name: AssertBytesReached
+    inputs:
+      reached: true
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { reached: { const: true } }
+        required: [reached]
+---
+kind: Run.Sequence
+metadata: { name: TestInvalidInput }
+steps:
+  - name: BadSrc
+    invoke: { kind: JS.Script, name: BadSource }
+  - name: BadTried
+    try:
+      - name: BadWrite
+        inputs:
+          input: "${{ steps.BadSrc.result.output }}"
+        invoke: { kind: Console.WriteStream, name: Stdout }
+    catch:
+      - name: AssertBadCaught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties: { code: { const: "ERR_INVALID_INPUT" } }
+            required: [code]

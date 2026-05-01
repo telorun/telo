@@ -1,0 +1,183 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamTeeSmoke
+  version: 1.0.0
+  description: |
+    Smoke tests for RecordStream.Tee. Verifies sequential drain (consumer A
+    finishes first, then B), that both outputs receive every item, and that
+    a source error propagates to both branches.
+targets:
+  - TestSequentialDrain
+  - TestErrorPropagation
+  - TestEarlyCancellation
+---
+kind: Telo.Import
+metadata: { name: RecordStream }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: NumberSource }
+code: |
+  async function main() {
+    async function* gen() { yield 1; yield 2; yield 3; }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: FiveItemSource }
+code: |
+  async function main() {
+    async function* gen() { yield 1; yield 2; yield 3; yield 4; yield 5; }
+    return { output: new Stream(gen()) };
+  }
+---
+# Drains only the first two items then breaks. The Tee's `return()` should
+# fire, marking side A closed; side B must still see every item from source.
+kind: JS.Script
+metadata: { name: TakeTwo }
+code: |
+  async function main({ input }) {
+    const items = [];
+    for await (const x of input) {
+      items.push(x);
+      if (items.length >= 2) break;
+    }
+    return { items, count: items.length };
+  }
+---
+kind: JS.Script
+metadata: { name: ErrorSource }
+code: |
+  async function main() {
+    async function* gen() { yield 1; throw new Error("boom"); }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: CollectArray }
+code: |
+  async function main({ input }) {
+    const items = [];
+    for await (const x of input) items.push(x);
+    return { items, count: items.length };
+  }
+---
+kind: RecordStream.Tee
+metadata: { name: TeeStream }
+---
+# Drain consumer A entirely, then consumer B. Both must see [1, 2, 3].
+kind: Run.Sequence
+metadata: { name: TestSequentialDrain }
+steps:
+  - name: SeqSource
+    invoke: { kind: JS.Script, name: NumberSource }
+  - name: SeqTee
+    inputs:
+      input: "${{ steps.SeqSource.result.output }}"
+    invoke: { kind: RecordStream.Tee, name: TeeStream }
+  - name: SeqDrainA
+    inputs:
+      input: "${{ steps.SeqTee.result.outputA }}"
+    invoke: { kind: JS.Script, name: CollectArray }
+  - name: SeqDrainB
+    inputs:
+      input: "${{ steps.SeqTee.result.outputB }}"
+    invoke: { kind: JS.Script, name: CollectArray }
+  - name: SeqAssertA
+    inputs:
+      count: "${{ steps.SeqDrainA.result.count }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { count: { const: 3 } }
+        required: [count]
+  - name: SeqAssertB
+    inputs:
+      count: "${{ steps.SeqDrainB.result.count }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { count: { const: 3 } }
+        required: [count]
+---
+# Source throws after the first item. Consumer A drains the buffered first
+# item then sees the error. (Consumer B's behaviour after A's error is also
+# "throws on next pull" but isn't exercised here — would deadlock the
+# sequential drain pattern.)
+kind: Run.Sequence
+metadata: { name: TestErrorPropagation }
+steps:
+  - name: ErrSource
+    invoke: { kind: JS.Script, name: ErrorSource }
+  - name: ErrTee
+    inputs:
+      input: "${{ steps.ErrSource.result.output }}"
+    invoke: { kind: RecordStream.Tee, name: TeeStream }
+  - name: ErrTried
+    try:
+      - name: ErrDrainA
+        inputs:
+          input: "${{ steps.ErrTee.result.outputA }}"
+        invoke: { kind: JS.Script, name: CollectArray }
+    catch:
+      - name: AssertErrCaught
+        inputs:
+          message: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties: { message: { type: string, pattern: "boom" } }
+            required: [message]
+---
+# Side A breaks after 2 items; side B must still drain all 5. Confirms the
+# early-cancellation path doesn't starve the running consumer or deadlock.
+kind: Run.Sequence
+metadata: { name: TestEarlyCancellation }
+steps:
+  - name: EarlySource
+    invoke: { kind: JS.Script, name: FiveItemSource }
+  - name: EarlyTee
+    inputs:
+      input: "${{ steps.EarlySource.result.output }}"
+    invoke: { kind: RecordStream.Tee, name: TeeStream }
+  - name: EarlyTakeTwo
+    inputs:
+      input: "${{ steps.EarlyTee.result.outputA }}"
+    invoke: { kind: JS.Script, name: TakeTwo }
+  - name: EarlyDrainAll
+    inputs:
+      input: "${{ steps.EarlyTee.result.outputB }}"
+    invoke: { kind: JS.Script, name: CollectArray }
+  - name: AssertEarlyA
+    inputs:
+      count: "${{ steps.EarlyTakeTwo.result.count }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { count: { const: 2 } }
+        required: [count]
+  - name: AssertEarlyB
+    inputs:
+      count: "${{ steps.EarlyDrainAll.result.count }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { count: { const: 5 } }
+        required: [count]

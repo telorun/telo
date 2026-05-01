@@ -101,6 +101,7 @@ const sidebars: SidebarsConfig = {
           ],
         },
         { type: "doc", id: "modules/javascript/README", label: "JavaScript" },
+        { type: "doc", id: "modules/record-stream/README", label: "Record Stream" },
         {
           type: "category",
           label: "Run",

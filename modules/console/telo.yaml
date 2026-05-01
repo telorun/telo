@@ -2,14 +2,14 @@ kind: Telo.Library
 metadata:
   name: console
   namespace: std
-  version: 1.1.4
+  version: 1.2.0
 ---
 kind: Telo.Definition
 metadata:
   name: WriteLine
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/console@0.1.11?local_path=./nodejs#writeline
+  - pkg:npm/@telorun/console@0.2.0?local_path=./nodejs#writeline
 schema:
   type: object
   properties:
@@ -24,7 +24,7 @@ metadata:
   name: ReadLine
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/console@0.1.11?local_path=./nodejs#readline
+  - pkg:npm/@telorun/console@0.2.0?local_path=./nodejs#readline
 schema:
   type: object
   properties:
@@ -33,3 +33,26 @@ schema:
       description: Prompt text shown before reading input.
       type: string
   required: ["prompt"]
+---
+# Drain a `Stream<string | Uint8Array>` to stdout. Strings use Node's native
+# UTF-8 path; Uint8Array chunks pass through unchanged. No newline policy —
+# producers control framing.
+kind: Telo.Definition
+metadata:
+  name: WriteStream
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/console@0.2.0?local_path=./nodejs#writestream
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable of strings or Uint8Array chunks to write to stdout.
+    required: [input]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
