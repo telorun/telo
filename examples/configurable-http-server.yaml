@@ -50,8 +50,10 @@ routes:
       baseUrl: "${{ resources.Config.apiBaseUrl }}"
     returns:
       - status: 200
-        body:
-          message: Payment accepted
+        content:
+          application/json:
+            body:
+              message: Payment accepted
 ---
 kind: Http.Server
 metadata:

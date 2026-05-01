@@ -121,11 +121,11 @@ routes:
         score: "${{ size(request.body.text) }}"
     returns:
       - status: 201
-        headers:
-          Content-Type: application/json
-        body:
-          ok: true
-          message: Feedback received
+        content:
+          application/json:
+            body:
+              ok: true
+              message: Feedback received
 
   # GET /v1/feedback — list all entries
   - request:
@@ -138,9 +138,9 @@ routes:
       filters: {}
     returns:
       - status: 200
-        headers:
-          Content-Type: application/json
-        body: "${{ result.rows }}"
+        content:
+          application/json:
+            body: "${{ result.rows }}"
 
   # GET /v1/feedback/{id} — fetch a single entry by id
   - request:
@@ -162,12 +162,12 @@ routes:
     returns:
       - status: 200
         when: "${{ size(result.rows) > 0 }}"
-        headers:
-          Content-Type: application/json
-        body: "${{ result.rows[0] }}"
+        content:
+          application/json:
+            body: "${{ result.rows[0] }}"
       - status: 404
-        headers:
-          Content-Type: application/json
-        body:
-          ok: false
-          message: Not found
+        content:
+          application/json:
+            body:
+              ok: false
+              message: Not found

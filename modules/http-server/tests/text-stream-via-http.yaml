@@ -1,0 +1,347 @@
+kind: Telo.Application
+metadata:
+  name: TextStreamViaHttpTest
+  version: 1.0.0
+  description: |
+    End-to-end test for Http.Api `mode: stream` + format-codec encoders, using
+    Ai.TextStream as the upstream source. Three single-format routes verify
+    byte-exact wire output for NDJSON, SSE, and plain text. A fourth route
+    declares all three formats under one `content:` map and is hit with three
+    different `Accept` headers to verify the negotiation algorithm.
+targets:
+  - TestAllFormats
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../../ai
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ../../ai/tests/__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Ndjson }
+source: ../../ndjson-codec
+---
+kind: Telo.Import
+metadata: { name: Sse }
+source: ../../sse-codec
+---
+kind: Telo.Import
+metadata: { name: PlainText }
+source: ../../plain-text-codec
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+# One source — wire format is decided by the route's encoder, not by the source.
+kind: Ai.TextStream
+metadata: { name: ChatStream }
+model: { kind: AiEcho.EchoModel, name: Echo }
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: Sse.Encoder
+metadata: { name: SseEnc }
+---
+kind: PlainText.Encoder
+metadata: { name: PlainEnc }
+---
+# Helper: POST to a URL with {prompt}, drain the body, return {status, contentType, body}.
+kind: JS.Script
+metadata: { name: FetchAndDrain }
+code: |
+  async function main({ url, prompt, accept }) {
+    const headers = { "Content-Type": "application/json" };
+    if (accept) headers["Accept"] = accept;
+    const r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt }),
+    });
+    const chunks = [];
+    for await (const chunk of r.body) chunks.push(Buffer.from(chunk));
+    return {
+      status: r.status,
+      contentType: r.headers.get("content-type") || "",
+      body: Buffer.concat(chunks).toString("utf8"),
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+      prompt: { type: string }
+      accept: { type: string }
+    required: [url, prompt]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      contentType: { type: string }
+      body: { type: string }
+    required: [status, contentType, body]
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  # Single-format routes — byte-exact wire output.
+  - request:
+      path: /ndjson
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            prompt: { type: string }
+          required: [prompt]
+    handler: { kind: Ai.TextStream, name: ChatStream }
+    inputs:
+      prompt: "${{ request.body.prompt }}"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder, name: NdjsonEnc }
+  - request:
+      path: /sse
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            prompt: { type: string }
+          required: [prompt]
+    handler: { kind: Ai.TextStream, name: ChatStream }
+    inputs:
+      prompt: "${{ request.body.prompt }}"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/event-stream:
+            encoder: { kind: Sse.Encoder, name: SseEnc }
+  - request:
+      path: /plain
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            prompt: { type: string }
+          required: [prompt]
+    handler: { kind: Ai.TextStream, name: ChatStream }
+    inputs:
+      prompt: "${{ request.body.prompt }}"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/plain; charset=utf-8:
+            encoder: { kind: PlainText.Encoder, name: PlainEnc }
+
+  # Negotiated route — three formats on one entry, Accept-header picks one.
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            prompt: { type: string }
+          required: [prompt]
+    handler: { kind: Ai.TextStream, name: ChatStream }
+    inputs:
+      prompt: "${{ request.body.prompt }}"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder, name: NdjsonEnc }
+          text/event-stream:
+            encoder: { kind: Sse.Encoder, name: SseEnc }
+          text/plain; charset=utf-8:
+            encoder: { kind: PlainText.Encoder, name: PlainEnc }
+---
+kind: Run.Sequence
+metadata: { name: TestAllFormats }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8946
+    baseUrl: http://127.0.0.1:8946
+    logger: false
+    openapi:
+      info:
+        title: TextStream via HTTP test
+        version: 1.0.0
+    mounts:
+      - path: /
+        type: TextStreamViaHttpTest.Api
+targets:
+  - Server
+steps:
+  - name: HitNdjson
+    inputs:
+      url: http://127.0.0.1:8946/ndjson
+      prompt: "hi"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertNdjson
+    inputs:
+      status: "${{ steps.HitNdjson.result.status }}"
+      contentType: "${{ steps.HitNdjson.result.contentType }}"
+      body: "${{ steps.HitNdjson.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          contentType: { const: "application/x-ndjson" }
+          body:
+            const: |
+              {"type":"text-delta","delta":"h"}
+              {"type":"text-delta","delta":"i"}
+              {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
+        required: [status, contentType, body]
+
+  - name: HitSse
+    inputs:
+      url: http://127.0.0.1:8946/sse
+      prompt: "hi"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertSse
+    inputs:
+      status: "${{ steps.HitSse.result.status }}"
+      contentType: "${{ steps.HitSse.result.contentType }}"
+      body: "${{ steps.HitSse.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          contentType: { const: "text/event-stream" }
+          body:
+            const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
+        required: [status, contentType, body]
+
+  - name: HitPlain
+    inputs:
+      url: http://127.0.0.1:8946/plain
+      prompt: "hi"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertPlain
+    inputs:
+      status: "${{ steps.HitPlain.result.status }}"
+      contentType: "${{ steps.HitPlain.result.contentType }}"
+      body: "${{ steps.HitPlain.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          contentType: { const: "text/plain; charset=utf-8" }
+          body: { const: "hi" }
+        required: [status, contentType, body]
+
+  # Negotiation — Accept: application/x-ndjson picks NDJSON.
+  - name: NegotiateNdjson
+    inputs:
+      url: http://127.0.0.1:8946/chat
+      prompt: "hi"
+      accept: "application/x-ndjson"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertNegotiateNdjson
+    inputs:
+      contentType: "${{ steps.NegotiateNdjson.result.contentType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          contentType: { const: "application/x-ndjson" }
+        required: [contentType]
+
+  # Accept: text/event-stream picks SSE.
+  - name: NegotiateSse
+    inputs:
+      url: http://127.0.0.1:8946/chat
+      prompt: "hi"
+      accept: "text/event-stream"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertNegotiateSse
+    inputs:
+      contentType: "${{ steps.NegotiateSse.result.contentType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          contentType: { const: "text/event-stream" }
+        required: [contentType]
+
+  # No Accept (or */*) — first declared key wins (NDJSON, by declaration order).
+  - name: NegotiateDefault
+    inputs:
+      url: http://127.0.0.1:8946/chat
+      prompt: "hi"
+      accept: "*/*"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: AssertNegotiateDefault
+    inputs:
+      contentType: "${{ steps.NegotiateDefault.result.contentType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          contentType: { const: "application/x-ndjson" }
+        required: [contentType]
+
+  # No matching Accept → 406.
+  - name: NotAcceptable
+    inputs:
+      url: http://127.0.0.1:8946/chat
+      prompt: "hi"
+      accept: "image/png"
+    invoke: { kind: JS.Script, name: FetchAndDrain }
+  - name: Assert406
+    inputs:
+      status: "${{ steps.NotAcceptable.result.status }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 406 }
+        required: [status]

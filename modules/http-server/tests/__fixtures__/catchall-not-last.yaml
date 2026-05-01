@@ -33,7 +33,11 @@ routes:
       name: Handler
     returns:
       - status: 200
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }
       - status: 201
         when: "${{ result.ok }}"
-        body: { ok: true }
+        content:
+          application/json:
+            body: { ok: true }

@@ -47,5 +47,7 @@ routes:
       key: "${{ variables.apiKey }}"
     returns:
       - status: 200
-        body:
-          ok: "${{ result.ok }}"
+        content:
+          application/json:
+            body:
+              ok: "${{ result.ok }}"

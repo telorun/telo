@@ -107,6 +107,29 @@ function extractInlinesAtPath(
     if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
 
     const [head, ...rest] = partsLeft;
+
+    // Map iteration: descend into every value of the current object (used for
+    // schema fields with `additionalProperties` like `content[mime]`).
+    if (head === "{}") {
+      const container = obj as Record<string, unknown>;
+      for (const mapKey of Object.keys(container)) {
+        const elem = container[mapKey];
+        if (!elem || typeof elem !== "object") continue;
+        const sanitizedKey = sanitizeName(mapKey);
+
+        if (rest.length === 0) {
+          if (isInlineResource(elem as Record<string, unknown>)) {
+            const name = sanitizeName([parentName, ...nameParts, sanitizedKey].join("_"));
+            extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule, invocationContext));
+            container[mapKey] = { kind: (elem as Record<string, unknown>).kind, name };
+          }
+        } else {
+          traverse(elem, rest, [...nameParts, sanitizedKey]);
+        }
+      }
+      return;
+    }
+
     const isArr = head.endsWith("[]");
     const key = isArr ? head.slice(0, -2) : head;
     const container = obj as Record<string, unknown>;

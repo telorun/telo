@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: TextStreamStreamingContractTest
+  version: 1.0.0
+  description: |
+    Layer 1 hermetic streaming-contract test — exercises Ai.TextStream paired
+    with each shipped format-codec encoder, asserts byte-exact wire output for
+    a deterministic prompt. No HTTP, no live provider; the AiEcho fixture echoes
+    the prompt one character at a time. Three sub-targets, one per encoder
+    (NDJSON / SSE / PlainText). Step names unique across sequences so the
+    inline-resource synthetic naming doesn't collide.
+targets:
+  - TestNdjson
+  - TestSse
+  - TestPlain
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: AiEcho }
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata: { name: Ndjson }
+source: ../../ndjson-codec
+---
+kind: Telo.Import
+metadata: { name: Sse }
+source: ../../sse-codec
+---
+kind: Telo.Import
+metadata: { name: PlainText }
+source: ../../plain-text-codec
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+---
+kind: Ai.TextStream
+metadata: { name: ChatStream }
+model: { kind: AiEcho.EchoModel, name: Echo }
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: Sse.Encoder
+metadata: { name: SseEnc }
+---
+kind: PlainText.Encoder
+metadata: { name: PlainEnc }
+---
+kind: PlainText.Decoder
+metadata: { name: TextDec }
+---
+kind: Run.Sequence
+metadata: { name: TestNdjson }
+steps:
+  - name: NdjsonStream
+    inputs: { prompt: "hi" }
+    invoke: { kind: Ai.TextStream, name: ChatStream }
+  - name: NdjsonEncode
+    inputs:
+      input: "${{ steps.NdjsonStream.result.output }}"
+    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+  - name: NdjsonDecode
+    inputs:
+      input: "${{ steps.NdjsonEncode.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: TextDec }
+  - name: NdjsonAssert
+    inputs:
+      text: "${{ steps.NdjsonDecode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            const: |
+              {"type":"text-delta","delta":"h"}
+              {"type":"text-delta","delta":"i"}
+              {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
+        required: [text]
+---
+kind: Run.Sequence
+metadata: { name: TestSse }
+steps:
+  - name: SseStream
+    inputs: { prompt: "hi" }
+    invoke: { kind: Ai.TextStream, name: ChatStream }
+  - name: SseEncode
+    inputs:
+      input: "${{ steps.SseStream.result.output }}"
+    invoke: { kind: Sse.Encoder, name: SseEnc }
+  - name: SseDecode
+    inputs:
+      input: "${{ steps.SseEncode.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: TextDec }
+  - name: SseAssert
+    inputs:
+      text: "${{ steps.SseDecode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
+        required: [text]
+---
+kind: Run.Sequence
+metadata: { name: TestPlain }
+steps:
+  - name: PlainStream
+    inputs: { prompt: "hi" }
+    invoke: { kind: Ai.TextStream, name: ChatStream }
+  - name: PlainEncode
+    inputs:
+      input: "${{ steps.PlainStream.result.output }}"
+    invoke: { kind: PlainText.Encoder, name: PlainEnc }
+  - name: PlainDecode
+    inputs:
+      input: "${{ steps.PlainEncode.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: TextDec }
+  - name: PlainAssert
+    inputs:
+      text: "${{ steps.PlainDecode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          # PlainText.Encoder takes {delta} from text-delta parts and drops
+          # finish parts; output is the echoed text only.
+          text: { const: "hi" }
+        required: [text]

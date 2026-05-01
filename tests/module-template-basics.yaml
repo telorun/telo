@@ -28,7 +28,7 @@ routes:
       method: GET
     returns:
       - status: 200
-        headers:
-          Content-Type: application/json
-        body:
-          status: "ok"
+        content:
+          application/json:
+            body:
+              status: "ok"

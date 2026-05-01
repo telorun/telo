@@ -1,0 +1,131 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveTextStream
+  version: 1.0.0
+  description: |
+    Layer 2 live OpenAI streaming smoke test — exercises the full
+    Ai.TextStream → Ndjson.Encoder → PlainText.Decoder pipeline against the
+    real provider. Skips silently when OPENAI_API_KEY is unset (locally: drop
+    a .env.local in this directory; CI: secret on the workflow). NDJSON is
+    the only format exercised live; format encoding is covered hermetically
+    in the Layer 1 streaming-contract test.
+targets:
+  - LiveTextStream
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../../ai
+---
+kind: Telo.Import
+metadata: { name: AiOpenai }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Ndjson }
+source: ../../ndjson-codec
+---
+kind: Telo.Import
+metadata: { name: PlainText }
+source: ../../plain-text-codec
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# apiKey is null-coalesced so the resource passes schema validation when env is
+# unset. Vercel SDK is lazy — no API call until streamText is invoked, and the
+# run-step is gated on env presence.
+kind: AiOpenai.OpenaiModel
+metadata: { name: Live }
+model: gpt-4o-mini
+apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
+options:
+  temperature: 0
+  maxOutputTokens: 32
+---
+kind: Ai.TextStream
+metadata: { name: ChatStream }
+model: { kind: AiOpenai.OpenaiModel, name: Live }
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: PlainText.Decoder
+metadata: { name: TextDec }
+---
+# Inspect the assembled NDJSON wire output: extract the last line, parse it as
+# JSON, and surface usage/finishReason/deltaCount fields the live assertion
+# verifies. Done in JS so we don't pull a JSON-line-decoder dependency just for
+# the live test.
+kind: JS.Script
+metadata: { name: AnalyzeNdjson }
+code: |
+  async function main({ ndjson }) {
+    const lines = ndjson.split("\n").filter(l => l.length > 0);
+    if (lines.length === 0) {
+      throw new Error("Empty NDJSON output from Ai.TextStream live run");
+    }
+    const parsed = lines.map((l) => JSON.parse(l));
+    const finish = parsed.find((p) => p.type === "finish");
+    if (!finish) {
+      throw new Error("No finish part in NDJSON output: " + ndjson);
+    }
+    const deltas = parsed.filter((p) => p.type === "text-delta");
+    const text = deltas.map((d) => d.delta).join("");
+    return {
+      lineCount: lines.length,
+      deltaCount: deltas.length,
+      text,
+      finishReason: finish.finishReason,
+      totalTokens: finish.usage.totalTokens,
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: LiveTextStream }
+steps:
+  - name: GuardEnv
+    if: "${{ env.OPENAI_API_KEY != null }}"
+    then:
+      - name: Stream
+        inputs:
+          prompt: "Reply with exactly: hello"
+        invoke: { kind: Ai.TextStream, name: ChatStream }
+      - name: Encode
+        inputs:
+          input: "${{ steps.Stream.result.output }}"
+        invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+      - name: Decode
+        inputs:
+          input: "${{ steps.Encode.result.output }}"
+        invoke: { kind: PlainText.Decoder, name: TextDec }
+      - name: Analyze
+        inputs:
+          ndjson: "${{ steps.Decode.result.text }}"
+        invoke: { kind: JS.Script, name: AnalyzeNdjson }
+      - name: Assert
+        inputs:
+          lineCount: "${{ steps.Analyze.result.lineCount }}"
+          deltaCount: "${{ steps.Analyze.result.deltaCount }}"
+          text: "${{ steps.Analyze.result.text }}"
+          finishReason: "${{ steps.Analyze.result.finishReason }}"
+          totalTokens: "${{ steps.Analyze.result.totalTokens }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              lineCount: { type: integer, minimum: 2 }
+              deltaCount: { type: integer, minimum: 1 }
+              text: { type: string, minLength: 1 }
+              finishReason: { type: string, enum: [stop, length, content-filter, error, other] }
+              totalTokens: { type: integer, minimum: 1 }
+            required: [lineCount, deltaCount, text, finishReason, totalTokens]

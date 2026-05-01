@@ -101,11 +101,11 @@ routes:
         - "${{ size(request.body.text) }}"
     returns:
       - status: 201
-        headers:
-          Content-Type: application/json
-        body:
-          ok: true
-          message: Feedback received
+        content:
+          application/json:
+            body:
+              ok: true
+              message: Feedback received
 
   # GET /v1/feedback — list all entries, newest first
   - request:
@@ -120,9 +120,9 @@ routes:
       sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     returns:
       - status: 200
-        headers:
-          Content-Type: application/json
-        body: "${{ result.rows }}"
+        content:
+          application/json:
+            body: "${{ result.rows }}"
 
   # GET /v1/feedback/{id} — fetch a single entry
   - request:
@@ -147,12 +147,12 @@ routes:
     returns:
       - status: 200
         when: "${{ size(result.rows) > 0 }}"
-        headers:
-          Content-Type: application/json
-        body: "${{ result.rows[0] }}"
+        content:
+          application/json:
+            body: "${{ result.rows[0] }}"
       - status: 404
-        headers:
-          Content-Type: application/json
-        body:
-          ok: false
-          message: Not found
+        content:
+          application/json:
+            body:
+              ok: false
+              message: Not found

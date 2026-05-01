@@ -212,6 +212,11 @@ class HttpServer implements ResourceInstance {
             body: request.body,
           },
         };
+        const acceptHeader = (
+          (request.headers as Record<string, string | string[] | undefined>)["accept"] as
+            | string
+            | undefined
+        )?.toString();
 
         let result: any;
         try {
@@ -222,6 +227,7 @@ class HttpServer implements ResourceInstance {
             handler.catches,
             { code: err.code, message: err.message, data: err.data },
             requestContext,
+            acceptHeader,
             this.ctx.moduleContext,
             this.ctx.validateSchema.bind(this.ctx),
             reply,
@@ -233,6 +239,7 @@ class HttpServer implements ResourceInstance {
             handler.returns,
             result,
             requestContext,
+            acceptHeader,
             this.ctx.moduleContext,
             this.ctx.validateSchema.bind(this.ctx),
             reply,
