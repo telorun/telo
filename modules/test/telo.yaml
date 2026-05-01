@@ -42,5 +42,11 @@ schema:
       description: >
         Optional substring filter applied to each discovered path. Only matching
         tests are executed.
+    concurrency:
+      type: integer
+      minimum: 1
+      description: >
+        Maximum number of tests to run in parallel. Defaults to 3. Set to 1
+        to force sequential execution.
   required:
     - metadata
