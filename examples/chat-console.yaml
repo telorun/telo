@@ -1,0 +1,193 @@
+kind: Telo.Application
+metadata:
+  name: ChatConsole
+  description: |
+    Interactive REPL chat with OpenAI streaming completions. Persists the full
+    conversation in a local SQLite file (`./chat-history.sqlite`) so each turn
+    sees prior history and the chat survives process restart. Type `/exit` (or
+    send EOF) to leave.
+
+    Run with the OpenAI key in a sibling `.env.local` file:
+        OPENAI_API_KEY=sk-...
+    The CLI loads `.env.local` from the manifest's directory automatically.
+targets:
+  - InitSchema
+  - ChatLoop
+---
+kind: Telo.Import
+metadata: { name: AiOpenai }
+source: ../modules/ai-openai
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../modules/ai
+---
+kind: Telo.Import
+metadata: { name: RecordStream }
+source: ../modules/record-stream
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../modules/console
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../modules/javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../modules/run
+---
+kind: Telo.Import
+metadata: { name: Sql }
+source: ../modules/sql
+---
+# --- Persistence -----------------------------------------------------------
+kind: Sql.Connection
+metadata: { name: ChatDb }
+driver: sqlite
+file: ./chat-history.sqlite
+---
+kind: Sql.Migration
+metadata: { name: CreateMessagesTable }
+version: "20260501_create_messages"
+sql: |
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+---
+kind: Sql.Migrations
+metadata: { name: InitSchema }
+connection: { kind: Sql.Connection, name: ChatDb }
+---
+# --- AI provider -----------------------------------------------------------
+kind: AiOpenai.OpenaiModel
+metadata: { name: Gpt4oMini }
+model: gpt-4o-mini
+apiKey: "${{ env.OPENAI_API_KEY }}"
+options:
+  temperature: 0.7
+---
+kind: Ai.TextStream
+metadata: { name: ChatStream }
+model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+system: "You are a helpful CLI assistant. Keep replies brief — one or two sentences."
+---
+# --- Stream pipeline -------------------------------------------------------
+# Project StreamPart records to plain text-delta strings.
+kind: RecordStream.ExtractText
+metadata: { name: Deltas }
+discriminator: type
+records:
+  text-delta: { do: emit, field: delta }
+  finish: { do: drop }
+  error: { do: throw, field: error }
+---
+# Fan the model's stream out: one branch prints to stdout, the other captures
+# the assistant text for the history INSERT.
+kind: RecordStream.Tee
+metadata: { name: ModelTee }
+---
+kind: Console.WriteStream
+metadata: { name: Stdout }
+---
+# --- Chat-turn helpers (JS) ------------------------------------------------
+# Build the messages array passed to Ai.TextStream from prior history rows
+# plus the new user turn. Done in JS because cel-js doesn't support inline
+# object-literal construction (verified against `@marcbachmann/cel-js` 7.5.x).
+kind: JS.Script
+metadata: { name: ComposeMessages }
+code: |
+  async function main({ history, userText }) {
+    const messages = (history ?? []).map(({ role, content }) => ({ role, content }));
+    messages.push({ role: "user", content: userText });
+    return { messages };
+  }
+---
+# Drain a Stream<StreamPart>, accumulate every text-delta into a single string
+# for the assistant-row INSERT. Throws on error parts; ignores finish parts.
+kind: JS.Script
+metadata: { name: CaptureText }
+code: |
+  async function main({ input }) {
+    let assistantText = "";
+    for await (const part of input) {
+      if (part.type === "text-delta") {
+        assistantText += part.delta;
+      } else if (part.type === "error") {
+        throw new Error(part.error?.message ?? "AI stream error");
+      }
+      // finish: ignore
+    }
+    return { assistantText };
+  }
+---
+# --- REPL ------------------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: ChatLoop }
+steps:
+  # do-while via shared step name `Read`: pre-loop initializes; the in-body
+  # `Read` overwrites it each iteration. Pattern matches tests/run-sequence-while.yaml.
+  - name: Read
+    invoke:
+      kind: Console.ReadLine
+      prompt: "you"
+  - name: Loop
+    while: "${{ steps.Read.result.value != '/exit' }}"
+    do:
+      - name: ReadHistory
+        inputs:
+          sql: "SELECT role, content FROM messages ORDER BY id ASC"
+        invoke:
+          kind: Sql.Query
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: InsertUser
+        inputs:
+          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+          bindings: ["user", "${{ steps.Read.result.value }}"]
+        invoke:
+          kind: Sql.Exec
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: ComposeMessages
+        invoke: { kind: JS.Script, name: ComposeMessages }
+        inputs:
+          history: "${{ steps.ReadHistory.result.rows }}"
+          userText: "${{ steps.Read.result.value }}"
+      - name: Stream
+        invoke: { kind: Ai.TextStream, name: ChatStream }
+        inputs:
+          messages: "${{ steps.ComposeMessages.result.messages }}"
+      - name: Tee
+        invoke: { kind: RecordStream.Tee, name: ModelTee }
+        inputs:
+          input: "${{ steps.Stream.result.output }}"
+      - name: Project
+        invoke: { kind: RecordStream.ExtractText, name: Deltas }
+        inputs:
+          input: "${{ steps.Tee.result.outputA }}"
+      - name: Print
+        invoke: { kind: Console.WriteStream, name: Stdout }
+        inputs:
+          input: "${{ steps.Project.result.output }}"
+      - name: Capture
+        invoke: { kind: JS.Script, name: CaptureText }
+        inputs:
+          input: "${{ steps.Tee.result.outputB }}"
+      - name: InsertAssistant
+        inputs:
+          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+          bindings: ["assistant", "${{ steps.Capture.result.assistantText }}"]
+        invoke:
+          kind: Sql.Exec
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: Newline
+        invoke:
+          kind: Console.WriteLine
+          output: ""
+      - name: Read
+        invoke:
+          kind: Console.ReadLine
+          prompt: "you"

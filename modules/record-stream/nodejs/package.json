@@ -1,40 +1,47 @@
 {
-  "name": "@telorun/console",
+  "name": "@telorun/record-stream",
   "version": "0.2.0",
-  "description": "Telo Console module - Console I/O resource kinds for Telo manifests.",
+  "description": "Stream operations on structured records — generic, format-neutral transformers.",
   "keywords": [
     "telo",
-    "console",
-    "io"
+    "stream",
+    "records",
+    "transform"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/console/nodejs"
+    "directory": "modules/record-stream/nodejs"
   },
   "homepage": "https://github.com/telorun/telo#readme",
   "bugs": {
     "url": "https://github.com/telorun/telo/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    "./writeline": {
-      "bun": "./src/writeline-controller.ts",
-      "import": "./dist/writeline-controller.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
     },
-    "./readline": {
-      "bun": "./src/readline-controller.ts",
-      "import": "./dist/readline-controller.js"
+    "./extract-text": {
+      "types": "./dist/extract-text-controller.d.ts",
+      "bun": "./src/extract-text-controller.ts",
+      "import": "./dist/extract-text-controller.js"
     },
-    "./writestream": {
-      "bun": "./src/writestream-controller.ts",
-      "import": "./dist/writestream-controller.js"
+    "./tee": {
+      "types": "./dist/tee-controller.d.ts",
+      "bun": "./src/tee-controller.ts",
+      "import": "./dist/tee-controller.js"
     }
   },
   "files": [
-    "dist",
+    "dist/**",
     "src/**"
   ],
   "scripts": {
@@ -48,13 +55,5 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
-  },
-  "digly": {
-    "controllers": [
-      {
-        "engine": "nodejs",
-        "entry": "./dist/writeline-controller.js"
-      }
-    ]
   }
 }

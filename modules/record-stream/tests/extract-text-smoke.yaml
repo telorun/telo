@@ -1,0 +1,171 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamExtractTextSmoke
+  version: 1.0.0
+  description: |
+    Hermetic smoke test for RecordStream.ExtractText. Drives a synthetic record
+    stream through ExtractText with the canonical AI shape (text-delta / finish
+    / error) and asserts the projected string stream is collected correctly. The
+    finish part must be silently dropped; the text-delta parts must be emitted
+    in order; an error part is exercised in the dedicated error sub-target.
+targets:
+  - TestEmitAndDrop
+  - TestThrow
+  - TestUnknownRecord
+---
+kind: Telo.Import
+metadata: { name: RecordStream }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Source: emits two text-delta parts then a finish part. ExtractText should
+# drop the finish part and yield the two delta strings.
+kind: JS.Script
+metadata: { name: AiLikeSource }
+code: |
+  async function main() {
+    async function* gen() {
+      yield { type: "text-delta", delta: "he" };
+      yield { type: "text-delta", delta: "llo" };
+      yield { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" };
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+# Drains a Stream<string> into a single concatenated string for assertion.
+kind: JS.Script
+metadata: { name: CollectStrings }
+code: |
+  async function main({ input }) {
+    let text = "";
+    let count = 0;
+    for await (const chunk of input) {
+      text += chunk;
+      count += 1;
+    }
+    return { text, count };
+  }
+---
+kind: RecordStream.ExtractText
+metadata: { name: Deltas }
+discriminator: type
+records:
+  text-delta: { do: emit, field: delta }
+  finish: { do: drop }
+  error: { do: throw, field: error }
+---
+kind: Run.Sequence
+metadata: { name: TestEmitAndDrop }
+steps:
+  - name: Source
+    invoke: { kind: JS.Script, name: AiLikeSource }
+  - name: Project
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+  - name: Collect
+    inputs:
+      input: "${{ steps.Project.result.output }}"
+    invoke: { kind: JS.Script, name: CollectStrings }
+  - name: Assert
+    inputs:
+      text: "${{ steps.Collect.result.text }}"
+      count: "${{ steps.Collect.result.count }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "hello" }
+          count: { const: 2 }
+        required: [text, count]
+---
+# Source emits an error part. ExtractText should throw with the error's
+# message; Run.Sequence's try/catch surfaces the failure as a structured error.
+kind: JS.Script
+metadata: { name: ErrorSource }
+code: |
+  async function main() {
+    async function* gen() {
+      yield { type: "text-delta", delta: "ok" };
+      yield { type: "error", error: { message: "boom" } };
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestThrow }
+steps:
+  - name: ErrorSource
+    invoke: { kind: JS.Script, name: ErrorSource }
+  - name: ErrorProject
+    inputs:
+      input: "${{ steps.ErrorSource.result.output }}"
+    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+  - name: ErrorTried
+    try:
+      - name: ErrorDrain
+        inputs:
+          input: "${{ steps.ErrorProject.result.output }}"
+        invoke: { kind: JS.Script, name: CollectStrings }
+    catch:
+      - name: AssertErrorCaught
+        inputs:
+          message: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              message: { type: string, pattern: "boom" }
+            required: [message]
+---
+# Source emits a record whose discriminator value isn't listed in `records`.
+# ExtractText must throw ERR_UNKNOWN_RECORD.
+kind: JS.Script
+metadata: { name: UnknownSource }
+code: |
+  async function main() {
+    async function* gen() {
+      yield { type: "tool-call-delta", id: "abc", arguments: "{}" };
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestUnknownRecord }
+steps:
+  - name: UnknownSource
+    invoke: { kind: JS.Script, name: UnknownSource }
+  - name: UnknownProject
+    inputs:
+      input: "${{ steps.UnknownSource.result.output }}"
+    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+  - name: UnknownTried
+    try:
+      - name: UnknownDrain
+        inputs:
+          input: "${{ steps.UnknownProject.result.output }}"
+        invoke: { kind: JS.Script, name: CollectStrings }
+    catch:
+      - name: AssertUnknownCaught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: "ERR_UNKNOWN_RECORD" }
+            required: [code]
