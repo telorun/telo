@@ -1,5 +1,12 @@
 # @telorun/run
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [b62e535]
+  - @telorun/sdk@0.7.0
+
 ## 0.2.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/s3",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Telo S3 module - AWS S3 resource kinds for Telo manifests.",
   "keywords": [
     "telo",

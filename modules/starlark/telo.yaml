@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  version: 0.3.1
+  version: 0.3.2
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows
@@ -10,7 +10,7 @@ metadata:
   name: Script
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/starlark@0.2.1?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@0.2.2?local_path=./nodejs#script
   - pkg:cargo/telorun-starlark?local_path=./rust
 schema:
   type: object

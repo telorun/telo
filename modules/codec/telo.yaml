@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: codec
   namespace: std
-  version: 1.0.0
+  version: 1.1.0
   description: |
     The Encoder and Decoder abstracts — Invocable contracts every concrete
     stream codec implements. Format-specific codec packages (plain-text-codec,

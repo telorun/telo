@@ -2,14 +2,14 @@ kind: Telo.Library
 metadata:
   name: "javascript"
   namespace: std
-  version: "0.2.4"
+  version: "0.3.0"
 ---
 kind: "Telo.Definition"
 metadata:
   name: "Script"
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/javascript@0.1.13?local_path=./nodejs#script
+  - pkg:npm/@telorun/javascript@0.2.0?local_path=./nodejs#script
 schema:
   type: "object"
   properties:

@@ -1,5 +1,12 @@
 # @telorun/starlark
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [b62e535]
+  - @telorun/sdk@0.7.0
+
 ## 0.2.1
 
 ### Patch Changes
