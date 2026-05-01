@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: plain-text-codec
   namespace: std
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Plain-text codec — UTF-8 string ↔ byte iterables. Encoder accepts
     `{delta: string}` (the AI streaming shape), bare strings, or `Uint8Array`
@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:npm/@telorun/plain-text-codec@1.0.0?local_path=./nodejs#encoder
+  - pkg:npm/@telorun/plain-text-codec@1.1.0?local_path=./nodejs#encoder
 schema:
   type: object
   additionalProperties: false
@@ -39,7 +39,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:
-  - pkg:npm/@telorun/plain-text-codec@1.0.0?local_path=./nodejs#decoder
+  - pkg:npm/@telorun/plain-text-codec@1.1.0?local_path=./nodejs#decoder
 outputType:
   kind: Type.JsonSchema
   schema:

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: record-stream
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Stream operations on structured records. Generic, format-neutral
     transformers / sources / sinks that operate on `Stream<record>`.
@@ -29,7 +29,7 @@ metadata:
   name: ExtractText
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.2.0?local_path=./nodejs#extract-text
+  - pkg:npm/@telorun/record-stream@0.3.0?local_path=./nodejs#extract-text
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -98,7 +98,7 @@ metadata:
   name: Tee
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.2.0?local_path=./nodejs#tee
+  - pkg:npm/@telorun/record-stream@0.3.0?local_path=./nodejs#tee
 inputType:
   kind: Type.JsonSchema
   schema:
