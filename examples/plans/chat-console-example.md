@@ -108,7 +108,7 @@ kind: Run.Sequence
 metadata: { name: ChatLoop }
 steps:
   # do-while via shared step name `Read`: pre-loop initializes it; the in-body
-  # `Read` overwrites it each iteration. Pattern matches tests/run-sequence-while.yaml.
+  # `Read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
   - name: Read
     invoke: { kind: Console.ReadLine }
     inputs: { prompt: "you" }
@@ -254,6 +254,6 @@ lives in the example manifest as `code:`.
 5. **Example.** Create `examples/chat-console.yaml` with the SQLite schema,
    the `CaptureText` JS step, and the `Run.Sequence` shown in the manifest
    sketch (single shared `Read` step name, pre-loop + end-of-body, per
-   tests/run-sequence-while.yaml pattern). The manifest reads
+   modules/run/tests/run-sequence-while.yaml pattern). The manifest reads
    `OPENAI_API_KEY` from `env` (Telo loads `.env.local` automatically; the
    user provides the key there at run time).

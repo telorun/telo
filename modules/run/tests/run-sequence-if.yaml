@@ -1,0 +1,321 @@
+kind: Telo.Application
+metadata:
+  name: RunSequenceIf
+  version: 1.0.0
+targets:
+  - TestIfBranches
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../javascript
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestIfBranches
+steps:
+  # --- if/then: condition true, then branch executes ---
+  - name: TrueCondition
+    if: "${{ true }}"
+    then:
+      - name: ThenRan
+        inputs:
+          branch: "then"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              branch:
+                const: "then"
+
+  # Verify then branch produced a result (Assert.Schema returns true on pass).
+  - name: VerifyThenRan
+    inputs:
+      result: "${{ steps.ThenRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- if/then/else: condition false, else branch executes ---
+  - name: FalseCondition
+    if: "${{ false }}"
+    then:
+      # If this ran, assertion would fail (1 != 0).
+      - name: WrongBranch
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 0
+    else:
+      - name: ElseRan
+        inputs:
+          branch: "else"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              branch:
+                const: "else"
+
+  - name: VerifyElseRan
+    inputs:
+      result: "${{ steps.ElseRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- data-driven condition: branch chosen by a prior step result ---
+  - name: Setup
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main() { return { value: 42 } }
+
+  - name: DataDrivenIf
+    if: "${{ steps.Setup.result.value == 42 }}"
+    then:
+      - name: CorrectBranch
+        inputs:
+          value: "${{ steps.Setup.result.value }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              value:
+                const: 42
+    else:
+      # Would fail if reached.
+      - name: WrongValueBranch
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 0
+
+  - name: VerifyDataBranch
+    inputs:
+      result: "${{ steps.CorrectBranch.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- if/elseif: first elseif branch matches ---
+  - name: ElseIfFirstMatches
+    if: "${{ false }}"
+    then:
+      # Would fail if reached.
+      - name: WrongIfBranch
+        inputs:
+          x: 1
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              x:
+                const: 0
+    elseif:
+      - if: "${{ true }}"
+        then:
+          - name: FirstElseIfRan
+            inputs:
+              branch: "elseif-1"
+            invoke:
+              kind: Assert.Schema
+              schema:
+                type: object
+                properties:
+                  branch:
+                    const: "elseif-1"
+      - if: "${{ true }}"
+        then:
+          # Would fail if reached — first matching elseif must short-circuit.
+          - name: SecondElseIfWrong
+            inputs:
+              x: 1
+            invoke:
+              kind: Assert.Schema
+              schema:
+                type: object
+                properties:
+                  x:
+                    const: 0
+
+  - name: VerifyFirstElseIf
+    inputs:
+      result: "${{ steps.FirstElseIfRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- if/elseif: later elseif branch matches after earlier ones fail ---
+  - name: ElseIfLaterMatches
+    if: "${{ false }}"
+    then:
+      - name: WrongIfBranch2
+        inputs: { x: 1 }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { x: { const: 0 } } }
+    elseif:
+      - if: "${{ false }}"
+        then:
+          - name: SkippedElseIf
+            inputs: { x: 1 }
+            invoke:
+              kind: Assert.Schema
+              schema: { type: object, properties: { x: { const: 0 } } }
+      - if: "${{ true }}"
+        then:
+          - name: SecondElseIfRan
+            inputs:
+              branch: "elseif-2"
+            invoke:
+              kind: Assert.Schema
+              schema:
+                type: object
+                properties:
+                  branch:
+                    const: "elseif-2"
+
+  - name: VerifySecondElseIf
+    inputs:
+      result: "${{ steps.SecondElseIfRan.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- if/elseif/else: no elseif matches, fall through to else ---
+  - name: ElseIfFallsThroughToElse
+    if: "${{ false }}"
+    then:
+      - name: WrongIfBranch3
+        inputs: { x: 1 }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { x: { const: 0 } } }
+    elseif:
+      - if: "${{ false }}"
+        then:
+          - name: ElseIfNoMatch
+            inputs: { x: 1 }
+            invoke:
+              kind: Assert.Schema
+              schema: { type: object, properties: { x: { const: 0 } } }
+    else:
+      - name: ElseRanAfterElseIf
+        inputs:
+          branch: "else-after-elseif"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              branch:
+                const: "else-after-elseif"
+
+  - name: VerifyElseAfterElseIf
+    inputs:
+      result: "${{ steps.ElseRanAfterElseIf.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true
+
+  # --- if/elseif: data-driven dispatch via a prior step ---
+  - name: SetupRole
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main() { return { role: "editor" } }
+
+  - name: ElseIfDataDriven
+    if: "${{ steps.SetupRole.result.role == 'admin' }}"
+    then:
+      - name: AdminBranch
+        inputs: { x: 1 }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { x: { const: 0 } } }
+    elseif:
+      - if: "${{ steps.SetupRole.result.role == 'editor' }}"
+        then:
+          - name: EditorBranch
+            inputs:
+              role: "${{ steps.SetupRole.result.role }}"
+            invoke:
+              kind: Assert.Schema
+              schema:
+                type: object
+                properties:
+                  role:
+                    const: "editor"
+      - if: "${{ steps.SetupRole.result.role == 'viewer' }}"
+        then:
+          - name: ViewerBranch
+            inputs: { x: 1 }
+            invoke:
+              kind: Assert.Schema
+              schema: { type: object, properties: { x: { const: 0 } } }
+    else:
+      - name: UnknownRoleBranch
+        inputs: { x: 1 }
+        invoke:
+          kind: Assert.Schema
+          schema: { type: object, properties: { x: { const: 0 } } }
+
+  - name: VerifyDataDrivenElseIf
+    inputs:
+      result: "${{ steps.EditorBranch.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            const: true

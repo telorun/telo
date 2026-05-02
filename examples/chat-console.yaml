@@ -111,7 +111,7 @@ kind: Run.Sequence
 metadata: { name: ChatLoop }
 steps:
   # do-while via shared step name `Read`: pre-loop initializes; the in-body
-  # `Read` overwrites it each iteration. Pattern matches tests/run-sequence-while.yaml.
+  # `Read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
   - name: Read
     invoke:
       kind: Console.ReadLine

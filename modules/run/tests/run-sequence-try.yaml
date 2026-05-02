@@ -8,17 +8,17 @@ targets:
 kind: Telo.Import
 metadata:
   name: Run
-source: ../modules/run
+source: ../
 ---
 kind: Telo.Import
 metadata:
   name: JavaScript
-source: ../modules/javascript
+source: ../../javascript
 ---
 kind: Telo.Import
 metadata:
   name: Assert
-source: ../modules/assert
+source: ../../assert
 ---
 kind: Run.Sequence
 metadata:
