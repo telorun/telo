@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: s3
   namespace: std
-  version: 1.0.6
+  version: 1.1.0
 secrets:
   accessKeyId:
     type: string
@@ -15,13 +15,14 @@ exports:
     - Bucket
     - List
     - Put
+    - Get
 ---
 kind: Telo.Definition
 metadata:
   name: Bucket
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/s3@1.0.9?local_path=./nodejs#s3-bucket
+  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-bucket
 schema:
   type: object
   properties:
@@ -54,7 +55,7 @@ metadata:
   name: List
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.0.9?local_path=./nodejs#s3-list
+  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-list
 schema:
   type: object
   properties:
@@ -77,7 +78,7 @@ metadata:
   name: Put
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.0.9?local_path=./nodejs#s3-put
+  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-put
 schema:
   type: object
   properties:
@@ -114,3 +115,67 @@ schema:
         - body
   required:
     - bucketRef
+---
+# Get: streams an object's bytes from the bucket.
+#
+# Pair the `output` stream with an Encoder (e.g. Octet.Encoder for raw bytes,
+# PlainText.Encoder if you want UTF-8-decoded chunks) when wiring through an
+# Http.Api response — manifests stay byte-streaming end-to-end and never
+# buffer the body in memory.
+kind: Telo.Definition
+metadata:
+  name: Get
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-get
+throws:
+  codes:
+    ERR_NOT_FOUND:
+      description: No object exists at the requested key in the referenced bucket.
+    ERR_INVALID_REFERENCE:
+      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
+    ERR_INVALID_RESPONSE:
+      description: The storage backend returned a successful response with no iterable body.
+schema:
+  type: object
+  properties:
+    bucketRef:
+      title: Bucket Reference
+      type: object
+      description: Reference to an S3.Bucket resource by name.
+      properties:
+        name:
+          title: Name
+          description: Name of the referenced bucket resource.
+          type: string
+      required:
+        - name
+  required:
+    - bucketRef
+  additionalProperties: false
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      key:
+        title: Key
+        description: Object key path inside the bucket.
+        type: string
+    required:
+      - key
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Async iterable of Uint8Array chunks streamed from the storage backend.
+      contentType:
+        type: string
+        description: Content-Type header reported by the storage backend, when available.
+    required:
+      - output
+    additionalProperties: false

@@ -253,4 +253,3 @@ Two shapes:
 
 - [`../test-suite.yaml`](../test-suite.yaml) — discovery entry point.
 - [`../modules/test/docs/suite.md`](../modules/test/docs/suite.md) — `Test.Suite` reference and CLI flags.
-- [`../CLAUDE.md`](../CLAUDE.md) — repo-wide architectural rules.

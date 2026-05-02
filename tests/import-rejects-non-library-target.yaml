@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: ImportRejectsNonLibraryTargetTest
+  version: 1.0.0
+targets:
+  - TestImportNonLibraryRejected
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Assert.Manifest
+metadata:
+  name: TestImportNonLibraryRejected
+source: ./__fixtures__/imports-a-non-library.yaml
+expect:
+  loadError: "did not resolve to a Telo.Library"

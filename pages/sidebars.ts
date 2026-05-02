@@ -119,6 +119,7 @@ const sidebars: SidebarsConfig = {
           items: [
             { type: "doc", id: "modules/s3/docs/bucket", label: "S3.Bucket" },
             { type: "doc", id: "modules/s3/docs/put", label: "S3.Put" },
+            { type: "doc", id: "modules/s3/docs/get", label: "S3.Get" },
             { type: "doc", id: "modules/s3/docs/list", label: "S3.List" },
           ],
         },

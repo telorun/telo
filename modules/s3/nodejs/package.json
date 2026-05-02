@@ -1,6 +1,6 @@
 {
   "name": "@telorun/s3",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Telo S3 module - AWS S3 resource kinds for Telo manifests.",
   "keywords": [
     "telo",
@@ -32,6 +32,10 @@
     "./s3-put": {
       "bun": "./src/s3-put-controller.ts",
       "import": "./dist/s3-put-controller.js"
+    },
+    "./s3-get": {
+      "bun": "./src/s3-get-controller.ts",
+      "import": "./dist/s3-get-controller.js"
     }
   },
   "files": [

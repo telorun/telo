@@ -391,12 +391,6 @@ steps:
 outputs:
   published: "${{ inputs.published }}"
 ---
-kind: HttpClient.Client
-metadata:
-  name: S3Client
-baseUrl: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName }}"
-
----
 kind: Http.Api
 metadata:
   name: Health
@@ -599,20 +593,34 @@ routes:
             version: { type: string, default: "1.1.0" }
           required: ["namespace", "name", "version"]
     handler:
-      kind: HttpClient.Request
-      mode: stream
-      client: S3Client
-      inputs:
-        method: GET
-        url: "${{ '/' + inputs.path + '/telo.yaml' }}"
+      kind: S3.Get
+      bucketRef:
+        name: ModuleStore
     inputs:
-      path: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version }}"
+      key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
     returns:
       - status: 200
         mode: stream
         content:
           text/yaml:
             encoder: { kind: Octet.Encoder }
+    catches:
+      - when: "${{ error.code == 'ERR_NOT_FOUND' }}"
+        status: 404
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+      - when: "${{ error.code == 'ERR_INVALID_REFERENCE' || error.code == 'ERR_INVALID_RESPONSE' }}"
+        status: 500
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
 
   - request:
       path: /{namespace}/{name}/{version}

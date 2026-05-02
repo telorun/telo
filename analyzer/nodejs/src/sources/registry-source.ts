@@ -24,7 +24,24 @@ export class RegistrySource implements ManifestSource {
         `Failed to fetch manifest ${moduleRef}: ${response.status} ${response.statusText}`,
       );
     }
-    return { text: await response.text(), source: fetchUrl };
+    const text = await response.text();
+    // Some object-storage backends (e.g. Cloudflare R2 / S3) surface auth or
+    // permission failures by returning a 200 status with an XML error body.
+    // Catch this here so the loader produces a precise error rather than
+    // silently parsing the XML as YAML and reporting a downstream UNDEFINED_KIND.
+    if (text.trimStart().startsWith("<?xml") || text.trimStart().startsWith("<Error")) {
+      const codeMatch = text.match(/<Code>([^<]+)<\/Code>/);
+      const messageMatch = text.match(/<Message>([^<]+)<\/Message>/);
+      const detail =
+        codeMatch && messageMatch
+          ? `${codeMatch[1]}: ${messageMatch[1]}`
+          : text.slice(0, 200);
+      throw new Error(
+        `Registry returned a non-manifest response for ${moduleRef} ` +
+          `(URL: ${fetchUrl}): ${detail}`,
+      );
+    }
+    return { text, source: fetchUrl };
   }
 
   resolveRelative(base: string, relative: string): string {
