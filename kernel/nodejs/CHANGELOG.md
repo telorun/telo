@@ -1,5 +1,11 @@
 # @telorun/kernel
 
+## 0.7.1
+
+### Patch Changes
+
+- 024debe: Declare `engines.node: ">=24"` on `@telorun/cli` and `@telorun/kernel`. Makes the supported Node version explicit (and fixes the npm Node-version badge in the README, which previously rendered "not specified").
+
 ## 0.7.0
 
 ### Minor Changes

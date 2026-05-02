@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-openai
   namespace: std
-  version: 1.1.2
+  version: 1.1.3
   description: OpenAI provider for Ai.Model (implements invoke and stream via Vercel AI SDK).
 exports:
   kinds:
@@ -19,7 +19,7 @@ metadata:
 capability: Telo.Invocable
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai-openai@1.1.2?local_path=./nodejs#openai-model
+  - pkg:npm/@telorun/ai-openai@1.1.3?local_path=./nodejs#openai-model
 schema:
   type: object
   properties:
