@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import * as rl from "readline";
+import { isTtyStream, render } from "./markup.js";
 
 type ConsoleReadLineResource = RuntimeResource & {
   prompt: string;
@@ -22,8 +23,9 @@ class ConsoleReadLine implements ResourceInstance {
       input: this.ctx.stdin,
       output: this.ctx.stdout,
     });
+    const prompt = render(this.resource.prompt, isTtyStream(this.ctx.stdout as any));
     this.value = await new Promise<string>((resolve) => {
-      iface.question(`${this.resource.prompt}: `, (answer) => {
+      iface.question(prompt, (answer) => {
         iface.close();
         resolve(answer);
       });

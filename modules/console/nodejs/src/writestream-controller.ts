@@ -1,5 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { isTtyStream, render } from "./markup.js";
 
 interface WriteStreamResource {
   metadata: { name: string; module?: string };
@@ -32,9 +33,14 @@ class ConsoleWriteStream implements ResourceInstance<WriteStreamInputs, void> {
         `Console.WriteStream "${name}": 'input' must be an AsyncIterable.`,
       );
     }
+    const isTty = isTtyStream(this.ctx.stdout as any);
     for await (const chunk of input) {
-      if (typeof chunk === "string" || chunk instanceof Uint8Array) {
-        this.ctx.stdout.write(chunk as any);
+      if (typeof chunk === "string") {
+        this.ctx.stdout.write(render(chunk, isTty));
+        continue;
+      }
+      if (chunk instanceof Uint8Array) {
+        this.ctx.stdout.write(chunk);
         continue;
       }
       throw new InvokeError(

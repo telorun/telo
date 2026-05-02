@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: assert
   namespace: std
-  version: 1.3.1
+  version: 1.4.0
   description: Assertion and value verification for testing
 exports:
   kinds:
@@ -10,13 +10,16 @@ exports:
     - Schema
     - Events
     - Manifest
+    - Equals
+    - Matches
+    - Contains
 ---
 kind: Telo.Definition
 metadata:
   name: ModuleContext
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.3.1?local_path=./nodejs#module-context
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#module-context
 schema:
   type: object
   properties:
@@ -35,7 +38,7 @@ metadata:
   name: Schema
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.3.1?local_path=./nodejs#schema
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#schema
 schema:
   type: object
   properties:
@@ -58,7 +61,7 @@ metadata:
   name: Events
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.3.1?local_path=./nodejs#events
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#events
 schema:
   type: object
   properties:
@@ -100,7 +103,7 @@ metadata:
   name: Manifest
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.3.1?local_path=./nodejs#manifest
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#manifest
 schema:
   type: object
   properties:
@@ -138,3 +141,95 @@ schema:
           type: string
           description: Substring to match in a manifest load error (asserts that loading fails)
   required: [source, expect]
+---
+# Deep-equality assertion. Compare via step inputs:
+#   - name: Check
+#     invoke: { kind: Assert.Equals }
+#     inputs:
+#       actual: "${{ steps.X.result.value }}"
+#       expected: "hello"
+# Replaces the verbose `Assert.Schema { properties: { x: { const: ... } } }`
+# pattern for trivial value checks.
+kind: Telo.Definition
+metadata:
+  name: Equals
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#equals
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      actual:
+        title: Actual
+        description: Value to check; typically a `${{ steps.X.result.y }}` reference.
+      expected:
+        title: Expected
+        description: Value `actual` must deep-equal.
+    required: [actual, expected]
+schema:
+  type: object
+  additionalProperties: false
+---
+# Regex-match assertion for strings. Compare via step inputs:
+#   - name: Check
+#     invoke: { kind: Assert.Matches }
+#     inputs:
+#       actual: "${{ steps.X.result.text }}"
+#       pattern: "^hello"
+#       flags: i
+# Replaces `Assert.Schema { properties: { x: { type: string, pattern: ... } } }`.
+kind: Telo.Definition
+metadata:
+  name: Matches
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#matches
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      actual:
+        title: Actual
+        description: String to test against `pattern`.
+        type: string
+      pattern:
+        title: Pattern
+        description: JavaScript regular expression source (without delimiters).
+        type: string
+      flags:
+        title: Flags
+        description: Optional regex flags (`i`, `m`, `s`, `u`, …).
+        type: string
+    required: [actual, pattern]
+schema:
+  type: object
+  additionalProperties: false
+---
+# Substring-or-membership assertion. When `actual` is a string, checks
+# that it contains `value` as a substring. When `actual` is an array,
+# checks that it contains `value` as an element (deep-equality). Compare
+# via step inputs.
+kind: Telo.Definition
+metadata:
+  name: Contains
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/assert@0.4.0?local_path=./nodejs#contains
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      actual:
+        title: Actual
+        description: String (substring check) or array (membership check).
+      value:
+        title: Value
+        description: Substring (when `actual` is string) or element (when `actual` is array).
+    required: [actual, value]
+schema:
+  type: object
+  additionalProperties: false

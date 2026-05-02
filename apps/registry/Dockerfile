@@ -22,6 +22,8 @@ COPY modules/config/telo.yaml modules/config/telo.yaml
 COPY modules/s3/telo.yaml modules/s3/telo.yaml
 COPY modules/sql/telo.yaml modules/sql/telo.yaml
 COPY modules/run/telo.yaml modules/run/telo.yaml
+COPY modules/codec/telo.yaml modules/codec/telo.yaml
+COPY modules/octet-codec/telo.yaml modules/octet-codec/telo.yaml
 
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).

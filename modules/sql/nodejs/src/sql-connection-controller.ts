@@ -159,6 +159,20 @@ export async function create(
 }
 
 async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
+  // Auto-create the parent directory for file-backed databases. SQLite
+  // drivers fail-fast when the directory doesn't exist; mirroring `mkdir
+  // -p` here lets manifests use paths like `./tmp/foo.sqlite` without a
+  // separate filesystem-prep step. `:memory:` and `file::memory:?...`
+  // skip filesystem entirely.
+  if (file !== ":memory:" && !file.startsWith("file::memory:")) {
+    const { mkdir } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const dir = dirname(file);
+    if (dir && dir !== "." && dir !== "/") {
+      await mkdir(dir, { recursive: true });
+    }
+  }
+
   if (typeof Bun !== "undefined") {
     const { openDatabase } = await import("./sqlite-driver-bun.js");
     return openDatabase(file);

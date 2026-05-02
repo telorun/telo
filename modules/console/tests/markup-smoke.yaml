@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleMarkupSmoke
+  version: 1.0.0
+  description: |
+    Smoke tests for the console markup language. Exercises the parser /
+    renderer with various markup shapes (solo styles, dot chains, hex,
+    nesting, escapes, unknown-style fallback) and asserts the sequence
+    completes without throwing.
+
+    KNOWN GAP: these targets DO NOT programmatically assert rendered
+    output. A regression in rendered bytes (wrong ANSI codes, leaked
+    tags through unknown wrappers, broken escaping) would still make
+    them pass — the trailing `Assert.Equals { actual: true, expected:
+    true }` step only proves the sequence reached the end. The literal
+    output visible above each Assert line is informational, not asserted. Capturing stdout from inside the
+    YAML test framework requires intercepting `ctx.stdout`, which isn't
+    `process.stdout` under `Test.Suite` (each parallel kernel gets its
+    own BufferedWritable) — a monkey-patch on `process.stdout.write`
+    works standalone but silently fails under the suite.
+
+    Contract-level coverage of the rendering shape requires either (a)
+    a stdout-capture path through ctx.stdout exposed to JS.Script, or
+    (b) TS unit tests on the markup module. Neither exists yet.
+
+    Visual ANSI rendering on a real TTY is not automated either; verify
+    by running examples/chat-console.yaml interactively.
+targets:
+  - TestWriteLine
+  - TestWriteStream
+  - TestUnknownStyleFallback
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: Run.Sequence
+metadata: { name: TestWriteLine }
+steps:
+  - name: SoloStyle
+    invoke:
+      kind: Console.WriteLine
+      output: "{red error}"
+  - name: ChainedStyles
+    invoke:
+      kind: Console.WriteLine
+      output: "{red.bold ERROR}"
+  - name: BackgroundStyle
+    invoke:
+      kind: Console.WriteLine
+      output: "{red.bgWhite warning}"
+  - name: HexColor
+    invoke:
+      kind: Console.WriteLine
+      output: "{#ff8800 highlight}"
+  - name: Nesting
+    invoke:
+      kind: Console.WriteLine
+      output: "hi {red {bold WORLD}!}"
+  - name: Escapes
+    invoke:
+      kind: Console.WriteLine
+      output: "literal: \\{red\\} not a tag"
+  - name: PlainText
+    invoke:
+      kind: Console.WriteLine
+      output: "no markup at all"
+  - name: AssertWriteLineReached
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: true, expected: true }
+---
+kind: JS.Script
+metadata: { name: MarkupSource }
+code: |
+  async function main() {
+    async function* gen() {
+      yield "{cyan hello} ";
+      yield "{magenta.bold world}\n";
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestWriteStream }
+steps:
+  - name: StreamSrc
+    invoke: { kind: JS.Script, name: MarkupSource }
+  - name: Stream
+    inputs:
+      input: "${{ steps.StreamSrc.result.output }}"
+    invoke:
+      kind: Console.WriteStream
+  - name: AssertStreamReached
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: true, expected: true }
+---
+# Unknown style names render the tag as literal text — no crash. Visual
+# inspection of the test output above each Assert line confirms the
+# exact bytes (no ANSI leak, inner known styles inside unknown wrappers
+# stay literal); see the file-level KNOWN GAP for why this isn't
+# programmatically asserted.
+kind: Run.Sequence
+metadata: { name: TestUnknownStyleFallback }
+steps:
+  - name: UnknownStyle
+    invoke:
+      kind: Console.WriteLine
+      output: "{notARealStyle hello}"
+  - name: PartiallyKnown
+    invoke:
+      kind: Console.WriteLine
+      output: "{red.notARealAttr text}"
+  - name: NestedKnownInsideUnknown
+    invoke:
+      kind: Console.WriteLine
+      # The inner `{red hi}` must come out as literal `{red hi}` — no
+      # ANSI escapes, no markup stripping — because the outer wrapper
+      # is unknown. Earlier impl bug: re-rendered children and leaked
+      # ANSI through the wrapper.
+      output: "{notARealStyle {red hi}}"
+  - name: AssertUnknownReached
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: true, expected: true }

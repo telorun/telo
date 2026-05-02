@@ -1,4 +1,4 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { createOpenAI } from "@ai-sdk/openai";
 import { redact } from "@telorun/ai/redact";
 import type {
   AiModelInstance,
@@ -9,8 +9,16 @@ import type {
   StreamPart,
   Usage,
 } from "@telorun/ai/types";
+import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { generateText, streamText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+
+// Silence the Vercel AI SDK's `AI SDK Warning: …` console output. The SDK
+// emits these for things like `temperature` being ignored on reasoning
+// models — useful during library development, noise for Telo manifest
+// consumers who can't act on them anyway. Globally suppresses warnings
+// from every Vercel-AI-SDK-backed provider, which matches the library's
+// own opt-out hint (`AI_SDK_LOG_WARNINGS = false`).
+globalThis.AI_SDK_LOG_WARNINGS = false;
 
 /**
  * OpenAI provider for the Ai.Model abstract. Implements the full AiModelInstance
@@ -44,11 +52,15 @@ function mapFinishReason(fr: string | undefined | null): FinishReason {
   return VERCEL_FINISH_TO_AI[fr] ?? "other";
 }
 
-function mapUsage(u: {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-} | undefined): Usage {
+function mapUsage(
+  u:
+    | {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+      }
+    | undefined,
+): Usage {
   return {
     promptTokens: u?.inputTokens ?? 0,
     completionTokens: u?.outputTokens ?? 0,

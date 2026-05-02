@@ -1,0 +1,210 @@
+kind: Telo.Application
+metadata:
+  name: AssertEqualsMatchesContainsTest
+  version: 1.0.0
+  description: |
+    Self-tests for Assert.Equals, Assert.Matches, and Assert.Contains.
+    Each successful target proves the kind handles its happy path; failure
+    paths are exercised inside try/catch blocks that assert the resulting
+    InvokeError carries `code: ERR_ASSERTION_FAILED`.
+targets:
+  - TestEqualsHappy
+  - TestEqualsFails
+  - TestEqualsRejectsNonPlainObjects
+  - TestMatchesHappy
+  - TestMatchesFails
+  - TestContainsString
+  - TestContainsArray
+  - TestContainsFails
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+# --- Assert.Equals ---------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: TestEqualsHappy }
+steps:
+  - name: StringEq
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: "hello", expected: "hello" }
+  - name: NumberEq
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: 42, expected: 42 }
+  - name: BoolEq
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: true, expected: true }
+  - name: ObjEq
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { a: 1, b: [2, 3], c: { d: 4 } }
+      expected: { a: 1, b: [2, 3], c: { d: 4 } }
+  - name: ArrEq
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: [1, 2, 3]
+      expected: [1, 2, 3]
+---
+kind: Run.Sequence
+metadata: { name: TestEqualsFails }
+steps:
+  - name: Tried
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Equals }
+        inputs: { actual: "hello", expected: "world" }
+    catch:
+      - name: AssertCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"
+---
+# Regression coverage: two distinct non-plain objects (Date instances
+# representing different moments) must NOT compare equal. Earlier impl
+# of deepEquals fell through to `Object.keys(date)` which is empty for
+# both, returning true — silent false positive on clearly-different
+# values. The fix refuses structural compare for non-plain objects;
+# only `Object.is`-equal instances pass.
+kind: JS.Script
+metadata: { name: BuildDistinctDates }
+code: |
+  async function main() {
+    return {
+      a: new Date(2024, 0, 1),
+      b: new Date(2024, 5, 15),
+    };
+  }
+---
+kind: JS.Script
+metadata: { name: BuildDistinctMaps }
+code: |
+  async function main() {
+    return {
+      a: new Map([["k", 1]]),
+      b: new Map([["k", 2]]),
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestEqualsRejectsNonPlainObjects }
+steps:
+  - name: Dates
+    invoke: { kind: JS.Script, name: BuildDistinctDates }
+  - name: DatesTried
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ steps.Dates.result.a }}"
+          expected: "${{ steps.Dates.result.b }}"
+    catch:
+      - name: AssertDateMismatchCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"
+  - name: Maps
+    invoke: { kind: JS.Script, name: BuildDistinctMaps }
+  - name: MapsTried
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ steps.Maps.result.a }}"
+          expected: "${{ steps.Maps.result.b }}"
+    catch:
+      - name: AssertMapMismatchCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"
+---
+# --- Assert.Matches --------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: TestMatchesHappy }
+steps:
+  - name: BasicMatch
+    invoke: { kind: Assert.Matches }
+    inputs: { actual: "hello world", pattern: "^hello" }
+  - name: WithFlags
+    invoke: { kind: Assert.Matches }
+    inputs: { actual: "HELLO", pattern: "^hello$", flags: "i" }
+  - name: ContainsDigit
+    invoke: { kind: Assert.Matches }
+    inputs: { actual: "abc123", pattern: "[0-9]+" }
+---
+kind: Run.Sequence
+metadata: { name: TestMatchesFails }
+steps:
+  - name: Tried
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Matches }
+        inputs: { actual: "hello", pattern: "^world$" }
+    catch:
+      - name: AssertCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"
+---
+# --- Assert.Contains -------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: TestContainsString }
+steps:
+  - name: SubstringMatch
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: "hello world", value: "lo wo" }
+  - name: WholeStringMatch
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: "hello", value: "hello" }
+  - name: EmptyString
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: "anything", value: "" }
+---
+kind: Run.Sequence
+metadata: { name: TestContainsArray }
+steps:
+  - name: PrimitiveElement
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: [1, 2, 3], value: 2 }
+  - name: ObjectElement
+    invoke: { kind: Assert.Contains }
+    inputs:
+      actual: [{ id: 1 }, { id: 2 }, { id: 3 }]
+      value: { id: 2 }
+---
+kind: Run.Sequence
+metadata: { name: TestContainsFails }
+steps:
+  - name: SubstringMissing
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Contains }
+        inputs: { actual: "hello", value: "xyz" }
+    catch:
+      - name: AssertCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"
+  - name: ElementMissing
+    try:
+      - name: ShouldFail
+        invoke: { kind: Assert.Contains }
+        inputs: { actual: [1, 2, 3], value: 99 }
+    catch:
+      - name: AssertCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: "ERR_ASSERTION_FAILED"

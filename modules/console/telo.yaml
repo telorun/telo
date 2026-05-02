@@ -15,7 +15,9 @@ schema:
   properties:
     output:
       title: Output
-      description: Text content written to standard output.
+      description: |
+        Text content written to standard output. Markup tags `{style content}`
+        are rendered to ANSI on a TTY and stripped to plain text otherwise.
       type: string
   required: ["output"]
 ---
@@ -30,7 +32,11 @@ schema:
   properties:
     prompt:
       title: Prompt
-      description: Prompt text shown before reading input.
+      description: |
+        Prompt text written to stdout before reading input. Rendered
+        character-for-character — no auto-appended `: ` suffix. Markup
+        tags `{style content}` are rendered to ANSI on a TTY and stripped
+        to plain text otherwise.
       type: string
   required: ["prompt"]
 ---
@@ -55,4 +61,70 @@ inputType:
     additionalProperties: false
 schema:
   type: object
+  additionalProperties: false
+---
+# Animate a single-cell frame sequence on stdout while waiting for the
+# first item from an input stream, then clear the cell and forward every
+# item unchanged. Bytes flow through the output stream — the only resource
+# that writes to stdout is the downstream sink (typically Console.WriteStream).
+kind: Telo.Definition
+metadata:
+  name: StreamWait
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/console@0.3.0?local_path=./nodejs#streamwait
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable to forward; the animation runs until the first item arrives.
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: |
+          Forwarded stream. The head of the stream carries the prefix, the
+          reserved-cell setup, animation frames, and a clear sequence; after
+          the first input item is observed, every input item is forwarded
+          verbatim.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    prefix:
+      title: Prefix
+      description: |
+        Text written once at the start, before the animation cell. Markup
+        tags `{style content}` render to ANSI on a TTY and strip to plain
+        text otherwise. Must not contain `\n`, `\r`, `\b`, or `\x1b`.
+      type: string
+      default: ""
+    frames:
+      title: Frames
+      description: |
+        Animation frames cycled at `intervalMs`. Each frame must be a
+        single-character string (`length === 1`). Default: braille
+        spinner cycle.
+      type: array
+      minItems: 1
+      items:
+        type: string
+        minLength: 1
+        maxLength: 1
+      default: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    intervalMs:
+      title: Interval (ms)
+      description: Tick period in milliseconds. Minimum 16.
+      type: integer
+      minimum: 16
+      default: 80
   additionalProperties: false
