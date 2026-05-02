@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: s3
   namespace: std
-  version: 1.1.0
+  version: 1.2.0
 secrets:
   accessKeyId:
     type: string
@@ -22,7 +22,7 @@ metadata:
   name: Bucket
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-bucket
+  - pkg:npm/@telorun/s3@1.2.0?local_path=./nodejs#s3-bucket
 schema:
   type: object
   properties:
@@ -55,7 +55,7 @@ metadata:
   name: List
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-list
+  - pkg:npm/@telorun/s3@1.2.0?local_path=./nodejs#s3-list
 schema:
   type: object
   properties:
@@ -78,7 +78,7 @@ metadata:
   name: Put
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-put
+  - pkg:npm/@telorun/s3@1.2.0?local_path=./nodejs#s3-put
 schema:
   type: object
   properties:
@@ -127,7 +127,7 @@ metadata:
   name: Get
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@1.1.0?local_path=./nodejs#s3-get
+  - pkg:npm/@telorun/s3@1.2.0?local_path=./nodejs#s3-get
 throws:
   codes:
     ERR_NOT_FOUND:

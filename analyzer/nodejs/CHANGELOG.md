@@ -1,5 +1,12 @@
 # @telorun/analyzer
 
+## 0.6.1
+
+### Patch Changes
+
+- 40ae3ea: Recurse into nested step arrays via `x-telo-topology-role` annotations (`branch` / `branch-list` / `case-map`) when building the `steps.<name>.result` CEL context for kinds that opt into `x-telo-step-context`. Previously the analyzer hardcoded a fixed set of `Run.Sequence` field names (`then` / `else` / `do` / `catch` / `finally` / `try` / `default` / `cases`) and never descended into `elseif` branches at all — so step names defined inside `elseif` were invisible to later `${{ steps.X }}` references, producing spurious `CEL_UNKNOWN_FIELD` diagnostics. The recursion is now schema-driven: `elseif` is covered, and any future composer that tags its branch fields with the same roles works without analyzer changes.
+- 0335074: Surface a clear error when a `Telo.Import` target does not resolve to a `Telo.Library`. Previously the loader silently dropped the import when the fetched manifest contained no library doc, which produced misleading downstream `UNDEFINED_KIND` diagnostics on every kind the import was supposed to provide. Now the loader throws with the resolved URL and the kinds it actually found, so the failure points at the real cause. The built-in `RegistrySource` additionally detects S3/R2-style XML error bodies served with a `200` status and surfaces the upstream code/message rather than letting the body parse as YAML.
+
 ## 0.6.0
 
 ### Minor Changes
