@@ -1,290 +1,256 @@
 ---
-description: "Walkthrough: defining tests as Telo resources (Run.Sequence, JavaScript.Script, Assert) with inline resource steps"
+description: "How to write Telo YAML manifest tests using Run.Sequence and the Assert.* kinds"
 ---
 
 # Testing
 
-Tests for Telo manifests and controllers use Telo resources to orchestrate execution and verify outputs. In other words Telo is used to test Telo.
-This allows tests to be defined once for every kernel implementation.
+Telo tests are themselves Telo manifests: a `Run.Sequence` (or top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. The repo-wide `test-suite.yaml` orchestrates discovery via `Test.Suite`, globbing `**/tests/*.yaml` and excluding `**/__fixtures__/**`.
 
-## Quick Start
+## Where tests live
 
-### Example: Simple Test
+- **Cross-cutting kernel/analyzer tests** — `tests/`. Exercise the module system (`include`, `Telo.Import`), `Telo.Definition` semantics (`extends`, `capability`), and topology rules.
+- **Module-specific tests** — `modules/<name>/tests/`. Per `CLAUDE.md`, every test should live next to the module it exercises.
+- **Fixtures** — any `__fixtures__/` subdirectory. Excluded from discovery; reference them from a test via `source: ./__fixtures__/foo.yaml` or `include: [./__fixtures__/foo.yaml]`.
+
+## Running tests
+
+```bash
+pnpm run test                      # run everything
+pnpm run test if                   # filter by substring (matches "run-sequence-if.yaml")
+pnpm run test --filter=if          # same, explicit
+pnpm run telo ./modules/run/tests/run-sequence-if.yaml   # run one manifest directly
+```
+
+## Anatomy of a test manifest
+
+Every test starts with a `Telo.Application`, declares `Telo.Import` aliases for each stdlib it uses, and defines the resource named in `targets:`:
 
 ```yaml
+kind: Telo.Application
+metadata:
+  name: AddTwoNumbers
+  version: 1.0.0
+targets:
+  - TestAdd
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: JavaScript }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
 kind: Run.Sequence
 metadata:
   name: TestAdd
-
 steps:
-  - name: Add numbers
-    kind: JavaScript.Script
-    code: |
-      function main({ a, b }) {
-        return { result: a + b }
-      }
-    input:
+  - name: AddNumbers
+    inputs:
       a: 5
       b: 3
-    outputs:
-      result: "payload.result"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ a, b }) {
+          return { sum: a + b }
+        }
+  - name: VerifySum
+    inputs:
+      sum: "${{ steps.AddNumbers.result.sum }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          sum:
+            type: number
+            const: 8
+```
 
-  - name: Assert result
+Adjust the `source:` paths to the relative location of each module from your test file. From `modules/<name>/tests/` use `../../<other-module>`; from the root `tests/` use `../modules/<other-module>`.
+
+## Step shapes
+
+Every step has a `name`. Beyond that, a step is one of several shapes — an invoke, or a control-flow block (conditional, loop, switch, try, throw). The `when:` guard composes with any of them.
+
+### Invoke
+
+`{ name, inputs?, invoke }`. `inputs` is a CEL-templatable map; `invoke` declares the resource to call. The result is available to later steps as `${{ steps.<name>.result.<field> }}`.
+
+### Conditional — `if/then/else`
+
+```yaml
+- name: BranchOnValue
+  if: "${{ steps.Setup.result.value == 42 }}"
+  then:
+    - name: Matched
+      inputs: { value: "${{ steps.Setup.result.value }}" }
+      invoke:
+        kind: Assert.Schema
+        schema:
+          type: object
+          properties:
+            value: { const: 42 }
+  else:
+    - name: NotMatched
+      ...
+```
+
+### Loop — `while/do`
+
+A do-while pattern emerges naturally from sharing a step name between a pre-loop initializer and the loop body:
+
+```yaml
+- name: Counter
+  inputs: { n: 0 }
+  invoke:
+    kind: JavaScript.Script
+    code: |
+      function main({ n }) { return { n } }
+
+- name: Increment
+  while: "${{ steps.Counter.result.n < 3 }}"
+  do:
+    - name: Counter            # shared name overwrites prior result each iteration
+      inputs: { n: "${{ steps.Counter.result.n }}" }
+      invoke:
+        kind: JavaScript.Script
+        code: |
+          function main({ n }) { return { n: n + 1 } }
+```
+
+### Switch — `switch/cases/default`
+
+```yaml
+- name: RouteByRole
+  switch: "${{ steps.ComputeRole.result.role }}"
+  cases:
+    admin:
+      - name: AdminAction
+        ...
+    viewer:
+      - name: ViewerAction
+        ...
+  default:
+    - name: Fallback
+      ...
+```
+
+### Try/catch/finally
+
+`error` is bound inside `catch:` with `code`, `message`, `step`, and `data`.
+
+```yaml
+- name: Outer
+  try:
+    - name: Boom
+      invoke:
+        kind: JavaScript.Script
+        code: |
+          function main() { throw new Error("caught me") }
+  catch:
+    - name: Inspect
+      inputs:
+        msg: "${{ error.message }}"
+        step: "${{ error.step }}"
+      invoke:
+        kind: Assert.Schema
+        schema:
+          type: object
+          properties:
+            msg: { type: string }
+            step: { type: string }
+  finally:
+    - name: Cleanup
+      ...
+```
+
+### Throw
+
+`throw:` raises a structured `InvokeError` that the nearest enclosing `catch:` binds as `error`:
+
+```yaml
+- name: Boom
+  throw:
+    code: "UNAUTHORIZED"
+    message: "bad token"
+    data: { reason: "expired" }
+```
+
+### Guard — `when`
+
+`when:` skips a step if the expression is false. Works on plain steps, `if:`, `try:`, `switch:`, and `while:` blocks alike.
+
+```yaml
+- name: ShouldSkip
+  when: "${{ false }}"
+  inputs: { x: 999 }
+  invoke:
     kind: Assert.Schema
-    input:
-      sum: "${{ result }}"
     schema:
       type: object
       properties:
-        sum:
-          type: number
-          const: 8
+        x: { const: 0 }
 ```
 
-Run it:
+## Assertion kinds
 
-```bash
-telo ./tests/test-add.yaml
-```
+All exported by the `assert` stdlib (`Telo.Import name: Assert`, `source: ../../assert` from a module test, `../modules/assert` from the root `tests/`).
 
-## Step Types
+| Kind | Use for | Where it goes |
+|---|---|---|
+| `Assert.Schema` | JSON Schema validation on `inputs` | Step (`invoke.kind`) |
+| `Assert.Equals` | Deep equality | Step |
+| `Assert.Matches` | Regex match on a string | Step |
+| `Assert.Contains` | Substring / element / property containment | Step |
+| `Assert.Events` | Asserts an ordered subsequence of kernel events | Top-level resource |
+| `Assert.Manifest` | Asserts the analyzer emits specific diagnostic codes for a fixture | Top-level resource |
 
-### Direct Resource Steps
+### `Assert.Events`
 
-Any resource kind can be a step. Define the resource inline:
+Watches the kernel event stream and asserts an ordered subsequence:
 
 ```yaml
-- name: Execute logic
-  kind: JavaScript.Script
-  code: |
-    function main({ value }) {
-      return { result: value * 2 }
-    }
-  input:
-    value: 21
-  outputSchema:
-    result:
-      type: number
+kind: Assert.Events
+metadata: { name: ExpectEvents }
+filter:
+  - type: "*"
+expect:
+  - event: JavaScript.Script.*.Invoked
+    payload:
+      outputs: { sum: 8 }
+  - event: Assert.Schema.*.Invoked
+    payload:
+      outputs: true
 ```
 
-### HttpClient.Request
+### `Assert.Manifest`
 
-Make HTTP requests:
+Asserts the analyzer's diagnostics on a fixture without running it:
 
 ```yaml
-- name: Call API
-  kind: HttpClient.Request
-  method: POST
-  url: "http://localhost:3000/api/users"
-  headers:
-    Content-Type: application/json
-    Authorization: "Bearer token"
-  body:
-    name: Alice
-    email: alice@example.com
-  outputs:
-    userId: "payload.id"
-    createdAt: "payload.created_at"
+kind: Assert.Manifest
+metadata: { name: TestExtendsMalformed }
+source: ./__fixtures__/extends-malformed.yaml
+expect:
+  errors:
+    - code: EXTENDS_MALFORMED
 ```
 
-### Observe.Event
+## Negative-path patterns
 
-Wait for and capture async events:
+Two shapes:
 
-```yaml
-- name: WaitForProcessingComplete
-  kind: Observe.Event
-  event: ProcessingCompleted
-  timeout: 5000
-  filter: "data.jobId == jobId"
-  outputs:
-    result: "data.result"
-    processingTime: "data.duration"
-```
+1. **Static-analysis errors** — use `Assert.Manifest` with a fixture under `__fixtures__/` and an expected `errors[].code`.
+2. **Runtime errors** — wrap the failing step in `try/catch` and assert against `${{ error.code }}`, `${{ error.message }}`, `${{ error.step }}`, `${{ error.data.* }}`. See `modules/run/tests/invoke-error.yaml` for the canonical example.
 
-### Assert.Value
+## See also
 
-Verify values using CEL expressions:
-
-```yaml
-- name: VerifyResult
-  kind: Assert.Value
-  value: "${{ previousStepOutput }}"
-  assertions:
-    - "value > 100"
-    - "value < 1000"
-```
-
-## Accessing Previous Step Outputs
-
-Outputs from earlier steps are available via `${{ varName }}`:
-
-```yaml
-steps:
-  - name: GetUser
-    kind: JavaScript.Script
-    code: |
-      function main({ userId }) {
-        return { user: { id: userId, name: 'Alice' } }
-      }
-    input:
-      userId: 42
-    outputs:
-      user: "payload.user"
-
-  - name: GetUserEmail
-    kind: JavaScript.Script
-    code: |
-      function main({ name }) {
-        return { email: name.toLowerCase() + '@example.com' }
-      }
-    input:
-      name: "${{ user.name }}"
-    outputs:
-      email: "payload.email"
-
-  - name: SendNotification
-    kind: HttpClient.Request
-    method: POST
-    url: "http://api/notify"
-    body:
-      userId: "${{ user.id }}"
-      email: "${{ email }}"
-
-  - name: VerifyEmail
-    kind: Assert.Value
-    value: "${{ email }}"
-    assertions:
-      - "value != null"
-      - "value contains '@'"
-```
-
-## Assertions
-
-Assertions are CEL expressions in `Assert.Value` steps. The `value` variable contains what's being tested:
-
-```yaml
-assertions:
-  - "value != null"
-  - "typeof(value) == 'object'"
-  - "value.status == 'ok'"
-  - "value.count > 0"
-  - "value.name contains 'test'"
-  - "value in [1, 2, 3]"
-```
-
-### Common Patterns
-
-```yaml
-# Check presence and type
-- "value != null && typeof(value) == 'object'"
-
-# Numeric comparisons
-- "value >= 0 && value <= 100"
-
-# String operations
-- "value.startsWith('Error')"
-- "value.endsWith('.json')"
-
-# Collection operations
-- "value.size() == 3"
-- "value.map(x, x.id).contains(42)"
-```
-
-## Complete Example
-
-````yaml
-kind: Run.Sequence
-metadata:
-  name: TestCalculator
-  description: Verify calculator logic works correctly
-
-steps:
-  - name: Test addition
-    kind: Logic.JavaScript
-    code: |
-      function main({ a, b, operation }) {
-        if (operation == 'add') return { result: a + b }
-        if (operation == 'multiply') return { result: a * b }
-        throw new Error('Unknown operation')
-      }
-    input:
-      a: 5
-      b: 3
-      operation: add
-    outputs:
-      sum: 'payload.result'
-
-  - name: Assert addition
-    kind: Assert.Value
-    value: '${{ sum }}'
-    assertions:
-      - 'value == 8'
-
-  - name: Test multiplication
-    kind: Logic.JavaScript
-    code: |
-      function main({ a, b, operation }) {
-        if (operation == 'add') return { result: a + b }
-        if (operation == 'multiply') return { result: a * b }
-        throw new Error('Unknown operation')
-      }
-    input:
-      a: 5
-      b: 3
-      operation: multiply
-    outputs:
-      product: 'payload.result'
-
-  - name: Assert multiplication
-    kind: Assert.Value
-    value: '${{ product }}'
-    assertions:
-      - 'value == 15'
-
-  - name: Call API
-    kind: HttpClient.Request
-    method: POST
-    url: 'http://localhost:3001/calculate'
-    body:
-      a: 4
-      b: 7
-    outputs:
-      apiResult: 'payload.result'
-
-  - name: Assert API result
-    kind: Assert.Value
-    value: '${{ apiResult }}'
-    assertions:
-      - 'value == 28'
-
-## Testing Guidelines
-
-1. **Keep steps focused**: One action per step
-2. **Use descriptive names**: Step names should explain what's happening
-3. **Extract relevant outputs**: Only capture data needed for assertions
-4. **Separate logic and assertions**: Keep execution steps separate from verification
-5. **Test edge cases**: Empty inputs, null values, boundary conditions
-6. **Everything inline**: Define all logic and resources in the Run.Sequence itself
-
-## Debugging
-
-### View Step Execution
-
-Run the Run.Sequence to see step outputs:
-
-```bash
-kernel.execute("Run.Sequence.TestCalculator", {})
-````
-
-### Common Issues
-
-**Variable not found**: Check JSONPath in `outputs` matches your response structure
-**Assertion failed**: Verify CEL expression is correct for the value type
-**Unknown resource**: Ensure `kind` and required fields are properly defined inline
-
-## See Also
-
-- [Examples](https://github.com/telorun/telo/tree/main/examples) - Complete working test examples
-- [Kernel Documentation](../kernel/README.md) - How Telo kernel works
-- [Module Documentation](../modules/README.md) - Module structure and resources
+- [`../test-suite.yaml`](../test-suite.yaml) — discovery entry point.
+- [`../modules/test/docs/suite.md`](../modules/test/docs/suite.md) — `Test.Suite` reference and CLI flags.
+- [`../CLAUDE.md`](../CLAUDE.md) — repo-wide architectural rules.

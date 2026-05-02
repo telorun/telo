@@ -126,6 +126,45 @@ function extractContextsFromSchema(
   return results;
 }
 
+/** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
+ *  Non-refs and unresolved refs pass through unchanged. */
+function resolveLocalRef(
+  schema: Record<string, any> | undefined,
+  root: Record<string, any>,
+): Record<string, any> | undefined {
+  if (!schema) return undefined;
+  const ref = schema.$ref;
+  if (typeof ref === "string" && ref.startsWith("#/$defs/")) {
+    const defName = ref.slice("#/$defs/".length);
+    const resolved = root.$defs?.[defName];
+    if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
+  }
+  return schema;
+}
+
+/** Gather property schemas from a (possibly variant-bearing) object schema:
+ *  top-level `properties` plus every `oneOf` / `anyOf` / `allOf` branch. */
+function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Record<string, any>]> {
+  const out: Array<[string, Record<string, any>]> = [];
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [k, v] of Object.entries(schema.properties as Record<string, any>)) {
+      out.push([k, v as Record<string, any>]);
+    }
+  }
+  for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
+    const arr = schema[variantKey];
+    if (!Array.isArray(arr)) continue;
+    for (const variant of arr) {
+      if (variant && typeof variant === "object" && variant.properties) {
+        for (const [k, v] of Object.entries(variant.properties as Record<string, any>)) {
+          out.push([k, v as Record<string, any>]);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Build a `steps` context schema from `x-telo-step-context` annotation.
  * Walks each step in the manifest array, resolves the invoked resource's outputType,
@@ -142,6 +181,15 @@ function extractContextsFromSchema(
  * Layer 2 is what makes `x-telo-stream` properties on definitions actually
  * govern step-result chain validation — without it, the validator falls back
  * to permissive and the stream-opacity rule never fires.
+ *
+ * Recursion into nested step arrays is annotation-driven via
+ * `x-telo-topology-role`. The analyzer recognises three role values:
+ *   - `branch`     — value is an array of steps (e.g. then / else / do / catch).
+ *   - `branch-list`— value is an array of objects each carrying further roled
+ *                    sub-properties (e.g. elseif: [{ if, then }]).
+ *   - `case-map`   — value is an object whose values are step arrays (e.g. cases).
+ * No specific Run.Sequence field name is hardcoded; any kind that uses
+ * `x-telo-step-context` and tags its branch fields with these roles works.
  */
 function buildStepContextSchema(
   manifest: Record<string, any>,
@@ -164,8 +212,43 @@ function buildStepContextSchema(
     const steps = manifest[fieldName];
     if (!Array.isArray(steps)) continue;
 
+    const stepItemSchema = resolveLocalRef(
+      fieldSchema.items as Record<string, any> | undefined,
+      defSchema,
+    );
+
     const stepProperties: Record<string, any> = {};
-    const collectSteps = (items: unknown[]) => {
+
+    const dispatchRole = (
+      data: unknown,
+      role: string,
+      itemsSchema: Record<string, any> | undefined,
+    ): void => {
+      if (role === "branch" && Array.isArray(data)) {
+        collectSteps(data);
+      } else if (role === "case-map" && data && typeof data === "object" && !Array.isArray(data)) {
+        for (const arr of Object.values(data as Record<string, unknown>)) {
+          if (Array.isArray(arr)) collectSteps(arr);
+        }
+      } else if (role === "branch-list" && Array.isArray(data)) {
+        const entrySchema = resolveLocalRef(itemsSchema, defSchema);
+        if (!entrySchema) return;
+        for (const entry of data) {
+          if (!entry || typeof entry !== "object") continue;
+          for (const [subKey, subSchema] of gatherPropertySchemas(entrySchema)) {
+            const subRole = subSchema["x-telo-topology-role"];
+            if (typeof subRole !== "string") continue;
+            dispatchRole(
+              (entry as Record<string, any>)[subKey],
+              subRole,
+              subSchema.items as Record<string, any> | undefined,
+            );
+          }
+        }
+      }
+    };
+
+    function collectSteps(items: unknown[]): void {
       for (const step of items) {
         if (!step || typeof step !== "object") continue;
         const s = step as Record<string, any>;
@@ -207,18 +290,16 @@ function buildStepContextSchema(
             },
           };
         }
-        // Recurse into nested step arrays (then, else, do, catch, finally, try, default, cases)
-        for (const nested of ["then", "else", "do", "catch", "finally", "try", "default"]) {
-          if (Array.isArray(s[nested])) collectSteps(s[nested]);
-        }
-        // cases is an object map of arrays
-        if (s.cases && typeof s.cases === "object") {
-          for (const arr of Object.values(s.cases)) {
-            if (Array.isArray(arr)) collectSteps(arr);
+        if (stepItemSchema) {
+          for (const [propKey, propSchema] of gatherPropertySchemas(stepItemSchema)) {
+            const role = propSchema["x-telo-topology-role"];
+            if (typeof role !== "string") continue;
+            dispatchRole(s[propKey], role, propSchema.items as Record<string, any> | undefined);
           }
         }
       }
-    };
+    }
+
     collectSteps(steps);
 
     if (Object.keys(stepProperties).length > 0) {
