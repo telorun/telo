@@ -1,6 +1,6 @@
 {
   "name": "@telorun/assert",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Telo Assert module - Assertion resource kinds for Telo manifests.",
   "keywords": [
     "telo",
@@ -23,7 +23,10 @@
     "./schema": "./src/schema.ts",
     "./events": "./src/events.ts",
     "./module-context": "./src/module-context.ts",
-    "./manifest": "./src/manifest.ts"
+    "./manifest": "./src/manifest.ts",
+    "./equals": "./src/equals.ts",
+    "./matches": "./src/matches.ts",
+    "./contains": "./src/contains.ts"
   },
   "files": [
     "dist",

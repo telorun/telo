@@ -28,13 +28,13 @@ steps:
       kind: Console.ReadLine
       metadata:
         name: ReadUsername
-      prompt: Username
+      prompt: "Username: "
   - name: ReadPassword
     invoke:
       kind: Console.ReadLine
       metadata:
         name: ReadPassword
-      prompt: Password
+      prompt: "Password: "
   - name: WriteResult
     invoke:
       kind: Console.WriteLine

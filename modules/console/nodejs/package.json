@@ -31,6 +31,10 @@
     "./writestream": {
       "bun": "./src/writestream-controller.ts",
       "import": "./dist/writestream-controller.js"
+    },
+    "./streamwait": {
+      "bun": "./src/streamwait-controller.ts",
+      "import": "./dist/streamwait-controller.js"
     }
   },
   "files": [

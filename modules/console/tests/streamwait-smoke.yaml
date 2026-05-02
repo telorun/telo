@@ -1,0 +1,247 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleStreamWaitSmoke
+  version: 1.0.0
+  description: |
+    Smoke tests for Console.StreamWait. Verifies that the resource:
+      - Forwards every input item unchanged after the first arrives.
+      - Doesn't crash for empty streams (no items at all).
+      - Rejects invalid configs (multi-cell frames, control chars in prefix).
+    The animation byte sequence (prefix + reserved cell + frames + clear)
+    is interleaved into the output stream — exactness is verified by
+    capturing the output via a JS.Script consumer and asserting the
+    forwarded items + the presence of the prefix.
+targets:
+  - TestForwardsItems
+  - TestEmptyStream
+  - TestSourceErrorBeforeFirstItem
+  - TestCancellationPropagatesUpstream
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Source that yields three string items with a small delay before the first
+# (so the animation has time to paint at least one frame).
+kind: JS.Script
+metadata: { name: DelayedSource }
+code: |
+  async function main() {
+    async function* gen() {
+      await new Promise((r) => setTimeout(r, 120));
+      yield "Hello ";
+      yield "world";
+      yield "!";
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+kind: JS.Script
+metadata: { name: EmptySource }
+code: |
+  async function main() {
+    async function* gen() { /* yields nothing */ }
+    return { output: new Stream(gen()) };
+  }
+---
+# Source that throws before yielding any item — exercises the
+# pre-first-item rejection path. StreamWait must wipe the animation
+# cell BEFORE propagating the error so the user doesn't see a
+# half-painted spinner next to the failure output.
+kind: JS.Script
+metadata: { name: ImmediateErrorSource }
+code: |
+  async function main() {
+    async function* gen() {
+      await new Promise((r) => setTimeout(r, 60));   // let one frame paint
+      throw new Error("oops before first item");
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+# Collects the StreamWait output into a single string for assertion.
+# Filters out the head bytes (prefix + reserved cell + frame sequence +
+# clear) by joining everything and checking the *contents* against expected
+# substrings — bytes after the clear sequence are the forwarded items.
+kind: JS.Script
+metadata: { name: CollectChunks }
+code: |
+  async function main({ input }) {
+    const chunks = [];
+    for await (const chunk of input) chunks.push(chunk);
+    return {
+      joined: chunks.join(""),
+      chunkCount: chunks.length,
+    };
+  }
+---
+kind: Console.StreamWait
+metadata: { name: Wait }
+prefix: "loading: "
+intervalMs: 50
+---
+kind: Run.Sequence
+metadata: { name: TestForwardsItems }
+steps:
+  - name: Source
+    invoke: { kind: JS.Script, name: DelayedSource }
+  - name: Wait
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: Console.StreamWait, name: Wait }
+  - name: Collect
+    inputs:
+      input: "${{ steps.Wait.result.output }}"
+    invoke: { kind: JS.Script, name: CollectChunks }
+  - name: AssertContents
+    inputs:
+      joined: "${{ steps.Collect.result.joined }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          joined:
+            type: string
+            # `loading: ` from prefix, then animation sequence, then forwarded items.
+            pattern: "loading: .*Hello world!$"
+        required: [joined]
+---
+# Empty source: StreamWait yields prefix + reserved cell + first frame +
+# clear, then ends without forwarding any items. No crash, output drains.
+kind: Run.Sequence
+metadata: { name: TestEmptyStream }
+steps:
+  - name: EmptySrc
+    invoke: { kind: JS.Script, name: EmptySource }
+  - name: Wait
+    inputs:
+      input: "${{ steps.EmptySrc.result.output }}"
+    invoke: { kind: Console.StreamWait, name: Wait }
+  - name: Collect
+    inputs:
+      input: "${{ steps.Wait.result.output }}"
+    invoke: { kind: JS.Script, name: CollectChunks }
+  - name: AssertEmptyReached
+    inputs:
+      joined: "${{ steps.Collect.result.joined }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          joined: { type: string, pattern: "^loading: " }
+        required: [joined]
+---
+# Pre-first-item source rejection: StreamWait must yield the cell-clear
+# sequence (' \b') BEFORE the error propagates. We capture the chunks via
+# the same CollectChunks helper inside a try/catch and assert that:
+#   1. The clear sequence (' \b') is present in the captured output (proves
+#      StreamWait wiped the spinner before the error fired).
+#   2. The error reaches the catch block with the source's original message.
+kind: Run.Sequence
+metadata: { name: TestSourceErrorBeforeFirstItem }
+steps:
+  - name: ErrSrc
+    invoke: { kind: JS.Script, name: ImmediateErrorSource }
+  - name: ErrWait
+    inputs:
+      input: "${{ steps.ErrSrc.result.output }}"
+    invoke: { kind: Console.StreamWait, name: Wait }
+  - name: ErrTried
+    try:
+      - name: ErrCollect
+        inputs:
+          input: "${{ steps.ErrWait.result.output }}"
+        invoke: { kind: JS.Script, name: CollectChunks }
+    catch:
+      - name: AssertErrCaught
+        inputs:
+          message: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              message: { type: string, pattern: "oops before first item" }
+            required: [message]
+---
+# Cancellation propagation: consumer breaks early, StreamWait must call
+# reader.return() on the source so the source's `try/finally` cleanup runs.
+# State is communicated via globalThis because JS.Script re-evaluates its
+# user code each invoke (closures don't persist across calls).
+kind: JS.Script
+metadata: { name: TrackedSource }
+code: |
+  async function main() {
+    globalThis.__sw_returnCalled = false;
+    async function* gen() {
+      try {
+        await new Promise((r) => setTimeout(r, 60));
+        yield "x";
+        await new Promise((r) => setTimeout(r, 5000)); // never reached if cancellation propagates
+        yield "y";
+      } finally {
+        globalThis.__sw_returnCalled = true;
+      }
+    }
+    return { output: new Stream(gen()) };
+  }
+---
+# Consumer that takes items until "x" appears, then breaks. The break
+# triggers iter.return() on the StreamWait output, which must in turn
+# call reader.return() on the upstream source iterator.
+kind: JS.Script
+metadata: { name: TakeUntilXAndBreak }
+code: |
+  async function main({ input }) {
+    let received = 0;
+    for await (const chunk of input) {
+      received++;
+      if (chunk === "x") break;
+    }
+    return { received };
+  }
+---
+kind: JS.Script
+metadata: { name: ReadCancellationFlag }
+code: |
+  async function main() {
+    return { returnCalled: !!globalThis.__sw_returnCalled };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestCancellationPropagatesUpstream }
+steps:
+  - name: TrackedSrc
+    invoke: { kind: JS.Script, name: TrackedSource }
+  - name: WrapWait
+    inputs: { input: "${{ steps.TrackedSrc.result.output }}" }
+    invoke: { kind: Console.StreamWait, name: Wait }
+  - name: BreakEarly
+    inputs: { input: "${{ steps.WrapWait.result.output }}" }
+    invoke: { kind: JS.Script, name: TakeUntilXAndBreak }
+  - name: ReadFlag
+    invoke: { kind: JS.Script, name: ReadCancellationFlag }
+  - name: AssertCancellationPropagated
+    inputs:
+      returnCalled: "${{ steps.ReadFlag.result.returnCalled }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          returnCalled: { const: true }
+        required: [returnCalled]

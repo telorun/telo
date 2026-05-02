@@ -2,9 +2,9 @@ kind: Telo.Application
 metadata:
   name: ChatConsole
   description: |
-    Interactive REPL chat with OpenAI streaming completions. Persists the full
-    conversation in a local SQLite file (`./chat-history.sqlite`) so each turn
-    sees prior history and the chat survives process restart. Type `/exit` (or
+    Interactive REPL chat with OpenAI streaming completions. Persists the
+    conversation in sqlite so each turn sees prior history and the chat survives
+    process restart. Delete the file to clear history. Type `/exit` (or
     send EOF) to leave.
 
     Run with the OpenAI key in a sibling `.env.local` file:
@@ -27,12 +27,12 @@ metadata: { name: RecordStream }
 source: ../modules/record-stream
 ---
 kind: Telo.Import
-metadata: { name: Console }
-source: ../modules/console
+metadata: { name: PlainText }
+source: ../modules/plain-text-codec
 ---
 kind: Telo.Import
-metadata: { name: JS }
-source: ../modules/javascript
+metadata: { name: Console }
+source: ../modules/console
 ---
 kind: Telo.Import
 metadata: { name: Run }
@@ -46,7 +46,7 @@ source: ../modules/sql
 kind: Sql.Connection
 metadata: { name: ChatDb }
 driver: sqlite
-file: ./chat-history.sqlite
+file: ./tmp/chat-history.sqlite
 ---
 kind: Sql.Migration
 metadata: { name: CreateMessagesTable }
@@ -65,15 +65,13 @@ connection: { kind: Sql.Connection, name: ChatDb }
 ---
 # --- AI provider -----------------------------------------------------------
 kind: AiOpenai.OpenaiModel
-metadata: { name: Gpt4oMini }
-model: gpt-4o-mini
+metadata: { name: Gpt54Nano }
+model: gpt-5.4-nano
 apiKey: "${{ env.OPENAI_API_KEY }}"
-options:
-  temperature: 0.7
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+model: { kind: AiOpenai.OpenaiModel, name: Gpt54Nano }
 system: "You are a helpful CLI assistant. Keep replies brief — one or two sentences."
 ---
 # --- Stream pipeline -------------------------------------------------------
@@ -94,36 +92,19 @@ metadata: { name: ModelTee }
 kind: Console.WriteStream
 metadata: { name: Stdout }
 ---
-# --- Chat-turn helpers (JS) ------------------------------------------------
-# Build the messages array passed to Ai.TextStream from prior history rows
-# plus the new user turn. Done in JS because cel-js doesn't support inline
-# object-literal construction (verified against `@marcbachmann/cel-js` 7.5.x).
-kind: JS.Script
-metadata: { name: ComposeMessages }
-code: |
-  async function main({ history, userText }) {
-    const messages = (history ?? []).map(({ role, content }) => ({ role, content }));
-    messages.push({ role: "user", content: userText });
-    return { messages };
-  }
+# Animated wait indicator: paints `ai  ›` with a braille spinner while the
+# model is preparing the first token, clears the spinner cell on the first
+# delta, then forwards every item unchanged.
+kind: Console.StreamWait
+metadata: { name: ChatSpinner }
+prefix: "{magenta.bold ai}  › "
 ---
-# Drain a Stream<StreamPart>, accumulate every text-delta into a single string
-# for the assistant-row INSERT. Throws on error parts; ignores finish parts.
-kind: JS.Script
-metadata: { name: CaptureText }
-code: |
-  async function main({ input }) {
-    let assistantText = "";
-    for await (const part of input) {
-      if (part.type === "text-delta") {
-        assistantText += part.delta;
-      } else if (part.type === "error") {
-        throw new Error(part.error?.message ?? "AI stream error");
-      }
-      // finish: ignore
-    }
-    return { assistantText };
-  }
+# Drain the captured branch of the tee into a single string for the
+# assistant-row INSERT. PlainText.Decoder already accepts Stream<string>
+# as a pass-through (treats each chunk as UTF-8) and concatenates into a
+# single `{text}` — exactly the "drain a string stream" primitive we need.
+kind: PlainText.Decoder
+metadata: { name: AssistantText }
 ---
 # --- REPL ------------------------------------------------------------------
 kind: Run.Sequence
@@ -134,16 +115,14 @@ steps:
   - name: Read
     invoke:
       kind: Console.ReadLine
-      prompt: "you"
+      prompt: "{cyan.bold you} › "
   - name: Loop
     while: "${{ steps.Read.result.value != '/exit' }}"
     do:
-      - name: ReadHistory
-        inputs:
-          sql: "SELECT role, content FROM messages ORDER BY id ASC"
-        invoke:
-          kind: Sql.Query
-          connection: { kind: Sql.Connection, name: ChatDb }
+      # Insert the user message FIRST, then SELECT — the SELECT now
+      # returns the freshly-inserted user row as the last element, so
+      # the messages array passed to Ai.TextStream is just the rows
+      # verbatim. No client-side composition step needed.
       - name: InsertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
@@ -151,38 +130,48 @@ steps:
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }
-      - name: ComposeMessages
-        invoke: { kind: JS.Script, name: ComposeMessages }
+      - name: ReadHistory
         inputs:
-          history: "${{ steps.ReadHistory.result.rows }}"
-          userText: "${{ steps.Read.result.value }}"
+          sql: "SELECT role, content FROM messages ORDER BY id ASC"
+        invoke:
+          kind: Sql.Query
+          connection: { kind: Sql.Connection, name: ChatDb }
       - name: Stream
         invoke: { kind: Ai.TextStream, name: ChatStream }
         inputs:
-          messages: "${{ steps.ComposeMessages.result.messages }}"
+          messages: "${{ steps.ReadHistory.result.rows }}"
+      - name: Project
+        invoke: { kind: RecordStream.ExtractText, name: Deltas }
+        inputs:
+          input: "${{ steps.Stream.result.output }}"
       - name: Tee
         invoke: { kind: RecordStream.Tee, name: ModelTee }
         inputs:
-          input: "${{ steps.Stream.result.output }}"
-      - name: Project
-        invoke: { kind: RecordStream.ExtractText, name: Deltas }
+          input: "${{ steps.Project.result.output }}"
+      - name: Spin
+        invoke: { kind: Console.StreamWait, name: ChatSpinner }
         inputs:
           input: "${{ steps.Tee.result.outputA }}"
       - name: Print
         invoke: { kind: Console.WriteStream, name: Stdout }
         inputs:
-          input: "${{ steps.Project.result.output }}"
-      - name: Capture
-        invoke: { kind: JS.Script, name: CaptureText }
+          input: "${{ steps.Spin.result.output }}"
+      - name: Collect
+        invoke: { kind: PlainText.Decoder, name: AssistantText }
         inputs:
           input: "${{ steps.Tee.result.outputB }}"
       - name: InsertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["assistant", "${{ steps.Capture.result.assistantText }}"]
+          bindings: ["assistant", "${{ steps.Collect.result.text }}"]
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }
+      # Move cursor to a fresh line so the next Read's TTY readline
+      # interface doesn't refresh-erase the assistant's reply (readline
+      # in TTY mode emits `\r\x1b[K` when re-prompting on a non-empty
+      # current line — without this newline, the model's text gets wiped
+      # the moment we ask for the next user input).
       - name: Newline
         invoke:
           kind: Console.WriteLine
@@ -190,4 +179,4 @@ steps:
       - name: Read
         invoke:
           kind: Console.ReadLine
-          prompt: "you"
+          prompt: "{cyan.bold you} › "

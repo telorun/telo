@@ -5,6 +5,7 @@ import type {
   ResourceInstance,
   ResourceManifest,
 } from "@telorun/sdk";
+import { isTtyStream, render } from "./markup.js";
 
 export function register(ctx: ControllerContext): void {}
 
@@ -21,7 +22,8 @@ class ConsoleWriteLineResource implements ResourceInstance {
   invoke(input: any) {
     this.inputValidator.validate(input);
     const output = this.ctx.expandValue(this.manifest.output, input ?? {});
-    this.ctx.stdout.write(output);
+    const rendered = render(String(output ?? ""), isTtyStream(this.ctx.stdout as any));
+    this.ctx.stdout.write(rendered);
     this.ctx.stdout.write("\n");
     this.ctx.emit("StdOut.LineWritten", { line: output });
     return output;

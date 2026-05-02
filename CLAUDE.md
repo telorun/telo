@@ -22,6 +22,7 @@ Follow this strictly:
 - never make architectural decisions alone (package boundaries, dependency direction, where code lives), propose best fit and ask to choose from options
 - UI primitives must use Radix (`radix-ui` package, same pattern as `apps/telo-editor/src/components/ui/*`); if a needed component isn't wrapped yet, install it via shadcn before rolling your own
 - Icons must come from `lucide-react` (already a dep). No inline `<svg>` paths.
+- `JS.Script` in manifests is a last resort. Before reaching for it, check whether the work belongs in a new generic stdlib resource (composes with the existing kind library, reusable across consumers, type-safe at the manifest level). A `JS.Script` is acceptable when (a) the logic is one-off and demonstrably not reusable, or (b) it bridges to a Node-specific API the kernel doesn't yet expose. In every other case, propose a new resource kind first and ask before adding inline JS.
 
 ## Architecture
 
