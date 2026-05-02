@@ -166,7 +166,7 @@ When the consumer stops iterating (drops the iterator, the HTTP client disconnec
 
 ## Pairing with `Http.Api`
 
-The HTTP-server integration (single source-Invocable + format-codec response, with `Accept`-based negotiation) is documented in the http-server module. The current minimum: handlers that return `{ output: Stream<...> }` paired with a format encoder. The full content-negotiation rewrite is in flight under [text-stream-tests.md](../plans/text-stream-tests.md).
+The HTTP-server integration (single source-Invocable + format-codec response, with `Accept`-based negotiation) is documented in the http-server module. The current minimum: handlers that return `{ output: Stream<...> }` paired with a format encoder.
 
 ## What's NOT here
 

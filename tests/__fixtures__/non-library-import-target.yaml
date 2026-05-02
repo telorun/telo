@@ -1,0 +1,6 @@
+kind: Telo.Definition
+metadata:
+  name: Stray
+capability: Telo.Invocable
+schema:
+  type: object

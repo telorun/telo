@@ -398,6 +398,26 @@ export class Loader {
           (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
           throw e;
         }
+        if (!importedLibrary) {
+          const kinds = imported
+            .map((im) => im.kind)
+            .filter((k): k is string => typeof k === "string");
+          // Prefer the URL the source layer actually fetched (stamped onto every
+          // loaded manifest's metadata.source) over the raw input — for registry
+          // refs the input is e.g. "std/foo@1.0.0", not a URL.
+          const fetchedFrom =
+            ((imported[0]?.metadata as { source?: string } | undefined)?.source) ?? importUrl;
+          const detail = kinds.length
+            ? `Fetched ${imported.length} document(s) with kinds [${kinds.join(", ")}].`
+            : `Fetched manifest contained no recognizable Telo documents — check that the source ` +
+              `serves a Telo.Library manifest and not an upstream error page.`;
+          const e = new Error(
+            `Telo.Import target '${importSource}' did not resolve to a Telo.Library. ` +
+              `Fetched from: ${fetchedFrom}. ${detail}`,
+          );
+          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
+          throw e;
+        }
         if (importedLibrary?.metadata?.name) {
           libraryIdentityByUrl.set(importUrl, {
             name: importedLibrary.metadata.name as string,
