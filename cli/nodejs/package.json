@@ -19,6 +19,9 @@
     "url": "https://github.com/telorun/telo/issues"
   },
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "bin": {
     "telo": "./bin/telo.mjs"
   },
