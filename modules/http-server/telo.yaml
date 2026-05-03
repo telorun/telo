@@ -384,8 +384,10 @@ schema:
                 type: "object"
               headers:
                 title: Headers
-                description: Header schema for request matching.
+                description: Header schema for request matching. Values are matched as strings against the incoming header value.
                 type: "object"
+                additionalProperties:
+                  type: "string"
             required: ["path", "method"]
           inputs:
             title: Inputs

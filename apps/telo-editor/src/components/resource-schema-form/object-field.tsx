@@ -1,7 +1,7 @@
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
+import { FieldControl, inferType, ownsLabel } from "./field-control";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 interface ObjectFieldProps {
@@ -11,6 +11,7 @@ interface ObjectFieldProps {
   value: unknown;
   onValueChange: (next: unknown) => void;
   onFieldBlur?: (name: string) => void;
+  onErrorChange?: (fieldPath: string, hasError: boolean) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
@@ -44,6 +45,7 @@ export function ObjectField({
   value,
   onValueChange,
   onFieldBlur,
+  onErrorChange,
   resolvedResources,
   rootCelEval,
   onSelectResource,
@@ -103,7 +105,7 @@ export function ObjectField({
           const childKind = inferType(childProp);
           const childLabel =
             typeof childProp.title === "string" ? childProp.title : childName;
-          const childOwnsLabel = willRenderAsObjectField(childProp);
+          const childOwnsLabel = ownsLabel(childProp);
 
           return (
             <div key={`${fieldPath}.${childName}`} className="flex flex-col gap-1">
@@ -125,6 +127,7 @@ export function ObjectField({
                   onValueChange(setObjectChild(objectValue, childName, next))
                 }
                 onFieldBlur={onFieldBlur}
+                onErrorChange={onErrorChange}
                 resolvedResources={resolvedResources}
                 rootCelEval={rootCelEval}
                 onSelectResource={onSelectResource}

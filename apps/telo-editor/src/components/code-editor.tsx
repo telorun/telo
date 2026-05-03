@@ -21,10 +21,25 @@ type Monaco = Parameters<OnMount>[1];
 
 function resolveLanguageId(monaco: Monaco, mimeType: string | undefined): string {
   if (!mimeType) return "plaintext";
-  const match = monaco.languages.getLanguages().find(
+  const langs = monaco.languages.getLanguages();
+  const byMime = langs.find(
     (lang: languages.ILanguageExtensionPoint) => lang.mimetypes?.includes(mimeType),
   );
-  return match?.id ?? "plaintext";
+  if (byMime) return byMime.id;
+  // Monaco's basic-languages registrations are inconsistent — many register
+  // no mimetypes at all (sql, markdown, ...) and JavaScript only declares
+  // `text/javascript`, not the equally valid `application/javascript`. Fall
+  // back to matching the MIME subtype against language id / aliases so that
+  // standard IANA media types still light up syntax highlighting.
+  const slash = mimeType.indexOf("/");
+  if (slash < 0) return "plaintext";
+  const subtype = mimeType.slice(slash + 1).toLowerCase().replace(/^x-/, "");
+  const byAlias = langs.find(
+    (lang: languages.ILanguageExtensionPoint) =>
+      lang.id.toLowerCase() === subtype ||
+      lang.aliases?.some((a) => a.toLowerCase() === subtype),
+  );
+  return byAlias?.id ?? "plaintext";
 }
 
 export function CodeEditor({

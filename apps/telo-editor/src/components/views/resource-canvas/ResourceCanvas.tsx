@@ -10,7 +10,7 @@ import {
 import {
   FieldControl,
   inferType,
-  willRenderAsObjectField,
+  ownsLabel,
 } from "../../resource-schema-form/field-control";
 import {
   inferRefMode,
@@ -393,7 +393,7 @@ export function ResourceCanvas({
               />
             );
             const labelText = typeof prop.title === "string" ? prop.title : name;
-            const fieldOwnsLabel = willRenderAsObjectField(prop);
+            const fieldOwnsLabel = ownsLabel(prop);
             const label =
               fieldOwnsLabel ? null : (
                 <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">

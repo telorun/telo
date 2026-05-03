@@ -2,6 +2,7 @@ import { ArrayObjectField } from "./array-object-field";
 import { CelFieldWrapper } from "./cel-field-wrapper";
 import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
 import { JsonSchemaField } from "./json-schema-field";
+import { MapField } from "./map-field";
 import { ObjectField } from "./object-field";
 import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
@@ -15,15 +16,26 @@ interface FieldControlProps {
   value: unknown;
   onValueChange: (next: unknown) => void;
   onFieldBlur?: (name: string) => void;
+  /**
+   * Bubbles validation state up to `ResourceSchemaForm`'s aggregator, keyed by
+   * `fieldPath`. Cleanup contract: any field that emits `(path, true)` MUST
+   * also emit `(path, false)` when:
+   *   1. its error state transitions back to clean,
+   *   2. its `fieldPath` changes (emit `false` for the previous path),
+   *   3. it unmounts (e.g. parent row removed, panel closed).
+   * Stale paths in the aggregator latch `hasFormErrors=true` and silently
+   * freeze saves, so this is correctness-critical, not optimization.
+   */
+  onErrorChange?: (fieldPath: string, hasError: boolean) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   /** Propagated to `ReferenceSelectField` so ref chips can open the peek panel. */
   onSelectResource?: (kind: string, name: string) => void;
-  /** User-facing label for the field — used by `ObjectField` as the collapsible
-   *  trigger title. Ignored by non-object field types. */
+  /** User-facing label for the field — used by `ObjectField`/`MapField` as the
+   *  collapsible trigger title. Ignored by non-self-headed field types. */
   label?: string;
   /** Whether the parent schema marks this field as required. Used by
-   *  `ObjectField` to decide whether to expose a Clear affordance. */
+   *  `ObjectField`/`MapField` to decide whether to expose a Clear affordance. */
   required?: boolean;
 }
 
@@ -34,17 +46,44 @@ export function inferType(prop: JsonSchemaProperty): string {
   return "string";
 }
 
-/** True when `FieldControl` will delegate to `ObjectField` for this prop — i.e.
- *  the prop renders as a collapsible object card that owns its own header.
- *  Call sites use this to suppress their own label (the collapsible trigger
- *  displays the title instead). */
-export function willRenderAsObjectField(prop: JsonSchemaProperty): boolean {
+const MAP_VALUE_QUALIFIERS = [
+  "type",
+  "oneOf",
+  "anyOf",
+  "properties",
+  "x-telo-ref",
+  "$ref",
+  "const",
+  "enum",
+] as const;
+
+/** True when `additionalProperties` is a real value schema (not `true`,
+ *  `false`, or `{}`). The qualifying-keys list is deliberately schema-shape
+ *  complete: anything missing here would silently misroute to `JsonSchemaField`,
+ *  which is worse than rendering as the wrong widget. */
+function isMapValueSchema(value: unknown): value is JsonSchemaProperty {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return MAP_VALUE_QUALIFIERS.some((key) => key in record);
+}
+
+/** True when the renderer draws its own field title. Callers should omit the
+ *  parent label when this is true. */
+export function ownsLabel(prop: JsonSchemaProperty): boolean {
   if (typeof prop["x-telo-ref"] === "string") return false;
   const hasNestedRef = (prop.anyOf ?? prop.oneOf ?? []).some(
     (item) => typeof item === "object" && item !== null && typeof item["x-telo-ref"] === "string",
   );
   if (hasNestedRef) return false;
-  return inferType(prop) === "object" && !!prop.properties;
+  if (inferType(prop) !== "object") return false;
+  if (prop.properties) return true;
+  return isMapValueSchema(prop.additionalProperties);
+}
+
+/** True when the renderer draws `prop.description` itself. Callers should skip
+ *  the bottom description row when this is true. */
+export function ownsDescription(prop: JsonSchemaProperty): boolean {
+  return ownsLabel(prop);
 }
 
 export function FieldControl({
@@ -54,6 +93,7 @@ export function FieldControl({
   value,
   onValueChange,
   onFieldBlur,
+  onErrorChange,
   resolvedResources,
   rootCelEval,
   onSelectResource,
@@ -94,6 +134,7 @@ export function FieldControl({
           value={value}
           onValueChange={onValueChange}
           onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
@@ -112,9 +153,29 @@ export function FieldControl({
           value={value}
           onValueChange={onValueChange}
           onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+        />
+      );
+    }
+
+    if (kind === "object" && isMapValueSchema(prop.additionalProperties)) {
+      return (
+        <MapField
+          rootFieldName={rootFieldName}
+          fieldPath={fieldPath}
+          prop={prop}
+          value={value}
+          onValueChange={onValueChange}
+          onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
+          resolvedResources={resolvedResources}
+          rootCelEval={rootCelEval}
+          onSelectResource={onSelectResource}
+          label={label}
+          required={required}
         />
       );
     }
@@ -152,10 +213,9 @@ export function FieldControl({
     inner
   );
 
-  // ObjectField renders its own description inside the collapsible header.
-  // Every other field gets the description rendered below it here.
-  const ownsDescription = willRenderAsObjectField(prop);
-  if (ownsDescription || typeof prop.description !== "string") {
+  // Self-headed fields render their own description inside the collapsible
+  // trigger; everything else gets a description row below.
+  if (ownsDescription(prop) || typeof prop.description !== "string") {
     return wrapped;
   }
 

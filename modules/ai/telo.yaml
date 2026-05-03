@@ -79,6 +79,8 @@ schema:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
       type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
     options:
       title: Options
       description: Completion-level option overrides. Shallow-merged between the model's options and runtime inputs.options; downstream wins.
@@ -121,6 +123,8 @@ schema:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
       type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
     options:
       title: Options
       description: Per-resource option overrides. Shallow-merged with the model's options and runtime inputs.options; downstream wins.
