@@ -1,7 +1,7 @@
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
-import { inferRefMode, resolveRefCandidates, toRefValue } from "./ref-candidates";
+import { buildEditorDefaultValue } from "./default-value";
+import { FieldControl, inferType, ownsLabel } from "./field-control";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 interface ArrayObjectFieldProps {
@@ -11,31 +11,10 @@ interface ArrayObjectFieldProps {
   value: unknown;
   onValueChange: (next: unknown) => void;
   onFieldBlur?: (name: string) => void;
+  onErrorChange?: (fieldPath: string, hasError: boolean) => void;
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
-}
-
-function buildDefaultValue(
-  prop: JsonSchemaProperty,
-  resolvedResources: ResolvedResourceOption[],
-): unknown {
-  if (prop.default !== undefined) return prop.default;
-
-  const refTarget = prop["x-telo-ref"];
-  if (typeof refTarget === "string") {
-    const options = resolveRefCandidates([refTarget], resolvedResources);
-    if (options.length === 0) return undefined;
-    return toRefValue(options[0], inferRefMode(prop));
-  }
-
-  const kind = inferType(prop);
-  if (kind === "boolean") return false;
-  if (kind === "integer" || kind === "number") return 0;
-  if (kind === "array") return [];
-  if (kind === "object") return {};
-  if (Array.isArray(prop.enum) && prop.enum.length > 0) return prop.enum[0];
-  return "";
 }
 
 function setObjectChild(
@@ -59,6 +38,7 @@ export function ArrayObjectField({
   value,
   onValueChange,
   onFieldBlur,
+  onErrorChange,
   resolvedResources,
   rootCelEval,
   onSelectResource,
@@ -72,7 +52,7 @@ export function ArrayObjectField({
     const next: Record<string, unknown> = {};
     for (const [itemName, itemProp] of Object.entries(itemProperties)) {
       if (!itemRequired.has(itemName) && itemProp.default === undefined) continue;
-      const initial = buildDefaultValue(itemProp, resolvedResources);
+      const initial = buildEditorDefaultValue(itemProp, resolvedResources);
       if (initial !== undefined) next[itemName] = initial;
     }
     return next;
@@ -107,7 +87,7 @@ export function ArrayObjectField({
                 const itemKind = inferType(itemProp);
                 const itemLabel =
                   typeof itemProp.title === "string" ? itemProp.title : itemName;
-                const itemOwnsLabel = willRenderAsObjectField(itemProp);
+                const itemOwnsLabel = ownsLabel(itemProp);
 
                 return (
                   <div key={`${fieldPath}.${index}.${itemName}`} className="flex flex-col gap-1">
@@ -132,6 +112,7 @@ export function ArrayObjectField({
                         onValueChange(updated);
                       }}
                       onFieldBlur={onFieldBlur}
+                      onErrorChange={onErrorChange}
                       resolvedResources={resolvedResources}
                       rootCelEval={rootCelEval}
                       onSelectResource={onSelectResource}

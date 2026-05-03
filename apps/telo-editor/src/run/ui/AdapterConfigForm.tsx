@@ -11,8 +11,11 @@ interface AdapterConfigFormProps<Config> {
 /** Renders the config form for a run adapter: either the adapter's custom
  *  form (if it set one) or a generic ResourceSchemaForm driven by the
  *  adapter's JSON Schema. Issues from `validateConfig` are shown as a
- *  summary banner above the form — inline per-field errors require a
- *  `fieldErrors` prop on ResourceSchemaForm which is a separate follow-up. */
+ *  summary banner above the form. Inline per-field errors are now rendered
+ *  by the form's own field components (e.g. MapField key validation). The
+ *  remaining gap is run-execution gating: when `RunSettingsSection` grows
+ *  Apply / Run controls, they should consume `ResourceSchemaForm`'s
+ *  `onParseStateChange` the same way `DetailPanel` does. */
 export function AdapterConfigForm<Config>({ adapter, value, onChange }: AdapterConfigFormProps<Config>) {
   const issues = adapter.validateConfig(value);
   const CustomForm = adapter.customForm;

@@ -25,6 +25,7 @@ schema:
       title: Code
       description: Starlark source code to execute.
       type: string
+      x-telo-widget: code
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for script inputs.

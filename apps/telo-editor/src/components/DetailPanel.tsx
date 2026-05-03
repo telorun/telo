@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModuleViewData, Selection } from "../model";
 import { summarizeResource } from "../diagnostics-aggregate";
 import { isRecord } from "../lib/utils";
@@ -125,28 +125,91 @@ export function DetailPanel({
   }, [resource, viewData]);
 
   const [pointerFields, setPointerFields] = useState<Record<string, unknown>>({});
+  const [hasFormErrors, setHasFormErrors] = useState(false);
+  // Tracks whether `pointerFields` has been touched by user input since the
+  // last reset / commit. Without this flag the debounced commit effect would
+  // fire on every selectionContext-driven re-seed and write the same values
+  // back to the manifest as a no-op.
+  const dirtyRef = useRef(false);
+
+  // Refs mirroring state/props that the flush effect's cleanup needs at the
+  // moment it fires. The cleanup captures the OLD selectionContext + resource
+  // via closure (so it commits to the right pointer when the user navigates),
+  // but must read the LATEST pointerFields, hasFormErrors, and onUpdateResource
+  // — those have all advanced past the closure by the time cleanup runs.
+  // Assigned during render rather than via useEffect: these refs never feed
+  // back into render output, only into imperative cleanup code, so paying for
+  // three scheduled effects per render would be pure overhead.
+  const pointerFieldsRef = useRef(pointerFields);
+  const hasFormErrorsRef = useRef(hasFormErrors);
+  const onUpdateResourceRef = useRef(onUpdateResource);
+  pointerFieldsRef.current = pointerFields;
+  hasFormErrorsRef.current = hasFormErrors;
+  onUpdateResourceRef.current = onUpdateResource;
 
   useEffect(() => {
     if (selectionContext) setPointerFields(selectionContext.values);
+    setHasFormErrors(false);
+    dirtyRef.current = false;
   }, [selectionContext]);
 
-  function applyPointerEdit(values: Record<string, unknown>) {
-    if (!resource || !selectionContext) return;
+  const handlePointerChange = useCallback((next: Record<string, unknown>) => {
+    dirtyRef.current = true;
+    setPointerFields(next);
+  }, []);
 
-    const target = getByPointer(resource.fields, selectionContext.pointer);
+  function commitFields(
+    res: NonNullable<typeof resource>,
+    ctx: NonNullable<typeof selectionContext>,
+    values: Record<string, unknown>,
+  ) {
+    const target = getByPointer(res.fields, ctx.pointer);
     if (!isRecord(target)) return;
 
     const editableKeys = new Set(
-      Object.keys((selectionContext.schema.properties as Record<string, unknown>) ?? {}),
+      Object.keys((ctx.schema.properties as Record<string, unknown>) ?? {}),
     );
     const preserved = Object.fromEntries(
       Object.entries(target).filter(([k]) => !editableKeys.has(k)),
     );
     const updated = { ...preserved, ...sanitizeFields(values) };
-    const nextFields = setByPointer(resource.fields, selectionContext.pointer, updated);
+    const nextFields = setByPointer(res.fields, ctx.pointer, updated);
 
-    onUpdateResource(resource.kind, resource.name, nextFields as Record<string, unknown>);
+    onUpdateResourceRef.current(res.kind, res.name, nextFields as Record<string, unknown>);
   }
+
+  // Debounced commit. Replaces the previous blur-only commit, which dropped
+  // structural edits whose triggering control (a remove button) unmounted
+  // before the browser could fire blur — e.g. clicking "×" on a JSON-schema
+  // property added the property to local state but never wrote the deletion
+  // back to the manifest.
+  useEffect(() => {
+    if (!dirtyRef.current || hasFormErrors || !selectionContext || !resource) return;
+    const handle = setTimeout(() => {
+      commitFields(resource, selectionContext, pointerFields);
+      dirtyRef.current = false;
+    }, 250);
+    return () => clearTimeout(handle);
+    // commitFields reads its inputs explicitly; the deps below are exactly
+    // what determines whether/when to schedule.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointerFields, hasFormErrors, selectionContext, resource]);
+
+  // Flush pending edit when selection or resource changes, or on unmount.
+  // Without this, navigating away within the 250ms debounce window would
+  // clear the pending timer and reset `dirtyRef`, silently dropping the
+  // user's last edit. The cleanup captures the OLD `sc`/`res` via closure
+  // so the flush goes to the pointer the user was actually editing.
+  useEffect(() => {
+    const sc = selectionContext;
+    const res = resource;
+    return () => {
+      if (!dirtyRef.current || !sc || !res || hasFormErrorsRef.current) return;
+      commitFields(res, sc, pointerFieldsRef.current);
+      dirtyRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionContext, resource]);
 
   if (!resource) return null;
 
@@ -192,8 +255,8 @@ export function DetailPanel({
             <ResourceSchemaForm
               schema={selectionContext.schema}
               values={pointerFields}
-              onChange={setPointerFields}
-              onFieldBlur={() => applyPointerEdit(pointerFields)}
+              onChange={handlePointerChange}
+              onParseStateChange={setHasFormErrors}
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}

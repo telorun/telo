@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType, willRenderAsObjectField } from "./field-control";
+import { FieldControl, inferType, ownsLabel } from "./field-control";
 import type { JsonSchema, JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 export interface ResourceSchemaFormProps {
@@ -35,9 +35,27 @@ export function ResourceSchemaForm({
     [properties],
   );
 
+  const errorPathsRef = useRef<Set<string>>(new Set());
+
+  // Schema-keyed reset: clear the aggregator and re-emit `false` whenever the
+  // form rebinds to a different schema. Prevents latched error state from
+  // surviving resource navigation. Within a single schema, transitions are
+  // driven entirely by `onErrorChange` calls below.
   useEffect(() => {
+    errorPathsRef.current.clear();
     onParseStateChange?.(false);
-  }, [onParseStateChange]);
+  }, [schema, onParseStateChange]);
+
+  const onErrorChange = useCallback(
+    (path: string, hasError: boolean) => {
+      const prev = errorPathsRef.current.size > 0;
+      if (hasError) errorPathsRef.current.add(path);
+      else errorPathsRef.current.delete(path);
+      const next = errorPathsRef.current.size > 0;
+      if (prev !== next) onParseStateChange?.(next);
+    },
+    [onParseStateChange],
+  );
 
   function setField(name: string, value: unknown) {
     onChange({ ...values, [name]: value });
@@ -51,10 +69,10 @@ export function ResourceSchemaForm({
     <div className="flex flex-col gap-3">
       {fields.map(({ name, prop, kind }) => {
         const labelText = typeof prop.title === "string" ? prop.title : name;
-        const ownsLabel = willRenderAsObjectField(prop as JsonSchemaProperty);
+        const fieldOwnsLabel = ownsLabel(prop as JsonSchemaProperty);
         return (
           <div key={name} className="flex flex-col gap-1">
-            {!ownsLabel && (
+            {!fieldOwnsLabel && (
               <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                 {labelText}
                 {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
@@ -68,6 +86,7 @@ export function ResourceSchemaForm({
               value={values[name]}
               onValueChange={(next) => setField(name, next)}
               onFieldBlur={onFieldBlur}
+              onErrorChange={onErrorChange}
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}

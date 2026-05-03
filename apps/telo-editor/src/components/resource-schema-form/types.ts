@@ -7,6 +7,8 @@ export type JsonSchemaProperty = {
   anyOf?: Array<{ type?: string; properties?: Record<string, JsonSchemaProperty>; [key: string]: unknown }>;
   items?: JsonSchemaProperty;
   properties?: Record<string, JsonSchemaProperty>;
+  additionalProperties?: JsonSchemaProperty | boolean;
+  propertyNames?: { pattern?: string };
   required?: string[];
   [key: string]: unknown;
 };

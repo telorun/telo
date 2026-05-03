@@ -105,6 +105,8 @@ schema:
           title: SQL
           type: string
           description: SQL query text; may contain CEL template expressions
+          contentMediaType: application/sql
+          x-telo-widget: code
         bindings:
           title: Bindings
           type: array
@@ -137,6 +139,8 @@ schema:
           title: SQL
           type: string
           description: SQL statement text; may contain CEL template expressions
+          contentMediaType: application/sql
+          x-telo-widget: code
         bindings:
           title: Bindings
           type: array
@@ -302,6 +306,8 @@ schema:
       title: SQL
       type: string
       description: SQL statement(s) to execute for this migration
+      contentMediaType: application/sql
+      x-telo-widget: code
 ---
 kind: Telo.Definition
 metadata:
