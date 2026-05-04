@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "http-server"
   namespace: std
-  version: "0.3.0"
+  version: "0.3.1"
 exports:
   kinds:
     - Server
@@ -13,7 +13,7 @@ metadata:
   name: "Server"
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/http-server@0.3.0?local_path=./nodejs#http-server
+  - pkg:npm/@telorun/http-server@0.3.1?local_path=./nodejs#http-server
 schema:
   type: "object"
   properties:
@@ -344,7 +344,7 @@ metadata:
 capability: Telo.Mount
 topology: Router
 controllers:
-  - pkg:npm/@telorun/http-server@0.3.0?local_path=./nodejs#http-server-api
+  - pkg:npm/@telorun/http-server@0.3.1?local_path=./nodejs#http-server-api
 schema:
   type: "object"
   properties:

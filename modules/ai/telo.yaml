@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai
   namespace: std
-  version: 0.1.0
+  version: 0.1.1
   description: LLM completion primitives with pluggable provider models
 exports:
   kinds:
@@ -67,7 +67,7 @@ metadata:
   name: Text
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.1.0?local_path=./nodejs#text
+  - pkg:npm/@telorun/ai@0.1.1?local_path=./nodejs#text
 schema:
   type: object
   properties:
@@ -101,7 +101,7 @@ metadata:
   name: TextStream
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.1.0?local_path=./nodejs#text-stream
+  - pkg:npm/@telorun/ai@0.1.1?local_path=./nodejs#text-stream
 outputType:
   kind: Type.JsonSchema
   schema:

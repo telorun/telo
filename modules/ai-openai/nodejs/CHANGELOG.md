@@ -1,5 +1,12 @@
 # @telorun/ai-openai
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [d3ed5a5]
+  - @telorun/ai@0.1.1
+
 ## 1.1.3
 
 ### Patch Changes
