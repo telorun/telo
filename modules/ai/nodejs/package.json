@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Telo AI module — Ai.Model abstract + Ai.Text (buffered) and Ai.TextStream (streaming) consumers.",
   "keywords": [
     "telo",
