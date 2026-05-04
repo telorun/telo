@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sse-codec
   namespace: std
-  version: 0.2.0
+  version: 0.2.1
   description: |
     Server-Sent Events codec — event-record stream ↔ byte iterables. Encoder
     produces one SSE frame per item: `event: <type>\ndata: <json>\n\n`. Decoder
@@ -25,7 +25,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:npm/@telorun/sse-codec@0.2.0?local_path=./nodejs#encoder
+  - pkg:npm/@telorun/sse-codec@0.2.1?local_path=./nodejs#encoder
 schema:
   type: object
   additionalProperties: false
