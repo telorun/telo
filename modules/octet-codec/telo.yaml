@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: octet-codec
   namespace: std
-  version: 1.1.0
+  version: 0.2.0
   description: |
     Raw-bytes codec — Uint8Array stream ↔ Uint8Array. Encoder passes byte
     chunks through unchanged. Decoder collects every chunk into a single
@@ -23,7 +23,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:npm/@telorun/octet-codec@1.1.0?local_path=./nodejs#encoder
+  - pkg:npm/@telorun/octet-codec@0.2.0?local_path=./nodejs#encoder
 schema:
   type: object
   additionalProperties: false
@@ -35,7 +35,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:
-  - pkg:npm/@telorun/octet-codec@1.1.0?local_path=./nodejs#decoder
+  - pkg:npm/@telorun/octet-codec@0.2.0?local_path=./nodejs#decoder
 outputType:
   kind: Type.JsonSchema
   schema:
