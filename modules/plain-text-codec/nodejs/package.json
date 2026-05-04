@@ -1,6 +1,6 @@
 {
   "name": "@telorun/plain-text-codec",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Plain-text codec — UTF-8 string ↔ byte iterables. Encoder + Decoder.",
   "keywords": [
     "telo",

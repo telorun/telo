@@ -1,6 +1,6 @@
 {
   "name": "@telorun/codec",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Telo codec abstracts — Encoder and Decoder Invocable contracts. Format-specific codec packages extend these.",
   "keywords": [
     "telo",
