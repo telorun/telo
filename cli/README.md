@@ -189,7 +189,7 @@ targets:
 kind: Telo.Import
 metadata:
   name: HttpServer
-source: std/http-server@1.0.1
+source: std/http-server@0.3.0
 ---
 kind: Telo.Import
 metadata:
