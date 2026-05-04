@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import { minimatch } from "minimatch";
 import { Loader, StaticAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
@@ -163,6 +164,58 @@ function expandAndInlineIncludes(content: string, manifestDir: string): string {
   // Re-serialize all original documents + inlined partials
   const serialized = docs.map((d) => d.toString()).join("---\n");
   return serialized + inlined;
+}
+
+// ---------------------------------------------------------------------------
+// Relative import canonicalization — turn `source: ../sibling` into
+// `source: <namespace>/<name>@<version>` so the published manifest is
+// self-contained. A relative path is only meaningful on the publisher's disk;
+// once the artifact is in the registry, `..` collapses the version segment of
+// the registry URL and breaks resolution for downstream consumers.
+// ---------------------------------------------------------------------------
+
+async function canonicalizeRelativeImports(
+  content: string,
+  manifestPath: string,
+  loader: Loader,
+  localFileSource: LocalFileSource,
+): Promise<string> {
+  const baseUrl = pathToFileURL(manifestPath).href;
+  const docs = parseAllDocuments(content);
+  let changed = false;
+
+  for (const doc of docs) {
+    const json = doc.toJSON();
+    if (!json || json.kind !== "Telo.Import") continue;
+    const source = json.source;
+    if (typeof source !== "string") continue;
+    if (!source.startsWith(".") && !source.startsWith("/")) continue;
+
+    const targetUrl = localFileSource.resolveRelative(baseUrl, source);
+    const targetManifests = await loader.loadModule(targetUrl);
+    const lib = targetManifests.find((m) => m.kind === "Telo.Library");
+    if (!lib) {
+      throw new Error(
+        `Telo.Import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
+      );
+    }
+    const { namespace, name, version } = (lib.metadata ?? {}) as {
+      namespace?: string;
+      name?: string;
+      version?: string;
+    };
+    if (!namespace || !name || !version) {
+      throw new Error(
+        `Telo.Import source '${source}' (resolved: '${targetUrl}') is missing metadata.namespace/name/version, required for canonicalization.`,
+      );
+    }
+
+    doc.setIn(["source"], `${namespace}/${name}@${version}`);
+    changed = true;
+  }
+
+  if (!changed) return content;
+  return docs.map((d) => d.toString()).join("---\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +468,8 @@ async function publishOne(
   // Static analysis pre-flight: validate the manifest (with includes) before publishing.
   // This catches schema errors, bad references, CEL issues, and system-kind violations
   // in partial files — all before the artifact reaches the registry.
-  const analysisLoader = new Loader([new LocalFileSource()]);
+  const localFileSource = new LocalFileSource();
+  const analysisLoader = new Loader([localFileSource]);
   let analysisManifests;
   try {
     analysisManifests = await analysisLoader.loadManifests(filePath);
@@ -432,6 +486,20 @@ async function publishOne(
     return false;
   }
   stepOk(log, "check", "static analysis passed");
+
+  // Canonicalize relative Telo.Import.source values to `<namespace>/<name>@<version>`
+  // so the registry artifact is portable. Done after analysis so the dev's on-disk
+  // manifest (with relative paths) is what gets validated. Reuses the analysis
+  // loader so sibling-library reads are cache hits.
+  try {
+    content = await canonicalizeRelativeImports(content, filePath, analysisLoader, localFileSource);
+  } catch (err) {
+    console.error(
+      log.error("error") +
+        `  Failed to canonicalize relative imports: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
 
   // Expand include globs and inline partial file contents before pushing
   content = expandAndInlineIncludes(content, manifestDir);
