@@ -1,0 +1,68 @@
+{
+  "name": "@telorun/mcp-server",
+  "version": "0.1.0",
+  "description": "Telo MCP Server module — Model Context Protocol server resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "mcp",
+    "model-context-protocol",
+    "server",
+    "tools",
+    "stdio"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/mcp-server/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    "./stdio-server": {
+      "types": "./dist/stdio-server-controller.d.ts",
+      "bun": "./src/stdio-server-controller.ts",
+      "import": "./dist/stdio-server-controller.js"
+    },
+    "./http-endpoint": {
+      "types": "./dist/http-endpoint-controller.d.ts",
+      "bun": "./src/http-endpoint-controller.ts",
+      "import": "./dist/http-endpoint-controller.js"
+    },
+    "./tools": {
+      "types": "./dist/tools-controller.d.ts",
+      "bun": "./src/tools-controller.ts",
+      "import": "./dist/tools-controller.js"
+    },
+    "./resources": {
+      "types": "./dist/resources-controller.d.ts",
+      "bun": "./src/resources-controller.ts",
+      "import": "./dist/resources-controller.js"
+    },
+    "./prompts": {
+      "types": "./dist/prompts-controller.d.ts",
+      "bun": "./src/prompts-controller.ts",
+      "import": "./dist/prompts-controller.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@telorun/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "fastify": "^5.7.2",
+    "typescript": "^5.0.0"
+  }
+}

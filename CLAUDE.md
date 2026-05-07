@@ -8,7 +8,7 @@ Implementation plans should live in the package they affect the most, eg. `apps/
 
 Follow this strictly:
 
-- when the user asks a question, answer it — do not jump to editing files. Implementation requires an explicit go-ahead; discussing options or proposing approaches is not permission.
+- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `apply`, `update`, `implement`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
 - never add underscores to unused function arguments
 - never look at commit history
 - never use git stash
@@ -23,6 +23,7 @@ Follow this strictly:
 - never make architectural decisions alone (package boundaries, dependency direction, where code lives), propose best fit and ask to choose from options
 - UI primitives must use Radix (`radix-ui` package, same pattern as `apps/telo-editor/src/components/ui/*`); if a needed component isn't wrapped yet, install it via shadcn before rolling your own
 - Icons must come from `lucide-react` (already a dep). No inline `<svg>` paths.
+- When working on a plan, when a decision is made then remove the decision section entirely, not just mark it as decided. The plan should reflect the current state of the world, not a history of how we got here.
 - `JS.Script` in manifests is a last resort. Before reaching for it, check whether the work belongs in a new generic stdlib resource (composes with the existing kind library, reusable across consumers, type-safe at the manifest level). A `JS.Script` is acceptable when (a) the logic is one-off and demonstrably not reusable, or (b) it bridges to a Node-specific API the kernel doesn't yet expose. In every other case, propose a new resource kind first and ask before adding inline JS.
 
 ## Architecture

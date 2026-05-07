@@ -1,0 +1,205 @@
+kind: Telo.Application
+metadata: { name: McpHttpToolCallTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Hand-rolled MCP Streamable-HTTP client. We can't import @modelcontextprotocol/sdk
+# from a JS.Script (no npm resolution there) so this hand-crafts the protocol
+# over fetch. Both JSON and text/event-stream response shapes are accepted.
+kind: JS.Script
+metadata: { name: McpFetch }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url:    { type: string }
+      method: { type: string }
+      params: { type: object, additionalProperties: true }
+    required: [url, method]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status:    { type: integer }
+      result:    { type: object, additionalProperties: true }
+      error:     { type: object, additionalProperties: true }
+      hasError:  { type: boolean }
+    required: [status, hasError]
+code: |
+  async function main({ url, method, params }) {
+    const initBody = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "telo-test", version: "1.0.0" },
+      },
+    };
+    const initResp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+      },
+      body: JSON.stringify(initBody),
+    });
+    if (initResp.status >= 400) {
+      const text = await initResp.text();
+      throw new Error(`MCP initialize failed: ${initResp.status} ${text}`);
+    }
+    const sessionId = initResp.headers.get("mcp-session-id");
+    if (!sessionId) {
+      const text = await initResp.text();
+      throw new Error(`MCP initialize missing Mcp-Session-Id header. Body: ${text}`);
+    }
+    await initResp.text();
+
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Mcp-Session-Id": sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    }).then((r) => r.text());
+
+    const callResp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Mcp-Session-Id": sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params: params || {} }),
+    });
+    const status = callResp.status;
+    const ct = (callResp.headers.get("content-type") || "").toLowerCase();
+    const raw = await callResp.text();
+
+    let payload;
+    if (ct.startsWith("application/json")) {
+      payload = JSON.parse(raw);
+    } else if (ct.startsWith("text/event-stream")) {
+      const dataLines = raw
+        .split(/\r?\n/)
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trimStart());
+      if (dataLines.length === 0) throw new Error(`MCP SSE body had no data lines. Raw: ${raw}`);
+      payload = JSON.parse(dataLines[0]);
+    } else {
+      throw new Error(`MCP unexpected Content-Type '${ct}'. Body: ${raw}`);
+    }
+
+    return {
+      status,
+      hasError: !!payload.error,
+      result: payload.result || {},
+      error: payload.error || {},
+    };
+  }
+---
+kind: JS.Script
+metadata: { name: GetWeatherImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      city: { type: string }
+    required: [city]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      summary: { type: string }
+    required: [summary]
+code: |
+  function main({ city }) {
+    return { summary: `Sunny in ${city}` };
+  }
+---
+kind: Mcp.Tools
+metadata: { name: WeatherTools }
+entries:
+  - name: get_weather
+    description: Get current weather for a city.
+    argumentsSchema:
+      type: object
+      properties:
+        city: { type: string }
+      required: [city]
+    handler: { kind: JS.Script, name: GetWeatherImpl }
+    inputs:
+      city: "${{ request.arguments.city }}"
+    result:
+      content:
+        - type: text
+          text: "${{ result.summary }}"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+tools: [WeatherTools]
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8951
+    baseUrl: http://127.0.0.1:8951
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpHttpToolCallTest.McpHttp }
+targets: [Server]
+steps:
+  - name: CallGetWeather
+    inputs:
+      url: http://127.0.0.1:8951/mcp
+      method: tools/call
+      params:
+        name: get_weather
+        arguments: { city: Atlantis }
+    invoke: { kind: JS.Script, name: McpFetch }
+  - name: AssertResponse
+    inputs:
+      hasError: "${{ steps.CallGetWeather.result.hasError }}"
+      contentText: "${{ steps.CallGetWeather.result.result.content[0].text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          hasError: { const: false }
+          contentText: { const: "Sunny in Atlantis" }
+        required: [hasError, contentText]

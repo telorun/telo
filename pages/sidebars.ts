@@ -101,6 +101,16 @@ const sidebars: SidebarsConfig = {
           ],
         },
         { type: "doc", id: "modules/javascript/README", label: "JavaScript" },
+        {
+          type: "category",
+          label: "MCP Server",
+          items: [
+            { type: "doc", id: "modules/mcp-server/README", label: "Overview" },
+            { type: "doc", id: "modules/mcp-server/docs/stdio-server", label: "Mcp.StdioServer" },
+            { type: "doc", id: "modules/mcp-server/docs/http-endpoint", label: "Mcp.HttpEndpoint" },
+            { type: "doc", id: "modules/mcp-server/docs/tools", label: "Mcp.Tools" },
+          ],
+        },
         { type: "doc", id: "modules/record-stream/README", label: "Record Stream" },
         {
           type: "category",

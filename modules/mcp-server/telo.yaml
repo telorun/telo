@@ -1,0 +1,455 @@
+kind: Telo.Library
+metadata:
+  name: "mcp-server"
+  namespace: std
+  version: "0.1.0"
+exports:
+  kinds:
+    - StdioServer
+    - HttpEndpoint
+    - Tools
+    - Resources
+    - Prompts
+---
+# Mcp.Tools — passive bundle of tool entries. A transport (StdioServer or
+# HttpEndpoint) references one or more Mcp.Tools bundles via its `tools:` array
+# and registers their entries with an MCP SDK Server at init.
+kind: "Telo.Definition"
+metadata:
+  name: "Tools"
+capability: Telo.Type
+controllers:
+  - pkg:npm/@telorun/mcp-server@0.1.0?local_path=./nodejs#tools
+schema:
+  type: "object"
+  additionalProperties: false
+  properties:
+    entries:
+      title: Entries
+      description: Tool entries advertised to MCP clients.
+      type: "array"
+      x-telo-topology-role: entries
+      items:
+        title: Tool Entry
+        description: Single MCP tool advertised via tools/list and dispatched via tools/call.
+        type: "object"
+        additionalProperties: false
+        properties:
+          name:
+            title: Name
+            description: Unique tool identifier; sent in tools/call requests.
+            type: "string"
+            x-telo-topology-role: matcher
+          description:
+            title: Description
+            description: Human-readable summary surfaced to MCP clients.
+            type: "string"
+          argumentsSchema:
+            title: Arguments Schema
+            description: JSON Schema describing the tool's `arguments` object. Validated by the MCP SDK on every tools/call.
+            type: "object"
+          handler:
+            title: Handler
+            description: Invocable that implements the tool's behaviour. Receives the result of `inputs:` and returns a value rendered by `result:`.
+            x-telo-topology-role: handler
+            x-telo-ref: "telo#Invocable"
+            oneOf:
+              - title: Handler Reference
+                description: String reference to a handler resource by name.
+                type: "string"
+              - type: "object"
+                title: Handler Object
+                description: Object reference (kind + optional name + inline manifest).
+                properties:
+                  kind:
+                    title: Kind
+                    type: "string"
+                required: ["kind"]
+                additionalProperties: true
+          inputs:
+            title: Inputs
+            description: CEL expressions mapping the MCP request scope onto the handler's input shape.
+            type: "object"
+            additionalProperties: true
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: true }
+                    meta: { type: object, additionalProperties: true }
+                    session:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        id: { type: string }
+                        clientInfo: { type: object, additionalProperties: true }
+                        capabilities: { type: object, additionalProperties: true }
+          result:
+            title: Result
+            description: Full MCP CallToolResult envelope (`content`, optional `isError`, `structuredContent`, `_meta`). Rendered from the handler's output via CEL. `content` is required at the manifest level; the runtime check enforces that the CEL-expanded value is an array of content blocks.
+            type: "object"
+            additionalProperties: true
+            required: [content]
+            properties:
+              content:
+                title: Content
+                description: Array of MCP content blocks rendered by CEL.
+              isError: {}
+              structuredContent: {}
+              _meta: {}
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: true }
+                result:
+                  x-telo-context-ref-from: "handler/outputType"
+                  type: object
+                  additionalProperties: true
+          catches:
+            title: Catches
+            description: Maps thrown InvokeError into JSON-RPC error responses. Distinct from `result.isError`, which is for soft tool failures rendered as content.
+            type: "array"
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code: { type: string }
+                    message: { type: string }
+                    data: { type: object, additionalProperties: true }
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: true }
+            items:
+              title: Catch Entry
+              description: Conditional rendering rule for a thrown InvokeError.
+              type: "object"
+              additionalProperties: false
+              properties:
+                code:
+                  title: Code
+                  description: Telo error code matched by this entry. Omit alongside `when:` for catch-all.
+                  type: "string"
+                when:
+                  title: When
+                  description: CEL predicate selecting this entry. Sees `error` and `request`.
+                  type: "boolean"
+                error:
+                  title: Error
+                  description: JSON-RPC error envelope rendered for matching throws.
+                  type: "object"
+                  additionalProperties: false
+                  properties:
+                    code:
+                      title: JSON-RPC Code
+                      description: JSON-RPC error code (integer). Conventionally negative for application errors.
+                      type: "integer"
+                    message:
+                      title: JSON-RPC Message
+                      description: Error message surfaced to the MCP client.
+                      type: "string"
+                    data:
+                      title: JSON-RPC Data
+                      description: Optional structured error data.
+                  required: ["code", "message"]
+              required: ["error"]
+        required: ["name", "argumentsSchema", "handler", "inputs", "result"]
+  required: ["entries"]
+---
+# Mcp.Resources — passive bundle of resource entries. Schema'd in v1; runtime
+# dispatch lands in v2. Transport refs are typed against this kind today so
+# manifests are forward-compatible.
+kind: "Telo.Definition"
+metadata:
+  name: "Resources"
+capability: Telo.Type
+controllers:
+  - pkg:npm/@telorun/mcp-server@0.1.0?local_path=./nodejs#resources
+schema:
+  type: "object"
+  additionalProperties: false
+  properties:
+    entries:
+      title: Entries
+      description: Resource entries advertised to MCP clients (v2 runtime).
+      type: "array"
+      x-telo-topology-role: entries
+      items:
+        title: Resource Entry
+        description: Single MCP resource advertised via resources/list and read via resources/read.
+        type: "object"
+        additionalProperties: false
+        properties:
+          uri:
+            title: URI
+            description: Concrete resource URI. Mutually exclusive with `uriTemplate:`.
+            type: "string"
+            x-telo-topology-role: matcher
+          uriTemplate:
+            title: URI Template
+            description: RFC 6570 URI template. Mutually exclusive with `uri:`.
+            type: "string"
+          name:
+            title: Name
+            description: Human-readable resource label.
+            type: "string"
+          description:
+            title: Description
+            description: Summary surfaced to MCP clients.
+            type: "string"
+          mimeType:
+            title: MIME Type
+            description: Default Content-Type advertised for this resource.
+            type: "string"
+          handler:
+            title: Handler
+            description: Invocable that produces resource contents on read.
+            x-telo-topology-role: handler
+            x-telo-ref: "telo#Invocable"
+            oneOf:
+              - type: "string"
+              - type: "object"
+                properties:
+                  kind: { type: "string" }
+                required: ["kind"]
+                additionalProperties: true
+          inputs:
+            title: Inputs
+            type: "object"
+            additionalProperties: true
+          result:
+            title: Result
+            description: MCP ReadResourceResult envelope.
+            type: "object"
+            additionalProperties: true
+          catches:
+            title: Catches
+            type: "array"
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            items:
+              type: "object"
+              additionalProperties: false
+              properties:
+                code: { type: "string" }
+                when: { type: "boolean" }
+                error:
+                  type: "object"
+                  additionalProperties: false
+                  properties:
+                    code: { type: "integer" }
+                    message: { type: "string" }
+                    data:
+                      type: "object"
+                      additionalProperties: true
+                  required: ["code", "message"]
+              required: ["error"]
+        required: ["name", "handler", "inputs", "result"]
+  required: ["entries"]
+---
+# Mcp.Prompts — passive bundle of prompt entries. Schema'd in v1; runtime
+# dispatch lands in v2.
+kind: "Telo.Definition"
+metadata:
+  name: "Prompts"
+capability: Telo.Type
+controllers:
+  - pkg:npm/@telorun/mcp-server@0.1.0?local_path=./nodejs#prompts
+schema:
+  type: "object"
+  additionalProperties: false
+  properties:
+    entries:
+      title: Entries
+      description: Prompt entries advertised to MCP clients (v2 runtime).
+      type: "array"
+      x-telo-topology-role: entries
+      items:
+        title: Prompt Entry
+        description: Single MCP prompt advertised via prompts/list and dispatched via prompts/get.
+        type: "object"
+        additionalProperties: false
+        properties:
+          name:
+            title: Name
+            description: Unique prompt identifier.
+            type: "string"
+            x-telo-topology-role: matcher
+          description:
+            title: Description
+            type: "string"
+          arguments:
+            title: Arguments
+            description: Flat list of named prompt parameters.
+            type: "array"
+            items:
+              type: "object"
+              additionalProperties: false
+              properties:
+                name: { type: "string" }
+                description: { type: "string" }
+                required: { type: "boolean" }
+              required: ["name"]
+          handler:
+            title: Handler
+            description: Invocable that produces the prompt message array on get.
+            x-telo-topology-role: handler
+            x-telo-ref: "telo#Invocable"
+            oneOf:
+              - type: "string"
+              - type: "object"
+                properties:
+                  kind: { type: "string" }
+                required: ["kind"]
+                additionalProperties: true
+          inputs:
+            title: Inputs
+            type: "object"
+            additionalProperties: true
+          result:
+            title: Result
+            description: MCP GetPromptResult envelope.
+            type: "object"
+            additionalProperties: true
+          catches:
+            title: Catches
+            type: "array"
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            items:
+              type: "object"
+              additionalProperties: false
+              properties:
+                code: { type: "string" }
+                when: { type: "boolean" }
+                error:
+                  type: "object"
+                  additionalProperties: false
+                  properties:
+                    code: { type: "integer" }
+                    message: { type: "string" }
+                    data:
+                      type: "object"
+                      additionalProperties: true
+                  required: ["code", "message"]
+              required: ["error"]
+        required: ["name", "handler", "inputs", "result"]
+  required: ["entries"]
+---
+# Mcp.StdioServer — Telo.Service. Owns a single MCP SDK Server bound to
+# stdin/stdout. References Mcp.Tools / Mcp.Resources / Mcp.Prompts bundles by
+# name; entries from every referenced bundle are merged at init (cross-bundle
+# duplicate matchers throw).
+kind: "Telo.Definition"
+metadata:
+  name: "StdioServer"
+capability: Telo.Service
+controllers:
+  - pkg:npm/@telorun/mcp-server@0.1.0?local_path=./nodejs#stdio-server
+schema:
+  type: "object"
+  additionalProperties: false
+  properties:
+    serverInfo:
+      title: Server Info
+      description: Identity advertised to MCP clients during initialize.
+      type: "object"
+      additionalProperties: false
+      properties:
+        name:
+          title: Name
+          type: "string"
+        version:
+          title: Version
+          type: "string"
+      required: ["name", "version"]
+    tools:
+      title: Tools
+      description: Mcp.Tools bundles whose entries should be exposed by this transport.
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Tools"
+    resources:
+      title: Resources
+      description: Mcp.Resources bundles (v2 runtime).
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Resources"
+    prompts:
+      title: Prompts
+      description: Mcp.Prompts bundles (v2 runtime).
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Prompts"
+  required: ["serverInfo"]
+---
+# Mcp.HttpEndpoint — Telo.Mount. Mounts on Http.Server at a chosen path; owns
+# a per-session map keyed by the Mcp-Session-Id header. Each session owns its
+# own SDK Server instance built from the resolved bundle refs.
+kind: "Telo.Definition"
+metadata:
+  name: "HttpEndpoint"
+capability: Telo.Mount
+controllers:
+  - pkg:npm/@telorun/mcp-server@0.1.0?local_path=./nodejs#http-endpoint
+schema:
+  type: "object"
+  additionalProperties: false
+  properties:
+    serverInfo:
+      title: Server Info
+      description: Identity advertised to MCP clients during initialize.
+      type: "object"
+      additionalProperties: false
+      properties:
+        name:
+          title: Name
+          type: "string"
+        version:
+          title: Version
+          type: "string"
+      required: ["name", "version"]
+    tools:
+      title: Tools
+      description: Mcp.Tools bundles whose entries should be exposed by this transport.
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Tools"
+    resources:
+      title: Resources
+      description: Mcp.Resources bundles (v2 runtime).
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Resources"
+    prompts:
+      title: Prompts
+      description: Mcp.Prompts bundles (v2 runtime).
+      type: "array"
+      items:
+        type: "string"
+        x-telo-ref: "std/mcp-server#Prompts"
+  required: ["serverInfo"]
