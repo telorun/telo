@@ -1,0 +1,230 @@
+kind: Telo.Application
+metadata: { name: McpHttpToolsMergeTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: McpFetch }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url:    { type: string }
+      method: { type: string }
+      params: { type: object, additionalProperties: true }
+    required: [url, method]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status:    { type: integer }
+      result:    { type: object, additionalProperties: true }
+      error:     { type: object, additionalProperties: true }
+      hasError:  { type: boolean }
+    required: [status, hasError]
+code: |
+  async function main({ url, method, params }) {
+    const initResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "telo-test", version: "1.0.0" } },
+      }),
+    });
+    const sessionId = initResp.headers.get("mcp-session-id");
+    await initResp.text();
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": sessionId },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    }).then((r) => r.text());
+    const callResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": sessionId },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params: params || {} }),
+    });
+    const ct = (callResp.headers.get("content-type") || "").toLowerCase();
+    const raw = await callResp.text();
+    let payload;
+    if (ct.startsWith("application/json")) {
+      payload = JSON.parse(raw);
+    } else {
+      const dataLines = raw.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart());
+      if (!dataLines.length) throw new Error(`MCP no data lines: ${raw}`);
+      payload = JSON.parse(dataLines[0]);
+    }
+    return {
+      status: callResp.status,
+      hasError: !!payload.error,
+      result: payload.result || {},
+      error: payload.error || {},
+    };
+  }
+---
+kind: JS.Script
+metadata: { name: WeatherImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      city: { type: string }
+    required: [city]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      summary: { type: string }
+    required: [summary]
+code: |
+  function main({ city }) { return { summary: `Sunny in ${city}` }; }
+---
+kind: JS.Script
+metadata: { name: DbImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      table: { type: string }
+    required: [table]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows: { type: integer }
+    required: [rows]
+code: |
+  function main({ table }) { return { rows: table.length }; }
+---
+kind: Mcp.Tools
+metadata: { name: WeatherTools }
+entries:
+  - name: get_weather
+    description: Get weather for a city.
+    argumentsSchema:
+      type: object
+      properties: { city: { type: string } }
+      required: [city]
+    handler: { kind: JS.Script, name: WeatherImpl }
+    inputs: { city: "${{ request.arguments.city }}" }
+    result:
+      content:
+        - type: text
+          text: "${{ result.summary }}"
+---
+kind: Mcp.Tools
+metadata: { name: DatabaseTools }
+entries:
+  - name: count_rows
+    description: Count rows in a table.
+    argumentsSchema:
+      type: object
+      properties: { table: { type: string } }
+      required: [table]
+    handler: { kind: JS.Script, name: DbImpl }
+    inputs: { table: "${{ request.arguments.table }}" }
+    result:
+      content:
+        - type: text
+          text: "rows=${{ result.rows }}"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-merge, version: 1.0.0 }
+tools: [WeatherTools, DatabaseTools]
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8953
+    baseUrl: http://127.0.0.1:8953
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpHttpToolsMergeTest.McpHttp }
+targets: [Server]
+steps:
+  - name: ListTools
+    inputs:
+      url: http://127.0.0.1:8953/mcp
+      method: tools/list
+    invoke: { kind: JS.Script, name: McpFetch }
+  - name: AssertListed
+    inputs:
+      hasError: "${{ steps.ListTools.result.hasError }}"
+      firstName: "${{ steps.ListTools.result.result.tools[0].name }}"
+      secondName: "${{ steps.ListTools.result.result.tools[1].name }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          hasError: { const: false }
+          firstName: { const: "get_weather" }
+          secondName: { const: "count_rows" }
+        required: [hasError, firstName, secondName]
+
+  - name: CallWeather
+    inputs:
+      url: http://127.0.0.1:8953/mcp
+      method: tools/call
+      params: { name: get_weather, arguments: { city: Mars } }
+    invoke: { kind: JS.Script, name: McpFetch }
+  - name: AssertWeather
+    inputs:
+      contentText: "${{ steps.CallWeather.result.result.content[0].text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          contentText: { const: "Sunny in Mars" }
+        required: [contentText]
+
+  - name: CallDb
+    inputs:
+      url: http://127.0.0.1:8953/mcp
+      method: tools/call
+      params: { name: count_rows, arguments: { table: users } }
+    invoke: { kind: JS.Script, name: McpFetch }
+  - name: AssertDb
+    inputs:
+      contentText: "${{ steps.CallDb.result.result.content[0].text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          contentText: { const: "rows=5" }
+        required: [contentText]

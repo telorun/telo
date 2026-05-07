@@ -8,11 +8,16 @@ import { EvaluationContext } from "./evaluation-context.js";
 
 /** Wraps process.env so that missing keys return null instead of throwing in CEL.
  * cel-js uses Object.hasOwn(obj, key) before accessing obj[key], so we must
- * intercept getOwnPropertyDescriptor to report every string key as "own". */
+ * intercept getOwnPropertyDescriptor to report every string key as "own".
+ * The `constructor` key is special-cased to return `Object` so cel-js's dyn
+ * value-type matcher recognises the proxy as a plain map; Node's process.env
+ * has an anonymous-function constructor that cel-js otherwise rejects with
+ * "Unsupported type: object". */
 function lenientEnv(env: Record<string, string | undefined>): Record<string, string | null> {
   return new Proxy(env as Record<string, string | null>, {
     get(target, key) {
       if (typeof key !== "string") return (target as any)[key];
+      if (key === "constructor") return Object as unknown as string;
       return key in target ? (target[key] ?? null) : null;
     },
     has() {
