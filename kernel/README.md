@@ -1,8 +1,6 @@
----
-description: "Telo Kernel: declarative execution host that loads YAML, compiles CEL expressions, indexes resources, and orchestrates execution"
----
-
 # Telo Kernel
+
+The Telo Kernel is the declarative execution host for Telo manifests. It loads YAML, compiles CEL expressions, resolves and registers controllers, indexes resource instances, and orchestrates the boot/teardown lifecycle of every kind it knows about.
 
 **Target:** Node.js (Rust/Go ports planned)
 

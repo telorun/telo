@@ -1,8 +1,6 @@
----
-description: "@telorun/ai — Ai.Model abstract (LLM provider contract) plus Ai.Text (buffered) and Ai.TextStream (streaming) consumers. Pluggable providers via Telo.Abstract: OpenAI, Anthropic, Ollama, third-party."
----
-
 # Telo AI
+
+LLM access for Telo. `@telorun/ai` defines `Ai.Model` — the abstract every provider implements — and ships two ready-to-use consumers: `Ai.Text` for buffered single-turn calls and `Ai.TextStream` for streaming output. Providers (OpenAI, Anthropic, Ollama, third-party) plug in via `Telo.Abstract`, so swapping models is a config change, not a code change.
 
 `@telorun/ai` ships **three kinds**:
 

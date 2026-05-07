@@ -1,8 +1,6 @@
----
-description: "v1.0 CEL-YAML templating spec: $let, $if, $for, $eval, $include directives for compile-time manifest generation"
----
-
 # CEL-YAML Templating Specification (v1.0)
+
+The CEL-YAML templating engine is the compile-time layer that processes manifests before the kernel sees them. It defines the directive set (`$let`, `$if`, `$for`, `$eval`, `$include`, `$assert`, `$key`/`$value`) and the rules for when `${{ }}` expressions resolve at compile time versus pass through to runtime.
 
 ## 1. Core Principles
 

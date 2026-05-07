@@ -1,7 +1,3 @@
----
-description: "Config module: environment variable stores, Config.Variables and Config.Secrets maps for key/value access with CEL composition"
----
-
 # Config module
 
 The Config module provides configuration management for your application. It lets you declare where config values come from, which keys are accessible, and how to expose them to other modules.

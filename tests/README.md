@@ -1,7 +1,3 @@
----
-description: "How to write Telo YAML manifest tests using Run.Sequence and the Assert.* kinds"
----
-
 # Testing
 
 Telo tests are themselves Telo manifests: a `Run.Sequence` (or top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. The repo-wide `test-suite.yaml` orchestrates discovery via `Test.Suite`, globbing `**/tests/*.yaml` and excluding `**/__fixtures__/**`.

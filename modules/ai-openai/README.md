@@ -1,7 +1,3 @@
----
-description: "@telorun/ai-openai — OpenAI provider for Ai.Model. Implements both invoke (generateText) and stream (streamText) via Vercel AI SDK."
----
-
 # Telo Ai.OpenaiModel
 
 OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`. Implements both the buffered `invoke` path (used by `Ai.Text`) and the streaming `stream` path (used by `Ai.TextStream`) via the Vercel AI SDK.

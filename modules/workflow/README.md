@@ -1,10 +1,6 @@
----
-description: "Workflow module (planned): Workflow.Graph declaration with pluggable backends (Temporal, local, queue) for durable execution"
----
-
 # Workflow
 
-**Wardning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
+**Warning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
 
 Workflow orchestration primitives with pluggable backend providers. `Workflow.Graph` declares the shape of a workflow — a list of named nodes, each invoking a resource — and delegates execution to a `Workflow.Backend` implementation.
 
