@@ -1,10 +1,6 @@
----
-description: "Command-line interface for Telo kernel: loads and runs YAML manifests locally with watch mode and module publishing"
----
-
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads YAML manifests and runs them on your local machine.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, and publishes module manifests to the Telo registry with `telo publish`.
 
 ## Installation
 

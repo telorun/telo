@@ -1,8 +1,3 @@
----
-description: "Console I/O: Console.WriteLine writes output lines, Console.ReadLine reads stdin with a prompt, Console.WriteStream drains a stream of strings or bytes to stdout. All accept inline `{red text}` markup that renders as ANSI on a TTY and plain text when piped."
-sidebar_label: Console
----
-
 # Console
 
 Direct access to the process's standard streams. Useful for CLI-style manifests, interactive demos, and tests that want to print without a logger layer.

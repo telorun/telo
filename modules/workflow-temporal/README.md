@@ -1,10 +1,6 @@
----
-description: "Temporal backend (planned): Workflow.Temporal.Backend connects to Temporal server for durable, replayable workflow execution"
----
-
 # Workflow Temporal
 
-**Wardning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
+**Warning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
 
 [Temporal](https://temporal.io/) backend for [`Workflow.Graph`](../workflow/README.md). Provides durable, replayable workflow execution by translating each graph node into a Temporal activity and driving the graph from a generated Temporal workflow.
 

@@ -1,8 +1,3 @@
----
-description: "record-stream: generic stream operations on structured records — RecordStream.ExtractText projects a discriminated stream down to a string stream"
-sidebar_label: Record Stream
----
-
 # record-stream
 
 Stream operations on structured records. Format-neutral transformers / sources / sinks that operate on `Stream<record>` — distinct from byte-stream codecs (`Octet`, `Ndjson`, `Sse`, `PlainText`) which all produce `Stream<Uint8Array>`.
