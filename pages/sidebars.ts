@@ -11,10 +11,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Guides",
-      items: [
-        { type: "doc", id: "guides/style-guide", label: "Style Guide" },
-        { type: "doc", id: "guides/templating", label: "Template Modules" },
-      ],
+      items: [{ type: "doc", id: "guides/style-guide", label: "Style Guide" }],
     },
     {
       type: "category",
@@ -54,7 +51,6 @@ const sidebars: SidebarsConfig = {
           id: "kernel/docs/telemetry-and-observability",
           label: "Telemetry & Observability",
         },
-        { type: "doc", id: "yaml-cel-templating/README", label: "CEL-YAML Reference" },
       ],
     },
     {
