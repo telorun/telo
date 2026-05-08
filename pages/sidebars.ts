@@ -170,6 +170,11 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "sdk/README", label: "SDK" },
         { type: "doc", id: "sdk/nodejs/README", label: "Node.js SDK" },
+        {
+          type: "doc",
+          id: "templating/nodejs/docs/templating-engines",
+          label: "Templating Engines",
+        },
         { type: "doc", id: "tests/README", label: "Testing" },
       ],
     },

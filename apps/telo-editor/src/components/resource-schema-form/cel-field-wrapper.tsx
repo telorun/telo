@@ -1,6 +1,11 @@
 import { CodeIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { isCelExpression, type CelEvalMode } from "./cel-utils";
+import {
+  getCelExpressionSource,
+  getTaggedSentinel,
+  isCelExpression,
+  type CelEvalMode,
+} from "./cel-utils";
 
 interface CelFieldWrapperProps {
   evalMode: CelEvalMode;
@@ -18,15 +23,13 @@ export function CelFieldWrapper({
   children,
 }: CelFieldWrapperProps) {
   const [expressionMode, setExpressionMode] = useState(() => isCelExpression(value));
-  const [rawExpression, setRawExpression] = useState(() =>
-    isCelExpression(value) ? (value as string) : "",
-  );
+  const [rawExpression, setRawExpression] = useState(() => getCelExpressionSource(value) ?? "");
   const typedValueRef = useRef<unknown>(isCelExpression(value) ? undefined : value);
 
   useEffect(() => {
     if (isCelExpression(value)) {
       setExpressionMode(true);
-      setRawExpression(value as string);
+      setRawExpression(getCelExpressionSource(value) ?? "");
     } else {
       typedValueRef.current = value;
     }
@@ -45,6 +48,34 @@ export function CelFieldWrapper({
   }
 
   const modeLabel = evalMode === "runtime" ? "runtime" : "compile";
+
+  // A non-CEL tagged sentinel (today: `!literal`) gets a dedicated chrome:
+  // we don't enter expression-mode (the value is intentionally inert text)
+  // and we don't pass the raw sentinel object to `children` (the underlying
+  // input control was designed for primitives, not for our `{__tagged: ...}`
+  // shape). Render a read-only literal display showing `value.source`.
+  const tagged = getTaggedSentinel(value);
+  if (tagged && tagged.engine !== "cel") {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1">
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+            title={`Tagged !${tagged.engine} — text passes through unchanged`}
+          >
+            <CodeIcon className="size-3" />
+            {`!${tagged.engine}`}
+          </span>
+        </div>
+        <input
+          type="text"
+          readOnly
+          value={tagged.source}
+          className="w-full rounded border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-sm text-zinc-700 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-1">

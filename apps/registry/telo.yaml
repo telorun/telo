@@ -787,7 +787,7 @@ entries:
     result:
       content:
         - type: text
-          text: "${{ json({'results': result.rows, 'count': result.rowCount}) }}"
+          text: !cel "json({'results': result.rows, 'count': result.rowCount})"
 
   # get_module_manifest — returns the raw `telo.yaml` for a specific version
   # so the LLM can read its `Telo.Definition` schemas to compose a manifest
@@ -837,12 +837,11 @@ serverInfo:
 # pass this to their LLM as system context, so a model with no prior Telo
 # knowledge knows what these tools mean and how to compose a manifest from
 # what they return.
-instructions: |
+instructions: !literal |
   This MCP server exposes the **Telo module registry**. Telo is a declarative
   runtime: YAML manifests describe desired state, the kernel resolves resource
   dependencies via a multi-pass init loop, and controllers implement each
-  resource kind. CEL expressions wrapped in dollar-double-brace template tags
-  are compiled before execution.
+  resource kind. CEL expressions are written as `!cel "..."` YAML tags.
 
   ## Built-in kinds (do not need importing)
 
@@ -869,26 +868,21 @@ instructions: |
 
   ## CEL templates
 
-  Pass dynamic values between resources by writing a CEL template: a dollar
-  sign, two open braces, the expression, two close braces. Examples (rendered
-  here with the dollar/braces spelled out so this primer itself isn't parsed
-  as a template):
+  Pass dynamic values between resources by writing a CEL expression as a YAML
+  tag. Examples:
 
-  - `dollar+{{ request.params.name }}` — read a route param.
-  - `dollar+{{ steps.parse.result.text }}` — read the result of a previous
-    step inside a `Run.Sequence`.
-  - `dollar+{{ resources.AppConfig.port }}` — read another resource's snapshot.
-  - `dollar+{{ steps.x.result.docs[?0].?metadata.?description.orValue('') }}`
-    — optional access; safely handles missing intermediates.
-
-  Wherever you see `dollar+{{ ... }}` in the example below, write the literal
-  template syntax in your output.
+  - `!cel "request.params.name"` — read a route param.
+  - `!cel "steps.parse.result.text"` — read the result of a previous step
+    inside a `Run.Sequence`.
+  - `!cel "resources.AppConfig.port"` — read another resource's snapshot.
+  - `!cel "steps.x.result.docs[?0].?metadata.?description.orValue('')"` —
+    optional access; safely handles missing intermediates.
 
   ## Comprehensive example
 
   A complete `Telo.Application` that imports two modules and wires them
   together. Note the document separators (`---`), the alias prefixes on
-  resource kinds (`Http.Server`, `JS.Script`), and the placeholder template
+  resource kinds (`Http.Server`, `JS.Script`), and the `!cel`-tagged
   expressions:
 
   ```yaml
@@ -929,13 +923,13 @@ instructions: |
         kind: JS.Script
         name: HelloHandler
       inputs:
-        name: "dollar+{{ request.params.name }}"
+        name: !cel "request.params.name"
       returns:
         - status: 200
           content:
             application/json:
               body:
-                greeting: "dollar+{{ result.text }}"
+                greeting: !cel "result.text"
   ---
   kind: JS.Script
   metadata: { name: HelloHandler }

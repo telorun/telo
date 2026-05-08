@@ -23,6 +23,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@telorun/templating':
+        specifier: workspace:*
+        version: link:../../templating/nodejs
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -42,6 +45,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   apps/docker-runner:
     dependencies:
@@ -109,6 +115,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@telorun/templating':
+        specifier: workspace:*
+        version: link:../../templating/nodejs
       ansi-to-react:
         specifier: ^6.1.6
         version: 6.2.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -253,6 +262,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@telorun/templating':
+        specifier: workspace:*
+        version: link:../../templating/nodejs
       dotenv:
         specifier: ^17.4.0
         version: 17.4.0
@@ -278,6 +290,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   ide/vscode:
     dependencies:
@@ -782,6 +797,28 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  templating/nodejs:
+    dependencies:
+      '@marcbachmann/cel-js':
+        specifier: ^7.5.3
+        version: 7.5.3
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/nodejs
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
 packages:
 

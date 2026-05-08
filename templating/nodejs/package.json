@@ -1,12 +1,11 @@
 {
-  "name": "@telorun/analyzer",
-  "version": "0.7.0",
-  "description": "Telo Analyzer - Static manifest validator for Telo manifests.",
+  "name": "@telorun/templating",
+  "version": "0.1.0",
+  "description": "Telo Templating - Engine registry and shared CEL core for Telo manifests.",
   "keywords": [
     "telo",
-    "analyzer",
-    "validator",
-    "manifest",
+    "templating",
+    "cel",
     "yaml"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
@@ -14,7 +13,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
-    "directory": "analyzer/nodejs"
+    "directory": "templating/nodejs"
   },
   "homepage": "https://github.com/telorun/telo#readme",
   "bugs": {
@@ -45,10 +44,6 @@
   "dependencies": {
     "@marcbachmann/cel-js": "^7.5.3",
     "@telorun/sdk": "workspace:*",
-    "@telorun/templating": "workspace:*",
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1",
-    "jsonpath-plus": "^10.3.0",
     "yaml": "^2.8.3"
   },
   "devDependencies": {

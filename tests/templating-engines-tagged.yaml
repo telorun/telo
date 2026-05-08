@@ -1,0 +1,107 @@
+kind: Telo.Application
+metadata:
+  name: TemplatingEnginesTagged
+  version: 1.0.0
+targets:
+  - TestTagged
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../modules/run
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+# Mixed templating engines on the same field type. Each step exercises one
+# delivery mode and asserts the value the JavaScript controller actually
+# received — !cel evaluates the expression, !literal keeps the string
+# verbatim (the literal `${{...}}` text is passed through, not interpolated),
+# and untagged ${{ ... }} interpolates as before.
+kind: Run.Sequence
+metadata:
+  name: TestTagged
+steps:
+  # !cel — entire scalar is one CEL expression, no ${{ }} wrapping.
+  - name: CelTaggedSum
+    inputs:
+      a: !cel "1.0 + 2.0"
+      b: !cel "10.0 * 4.0"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ a, b }) {
+          return { value: a + b };
+        }
+  - name: AssertCelSum
+    inputs:
+      value: "${{ steps.CelTaggedSum.result.value }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          value:
+            type: number
+            const: 43
+        required: [value]
+
+  # !literal — the controller must receive the raw string, including the
+  # literal `${{ }}` braces. No interpolation, no compile.
+  - name: LiteralTagged
+    inputs:
+      raw: !literal "Hello ${{ this is not interpolated }}"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ raw }) {
+          return { passthrough: raw };
+        }
+  - name: AssertLiteralPassthrough
+    inputs:
+      passthrough: "${{ steps.LiteralTagged.result.passthrough }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          passthrough:
+            type: string
+            const: !literal "Hello ${{ this is not interpolated }}"
+        required: [passthrough]
+
+  # Mixing tagged + untagged on the same field. Untagged ${{ }} still
+  # interpolates; tagged !cel still evaluates as a single expression.
+  - name: MixedField
+    inputs:
+      interpolated: "answer is ${{ 42 }}"
+      celField: !cel "100.0 - 58.0"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main({ interpolated, celField }) {
+          return { interpolated, celField };
+        }
+  - name: AssertMixed
+    inputs:
+      interpolated: "${{ steps.MixedField.result.interpolated }}"
+      celField: "${{ steps.MixedField.result.celField }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          interpolated:
+            type: string
+            const: "answer is 42"
+          celField:
+            type: number
+            const: 42
+        required: [interpolated, celField]

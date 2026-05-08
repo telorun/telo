@@ -2,6 +2,7 @@
 !cli/nodejs
 !kernel/nodejs
 !analyzer/nodejs
+!templating/nodejs
 !sdk/nodejs
 !package.json
 !pnpm-*

@@ -36,6 +36,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "tsc",
     "prepack": "cp ../../LICENSE . && cp ../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
@@ -44,6 +46,7 @@
     "@telorun/analyzer": "workspace:*",
     "@telorun/kernel": "workspace:*",
     "@telorun/sdk": "workspace:*",
+    "@telorun/templating": "workspace:*",
     "dotenv": "^17.4.0",
     "minimatch": "^10.2.5",
     "packageurl-js": "^2.0.1",
@@ -53,6 +56,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.33",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   }
 }

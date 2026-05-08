@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: TemplatingEnginesInclude
+  version: 1.0.0
+include:
+  - ./__fixtures__/templating-engines-include-steps.yaml
+targets:
+  - TestTaggedInInclude
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../modules/run
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../modules/javascript
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
