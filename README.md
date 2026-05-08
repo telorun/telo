@@ -42,8 +42,6 @@ $ telo ./examples/hello-api.yaml
 - **Indexes** resources by Kind and Name for constant-time lookup.
 - **Dispatches** execution to the controller that owns each Kind.
 
-Manifests also support directives for dynamic generation: `$let`, `$if`, `$for`, `$eval`, and `$include`. See [CEL-YAML Templating](./yaml-cel-templating/README.md) for documentation.
-
 ## Example manifest
 
 Here is an example Telo application that defines a simple HTTP API:
@@ -236,7 +234,6 @@ Those manifests were taken to the next level by allowing them to run inside a st
 ## See more at
 
 - [Telo Kernel](./kernel/README.md)
-- [CEL-YAML Templating](./yaml-cel-templating/README.md)
 - [Telo SDK for module authors](sdk/README.md)
 - [Modules](modules/README.md)
 

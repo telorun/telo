@@ -11,7 +11,6 @@ on:
       - "kernel/**"
       - "sdk/**"
       - "analyzer/**"
-      - "yaml-cel-templating/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/publish-docker-runner.yml"
   workflow_dispatch:

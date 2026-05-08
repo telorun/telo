@@ -12,7 +12,7 @@ The Telo Kernel is a **declarative execution host**. You describe resources in Y
 
 The kernel performs three functions:
 
-- **Loader:** Reads YAML files, compiles them through the CEL-YAML templating engine, and resolves controller entrypoints.
+- **Loader:** Reads YAML files, compiles `${{ }}` CEL expressions, and resolves controller entrypoints.
 - **Registry:** Indexes resource instances by a composite key of `module.Kind.name`.
 - **Kernel:** Orchestrates the boot sequence, manages the event bus, and routes invocations.
 
@@ -53,9 +53,9 @@ For the complete `Telo.Definition` field reference, see [docs/resource-definitio
 
 ---
 
-## 3. CEL-YAML Templating
+## 3. CEL Interpolation
 
-Before a manifest object is processed, it is compiled by the **CEL-YAML templating engine** (`@telorun/yaml-cel-templating`). This runs as part of loading — any compilation error halts the boot sequence immediately.
+Before a manifest object is processed, every `${{ ... }}` expression is compiled. This runs as part of loading — any compilation error halts the boot sequence immediately.
 
 The compile step provides `{ env: process.env }` as the initial context, so environment variables are available everywhere:
 
@@ -69,8 +69,6 @@ resources:
 - `${{ expr }}` — the interpolation syntax used throughout Telo
 
 When the entire string is a single interpolation, the result preserves the CEL type (integer, boolean, etc.). Mixed strings are coerced to string.
-
-**See [../yaml-cel-templating/README.md](../yaml-cel-templating/README.md) for full directive reference.**
 
 ---
 

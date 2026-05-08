@@ -60,7 +60,6 @@ When designing a new module or capability, ask: which of the above does this res
 - `cli/nodejs/` — CLI wrapper (`bin/telo.mjs`)
 - `sdk/nodejs/src/` — public API for module authors (re-exports kernel contexts + capability interfaces)
 - `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
-- `yaml-cel-templating/nodejs/` — CEL + YAML directive engine (`$let`, `$if`, `$for`, `$eval`, `$include`)
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking)
 - `apps/telo-editor/` — desktop editor (React + Vite + Tauri)
 - `ide/vscode/` — VS Code extension (YAML diagnostics via analyzer)
@@ -165,14 +164,11 @@ Available in `${{ }}`:
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)
 - `env` — only in root module (compile context)
 
-YAML directives: `$let`, `$if`, `$for`, `$eval`, `$include` — see `yaml-cel-templating/nodejs/`.
-
 ## Where to Look
 
 - Runtime bug / init order → `kernel.ts`, `loader.ts`
 - Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts`
 - New resource kind → add `Telo.Definition` to module's `telo.yaml`, controller in `src/`
-- CEL template syntax → `yaml-cel-templating/nodejs/`
 - Schema validation errors → `manifest-schemas.ts`, `analyzer/nodejs/`
 - x-telo-ref / scope / topology → `analyzer/nodejs/src/reference-field-map.ts`, `dependency-graph.ts`, `validate-references.ts`
 - CEL type checking → `analyzer/nodejs/src/validate-cel-context.ts`, `cel-environment.ts`

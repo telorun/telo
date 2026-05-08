@@ -9,7 +9,7 @@ The user will supply a package path (or name) as `$ARGUMENTS`. If `$ARGUMENTS` i
 
 ## Step 1: Locate the package
 
-Resolve `$ARGUMENTS` to a concrete directory. Packages typically live under `modules/<name>/`, `kernel/`, `cli/`, `sdk/`, `analyzer/`, `yaml-cel-templating/`, `apps/`, or `ide/`. If the argument is a bare name, check `modules/<name>/` first. Confirm the resolved path before spawning the agent.
+Resolve `$ARGUMENTS` to a concrete directory. Packages typically live under `modules/<name>/`, `kernel/`, `cli/`, `sdk/`, `analyzer/`, `apps/`, or `ide/`. If the argument is a bare name, check `modules/<name>/` first. Confirm the resolved path before spawning the agent.
 
 ## Step 2: Refine
 

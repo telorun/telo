@@ -3,7 +3,6 @@
 !kernel/nodejs
 !analyzer/nodejs
 !sdk/nodejs
-!yaml-cel-templating/nodejs
 !package.json
 !pnpm-*
 !tsconfig.base.json
