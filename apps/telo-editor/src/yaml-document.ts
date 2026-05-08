@@ -1,3 +1,4 @@
+import { defaultCustomTags } from "@telorun/templating";
 import { Document, isDocument, isNode, isScalar, parseAllDocuments } from "yaml";
 import type { ModuleDocument } from "./model";
 
@@ -8,7 +9,7 @@ import type { ModuleDocument } from "./model";
  *  returned so downstream code can show the last-good state in the source
  *  view while the user fixes the issue. */
 export function parseModuleDocument(filePath: string, text: string): ModuleDocument {
-  const docs = parseAllDocuments(text) as Document[];
+  const docs = parseAllDocuments(text, { customTags: defaultCustomTags() }) as Document[];
   const errors: string[] = [];
   for (const d of docs) {
     for (const e of d.errors) errors.push(e.message);
@@ -103,7 +104,8 @@ export type EditOp =
   | { op: "set"; pointer: string; value: unknown }
   | { op: "delete"; pointer: string }
   | { op: "insert"; pointer: string; value: unknown }
-  | { op: "rename"; pointer: string; newKey: string };
+  | { op: "rename"; pointer: string; newKey: string }
+  | { op: "setTag"; pointer: string; tag: string | null };
 
 /** Applies a single EditOp to `docs[docIndex]` in place, then returns a
  *  spread copy of `docs` so React consumers see a new outer reference.
@@ -129,9 +131,39 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
     case "set": {
       const node = path.length === 0 ? doc.contents : doc.getIn(path, true);
       if (node && isScalar(node) && sameLeafJsType(node.value, op.value)) {
+        // In-place mutation: preserves Scalar.tag, .comment, .commentBefore.
         node.value = op.value as never;
       } else {
+        // Structural replace via setIn drops the tag along with the old node;
+        // capture and reapply so explicit `!cel` / `!literal` markers on
+        // tagged scalars survive a value-shape change.
+        const existingTag = node && isScalar(node) ? node.tag : undefined;
         doc.setIn(path, toYamlNodeIfCollection(doc, op.value));
+        if (existingTag) {
+          const next = doc.getIn(path, true);
+          if (next && isScalar(next)) next.tag = existingTag;
+        }
+      }
+      break;
+    }
+    case "setTag": {
+      const node = path.length === 0 ? doc.contents : doc.getIn(path, true);
+      if (!node || !isScalar(node)) {
+        throw new Error(
+          `applyEdit setTag: target at ${op.pointer} is not a scalar (cannot tag a collection)`,
+        );
+      }
+      if (op.tag === null) {
+        // Clearing a tag also unwraps a sentinel value back to its inner
+        // source — otherwise the customTag's `identify` would still match
+        // on serialize and the tag would re-appear from the value side.
+        const v = node.value as { __tagged?: unknown; source?: unknown } | unknown;
+        if (v && typeof v === "object" && (v as { __tagged?: unknown }).__tagged === true) {
+          node.value = (v as { source?: unknown }).source as never;
+        }
+        delete (node as { tag?: string }).tag;
+      } else {
+        node.tag = op.tag;
       }
       break;
     }

@@ -11,6 +11,53 @@ import {
   serializeModuleDocument,
 } from "./yaml-document";
 
+describe("parseModuleDocument with templating tags", () => {
+  it("resolves a !cel-tagged scalar to a sentinel object in loadedJson", () => {
+    const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel 'variables.port'\n";
+    const modDoc = parseModuleDocument("/ws/telo.yaml", text);
+    expect(modDoc.parseError).toBeUndefined();
+    expect(modDoc.loadedJson[0]).toEqual({
+      kind: "Foo",
+      metadata: { name: "m" },
+      expr: { __tagged: true, engine: "cel", source: "variables.port" },
+    });
+  });
+
+  it("resolves a !literal-tagged scalar to a sentinel that preserves ${{ }} verbatim", () => {
+    const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !literal 'Hello ${{ x }}'\n";
+    const modDoc = parseModuleDocument("/ws/telo.yaml", text);
+    expect(modDoc.loadedJson[0]).toEqual({
+      kind: "Foo",
+      metadata: { name: "m" },
+      expr: { __tagged: true, engine: "literal", source: "Hello ${{ x }}" },
+    });
+  });
+
+  it("round-trips !cel and !literal tags through serialize → parse", () => {
+    const text =
+      "kind: Foo\nmetadata:\n  name: m\ncel: !cel 'variables.port'\nlit: !literal 'Hello ${{ x }}'\n";
+    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const out = serializeModuleDocument(docs);
+    expect(out).toContain("!cel");
+    expect(out).toContain("variables.port");
+    expect(out).toContain("!literal");
+    expect(out).toContain("Hello ${{ x }}");
+    // Re-parse the serialized output and confirm the sentinels survive.
+    const reparsed = parseModuleDocument("/ws/telo.yaml", out);
+    expect(reparsed.parseError).toBeUndefined();
+    expect((reparsed.loadedJson[0] as Record<string, unknown>).cel).toEqual({
+      __tagged: true,
+      engine: "cel",
+      source: "variables.port",
+    });
+    expect((reparsed.loadedJson[0] as Record<string, unknown>).lit).toEqual({
+      __tagged: true,
+      engine: "literal",
+      source: "Hello ${{ x }}",
+    });
+  });
+});
+
 describe("parseModuleDocument", () => {
   it("captures docs, text, and loadedJson for a simple single-doc file", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
@@ -176,6 +223,34 @@ describe("applyEdit", () => {
     const next = applyEdit(docs, 0, { op: "set", pointer: "/port", value: 2 });
     expect(next).not.toBe(docs);
     expect(next[0]).toBe(docs[0]); // same doc object — in-place mutation
+  });
+
+  it("setTag attaches a YAML tag to a scalar that round-trips on serialize", () => {
+    const text = "kind: Foo\nmetadata:\n  name: m\nexpr: variables.port\n";
+    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = applyEdit(docs, 0, { op: "setTag", pointer: "/expr", tag: "!cel" });
+    const out = serializeModuleDocument(next);
+    expect(out).toContain("!cel");
+    expect(out).toContain("variables.port");
+  });
+
+  it("setTag with null clears an existing tag", () => {
+    const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel variables.port\n";
+    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = applyEdit(docs, 0, { op: "setTag", pointer: "/expr", tag: null });
+    const out = serializeModuleDocument(next);
+    expect(out).not.toContain("!cel");
+  });
+
+  it("set preserves an existing tag when the JS type changes", () => {
+    // The in-place path keeps tags naturally; this test exercises the
+    // structural-replace path by changing a number to a string.
+    const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel 42\n";
+    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = applyEdit(docs, 0, { op: "set", pointer: "/expr", value: "variables.port" });
+    const out = serializeModuleDocument(next);
+    expect(out).toContain("!cel");
+    expect(out).toContain("variables.port");
   });
 });
 

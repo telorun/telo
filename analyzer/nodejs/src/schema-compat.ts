@@ -1,5 +1,6 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
+import { isTaggedSentinel } from "@telorun/templating";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -298,6 +299,9 @@ export function substituteCelFields(
   const resolved = resolveRef(schema, root);
 
   if (typeof data === "string" && CEL_PURE_RE.test(data)) {
+    return celPlaceholderForSchema(resolved);
+  }
+  if (isTaggedSentinel(data)) {
     return celPlaceholderForSchema(resolved);
   }
   if (Array.isArray(data)) {

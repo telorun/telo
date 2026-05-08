@@ -8,7 +8,7 @@ Implementation plans should live in the package they affect the most, eg. `apps/
 
 Follow this strictly:
 
-- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `apply`, `update`, `implement`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
+- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `fix`, `apply`, `update`, `implement`, `add`, `remove`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
 - never add underscores to unused function arguments
 - never look at commit history
 - never use git stash

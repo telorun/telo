@@ -1,5 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
+import { defaultRegistry, walkCelExpressions } from "@telorun/templating";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
@@ -21,18 +22,14 @@ import {
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
-  extractAccessChains,
   getManifestItem,
   pathMatchesScope,
   resolveContextAnnotations,
   resolveTypeFieldToSchema,
-  validateChainAgainstSchema,
 } from "./validate-cel-context.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateReferences } from "./validate-references.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
-
-const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
 const SELF_PREFIX = "Self.";
 
@@ -67,24 +64,6 @@ function lookupDefinitionTypeField(
   if (!def) return undefined;
   const value = (def as unknown as Record<string, unknown>)[fieldName];
   return resolveTypeFieldToSchema(value, allManifests);
-}
-
-function walkCelExpressions(
-  value: unknown,
-  path: string,
-  cb: (expr: string, path: string) => void,
-): void {
-  if (typeof value === "string") {
-    for (const m of value.matchAll(TEMPLATE_REGEX)) {
-      cb(m[1].trim(), path);
-    }
-  } else if (Array.isArray(value)) {
-    value.forEach((v, i) => walkCelExpressions(v, `${path}[${i}]`, cb));
-  } else if (value !== null && typeof value === "object") {
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      walkCelExpressions(v, path ? `${path}.${k}` : k, cb);
-    }
-  }
 }
 
 const SOURCE = "telo-analyzer";
@@ -651,30 +630,16 @@ export class StaticAnalyzer {
           )
         : undefined;
 
-      walkCelExpressions(m, "", (expr, path) => {
-        let parsed: ReturnType<typeof this.celEnv.parse> | undefined;
-        try {
-          parsed = this.celEnv.parse(expr);
-        } catch (e) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "CEL_SYNTAX_ERROR",
-            source: SOURCE,
-            message: `CEL syntax error at ${path}: ${e instanceof Error ? e.message : String(e)}`,
-            data: { resource, filePath, path },
-          });
-          return;
-        }
-
-        const accessChains = extractAccessChains(parsed.ast);
-
+      walkCelExpressions(m, "", (expr, path, engineName) => {
+        // Resolve the effective context for this expression's path. The
+        // engine receives a single closed schema and validates member-access
+        // chains against it; per-path resolution (step context, x-telo-context,
+        // kernel-globals merge) stays on the analyzer side because it depends
+        // on analyzer-internal state (definitions, aliases).
         const contexts = mDefinition?.schema ? extractContextsFromSchema(mDefinition.schema) : [];
         const invocationContext = (m.metadata as any)?.xTeloInvocationContext as
           | Record<string, any>
           | undefined;
-
-        // If no static context but we have step context, inject it
-        if (contexts.length === 0 && !invocationContext && !stepContextSchema) return;
 
         let matchedContext: Record<string, any> | undefined;
         let matchedScope: string | undefined;
@@ -687,7 +652,6 @@ export class StaticAnalyzer {
         }
         if (!matchedContext) matchedContext = invocationContext;
 
-        // Merge step context into the effective context
         if (stepContextSchema) {
           const base = matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
           matchedContext = {
@@ -699,28 +663,51 @@ export class StaticAnalyzer {
           };
         }
 
-        if (!matchedContext) return;
+        let effectiveContext: Record<string, any> | null = null;
+        if (matchedContext) {
+          const manifestItem = matchedScope
+            ? getManifestItem(path, matchedScope, m as Record<string, any>)
+            : (m as Record<string, any>);
+          const resolvedContext = resolveContextAnnotations(
+            matchedContext,
+            manifestItem,
+            allManifests as Record<string, any>[],
+          );
+          effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
+        }
 
-        const manifestItem = matchedScope
-          ? getManifestItem(path, matchedScope, m as Record<string, any>)
-          : (m as Record<string, any>);
-        const resolvedContext = resolveContextAnnotations(
-          matchedContext,
-          manifestItem,
-          allManifests as Record<string, any>[],
-        );
-        const effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
-
-        for (const chain of accessChains) {
-          const err = validateChainAgainstSchema(chain, effectiveContext);
-          if (!err) continue;
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "CEL_UNKNOWN_FIELD",
-            source: SOURCE,
-            message: `${m.kind}/${resource.name}: CEL at '${path}': ${err}`,
-            data: { resource, filePath, path },
-          });
+        const engine = defaultRegistry().get(engineName);
+        if (!engine) return;
+        const findings = engine.analyze(expr, { celEnv: this.celEnv, contextSchema: effectiveContext });
+        for (const f of findings) {
+          if (f.code === "CEL_SYNTAX_ERROR") {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_SYNTAX_ERROR",
+              source: SOURCE,
+              message: `CEL syntax error at ${path}: ${f.message}`,
+              data: { resource, filePath, path },
+            });
+          } else if (f.code === "CEL_UNKNOWN_FIELD") {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_UNKNOWN_FIELD",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
+              data: { resource, filePath, path },
+            });
+          } else {
+            // Unknown code from a future engine — pass the message through,
+            // tagged with a generic ENGINE_DIAGNOSTIC code so downstream
+            // filters can still bucket it.
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: f.code ?? "ENGINE_DIAGNOSTIC",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
+              data: { resource, filePath, path },
+            });
+          }
         }
       });
     }

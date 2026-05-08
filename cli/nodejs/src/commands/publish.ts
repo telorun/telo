@@ -5,6 +5,7 @@ import { pathToFileURL } from "url";
 import { minimatch } from "minimatch";
 import { Loader, StaticAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
+import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
@@ -101,9 +102,9 @@ function rewritePurls(content: string, packageName: string, newVersion: string):
 // Include expansion — resolve globs and inline partial file contents
 // ---------------------------------------------------------------------------
 
-function expandAndInlineIncludes(content: string, manifestDir: string): string {
+export function expandAndInlineIncludes(content: string, manifestDir: string): string {
   // Parse the first YAML document to extract include patterns
-  const docs = parseAllDocuments(content);
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
   const firstParsed = docs[0]?.toJSON();
   if (!firstParsed || !Array.isArray(firstParsed.include) || firstParsed.include.length === 0) {
     return content;
@@ -174,14 +175,14 @@ function expandAndInlineIncludes(content: string, manifestDir: string): string {
 // the registry URL and breaks resolution for downstream consumers.
 // ---------------------------------------------------------------------------
 
-async function canonicalizeRelativeImports(
+export async function canonicalizeRelativeImports(
   content: string,
   manifestPath: string,
   loader: Loader,
   localFileSource: LocalFileSource,
 ): Promise<string> {
   const baseUrl = pathToFileURL(manifestPath).href;
-  const docs = parseAllDocuments(content);
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
   let changed = false;
 
   for (const doc of docs) {

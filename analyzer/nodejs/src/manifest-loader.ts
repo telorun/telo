@@ -1,5 +1,6 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
+import { defaultCustomTags } from "@telorun/templating";
 import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
 import { HttpSource } from "./sources/http-source.js";
 import { RegistrySource } from "./sources/registry-source.js";
@@ -74,7 +75,7 @@ export class Loader {
       return cloneManifestArray(cached.manifests);
     }
 
-    const parsedDocuments = parseAllDocuments(text);
+    const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
     const rawDocs = parsedDocuments.map((d) => d.toJSON());
     const offsets = documentLineOffsets(text);
     const lineOffsets = buildLineOffsets(text);
@@ -194,7 +195,7 @@ export class Loader {
   ): Promise<ResourceManifest[]> {
     const { text, source } = await this.pick(url).read(url);
 
-    const parsedDocuments = parseAllDocuments(text);
+    const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
     const rawDocs = parsedDocuments.map((d) => d.toJSON());
     const offsets = documentLineOffsets(text);
     const lineOffsets = buildLineOffsets(text);
