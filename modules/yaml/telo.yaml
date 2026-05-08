@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: yaml
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     YAML parsing for Telo manifests. Currently exposes `Yaml.Parse` — a batch
     parser that accepts a UTF-8 string and returns the parsed documents as plain
@@ -19,7 +19,7 @@ metadata:
   name: Parse
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/yaml@0.1.0?local_path=./nodejs#parse
+  - pkg:npm/@telorun/yaml@0.2.0?local_path=./nodejs#parse
 throws:
   codes:
     ERR_PARSE_FAILED:
