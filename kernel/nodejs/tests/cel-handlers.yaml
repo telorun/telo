@@ -1,0 +1,140 @@
+kind: Telo.Application
+metadata:
+  name: KernelCelHandlersTest
+  version: 1.0.0
+  description: Smoke test for the kernel's CEL stdlib handlers (currently exercises json()).
+targets:
+  - JsonString
+  - JsonNumber
+  - JsonBool
+  - JsonNull
+  - JsonStringList
+  - JsonStructured
+  - JsonInterpolated
+  - JsonLargeInt
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../../modules/assert
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../../modules/run
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../../modules/type
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../../modules/javascript
+---
+kind: Run.Sequence
+metadata: { name: JsonString }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json("hello") }}'
+      expected: '"hello"'
+---
+kind: Run.Sequence
+metadata: { name: JsonNumber }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(42) }}'
+      expected: '42'
+---
+kind: Run.Sequence
+metadata: { name: JsonBool }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(true) }}'
+      expected: 'true'
+---
+kind: Run.Sequence
+metadata: { name: JsonNull }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(null) }}'
+      expected: 'null'
+---
+kind: Run.Sequence
+metadata: { name: JsonStringList }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(["a", "b", "c"]) }}'
+      expected: '["a","b","c"]'
+---
+# Build a structured value through a step, then stringify it. This mirrors how
+# Mcp.Tools' `result.content[0].text` packages handler output as a JSON string
+# for the MCP client.
+kind: JS.Script
+metadata: { name: BuildPayload }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      count: { type: integer }
+    required: [results, count]
+    additionalProperties: false
+code: |
+  function main() {
+    return { results: [{ id: "std/foo@1.0.0" }, { id: "std/bar@2.0.0" }], count: 2 };
+  }
+---
+kind: Run.Sequence
+metadata: { name: JsonStructured }
+steps:
+  - name: build
+    invoke: { kind: JS.Script, name: BuildPayload }
+    inputs: {}
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(steps.build.result) }}'
+      expected: '{"results":[{"id":"std/foo@1.0.0"},{"id":"std/bar@2.0.0"}],"count":2}'
+---
+# Embeds json() inside an interpolated string — the path used by Mcp.Tools'
+# `result.content[0].text` to ship structured payloads as an MCP text block.
+kind: Run.Sequence
+metadata: { name: JsonInterpolated }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: 'count=${{ json(7) }}'
+      expected: 'count=7'
+---
+# Boundary case for the BigInt → Number coercion. cel-js parses int literals
+# as BigInt; the kernel handler always coerces with Number(v). Values in JS's
+# safe range (±2^53) round-trip cleanly. Larger values lose precision — that's
+# accepted behaviour for Telo manifests, which never carry > 2^53 integer
+# values in practice. This test pins the safe-range round-trip.
+kind: Run.Sequence
+metadata: { name: JsonLargeInt }
+steps:
+  - name: stringify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: '${{ json(9007199254740991) }}'
+      expected: '9007199254740991'

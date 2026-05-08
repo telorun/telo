@@ -71,6 +71,15 @@ export interface KernelOptions {
  */
 const celHandlers = {
   sha256: (s: string) => createHash("sha256").update(s).digest("hex"),
+  // cel-js represents int / uint as BigInt — JSON.stringify throws on BigInts,
+  // so coerce them down to Number unconditionally. CEL int is i64 and JS Number
+  // is f64, so values outside ±2^53 lose precision; that's accepted behaviour
+  // for Telo manifests, which never carry > 2^53 integer values in practice.
+  // JSON.stringify returns undefined for top-level undefined / function / symbol
+  // — the CEL signature is `json(dyn): string`, so coerce that to "null" rather
+  // than break the contract. (CEL `null` already serializes to "null".)
+  json: (value: unknown) =>
+    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? Number(v) : v)) ?? "null",
 };
 
 export class Kernel implements IKernel {

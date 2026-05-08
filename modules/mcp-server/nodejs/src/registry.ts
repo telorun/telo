@@ -15,6 +15,9 @@ export interface ServerInfo {
 
 export interface BuildOptions {
   serverInfo: ServerInfo;
+  /** Optional primer carried as the SDK Server's `instructions` option;
+   *  surfaced to clients on `initialize`. */
+  instructions?: string;
   toolsBundles: McpToolsBundle[];
   /** Per-session metadata exposed to CEL inputs as `request.session`. */
   sessionResolver: () => SessionContext;
@@ -58,7 +61,10 @@ export function buildServer(opts: BuildOptions): Server {
 
   const server = new Server(
     { name: opts.serverInfo.name, version: opts.serverInfo.version },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      ...(opts.instructions !== undefined ? { instructions: opts.instructions } : {}),
+    },
   );
 
   const advertised = Array.from(tools.values()).map((t) => ({

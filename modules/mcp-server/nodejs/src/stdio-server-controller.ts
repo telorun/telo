@@ -11,6 +11,7 @@ import type { McpToolsBundle } from "./tools-controller.js";
 interface StdioServerManifest {
   metadata: { name: string };
   serverInfo: ServerInfo;
+  instructions?: string;
   tools?: string[];
   resources?: string[];
   prompts?: string[];
@@ -54,6 +55,7 @@ export class McpStdioServer {
 
     this.server = buildServer({
       serverInfo: this.resource.serverInfo,
+      instructions: this.resource.instructions,
       toolsBundles,
       sessionResolver: () => this.session,
       ctx: this.ctx,

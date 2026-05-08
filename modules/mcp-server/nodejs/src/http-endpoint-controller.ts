@@ -12,6 +12,7 @@ import type { McpToolsBundle } from "./tools-controller.js";
 interface HttpEndpointManifest {
   metadata: { name: string };
   serverInfo: ServerInfo;
+  instructions?: string;
   tools?: string[];
   resources?: string[];
   prompts?: string[];
@@ -146,6 +147,7 @@ export class McpHttpEndpoint {
 
     record.server = buildServer({
       serverInfo: this.resource.serverInfo,
+      instructions: this.resource.instructions,
       toolsBundles: this.toolsBundles,
       sessionResolver: () => sessionContext,
       ctx: this.ctx,
