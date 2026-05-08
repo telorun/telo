@@ -63,16 +63,18 @@ code: |
         params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "telo-test", version: "1.0.0" } },
       }),
     });
+    // Stateful endpoints return an Mcp-Session-Id; stateless ones don't.
     const sessionId = initResp.headers.get("mcp-session-id");
+    const sessionHeader = sessionId ? { "Mcp-Session-Id": sessionId } : {};
     await initResp.text();
     await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": sessionId },
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", ...sessionHeader },
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     }).then((r) => r.text());
     const callResp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": sessionId },
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", ...sessionHeader },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params: params || {} }),
     });
     const ct = (callResp.headers.get("content-type") || "").toLowerCase();

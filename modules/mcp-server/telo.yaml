@@ -447,6 +447,18 @@ schema:
         to their LLM as system context, so it's the natural place to teach a
         model how to use the exposed tools.
       type: "string"
+    stateful:
+      title: Stateful
+      description: |
+        When true, the endpoint mints an `Mcp-Session-Id` on initialize and
+        binds follow-up requests to that session's in-memory SDK Server. When
+        false (default), every request is independent — required for
+        horizontally scaled deployments without sticky session affinity at the
+        load balancer. Stateless mode is appropriate for tools-only servers; opt
+        in to stateful only when you need server-pushed notifications,
+        resumable streams, or per-session state.
+      type: "boolean"
+      default: false
     tools:
       title: Tools
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
