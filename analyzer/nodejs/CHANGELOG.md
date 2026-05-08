@@ -1,5 +1,17 @@
 # @telorun/analyzer
 
+## 0.8.0
+
+### Minor Changes
+
+- 88e5cb4: Introduce per-property templating engines via YAML tags. New `@telorun/templating` package owns the shared CEL core (compile, chain validator, walker, environment) and a pluggable engine registry. Two built-in engines ship: `!cel` (single CEL expression — no `${{ }}` wrapping) and `!literal` (opaque text — no interpolation, no analysis). Untagged `${{ }}` strings continue to compile as CEL exactly as before. The kernel, analyzer, telo editor, and VS Code extension now share one source of truth for engine registration and YAML tag parsing.
+
+### Patch Changes
+
+- 88e5cb4: Schema validation now substitutes `!cel` / `!literal` tagged sentinels with type-appropriate placeholders, the same way it already does for untagged `${{ }}` strings. Previously a tagged scalar against a typed field (e.g. `instructions: !literal "..."` on `type: string`) emitted a spurious `SCHEMA_VIOLATION` because the parsed sentinel object didn't match the declared type.
+- Updated dependencies [88e5cb4]
+  - @telorun/templating@0.2.0
+
 ## 0.7.0
 
 ### Minor Changes
