@@ -147,8 +147,10 @@ class RunSequence {
   }
 
   private inlineInvokeResourceName(stepName: string, stepPath: string[]): string {
-    const safeName = stepName.replace(/[^a-zA-Z0-9_-]+/g, "_");
-    return `__sequence_${stepPath.join("_")}__${safeName}`;
+    const seq = pascalCase(String(this.resource.metadata.name));
+    const path = stepPath.map(pascalCase).join("");
+    const step = pascalCase(stepName);
+    return `Sequence${seq}${path}${step}`;
   }
 
   async run(): Promise<void> {
@@ -376,6 +378,14 @@ class RunSequence {
       await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null });
     }
   }
+}
+
+function pascalCase(s: string): string {
+  return s
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((p) => p[0].toUpperCase() + p.slice(1))
+    .join("");
 }
 
 function toSequenceError(err: unknown, stepName: string): SequenceError {
