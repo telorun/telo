@@ -154,6 +154,14 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "modules/type/README", label: "Type" },
         { type: "doc", id: "modules/workflow/README", label: "Workflow" },
         { type: "doc", id: "modules/workflow-temporal/README", label: "Workflow (Temporal)" },
+        {
+          type: "category",
+          label: "YAML",
+          items: [
+            { type: "doc", id: "modules/yaml/README", label: "Overview" },
+            { type: "doc", id: "modules/yaml/docs/parse", label: "Yaml.Parse" },
+          ],
+        },
       ],
     },
     {

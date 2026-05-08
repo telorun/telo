@@ -19,10 +19,21 @@ metadata: { name: <EndpointName> }
 serverInfo:
   name: <advertised-server-name>
   version: <semver>
+instructions: |                              # optional — primer for the client's LLM
+  Free-form text surfaced on `initialize`.
 tools: [<Mcp.Tools bundle names>]
 resources: [<Mcp.Resources bundle names>]   # v2 runtime
 prompts: [<Mcp.Prompts bundle names>]       # v2 runtime
 ```
+
+### `instructions`
+
+Optional free-form string carried on the SDK `Server`'s `instructions` option.
+Compatible MCP clients (Claude Desktop, etc.) surface it to the LLM as system
+context on every session. Use it to teach the model what your server is, what
+its tools mean, and how to use them — onboarding without requiring the LLM to
+call a separate "help" tool first. The same string is returned to every session
+that initializes against the endpoint.
 
 ## Mounting on `Http.Server`
 

@@ -4,6 +4,7 @@ import { jsonSchemaToCelType } from "./schema-compat.js";
 
 export interface CelHandlers {
   sha256: (s: string) => string;
+  json: (value: unknown) => string;
 }
 
 const stub = (name: string) => () => {
@@ -15,6 +16,7 @@ const stub = (name: string) => () => {
 
 const STUB_HANDLERS: CelHandlers = {
   sha256: stub("sha256"),
+  json: stub("json"),
 };
 
 /** Build a CEL `Environment` with Telo's stdlib of functions. Always registers the
@@ -31,7 +33,7 @@ const STUB_HANDLERS: CelHandlers = {
  *  member access raises a CEL error at runtime — matching the analyzer's
  *  static check on `x-telo-stream`-marked properties. */
 export function buildCelEnvironment(handlers: CelHandlers = STUB_HANDLERS): Environment {
-  return new Environment({ unlistedVariablesAreDyn: true })
+  return new Environment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true })
     .registerFunction("join(list, string): string", (list: unknown[], sep: string) =>
       list.map(String).join(sep),
     )
@@ -44,6 +46,7 @@ export function buildCelEnvironment(handlers: CelHandlers = STUB_HANDLERS): Envi
       return Object.values(map as Record<string, unknown>);
     })
     .registerFunction("sha256(string): string", (s: string) => handlers.sha256(s))
+    .registerFunction("json(dyn): string", (value: unknown) => handlers.json(value))
     .registerType("Stream", Stream as unknown as new (...args: unknown[]) => unknown);
 }
 

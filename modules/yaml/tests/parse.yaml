@@ -1,0 +1,138 @@
+kind: Telo.Application
+metadata:
+  name: YamlParseTest
+  version: 1.0.0
+  description: Coverage for Yaml.Parse — single-doc, multi-doc, empty, malformed.
+targets:
+  - SingleDoc
+  - MultiDoc
+  - EmptyInput
+  - WhitespaceOnly
+  - MalformedInput
+---
+kind: Telo.Import
+metadata: { name: Yaml }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: Run.Sequence
+metadata: { name: SingleDoc }
+steps:
+  - name: parse
+    invoke: { kind: Yaml.Parse }
+    inputs:
+      text: |
+        kind: Telo.Library
+        metadata:
+          name: example
+          description: A single document.
+  - name: assertCount
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      expected: "1"
+  - name: assertKind
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[0].kind }}"
+      expected: Telo.Library
+  - name: assertName
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[0].metadata.name }}"
+      expected: example
+  - name: assertDescription
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[0].metadata.description }}"
+      expected: A single document.
+---
+kind: Run.Sequence
+metadata: { name: MultiDoc }
+steps:
+  - name: parse
+    invoke: { kind: Yaml.Parse }
+    inputs:
+      text: |
+        kind: Telo.Library
+        metadata: { name: lib }
+        ---
+        kind: Telo.Definition
+        metadata: { name: Foo }
+        ---
+        kind: Telo.Definition
+        metadata: { name: Bar }
+  - name: assertCount
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      expected: "3"
+  - name: assertFirstKind
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[0].kind }}"
+      expected: Telo.Library
+  - name: assertSecondName
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[1].metadata.name }}"
+      expected: Foo
+  - name: assertThirdName
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ steps.parse.result.docs[2].metadata.name }}"
+      expected: Bar
+---
+kind: Run.Sequence
+metadata: { name: EmptyInput }
+steps:
+  - name: parse
+    invoke: { kind: Yaml.Parse }
+    inputs:
+      text: ""
+  - name: assertCount
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      expected: "0"
+---
+kind: Run.Sequence
+metadata: { name: WhitespaceOnly }
+steps:
+  - name: parse
+    invoke: { kind: Yaml.Parse }
+    inputs:
+      text: "   \n\n   "
+  - name: assertCount
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      expected: "0"
+---
+# Malformed YAML must raise ERR_PARSE_FAILED — assert via try/catch.
+kind: Run.Sequence
+metadata: { name: MalformedInput }
+steps:
+  - name: parseShouldThrow
+    try:
+      - name: doParse
+        invoke: { kind: Yaml.Parse }
+        inputs:
+          text: "kind: [unclosed"
+      - name: failIfReached
+        throw:
+          code: TEST_FAILED
+          message: Expected ERR_PARSE_FAILED but parse succeeded.
+    catch:
+      - name: assertErrorCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: "${{ error.code }}"
+          expected: ERR_PARSE_FAILED

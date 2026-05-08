@@ -1,0 +1,127 @@
+kind: Telo.Application
+metadata: { name: McpHttpInstructionsTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Hand-rolled `initialize` call. Returns the parsed `result` so the test can
+# assert the `instructions` string lands in the InitializeResult envelope.
+kind: JS.Script
+metadata: { name: McpInitialize }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+    required: [url]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      result: { type: object, additionalProperties: true }
+    required: [status, result]
+code: |
+  async function main({ url }) {
+    const initBody = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "telo-test", version: "1.0.0" },
+      },
+    };
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+      },
+      body: JSON.stringify(initBody),
+    });
+    const ct = (resp.headers.get("content-type") || "").toLowerCase();
+    const raw = await resp.text();
+    let payload;
+    if (ct.startsWith("application/json")) {
+      payload = JSON.parse(raw);
+    } else if (ct.startsWith("text/event-stream")) {
+      const dataLines = raw
+        .split(/\r?\n/)
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trimStart());
+      if (dataLines.length === 0) throw new Error(`MCP SSE body had no data lines. Raw: ${raw}`);
+      payload = JSON.parse(dataLines[0]);
+    } else {
+      throw new Error(`MCP unexpected Content-Type '${ct}'. Body: ${raw}`);
+    }
+    return { status: resp.status, result: payload.result || {} };
+  }
+---
+# An empty Mcp.Tools bundle is enough — initialize doesn't need any tool entries.
+kind: Mcp.Tools
+metadata: { name: NoTools }
+entries: []
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+instructions: |
+  This is a test primer carried on the SDK Server's `instructions` option.
+  Compatible MCP clients surface it to the LLM as system context.
+tools: [NoTools]
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8954
+    baseUrl: http://127.0.0.1:8954
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpHttpInstructionsTest.McpHttp }
+targets: [Server]
+steps:
+  - name: Initialize
+    inputs:
+      url: http://127.0.0.1:8954/mcp
+    invoke: { kind: JS.Script, name: McpInitialize }
+  - name: AssertInstructions
+    inputs:
+      instructions: "${{ steps.Initialize.result.result.instructions }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          instructions:
+            type: string
+            pattern: "test primer"
+        required: [instructions]

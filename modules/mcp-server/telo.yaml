@@ -382,6 +382,14 @@ schema:
           title: Version
           type: "string"
       required: ["name", "version"]
+    instructions:
+      title: Instructions
+      description: |
+        Optional primer surfaced to the client on `initialize` (carried on the
+        SDK `Server`'s `instructions` option). Compatible MCP clients pass this
+        to their LLM as system context, so it's the natural place to teach a
+        model how to use the exposed tools.
+      type: "string"
     tools:
       title: Tools
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
@@ -431,6 +439,14 @@ schema:
           title: Version
           type: "string"
       required: ["name", "version"]
+    instructions:
+      title: Instructions
+      description: |
+        Optional primer surfaced to the client on `initialize` (carried on the
+        SDK `Server`'s `instructions` option). Compatible MCP clients pass this
+        to their LLM as system context, so it's the natural place to teach a
+        model how to use the exposed tools.
+      type: "string"
     tools:
       title: Tools
       description: Mcp.Tools bundles whose entries should be exposed by this transport.

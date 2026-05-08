@@ -83,6 +83,15 @@ JSON-RPC error.
 - **Multiple bundles into one transport.** `tools: [WeatherTools, DatabaseTools]` merges entries from both bundles. Duplicate names across bundles throw at init.
 - **One bundle into multiple transports.** Reference the same `Mcp.Tools` from both `Mcp.StdioServer` and `Mcp.HttpEndpoint` — registrations are independent per-transport, no shared runtime state.
 
+## Onboarding clients with `instructions`
+
+Both transports accept an optional `instructions: <string>` field that is
+surfaced to MCP clients on `initialize` (carried on the SDK `Server`'s
+`instructions` option). Compatible clients pass this to their LLM as system
+context, so it's the natural place to ship a primer about what the server is
+and how to use its tools. See [`docs/http-endpoint.md`](./docs/http-endpoint.md)
+and [`docs/stdio-server.md`](./docs/stdio-server.md).
+
 ## Out of scope for v1
 
 - `Mcp.Resources` and `Mcp.Prompts` runtime dispatch — schemas land in v1, controllers in v2.

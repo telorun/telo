@@ -56,6 +56,21 @@ metadata:
   name: Octet
 source: ../../modules/octet-codec
 ---
+kind: Telo.Import
+metadata:
+  name: PlainText
+source: ../../modules/plain-text-codec
+---
+kind: Telo.Import
+metadata:
+  name: Yaml
+source: ../../modules/yaml
+---
+kind: Telo.Import
+metadata:
+  name: Mcp
+source: ../../modules/mcp-server
+---
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 kind: Config.Env
@@ -227,6 +242,8 @@ openapi:
       Resolve and browse Telo Kernel modules.
       Compatible with the Telo CLI and kind: Telo.Import source resolution.
 mounts:
+  - path: /mcp
+    type: Mcp.HttpEndpoint.McpHttp
   - path: /
     type: Http.Api.PublicApi
   - path: /health
@@ -348,6 +365,33 @@ steps:
           code: UNAUTHORIZED
           message: Invalid token or namespace not owned
 
+  # Parse the YAML body so we can index `metadata.description` server-side
+  # (npm-style: the registry reads metadata from the manifest, the publisher
+  # doesn't ship it out-of-band). Caught errors map to MANIFEST_PARSE_FAILED.
+  - name: parseManifest
+    try:
+      - name: doParse
+        invoke: { kind: Yaml.Parse }
+        inputs:
+          text: "${{ inputs.body }}"
+    catch:
+      - name: rethrowParse
+        throw:
+          code: MANIFEST_PARSE_FAILED
+          message: "${{ error.message }}"
+
+  # Per CLAUDE.md, every module file MUST start with exactly one Telo.Library or
+  # Telo.Application doc. Reject anything else up front so the index never holds
+  # rows for malformed manifests. Optional access (`[?0].?kind`) keeps the check
+  # safe against empty docs / missing kind without throwing a different error.
+  - name: validateRootDoc
+    if: "${{ !(steps.parseManifest.result.docs[?0].?kind.orValue('') in ['Telo.Library', 'Telo.Application']) }}"
+    then:
+      - name: rejectRootDoc
+        throw:
+          code: INVALID_MANIFEST
+          message: First document must be a Telo.Library or Telo.Application
+
   - name: upload
     try:
       - name: doUpload
@@ -374,15 +418,25 @@ steps:
             kind: Sql.Connection
             name: Db
         inputs:
+          # CEL's optional access (`[?0]`, `.?field`) safely traverses missing
+          # intermediates; `.orValue(null)` lands on SQL NULL when any segment
+          # is absent. NULL (not '') keeps "no description" distinct from "empty
+          # string" and matches the column's existing semantics for legacy rows.
+          # The `type(...) == string` guard catches publishers who accidentally
+          # supply a non-string description (e.g. a YAML mapping) — those bind
+          # as NULL rather than corrupting the row with a JSON-stringified blob.
           sql: >-
-            INSERT INTO modules (namespace, name, version, file_key)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (namespace, name, version) DO UPDATE SET file_key = EXCLUDED.file_key
+            INSERT INTO modules (namespace, name, version, file_key, description)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (namespace, name, version) DO UPDATE
+              SET file_key = EXCLUDED.file_key,
+                  description = EXCLUDED.description
           bindings:
             - "${{ inputs.namespace }}"
             - "${{ inputs.name }}"
             - "${{ inputs.version }}"
             - "${{ inputs.fileKey }}"
+            - "${{ type(steps.parseManifest.result.docs[?0].?metadata.?description.orValue('')) == string ? steps.parseManifest.result.docs[?0].?metadata.?description.orValue(null) : null }}"
     catch:
       - name: rethrowRecord
         throw:
@@ -661,6 +715,14 @@ routes:
               error:
                 code: "${{ error.code }}"
                 message: "${{ error.message }}"
+      - when: "${{ error.code == 'MANIFEST_PARSE_FAILED' || error.code == 'INVALID_MANIFEST' }}"
+        status: 400
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
       - when: "${{ error.code == 'UPLOAD_FAILED' || error.code == 'RECORD_FAILED' }}"
         status: 500
         content:
@@ -669,3 +731,237 @@ routes:
               error:
                 code: "${{ error.code }}"
                 message: "${{ error.message }}"
+---
+# ── MCP Server ────────────────────────────────────────────────────────────────
+# Exposes the registry over MCP (Model Context Protocol) at /mcp on the same
+# Http.Server. AI agents discover available modules and pull their manifests
+# without needing to know the registry's REST surface.
+
+# get_module_manifest handler — fetches the YAML bytes from S3 and drains the
+# byte stream into a single UTF-8 string so the MCP tool can return it as a
+# `text` content block. PlainText.Decoder accepts the stream-typed S3 output
+# directly (`steps.fetch.result.output` is the stream-marked property; only
+# member access *past* it is forbidden by the analyzer).
+kind: Run.Sequence
+metadata:
+  name: GetModuleManifest
+steps:
+  - name: fetch
+    invoke:
+      kind: S3.Get
+      bucketRef:
+        name: ModuleStore
+    inputs:
+      key: "${{ inputs.namespace + '/' + inputs.name + '/' + inputs.version + '/telo.yaml' }}"
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: "${{ steps.fetch.result.output }}"
+outputs:
+  text: "${{ steps.decode.result.text }}"
+---
+kind: Mcp.Tools
+metadata:
+  name: RegistryTools
+entries:
+  # search_modules — wraps SearchModules' Sql.Select with empty filters and a
+  # high cap to expose the whole catalog. Filter / pagination args land when
+  # the catalog scales; until then the tool is argument-free.
+  - name: search_modules
+    description: |
+      List modules in the registry. Each result includes `id`, `namespace`,
+      `name`, `version`, `description`, and `publishedAt`. Pick one and call
+      `get_module_manifest` to read its `telo.yaml`.
+    argumentsSchema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    handler:
+      kind: Sql.Select
+      name: SearchModules
+    inputs:
+      q: ""
+      id: ""
+      limit: 1000
+      offset: 0
+    result:
+      content:
+        - type: text
+          text: "${{ json({'results': result.rows, 'count': result.rowCount}) }}"
+
+  # get_module_manifest — returns the raw `telo.yaml` for a specific version
+  # so the LLM can read its `Telo.Definition` schemas to compose a manifest
+  # against it.
+  - name: get_module_manifest
+    description: |
+      Fetch the raw `telo.yaml` for a specific module version. The response
+      contains `Telo.Library`, `Telo.Definition`, and (optionally) `Telo.Import`
+      docs that fully describe the module's public surface (kinds, schemas,
+      capabilities). Discover candidates with `search_modules` first.
+    argumentsSchema:
+      type: object
+      properties:
+        namespace: { type: string }
+        name:      { type: string }
+        version:   { type: string }
+      required: [namespace, name, version]
+      additionalProperties: false
+    handler:
+      kind: Run.Sequence
+      name: GetModuleManifest
+    inputs:
+      namespace: "${{ request.arguments.namespace }}"
+      name:      "${{ request.arguments.name }}"
+      version:   "${{ request.arguments.version }}"
+    result:
+      content:
+        - type: text
+          text: "${{ result.text }}"
+    catches:
+      - when: "${{ error.code == 'ERR_NOT_FOUND' }}"
+        error:
+          code: -32004
+          message: "Module not found"
+      - when: "${{ error.code == 'ERR_INVALID_REFERENCE' || error.code == 'ERR_INVALID_RESPONSE' }}"
+        error:
+          code: -32603
+          message: "${{ error.message }}"
+---
+kind: Mcp.HttpEndpoint
+metadata:
+  name: McpHttp
+serverInfo:
+  name: telo-registry
+  version: 1.0.0
+# Telo primer surfaced to the client on `initialize`. Compatible MCP clients
+# pass this to their LLM as system context, so a model with no prior Telo
+# knowledge knows what these tools mean and how to compose a manifest from
+# what they return.
+instructions: |
+  This MCP server exposes the **Telo module registry**. Telo is a declarative
+  runtime: YAML manifests describe desired state, the kernel resolves resource
+  dependencies via a multi-pass init loop, and controllers implement each
+  resource kind. CEL expressions wrapped in dollar-double-brace template tags
+  are compiled before execution.
+
+  ## Built-in kinds (do not need importing)
+
+  These kinds are part of the kernel itself, not published modules — they
+  cannot be discovered via `search_modules` and the model must know them:
+
+  - `Telo.Application` — the runnable root of every Telo file. Required
+    fields: `metadata.name` (kebab-case), `metadata.version`. Optional:
+    `targets` (resources to run on boot — services that should auto-start are
+    omitted). Forbidden in applications: `variables`, `secrets`, `exports`
+    (those belong on `Telo.Library`).
+  - `Telo.Library` — importable unit of kinds / definitions. Same metadata
+    shape; adds optional `variables` (JSON Schema map declaring the
+    contract importers must supply), `secrets` (same shape), `exports.kinds`
+    (which kinds importers may reference). Cannot be run directly — only
+    imported.
+  - `Telo.Import` — declares a dependency on a `Telo.Library`. Required:
+    `metadata.name` (PascalCase alias used as the kind prefix), `source`
+    (a registry id like `std/http-server@1.0.0`, a relative path, or a URL).
+    Optional `variables` / `secrets` pass values into the imported library.
+  - `Telo.Definition` — declares a new resource kind inside a Library. Read
+    these via `get_module_manifest` to discover a module's surface; do not
+    write your own.
+
+  ## CEL templates
+
+  Pass dynamic values between resources by writing a CEL template: a dollar
+  sign, two open braces, the expression, two close braces. Examples (rendered
+  here with the dollar/braces spelled out so this primer itself isn't parsed
+  as a template):
+
+  - `dollar+{{ request.params.name }}` — read a route param.
+  - `dollar+{{ steps.parse.result.text }}` — read the result of a previous
+    step inside a `Run.Sequence`.
+  - `dollar+{{ resources.AppConfig.port }}` — read another resource's snapshot.
+  - `dollar+{{ steps.x.result.docs[?0].?metadata.?description.orValue('') }}`
+    — optional access; safely handles missing intermediates.
+
+  Wherever you see `dollar+{{ ... }}` in the example below, write the literal
+  template syntax in your output.
+
+  ## Comprehensive example
+
+  A complete `Telo.Application` that imports two modules and wires them
+  together. Note the document separators (`---`), the alias prefixes on
+  resource kinds (`Http.Server`, `JS.Script`), and the placeholder template
+  expressions:
+
+  ```yaml
+  kind: Telo.Application
+  metadata:
+    name: hello-app
+    version: 1.0.0
+  targets:
+    - Server
+  ---
+  kind: Telo.Import
+  metadata: { name: Http }
+  source: std/http-server@1.0.0
+  ---
+  kind: Telo.Import
+  metadata: { name: JS }
+  source: std/javascript@0.3.0
+  ---
+  kind: Telo.Import
+  metadata: { name: Type }
+  source: std/type@0.2.0
+  ---
+  kind: Http.Server
+  metadata: { name: Server }
+  host: 0.0.0.0
+  port: 8080
+  mounts:
+    - path: /
+      type: Http.Api.HelloApi
+  ---
+  kind: Http.Api
+  metadata: { name: HelloApi }
+  routes:
+    - request:
+        path: /hello/:name
+        method: GET
+      handler:
+        kind: JS.Script
+        name: HelloHandler
+      inputs:
+        name: "dollar+{{ request.params.name }}"
+      returns:
+        - status: 200
+          content:
+            application/json:
+              body:
+                greeting: "dollar+{{ result.text }}"
+  ---
+  kind: JS.Script
+  metadata: { name: HelloHandler }
+  inputType:
+    kind: Type.JsonSchema
+    schema:
+      type: object
+      properties: { name: { type: string } }
+      required: [name]
+  outputType:
+    kind: Type.JsonSchema
+    schema:
+      type: object
+      properties: { text: { type: string } }
+      required: [text]
+  code: |
+    function main({ name }) { return { text: "Hello, " + name + "!" }; }
+  ```
+
+  ## Workflow when composing a new application
+
+  1. Use `search_modules` to find candidate modules by their descriptions.
+  2. For each promising module, call `get_module_manifest` to read its
+     `Telo.Definition` documents — those JSON Schemas are the EXACT field
+     shapes you must produce. Do not guess from kind names alone.
+  3. Write a `Telo.Application` with the modules you need declared as
+     `Telo.Import` docs, then instantiate resources of the form
+     `kind: <Alias>.<KindName>` using the schemas you read.
+tools: [RegistryTools]

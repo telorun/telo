@@ -717,6 +717,22 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/yaml/nodejs:
+    dependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   packages/ide-support:
     dependencies:
       '@telorun/analyzer':
