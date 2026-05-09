@@ -368,9 +368,9 @@ steps:
   # Parse the YAML body so we can index `metadata.description` server-side
   # (npm-style: the registry reads metadata from the manifest, the publisher
   # doesn't ship it out-of-band). Caught errors map to MANIFEST_PARSE_FAILED.
-  - name: parseManifest
+  - name: tryParse
     try:
-      - name: doParse
+      - name: parseManifest
         invoke: { kind: Yaml.Parse }
         inputs:
           text: "${{ inputs.body }}"
