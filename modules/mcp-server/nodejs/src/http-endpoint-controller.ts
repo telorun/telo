@@ -13,6 +13,11 @@ interface HttpEndpointManifest {
   metadata: { name: string };
   serverInfo: ServerInfo;
   instructions?: string;
+  /** When true, mint an `Mcp-Session-Id` on initialize and route follow-up
+   *  requests to the same in-memory SDK Server. When false (default), every
+   *  request is independent — required for horizontally scaled deployments
+   *  without sticky session affinity. */
+  stateful?: boolean;
   tools?: string[];
   resources?: string[];
   prompts?: string[];
@@ -87,8 +92,25 @@ export class McpHttpEndpoint {
   }
 
   private async handleRequest(request: FastifyRequest, reply: FastifyReply) {
-    const sessionHeader = (request.headers["mcp-session-id"] ?? "") as string;
     const body = request.body as Record<string, unknown> | undefined;
+
+    if (!this.resource.stateful) {
+      // Stateless: every request gets a fresh server+transport pair. The
+      // SDK's stateless transport (`sessionIdGenerator: undefined`) does not
+      // mint or validate `Mcp-Session-Id` — any header the client sends is
+      // ignored. Required for horizontally scaled deploys without sticky
+      // affinity at the LB.
+      const record = await this.createSession({ stateful: false });
+      reply.hijack();
+      try {
+        await record.transport.handleRequest(request.raw, reply.raw, body);
+      } finally {
+        await this.closeRecord(record);
+      }
+      return;
+    }
+
+    const sessionHeader = (request.headers["mcp-session-id"] ?? "") as string;
 
     let record: SessionRecord | undefined;
     if (sessionHeader) {
@@ -104,7 +126,7 @@ export class McpHttpEndpoint {
         return;
       }
     } else if (request.method === "POST" && body && isInitializeRequest(body)) {
-      record = await this.createSession();
+      record = await this.createSession({ stateful: true });
     } else {
       reply.code(400);
       reply.header("Content-Type", "application/json");
@@ -126,7 +148,7 @@ export class McpHttpEndpoint {
     await record.transport.handleRequest(request.raw, reply.raw, body);
   }
 
-  private async createSession(): Promise<SessionRecord> {
+  private async createSession({ stateful }: { stateful: boolean }): Promise<SessionRecord> {
     const sessionContext: SessionContext = { id: "", clientInfo: {}, capabilities: {} };
 
     // Pre-allocate the SessionRecord shell so the onsessioninitialized
@@ -136,13 +158,17 @@ export class McpHttpEndpoint {
     // where the client's follow-up request races with the registration.
     const record = { context: sessionContext } as SessionRecord;
 
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (id: string) => {
-        sessionContext.id = id;
-        this.sessions.set(id, record);
-      },
-    });
+    const transport = new StreamableHTTPServerTransport(
+      stateful
+        ? {
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id: string) => {
+              sessionContext.id = id;
+              this.sessions.set(id, record);
+            },
+          }
+        : { sessionIdGenerator: undefined },
+    );
     record.transport = transport;
 
     record.server = buildServer({
@@ -154,39 +180,45 @@ export class McpHttpEndpoint {
       moduleContext: this.ctx.moduleContext,
     });
 
-    transport.onclose = () => {
-      if (sessionContext.id) {
-        this.sessions.delete(sessionContext.id);
-      }
-    };
+    if (stateful) {
+      transport.onclose = () => {
+        if (sessionContext.id) {
+          this.sessions.delete(sessionContext.id);
+        }
+      };
+    }
 
     await record.server.connect(transport);
     return record;
+  }
+
+  private async closeRecord(record: SessionRecord): Promise<void> {
+    const sessionId = record.context.id || "<unbound>";
+    try {
+      await record.transport.close();
+    } catch (err) {
+      await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
+        sessionId,
+        stage: "transport",
+        error: errorPayload(err),
+      });
+    }
+    try {
+      await record.server.close();
+    } catch (err) {
+      await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
+        sessionId,
+        stage: "server",
+        error: errorPayload(err),
+      });
+    }
   }
 
   private async closeAllSessions(): Promise<void> {
     const records = Array.from(this.sessions.values());
     this.sessions.clear();
     for (const record of records) {
-      const sessionId = record.context.id || "<unbound>";
-      try {
-        await record.transport.close();
-      } catch (err) {
-        await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
-          sessionId,
-          stage: "transport",
-          error: errorPayload(err),
-        });
-      }
-      try {
-        await record.server.close();
-      } catch (err) {
-        await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
-          sessionId,
-          stage: "server",
-          error: errorPayload(err),
-        });
-      }
+      await this.closeRecord(record);
     }
   }
 }

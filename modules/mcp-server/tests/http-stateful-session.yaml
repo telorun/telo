@@ -1,0 +1,169 @@
+kind: Telo.Application
+metadata: { name: McpHttpStatefulSessionTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Drives the stateful flow end-to-end so the session-id contract can be
+# asserted: initialize must return an `Mcp-Session-Id` header, that header must
+# work on follow-up requests, and a bogus header must yield JSON-RPC -32001.
+kind: JS.Script
+metadata: { name: McpStatefulProbe }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+    required: [url]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      sessionIdPresent: { type: boolean }
+      validCallStatus: { type: integer }
+      validCallToolCount: { type: integer }
+      bogusCallStatus: { type: integer }
+      bogusErrorCode: { type: integer }
+    required: [sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode]
+code: |
+  async function main({ url }) {
+    const initResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "telo-test", version: "1.0.0" } },
+      }),
+    });
+    const sessionId = initResp.headers.get("mcp-session-id");
+    await initResp.text();
+
+    async function readPayload(resp) {
+      const ct = (resp.headers.get("content-type") || "").toLowerCase();
+      const raw = await resp.text();
+      if (ct.startsWith("application/json")) return JSON.parse(raw);
+      const dataLines = raw.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart());
+      if (!dataLines.length) throw new Error(`MCP no data lines: ${raw}`);
+      return JSON.parse(dataLines[0]);
+    }
+
+    // Valid follow-up call with the minted session id.
+    const validResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": sessionId },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    const validPayload = await readPayload(validResp);
+
+    // Bogus session id must be rejected with -32001.
+    const bogusResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Session-Id": "not-a-real-session" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" }),
+    });
+    const bogusPayload = await readPayload(bogusResp);
+
+    return {
+      sessionIdPresent: !!sessionId,
+      validCallStatus: validResp.status,
+      validCallToolCount: ((validPayload.result || {}).tools || []).length,
+      bogusCallStatus: bogusResp.status,
+      bogusErrorCode: ((bogusPayload.error || {}).code) || 0,
+    };
+  }
+---
+kind: JS.Script
+metadata: { name: PingImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      pong: { type: boolean }
+    required: [pong]
+code: |
+  function main() { return { pong: true }; }
+---
+kind: Mcp.Tools
+metadata: { name: PingTools }
+entries:
+  - name: ping
+    description: Echo a synthetic pong.
+    argumentsSchema: { type: object, properties: {}, additionalProperties: false }
+    handler: { kind: JS.Script, name: PingImpl }
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: "pong"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-stateful, version: 1.0.0 }
+stateful: true
+tools: [PingTools]
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8955
+    baseUrl: http://127.0.0.1:8955
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpHttpStatefulSessionTest.McpHttp }
+targets: [Server]
+steps:
+  - name: Probe
+    inputs:
+      url: http://127.0.0.1:8955/mcp
+    invoke: { kind: JS.Script, name: McpStatefulProbe }
+  - name: AssertContract
+    inputs:
+      sessionIdPresent: "${{ steps.Probe.result.sessionIdPresent }}"
+      validCallStatus: "${{ steps.Probe.result.validCallStatus }}"
+      validCallToolCount: "${{ steps.Probe.result.validCallToolCount }}"
+      bogusCallStatus: "${{ steps.Probe.result.bogusCallStatus }}"
+      bogusErrorCode: "${{ steps.Probe.result.bogusErrorCode }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          sessionIdPresent: { const: true }
+          validCallStatus: { const: 200 }
+          validCallToolCount: { const: 1 }
+          bogusCallStatus: { const: 404 }
+          bogusErrorCode: { const: -32001 }
+        required: [sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode]

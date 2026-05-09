@@ -74,11 +74,10 @@ code: |
       const text = await initResp.text();
       throw new Error(`MCP initialize failed: ${initResp.status} ${text}`);
     }
+    // Stateful endpoints return an Mcp-Session-Id; stateless ones don't.
+    // Echo the header only when present so the same client works with both.
     const sessionId = initResp.headers.get("mcp-session-id");
-    if (!sessionId) {
-      const text = await initResp.text();
-      throw new Error(`MCP initialize missing Mcp-Session-Id header. Body: ${text}`);
-    }
+    const sessionHeader = sessionId ? { "Mcp-Session-Id": sessionId } : {};
     await initResp.text();
 
     await fetch(url, {
@@ -86,7 +85,7 @@ code: |
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "Mcp-Session-Id": sessionId,
+        ...sessionHeader,
       },
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     }).then((r) => r.text());
@@ -96,7 +95,7 @@ code: |
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "Mcp-Session-Id": sessionId,
+        ...sessionHeader,
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params: params || {} }),
     });
