@@ -1,5 +1,12 @@
 # @telorun/cli
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [543b91f]
+  - @telorun/kernel@0.9.1
+
 ## 0.9.0
 
 ### Minor Changes

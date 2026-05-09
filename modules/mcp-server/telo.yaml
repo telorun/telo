@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "mcp-server"
   namespace: std
-  version: "0.3.0"
+  version: "0.4.0"
 exports:
   kinds:
     - StdioServer
@@ -19,7 +19,7 @@ metadata:
   name: "Tools"
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.3.0?local_path=./nodejs#tools
+  - pkg:npm/@telorun/mcp-server@0.4.0?local_path=./nodejs#tools
 schema:
   type: "object"
   additionalProperties: false
@@ -183,7 +183,7 @@ metadata:
   name: "Resources"
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.3.0?local_path=./nodejs#resources
+  - pkg:npm/@telorun/mcp-server@0.4.0?local_path=./nodejs#resources
 schema:
   type: "object"
   additionalProperties: false
@@ -273,7 +273,7 @@ metadata:
   name: "Prompts"
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.3.0?local_path=./nodejs#prompts
+  - pkg:npm/@telorun/mcp-server@0.4.0?local_path=./nodejs#prompts
 schema:
   type: "object"
   additionalProperties: false
@@ -364,7 +364,7 @@ metadata:
   name: "StdioServer"
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.3.0?local_path=./nodejs#stdio-server
+  - pkg:npm/@telorun/mcp-server@0.4.0?local_path=./nodejs#stdio-server
 schema:
   type: "object"
   additionalProperties: false
@@ -421,7 +421,7 @@ metadata:
   name: "HttpEndpoint"
 capability: Telo.Mount
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.3.0?local_path=./nodejs#http-endpoint
+  - pkg:npm/@telorun/mcp-server@0.4.0?local_path=./nodejs#http-endpoint
 schema:
   type: "object"
   additionalProperties: false
