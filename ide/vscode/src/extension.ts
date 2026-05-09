@@ -7,6 +7,13 @@ import * as vscode from "vscode";
 import { TeloCompletionProvider } from "./completion.js";
 
 const TELO_KIND_RE = /^kind:\s+Telo\./m;
+// Broader signature for the language-promote check: any line declaring a
+// module-prefixed PascalCase kind (e.g. `Run.Sequence`, `Http.Server`,
+// `JS.Script`). Catches partial files included via `Telo.Application.include`
+// — those don't carry `kind: Telo.*` themselves but are still Telo manifests.
+// Single-word kinds like `Pod`/`Service` (Kubernetes) and lowercased
+// `kustomize.config.k8s.io/...` style strings don't match.
+const TELO_PARTIAL_KIND_RE = /^kind:\s+[A-Z]\w*\.\w+/m;
 
 const SEVERITY: Record<number, vscode.DiagnosticSeverity> = {
   [DiagnosticSeverity.Error]: vscode.DiagnosticSeverity.Error,
@@ -55,14 +62,33 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
-      { language: "yaml" },
+      [{ language: "telo" }, { language: "yaml" }],
       completionProvider,
       " ", ":",
     ),
   );
 
-  async function analyzeDocument(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "yaml") return;
+  // Promote a yaml document to the `telo` language id when its content looks
+  // like a Telo manifest. Disables Red Hat's YAML extension for these files
+  // (its contributions are scoped to language id `yaml`), which removes false
+  // positives like the `!cel` / `!literal` "unresolved tag" warnings. The
+  // switch is per-document for the session; on reopen, filename patterns
+  // (`telo.yaml`, `*.telo.yaml`) handle the well-known case automatically and
+  // this fallback catches any other yaml file declaring `kind: Telo.*`.
+  async function maybePromoteToTelo(document: vscode.TextDocument): Promise<vscode.TextDocument> {
+    if (document.languageId !== "yaml") return document;
+    // Use the broader partial-kind pattern so files included via
+    // `Telo.Application.include` (which carry kinds like `Run.Sequence`,
+    // not `Telo.*`) also get promoted. The standalone-analysis fallback
+    // below still uses the stricter `TELO_KIND_RE` so unrelated YAML
+    // doesn't get spurious Telo diagnostics.
+    if (!TELO_PARTIAL_KIND_RE.test(document.getText())) return document;
+    return await vscode.languages.setTextDocumentLanguage(document, "telo");
+  }
+
+  async function analyzeDocument(rawDocument: vscode.TextDocument): Promise<void> {
+    const document = await maybePromoteToTelo(rawDocument);
+    if (document.languageId !== "telo" && document.languageId !== "yaml") return;
 
     // Skip files that don't look like Telo manifests (no kind: field).
     // Prevents unrelated YAML (docker-compose, CI configs, etc.) from being

@@ -35,7 +35,7 @@ export class TeloCompletionProvider implements vscode.CompletionItemProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.CompletionItem[] | undefined {
-    if (document.languageId !== "yaml") return undefined;
+    if (document.languageId !== "telo" && document.languageId !== "yaml") return undefined;
     const registry = this.registries.get(document.uri.fsPath);
     return buildCompletions(
       document.getText(),
