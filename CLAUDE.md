@@ -17,6 +17,7 @@ Follow this strictly:
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
 - never use `cat` nor `sed` to read files — read them directly
+- never use `AskUserQuestion` tool, ask questions directly
 - never do major upgrades of modules nor packages
 - never modify files in `dist` directories
 - never use Bun-only APIs (e.g. `Bun.Glob`, `Bun.file`); all code must run on Node.js

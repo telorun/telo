@@ -232,35 +232,37 @@ function buildStepContextSchema(
         if (!step || typeof step !== "object") continue;
         const s = step as Record<string, any>;
         const name = s.name;
-        if (typeof name === "string") {
-          const invoke = s[invokeField] as Record<string, any> | undefined;
+        const invoke = s[invokeField] as Record<string, any> | undefined;
+        // Only invoke steps register a `steps.<name>.result` entry — control-flow
+        // wrappers (try/if/while/switch/throw) don't produce a result and must
+        // not shadow real entries with a permissive `additionalProperties: true`,
+        // or unknown step references slip through chain validation.
+        if (typeof name === "string" && invoke && typeof invoke === "object") {
           let outputSchema: Record<string, any> | undefined;
-          if (invoke && typeof invoke === "object") {
-            const invokedKind = invoke.kind as string | undefined;
-            const invokedName = invoke.name as string | undefined;
-            if (invokedName) {
-              const invokedManifest = allManifests.find(
-                (m) =>
-                  (m.metadata as any)?.name === invokedName &&
-                  (!invokedKind || m.kind === invokedKind),
-              ) as Record<string, any> | undefined;
-              if (invokedManifest) {
-                outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
-              }
-            } else {
-              outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
+          const invokedKind = invoke.kind as string | undefined;
+          const invokedName = invoke.name as string | undefined;
+          if (invokedName) {
+            const invokedManifest = allManifests.find(
+              (m) =>
+                (m.metadata as any)?.name === invokedName &&
+                (!invokedKind || m.kind === invokedKind),
+            ) as Record<string, any> | undefined;
+            if (invokedManifest) {
+              outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
             }
-            // Fallback: pull outputType from the kind's Telo.Definition. The
-            // resource manifest typically doesn't carry outputType; the def does.
-            if (!outputSchema && invokedKind) {
-              outputSchema = lookupDefinitionTypeField(
-                invokedKind,
-                outputTypeField,
-                defs,
-                aliases,
-                allManifests,
-              );
-            }
+          } else {
+            outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
+          }
+          // Fallback: pull outputType from the kind's Telo.Definition. The
+          // resource manifest typically doesn't carry outputType; the def does.
+          if (!outputSchema && invokedKind) {
+            outputSchema = lookupDefinitionTypeField(
+              invokedKind,
+              outputTypeField,
+              defs,
+              aliases,
+              allManifests,
+            );
           }
           stepProperties[name] = {
             type: "object",
