@@ -362,8 +362,11 @@ describe("DELETE /v1/sessions/:id", () => {
         return {
           id: "fake",
           async attach() {
-            const { PassThrough } = await import("node:stream");
-            return new PassThrough();
+            const { Duplex, PassThrough } = await import("node:stream");
+            return Duplex.from({
+              readable: new PassThrough(),
+              writable: new PassThrough(),
+            });
           },
           async start() {},
           async kill() {
@@ -375,6 +378,7 @@ describe("DELETE /v1/sessions/:id", () => {
             });
           },
           async remove() {},
+          async resize() {},
         };
       },
     });

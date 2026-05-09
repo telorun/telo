@@ -5,6 +5,7 @@ pub mod session;
 
 use std::collections::HashMap;
 
+use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
 use availability::AvailabilityReport;
@@ -21,6 +22,7 @@ pub async fn run_start(
     env: Option<HashMap<String, String>>,
     ports: Option<Vec<PortMapping>>,
     config: TauriDockerConfig,
+    io_channel: Channel<Vec<u8>>,
 ) -> Result<(), String> {
     let workdir = BundleWorkdir::write(&bundle)
         .map_err(|e| format!("Failed to write bundle tempdir: {e}"))?;
@@ -35,6 +37,7 @@ pub async fn run_start(
         env.unwrap_or_default(),
         ports.unwrap_or_default(),
         config,
+        io_channel,
     )
     .await
 }
@@ -46,6 +49,36 @@ pub async fn run_stop(
 ) -> Result<(), String> {
     let registry = registry.inner().clone();
     docker::stop(registry, session_id).await
+}
+
+#[tauri::command]
+pub async fn run_send_input(
+    registry: State<'_, SessionRegistry>,
+    session_id: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    let registry = registry.inner().clone();
+    docker::send_input(registry, session_id, bytes).await
+}
+
+#[tauri::command]
+pub async fn run_close_input(
+    registry: State<'_, SessionRegistry>,
+    session_id: String,
+) -> Result<(), String> {
+    let registry = registry.inner().clone();
+    docker::close_input(registry, session_id).await
+}
+
+#[tauri::command]
+pub async fn run_resize(
+    registry: State<'_, SessionRegistry>,
+    session_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let registry = registry.inner().clone();
+    docker::resize(registry, session_id, cols, rows).await
 }
 
 #[tauri::command]

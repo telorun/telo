@@ -12,6 +12,7 @@ import {
   dockerApiDefaultConfig,
   type DockerApiConfig,
 } from "./config-schema";
+import { makeDockerApiIo } from "./io-client";
 import { openSseClient } from "./sse-client";
 
 const HEALTH_TIMEOUT_MS = 2_000;
@@ -215,6 +216,12 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
       },
     });
 
+    const wsBase = base.replace(/^http(s?):/i, "ws$1:");
+    const io = makeDockerApiIo({
+      url: `${wsBase}/v1/sessions/${sessionId}/io`,
+      sessionId,
+    });
+
     return {
       id: sessionId,
       getStatus: () => currentStatus,
@@ -224,6 +231,7 @@ export const dockerApiAdapter: RunAdapter<DockerApiConfig> = {
           subscribers.delete(listener);
         };
       },
+      io,
       async stop() {
         try {
           await fetchWithTimeout(

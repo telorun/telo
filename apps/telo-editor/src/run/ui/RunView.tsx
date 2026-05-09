@@ -1,9 +1,10 @@
 import { Button } from "../../components/ui/button";
 import { useRun } from "../context";
-import type { RunnerEndpoint } from "../types";
+import { isTerminal, type RunnerEndpoint } from "../types";
 import { AdapterUnavailable } from "./AdapterUnavailable";
 import { LogStream } from "./LogStream";
 import { RunStatusChip } from "./RunStatusChip";
+import { TerminalView } from "./TerminalView";
 
 /** Full-canvas replacement shown while a run is active (or an
  *  unavailable/setup-required message needs surfacing). Renders in place of
@@ -73,7 +74,14 @@ export function RunView() {
         </Button>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        <LogStream lines={activeRun.lines} truncated={activeRun.truncated} />
+        {activeRun.session.io ? (
+          <TerminalView
+            io={activeRun.session.io}
+            inputDisabled={isTerminal(activeRun.status)}
+          />
+        ) : (
+          <LogStream lines={activeRun.lines} truncated={activeRun.truncated} />
+        )}
       </div>
     </div>
   );
