@@ -57,6 +57,10 @@ function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): v
         }
       }
     }
+  } else if (isASTNode(args)) {
+    // Unary operators (`!_`, `-_`) carry their operand as a single node
+    // rather than a one-element array, so descend into it directly.
+    visitNode(args, chains, boundVars);
   }
 }
 

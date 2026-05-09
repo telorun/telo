@@ -29,6 +29,22 @@ describe("extractAccessChains", () => {
     expect(chains).toContainEqual(["items"]);
     expect(chains.some((c) => c[0] === "x")).toBe(false);
   });
+
+  it("descends through unary operators (`!`, `-`)", () => {
+    // cel-js represents unary ops with a single ASTNode in `args`, not a
+    // one-element array — the walker has to handle both shapes or chains
+    // hidden under `!(...)` slip past static analysis.
+    const negated = env.parse("!steps.parseManifest.result").ast;
+    expect(extractAccessChains(negated)).toEqual([["steps", "parseManifest", "result"]]);
+    const negative = env.parse("-counter.value").ast;
+    expect(extractAccessChains(negative)).toEqual([["counter", "value"]]);
+  });
+
+  it("recovers chains from inside optional access (`.?`, `[?]`)", () => {
+    const ast = env.parse("steps.x.result.docs[?0].?kind.orValue('')").ast;
+    const chains = extractAccessChains(ast);
+    expect(chains).toContainEqual(["steps", "x", "result", "docs"]);
+  });
 });
 
 describe("validateChainAgainstSchema", () => {
