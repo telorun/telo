@@ -173,7 +173,7 @@ export class EvaluationContext implements IEvaluationContext {
 
   registerManifest(resource: ResourceManifest): void {
     if (!resource.metadata) {
-      resource.metadata = { name: `__unnamed_${Math.random().toString(16).slice(2, 8)}` };
+      resource.metadata = { name: `Unnamed${Math.random().toString(16).slice(2, 8)}` };
     }
     const name = resource.metadata.name;
     if (this.hasManifest(name)) {

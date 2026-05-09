@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: RegistryE2ESuite
+  version: 1.0.0
+  description: |
+    End-to-end suite for the registry. Hits the live registry through the
+    docker-compose Caddy proxy at http://registry.telo.localhost:8060, so the
+    compose stack must be up before running this suite. Kept separate from the
+    in-process suite (`test-suite.yaml` at the repo root), which has no
+    Postgres or S3 backend and therefore can't exercise these routes.
+targets:
+  - RunAll
+---
+kind: Telo.Import
+metadata:
+  name: Test
+source: ../../modules/test
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "tests/e2e/*.yaml"

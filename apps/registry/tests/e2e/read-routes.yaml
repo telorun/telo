@@ -1,0 +1,320 @@
+kind: Telo.Application
+metadata:
+  name: RegistryE2EReadRoutes
+  version: 1.0.0
+  description: |
+    End-to-end tests for the registry's read-side HTTP surface, run against a
+    live registry reached through the docker-compose Caddy proxy at
+    http://registry.telo.localhost:8060. Covers health endpoints, search, the
+    module-overview / versions / single-version routes, and the streamed
+    telo.yaml fetch — including 404 paths, since a recent bug had
+    GET /{namespace}/{name} returning 500 because its SQL was wired to the
+    wrong nesting level. Lives outside the in-process Test.Suite (which has no
+    Postgres or S3) and is run via `pnpm run test:e2e`.
+
+    Every inline HttpClient.Request and Assert.Schema below carries an
+    explicit `metadata.name` even though the kernel auto-generates one — the
+    explicit names make the `Assert.Schema.<name>: assertion passed` lines in
+    the suite output self-describing per test, instead of all sharing an
+    auto-generated prefix.
+targets:
+  - HealthLiveness
+  - HealthReadiness
+  - SearchEmpty
+  - GetMissingModule_Returns404
+  - GetMissingVersions_Returns404
+  - GetMissingVersion_Returns404
+  - GetMissingTeloYaml_Returns404
+  - PublishMissingAuth_Returns401
+  - PublishBadBearer_Returns401
+---
+kind: Telo.Import
+metadata: { name: HttpClient }
+source: ../../../../modules/http-client
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../../../modules/run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../../../modules/assert
+---
+kind: Run.Sequence
+metadata: { name: HealthLiveness }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitHealthLiveness }
+      url: http://registry.telo.localhost:8060/health/liveness
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertHealthLiveness }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              status: { const: ok }
+            required: [status]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: HealthReadiness }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitHealthReadiness }
+      url: http://registry.telo.localhost:8060/health/readiness
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertHealthReadiness }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              status: { const: ok }
+            required: [status]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: SearchEmpty }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitSearchEmpty }
+      url: http://registry.telo.localhost:8060/search
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertSearchEmpty }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              results: { type: array }
+              count: { type: integer }
+            required: [results, count]
+        required: [status, body]
+---
+# Regression test for the bug we just fixed: GET /{namespace}/{name} on a
+# module that doesn't exist must return 404, not 500. Pre-fix, this path
+# threw "Client was passed a null or undefined query" because the route's
+# SQL was nested under handler.inputs and never reached the controller.
+kind: Run.Sequence
+metadata: { name: GetMissingModule_Returns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitMissingModule }
+      url: http://registry.telo.localhost:8060/e2e-test/nonexistent-module
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertMissingModule }
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          body:
+            type: object
+            properties:
+              error: { const: Module not found }
+            required: [error]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: GetMissingVersions_Returns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitMissingVersions }
+      url: http://registry.telo.localhost:8060/e2e-test/nonexistent-module/versions
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertMissingVersions }
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          body:
+            type: object
+            properties:
+              error: { const: Module not found }
+            required: [error]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: GetMissingVersion_Returns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitMissingVersion }
+      url: http://registry.telo.localhost:8060/e2e-test/nonexistent-module/0.0.0
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertMissingVersion }
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          body:
+            type: object
+            properties:
+              error: { const: Module not found }
+            required: [error]
+        required: [status, body]
+---
+# The telo.yaml fetch route surfaces the S3 not-found as a structured error
+# body (catches: ERR_NOT_FOUND → 404), distinct from the generic
+# "Module not found" the SQL routes emit.
+kind: Run.Sequence
+metadata: { name: GetMissingTeloYaml_Returns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitMissingTeloYaml }
+      url: http://registry.telo.localhost:8060/e2e-test/nonexistent-module/0.0.0/telo.yaml
+      method: GET
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertMissingTeloYaml }
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          body:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { const: ERR_NOT_FOUND }
+                  message: { type: string }
+                required: [code, message]
+            required: [error]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: PublishMissingAuth_Returns401 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitPublishMissingAuth }
+      url: http://registry.telo.localhost:8060/e2e-test/auth-check/0.0.0
+      method: PUT
+      headers:
+        content-type: text/yaml
+      body: |
+        kind: Telo.Library
+        metadata:
+          name: auth-check
+          version: 0.0.0
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertPublishMissingAuth }
+      schema:
+        type: object
+        properties:
+          status: { const: 401 }
+          body:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { const: UNAUTHORIZED }
+                required: [code]
+            required: [error]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: PublishBadBearer_Returns401 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitPublishBadBearer }
+      url: http://registry.telo.localhost:8060/e2e-test/auth-check/0.0.0
+      method: PUT
+      headers:
+        content-type: text/yaml
+        authorization: "Bearer not-a-real-token-xxxxxxxxxxxxxxxx"
+      body: |
+        kind: Telo.Library
+        metadata:
+          name: auth-check
+          version: 0.0.0
+  - name: assert
+    inputs:
+      status: "${{ steps.hit.result.status }}"
+      body: "${{ steps.hit.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertPublishBadBearer }
+      schema:
+        type: object
+        properties:
+          status: { const: 401 }
+          body:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { const: UNAUTHORIZED }
+                required: [code]
+            required: [error]
+        required: [status, body]

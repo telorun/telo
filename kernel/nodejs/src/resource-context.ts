@@ -215,14 +215,16 @@ export class ResourceContextImpl implements ResourceContext {
     //    with `invoke: {kind: SomeInvocable}` — and wants a fresh stateless
     //    instance registered under the generated name).
     // Pure references (`{kind, name}` pointing at an existing resource) carry
-    // an explicit name and skip registration.
+    // an explicit name and skip registration. registerManifest itself throws
+    // ERR_DUPLICATE_RESOURCE on collision — surfacing collisions loudly is
+    // the contract here; previous silent-skip-on-duplicate hid real bugs
+    // (e.g. inline auto-names colliding across sibling Run.Sequence steps).
     const hasInlineProperties = Object.keys(resource).some(
       (k) => k !== "kind" && k !== "name" && k !== "metadata",
     );
     const hasExplicitName = resource.name !== undefined || resource.metadata?.name !== undefined;
     const shouldRegister =
-      (hasInlineProperties || (!hasExplicitName && resourceName !== undefined)) &&
-      !this.moduleContext.hasManifest(name);
+      hasInlineProperties || (!hasExplicitName && resourceName !== undefined);
 
     if (shouldRegister) {
       this.registerManifest({

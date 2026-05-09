@@ -531,17 +531,14 @@ routes:
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: >-
-          SELECT version, published_at FROM modules
-          WHERE namespace = ? AND name = ?
-          ORDER BY published_at ASC
-        bindings:
-          - "${{ inputs.namespace }}"
-          - "${{ inputs.name }}"
     inputs:
-      namespace: "${{ request.params.namespace }}"
-      name: "${{ request.params.name }}"
+      sql: >-
+        SELECT version, published_at FROM modules
+        WHERE namespace = $1 AND name = $2
+        ORDER BY published_at ASC
+      bindings:
+        - "${{ request.params.namespace }}"
+        - "${{ request.params.name }}"
     returns:
       - status: 200
         when: "${{ result.rows.size() > 0 }}"
