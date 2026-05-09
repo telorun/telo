@@ -33,7 +33,23 @@
     "onLanguage:yaml"
   ],
   "main": "./dist/extension.js",
-  "contributes": {},
+  "contributes": {
+    "languages": [
+      {
+        "id": "telo",
+        "aliases": ["Telo", "telo"],
+        "filenamePatterns": ["telo.yaml", "*.telo.yaml"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "telo",
+        "scopeName": "source.telo",
+        "path": "./syntaxes/telo.tmLanguage.json"
+      }
+    ]
+  },
   "scripts": {
     "build": "pnpm --filter @telorun/analyzer build && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch"

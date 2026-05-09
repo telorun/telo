@@ -55,14 +55,28 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
-      { language: "yaml" },
+      [{ language: "telo" }, { language: "yaml" }],
       completionProvider,
       " ", ":",
     ),
   );
 
-  async function analyzeDocument(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "yaml") return;
+  // Promote a yaml document to the `telo` language id when its content looks
+  // like a Telo manifest. Disables Red Hat's YAML extension for these files
+  // (its contributions are scoped to language id `yaml`), which removes false
+  // positives like the `!cel` / `!literal` "unresolved tag" warnings. The
+  // switch is per-document for the session; on reopen, filename patterns
+  // (`telo.yaml`, `*.telo.yaml`) handle the well-known case automatically and
+  // this fallback catches any other yaml file declaring `kind: Telo.*`.
+  async function maybePromoteToTelo(document: vscode.TextDocument): Promise<vscode.TextDocument> {
+    if (document.languageId !== "yaml") return document;
+    if (!TELO_KIND_RE.test(document.getText())) return document;
+    return await vscode.languages.setTextDocumentLanguage(document, "telo");
+  }
+
+  async function analyzeDocument(rawDocument: vscode.TextDocument): Promise<void> {
+    const document = await maybePromoteToTelo(rawDocument);
+    if (document.languageId !== "telo" && document.languageId !== "yaml") return;
 
     // Skip files that don't look like Telo manifests (no kind: field).
     // Prevents unrelated YAML (docker-compose, CI configs, etc.) from being
