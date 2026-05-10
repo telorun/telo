@@ -20,13 +20,41 @@
   },
   "type": "module",
   "exports": {
-    "./schema": "./src/schema.ts",
-    "./events": "./src/events.ts",
-    "./module-context": "./src/module-context.ts",
-    "./manifest": "./src/manifest.ts",
-    "./equals": "./src/equals.ts",
-    "./matches": "./src/matches.ts",
-    "./contains": "./src/contains.ts"
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "bun": "./src/schema.ts",
+      "import": "./dist/schema.js"
+    },
+    "./events": {
+      "types": "./dist/events.d.ts",
+      "bun": "./src/events.ts",
+      "import": "./dist/events.js"
+    },
+    "./module-context": {
+      "types": "./dist/module-context.d.ts",
+      "bun": "./src/module-context.ts",
+      "import": "./dist/module-context.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "bun": "./src/manifest.ts",
+      "import": "./dist/manifest.js"
+    },
+    "./equals": {
+      "types": "./dist/equals.d.ts",
+      "bun": "./src/equals.ts",
+      "import": "./dist/equals.js"
+    },
+    "./matches": {
+      "types": "./dist/matches.d.ts",
+      "bun": "./src/matches.ts",
+      "import": "./dist/matches.js"
+    },
+    "./contains": {
+      "types": "./dist/contains.d.ts",
+      "bun": "./src/contains.ts",
+      "import": "./dist/contains.js"
+    }
   },
   "files": [
     "dist",

@@ -262,6 +262,10 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.getControllerPolicy();
   }
 
+  getEntryUrl(): string | undefined {
+    return this.kernel.getEntryUrl();
+  }
+
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {
     this.kernel.on(event, handler);
   }

@@ -82,33 +82,42 @@ is given, the package's default export (`.`) is used.
 
 ---
 
-## 4. Resolution Order
+## 4. Resolution
 
-The loader resolves a PURL through the following steps in order, stopping at the first
-successful result:
+Every controller — registry tag, `file:`, and `local_path` alike — is installed
+into a single per-manifest tree rooted at `<entry-manifest-dir>/.telo/npm/`.
 
 ```
-1. local_path  (only when definition is loaded from a local file)
-   └── resolve local_path relative to the definition file's directory
-   └── if the path exists → use it
-
-2. Host-local package directory (node_modules, GOPATH, etc.)
-   └── check if the package is already installed/linked in the host environment
-   └── if found → use it
-
-3. Registry cache  (~/.cache/telo/<type>/<hash>/)
-   └── if not already cached → download from registry
-   └── use cached copy
+<entry-manifest-dir>/.telo/npm/
+  package.json        # holds @telorun/sdk as a file: dep + overrides pinning it
+  .telo-state.json    # hash of the materialized package.json (re-runs short-circuit)
+  .lock               # cross-process install lock
+  node_modules/
+    @telorun/
+      sdk/            # symlink → the kernel's own @telorun/sdk realpath
+      <controller>/   # one entry per loaded controller package
 ```
 
-**Step 1** supports monorepo development: definition files with `local_path` load directly
-from the workspace without touching the network or cache.
+The first load of any kernel materializes the root: writes `package.json`
+with `@telorun/sdk` wired in as `file:<kernel-side-resolved-path>` plus an
+`overrides` map pinning the SDK to that resolution. npm/pnpm honour `file:`
+deps with symlinks; Node's ESM resolver follows them to the same realpath
+the kernel itself uses, so the kernel and every controller share one
+constructor for `Stream` (and any other class-identity-sensitive type).
 
-**Step 2** supports project-level overrides: packages installed in the host project (e.g.
-via a workspace symlink) take precedence over the global cache.
+Per-controller resolution within that tree:
 
-**Step 3** is the production path: the package is fetched from the registry and stored in
-a content-addressed local cache keyed on the PURL. Subsequent runs skip the download.
+- `local_path` qualifier present → `npm install file:<resolved-path>` into the
+  manifest tree. Loses zero-second hot-reload; gains realm consistency.
+- Otherwise → `npm install <name>@<version>` against the configured registry.
+
+The fragment (`#entry`) selects an export key on the resolved package. Without
+a fragment, the package's `.` export is used.
+
+A filesystem lock at `<root>/.lock` (atomic `fs.open(path, 'wx')`, with PID +
+start time inside) serializes the install across kernel processes that share
+a manifest. Processes whose `package.json` hash matches `.telo-state.json` and
+whose `node_modules/` already exists short-circuit the install entirely.
 
 ---
 
@@ -140,23 +149,20 @@ The loader validates the loaded module against this contract and throws if neith
 
 ---
 
-## 7. Cache Layout
+## 7. Cross-process install safety
 
-The global cache lives under `~/.cache/telo/<type>/`. Each package is stored in a
-subdirectory keyed by a short hash of the primary PURL:
+Two Telo processes against the same manifest (CLI + IDE, watch + run, parallel
+CI shards) would otherwise race on `npm install` and corrupt the tree. The
+loader holds an OS-level lock (`fs.open(.lock, 'wx')`) around any
+manifest-tree mutation. Stale-holder detection: the file body records the
+holding process's PID and start time; lockfiles older than 60 seconds whose
+PID isn't alive are reclaimed. After acquiring, the late arriver re-checks
+state — if the install root's `package.json` hash matches the desired one and
+`node_modules/<pkg>` already exists, the lock-holder skips the install entirely.
 
-```
-~/.cache/telo/
-  npm/
-    4128729367d3/          # hash of "pkg:npm/@telorun/http-server@>=0.1.0"
-      package.json         # bootstrap manifest for the install
-      node_modules/
-        @telorun/
-          http-server/
-```
-
-The cache directory for a package is created lazily on first use. If `package.json` is
-already present inside the expected location, the download is skipped entirely.
+The legacy global cache at `~/.cache/telo/npm/` is no longer used. Earlier
+installs of Telo may have left it behind; it can be removed by hand and the
+loader will not consult it.
 
 ---
 

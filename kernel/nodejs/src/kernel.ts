@@ -98,6 +98,7 @@ export class Kernel implements IKernel {
   private readonly sharedSchemaValidator = new SchemaValidator();
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
+  private _entryUrl?: string;
 
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
@@ -199,6 +200,7 @@ export class Kernel implements IKernel {
    */
   async load(url: string): Promise<void> {
     const sourceUrl = await this.loader.resolveEntryPoint(url);
+    this._entryUrl = sourceUrl;
     this.rootContext = new ModuleContext(
       sourceUrl,
       {},
@@ -350,6 +352,17 @@ export class Kernel implements IKernel {
 
   async emitRuntimeEvent(event: string, payload?: any): Promise<void> {
     await this.eventBus.emit(event, payload);
+  }
+
+  /**
+   * URL of the entry manifest passed to `load()`, or `undefined` before
+   * `load()` has been called. Used by controllers and the controller-loader
+   * to anchor per-manifest install roots so every resource in the process
+   * shares a single `node_modules` tree (and therefore one realpath for
+   * `@telorun/sdk`).
+   */
+  getEntryUrl(): string | undefined {
+    return this._entryUrl;
   }
 
   get exitCode(): number {

@@ -75,8 +75,11 @@ jobs:
       - name: Run tests (node)
         run: pnpm run test:node
 
+      - name: Build docker image
+        run: docker build -f cli/nodejs/Dockerfile -t telo:ci .
+
       - name: Run tests (docker image)
-        run: pnpm run test:docker
+        run: docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml
 
       # End-to-end registry tests: bring up the docker-compose stack (proxy,
       # registry, db, storage), wait for /health/readiness, and run the
@@ -102,7 +105,14 @@ jobs:
         # fails fast instead of hanging the job. The healthcheck's own
         # retry budget (start_period + retries × interval) is set to fit
         # under this timeout — see docker-compose.yml.
-        run: docker compose up -d --build --wait --wait-timeout 120 db storage registry proxy
+        #
+        # mkdir apps/registry/.telo: pre-create the anonymous-volume
+        # mountpoint as the runner user so Docker doesn't create it as
+        # root when resolving the overlay through the bind mount. See
+        # the volume comment in docker-compose.yml.
+        run: |
+          mkdir -p apps/registry/.telo
+          docker compose up -d --build --wait --wait-timeout 120 db storage registry proxy
 
       - name: Run registry e2e suite
         run: pnpm run test:e2e

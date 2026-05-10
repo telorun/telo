@@ -120,7 +120,9 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 
 **Environment:**
 
-- `TELO_CACHE_DIR` — Absolute path to the on-disk cache root. Defaults to `~/.cache/telo` (shared across projects for a user). Override to pin the cache alongside the manifest when producing a self-contained bundle (e.g. a Docker image). The kernel at boot reads from the same variable, so set it in both the install step and the runtime environment.
+- `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
+
+The cache lives next to the manifest at `<entry-manifest-dir>/.telo/npm/`. Per-manifest scope means it is naturally portable: `COPY` the manifest dir into your image and the cached install travels with it; no environment variable is required.
 
 **Example output:**
 
@@ -138,19 +140,17 @@ Installing 20 controllers for apps/my-app/telo.yaml
 ```dockerfile
 FROM telorun/telo:nodejs as build
 WORKDIR /srv
-ENV TELO_CACHE_DIR=/srv/.telo-cache
-COPY apps/my-app/telo.yaml apps/my-app/telo.yaml
+COPY apps/my-app/ apps/my-app/
 COPY modules/ modules/
 RUN telo install apps/my-app/telo.yaml
 
 FROM telorun/telo:nodejs as production
 WORKDIR /srv
-ENV TELO_CACHE_DIR=/srv/.telo-cache
 COPY --from=build /srv /srv
 CMD ["apps/my-app/telo.yaml"]
 ```
 
-The build stage populates the cache; the production stage is a single `COPY` and does no network I/O at boot.
+The build stage materializes `<manifest-dir>/.telo/npm/`; the production stage is a single `COPY` and does no network I/O at boot.
 
 ---
 
