@@ -1,7 +1,7 @@
 {
   "name": "@telorun/vscode-extension",
   "displayName": "Telo Kernel",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "private": true,
   "description": "YAML diagnostics and completions for Telo manifests",
   "keywords": [
@@ -37,8 +37,14 @@
     "languages": [
       {
         "id": "telo",
-        "aliases": ["Telo", "telo"],
-        "filenamePatterns": ["telo.yaml", "*.telo.yaml"],
+        "aliases": [
+          "Telo",
+          "telo"
+        ],
+        "filenamePatterns": [
+          "telo.yaml",
+          "*.telo.yaml"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],

@@ -1,5 +1,14 @@
 # telo-kernel
 
+## 0.0.15
+
+### Patch Changes
+
+- ec5b1b1: Register a `telo` language id and auto-promote yaml manifests to it so Red Hat's YAML extension stops firing `!cel` / `!literal` "unresolved tag" warnings on Telo manifests. Includes a stub TextMate grammar that delegates to `source.yaml` for highlighting and a basic language-configuration for brackets, comments, and indentation.
+- Updated dependencies [30bcfef]
+  - @telorun/analyzer@0.8.1
+  - @telorun/ide-support@0.2.7
+
 ## 0.0.14
 
 ### Patch Changes
