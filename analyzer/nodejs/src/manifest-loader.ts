@@ -1,19 +1,18 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { defaultCustomTags } from "@telorun/templating";
-import { isMap, isPair, isScalar, isSeq, parseAllDocuments, type Document } from "yaml";
+import { parseAllDocuments } from "yaml";
 import { HttpSource } from "./sources/http-source.js";
 import { RegistrySource } from "./sources/registry-source.js";
 import { buildCelEnvironment } from "./cel-environment.js";
 import { isModuleKind } from "./module-kinds.js";
+import { attachPositionIndex, buildDocumentPositions } from "./position-metadata.js";
 import { precompileDoc } from "./precompile.js";
 import {
   DEFAULT_MANIFEST_FILENAME,
   type LoadOptions,
   type LoaderInitOptions,
   type ManifestSource,
-  type Position,
-  type PositionIndex,
 } from "./types.js";
 
 const SYSTEM_KINDS = new Set([
@@ -77,15 +76,13 @@ export class Loader {
 
     const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
     const rawDocs = parsedDocuments.map((d) => d.toJSON());
-    const offsets = documentLineOffsets(text);
-    const lineOffsets = buildLineOffsets(text);
+    const positions = buildDocumentPositions(text, parsedDocuments);
 
     const resolved: ResourceManifest[] = [];
     let docIdx = 0;
     for (const rawDoc of rawDocs) {
       const currentDocIdx = docIdx++;
-      const sourceLine = offsets[currentDocIdx] ?? 0;
-      const positionIndex = buildPositionIndex(parsedDocuments[currentDocIdx], lineOffsets);
+      const { sourceLine, positionIndex } = positions[currentDocIdx];
       if (rawDoc === null || rawDoc === undefined) continue;
 
       let compiledDocs: unknown[];
@@ -105,15 +102,10 @@ export class Loader {
       for (const doc of compiledDocs) {
         if (doc === null || doc === undefined) continue;
         const manifest = doc as ResourceManifest;
-        const metadata = { ...manifest.metadata, source, sourceLine };
-        // positionIndex is non-enumerable so it is invisible to spread, JSON.stringify,
-        // and schema validation — but still accessible via (m.metadata as any).positionIndex.
-        Object.defineProperty(metadata, "positionIndex", {
-          value: positionIndex,
-          enumerable: false,
-          writable: true,
-          configurable: true,
-        });
+        const metadata = attachPositionIndex(
+          { ...manifest.metadata, source, sourceLine },
+          positionIndex,
+        );
         resolved.push({ ...manifest, metadata });
       }
     }
@@ -133,14 +125,7 @@ export class Loader {
         if (!isModuleKind(manifest.kind) && !manifest.metadata?.module) {
           const pi = (manifest.metadata as any)?.positionIndex;
           manifest.metadata = { ...manifest.metadata, module: moduleName };
-          if (pi) {
-            Object.defineProperty(manifest.metadata, "positionIndex", {
-              value: pi,
-              enumerable: false,
-              writable: true,
-              configurable: true,
-            });
-          }
+          if (pi) attachPositionIndex(manifest.metadata as object, pi);
         }
       }
     }
@@ -197,15 +182,13 @@ export class Loader {
 
     const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
     const rawDocs = parsedDocuments.map((d) => d.toJSON());
-    const offsets = documentLineOffsets(text);
-    const lineOffsets = buildLineOffsets(text);
+    const positions = buildDocumentPositions(text, parsedDocuments);
     const resolved: ResourceManifest[] = [];
     let docIdx = 0;
 
     for (const rawDoc of rawDocs) {
       const currentDocIdx = docIdx++;
-      const sourceLine = offsets[currentDocIdx] ?? 0;
-      const positionIndex = buildPositionIndex(parsedDocuments[currentDocIdx], lineOffsets);
+      const { sourceLine, positionIndex } = positions[currentDocIdx];
       if (rawDoc === null || rawDoc === undefined) continue;
 
       const kind = rawDoc.kind as string | undefined;
@@ -233,18 +216,15 @@ export class Loader {
       for (const doc of compiledDocs) {
         if (doc === null || doc === undefined) continue;
         const manifest = doc as ResourceManifest;
-        const metadata = {
-          ...manifest.metadata,
-          source,
-          sourceLine,
-          ...(ownerModuleName && !manifest.metadata?.module ? { module: ownerModuleName } : {}),
-        };
-        Object.defineProperty(metadata, "positionIndex", {
-          value: positionIndex,
-          enumerable: false,
-          writable: true,
-          configurable: true,
-        });
+        const metadata = attachPositionIndex(
+          {
+            ...manifest.metadata,
+            source,
+            sourceLine,
+            ...(ownerModuleName && !manifest.metadata?.module ? { module: ownerModuleName } : {}),
+          },
+          positionIndex,
+        );
         resolved.push({ ...manifest, metadata });
       }
     }
@@ -446,14 +426,7 @@ export class Loader {
           resolvedModuleName: identity.name,
           resolvedNamespace: identity.namespace,
         };
-        if (pi) {
-          Object.defineProperty(m.metadata, "positionIndex", {
-            value: pi,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-          });
-        }
+        if (pi) attachPositionIndex(m.metadata as object, pi);
       }
     }
 
@@ -501,75 +474,3 @@ function groupBySource(manifests: ResourceManifest[]): Map<string, ResourceManif
   return map;
 }
 
-function documentLineOffsets(text: string): number[] {
-  const offsets = [0];
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const t = lines[i].trimEnd();
-    if (t === "---" || t.startsWith("--- ")) offsets.push(i + 1);
-  }
-  return offsets;
-}
-
-/** Builds a byte-offset-to-line/character lookup table from raw text. */
-function buildLineOffsets(text: string): number[] {
-  const offsets: number[] = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "\n") offsets.push(i + 1);
-  }
-  return offsets;
-}
-
-function offsetToPosition(offset: number, lineOffsets: number[]): Position {
-  let lo = 0;
-  let hi = lineOffsets.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (lineOffsets[mid] <= offset) lo = mid;
-    else hi = mid - 1;
-  }
-  return { line: lo, character: offset - lineOffsets[lo] };
-}
-
-/** Walks the YAML AST and records source ranges for every field value, keyed by
- *  dotted path (e.g. "kind", "config.handler", "config.routes[0].path"). */
-function buildPositionIndex(doc: Document, lineOffsets: number[]): PositionIndex {
-  const index: PositionIndex = new Map();
-
-  function recordNode(node: any, path: string): void {
-    if (!node || !node.range) return;
-    const [start, , end] = node.range as [number, number, number];
-    index.set(path, {
-      start: offsetToPosition(start, lineOffsets),
-      end: offsetToPosition(end, lineOffsets),
-    });
-  }
-
-  function walk(node: any, path: string): void {
-    if (isMap(node)) {
-      for (const pair of node.items) {
-        if (!isPair(pair)) continue;
-        const key = isScalar(pair.key) ? String(pair.key.value) : null;
-        if (key == null) continue;
-        const childPath = path ? `${path}.${key}` : key;
-        if (pair.value != null) {
-          recordNode(pair.value, childPath);
-          walk(pair.value, childPath);
-        }
-      }
-    } else if (isSeq(node)) {
-      for (let i = 0; i < node.items.length; i++) {
-        const item = node.items[i];
-        const childPath = `${path}[${i}]`;
-        recordNode(item, childPath);
-        walk(item, childPath);
-      }
-    }
-  }
-
-  if (doc.contents) {
-    walk(doc.contents, "");
-  }
-
-  return index;
-}

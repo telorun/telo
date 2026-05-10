@@ -52,7 +52,6 @@ export function useDiagnosticsState(): { diagnostics: WorkspaceDiagnostics } {
       byResource: new Map(),
       byFile: new Map(),
       registry: new AnalysisRegistry(),
-      manifestsByResource: new Map(),
     },
   };
 }

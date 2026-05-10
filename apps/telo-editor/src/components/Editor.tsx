@@ -76,7 +76,6 @@ const INITIAL_STATE: EditorState = {
     byResource: new Map(),
     byFile: new Map(),
     registry: new AnalysisRegistry(),
-    manifestsByResource: new Map(),
   },
   sourceRevealRequest: null,
   deploymentsByApp: {},

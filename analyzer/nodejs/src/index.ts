@@ -3,6 +3,14 @@ export { StaticAnalyzer } from "./analyzer.js";
 export { Loader } from "./manifest-loader.js";
 export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
+export {
+    attachPositionIndex,
+    buildDocumentPositions,
+    buildLineOffsets,
+    buildPositionIndex,
+    documentLineOffsets,
+} from "./position-metadata.js";
+export type { DocumentPosition } from "./position-metadata.js";
 export { HttpSource } from "./sources/http-source.js";
 export { RegistrySource } from "./sources/registry-source.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";

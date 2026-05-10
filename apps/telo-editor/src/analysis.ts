@@ -1,5 +1,12 @@
-import { AnalysisRegistry, StaticAnalyzer, type AnalysisDiagnostic } from "@telorun/analyzer";
+import {
+  AnalysisRegistry,
+  StaticAnalyzer,
+  attachPositionIndex,
+  buildDocumentPositions,
+  type PositionIndex,
+} from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
+import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { normalizePath } from "./loader";
 import type { ModuleDocument, Workspace } from "./model";
 import { toAnalysisManifest } from "./yaml-document";
@@ -68,16 +75,29 @@ function emitDocsFor(
   ownerModuleName: string | undefined,
   out: ResourceManifest[],
 ): void {
-  for (const d of modDoc.docs) {
+  // Compute per-doc position metadata once. The shared analyzer helper
+  // produces the same `positionIndex` / `sourceLine` shape that
+  // `Loader.loadModule` stamps on disk-loaded manifests, so diagnostics
+  // resolve through `normalizeDiagnostic`'s positionIndex fallback identically
+  // in the editor and in the VS Code extension.
+  const positions = buildDocumentPositions(modDoc.text, modDoc.docs);
+
+  for (let i = 0; i < modDoc.docs.length; i++) {
+    const d = modDoc.docs[i];
     const projected = toAnalysisManifest(d);
     if (!projected) continue;
 
     const existingMeta = projected.metadata as EnrichedMetadata | undefined;
-    const meta: EnrichedMetadata = {
-      ...(existingMeta ?? {}),
-      name: existingMeta?.name ?? "",
-      source: filePath,
-    };
+    const { sourceLine, positionIndex } = positions[i];
+    const meta: EnrichedMetadata = attachPositionIndex(
+      {
+        ...(existingMeta ?? {}),
+        name: existingMeta?.name ?? "",
+        source: filePath,
+        sourceLine,
+      },
+      positionIndex,
+    );
 
     // Owner + partial-file resources inherit the owner's module name when they
     // don't already declare one — matches the analyzer ManifestLoader's
@@ -104,18 +124,17 @@ export const UNKNOWN_FILE_KEY = "__unknown__";
 
 export interface WorkspaceDiagnostics {
   /** filePath → resourceName → diagnostics. Only diagnostics with
-   *  `data.resource.{kind,name}` that resolves to a known manifest. */
-  byResource: Map<string, Map<string, AnalysisDiagnostic[]>>;
+   *  `data.resource.{kind,name}` that resolves to a known manifest.
+   *  Pre-normalized via `normalizeDiagnostic`, so every consumer reads the
+   *  same resolved `range` / `severity` / `code` without re-running the
+   *  fallback chain. */
+  byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
   /** filePath → diagnostics NOT tied to a named resource. Includes
    *  `UNKNOWN_FILE_KEY` when the analyzer gives us nothing to route on. */
-  byFile: Map<string, AnalysisDiagnostic[]>;
+  byFile: Map<string, NormalizedDiagnostic[]>;
   /** Populated AnalysisRegistry from the pass. Needed by the Monaco
-   *  completion provider and diagnostic normalizer. */
+   *  completion provider. */
   registry: AnalysisRegistry;
-  /** Lookup for `positionIndex` / `sourceLine` during diagnostic range
-   *  resolution. Keyed by `${filePath}::${resourceName}`. Mirrors the VS Code
-   *  extension's `manifestByKey` pattern. */
-  manifestsByResource: Map<string, ResourceManifest>;
 }
 
 /**
@@ -167,10 +186,10 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     }
   }
 
-  const byResource = new Map<string, Map<string, AnalysisDiagnostic[]>>();
-  const byFile = new Map<string, AnalysisDiagnostic[]>();
+  const byResource = new Map<string, Map<string, NormalizedDiagnostic[]>>();
+  const byFile = new Map<string, NormalizedDiagnostic[]>();
 
-  const appendByFile = (filePath: string, diag: AnalysisDiagnostic) => {
+  const appendByFile = (filePath: string, diag: NormalizedDiagnostic) => {
     let bucket = byFile.get(filePath);
     if (!bucket) {
       bucket = [];
@@ -186,30 +205,43 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     const kind = data?.resource?.kind;
     const name = data?.resource?.name;
 
-    if (kind && name) {
-      const filePath = sourceByManifest.get(`${kind}/${name}`);
-      if (filePath) {
-        let moduleMap = byResource.get(filePath);
-        if (!moduleMap) {
-          moduleMap = new Map();
-          byResource.set(filePath, moduleMap);
-        }
-        let list = moduleMap.get(name);
-        if (!list) {
-          list = [];
-          moduleMap.set(name, list);
-        }
-        list.push(diag);
-        continue;
+    // Look up the manifest the diagnostic targets (if any) so the normalizer
+    // can recover positions from `metadata.positionIndex` / `sourceLine` when
+    // the analyzer didn't include an inline `d.range`. Routing decisions
+    // continue to use the same lookup.
+    const filePath = kind && name ? sourceByManifest.get(`${kind}/${name}`) : undefined;
+    const ownerManifest =
+      filePath && name ? manifestsByResource.get(`${filePath}::${name}`) : undefined;
+    const ownerMeta = ownerManifest?.metadata as
+      | { positionIndex?: PositionIndex; sourceLine?: number }
+      | undefined;
+    const normalized = normalizeDiagnostic(diag, {
+      registry,
+      positionIndex: ownerMeta?.positionIndex,
+      sourceLine: ownerMeta?.sourceLine,
+    });
+
+    if (filePath) {
+      let moduleMap = byResource.get(filePath);
+      if (!moduleMap) {
+        moduleMap = new Map();
+        byResource.set(filePath, moduleMap);
       }
-      // Fall through: resource stamp exists but doesn't resolve to a loaded
-      // manifest — route by data.filePath if the analyzer provided it,
-      // otherwise the unknown-file bucket.
+      let list = moduleMap.get(name!);
+      if (!list) {
+        list = [];
+        moduleMap.set(name!, list);
+      }
+      list.push(normalized);
+      continue;
     }
 
+    // Fall through: resource stamp absent or doesn't resolve to a loaded
+    // manifest — route by data.filePath if the analyzer provided it,
+    // otherwise the unknown-file bucket.
     const stampedPath = data?.filePath;
-    appendByFile(stampedPath ?? UNKNOWN_FILE_KEY, diag);
+    appendByFile(stampedPath ?? UNKNOWN_FILE_KEY, normalized);
   }
 
-  return { byResource, byFile, registry, manifestsByResource };
+  return { byResource, byFile, registry };
 }
