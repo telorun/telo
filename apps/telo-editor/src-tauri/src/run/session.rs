@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use tokio::process::ChildStdin;
+
 use super::bundle::BundleWorkdir;
 
 pub struct SessionEntry {
@@ -11,6 +13,11 @@ pub struct SessionEntry {
     /// can distinguish a user-initiated stop from a container crash / clean
     /// exit when it chooses between `Stopped` and `Exited` / `Failed`.
     pub user_stop: Arc<AtomicBool>,
+    /// Stdin handle taken from the spawned `docker run -it` child. `Option`
+    /// so `run_close_input` can consume it (drop = EOF). `tokio::Mutex` because
+    /// `write_all` requires `&mut self` and we serialize multiple `run_send_input`
+    /// callers across one pipe.
+    pub stdin: Arc<tokio::sync::Mutex<Option<ChildStdin>>>,
     // Held only for its Drop impl — deleting the tempdir when the session ends.
     pub _bundle: BundleWorkdir,
 }
@@ -44,6 +51,34 @@ impl SessionRegistry {
                 e.user_stop.clone(),
             )
         })
+    }
+
+    /// Returns the same Arc-Mutex stdin handle stored on the entry, so a
+    /// command writing input doesn't have to hold the registry lock for the
+    /// duration of the write.
+    pub fn stdin_handle(
+        &self,
+        session_id: &str,
+    ) -> Option<Arc<tokio::sync::Mutex<Option<ChildStdin>>>> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|e| e.stdin.clone())
+    }
+
+    /// Returns just the docker host + container name, used by `run_resize`
+    /// which shells out to `docker resize <name>` independent of the session
+    /// entry's lifetime in the registry.
+    pub fn container_for_resize(
+        &self,
+        session_id: &str,
+    ) -> Option<(String, Option<String>)> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|e| (e.container_name.clone(), e.docker_host.clone()))
     }
 
     /// Snapshot of all live sessions' kill info. Used by the window-close hook

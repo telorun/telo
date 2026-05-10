@@ -192,7 +192,7 @@ async function startSession(
         ? { ...body.env, TELO_REGISTRY_URL: registryUrl }
         : body.env;
 
-    const { container } = await spawnSession({
+    const { container, ptyInput } = await spawnSession({
       docker: deps.docker,
       sessionId,
       containerName,
@@ -205,10 +205,13 @@ async function startSession(
       bundleVolume: deps.runnerConfig.bundleVolume,
       childNetwork: deps.runnerConfig.childNetwork,
       onEvent: (event) => deps.registry.emit(sessionId, event),
+      onByteChunk: (chunk) => deps.registry.pushBytes(sessionId, chunk),
+      onPtyClosed: () => deps.registry.clearPtyInput(sessionId),
       isUserStopped: () => entry?.userStopped ?? false,
     });
 
     entry.container = container;
+    entry.ptyInput = ptyInput;
 
     // Pre-start DELETE race: a DELETE received during spawnSession (e.g. while
     // docker.pull was running) can't call container.kill() because the

@@ -49,6 +49,28 @@ export interface RunSession {
   getStatus(): RunStatus;
   subscribe(listener: (event: RunEvent) => void): () => void;
   stop(): Promise<void>;
+  /** Live PTY byte channel. Present when the adapter can stream raw terminal
+   *  bytes both directions; absent for log-only adapters. */
+  io?: RunIo;
+}
+
+export interface RunIoHandlers {
+  onData(bytes: Uint8Array): void;
+  onClose(reason: { code: number; clean: boolean }): void;
+}
+
+export interface RunIoConnection {
+  send(bytes: Uint8Array): void;
+  resize(cols: number, rows: number): void;
+  close(): void;
+}
+
+export interface RunIo {
+  /** Single-shot. Calling `open` more than once for the same `RunIo` is
+   *  undefined — implementations may throw or return a no-op connection.
+   *  Consumers (TerminalView) key on the `io` instance, so re-mounts pair
+   *  with a fresh `RunIo` from the next session. */
+  open(handlers: RunIoHandlers): RunIoConnection;
 }
 
 export interface RunnerEndpoint {

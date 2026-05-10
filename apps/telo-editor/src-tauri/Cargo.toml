@@ -33,3 +33,10 @@ tempfile = "3"
 # If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
 # DO NOT REMOVE!!
 custom-protocol = [ "tauri/custom-protocol" ]
+
+# Empty workspace table makes this crate its own workspace root, decoupling
+# it from the repo-root Cargo.toml's pnpm-workspace setup. Without this,
+# `cargo` walks up to the root Cargo.toml and refuses to build because this
+# crate isn't listed in `workspace.members` there. Tauri's own tooling does
+# not depend on the parent workspace either way.
+[workspace]

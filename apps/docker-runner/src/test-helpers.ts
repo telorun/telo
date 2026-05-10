@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { PassThrough, Readable } from "node:stream";
+import { Duplex, PassThrough, Readable } from "node:stream";
 
 import type { DockerClient } from "./docker/client.js";
 import type {
@@ -31,8 +31,13 @@ export interface FakeDocker extends SessionDockerClient {
 export type FakeDockerAsClient = FakeDocker & DockerClient;
 
 export interface FakeContainer extends SessionDockerContainer {
-  emitStdout(chunk: string): void;
-  emitStderr(chunk: string): void;
+  /** Pushes bytes onto the PTY readable side (simulates container output). */
+  emitBytes(chunk: string | Buffer): void;
+  /** Drains all bytes the runner has written to the PTY writable side
+   *  (simulates capturing what the user typed into the WS). */
+  drainPtyInput(): Buffer;
+  /** Most recent resize call, if any. */
+  lastResize: { h: number; w: number } | null;
   exit(code: number, opts?: { userSignal?: boolean; error?: string }): void;
 }
 
@@ -49,8 +54,6 @@ export function makeFakeDocker(behavior: FakeDockerBehavior = {}): FakeDocker {
     });
 
   const containers = new Map<string, FakeContainer>();
-  const attachStreams = new Map<string, PassThrough>();
-  const demuxRegistrations = new Map<PassThrough, { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream }>();
 
   const client = {
     _lastCreateOpts: null as CreateContainerOpts | null,
@@ -70,21 +73,18 @@ export function makeFakeDocker(behavior: FakeDockerBehavior = {}): FakeDocker {
         // Readable.from(iterable) ends after the iterable drains.
         stream.resume?.();
       },
-      demuxStream: (
-        stream: NodeJS.ReadableStream,
-        stdout: NodeJS.WritableStream,
-        stderr: NodeJS.WritableStream,
-      ) => {
-        if (stream instanceof PassThrough) {
-          demuxRegistrations.set(stream, { stdout, stderr });
-        }
-      },
     },
     async createContainer(opts: CreateContainerOpts): Promise<SessionDockerContainer> {
       client._lastCreateOpts = opts;
       if (behavior.createContainer) return behavior.createContainer(opts);
-      const attach = new PassThrough();
-      attachStreams.set(opts.name, attach);
+      // The hijacked attach yields a true duplex: the runner reads PTY
+      // output from one side and writes user keystrokes into the other.
+      // We simulate this with two PassThroughs glued together — `outbound`
+      // carries bytes from the (fake) container to the runner; `inbound`
+      // captures whatever the runner writes (user input).
+      const outbound = new PassThrough();
+      const inbound = new PassThrough();
+      const ptyDuplex = Duplex.from({ readable: outbound, writable: inbound });
       const exitEmitter = new EventEmitter();
       let exitInfo: { StatusCode: number; Error?: { Message: string } | null } | null = null;
       const waitPromise: Promise<{ StatusCode: number; Error?: { Message: string } | null }> = new Promise((resolve) => {
@@ -95,8 +95,9 @@ export function makeFakeDocker(behavior: FakeDockerBehavior = {}): FakeDocker {
       });
       const container: FakeContainer = {
         id: `sha256:${opts.name}`,
+        lastResize: null,
         async attach() {
-          return attach;
+          return ptyDuplex;
         },
         async start() {
           /* spawn time */
@@ -112,23 +113,25 @@ export function makeFakeDocker(behavior: FakeDockerBehavior = {}): FakeDocker {
         async remove() {
           containers.delete(opts.name);
         },
-        emitStdout(chunk) {
-          const dest = demuxRegistrations.get(attach);
-          if (dest) dest.stdout.write(chunk);
+        async resize(opts) {
+          container.lastResize = { h: opts.h, w: opts.w };
         },
-        emitStderr(chunk) {
-          const dest = demuxRegistrations.get(attach);
-          if (dest) dest.stderr.write(chunk);
+        emitBytes(chunk) {
+          outbound.write(chunk);
+        },
+        drainPtyInput() {
+          // PassThrough.read() returns whatever's currently buffered; null
+          // when empty. Tests typically call this synchronously after the
+          // runner has written into the duplex, so the buffer is hot.
+          const buf = inbound.read();
+          if (!buf) return Buffer.alloc(0);
+          return buf instanceof Buffer ? buf : Buffer.from(String(buf));
         },
         exit(code, opts) {
           if (exitInfo) return;
           const info = { StatusCode: code, Error: opts?.error ? { Message: opts.error } : null };
           exitEmitter.emit("exit", info);
-          const dest = demuxRegistrations.get(attach);
-          if (dest) {
-            (dest.stdout as PassThrough).end?.();
-            (dest.stderr as PassThrough).end?.();
-          }
+          outbound.end();
         },
       };
       containers.set(opts.name, container);

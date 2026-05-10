@@ -1,6 +1,3 @@
-import { StringDecoder } from "node:string_decoder";
-import { PassThrough } from "node:stream";
-
 import type {
   PortMapping,
   RunEvent,
@@ -11,18 +8,26 @@ import type {
 } from "../types.js";
 import { SessionStartError } from "../types.js";
 
+/** Hijacked attach options accepted by dockerode: with `Tty: true` on the
+ *  container, the daemon returns a single duplex stream — bytes flow both
+ *  ways, no demux needed. */
+export interface AttachOpts {
+  stream: true;
+  stdin: true;
+  stdout: true;
+  stderr: true;
+  hijack: true;
+  logs?: boolean;
+}
+
 export interface SessionDockerContainer {
   id: string;
-  attach(opts: {
-    stream: true;
-    stdout: true;
-    stderr: true;
-    logs: true;
-  }): Promise<NodeJS.ReadableStream>;
+  attach(opts: AttachOpts): Promise<NodeJS.ReadWriteStream>;
   start(): Promise<unknown>;
   kill(opts?: { signal?: string }): Promise<unknown>;
   wait(): Promise<{ StatusCode: number; Error?: { Message: string } | null }>;
   remove(opts?: { force?: boolean }): Promise<unknown>;
+  resize(opts: { h: number; w: number }): Promise<unknown>;
 }
 
 export interface SessionDockerClient {
@@ -33,11 +38,6 @@ export interface SessionDockerClient {
     followProgress(
       stream: NodeJS.ReadableStream,
       onFinished: (err: Error | null, output: unknown[]) => void,
-    ): void;
-    demuxStream(
-      stream: NodeJS.ReadableStream,
-      stdout: NodeJS.WritableStream,
-      stderr: NodeJS.WritableStream,
     ): void;
   };
   createContainer(opts: CreateContainerOpts): Promise<SessionDockerContainer>;
@@ -50,6 +50,12 @@ export interface CreateContainerOpts {
   Cmd: string[];
   WorkingDir: string;
   Env: string[];
+  Tty: boolean;
+  OpenStdin: boolean;
+  StdinOnce: boolean;
+  AttachStdin: boolean;
+  AttachStdout: boolean;
+  AttachStderr: boolean;
   ExposedPorts?: Record<string, Record<string, never>>;
   HostConfig: {
     Binds: string[];
@@ -72,11 +78,18 @@ export interface SpawnSessionArgs {
   bundleVolume: string;
   childNetwork: string;
   onEvent: (event: RunEvent) => void;
+  onByteChunk: (chunk: Buffer) => void;
+  /** Fired once after `container.wait()` resolves (or rejects). The route
+   *  handler uses this to drop `entry.ptyInput` from the registry — pty
+   *  writes from the WS thereafter take the early-return path instead of
+   *  failing inside the now-ended duplex. */
+  onPtyClosed?: () => void;
   isUserStopped: () => boolean;
 }
 
 export interface SpawnResult {
   container: SessionDockerContainer;
+  ptyInput: NodeJS.WritableStream;
   exit: Promise<void>;
 }
 
@@ -85,8 +98,8 @@ export async function spawnSession(args: SpawnSessionArgs): Promise<SpawnResult>
 
   const container = await createSessionContainer(args);
 
-  const attachStream = await attachContainer(container);
-  wireStdio(args.docker, attachStream, args.onEvent);
+  const ptyStream = await attachContainer(container);
+  wirePty(ptyStream, args.onByteChunk);
 
   try {
     await container.start();
@@ -105,16 +118,30 @@ export async function spawnSession(args: SpawnSessionArgs): Promise<SpawnResult>
     (info) => {
       const status = resolveExitStatus(info, args.isUserStopped());
       args.onEvent({ type: "status", status });
+      // Close stdin on exit so any in-flight WS write rejects fast rather
+      // than hanging on a pipe whose far end has already gone away.
+      try {
+        ptyStream.end();
+      } catch {
+        /* already ended */
+      }
+      args.onPtyClosed?.();
     },
     (err) => {
       args.onEvent({
         type: "status",
         status: { kind: "failed", message: `failed to await container: ${errMessage(err)}` },
       });
+      try {
+        ptyStream.end();
+      } catch {
+        /* already ended */
+      }
+      args.onPtyClosed?.();
     },
   );
 
-  return { container, exit };
+  return { container, ptyInput: ptyStream, exit };
 }
 
 export async function ensureImage(
@@ -177,12 +204,24 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
     ...Object.entries(args.env).map(([k, v]) => `${k}=${v}`),
   ];
   const { exposedPorts, portBindings } = buildPortBindings(args.ports);
+  // Tty + OpenStdin + StdinOnce=false + the four Attach* flags are the
+  // dockerode invocation that yields a hijacked attach duplex carrying the
+  // PTY byte stream both ways. Without OpenStdin the container's stdin is
+  // detached at /dev/null; the hijacked attach's writable side errors on
+  // write and the WS handler's catch swallows the error — so user input
+  // would simply never reach the container.
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,
     Cmd: [args.entryRelativePath],
     WorkingDir: args.workingDir,
     Env: envArray,
+    Tty: true,
+    OpenStdin: true,
+    StdinOnce: false,
+    AttachStdin: true,
+    AttachStdout: true,
+    AttachStderr: true,
     ...(exposedPorts ? { ExposedPorts: exposedPorts } : {}),
     HostConfig: {
       Binds: [`${args.bundleVolume}:/srv`],
@@ -226,42 +265,33 @@ function buildEndpoints(ports: PortMapping[]): RunnerEndpoint[] {
   return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
 }
 
-async function attachContainer(container: SessionDockerContainer): Promise<NodeJS.ReadableStream> {
+async function attachContainer(
+  container: SessionDockerContainer,
+): Promise<NodeJS.ReadWriteStream> {
   try {
-    return await container.attach({ stream: true, stdout: true, stderr: true, logs: true });
+    return await container.attach({
+      stream: true,
+      stdin: true,
+      stdout: true,
+      stderr: true,
+      hijack: true,
+      logs: true,
+    });
   } catch (err) {
     await safeRemove(container);
     throw startError("start_failed", "attach", err);
   }
 }
 
-function wireStdio(
-  docker: SessionDockerClient,
-  attachStream: NodeJS.ReadableStream,
-  onEvent: (event: RunEvent) => void,
+function wirePty(
+  ptyStream: NodeJS.ReadWriteStream,
+  onByteChunk: (chunk: Buffer) => void,
 ): void {
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
-  docker.modem.demuxStream(attachStream, stdout, stderr);
-
-  pipeToEvents(stdout, "stdout", onEvent);
-  pipeToEvents(stderr, "stderr", onEvent);
-}
-
-function pipeToEvents(
-  stream: NodeJS.ReadableStream,
-  type: "stdout" | "stderr",
-  onEvent: (event: RunEvent) => void,
-): void {
-  const decoder = new StringDecoder("utf8");
-  stream.on("data", (chunk: Buffer) => {
-    const text = decoder.write(chunk);
-    if (text.length > 0) onEvent({ type, chunk: text });
+  ptyStream.on("data", (chunk: Buffer) => {
+    if (chunk.byteLength > 0) onByteChunk(chunk);
   });
-  stream.on("end", () => {
-    const tail = decoder.end();
-    if (tail.length > 0) onEvent({ type, chunk: tail });
-  });
+  // No tail-flush needed — bytes are stored verbatim, not decoded into
+  // strings; an EOF without further bytes is just an EOF.
 }
 
 function resolveExitStatus(

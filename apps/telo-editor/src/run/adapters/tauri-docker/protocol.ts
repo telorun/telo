@@ -6,16 +6,13 @@
  * Adding a variant here without updating the Rust side (or vice versa) leads
  * to silent payload drops on the receiving end, not a type error.
  *
- * Channel naming: `run:${sessionId}:stdout`, `run:${sessionId}:stderr`,
- * `run:${sessionId}:status`. The frontend adapter subscribes to all three.
+ * Status events: `run:${sessionId}:status`. PTY bytes flow through a Tauri
+ * Channel<InvokeResponseBody> handed to `run_start` as `ioChannel` (not via
+ * named events), so they are NOT enumerated here.
  */
 
 import type { AvailabilityReport, RunStatus } from "../../types";
 import type { PortMapping } from "../../../model";
-
-export interface OutputChunkPayload {
-  chunk: string;
-}
 
 export type StatusPayload = RunStatus;
 export type AvailabilityPayload = AvailabilityReport;

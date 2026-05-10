@@ -15,7 +15,7 @@ import {
   tauriDockerDefaultConfig,
   type TauriDockerConfig,
 } from "./config-schema";
-import type { OutputChunkPayload } from "./protocol";
+import { makeTauriDockerIo } from "./io-client";
 
 export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
   id: "tauri-docker",
@@ -67,18 +67,18 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
     // side emits `Starting`/`Running` synchronously during the handler, and
     // Tauri events have no buffering for unregistered listeners.
     unlisteners = await Promise.all([
-      listen<OutputChunkPayload>(`run:${sessionId}:stdout`, (e) => {
-        emit({ type: "stdout", chunk: e.payload.chunk });
-      }),
-      listen<OutputChunkPayload>(`run:${sessionId}:stderr`, (e) => {
-        emit({ type: "stderr", chunk: e.payload.chunk });
-      }),
       listen<RunStatus>(`run:${sessionId}:status`, (e) => {
         currentStatus = e.payload;
         emit({ type: "status", status: currentStatus });
         if (isTerminal(currentStatus)) cleanup();
       }),
     ]);
+
+    // Construct the byte-stream Channel before invoking run_start. The
+    // bootstrap installs a buffering onmessage handler at construction so
+    // bytes the Rust reader emits during start-up are not lost — they are
+    // replayed when the consumer (TerminalView) calls io.open().
+    const { io, channel } = makeTauriDockerIo(sessionId);
 
     try {
       await invoke("run_start", {
@@ -87,6 +87,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
         env: request.env ?? {},
         ports: request.ports ?? [],
         config,
+        ioChannel: channel,
       });
     } catch (err) {
       cleanup();
@@ -102,6 +103,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
           subscribers.delete(listener);
         };
       },
+      io,
       async stop() {
         await invoke("run_stop", { sessionId });
         // The exit task on the Rust side emits the terminal status event,

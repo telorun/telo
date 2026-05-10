@@ -1,10 +1,12 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
 
 import { loadRunnerConfig, RunnerConfigError, type RunnerConfig } from "./config.js";
 import { createDockerClient, type DockerClient } from "./docker/client.js";
 import { stopContainer, type SessionDockerClient } from "./docker/run-session.js";
 import { healthRoute } from "./routes/health.js";
+import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
 import { sessionsRoute } from "./routes/sessions.js";
 import { sweepOrphanBundles } from "./session/bundle-sweep.js";
@@ -37,6 +39,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
   });
 
+  await app.register(websocket);
+
   const registry =
     deps.registry ??
     new SessionRegistry({
@@ -55,6 +59,12 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   await app.register(
     sessionsRoute({
       docker: deps.docker,
+      registry,
+      runnerConfig: deps.runnerConfig,
+    }),
+  );
+  await app.register(
+    ioRoute({
       registry,
       runnerConfig: deps.runnerConfig,
     }),

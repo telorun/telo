@@ -4,8 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use super::bundle::BundleWorkdir;
@@ -67,11 +68,6 @@ pub enum RunStatus {
     Stopped,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct OutputChunk {
-    pub chunk: String,
-}
-
 pub async fn start(
     app: AppHandle,
     registry: SessionRegistry,
@@ -81,13 +77,17 @@ pub async fn start(
     env: HashMap<String, String>,
     ports: Vec<PortMapping>,
     config: TauriDockerConfig,
+    io_channel: Channel<Vec<u8>>,
 ) -> Result<(), String> {
     let container_name = format!("telo-run-{session_id}");
     let mount_spec = format!("{}:/srv", bundle_dir.path().display());
     let entry_arg = format!("./{}", entry_relative_path.trim_start_matches("./"));
 
     let mut cmd = Command::new("docker");
-    cmd.arg("run").arg("--rm").arg("-i");
+    // `-it` allocates a PTY on the container (stdout/stderr merge, line
+    // editing + ANSI work, signals propagate). xterm.js consumes the merged
+    // byte stream as-is.
+    cmd.arg("run").arg("--rm").arg("-it");
     cmd.arg("--name").arg(&container_name);
     match config.pull_policy {
         PullPolicy::Always => {
@@ -100,10 +100,8 @@ pub async fn start(
     }
     cmd.arg("-v").arg(&mount_spec);
     cmd.arg("-w").arg("/srv");
-    // FORCE_COLOR / CLICOLOR_FORCE: telo's CLI sees a pipe (not a TTY) on
-    // stdout/stderr — most CLIs strip ANSI in that case. Injecting these
-    // env vars is the standard way to keep color output flowing without
-    // allocating a PTY (`-t`), which would muddle stdout/stderr separation.
+    // Harmless under PTY mode (TTY is true so most CLIs honour it anyway),
+    // kept for any tool that treats CLICOLOR_FORCE specially.
     cmd.arg("-e").arg("FORCE_COLOR=1");
     cmd.arg("-e").arg("CLICOLOR_FORCE=1");
     for (key, value) in &env {
@@ -121,8 +119,12 @@ pub async fn start(
 
     apply_docker_host(&mut cmd, config.docker_host.as_deref());
 
-    cmd.stdin(Stdio::null());
+    cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
+    // Container stderr is merged onto stdout under `-t`, but the docker CLI
+    // itself still writes diagnostics (pull progress, image-not-found,
+    // daemon errors) here. A draining reader keeps the 64 KB pipe from
+    // filling — without it docker blocks on its own stderr write.
     cmd.stderr(Stdio::piped());
     cmd.kill_on_drop(true);
 
@@ -149,20 +151,36 @@ pub async fn start(
     let Some(stderr) = child.stderr.take() else {
         return fail_missing_pipe(&app, &session_id, "stderr");
     };
+    let Some(stdin) = child.stdin.take() else {
+        return fail_missing_pipe(&app, &session_id, "stdin");
+    };
 
     let user_stop = Arc::new(AtomicBool::new(false));
+    let stdin_handle = Arc::new(tokio::sync::Mutex::new(Some(stdin)));
+
     registry.insert(
         session_id.clone(),
         SessionEntry {
             container_name: container_name.clone(),
             docker_host: config.docker_host.clone(),
             user_stop: user_stop.clone(),
+            stdin: stdin_handle,
             _bundle: bundle_dir,
         },
     );
 
-    spawn_reader(app.clone(), stdout, format!("run:{session_id}:stdout"));
-    spawn_reader(app.clone(), stderr, format!("run:{session_id}:stderr"));
+    // Single Channel for both stdout (PTY-merged container output) and
+    // stderr (docker CLI diagnostics) — semantically the same byte stream
+    // the user would see running `docker run` interactively.
+    //
+    // The two reader tasks send concurrently into one Channel<Vec<u8>>. A
+    // single `read()` is delivered as one channel message, so per-message
+    // atomicity is preserved, but a logical line that spans multiple reads
+    // (or a stderr line that lands between two stdout chunks) can interleave.
+    // Accepted for v1: in normal operation the docker-CLI stderr is empty,
+    // and matches what a user sees running `docker run` in a terminal.
+    spawn_byte_reader(stdout, io_channel.clone());
+    spawn_byte_reader(stderr, io_channel);
 
     let endpoints = build_endpoints(&ports, config.docker_host.as_deref());
     emit_status(&app, &session_id, &RunStatus::Running { endpoints });
@@ -214,6 +232,65 @@ pub async fn stop(registry: SessionRegistry, session_id: String) -> Result<(), S
     Ok(())
 }
 
+pub async fn send_input(
+    registry: SessionRegistry,
+    session_id: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    let Some(handle) = registry.stdin_handle(&session_id) else {
+        return Ok(());
+    };
+    let mut guard = handle.lock().await;
+    let Some(stdin) = guard.as_mut() else {
+        return Ok(());
+    };
+    if let Err(err) = stdin.write_all(&bytes).await {
+        // Pipe may be gone (container exited mid-write). Drop the handle so
+        // subsequent calls no-op rather than retry on a dead fd.
+        guard.take();
+        return Err(format!("failed to write stdin: {err}"));
+    }
+    Ok(())
+}
+
+pub async fn close_input(
+    registry: SessionRegistry,
+    session_id: String,
+) -> Result<(), String> {
+    let Some(handle) = registry.stdin_handle(&session_id) else {
+        return Ok(());
+    };
+    let mut guard = handle.lock().await;
+    // Drop the ChildStdin — the kernel closes the pipe and the container
+    // sees EOF on its stdin.
+    guard.take();
+    Ok(())
+}
+
+pub async fn resize(
+    registry: SessionRegistry,
+    session_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let Some((container_name, docker_host)) = registry.container_for_resize(&session_id) else {
+        return Ok(());
+    };
+    let mut cmd = Command::new("docker");
+    cmd.arg("resize")
+        .arg(&container_name)
+        .arg("--height")
+        .arg(rows.to_string())
+        .arg("--width")
+        .arg(cols.to_string());
+    apply_docker_host(&mut cmd, docker_host.as_deref());
+
+    // Best-effort: a resize against a freshly-exited container 404s, which
+    // is fine — the exit task already drove the UI to a terminal status.
+    let _ = cmd.output().await;
+    Ok(())
+}
+
 pub async fn kill_all(sessions: Vec<(String, Option<String>)>) {
     for (container_name, docker_host) in sessions {
         let mut cmd = Command::new("docker");
@@ -231,65 +308,30 @@ fn apply_docker_host(cmd: &mut Command, docker_host: Option<&str>) {
     }
 }
 
-fn spawn_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
-    app: AppHandle,
+fn spawn_byte_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     mut reader: R,
-    event_name: String,
+    channel: Channel<Vec<u8>>,
 ) {
     tauri::async_runtime::spawn(async move {
-        // `tail` holds the trailing bytes of the last read that looked like
-        // the start of a multi-byte UTF-8 sequence whose continuation bytes
-        // hadn't arrived yet. Without it, CJK/emoji/box-drawing characters
-        // straddling a buffer boundary decode as U+FFFD replacement chars.
         let mut buf = vec![0u8; 8192];
-        let mut tail: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buf).await {
-                Ok(0) => {
-                    if !tail.is_empty() {
-                        // Final flush: emit whatever's left, lossy — any
-                        // unterminated sequence at EOF is genuinely broken.
-                        let chunk = String::from_utf8_lossy(&tail).into_owned();
-                        let _ = app.emit(&event_name, OutputChunk { chunk });
-                    }
-                    break;
-                }
+                Ok(0) => break,
                 Ok(n) => {
-                    let mut combined = std::mem::take(&mut tail);
-                    combined.extend_from_slice(&buf[..n]);
-                    let (valid_up_to, pending) = split_at_incomplete_utf8(&combined);
-                    tail = combined[valid_up_to..].to_vec();
-                    // `combined[..valid_up_to]` is valid UTF-8 by construction.
-                    let chunk = match std::str::from_utf8(&combined[..valid_up_to]) {
-                        Ok(s) => s.to_owned(),
-                        Err(_) => String::from_utf8_lossy(&combined[..valid_up_to]).into_owned(),
-                    };
-                    let _ = (pending, app.emit(&event_name, OutputChunk { chunk }));
+                    // Send raw bytes through the Tauri Channel; the JS side
+                    // attaches its handler at construction so no message is
+                    // lost between spawn and the first delivery. Tauri JSON-
+                    // encodes Vec<u8> as a number array on the wire — the JS
+                    // adapter normalises that back to Uint8Array.
+                    if channel.send(buf[..n].to_vec()).is_err() {
+                        // Webview gone — channel send fails, no point continuing.
+                        break;
+                    }
                 }
                 Err(_) => break,
             }
         }
     });
-}
-
-/// Returns `(valid_up_to, pending_len)` such that `bytes[..valid_up_to]` is
-/// complete, valid UTF-8 and `bytes[valid_up_to..]` is either empty or the
-/// start of a multi-byte sequence whose continuation bytes haven't arrived.
-fn split_at_incomplete_utf8(bytes: &[u8]) -> (usize, usize) {
-    match std::str::from_utf8(bytes) {
-        Ok(_) => (bytes.len(), 0),
-        Err(e) => {
-            let valid = e.valid_up_to();
-            // If `error_len` is `Some`, the invalid sequence is genuinely
-            // malformed (not just incomplete). In that case we let the lossy
-            // decoder handle it in the next iteration — buffer only if the
-            // tail is the start of a cut-off multi-byte sequence.
-            match e.error_len() {
-                None => (valid, bytes.len() - valid),
-                Some(_) => (bytes.len(), 0),
-            }
-        }
-    }
 }
 
 fn emit_status(app: &AppHandle, session_id: &str, status: &RunStatus) {
