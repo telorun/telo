@@ -1,6 +1,11 @@
-import type { PositionIndex } from "@telorun/analyzer";
-import { AnalysisRegistry, Loader, StaticAnalyzer } from "@telorun/analyzer";
-import { normalizeDiagnostic, type NormalizedDiagnostic, DiagnosticSeverity } from "@telorun/ide-support";
+import type { LoadedGraph } from "@telorun/analyzer";
+import { AnalysisRegistry, Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import {
+  findPositions,
+  normalizeDiagnostic,
+  type NormalizedDiagnostic,
+  DiagnosticSeverity,
+} from "@telorun/ide-support";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -101,12 +106,10 @@ export function activate(context: vscode.ExtensionContext): void {
     const filePath = document.uri.fsPath;
     const loader = new Loader([new NodeAdapter(path.dirname(filePath))]);
 
-    // Try loading as a module-aware file (owner or partial)
-    let moduleResult: Awaited<ReturnType<typeof loader.loadModuleForFile>>;
+    let result: Awaited<ReturnType<typeof loader.loadGraphForFile>>;
     try {
-      moduleResult = await loader.loadModuleForFile(filePath);
+      result = await loader.loadGraphForFile(filePath);
     } catch (err) {
-      // Surface load errors (e.g. owner parse failures, system-kind violations) as diagnostics
       collection.set(document.uri, [
         {
           severity: vscode.DiagnosticSeverity.Error,
@@ -118,16 +121,15 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    // If loadModuleForFile didn't find an owner, fall back to the original heuristic
-    if (!moduleResult) {
+    if (!result) {
       if (!TELO_KIND_RE.test(document.getText())) {
         collection.delete(document.uri);
         return;
       }
-      // Fall through to standalone analysis
-      let manifests: Awaited<ReturnType<typeof loader.loadManifests>>;
+      // Fall through to standalone analysis: treat the file as its own owner.
+      let standaloneGraph: LoadedGraph;
       try {
-        manifests = await loader.loadManifests(filePath);
+        standaloneGraph = await loader.loadGraph(filePath);
       } catch (err) {
         collection.set(document.uri, [
           {
@@ -140,43 +142,39 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // Update include-graph: map each included source back to this entry file.
-      for (const m of manifests) {
-        const src = m.metadata?.source as string | undefined;
-        if (!src || src === filePath) continue;
-        let entries = includeMap.get(src);
-        if (!entries) {
-          entries = new Set();
-          includeMap.set(src, entries);
+      for (const mod of standaloneGraph.modules.values()) {
+        for (const partial of mod.partials) {
+          if (partial.source === filePath) continue;
+          let entries = includeMap.get(partial.source);
+          if (!entries) {
+            entries = new Set();
+            includeMap.set(partial.source, entries);
+          }
+          entries.add(filePath);
         }
-        entries.add(filePath);
       }
 
-      analyzeAndPublish(filePath, filePath, manifests, loader);
+      analyzeAndPublish(filePath, filePath, standaloneGraph);
       return;
     }
 
-    // Module-aware path: we have owner context
-    const { ownerUrl, manifests, sourceManifests } = moduleResult;
-
-    // Update owner ↔ partial tracking
-    const partials = new Set<string>();
-    for (const src of sourceManifests.keys()) {
-      if (src !== ownerUrl) {
-        partials.add(src);
-        // Map partial → owner for cascading
-        let entries = includeMap.get(src);
+    const { graph, ownerUrl } = result;
+    const ownerModule = graph.modules.get(ownerUrl);
+    const partialSources = new Set<string>();
+    if (ownerModule) {
+      for (const partial of ownerModule.partials) {
+        partialSources.add(partial.source);
+        let entries = includeMap.get(partial.source);
         if (!entries) {
           entries = new Set();
-          includeMap.set(src, entries);
+          includeMap.set(partial.source, entries);
         }
         entries.add(ownerUrl);
       }
     }
-    ownerToPartials.set(ownerUrl, partials);
+    ownerToPartials.set(ownerUrl, partialSources);
 
-    // Check if this partial file is not listed in the owner's include
-    if (!sourceManifests.has(filePath) && filePath !== ownerUrl) {
+    if (filePath !== ownerUrl && !partialSources.has(filePath)) {
       collection.set(document.uri, [
         {
           severity: vscode.DiagnosticSeverity.Warning,
@@ -188,43 +186,34 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    analyzeAndPublish(ownerUrl, filePath, manifests, loader);
+    analyzeAndPublish(ownerUrl, filePath, graph);
   }
 
   function analyzeAndPublish(
     ownerFilePath: string,
     entryFilePath: string,
-    manifests: Awaited<ReturnType<typeof Loader.prototype.loadManifests>>,
-    loader: Loader,
+    graph: LoadedGraph,
   ): void {
-    const manifestByKey = new Map<string, (typeof manifests)[number]>();
-    for (const m of manifests) {
-      if (m.kind && m.metadata?.name) {
-        manifestByKey.set(`${m.kind}.${m.metadata.name}`, m);
-      }
-    }
+    const manifests = flattenForAnalyzer(graph);
 
-    // Fresh registry per analysis pass so stale imports don't linger.
     const registry = new AnalysisRegistry();
     const rawDiagnostics = analyzer.analyze(manifests, undefined, registry);
 
-    // Bucket diagnostics by source file for per-file routing
     const diagnosticsByFile = new Map<string, vscode.Diagnostic[]>();
 
     for (const d of rawDiagnostics) {
-      const resource = (d.data as any)?.resource as { kind: string; name: string } | undefined;
-      const m = resource ? manifestByKey.get(`${resource.kind}.${resource.name}`) : undefined;
-      const sourceFile = (m?.metadata as any)?.source as string | undefined;
-      const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
-      const positionIndex = (m?.metadata as any)?.positionIndex as PositionIndex | undefined;
+      const located = findPositions(graph, d.data);
+      const sourceFile = located?.file ?? entryFilePath;
+      const normalized = normalizeDiagnostic(d, {
+        registry,
+        positionIndex: located?.positionIndex,
+        sourceLine: located?.sourceLine,
+      });
 
-      const targetFile = sourceFile ?? entryFilePath;
-      const normalized = normalizeDiagnostic(d, { registry, positionIndex, sourceLine });
-
-      let bucket = diagnosticsByFile.get(targetFile);
+      let bucket = diagnosticsByFile.get(sourceFile);
       if (!bucket) {
         bucket = [];
-        diagnosticsByFile.set(targetFile, bucket);
+        diagnosticsByFile.set(sourceFile, bucket);
       }
       bucket.push(toVscodeDiagnostic(normalized));
     }

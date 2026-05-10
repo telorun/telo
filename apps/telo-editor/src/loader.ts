@@ -1,6 +1,5 @@
-import type { ManifestSource } from "@telorun/analyzer";
-import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
-import type { ResourceManifest } from "@telorun/sdk";
+import type { LoadedFile, LoadedModule, ManifestSource } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, flattenLoadedModule } from "@telorun/analyzer";
 import type {
   DirEntry,
   ModuleDocument,
@@ -16,14 +15,8 @@ import {
 } from "./loader/paths";
 import { buildFailureManifest, buildParsedManifest } from "./loader/parse";
 import { buildResourceDocIndex } from "./loader/ast-ops";
-import {
-  collectPartialDocuments,
-  createChainedManifestSource,
-  createEditorLoader,
-  createInMemoryManifestSource,
-  populateModuleDocument,
-  resolveDepPath,
-} from "./loader/subgraph";
+import { createEditorLoader, resolveDepPath } from "./loader/subgraph";
+import { moduleDocumentFromLoaded } from "./yaml-document";
 
 export {
   SCAN_EXCLUDED_NAMES,
@@ -130,6 +123,11 @@ export async function scanWorkspace(
  * Loads every module in the workspace directory tree, then resolves each
  * module's imports: workspace-local imports are wired to already-loaded
  * modules; registry/remote imports have their sub-graphs loaded.
+ *
+ * Uses the analyzer Loader's canonical load result (`loadModule` /
+ * `loadGraph`) as the single source of truth for parsed text, AST, and
+ * positions. The editor never re-parses the same file: every
+ * `ModuleDocument` is projected from a `LoadedFile` produced by the Loader.
  */
 export async function loadWorkspace(
   rootDir: string,
@@ -144,79 +142,68 @@ export async function loadWorkspace(
   const importedBy = new Map<string, Set<string>>();
   const documents = new Map<string, ModuleDocument>();
 
-  // Phase 0: pre-populate documents for every scanned owner file. One disk
-  // read per file; the in-memory adapter below serves subsequent reads of the
-  // same file (including from inside the analyzer Loader) from this cache.
-  for (const filePath of modulePaths) {
-    await populateModuleDocument(filePath, documents, manifestAdapter);
-  }
+  const loader = createEditorLoader(manifestAdapter, extraAdapters);
 
-  // Fresh Loader per loadWorkspace call, backed by an in-memory adapter that
-  // reads from `documents` and falls through to disk for files not yet
-  // tracked (partial include targets, external imports). See the plan's
-  // "Analyzer Loader is instantiated fresh per call" decision.
-  const loader = createEditorLoader(
-    createInMemoryManifestSource(documents, manifestAdapter),
-    extraAdapters,
-  );
-
-  // Phase 1: parse every discovered module (includes expand during loadModule).
-  // After each load, walk the returned manifests for any partial-file source
-  // paths (from `include:` expansion) and populate their ModuleDocument too.
+  // Phase 1: load each workspace module via the analyzer Loader. Each
+  // `LoadedModule` carries the owner file plus every `include:`-expanded
+  // partial as fully-parsed `LoadedFile`s — no separate populate pass.
   for (const filePath of modulePaths) {
     try {
-      const docs = (await loader.loadModule(filePath)) as ResourceManifest[];
-      modules.set(filePath, buildParsedManifest(filePath, docs));
-      await collectPartialDocuments(docs, filePath, documents, manifestAdapter);
+      const lm = await loader.loadModule(filePath);
+      registerLoadedModule(lm, documents, modules, filePath);
     } catch (err) {
       console.error(`Failed to load workspace module ${filePath}:`, err);
-      // Register a placeholder so the module still appears in the workspace
-      // tree and the user can open its source to fix the parse issue.
       modules.set(filePath, await buildFailureManifest(filePath, err, workspaceAdapter));
     }
   }
 
-  // Phase 2a: load external (registry/remote) import targets into the modules
-  // map so Phase 2b can resolve every edge without recursive sub-graph calls.
-  // Populate a ModuleDocument for each imported owner so `analyzeWorkspace`
-  // (which routes through `documents`) sees their Telo.Definition docs — the
-  // bare `manifestAdapter` can't read registry URLs, so chain in extras.
-  const chainedAdapter = createChainedManifestSource(manifestAdapter, extraAdapters);
+  // Phase 2a: load external (registry/remote) import targets via `loadGraph`.
+  // The Loader's source chain handles registry URLs natively; the editor no
+  // longer needs an in-memory adapter or chained adapter to bridge between
+  // local and remote sources. Failures surface as placeholder
+  // ParsedManifests so the importer UI can show the error inline.
+  //
+  // Registry/remote sources may resolve a raw input ref (`std/foo@1.0.0`) to
+  // a different canonical URL (e.g. `registry://std/foo@1.0.0/telo.yaml`).
+  // Phase 2b needs that canonical URL to set `resolvedPath` so it matches
+  // the `modules` map's key — otherwise `analyzeWorkspace` looks up the
+  // imported library's identity by the raw ref and misses, leaving every
+  // imported `Telo.Definition` invisible to alias resolution.
+  const canonicalByRawInput = new Map<string, string>();
   for (const parsed of modules.values()) {
     for (const imp of parsed.imports) {
       if (imp.importKind === "local") continue;
       const depPath = resolveDepPath(manifestAdapter, parsed.filePath, imp.source);
       if (modules.has(depPath)) continue;
       try {
-        const subGraph = await loader.loadModuleGraph(depPath, (url, err) => {
-          console.error(`Failed to load imported module ${url}:`, err);
-        });
-        for (const [subPath, subDocs] of subGraph) {
-          if (modules.has(subPath)) continue;
-          modules.set(subPath, buildParsedManifest(subPath, subDocs));
-          if (!documents.has(normalizePath(subPath))) {
-            await populateModuleDocument(subPath, documents, chainedAdapter);
+        const graph = await loader.loadGraph(depPath);
+        canonicalByRawInput.set(depPath, graph.rootSource);
+        for (const [, subModule] of graph.modules) {
+          const subOwner = subModule.owner.source;
+          if (!modules.has(subOwner)) {
+            registerLoadedModule(subModule, documents, modules, subOwner);
           }
-          await collectPartialDocuments(subDocs, subPath, documents, chainedAdapter);
+        }
+        for (const e of graph.errors) {
+          if (modules.has(e.url)) continue;
+          modules.set(e.url, await buildFailureManifest(e.url, e.error, workspaceAdapter));
         }
       } catch (err) {
-        console.error(`Failed to resolve import ${imp.source} in ${parsed.filePath}:`, err);
+        if (!modules.has(depPath)) {
+          modules.set(depPath, await buildFailureManifest(depPath, err, workspaceAdapter));
+        }
       }
     }
   }
 
   // Phase 2b: rebuild each module's imports with resolvedPath set, and wire
-  // up graph edges. Imports are produced as new ParsedImport objects; the
-  // originals from Phase 1 parsing are discarded to keep the returned workspace
-  // fully owned by this call (no shared mutable references with any caller).
-  //
-  // Iterate over a snapshot so this stays safe if a future edit ever inserts
-  // new keys mid-loop — today's re-sets to existing keys are fine per Map
-  // semantics, but snapshotting removes that implicit invariant.
+  // up graph edges. For registry/remote imports use the canonical URL learned
+  // in Phase 2a; for everything else `resolveDepPath` is the canonical key.
   for (const [filePath, parsed] of [...modules.entries()]) {
     const deps = new Set<string>();
     const resolvedImports = parsed.imports.map((imp) => {
-      const depPath = resolveDepPath(manifestAdapter, filePath, imp.source);
+      const rawDep = resolveDepPath(manifestAdapter, filePath, imp.source);
+      const depPath = canonicalByRawInput.get(rawDep) ?? rawDep;
       deps.add(depPath);
       if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
       importedBy.get(depPath)!.add(filePath);
@@ -228,5 +215,32 @@ export async function loadWorkspace(
 
   const resourceDocIndex = buildResourceDocIndex(modules, documents);
   return { rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
+}
+
+/** Project a `LoadedModule` (owner + partials) into the editor's
+ *  `documents` map and `modules` map. Each `LoadedFile` becomes a
+ *  `ModuleDocument` keyed by canonical path; the owner's manifests feed the
+ *  `ParsedManifest` projection for the analyzer-facing view. */
+function registerLoadedModule(
+  lm: LoadedModule,
+  documents: Map<string, ModuleDocument>,
+  modules: Map<string, ParsedManifest>,
+  ownerFilePath: string,
+): void {
+  registerLoadedFile(lm.owner, ownerFilePath, documents);
+  for (const partial of lm.partials) {
+    registerLoadedFile(partial, partial.source, documents);
+  }
+  modules.set(ownerFilePath, buildParsedManifest(ownerFilePath, flattenLoadedModule(lm)));
+}
+
+function registerLoadedFile(
+  loaded: LoadedFile,
+  filePath: string,
+  documents: Map<string, ModuleDocument>,
+): void {
+  const key = normalizePath(filePath);
+  if (documents.has(key)) return;
+  documents.set(key, moduleDocumentFromLoaded(filePath, loaded));
 }
 

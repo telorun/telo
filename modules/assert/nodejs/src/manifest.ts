@@ -1,4 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, flattenForAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
 import type { ResourceContext, Runnable } from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -84,7 +84,9 @@ export async function create(
       const resolvedUrl = new URL(manifest.source, ctx.moduleContext.source).toString();
       let manifests;
       try {
-        manifests = await loader.loadManifests(resolvedUrl);
+        const graph = await loader.loadGraph(resolvedUrl);
+        if (graph.errors.length > 0) throw graph.errors[0].error;
+        manifests = flattenForAnalyzer(graph);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         if (manifest.expect.loadError) {

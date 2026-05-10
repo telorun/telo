@@ -25,7 +25,7 @@ import {
   setResourceFields,
   upgradeImportViaAst,
 } from "../loader";
-import { parseModuleDocument } from "../yaml-document";
+import { moduleParseError, parseModuleDocument } from "../yaml-document";
 import type { ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
@@ -465,7 +465,7 @@ export function Editor() {
         const prevDocs = state.workspace?.documents;
         for (const fp of getModuleFiles(manifest)) {
           const doc = prevDocs?.get(fp) ?? workspace.documents.get(fp);
-          if (doc) preTexts.set(fp, doc.text);
+          if (doc) preTexts.set(fp, doc.loaded.text);
         }
       }
     }
@@ -482,7 +482,7 @@ export function Editor() {
       let recorded = false;
       const timestamp = Date.now();
       for (const [fp, before] of preTexts) {
-        const after = next.documents.get(fp)?.text;
+        const after = next.documents.get(fp)?.loaded.text;
         if (after === undefined || after === before) continue;
         mgr.recordEdit(filePath, { filePath: fp, before, after, timestamp });
         recorded = true;
@@ -719,16 +719,26 @@ export function Editor() {
     // but lookups only ever use the canonical key.
     const key = normalizePath(filePath);
     const documents = new Map(state.workspace.documents);
-    // Preserve the previous `loadedJson` as the save baseline. A source-edit
-    // produces a fresh `parseModuleDocument` whose `loadedJson` matches its
-    // own `docs.map(toJSON)`, which would make `saveModuleFromDocuments`
-    // see "no change" and skip the disk write — silently dropping the edit
-    // on the next workspace reload.
+    // Preserve the previous LoadedFile's text/manifests/positions as the
+    // load-time snapshot — those fields drive the no-op-save guard in
+    // `saveModuleFromDocuments`. A source-edit produces a fresh
+    // `parseModuleDocument` whose snapshot matches its own current docs,
+    // which would make the guard see "no change" and skip the disk write —
+    // silently dropping the edit on the next workspace reload.
     const prevDoc = state.workspace.documents.get(key);
-    documents.set(key, {
-      ...moduleDoc,
-      loadedJson: prevDoc?.loadedJson ?? moduleDoc.loadedJson,
-    });
+    const merged: ModuleDocument = prevDoc
+      ? {
+          filePath: moduleDoc.filePath,
+          loaded: {
+            ...moduleDoc.loaded,
+            text: prevDoc.loaded.text,
+            manifests: prevDoc.loaded.manifests,
+            positions: prevDoc.loaded.positions,
+          },
+          dirty: true,
+        }
+      : { ...moduleDoc, dirty: true };
+    documents.set(key, merged);
 
     let workspace: Workspace = { ...state.workspace, documents };
     const prevInclude = state.workspace.modules.get(state.activeModulePath)?.include ?? [];
@@ -749,18 +759,22 @@ export function Editor() {
       skipHistory: opts?.skipHistory,
     });
 
-    // `saveModuleFromDocuments` replaces `modDoc.text` with the re-serialized
-    // output of `serializeModuleDocument`. For source edits the user's typed
-    // text is authoritative — if the serializer reformats it (adds leading
-    // `---`, normalizes whitespace, etc.), the SourceView's resync effect
-    // would push the reformatted text into Monaco via `setValue`, which
-    // jumps the cursor to the top. Restore the user's text so the buffer
-    // stays stable; disk still holds the serialized form, and `loadedJson`
-    // already reflects the persisted snapshot for future change detection.
+    // `saveModuleFromDocuments` re-parses the just-written text, producing
+    // a fresh `loaded` with normalized formatting. For source edits the
+    // user's typed text is authoritative — if the serializer reformats it
+    // (adds leading `---`, normalizes whitespace, etc.), the SourceView's
+    // resync effect would push the reformatted text into Monaco via
+    // `setValue`, which jumps the cursor to the top. Restore the user's
+    // text in `loaded.text` so the buffer stays stable; disk holds the
+    // serialized form, and `loaded.manifests` already reflects the
+    // persisted snapshot for future change detection.
     const persistedDoc = workspace.documents.get(key);
-    if (persistedDoc && persistedDoc.text !== moduleDoc.text) {
+    if (persistedDoc && persistedDoc.loaded.text !== moduleDoc.loaded.text) {
       const patched = new Map(workspace.documents);
-      patched.set(key, { ...persistedDoc, text: moduleDoc.text });
+      patched.set(key, {
+        ...persistedDoc,
+        loaded: { ...persistedDoc.loaded, text: moduleDoc.loaded.text },
+      });
       workspace = { ...workspace, documents: patched };
     }
 
@@ -800,14 +814,11 @@ export function Editor() {
     if (!snap) return;
     setHistoryVersion((v) => v + 1);
     const moduleDoc = parseModuleDocument(snap.filePath, snap.before);
-    if (moduleDoc.parseError) {
-      // Shouldn't happen: `before` was produced by a prior successful
-      // serialization. Log so we notice if it ever does, and bail rather than
-      // letting saveModuleFromDocuments silently skip the write (the cursor
-      // has already advanced; user can redo if they want to try again).
+    const undoErr = moduleParseError(moduleDoc);
+    if (undoErr) {
       console.error(
         `Undo: snapshot text for ${snap.filePath} failed to re-parse — leaving disk unchanged`,
-        moduleDoc.parseError,
+        undoErr,
       );
       return;
     }
@@ -821,10 +832,11 @@ export function Editor() {
     if (!snap) return;
     setHistoryVersion((v) => v + 1);
     const moduleDoc = parseModuleDocument(snap.filePath, snap.after);
-    if (moduleDoc.parseError) {
+    const redoErr = moduleParseError(moduleDoc);
+    if (redoErr) {
       console.error(
         `Redo: snapshot text for ${snap.filePath} failed to re-parse — leaving disk unchanged`,
-        moduleDoc.parseError,
+        redoErr,
       );
       return;
     }

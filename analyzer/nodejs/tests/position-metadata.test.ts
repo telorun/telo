@@ -2,7 +2,6 @@ import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import { describe, expect, it } from "vitest";
 import {
-  attachPositionIndex,
   buildDocumentPositions,
   buildLineOffsets,
   buildPositionIndex,
@@ -279,40 +278,3 @@ describe("buildDocumentPositions", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// attachPositionIndex
-// ---------------------------------------------------------------------------
-
-describe("attachPositionIndex", () => {
-  it("attaches positionIndex as a non-enumerable property", () => {
-    const meta = { name: "foo", source: "bar" };
-    const positionIndex = new Map();
-    const out = attachPositionIndex(meta, positionIndex);
-
-    // Same identity — mutation, not clone.
-    expect(out).toBe(meta);
-
-    // Visible to direct access.
-    expect((out as any).positionIndex).toBe(positionIndex);
-
-    // Invisible to spread, JSON serialization, Object.keys — the whole point
-    // of using defineProperty over a plain assignment. Schema validators and
-    // structural-equality checks downstream must not see this field.
-    expect(Object.keys(out)).toEqual(["name", "source"]);
-    expect({ ...out }).toEqual({ name: "foo", source: "bar" });
-    expect(JSON.stringify(out)).toBe('{"name":"foo","source":"bar"}');
-  });
-
-  it("allows replacing the positionIndex on a metadata object that already has one", () => {
-    // The non-enumerable descriptor is `writable: true, configurable: true`,
-    // so a second attach call replaces the value. Important for
-    // manifest-loader's post-processing pass that re-stamps metadata after
-    // adding a `module:` field.
-    const meta = { name: "foo" };
-    const first = new Map();
-    const second = new Map();
-    attachPositionIndex(meta, first);
-    attachPositionIndex(meta, second);
-    expect((meta as any).positionIndex).toBe(second);
-  });
-});

@@ -39,7 +39,7 @@ export function buildResourceDocIndex(
       const sourceKey = normalizePath(r.sourceFile ?? modulePath);
       const modDoc = documents.get(sourceKey);
       if (!modDoc) continue;
-      const docIndex = findDocForResource(modDoc.docs, r.kind, r.name);
+      const docIndex = findDocForResource(modDoc.loaded.documents, r.kind, r.name);
       if (docIndex === undefined) continue;
       inner.set(`${r.kind}::${r.name}`, { filePath: sourceKey, docIndex });
     }
@@ -145,11 +145,22 @@ export function applyOpsToDocument(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  let docs = modDoc.docs;
+  let docs = modDoc.loaded.documents;
   for (const op of ops) {
     docs = applyEdit(docs, docIndex, op);
   }
-  return withModuleDocument(workspace, filePath, { ...modDoc, docs });
+  return withModuleDocument(workspace, filePath, withDocs(modDoc, docs));
+}
+
+/** Wrap a `ModuleDocument` with a new documents array, marking it dirty.
+ *  Used by every AST mutator so post-edit ModuleDocuments share an
+ *  identity-change contract with React consumers. */
+export function withDocs(modDoc: ModuleDocument, docs: import("yaml").Document[]): ModuleDocument {
+  return {
+    ...modDoc,
+    loaded: { ...modDoc.loaded, documents: docs },
+    dirty: true,
+  };
 }
 
 /** Updates a resource's body fields in the AST. Diffs `oldFields` against
@@ -193,8 +204,8 @@ export function createResourceViaAst(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  const docs = addResourceDocument(modDoc.docs, kind, name, fields);
-  const updated = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  const docs = addResourceDocument(modDoc.loaded.documents, kind, name, fields);
+  const updated = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
   return rebuildManifestFromDocuments(updated, modulePath);
 }
 
@@ -214,7 +225,7 @@ export function astToResourceManifests(
   if (!ownerDoc) return out;
 
   let ownerModuleName: string | undefined;
-  for (const d of ownerDoc.docs) {
+  for (const d of ownerDoc.loaded.documents) {
     const json = d.toJSON() as Record<string, unknown> | null;
     if (!json) continue;
     const kind = json.kind;
@@ -232,7 +243,7 @@ export function astToResourceManifests(
   for (const partial of partialPaths) {
     const partialDoc = documents.get(normalizePath(partial));
     if (!partialDoc) continue;
-    for (const d of partialDoc.docs) {
+    for (const d of partialDoc.loaded.documents) {
       const json = d.toJSON() as Record<string, unknown> | null;
       if (!json) continue;
       const meta: Record<string, unknown> = {

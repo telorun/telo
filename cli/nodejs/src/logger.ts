@@ -1,6 +1,6 @@
-import type { AnalysisDiagnostic, PositionIndex } from "@telorun/analyzer";
+import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
 import { DiagnosticSeverity } from "@telorun/analyzer";
-import type { ResourceManifest } from "@telorun/sdk";
+import { findPositions } from "@telorun/ide-support";
 import type { RuntimeDiagnostic } from "@telorun/kernel";
 import * as path from "path";
 
@@ -58,36 +58,29 @@ export function formatDiagnostics(
   }
 }
 
-/** Format analysis diagnostics with file:line:col locations resolved from manifest metadata. */
+/** Format analysis diagnostics with file:line:col locations resolved via
+ *  the canonical `LoadedGraph` — no need to thread positionIndex through
+ *  manifest metadata. */
 export function formatAnalysisDiagnostics(
   diagnostics: AnalysisDiagnostic[],
-  manifests: ResourceManifest[],
+  graph: LoadedGraph,
   log: Logger,
   entryPath: string,
 ): { errorCount: number; warnCount: number } {
-  const manifestByKey = new Map<string, ResourceManifest>();
-  for (const m of manifests) {
-    if (m.kind && m.metadata?.name) {
-      manifestByKey.set(`${m.kind}.${m.metadata.name}`, m);
-    }
-  }
-
   let errorCount = 0;
   let warnCount = 0;
 
   for (const d of diagnostics) {
-    const resource = (d.data as any)?.resource as { kind: string; name: string } | undefined;
-    const m = resource ? manifestByKey.get(`${resource.kind}.${resource.name}`) : undefined;
-    const absSource = (m?.metadata as any)?.source as string | undefined;
-    const raw = absSource ?? entryPath;
+    const located = findPositions(graph, d.data);
+    const raw = located?.file ?? entryPath;
     const displaySource = raw.includes("://") ? raw : path.relative(process.cwd(), raw);
-    const sourceLine = (m?.metadata as any)?.sourceLine as number | undefined;
-    const positionIndex = (m?.metadata as any)?.positionIndex as PositionIndex | undefined;
     const fieldPath = (d.data as any)?.path as string | undefined;
 
     const fieldRange =
-      fieldPath !== undefined && positionIndex ? positionIndex.get(fieldPath) : undefined;
-    const line = (fieldRange?.start.line ?? sourceLine ?? 0) + 1;
+      fieldPath !== undefined && located?.positionIndex
+        ? located.positionIndex.get(fieldPath)
+        : undefined;
+    const line = (fieldRange?.start.line ?? located?.sourceLine ?? 0) + 1;
     const col = (fieldRange?.start.character ?? 0) + 1;
 
     const loc = `${displaySource}:${line}:${col}`;
@@ -105,3 +98,4 @@ export function formatAnalysisDiagnostics(
 
   return { errorCount, warnCount };
 }
+

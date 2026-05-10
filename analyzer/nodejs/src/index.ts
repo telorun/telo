@@ -1,10 +1,20 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";
+export type {
+    GraphLoadError,
+    ImportEdge,
+    LoadedFile,
+    LoadedGraph,
+    LoadedModule,
+    ParseError,
+} from "./loaded-types.js";
+export { flattenForAnalyzer, flattenLoadedModule } from "./flatten-for-analyzer.js";
 export { Loader } from "./manifest-loader.js";
 export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
+export { parseLoadedFile } from "./parse-loaded-file.js";
+export type { ParseOptions } from "./parse-loaded-file.js";
 export {
-    attachPositionIndex,
     buildDocumentPositions,
     buildLineOffsets,
     buildPositionIndex,

@@ -4,6 +4,7 @@
 !analyzer/nodejs
 !templating/nodejs
 !sdk/nodejs
+!packages/ide-support
 !package.json
 !pnpm-*
 !tsconfig.base.json

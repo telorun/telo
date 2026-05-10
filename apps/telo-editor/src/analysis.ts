@@ -1,15 +1,13 @@
 import {
   AnalysisRegistry,
   StaticAnalyzer,
-  attachPositionIndex,
   buildDocumentPositions,
-  type PositionIndex,
+  type DocumentPosition,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { normalizePath } from "./loader";
 import type { ModuleDocument, Workspace } from "./model";
-import { toAnalysisManifest } from "./yaml-document";
 
 interface EnrichedMetadata {
   name: string;
@@ -19,6 +17,13 @@ interface EnrichedMetadata {
   module?: string;
   [key: string]: unknown;
 }
+
+/** Per-resource position lookup table built alongside the manifest list.
+ *  `analyzeWorkspace` reads positions from this map (keyed by
+ *  `${source}::${name}`) instead of the manifest's metadata, so the
+ *  non-enumerable `positionIndex` smuggling on metadata is no longer
+ *  required for the editor's diagnostic-routing path. */
+type PositionMap = Map<string, DocumentPosition>;
 
 /**
  * Converts all modules in the Workspace to ResourceManifest[], enriching
@@ -35,21 +40,19 @@ interface EnrichedMetadata {
  * `include:` patterns is required because Phase 1 already populated
  * `workspace.documents` for every tracked partial.
  */
-function toAnalysisManifests(app: Workspace): ResourceManifest[] {
+function toAnalysisManifests(
+  app: Workspace,
+): { manifests: ResourceManifest[]; positions: PositionMap } {
   const result: ResourceManifest[] = [];
+  const positions: PositionMap = new Map();
 
   for (const [ownerPath, manifest] of app.modules) {
     const ownerKey = normalizePath(ownerPath);
     const ownerDoc = app.documents.get(ownerKey);
     if (!ownerDoc) continue;
 
-    // Owner module name — used to stamp `metadata.module` on resources
-    // declared in partial files, mirroring the analyzer Loader's
-    // loadPartialFile behavior.
     const ownerModuleName = manifest.metadata.name;
 
-    // Collect partials this module spans from resources[].sourceFile. The
-    // same partial may be referenced by many resources; dedupe.
     const partialKeys = new Set<string>();
     for (const r of manifest.resources) {
       if (r.sourceFile) {
@@ -58,15 +61,15 @@ function toAnalysisManifests(app: Workspace): ResourceManifest[] {
       }
     }
 
-    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, result);
+    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, result, positions);
     for (const partialKey of partialKeys) {
       const partialDoc = app.documents.get(partialKey);
       if (!partialDoc) continue;
-      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, result);
+      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, result, positions);
     }
   }
 
-  return result;
+  return { manifests: result, positions };
 }
 
 function emitDocsFor(
@@ -74,45 +77,47 @@ function emitDocsFor(
   filePath: string,
   ownerModuleName: string | undefined,
   out: ResourceManifest[],
+  positionsOut: PositionMap,
 ): void {
-  // Compute per-doc position metadata once. The shared analyzer helper
-  // produces the same `positionIndex` / `sourceLine` shape that
-  // `Loader.loadModule` stamps on disk-loaded manifests, so diagnostics
-  // resolve through `normalizeDiagnostic`'s positionIndex fallback identically
-  // in the editor and in the VS Code extension.
-  const positions = buildDocumentPositions(modDoc.text, modDoc.docs);
+  // When the file is dirty the AST has been mutated in place, so manifest
+  // shapes and positions must be re-derived from the current docs. Otherwise
+  // reuse the LoadedFile's cached snapshot.
+  const docs = modDoc.loaded.documents;
+  const positionList = modDoc.dirty
+    ? buildDocumentPositions(modDoc.loaded.text, docs)
+    : modDoc.loaded.positions;
+  const cachedManifests = modDoc.dirty ? null : modDoc.loaded.manifests;
 
-  for (let i = 0; i < modDoc.docs.length; i++) {
-    const d = modDoc.docs[i];
-    const projected = toAnalysisManifest(d);
-    if (!projected) continue;
+  for (let i = 0; i < docs.length; i++) {
+    const projected =
+      cachedManifests?.[i] ??
+      (docs[i].toJSON() as Record<string, unknown> | null);
+    if (!projected || typeof projected !== "object") continue;
 
-    const existingMeta = projected.metadata as EnrichedMetadata | undefined;
-    const { sourceLine, positionIndex } = positions[i];
-    const meta: EnrichedMetadata = attachPositionIndex(
-      {
-        ...(existingMeta ?? {}),
-        name: existingMeta?.name ?? "",
-        source: filePath,
-        sourceLine,
-      },
-      positionIndex,
-    );
+    const existingMeta = (projected as { metadata?: EnrichedMetadata }).metadata;
+    const { sourceLine } = positionList[i];
+    const meta: EnrichedMetadata = {
+      ...(existingMeta ?? {}),
+      name: existingMeta?.name ?? "",
+      source: filePath,
+      sourceLine,
+    };
 
-    // Owner + partial-file resources inherit the owner's module name when they
-    // don't already declare one — matches the analyzer ManifestLoader's
-    // post-load stamping. Module kinds themselves (Telo.Application /
-    // Telo.Library) are excluded; their `metadata.name` *is* the module name.
     if (
       ownerModuleName &&
       !meta.module &&
-      projected.kind !== "Telo.Library" &&
-      projected.kind !== "Telo.Application"
+      (projected as { kind?: string }).kind !== "Telo.Library" &&
+      (projected as { kind?: string }).kind !== "Telo.Application"
     ) {
       meta.module = ownerModuleName;
     }
 
-    out.push({ ...projected, metadata: meta } as ResourceManifest);
+    const stamped = { ...projected, metadata: meta } as ResourceManifest;
+    out.push(stamped);
+    const projectedKind = (projected as { kind?: string }).kind;
+    if (typeof meta.name === "string" && meta.name && typeof projectedKind === "string") {
+      positionsOut.set(`${filePath}::${projectedKind}::${meta.name}`, positionList[i]);
+    }
   }
 }
 
@@ -151,7 +156,7 @@ export interface WorkspaceDiagnostics {
  * on manifests that never reach a resource identity.
  */
 export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
-  const manifests = toAnalysisManifests(app);
+  const { manifests, positions } = toAnalysisManifests(app);
 
   // Enrich Telo.Import metadata with resolved module identity from the
   // cross-module projection (workspace.modules). Done post-emission so we
@@ -176,13 +181,10 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
   const sourceByManifest = new Map<string, string>();
-  const manifestsByResource = new Map<string, ResourceManifest>();
   for (const m of manifests) {
     const source = (m.metadata as EnrichedMetadata).source;
-    const name = (m.metadata as EnrichedMetadata).name;
     if (source) {
       sourceByManifest.set(`${m.kind}/${m.metadata.name}`, source);
-      if (name) manifestsByResource.set(`${source}::${name}`, m);
     }
   }
 
@@ -205,20 +207,19 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     const kind = data?.resource?.kind;
     const name = data?.resource?.name;
 
-    // Look up the manifest the diagnostic targets (if any) so the normalizer
-    // can recover positions from `metadata.positionIndex` / `sourceLine` when
-    // the analyzer didn't include an inline `d.range`. Routing decisions
-    // continue to use the same lookup.
+    // Look up the resource's positions so the normalizer can recover ranges
+    // from `positionIndex` / `sourceLine` when the analyzer didn't include
+    // an inline `d.range`. Positions live in the side-table built during
+    // emission instead of being smuggled on manifest metadata.
     const filePath = kind && name ? sourceByManifest.get(`${kind}/${name}`) : undefined;
-    const ownerManifest =
-      filePath && name ? manifestsByResource.get(`${filePath}::${name}`) : undefined;
-    const ownerMeta = ownerManifest?.metadata as
-      | { positionIndex?: PositionIndex; sourceLine?: number }
-      | undefined;
+    const ownerPosition =
+      filePath && kind && name
+        ? positions.get(`${filePath}::${kind}::${name}`)
+        : undefined;
     const normalized = normalizeDiagnostic(diag, {
       registry,
-      positionIndex: ownerMeta?.positionIndex,
-      sourceLine: ownerMeta?.sourceLine,
+      positionIndex: ownerPosition?.positionIndex,
+      sourceLine: ownerPosition?.sourceLine,
     });
 
     if (filePath) {

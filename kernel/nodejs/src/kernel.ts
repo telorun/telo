@@ -1,5 +1,7 @@
 import {
   AnalysisRegistry,
+  flattenForAnalyzer,
+  flattenLoadedModule,
   isModuleKind,
   Loader,
   StaticAnalyzer,
@@ -140,12 +142,15 @@ export class Kernel implements IKernel {
     this.registry.registerDefinition(definition);
   }
 
-  loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
-    return this.loader.loadModule(url, options);
+  async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
+    const lm = await this.loader.loadModule(url, options);
+    return flattenLoadedModule(lm);
   }
 
-  loadManifests(url: string): Promise<ResourceManifest[]> {
-    return this.loader.loadManifests(url);
+  async loadManifests(url: string): Promise<ResourceManifest[]> {
+    const graph = await this.loader.loadGraph(url);
+    if (graph.errors.length > 0) throw graph.errors[0].error;
+    return flattenForAnalyzer(graph);
   }
 
   /** Returns the live analysis registry backed by this kernel's known definitions and aliases.
@@ -218,7 +223,11 @@ export class Kernel implements IKernel {
 
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
-    const staticManifests = await this.loader.loadManifests(sourceUrl);
+    const analysisGraph = await this.loader.loadGraph(sourceUrl);
+    if (analysisGraph.errors.length > 0) {
+      throw analysisGraph.errors[0].error;
+    }
+    const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
 
     // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
@@ -256,8 +265,11 @@ export class Kernel implements IKernel {
       );
     }
 
-    // Load runtime configuration — root module gets access to host env
-    const allManifests = await this.loader.loadModule(sourceUrl, { compile: true });
+    // Load runtime configuration — root module gets access to host env.
+    // Imports are loaded separately via the import-controller; this load is
+    // entry-only with compile-time CEL.
+    const lm = await this.loader.loadModule(sourceUrl, { compile: true });
+    const allManifests = flattenLoadedModule(lm);
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots
     // into first-class named manifests and replace them in-place with {kind, name} references.

@@ -1,4 +1,4 @@
-import { Loader } from "@telorun/analyzer";
+import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
 import { ControllerLoader, LocalFileSource } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
@@ -54,7 +54,9 @@ async function installOne(inputPath: string, log: Logger): Promise<boolean> {
   const loader = new Loader([new LocalFileSource()]);
   let manifests: ResourceManifest[];
   try {
-    manifests = await loader.loadManifests(entryPath);
+    const graph = await loader.loadGraph(entryPath);
+    if (graph.errors.length > 0) throw graph.errors[0].error;
+    manifests = flattenForAnalyzer(graph);
   } catch (err) {
     console.error(
       `${displayPath}  ${log.error("error")}  ` +

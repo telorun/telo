@@ -277,6 +277,9 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../analyzer/nodejs
+      '@telorun/ide-support':
+        specifier: workspace:*
+        version: link:../../packages/ide-support
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../kernel/nodejs

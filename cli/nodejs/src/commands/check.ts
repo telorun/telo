@@ -1,4 +1,4 @@
-import { Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";
@@ -13,9 +13,15 @@ async function checkOne(
 
   const loader = new Loader([new LocalFileSource()]);
 
-  let manifests;
   try {
-    manifests = await loader.loadManifests(entryPath);
+    const graph = await loader.loadGraph(entryPath);
+    if (graph.errors.length > 0) {
+      const first = graph.errors[0];
+      throw first.error;
+    }
+    const manifests = flattenForAnalyzer(graph);
+    const diagnostics = new StaticAnalyzer().analyze(manifests);
+    return formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
   } catch (err) {
     const sourceLine = (err as any).sourceLine as number | undefined;
     const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
@@ -27,9 +33,6 @@ async function checkOne(
     );
     return { errorCount: 1, warnCount: 0 };
   }
-
-  const diagnostics = new StaticAnalyzer().analyze(manifests);
-  return formatAnalysisDiagnostics(diagnostics, manifests, log, entryPath);
 }
 
 export async function check(argv: { paths: string[] }): Promise<void> {
