@@ -32,6 +32,11 @@ export interface NormalizedDiagnostic {
   source: string;
   message: string;
   suggestions?: Array<{ kind: "replace-kind"; replacement: string }>;
+  /** Preserved verbatim from the source `AnalysisDiagnostic`. Carries
+   *  resource/path stamps that downstream UIs (popovers, "at <path>" hints,
+   *  CodeAction wiring) read after normalization. Opaque on purpose so this
+   *  module doesn't pin a shape that the analyzer evolves over time. */
+  data?: unknown;
 }
 
 export interface DiagnosticContext {

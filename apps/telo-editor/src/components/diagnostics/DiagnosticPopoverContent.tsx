@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DiagnosticSeverity, type AnalysisDiagnostic, type Range } from "@telorun/analyzer";
+import { DiagnosticSeverity, type Range } from "@telorun/analyzer";
 import { UNKNOWN_FILE_KEY } from "../../analysis";
 import type { LocatedDiagnostic } from "../../diagnostics-aggregate";
 import { Button } from "../ui/button";
@@ -23,19 +23,13 @@ const SEVERITY_CHIP_CLASS: Record<DiagnosticSeverity, string> = {
   [DiagnosticSeverity.Hint]: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
 };
 
-function severityOf(d: AnalysisDiagnostic): DiagnosticSeverity {
-  return d.severity ?? DiagnosticSeverity.Error;
-}
-
 function basename(path: string): string {
   const ix = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return ix >= 0 ? path.slice(ix + 1) : path;
 }
 
-function formatLocation(filePath: string, range: Range | undefined): string {
-  const name = basename(filePath);
-  if (!range) return name;
-  return `${name}:${range.start.line + 1}:${range.start.character + 1}`;
+function formatLocation(filePath: string, range: Range): string {
+  return `${basename(filePath)}:${range.start.line + 1}:${range.start.character + 1}`;
 }
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -60,8 +54,7 @@ function DiagnosticBlock({
   onNavigate?: (filePath: string, range?: Range) => void;
 }) {
   const { filePath, diagnostic: d } = located;
-  const sev = severityOf(d);
-  const sevLabel = SEVERITY_LABEL[sev];
+  const sevLabel = SEVERITY_LABEL[d.severity];
   const isUnknown = filePath === UNKNOWN_FILE_KEY;
   const fieldPath =
     typeof (d.data as { path?: unknown } | undefined)?.path === "string"
@@ -72,11 +65,11 @@ function DiagnosticBlock({
     <div className="flex flex-col gap-1.5 text-xs">
       <div className="flex items-center gap-2">
         <span
-          className={`rounded px-1.5 py-0.5 text-[0.7rem] font-medium ${SEVERITY_CHIP_CLASS[sev]}`}
+          className={`rounded px-1.5 py-0.5 text-[0.7rem] font-medium ${SEVERITY_CHIP_CLASS[d.severity]}`}
         >
           {sevLabel}
         </span>
-        {d.code != null && (
+        {d.code && (
           <span className="font-mono text-[0.7rem] text-muted-foreground">{d.code}</span>
         )}
         {d.source && (
@@ -112,8 +105,8 @@ function DiagnosticBlock({
 function formatAll(diagnostics: LocatedDiagnostic[]): string {
   return diagnostics
     .map((l) => {
-      const sev = SEVERITY_LABEL[severityOf(l.diagnostic)];
-      const code = l.diagnostic.code != null ? ` ${l.diagnostic.code}` : "";
+      const sev = SEVERITY_LABEL[l.diagnostic.severity];
+      const code = l.diagnostic.code ? ` ${l.diagnostic.code}` : "";
       return `[${sev}${code}] ${l.diagnostic.message}`;
     })
     .join("\n\n");

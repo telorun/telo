@@ -1,11 +1,12 @@
-import { DiagnosticSeverity, type AnalysisDiagnostic } from "@telorun/analyzer";
+import { DiagnosticSeverity } from "@telorun/analyzer";
+import type { NormalizedDiagnostic } from "@telorun/ide-support";
 import { UNKNOWN_FILE_KEY, type WorkspaceDiagnostics } from "./analysis";
 import { normalizePath } from "./loader";
 import type { EditorState, ParsedManifest } from "./model";
 
 export interface LocatedDiagnostic {
   filePath: string;
-  diagnostic: AnalysisDiagnostic;
+  diagnostic: NormalizedDiagnostic;
 }
 
 export interface DiagnosticsSummary {
@@ -16,23 +17,13 @@ export interface DiagnosticsSummary {
   diagnostics: LocatedDiagnostic[];
 }
 
-/** Diagnostics without an explicit severity are treated as errors. Keeps
- *  unknown severities visually dominant rather than silently demoting them
- *  below real problems. */
-const DEFAULT_SEVERITY: DiagnosticSeverity = DiagnosticSeverity.Error;
-
-function severityOf(d: AnalysisDiagnostic): DiagnosticSeverity {
-  return d.severity ?? DEFAULT_SEVERITY;
-}
-
 function finalize(located: LocatedDiagnostic[]): DiagnosticsSummary | null {
   if (located.length === 0) return null;
-  let worst = severityOf(located[0].diagnostic);
+  let worst = located[0].diagnostic.severity;
   for (const l of located) {
-    const s = severityOf(l.diagnostic);
-    if (s < worst) worst = s;
+    if (l.diagnostic.severity < worst) worst = l.diagnostic.severity;
   }
-  located.sort((a, b) => severityOf(a.diagnostic) - severityOf(b.diagnostic));
+  located.sort((a, b) => a.diagnostic.severity - b.diagnostic.severity);
   return { worstSeverity: worst, count: located.length, diagnostics: located };
 }
 

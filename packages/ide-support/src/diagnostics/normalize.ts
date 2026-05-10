@@ -26,5 +26,6 @@ export function normalizeDiagnostic(
     source: d.source ?? "telo",
     message: d.message,
     ...(suggestions ? { suggestions } : {}),
+    ...(d.data !== undefined ? { data: d.data } : {}),
   };
 }

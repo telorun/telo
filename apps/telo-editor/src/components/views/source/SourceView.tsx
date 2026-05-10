@@ -1,7 +1,4 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import type { PositionIndex } from "@telorun/analyzer";
-import { normalizeDiagnostic } from "@telorun/ide-support";
-import type { ResourceManifest } from "@telorun/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDiagnosticsContext } from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
@@ -263,21 +260,11 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
       ).flat();
       const diags = [...fileBucket, ...resourceBuckets];
 
-      const markers = diags.map((d) => {
-        const name = (d.data as { resource?: { name?: string } } | undefined)?.resource?.name;
-        const m: ResourceManifest | undefined = name
-          ? workspaceDiagnostics.manifestsByResource.get(`${file.filePath}::${name}`)
-          : undefined;
-        const meta = m?.metadata as
-          | { positionIndex?: PositionIndex; sourceLine?: number }
-          | undefined;
-        const normalized = normalizeDiagnostic(d, {
-          registry: workspaceDiagnostics.registry,
-          positionIndex: meta?.positionIndex,
-          sourceLine: meta?.sourceLine,
-        });
-        return toMonacoMarker(normalized, monaco);
-      });
+      // Diagnostics arrive pre-normalized from analyzeWorkspace, so the
+      // resolved range / severity already reflects the same fallback chain
+      // the VS Code extension uses. Just hand each one to the Monaco-marker
+      // converter — no per-marker re-resolution needed.
+      const markers = diags.map((d) => toMonacoMarker(d, monaco));
 
       monaco.editor.setModelMarkers(model, "telo", markers);
     }
