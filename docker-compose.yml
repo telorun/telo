@@ -29,6 +29,10 @@ services:
       target: ${DOCKER_TARGET:-development}
     volumes:
       - .:/app
+      # Anonymous volume overlay: telo writes its install cache here at boot.
+      # Without this, root-owned files leak into the host bind mount and break
+      # subsequent non-docker steps (e.g. CI's bun-direct `test:e2e`).
+      - /app/apps/registry/.telo
     working_dir: /app
     environment:
       DB_CONNECTION: "postgres://postgres:postgres@db/registry"

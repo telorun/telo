@@ -45,6 +45,14 @@ export type ControllerLoaderEmit = (event: ControllerLoaderEvent) => void | Prom
 
 export interface ControllerLoaderOptions {
   emit?: ControllerLoaderEmit;
+  /**
+   * URL of the entry manifest. The npm-loader anchors a single per-manifest
+   * `<entry-dir>/.telo/npm/` install tree here, so every controller — registry
+   * tag or `local_path` — resolves through the same `node_modules`. Required
+   * for `pkg:npm` candidates; absent for callers that only resolve `pkg:cargo`
+   * (cargo loader has its own per-crate cache and does not need this).
+   */
+  entryUrl?: string;
 }
 
 /**
@@ -65,12 +73,14 @@ export interface ControllerLoaderOptions {
  * `ControllerLoadFailed`) for the one that won.
  */
 export class ControllerLoader {
-  private npmLoader = new NpmControllerLoader();
-  private napiLoader = new NapiControllerLoader();
-  private emit?: ControllerLoaderEmit;
+  private readonly emit: ControllerLoaderEmit | undefined;
+  private readonly npmLoader: NpmControllerLoader;
+  private readonly napiLoader: NapiControllerLoader;
 
   constructor(options: ControllerLoaderOptions = {}) {
     this.emit = options.emit;
+    this.npmLoader = new NpmControllerLoader({ entryUrl: options.entryUrl });
+    this.napiLoader = new NapiControllerLoader();
   }
 
   async load(

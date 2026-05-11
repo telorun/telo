@@ -5,6 +5,7 @@ tmp/
 .DS_Store
 Thumbs.db
 .telo-debug/
+.telo/
 .cache
 .env.local
 /.env

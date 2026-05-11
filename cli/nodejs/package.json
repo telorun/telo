@@ -39,7 +39,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "tsc",
-    "prepack": "cp ../../LICENSE . && cp ../README.md .",
+    "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {

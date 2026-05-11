@@ -47,6 +47,7 @@ class ResourceDefinition implements ResourceInstance {
     // here at the call site.
     const loader = new ControllerLoader({
       emit: (e) => ctx.emit(e.name, e.payload),
+      entryUrl: ctx.getEntryUrl(),
     });
     const controllerInstance = await loader.load(
       this.resource.controllers,

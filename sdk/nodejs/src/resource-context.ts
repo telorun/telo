@@ -70,6 +70,19 @@ export interface ResourceContext extends ControllerContext {
    * `runtime:`). Consumers should treat undefined as "auto."
    */
   getControllerPolicy(): ControllerPolicy | undefined;
+  /**
+   * URL of the entry manifest the kernel is running, or `undefined` if the
+   * kernel hasn't loaded a manifest yet. Stable for the lifetime of the
+   * kernel process once set; identical across every resource regardless of
+   * which imported library defined it. Controllers (and the controller-loader)
+   * anchor per-manifest install roots here so a single `node_modules` tree
+   * and one realpath for `@telorun/sdk` are shared by every controller in
+   * the process. The `undefined` case shows up only for callers that bypass
+   * `Kernel.load()` (e.g. early in test setup); resource controllers always
+   * see a defined value because their `init()` runs after `load()` has
+   * recorded it.
+   */
+  getEntryUrl(): string | undefined;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

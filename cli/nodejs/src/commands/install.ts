@@ -2,6 +2,7 @@ import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
 import { ControllerLoader, LocalFileSource } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
 
@@ -74,7 +75,14 @@ async function installOne(inputPath: string, log: Logger): Promise<boolean> {
 
   console.log(`Installing ${jobs.length} controller${jobs.length !== 1 ? "s" : ""} for ${log.dim(displayPath)}`);
 
-  const controllerLoader = new ControllerLoader();
+  // The install root is anchored at the entry manifest's directory, mirroring
+  // how `kernel.load(...)` records the entry URL at run time. Every controller
+  // — registry or `local_path` — resolves through `<entry-dir>/.telo/npm/`,
+  // giving the kernel and all controllers one realpath for `@telorun/sdk`.
+  // pathToFileURL handles non-ASCII bytes and Windows drive letters
+  // correctly; bare `file://` concatenation breaks on either.
+  const entryUrl = isUrl ? entryPath : pathToFileURL(entryPath).toString();
+  const controllerLoader = new ControllerLoader({ entryUrl });
   const started = Date.now();
   const results = await Promise.allSettled(
     jobs.map((job) => controllerLoader.load(job.purls, job.baseUri)),

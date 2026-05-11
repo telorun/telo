@@ -4,6 +4,7 @@
 !analyzer/nodejs
 !templating/nodejs
 !sdk/nodejs
+!scripts
 !packages/ide-support
 !package.json
 !pnpm-*
