@@ -27,23 +27,6 @@ export function buildDocumentPositions(
   }));
 }
 
-/** Attaches `positionIndex` to `metadata` as a non-enumerable property so it
- *  is invisible to spread, JSON.stringify, and schema validation, but still
- *  accessible via `(m.metadata as any).positionIndex`. Mutates and returns
- *  `metadata` for convenient chaining. */
-export function attachPositionIndex<M extends object>(
-  metadata: M,
-  positionIndex: PositionIndex,
-): M {
-  Object.defineProperty(metadata, "positionIndex", {
-    value: positionIndex,
-    enumerable: false,
-    writable: true,
-    configurable: true,
-  });
-  return metadata;
-}
-
 /** Line numbers (0-indexed) where each YAML document in a multi-doc file
  *  starts. The first document is always at line 0; subsequent entries point
  *  to the line after each `---` directive. */

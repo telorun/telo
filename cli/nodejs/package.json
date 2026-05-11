@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
+    "@telorun/ide-support": "workspace:*",
     "@telorun/kernel": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",

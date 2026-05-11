@@ -3,7 +3,7 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { minimatch } from "minimatch";
-import { Loader, StaticAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -193,8 +193,8 @@ export async function canonicalizeRelativeImports(
     if (!source.startsWith(".") && !source.startsWith("/")) continue;
 
     const targetUrl = localFileSource.resolveRelative(baseUrl, source);
-    const targetManifests = await loader.loadModule(targetUrl);
-    const lib = targetManifests.find((m) => m.kind === "Telo.Library");
+    const targetLoaded = await loader.loadModule(targetUrl);
+    const lib = targetLoaded.owner.manifests.find((m) => m?.kind === "Telo.Library");
     if (!lib) {
       throw new Error(
         `Telo.Import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
@@ -471,9 +471,10 @@ async function publishOne(
   // in partial files — all before the artifact reaches the registry.
   const localFileSource = new LocalFileSource();
   const analysisLoader = new Loader([localFileSource]);
-  let analysisManifests;
+  let analysisGraph;
   try {
-    analysisManifests = await analysisLoader.loadManifests(filePath);
+    analysisGraph = await analysisLoader.loadGraph(filePath);
+    if (analysisGraph.errors.length > 0) throw analysisGraph.errors[0].error;
   } catch (err) {
     console.error(
       log.error("error") +
@@ -481,8 +482,9 @@ async function publishOne(
     );
     return false;
   }
+  const analysisManifests = flattenForAnalyzer(analysisGraph);
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
-  const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisManifests, log, filePath);
+  const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisGraph, log, filePath);
   if (errorCount > 0) {
     return false;
   }

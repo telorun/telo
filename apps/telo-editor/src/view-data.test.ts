@@ -22,7 +22,18 @@ function makeWorkspace(entries: Array<{ path: string; text: string; parseError?:
   const documents = new Map<string, ModuleDocument>();
   for (const { path, text, parseError } of entries) {
     const base = parseModuleDocument(path, text);
-    documents.set(path, parseError ? { ...base, parseError } : base);
+    documents.set(
+      path,
+      parseError
+        ? {
+            ...base,
+            loaded: {
+              ...base.loaded,
+              parseErrors: [{ documentIndex: 0, message: parseError }],
+            },
+          }
+        : base,
+    );
   }
   return {
     rootDir: "/ws",

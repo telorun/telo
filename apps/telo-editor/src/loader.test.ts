@@ -88,7 +88,7 @@ describe("saveModuleFromDocuments", () => {
 
     // Mutate the AST directly — simulates what Phase 3's applyEdit will do.
     const modDoc = workspace.documents.get("/ws/app/telo.yaml")!;
-    modDoc.docs[0].setIn(["port"], 9090);
+    modDoc.loaded.documents[0].setIn(["port"], 9090);
 
     const result = await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", adapter);
 
@@ -136,7 +136,7 @@ describe("saveModuleFromDocuments", () => {
 
     // Mutate only the partial file's AST.
     const partialDoc = workspace.documents.get("/ws/app/routes.yaml")!;
-    partialDoc.docs[0].setIn(["path"], "/home");
+    partialDoc.loaded.documents[0].setIn(["path"], "/home");
 
     await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", adapter);
 
@@ -154,10 +154,16 @@ describe("saveModuleFromDocuments", () => {
 
     // Force parseError on the ModuleDocument even though docs are fine.
     const modDoc = workspace.documents.get("/ws/app/telo.yaml")!;
-    workspace.documents.set("/ws/app/telo.yaml", { ...modDoc, parseError: "simulated" });
+    workspace.documents.set("/ws/app/telo.yaml", {
+      ...modDoc,
+      loaded: {
+        ...modDoc.loaded,
+        parseErrors: [{ documentIndex: 0, message: "simulated" }],
+      },
+    });
 
     // And mutate the AST so the equality guard wouldn't short-circuit.
-    modDoc.docs[0].setIn(["metadata", "name"], "renamed");
+    modDoc.loaded.documents[0].setIn(["metadata", "name"], "renamed");
 
     await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", adapter);
     expect(adapter.writeFile).not.toHaveBeenCalled();

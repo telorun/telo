@@ -6,6 +6,7 @@ import type {
   ParsedManifest,
   Workspace,
 } from "./model";
+import { moduleParseError } from "./yaml-document";
 
 /**
  * Builds the stable view data contract from application state.
@@ -62,20 +63,22 @@ function collectSourceFiles(workspace: Workspace, manifest: ParsedManifest): Mod
   const out: ModuleSourceFile[] = [];
   const ownerDoc = workspace.documents.get(ownerKey);
   if (ownerDoc) {
+    const err = moduleParseError(ownerDoc);
     out.push({
       filePath: ownerDoc.filePath,
-      text: ownerDoc.text,
-      ...(ownerDoc.parseError ? { parseError: ownerDoc.parseError } : {}),
+      text: ownerDoc.loaded.text,
+      ...(err ? { parseError: err } : {}),
     });
   }
 
   for (const key of [...partialKeys].sort()) {
     const doc = workspace.documents.get(key);
     if (!doc) continue;
+    const err = moduleParseError(doc);
     out.push({
       filePath: doc.filePath,
-      text: doc.text,
-      ...(doc.parseError ? { parseError: doc.parseError } : {}),
+      text: doc.loaded.text,
+      ...(err ? { parseError: err } : {}),
     });
   }
 

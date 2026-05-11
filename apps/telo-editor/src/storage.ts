@@ -22,8 +22,19 @@ interface PersistedState {
 export function saveState(state: EditorState): void {
   if (typeof window === "undefined") return;
   try {
+    // Only overwrite the persisted `rootDir` when state has a workspace.
+    // A transient null (init failure, error state, async-load gap) must not
+    // clobber the last-known rootDir — that would lose the auto-restore
+    // hint and silently strand the user's localStorage workspace files.
+    let prev: PersistedState | null = null;
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) prev = JSON.parse(raw) as PersistedState;
+    } catch {
+      // ignore — treat as no prior state
+    }
     const persisted: PersistedState = {
-      rootDir: state.workspace?.rootDir ?? null,
+      rootDir: state.workspace?.rootDir ?? prev?.rootDir ?? null,
       activeModulePath: state.activeModulePath,
       activeView: state.activeView,
     };
@@ -38,16 +49,32 @@ export function loadPersistedState(): PersistedState | null {
   try {
     for (const legacy of LEGACY_KEYS) localStorage.removeItem(legacy);
     const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as PersistedState;
+    const data = raw ? (JSON.parse(raw) as PersistedState) : null;
     return {
-      rootDir: data.rootDir ?? null,
-      activeModulePath: data.activeModulePath ?? null,
-      activeView: data.activeView && VALID_VIEWS.has(data.activeView) ? data.activeView : "topology",
+      rootDir: data?.rootDir ?? detectStoredWorkspaceRoot(),
+      activeModulePath: data?.activeModulePath ?? null,
+      activeView:
+        data?.activeView && VALID_VIEWS.has(data.activeView) ? data.activeView : "topology",
     };
   } catch {
     return null;
   }
+}
+
+/** Best-effort recovery hint: if any `telo-editor-workspace:` keys exist
+ *  under `/workspace` (the LocalStorageAdapter's default root in
+ *  `openWorkspaceDirectory`), return `/workspace` so the editor offers to
+ *  reopen them. Covers the recovery case where the persisted `rootDir`
+ *  hint was lost (init-time error, partial migration, etc.) but the user's
+ *  workspace files are still stored in localStorage. */
+function detectStoredWorkspaceRoot(): string | null {
+  if (typeof window === "undefined") return null;
+  const PREFIX = "telo-editor-workspace:/workspace/";
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const k = window.localStorage.key(i);
+    if (k && k.startsWith(PREFIX)) return "/workspace";
+  }
+  return null;
 }
 
 export function clearState(): void {

@@ -1,22 +1,29 @@
-import { defaultCustomTags } from "@telorun/templating";
-import { Document, isDocument, isNode, isScalar, parseAllDocuments } from "yaml";
+import { parseLoadedFile, type LoadedFile } from "@telorun/analyzer";
+import { Document, isDocument, isNode, isScalar } from "yaml";
 import type { ModuleDocument } from "./model";
 
-/** Parses file text into a ModuleDocument. Captures `loadedJson` — the
- *  semantic snapshot of each doc's `.toJSON()` output at parse time — used
- *  later as the oracle for no-op save detection. If any document has errors,
- *  `parseError` is populated with their joined messages; `docs` is still
- *  returned so downstream code can show the last-good state in the source
- *  view while the user fixes the issue. */
+/** Parses file text into a ModuleDocument. Wraps the analyzer's
+ *  `parseLoadedFile` so the editor and the analyzer Loader produce identical
+ *  parse results. */
 export function parseModuleDocument(filePath: string, text: string): ModuleDocument {
-  const docs = parseAllDocuments(text, { customTags: defaultCustomTags() }) as Document[];
-  const errors: string[] = [];
-  for (const d of docs) {
-    for (const e of d.errors) errors.push(e.message);
-  }
-  const loadedJson = docs.map((d) => d.toJSON());
-  const base: ModuleDocument = { filePath, text, docs, loadedJson };
-  return errors.length ? { ...base, parseError: errors.join("; ") } : base;
+  return moduleDocumentFromLoaded(filePath, parseLoadedFile(filePath, filePath, text));
+}
+
+/** Wrap a `LoadedFile` as a `ModuleDocument`. Used by both
+ *  `parseModuleDocument` (text-driven) and the workspace loader (which
+ *  receives `LoadedFile`s straight from the analyzer Loader). */
+export function moduleDocumentFromLoaded(
+  filePath: string,
+  loaded: LoadedFile,
+): ModuleDocument {
+  return { filePath, loaded, dirty: false };
+}
+
+/** Concatenated parse-error message, or `undefined` if the file parsed
+ *  cleanly. Mirrors the legacy `parseError?: string` field's semantics. */
+export function moduleParseError(modDoc: ModuleDocument): string | undefined {
+  if (modDoc.loaded.parseErrors.length === 0) return undefined;
+  return modDoc.loaded.parseErrors.map((e) => e.message).join("; ");
 }
 
 /** Serializes a multi-document AST back to YAML text. Every document is

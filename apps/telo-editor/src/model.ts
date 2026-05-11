@@ -1,5 +1,4 @@
-import type { Range } from "@telorun/analyzer";
-import type { Document } from "yaml";
+import type { LoadedFile, Range } from "@telorun/analyzer";
 import type { WorkspaceDiagnostics } from "./analysis";
 
 export interface RegistryServer {
@@ -80,33 +79,21 @@ export interface ParsedResource {
 }
 
 /** Per-file YAML AST record. Pairs each workspace file with its parsed
- *  multi-document AST and the exact source text read from or written to disk.
- *  The AST preserves comments, formatting, and arbitrary documents (including
- *  ones with no `kind` field); mutating the AST and re-serializing via the
- *  `yaml` library's `Document#toString()` is how the editor writes changes
- *  back without destroying user-authored content. */
+ *  multi-document AST and the source text — both held inside a `LoadedFile`
+ *  produced by `parseLoadedFile` / `Loader.loadFile`.
+ *
+ *  After an AST edit, the Documents inside `loaded.documents` are mutated
+ *  in place; `loaded.text` / `loaded.manifests` / `loaded.positions` keep
+ *  the load-time snapshot (the oracle for the no-op-save guard). On save
+ *  the file is serialized and re-parsed, producing a fresh `loaded`. */
 export interface ModuleDocument {
   filePath: string;
-  /** Exact source text last read from or written to disk. Used to bootstrap
-   *  the source view without re-serializing and to recover the original text
-   *  when a parse fails. */
-  text: string;
-  /** Multi-document AST. Empty when `parseError` is set. */
-  docs: Document[];
-  /** Semantic snapshot of `docs.map(d => d.toJSON())` at load time. Oracle
-   *  for the no-op save guard: compared against the current AST's `.toJSON()`
-   *  to decide whether to write on save. Does not include comments.
-   *
-   *  STABILITY ASSUMPTION: `toJSON()` output must be stable across `yaml`
-   *  library versions for this guard to be correct. A library upgrade that
-   *  changes scalar-type coercion or merge-key handling could cause
-   *  `loadedJson` captured under the old version to diverge from a re-parse
-   *  under the new version, triggering spurious reformats on first save. */
-  loadedJson: unknown[];
-  /** Non-null when parsing failed (syntax error, or any `Document` had
-   *  non-empty `errors[]`). The entry is still created so the source view
-   *  stays operable and the user can fix the file. */
-  parseError?: string;
+  /** Canonical parse result. Single source of truth for the AST, text,
+   *  manifests, positions, and parse errors. */
+  loaded: LoadedFile;
+  /** True when the AST has been mutated since the last load/save and the
+   *  on-disk text no longer matches the current document state. */
+  dirty: boolean;
 }
 
 /** A workspace is a directory tree on disk containing one or more modules.

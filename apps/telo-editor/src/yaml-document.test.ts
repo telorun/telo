@@ -5,6 +5,7 @@ import {
   applyEdit,
   diffFields,
   findDocForResource,
+  moduleParseError,
   parseModuleDocument,
   removeImportDocument,
   removeResourceDocument,
@@ -15,8 +16,8 @@ describe("parseModuleDocument with templating tags", () => {
   it("resolves a !cel-tagged scalar to a sentinel object in loadedJson", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel 'variables.port'\n";
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    expect(modDoc.parseError).toBeUndefined();
-    expect(modDoc.loadedJson[0]).toEqual({
+    expect(moduleParseError(modDoc)).toBeUndefined();
+    expect(modDoc.loaded.manifests[0]).toEqual({
       kind: "Foo",
       metadata: { name: "m" },
       expr: { __tagged: true, engine: "cel", source: "variables.port" },
@@ -26,7 +27,7 @@ describe("parseModuleDocument with templating tags", () => {
   it("resolves a !literal-tagged scalar to a sentinel that preserves ${{ }} verbatim", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !literal 'Hello ${{ x }}'\n";
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    expect(modDoc.loadedJson[0]).toEqual({
+    expect(modDoc.loaded.manifests[0]).toEqual({
       kind: "Foo",
       metadata: { name: "m" },
       expr: { __tagged: true, engine: "literal", source: "Hello ${{ x }}" },
@@ -36,7 +37,7 @@ describe("parseModuleDocument with templating tags", () => {
   it("round-trips !cel and !literal tags through serialize → parse", () => {
     const text =
       "kind: Foo\nmetadata:\n  name: m\ncel: !cel 'variables.port'\nlit: !literal 'Hello ${{ x }}'\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const out = serializeModuleDocument(docs);
     expect(out).toContain("!cel");
     expect(out).toContain("variables.port");
@@ -44,13 +45,13 @@ describe("parseModuleDocument with templating tags", () => {
     expect(out).toContain("Hello ${{ x }}");
     // Re-parse the serialized output and confirm the sentinels survive.
     const reparsed = parseModuleDocument("/ws/telo.yaml", out);
-    expect(reparsed.parseError).toBeUndefined();
-    expect((reparsed.loadedJson[0] as Record<string, unknown>).cel).toEqual({
+    expect(moduleParseError(reparsed)).toBeUndefined();
+    expect((reparsed.loaded.manifests[0] as Record<string, unknown>).cel).toEqual({
       __tagged: true,
       engine: "cel",
       source: "variables.port",
     });
-    expect((reparsed.loadedJson[0] as Record<string, unknown>).lit).toEqual({
+    expect((reparsed.loaded.manifests[0] as Record<string, unknown>).lit).toEqual({
       __tagged: true,
       engine: "literal",
       source: "Hello ${{ x }}",
@@ -63,12 +64,12 @@ describe("parseModuleDocument", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
     const modDoc = parseModuleDocument("/ws/app/telo.yaml", text);
     expect(modDoc.filePath).toBe("/ws/app/telo.yaml");
-    expect(modDoc.text).toBe(text);
-    expect(modDoc.docs).toHaveLength(1);
-    expect(modDoc.loadedJson).toEqual([
+    expect(modDoc.loaded.text).toBe(text);
+    expect(modDoc.loaded.documents).toHaveLength(1);
+    expect(modDoc.loaded.manifests).toEqual([
       { kind: "Telo.Application", metadata: { name: "app" } },
     ]);
-    expect(modDoc.parseError).toBeUndefined();
+    expect(moduleParseError(modDoc)).toBeUndefined();
   });
 
   it("parses multi-document files into separate docs", () => {
@@ -84,12 +85,12 @@ describe("parseModuleDocument", () => {
       "",
     ].join("\n");
     const modDoc = parseModuleDocument("/ws/app/telo.yaml", text);
-    expect(modDoc.docs).toHaveLength(2);
-    expect(modDoc.loadedJson[0]).toEqual({
+    expect(modDoc.loaded.documents).toHaveLength(2);
+    expect(modDoc.loaded.manifests[0]).toEqual({
       kind: "Telo.Application",
       metadata: { name: "app" },
     });
-    expect(modDoc.loadedJson[1]).toEqual({
+    expect(modDoc.loaded.manifests[1]).toEqual({
       kind: "Http.Server",
       metadata: { name: "main" },
       port: 8080,
@@ -106,15 +107,15 @@ describe("parseModuleDocument", () => {
       "",
     ].join("\n");
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    expect(modDoc.docs).toHaveLength(2);
-    expect(modDoc.loadedJson[1]).toEqual({ just: "some data" });
+    expect(modDoc.loaded.documents).toHaveLength(2);
+    expect(modDoc.loaded.manifests[1]).toEqual({ just: "some data" });
   });
 
   it("flags parse failures via parseError but still exposes the (best-effort) docs", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: [unclosed\n";
     const modDoc = parseModuleDocument("/ws/broken.yaml", text);
-    expect(modDoc.parseError).toBeTruthy();
-    expect(modDoc.docs.length).toBeGreaterThanOrEqual(1);
+    expect(moduleParseError(modDoc)).toBeTruthy();
+    expect(modDoc.loaded.documents.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -136,11 +137,11 @@ describe("serializeModuleDocument", () => {
       "",
     ].join("\n");
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    const out = serializeModuleDocument(modDoc.docs);
+    const out = serializeModuleDocument(modDoc.loaded.documents);
 
     // Semantic content must survive unchanged.
     const reparsed = parseModuleDocument("/ws/telo.yaml", out);
-    expect(reparsed.loadedJson).toEqual(modDoc.loadedJson);
+    expect(reparsed.loaded.manifests).toEqual(modDoc.loaded.manifests);
 
     // Comments must survive — string-search rather than byte-compare, since
     // the first serialization is allowed to reformat whitespace/quoting.
@@ -152,7 +153,7 @@ describe("serializeModuleDocument", () => {
   it("emits --- separators between every document", () => {
     const text = "kind: A\n---\nkind: B\n";
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    const out = serializeModuleDocument(modDoc.docs);
+    const out = serializeModuleDocument(modDoc.loaded.documents);
     // Two `---` markers: one before doc[0], one between docs.
     expect(out.match(/^---$/gm)?.length).toBe(2);
   });
@@ -160,8 +161,8 @@ describe("serializeModuleDocument", () => {
   it("is idempotent across successive serializations when nothing is mutated", () => {
     const text = "kind: Foo\nmetadata:\n  name: a\n";
     const modDoc = parseModuleDocument("/ws/telo.yaml", text);
-    const once = serializeModuleDocument(modDoc.docs);
-    const twice = serializeModuleDocument(modDoc.docs);
+    const once = serializeModuleDocument(modDoc.loaded.documents);
+    const twice = serializeModuleDocument(modDoc.loaded.documents);
     expect(twice).toBe(once);
   });
 });
@@ -176,7 +177,7 @@ describe("applyEdit", () => {
       "port: 8080",
       "",
     ].join("\n");
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "set", pointer: "/port", value: 9090 });
     const out = serializeModuleDocument(next);
     expect(out).toContain("port: 9090");
@@ -186,7 +187,7 @@ describe("applyEdit", () => {
 
   it("deletes a key via op: delete", () => {
     const text = "kind: Http.Server\nmetadata:\n  name: m\nport: 8080\ntls: true\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "delete", pointer: "/tls" });
     expect(next[0].toJSON()).toEqual({
       kind: "Http.Server",
@@ -197,7 +198,7 @@ describe("applyEdit", () => {
 
   it("renames a key via op: rename", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nold: value\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "rename", pointer: "/old", newKey: "new" });
     expect(next[0].toJSON()).toEqual({
       kind: "Foo",
@@ -208,7 +209,7 @@ describe("applyEdit", () => {
 
   it("appends to an array via op: insert with `-` trailing segment", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nitems:\n  - a\n  - b\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "insert", pointer: "/items/-", value: "c" });
     expect(next[0].toJSON()).toEqual({
       kind: "Foo",
@@ -219,7 +220,7 @@ describe("applyEdit", () => {
 
   it("returns a fresh outer array reference for React ref equality", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nport: 1\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "set", pointer: "/port", value: 2 });
     expect(next).not.toBe(docs);
     expect(next[0]).toBe(docs[0]); // same doc object — in-place mutation
@@ -227,7 +228,7 @@ describe("applyEdit", () => {
 
   it("setTag attaches a YAML tag to a scalar that round-trips on serialize", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nexpr: variables.port\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "setTag", pointer: "/expr", tag: "!cel" });
     const out = serializeModuleDocument(next);
     expect(out).toContain("!cel");
@@ -236,7 +237,7 @@ describe("applyEdit", () => {
 
   it("setTag with null clears an existing tag", () => {
     const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel variables.port\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "setTag", pointer: "/expr", tag: null });
     const out = serializeModuleDocument(next);
     expect(out).not.toContain("!cel");
@@ -246,7 +247,7 @@ describe("applyEdit", () => {
     // The in-place path keeps tags naturally; this test exercises the
     // structural-replace path by changing a number to a string.
     const text = "kind: Foo\nmetadata:\n  name: m\nexpr: !cel 42\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = applyEdit(docs, 0, { op: "set", pointer: "/expr", value: "variables.port" });
     const out = serializeModuleDocument(next);
     expect(out).toContain("!cel");
@@ -323,7 +324,7 @@ describe("diffFields", () => {
 
     // Apply ops to a YAML doc and verify toJSON matches neu.
     const text = "kind: Foo\nmetadata:\n  name: m\nxs:\n  - 10\n  - 20\n  - 30\ny: hi\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     let current = docs;
     for (const op of ops) current = applyEdit(current, 0, op);
 
@@ -338,7 +339,7 @@ describe("diffFields", () => {
 describe("document-level helpers", () => {
   it("addResourceDocument appends to the end of docs", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = addResourceDocument(docs, "Http.Server", "main", { port: 8080 });
     expect(next).toHaveLength(2);
     expect(next[1].toJSON()).toEqual({
@@ -359,7 +360,7 @@ describe("document-level helpers", () => {
       "  name: main",
       "",
     ].join("\n");
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = removeResourceDocument(docs, "Http.Server", "main");
     expect(next).toHaveLength(1);
     expect(next[0].toJSON()).toMatchObject({ kind: "Telo.Application" });
@@ -367,7 +368,7 @@ describe("document-level helpers", () => {
 
   it("addImportDocument inserts after the module doc when no imports exist", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = addImportDocument(docs, "Lib", "../lib");
     expect(next).toHaveLength(2);
     expect(next[0].toJSON()).toMatchObject({ kind: "Telo.Application" });
@@ -394,7 +395,7 @@ describe("document-level helpers", () => {
       "  name: main",
       "",
     ].join("\n");
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = addImportDocument(docs, "B", "../b");
     // Module, Import A, NEW Import B, Http.Server
     expect(next).toHaveLength(4);
@@ -414,7 +415,7 @@ describe("document-level helpers", () => {
       "source: ../lib",
       "",
     ].join("\n");
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const next = removeImportDocument(docs, "Lib");
     expect(next).toHaveLength(1);
   });
@@ -436,7 +437,7 @@ describe("findDocForResource", () => {
       "  name: other",
       "",
     ].join("\n");
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     expect(findDocForResource(docs, "Http.Server", "main")).toBe(1);
     expect(findDocForResource(docs, "Http.Server", "other")).toBe(2);
     expect(findDocForResource(docs, "Telo.Application", "app")).toBe(0);
@@ -444,13 +445,13 @@ describe("findDocForResource", () => {
 
   it("returns undefined when no doc matches", () => {
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     expect(findDocForResource(docs, "Http.Server", "missing")).toBeUndefined();
   });
 
   it("skips kind-less docs without matching them", () => {
     const text = "just: data\n---\nkind: Http.Server\nmetadata:\n  name: main\n";
-    const { docs } = parseModuleDocument("/ws/telo.yaml", text);
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     expect(findDocForResource(docs, "Http.Server", "main")).toBe(1);
   });
 });

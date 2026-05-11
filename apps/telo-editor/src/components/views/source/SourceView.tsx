@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDiagnosticsContext } from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
-import { parseModuleDocument } from "../../../yaml-document";
+import { moduleParseError, parseModuleDocument } from "../../../yaml-document";
 import { toMonacoMarker } from "./markers";
 import { registerYamlCompletions } from "./register-completion";
 
@@ -305,16 +305,17 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
     // error aggregation into a `ModuleDocument` that is handed straight
     // to `onSourceEdit`, so the Editor doesn't re-parse.
     const moduleDoc = parseModuleDocument(filePath, text);
-    if (moduleDoc.parseError) {
+    const parseError = moduleParseError(moduleDoc);
+    if (parseError) {
       setTabStates((prev) => ({
         ...prev,
         [filePath]: {
           localText: text,
           dirty: true,
-          parseError: moduleDoc.parseError ?? null,
+          parseError,
         },
       }));
-      setMarker(filePath, moduleDoc.parseError ?? null);
+      setMarker(filePath, parseError);
       return;
     }
 

@@ -1,13 +1,17 @@
 import type { Environment } from "@marcbachmann/cel-js";
-import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
-import { defaultCustomTags } from "@telorun/templating";
-import { parseAllDocuments } from "yaml";
+import type { ResourceManifest } from "@telorun/sdk";
 import { HttpSource } from "./sources/http-source.js";
 import { RegistrySource } from "./sources/registry-source.js";
 import { buildCelEnvironment } from "./cel-environment.js";
+import type {
+  GraphLoadError,
+  ImportEdge,
+  LoadedFile,
+  LoadedGraph,
+  LoadedModule,
+} from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
-import { attachPositionIndex, buildDocumentPositions } from "./position-metadata.js";
-import { precompileDoc } from "./precompile.js";
+import { parseLoadedFile } from "./parse-loaded-file.js";
 import {
   DEFAULT_MANIFEST_FILENAME,
   type LoadOptions,
@@ -23,10 +27,11 @@ const SYSTEM_KINDS = new Set([
 ]);
 
 export class Loader {
-  private readonly moduleCache = new Map<
-    string,
-    { text: string; manifests: ResourceManifest[] }
-  >();
+  /** LoadedFile cache keyed by `${compile ? "compiled" : "raw"}:${source}`.
+   *  Same dual-keying as the legacy ResourceManifest[] cache: a compile-mode
+   *  caller (kernel) and a raw-mode caller (analyzer/editor) on the same file
+   *  get distinct entries, so neither sees the wrong manifest tree. */
+  private readonly fileCache = new Map<string, LoadedFile>();
 
   protected sources: ManifestSource[];
   private readonly celEnv: Environment;
@@ -66,91 +71,225 @@ export class Loader {
     return source;
   }
 
-  async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
+  // --- New API: returns LoadedFile / LoadedModule / LoadedGraph ----------
+
+  /** Read one file via the source chain and parse it into a LoadedFile.
+   *  The result is shared with `Loader.fileCache`. Callers that want a
+   *  private mutable copy must call `parseLoadedFile` directly with the
+   *  LoadedFile's `text`. */
+  async loadFile(url: string, options?: LoadOptions): Promise<LoadedFile> {
     const { text, source } = await this.pick(url).read(url);
     const cacheKey = `${options?.compile ? "compiled" : "raw"}:${source}`;
-    const cached = this.moduleCache.get(cacheKey);
-    if (cached && cached.text === text) {
-      return cloneManifestArray(cached.manifests);
+    const cached = this.fileCache.get(cacheKey);
+    if (cached && cached.text === text) return cached;
+
+    const loaded = parseLoadedFile(source, url, text, {
+      compile: options?.compile,
+      celEnv: this.celEnv,
+    });
+    this.fileCache.set(cacheKey, loaded);
+    return loaded;
+  }
+
+  /** Load an owner file plus every partial reachable through its `include:`
+   *  list. Globs are expanded via the owning source's `expandGlob`. The
+   *  partials list is empty when the owner declares no `include:`. */
+  async loadModule(url: string, options?: LoadOptions): Promise<LoadedModule> {
+    const owner = await this.loadFile(url, options);
+    this.assertSingleModuleDeclaration(owner);
+    this.assertNoSystemKindsInPartialContext(owner, /*isPartial*/ false);
+
+    const moduleManifest = owner.manifests.find((m) => m && isModuleKind(m.kind));
+    const includePatterns = (moduleManifest as { include?: string[] } | undefined)?.include;
+
+    if (!includePatterns?.length) return { owner, partials: [] };
+
+    const picked = this.pick(owner.source);
+    const includedFiles = await this.resolveIncludes(owner.source, includePatterns, picked);
+    const partials: LoadedFile[] = [];
+    for (const includedUrl of includedFiles) {
+      const partial = await this.loadFile(includedUrl, options);
+      this.assertNoSystemKindsInPartialContext(partial, /*isPartial*/ true);
+      partials.push(partial);
     }
 
-    const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
-    const rawDocs = parsedDocuments.map((d) => d.toJSON());
-    const positions = buildDocumentPositions(text, parsedDocuments);
+    return { owner, partials };
+  }
 
-    const resolved: ResourceManifest[] = [];
-    let docIdx = 0;
-    for (const rawDoc of rawDocs) {
-      const currentDocIdx = docIdx++;
-      const { sourceLine, positionIndex } = positions[currentDocIdx];
-      if (rawDoc === null || rawDoc === undefined) continue;
+  /** Load a module and every transitively-imported library. Returns the full
+   *  LoadedGraph: `entry`, `modules` keyed by canonical source, and
+   *  `importEdges` mapping each importing file's PascalCase aliases to their
+   *  target's canonical source. */
+  async loadGraph(entryUrl: string, options?: LoadOptions): Promise<LoadedGraph> {
+    const entry = await this.loadModule(entryUrl, options);
+    const rootSource = entry.owner.source;
 
-      let compiledDocs: unknown[];
-      if (options?.compile) {
-        try {
-          const result = precompileDoc(rawDoc, this.celEnv);
-          compiledDocs = Array.isArray(result) ? result : [result];
-        } catch (error) {
-          throw new Error(
-            `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,
-          );
+    const modules = new Map<string, LoadedModule>();
+    modules.set(rootSource, entry);
+    const importEdges = new Map<string, Map<string, ImportEdge>>();
+    const errors: GraphLoadError[] = [];
+
+    const queue: LoadedModule[] = [entry];
+    const visited = new Set<string>([rootSource]);
+
+    while (queue.length > 0) {
+      const mod = queue.shift()!;
+
+      for (const file of [mod.owner, ...mod.partials]) {
+        const aliases = importEdges.get(file.source) ?? new Map<string, ImportEdge>();
+
+        for (let i = 0; i < file.manifests.length; i++) {
+          const m = file.manifests[i];
+          if (!m || m.kind !== "Telo.Import") continue;
+          const importSource = (m as { source?: string }).source;
+          if (!importSource) continue;
+          const alias = m.metadata?.name as string | undefined;
+          if (!alias) continue;
+          // Source line of this Telo.Import doc — read from the LoadedFile's
+          // position table since `parseLoadedFile` doesn't stamp `sourceLine`
+          // onto manifest metadata. Used to pin import-resolution diagnostics
+          // to the line where the import was declared.
+          const sourceLine = file.positions[i]?.sourceLine ?? 0;
+
+          let resolvedTarget: string;
+          try {
+            resolvedTarget = this.resolveImportUrl(file.source, importSource);
+          } catch (err) {
+            errors.push({
+              url: importSource,
+              fromSource: file.source,
+              error: err instanceof Error ? err : new Error(String(err)),
+            });
+            continue;
+          }
+
+          // Resolve the file we'll fetch through the source chain to get the
+          // canonical `source` URL — same identity used as the modules-map key.
+          let targetCanonical: string;
+          let targetModule: LoadedModule | undefined;
+          if (modules.has(resolvedTarget)) {
+            targetCanonical = resolvedTarget;
+            targetModule = modules.get(resolvedTarget);
+          } else {
+            try {
+              const loaded = await this.loadModule(resolvedTarget, options);
+              targetCanonical = loaded.owner.source;
+              if (!modules.has(targetCanonical)) {
+                modules.set(targetCanonical, loaded);
+                targetModule = loaded;
+              } else {
+                targetModule = modules.get(targetCanonical);
+              }
+            } catch (err) {
+              const e = err instanceof Error ? err : new Error(String(err));
+              (e as { sourceLine?: number }).sourceLine = sourceLine;
+              errors.push({ url: resolvedTarget, fromSource: file.source, error: e });
+              continue;
+            }
+          }
+
+          // Resolve target identity from its Telo.Library doc and stamp it
+          // on the edge — flattenForAnalyzer reads from the edge directly,
+          // never re-deriving from manifest.metadata.
+          let targetModuleName: string | null = null;
+          let targetNamespace: string | null = null;
+          if (targetModule) {
+            const lib = targetModule.owner.manifests.find(
+              (d) => d?.kind === "Telo.Library",
+            );
+            const libName = lib?.metadata?.name;
+            if (typeof libName === "string") targetModuleName = libName;
+            const libNs = (lib?.metadata as { namespace?: string | null } | undefined)
+              ?.namespace;
+            if (typeof libNs === "string") targetNamespace = libNs;
+          }
+
+          aliases.set(alias, {
+            targetSource: targetCanonical,
+            targetModuleName,
+            targetNamespace,
+          });
+
+          if (targetModule && !visited.has(targetCanonical)) {
+            visited.add(targetCanonical);
+            this.assertImportTargetIsLibrary(targetModule, importSource, sourceLine);
+            queue.push(targetModule);
+          }
         }
-      } else {
-        compiledDocs = [rawDoc];
-      }
 
-      for (const doc of compiledDocs) {
-        if (doc === null || doc === undefined) continue;
-        const manifest = doc as ResourceManifest;
-        const metadata = attachPositionIndex(
-          { ...manifest.metadata, source, sourceLine },
-          positionIndex,
-        );
-        resolved.push({ ...manifest, metadata });
+        if (aliases.size > 0) importEdges.set(file.source, aliases);
       }
     }
 
-    const moduleManifests = resolved.filter((m) => isModuleKind(m.kind));
+    return { rootSource, entry, modules, importEdges, errors };
+  }
+
+  private resolveImportUrl(fromSource: string, importSource: string): string {
+    if (importSource.startsWith(".") || importSource.startsWith("/")) {
+      return this.pick(fromSource).resolveRelative(fromSource, importSource);
+    }
+    return importSource;
+  }
+
+  private assertSingleModuleDeclaration(file: LoadedFile): void {
+    const moduleManifests = file.manifests.filter(
+      (m): m is ResourceManifest => !!m && isModuleKind(m.kind),
+    );
     if (moduleManifests.length > 1) {
       const kinds = moduleManifests.map((m) => m.kind).join(", ");
       throw new Error(
-        `File '${source}' contains ${moduleManifests.length} module declarations (${kinds}). ` +
+        `File '${file.source}' contains ${moduleManifests.length} module declarations (${kinds}). ` +
           `A file may declare at most one Telo.Application or Telo.Library.`,
       );
     }
-    const moduleManifest = moduleManifests[0];
-    const moduleName = moduleManifest?.metadata?.name as string | undefined;
-    if (moduleName) {
-      for (const manifest of resolved) {
-        if (!isModuleKind(manifest.kind) && !manifest.metadata?.module) {
-          const pi = (manifest.metadata as any)?.positionIndex;
-          manifest.metadata = { ...manifest.metadata, module: moduleName };
-          if (pi) attachPositionIndex(manifest.metadata as object, pi);
-        }
+  }
+
+  private assertNoSystemKindsInPartialContext(file: LoadedFile, isPartial: boolean): void {
+    if (!isPartial) return;
+    for (const m of file.manifests) {
+      if (!m) continue;
+      const kind = m.kind;
+      if (typeof kind === "string" && SYSTEM_KINDS.has(kind)) {
+        throw new Error(
+          `Included file '${file.source}' contains '${kind}' which is not allowed in partial files. ` +
+            `Only the owner telo.yaml may declare ${kind} resources.`,
+        );
       }
     }
+  }
 
-    // Expand include directives — load partial files into the same module scope.
-    // Results with includes are NOT cached because partial file content is not
-    // tracked in the cache key — the cache would serve stale data if a partial changes.
-    let hasIncludes = false;
-    if (moduleManifest) {
-      const includePatterns = (moduleManifest as any).include as string[] | undefined;
-      if (includePatterns?.length) {
-        hasIncludes = true;
-        const picked = this.pick(source);
-        const includedFiles = await this.resolveIncludes(source, includePatterns, picked);
-        for (const includedUrl of includedFiles) {
-          const partialManifests = await this.loadPartialFile(includedUrl, moduleName, options);
-          resolved.push(...partialManifests);
-        }
-      }
+  private assertImportTargetIsLibrary(
+    target: LoadedModule,
+    importSource: string,
+    sourceLine: number,
+  ): void {
+    const importedLibrary = target.owner.manifests.find((m) => m?.kind === "Telo.Library");
+    const importedApplication = target.owner.manifests.find(
+      (m) => m?.kind === "Telo.Application",
+    );
+    if (importedApplication) {
+      const e = new Error(
+        `Telo.Import target '${importSource}' is a Telo.Application. ` +
+          `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
+      );
+      (e as { sourceLine?: number }).sourceLine = sourceLine;
+      throw e;
     }
-
-    if (!hasIncludes) {
-      this.moduleCache.set(cacheKey, { text, manifests: resolved });
+    if (!importedLibrary) {
+      const kinds = target.owner.manifests
+        .map((m) => m?.kind)
+        .filter((k): k is string => typeof k === "string");
+      const detail = kinds.length
+        ? `Fetched ${target.owner.manifests.length} document(s) with kinds [${kinds.join(", ")}].`
+        : `Fetched manifest contained no recognizable Telo documents — check that the source ` +
+          `serves a Telo.Library manifest and not an upstream error page.`;
+      const e = new Error(
+        `Telo.Import target '${importSource}' did not resolve to a Telo.Library. ` +
+          `Fetched from: ${target.owner.source}. ${detail}`,
+      );
+      (e as { sourceLine?: number }).sourceLine = sourceLine;
+      throw e;
     }
-    return cloneManifestArray(resolved);
   }
 
   private async resolveIncludes(
@@ -169,308 +308,39 @@ export class Loader {
       }
       return source.expandGlob(ownerSource, patterns);
     }
-    // Literal relative paths — deduplicate in case the same file appears under multiple patterns.
     return [...new Set(patterns.map((p) => source.resolveRelative(ownerSource, p)))];
   }
 
-  private async loadPartialFile(
-    url: string,
-    ownerModuleName: string | undefined,
-    options?: LoadOptions,
-  ): Promise<ResourceManifest[]> {
-    const { text, source } = await this.pick(url).read(url);
-
-    const parsedDocuments = parseAllDocuments(text, { customTags: defaultCustomTags() });
-    const rawDocs = parsedDocuments.map((d) => d.toJSON());
-    const positions = buildDocumentPositions(text, parsedDocuments);
-    const resolved: ResourceManifest[] = [];
-    let docIdx = 0;
-
-    for (const rawDoc of rawDocs) {
-      const currentDocIdx = docIdx++;
-      const { sourceLine, positionIndex } = positions[currentDocIdx];
-      if (rawDoc === null || rawDoc === undefined) continue;
-
-      const kind = rawDoc.kind as string | undefined;
-      if (kind && SYSTEM_KINDS.has(kind)) {
-        throw new Error(
-          `Included file '${source}' contains '${kind}' which is not allowed in partial files. ` +
-            `Only the owner telo.yaml may declare ${kind} resources.`,
-        );
-      }
-
-      let compiledDocs: unknown[];
-      if (options?.compile) {
-        try {
-          const result = precompileDoc(rawDoc, this.celEnv);
-          compiledDocs = Array.isArray(result) ? result : [result];
-        } catch (error) {
-          throw new Error(
-            `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      } else {
-        compiledDocs = [rawDoc];
-      }
-
-      for (const doc of compiledDocs) {
-        if (doc === null || doc === undefined) continue;
-        const manifest = doc as ResourceManifest;
-        const metadata = attachPositionIndex(
-          {
-            ...manifest.metadata,
-            source,
-            sourceLine,
-            ...(ownerModuleName && !manifest.metadata?.module ? { module: ownerModuleName } : {}),
-          },
-          positionIndex,
-        );
-        resolved.push({ ...manifest, metadata });
-      }
-    }
-
-    return resolved;
-  }
-
-  async loadModuleForFile(
+  /** Find the owning telo.yaml for `fileUrl` (or use it directly if it's an
+   *  owner) and return the `LoadedGraph` rooted at that owner. Returns
+   *  `null` only when `fileUrl` is neither an owner nor reachable from one
+   *  via parent-directory traversal. */
+  async loadGraphForFile(
     fileUrl: string,
-  ): Promise<{
-    ownerUrl: string;
-    manifests: ResourceManifest[];
-    sourceManifests: Map<string, ResourceManifest[]>;
-  } | null> {
-    // Try loading as a regular module first (it might be a telo.yaml itself).
-    // Use loadManifests (not loadModule) so imported definitions are included —
-    // otherwise the analyzer won't know about kinds from Telo.Import sources.
+  ): Promise<{ graph: LoadedGraph; ownerUrl: string } | null> {
     try {
-      const docs = await this.loadModule(fileUrl);
-      const hasModule = docs.some((d) => isModuleKind(d.kind));
-      if (hasModule) {
-        const { source } = await this.pick(fileUrl).read(fileUrl);
-        const manifests = await this.loadManifests(fileUrl);
-        return { ownerUrl: source, manifests, sourceManifests: groupBySource(manifests) };
+      const owner = await this.loadFile(fileUrl);
+      const isOwner = owner.manifests.some((m) => m && isModuleKind(m.kind));
+      if (isOwner) {
+        const graph = await this.loadGraph(fileUrl);
+        return { graph, ownerUrl: graph.rootSource };
       }
     } catch (err) {
-      // If the file looks like an owner manifest (named telo.yaml), rethrow —
-      // a broken owner shouldn't silently fall through to parent lookup.
       const normalized = fileUrl.replace(/\\/g, "/");
-      if (normalized.endsWith(`/${DEFAULT_MANIFEST_FILENAME}`) || normalized === DEFAULT_MANIFEST_FILENAME) {
+      if (
+        normalized.endsWith(`/${DEFAULT_MANIFEST_FILENAME}`) ||
+        normalized === DEFAULT_MANIFEST_FILENAME
+      ) {
         throw err;
       }
-      // Otherwise fall through to owner lookup — this is likely a partial file
     }
 
-    // Find the owning telo.yaml via parent-directory traversal
     const source = this.pick(fileUrl);
     if (!source.resolveOwnerOf) return null;
     const ownerUrl = await source.resolveOwnerOf(fileUrl);
     if (!ownerUrl) return null;
-
-    // Load the owner module (which will load included files via include expansion)
-    const manifests = await this.loadManifests(ownerUrl);
-    return { ownerUrl, manifests, sourceManifests: groupBySource(manifests) };
+    const graph = await this.loadGraph(ownerUrl);
+    return { graph, ownerUrl: graph.rootSource };
   }
 
-  async loadModuleGraph(
-    entryUrl: string,
-    onError?: (url: string, error: Error) => void,
-  ): Promise<Map<string, ResourceManifest[]>> {
-    const visited = new Set<string>([entryUrl]);
-    const result = new Map<string, ResourceManifest[]>();
-
-    const entry = await this.loadModule(entryUrl);
-    result.set(entryUrl, entry);
-
-    const queue: ResourceManifest[] = [...entry];
-
-    while (queue.length > 0) {
-      const m = queue.shift()!;
-      if (m.kind !== "Telo.Import") continue;
-      const importSource = (m as any).source as string | undefined;
-      if (!importSource) continue;
-      const base = (m.metadata as any)?.source ?? entryUrl;
-      const importUrl =
-        importSource.startsWith(".") || importSource.startsWith("/")
-          ? this.pick(base).resolveRelative(base, importSource)
-          : importSource;
-      if (visited.has(importUrl)) continue;
-      visited.add(importUrl);
-      let imported: ResourceManifest[];
-      try {
-        imported = await this.loadModule(importUrl);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(importUrl, error);
-        continue;
-      }
-      result.set(importUrl, imported);
-      for (const im of imported) {
-        if (im.kind === "Telo.Import") queue.push(im);
-      }
-    }
-
-    return result;
-  }
-
-  async loadManifests(entryUrl: string): Promise<ResourceManifest[]> {
-    const visited = new Set<string>([entryUrl]);
-    // Cache resolved library identity per import URL so a Telo.Import re-encountered
-    // through a different chain still gets `resolvedModuleName` / `resolvedNamespace`
-    // stamped — without re-loading the target. The early `visited` short-circuit used
-    // to silently leave duplicate Telo.Imports unstamped, which broke alias resolution
-    // when the same library was imported by two different files in the same analysis set.
-    const libraryIdentityByUrl = new Map<
-      string,
-      { name: string; namespace: string | null }
-    >();
-    const entry = await this.loadModule(entryUrl);
-
-    // Forward Telo.Definition, Telo.Abstract, AND Telo.Import docs from imported
-    // libraries to the analyzer so its downstream passes can see them:
-    //  - Definitions / Abstracts feed cross-package `x-telo-ref` resolution and
-    //    `extends` target validation.
-    //  - Imports feed the per-library alias resolver — alias-form `extends` inside
-    //    a library (e.g. ai-openai's `extends: Ai.Model`) resolves against THAT
-    //    library's own `Telo.Import` declarations, not the root manifest's. Without
-    //    forwarding the imports, importing such a library would surface a spurious
-    //    EXTENDS_MALFORMED for an alias the library legitimately uses internally.
-    // Alias resolution itself stays in the analyzer; the loader's only semantic
-    // action is stamping `resolvedModuleName` / `resolvedNamespace` — recording the
-    // result of loading. Identity is cached per URL (see libraryIdentityByUrl above)
-    // because the same library can be reached through multiple chains, and every
-    // Telo.Import doc — including the duplicates short-circuited by `visited` —
-    // must end up stamped, otherwise per-scope alias resolution falls back to a
-    // path-derived string (e.g. "abstract-lib.yaml") and produces wrong canonical
-    // kinds.
-    const importedDefs: ResourceManifest[] = [];
-    const queue: ResourceManifest[] = [...entry];
-
-    while (queue.length > 0) {
-      const m = queue.shift()!;
-      if (m.kind !== "Telo.Import") continue;
-      const importSource = (m as any).source as string | undefined;
-      if (!importSource) continue;
-      const base = (m.metadata as any)?.source ?? entryUrl;
-      const importUrl =
-        importSource.startsWith(".") || importSource.startsWith("/")
-          ? this.pick(base).resolveRelative(base, importSource)
-          : importSource;
-
-      if (!visited.has(importUrl)) {
-        visited.add(importUrl);
-        let imported: ResourceManifest[];
-        try {
-          imported = await this.loadModule(importUrl);
-        } catch (err) {
-          const e = err instanceof Error ? err : new Error(String(err));
-          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
-          throw e;
-        }
-        // Import target must be a Telo.Library. Check the Library branch
-        // explicitly rather than "anything that's a module kind" so that a
-        // future third kind can't silently slip past as a valid import target.
-        const importedLibrary = imported.find((im) => im.kind === "Telo.Library");
-        const importedApplication = imported.find((im) => im.kind === "Telo.Application");
-        if (importedApplication) {
-          const e = new Error(
-            `Telo.Import target '${importSource}' is a Telo.Application. ` +
-              `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
-          );
-          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
-          throw e;
-        }
-        if (!importedLibrary) {
-          const kinds = imported
-            .map((im) => im.kind)
-            .filter((k): k is string => typeof k === "string");
-          // Prefer the URL the source layer actually fetched (stamped onto every
-          // loaded manifest's metadata.source) over the raw input — for registry
-          // refs the input is e.g. "std/foo@1.0.0", not a URL.
-          const fetchedFrom =
-            ((imported[0]?.metadata as { source?: string } | undefined)?.source) ?? importUrl;
-          const detail = kinds.length
-            ? `Fetched ${imported.length} document(s) with kinds [${kinds.join(", ")}].`
-            : `Fetched manifest contained no recognizable Telo documents — check that the source ` +
-              `serves a Telo.Library manifest and not an upstream error page.`;
-          const e = new Error(
-            `Telo.Import target '${importSource}' did not resolve to a Telo.Library. ` +
-              `Fetched from: ${fetchedFrom}. ${detail}`,
-          );
-          (e as any).sourceLine = (m.metadata as any)?.sourceLine ?? 0;
-          throw e;
-        }
-        if (importedLibrary?.metadata?.name) {
-          libraryIdentityByUrl.set(importUrl, {
-            name: importedLibrary.metadata.name as string,
-            namespace: ((importedLibrary.metadata as any).namespace as string | null) ?? null,
-          });
-        }
-        for (const im of imported) {
-          if (
-            im.kind === "Telo.Definition" ||
-            im.kind === "Telo.Abstract" ||
-            im.kind === "Telo.Import"
-          ) {
-            importedDefs.push(im);
-          }
-          if (im.kind === "Telo.Import") queue.push(im);
-        }
-      }
-
-      // Stamp m with cached identity (works for both fresh and duplicate visits).
-      const identity = libraryIdentityByUrl.get(importUrl);
-      if (identity) {
-        const pi = (m.metadata as any)?.positionIndex;
-        m.metadata = {
-          ...m.metadata,
-          resolvedModuleName: identity.name,
-          resolvedNamespace: identity.namespace,
-        };
-        if (pi) attachPositionIndex(m.metadata as object, pi);
-      }
-    }
-
-    return [...entry, ...importedDefs];
-  }
 }
-
-function cloneManifestArray(manifests: ResourceManifest[]): ResourceManifest[] {
-  return manifests.map((manifest) => cloneManifestValue(manifest));
-}
-
-function cloneManifestValue<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((entry) => cloneManifestValue(entry)) as T;
-  }
-  if (isCompiledValue(value)) {
-    return value;
-  }
-  if (value !== null && typeof value === "object") {
-    const source = value as Record<string, unknown>;
-    const clone: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(source)) {
-      clone[key] = cloneManifestValue(entry);
-    }
-    const positionIndex = Object.getOwnPropertyDescriptor(source, "positionIndex");
-    if (positionIndex) {
-      Object.defineProperty(clone, "positionIndex", positionIndex);
-    }
-    return clone as T;
-  }
-  return value;
-}
-
-function groupBySource(manifests: ResourceManifest[]): Map<string, ResourceManifest[]> {
-  const map = new Map<string, ResourceManifest[]>();
-  for (const m of manifests) {
-    const src = (m.metadata?.source as string) ?? "unknown";
-    let list = map.get(src);
-    if (!list) {
-      list = [];
-      map.set(src, list);
-    }
-    list.push(m);
-  }
-  return map;
-}
-

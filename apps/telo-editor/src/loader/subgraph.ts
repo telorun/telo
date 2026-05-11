@@ -1,5 +1,5 @@
 import type { ManifestSource } from "@telorun/analyzer";
-import { Loader, isModuleKind } from "@telorun/analyzer";
+import { Loader, flattenLoadedModule, isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   ModuleDocument,
@@ -9,7 +9,7 @@ import type {
 } from "../model";
 import {
   addImportDocument,
-  parseModuleDocument,
+  moduleDocumentFromLoaded,
   removeImportDocument,
 } from "../yaml-document";
 import { normalizePath } from "./paths";
@@ -18,6 +18,7 @@ import { buildParsedManifest, classifyImport } from "./parse";
 import {
   buildResourceDocIndex,
   rebuildManifestFromDocuments,
+  withDocs,
   withModuleDocument,
 } from "./ast-ops";
 
@@ -56,69 +57,6 @@ function resolveDepPath(adapter: ManifestSource, filePath: string, source: strin
     : source;
 }
 
-/** Wraps a disk-backed ManifestSource so `read()` first checks a
- *  `ModuleDocument` map and serves the in-memory text when present. Falls
- *  through to disk for files not yet tracked (first load, imports, partials
- *  before Phase-1 post-processing adds them). All other adapter methods
- *  (`resolveRelative`, `expandGlob`, `resolveOwnerOf`) delegate to the disk
- *  adapter because glob expansion and path resolution still require real
- *  filesystem knowledge.
- *
- *  The map is passed by reference, so callers that mutate `documents` after
- *  constructing the adapter see the updates on subsequent `read()` calls —
- *  which is how Phase-1 post-processing populates partial ASTs mid-load. */
-export function createInMemoryManifestSource(
-  documents: Map<string, ModuleDocument>,
-  disk: ManifestSource,
-): ManifestSource {
-  return {
-    supports(url: string): boolean {
-      return disk.supports(url);
-    },
-    async read(url: string): Promise<{ text: string; source: string }> {
-      const doc = documents.get(normalizePath(url));
-      if (doc) return { text: doc.text, source: url };
-      return disk.read(url);
-    },
-    resolveRelative(base: string, relative: string): string {
-      return disk.resolveRelative(base, relative);
-    },
-    expandGlob: disk.expandGlob ? (base, patterns) => disk.expandGlob!(base, patterns) : undefined,
-    resolveOwnerOf: disk.resolveOwnerOf ? (url) => disk.resolveOwnerOf!(url) : undefined,
-  };
-}
-
-/** Combines a local disk adapter with registry/extra adapters into a single
- *  adapter whose `read()` routes each URL to the first adapter that `supports()`
- *  it (extras first, local last). Used when populating `ModuleDocument`s for
- *  imported modules — the local adapter alone can't read registry URLs, and
- *  `populateModuleDocument` only takes one adapter. */
-export function createChainedManifestSource(
-  localAdapter: ManifestSource,
-  extraAdapters: ManifestSource[],
-): ManifestSource {
-  return {
-    supports(url: string): boolean {
-      return extraAdapters.some((a) => a.supports(url)) || localAdapter.supports(url);
-    },
-    async read(url: string): Promise<{ text: string; source: string }> {
-      for (const a of extraAdapters) {
-        if (a.supports(url)) return a.read(url);
-      }
-      return localAdapter.read(url);
-    },
-    resolveRelative(base: string, relative: string): string {
-      return localAdapter.resolveRelative(base, relative);
-    },
-    expandGlob: localAdapter.expandGlob
-      ? (base, patterns) => localAdapter.expandGlob!(base, patterns)
-      : undefined,
-    resolveOwnerOf: localAdapter.resolveOwnerOf
-      ? (url) => localAdapter.resolveOwnerOf!(url)
-      : undefined,
-  };
-}
-
 export function createEditorLoader(
   localAdapter: ManifestSource,
   registryAdapters: ManifestSource[],
@@ -137,52 +75,6 @@ export function createEditorLoader(
 }
 
 // ---------------------------------------------------------------------------
-// Module document population
-// ---------------------------------------------------------------------------
-
-/** Reads a file's text and parses it into a ModuleDocument, storing the
- *  result under `normalizePath(filePath)`. Safe to call repeatedly with the
- *  same path; re-parsing replaces the previous entry. On read failure the
- *  ModuleDocument is omitted entirely (not stored as a stub) so downstream
- *  `documents.get(...)` miss-vs-hit semantics stay unambiguous. */
-export async function populateModuleDocument(
-  filePath: string,
-  documents: Map<string, ModuleDocument>,
-  adapter: ManifestSource,
-): Promise<void> {
-  const key = normalizePath(filePath);
-  try {
-    const { text } = await adapter.read(filePath);
-    documents.set(key, parseModuleDocument(filePath, text));
-  } catch (err) {
-    console.error(`Failed to read ${filePath} for ModuleDocument:`, err);
-  }
-}
-
-/** After loadModule returns, walk the ResourceManifest[] for distinct
- *  `metadata.source` values and populate a ModuleDocument for any source
- *  path not already tracked. This catches partial files expanded from
- *  `include:` patterns — they're not in `modulePaths` (scanWorkspace only
- *  finds telo.yaml files), so without this pass they'd have no AST entry
- *  and post-load edits that target resources in partials would fail. */
-export async function collectPartialDocuments(
-  docs: ResourceManifest[],
-  ownerPath: string,
-  documents: Map<string, ModuleDocument>,
-  adapter: ManifestSource,
-): Promise<void> {
-  const sources = new Set<string>();
-  for (const doc of docs) {
-    const src = (doc.metadata as { source?: unknown })?.source;
-    if (typeof src === "string" && src !== ownerPath) sources.add(src);
-  }
-  for (const src of sources) {
-    if (documents.has(normalizePath(src))) continue;
-    await populateModuleDocument(src, documents, adapter);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Module-level metadata read
 // ---------------------------------------------------------------------------
 
@@ -192,74 +84,12 @@ export async function readModuleMetadata(
 ): Promise<string | null> {
   try {
     const loader = createEditorLoader(adapter, []);
-    const docs = (await loader.loadModule(filePath)) as ResourceManifest[];
-    const moduleDoc = docs.find((d) => isModuleKind(d.kind));
-    return (moduleDoc?.metadata.name as string | undefined) ?? null;
+    const lm = await loader.loadModule(filePath);
+    const moduleDoc = lm.owner.manifests.find((m) => m && isModuleKind(m.kind));
+    return (moduleDoc?.metadata?.name as string | undefined) ?? null;
   } catch {
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Subgraph merging
-// ---------------------------------------------------------------------------
-
-/** Loads the sub-graph reachable from `entryPath` into the mutable maps and
- *  returns the actual root URL the entry resolved to (which may differ from
- *  the input — e.g. registry adapters expand to a full URL). All resources
- *  and graph edges in the sub-graph are added; nothing that already exists
- *  in the maps is overwritten. */
-async function mergeSubGraph(
-  entryPath: string,
-  modules: Map<string, ParsedManifest>,
-  importGraph: Map<string, Set<string>>,
-  importedBy: Map<string, Set<string>>,
-  documents: Map<string, ModuleDocument>,
-  adapter: ManifestSource,
-  extraAdapters: ManifestSource[],
-): Promise<string> {
-  const inMemoryAdapter = createInMemoryManifestSource(documents, adapter);
-  const loader = createEditorLoader(inMemoryAdapter, extraAdapters);
-  const subGraph = await loader.loadModuleGraph(entryPath, (url, err) => {
-    console.error(`Failed to load module ${url}:`, err);
-  });
-
-  // Registry/remote adapters may resolve `entryPath` to a differently-keyed URL.
-  let actualRoot = entryPath;
-  if (!subGraph.has(entryPath) && subGraph.size > 0) {
-    actualRoot = subGraph.keys().next().value as string;
-  }
-
-  // Chained adapter so ModuleDocument population can read registry URLs —
-  // the bare local adapter only supports disk paths and silently fails for
-  // anything served by a registry/remote extra adapter.
-  const chainedAdapter = createChainedManifestSource(adapter, extraAdapters);
-
-  for (const [filePath, docs] of subGraph) {
-    if (modules.has(filePath)) continue;
-    const parsed = buildParsedManifest(filePath, docs);
-    const subDeps = new Set<string>();
-    const resolvedImports = parsed.imports.map((imp) => {
-      const depPath = resolveDepPath(adapter, filePath, imp.source);
-      if (subGraph.has(depPath)) {
-        subDeps.add(depPath);
-        if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
-        importedBy.get(depPath)!.add(filePath);
-      }
-      return { ...imp, resolvedPath: depPath };
-    });
-    modules.set(filePath, { ...parsed, imports: resolvedImports });
-    importGraph.set(filePath, subDeps);
-
-    // Populate ModuleDocument for the newly loaded module (owner file plus
-    // any partial files it declared via `include:`).
-    if (!documents.has(normalizePath(filePath))) {
-      await populateModuleDocument(filePath, documents, chainedAdapter);
-    }
-    await collectPartialDocuments(docs, filePath, documents, chainedAdapter);
-  }
-
-  return actualRoot;
 }
 
 // ---------------------------------------------------------------------------
@@ -287,21 +117,48 @@ export async function reconcileImports(
   const prevDeps = new Set(importGraph.get(modulePath) ?? []);
   const deps = new Set<string>();
 
+  const loader = createEditorLoader(adapter, extraAdapters);
+
   const resolvedImports: ParsedImport[] = [];
   for (const imp of manifest.imports) {
     let resolvedPath = imp.resolvedPath ?? resolveDepPath(adapter, modulePath, imp.source);
 
     if (!modules.has(resolvedPath)) {
       try {
-        resolvedPath = await mergeSubGraph(
-          resolvedPath,
-          modules,
-          importGraph,
-          importedBy,
-          documents,
-          adapter,
-          extraAdapters,
-        );
+        const graph = await loader.loadGraph(resolvedPath);
+        for (const e of graph.errors) {
+          console.error(`Failed to load module ${e.url}:`, e.error);
+        }
+        // Registry/remote adapters may resolve `resolvedPath` to a different URL.
+        resolvedPath = graph.rootSource;
+        for (const [canonical, lm] of graph.modules) {
+          if (modules.has(canonical)) continue;
+          const flat = flattenLoadedModule(lm);
+          const parsed = buildParsedManifest(canonical, flat);
+          const subDeps = new Set<string>();
+          const subResolvedImports = parsed.imports.map((subImp) => {
+            const depPath = resolveDepPath(adapter, canonical, subImp.source);
+            if (graph.modules.has(depPath)) {
+              subDeps.add(depPath);
+              if (!importedBy.has(depPath)) importedBy.set(depPath, new Set());
+              importedBy.get(depPath)!.add(canonical);
+            }
+            return { ...subImp, resolvedPath: depPath };
+          });
+          modules.set(canonical, { ...parsed, imports: subResolvedImports });
+          importGraph.set(canonical, subDeps);
+
+          const ownerKey = normalizePath(canonical);
+          if (!documents.has(ownerKey)) {
+            documents.set(ownerKey, moduleDocumentFromLoaded(canonical, lm.owner));
+          }
+          for (const partial of lm.partials) {
+            const pKey = normalizePath(partial.source);
+            if (!documents.has(pKey)) {
+              documents.set(pKey, moduleDocumentFromLoaded(partial.source, partial));
+            }
+          }
+        }
       } catch {
         // Import loading failed — leave it unresolved at the originally-resolved path.
       }
@@ -359,11 +216,11 @@ export async function addImportViaAst(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  const docs = addImportDocument(modDoc.docs, imp.name, imp.source, {
+  const docs = addImportDocument(modDoc.loaded.documents, imp.name, imp.source, {
     variables: imp.variables,
     secrets: imp.secrets,
   });
-  const astOnly = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  const astOnly = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
   const rebuilt = rebuildManifestFromDocuments(astOnly, modulePath);
   return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
 }
@@ -382,10 +239,10 @@ export async function removeImportViaAst(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  const docs = removeImportDocument(modDoc.docs, name);
-  if (docs === modDoc.docs) return workspace;
+  const docs = removeImportDocument(modDoc.loaded.documents, name);
+  if (docs === modDoc.loaded.documents) return workspace;
 
-  const astOnly = withModuleDocument(workspace, modulePath, { ...modDoc, docs });
+  const astOnly = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
   const rebuilt = rebuildManifestFromDocuments(astOnly, modulePath);
   return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
 }

@@ -7,12 +7,13 @@ import type {
 } from "../model";
 import {
   buildInitialModuleDocument,
+  moduleParseError,
   parseModuleDocument,
   removeImportDocument,
   serializeModuleDocument,
 } from "../yaml-document";
 import { normalizePath, pathDirname, pathJoin } from "./paths";
-import { buildResourceDocIndex } from "./ast-ops";
+import { buildResourceDocIndex, withDocs } from "./ast-ops";
 
 export interface CreateModuleOptions {
   kind: ModuleKind;
@@ -107,14 +108,16 @@ export async function saveModuleFromDocuments(
     // A file with a parse error has its last-good docs attached; writing
     // them would destroy user edits-in-progress. Skip until the user fixes
     // the file via the source view.
-    if (modDoc.parseError) continue;
+    if (moduleParseError(modDoc)) continue;
 
-    const currentJson = modDoc.docs.map((d) => d.toJSON());
-    if (jsonDeepEqual(currentJson, modDoc.loadedJson)) continue;
+    const currentJson = modDoc.loaded.documents.map((d) => d.toJSON());
+    if (jsonDeepEqual(currentJson, modDoc.loaded.manifests)) continue;
 
-    const text = serializeModuleDocument(modDoc.docs);
+    const text = serializeModuleDocument(modDoc.loaded.documents);
     await adapter.writeFile(modDoc.filePath, text);
-    documents.set(key, { ...modDoc, text, loadedJson: currentJson });
+    // Re-parse the just-written text to refresh the load-time snapshot —
+    // text, manifests, positions all become consistent with the saved file.
+    documents.set(key, parseModuleDocument(modDoc.filePath, text));
     anyWritten = true;
   }
 
@@ -190,10 +193,10 @@ export async function deleteModule(
       const importerKey = normalizePath(importerPath);
       const importerDoc = documents.get(importerKey);
       if (importerDoc) {
-        let docs = importerDoc.docs;
+        let docs = importerDoc.loaded.documents;
         for (const name of importsToRemove) docs = removeImportDocument(docs, name);
-        if (docs !== importerDoc.docs) {
-          documents.set(importerKey, { ...importerDoc, docs });
+        if (docs !== importerDoc.loaded.documents) {
+          documents.set(importerKey, withDocs(importerDoc, docs));
         }
       }
 
