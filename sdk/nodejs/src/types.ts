@@ -94,15 +94,48 @@ export interface ControllerInstance<
 
 export interface Kernel {
   load(url: string): Promise<void>;
+  /**
+   * Boot: initialize resources without running targets. Returns when every
+   * resource is initialized and the kernel is ready to accept `invoke()`
+   * calls. Throws ERR_KERNEL_STATE_INVALID if called twice or after teardown.
+   */
+  boot(): Promise<void>;
+  /**
+   * Run the manifest's `targets` (Telo.Service / Telo.Runnable instances).
+   * Throws ERR_KERNEL_STATE_INVALID if called before `boot()` completes, after
+   * teardown, or a second time.
+   */
+  runTargets(): Promise<void>;
+  /**
+   * Tear down every initialized resource. Idempotent — second call is a no-op
+   * and does not re-emit Kernel.Stopping / Kernel.Stopped. Tolerates partial
+   * state (a boot() that threw mid-init still cleans up).
+   */
+  teardown(): Promise<void>;
+  /**
+   * Invoke a Telo.Invocable resource by name. Throws ERR_KERNEL_STATE_INVALID
+   * if called before boot() or after teardown.
+   */
+  invoke<TInputs = any, TOutput = any>(
+    ref: string | { kind: string; name: string },
+    inputs: TInputs,
+  ): Promise<TOutput>;
+  /**
+   * Convenience: boot → runTargets → waitForIdle → teardown, with teardown
+   * always running via finally so init-time failures still tear down.
+   */
   start(): Promise<void>;
   acquireHold(reason?: string): () => void;
   waitForIdle(): Promise<void>;
+  /**
+   * Force-resolve a pending `waitForIdle()` even when holds are still active.
+   * Used by external signal handlers (SIGINT/SIGTERM) so graceful exit can
+   * proceed past `await kernel.waitForIdle()`. Does not tear down — call
+   * `teardown()` for cleanup.
+   */
+  forceIdle(): void;
   requestExit(code: number): void;
   readonly exitCode: number;
-  // teardownResource(module: string, kind: string, name: string): Promise<void>;
-  // getSourceFiles(): string[];
-  // reloadSource(sourcePath: string): Promise<void>;
-  shutdown(): void;
 }
 
 export class RuntimeError extends Error {

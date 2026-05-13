@@ -25,4 +25,5 @@ export type RuntimeErrorCode =
   | "ERR_SCOPE_RESOURCE_NOT_FOUND"
   | "ERR_TYPE_NOT_FOUND"
   | "ERR_TYPE_VALIDATION_FAILED"
+  | "ERR_KERNEL_STATE_INVALID"
   | (string & {});
