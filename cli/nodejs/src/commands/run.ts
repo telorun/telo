@@ -142,7 +142,7 @@ export async function run(argv: {
     const shutdown = () => {
       if (argv.watch) log.info("\n[watch] stopping...");
       watchHandle?.cleanup();
-      kernel.shutdown();
+      kernel.forceIdle();
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
@@ -150,7 +150,7 @@ export async function run(argv: {
     if (argv.watch) {
       // Acquire a hold BEFORE start() to keep the kernel alive for apps that
       // don't have their own holds (e.g. script-only manifests).
-      // shutdown() will force-resolve waitForIdle() on Ctrl+C regardless of
+      // forceIdle() will force-resolve waitForIdle() on Ctrl+C regardless of
       // how many holds are active (e.g. Http.Server may hold its own).
       kernel.acquireHold("watch-mode");
 

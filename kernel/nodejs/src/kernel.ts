@@ -50,6 +50,24 @@ function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefi
   return findEnclosingModule(ctx)?.getControllerPolicy();
 }
 
+function throwInvalidState(operation: string, reason: string): never {
+  throw new RuntimeError(
+    "ERR_KERNEL_STATE_INVALID",
+    `Cannot ${operation}(): ${reason}`,
+  );
+}
+
+function parseRef(ref: string): { kind: string; name: string } {
+  const lastDot = ref.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot === ref.length - 1) {
+    throw new RuntimeError(
+      "ERR_INVALID_VALUE",
+      `Invalid resource reference '${ref}': expected '<Kind>.<Name>' (e.g. 'Http.Server.Main') or pass { kind, name } directly.`,
+    );
+  }
+  return { kind: ref.slice(0, lastDot), name: ref.slice(lastDot + 1) };
+}
+
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
   stdout?: NodeJS.WritableStream;
@@ -99,6 +117,12 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
+  // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
+  // teardown() is the only idempotent method; everything else throws on misuse.
+  private _bootCalled = false;
+  private _isBooted = false;
+  private _targetsRan = false;
+  private _isTornDown = false;
 
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
@@ -292,9 +316,25 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Phase 2: Start - Initialize resources
+   * Initialize every resource declared in the manifest. Does not run targets
+   * and does not wait — returns as soon as the kernel is ready to accept
+   * `invoke()` calls.
+   *
+   * Throws ERR_KERNEL_STATE_INVALID if `load()` was not called first, on
+   * second call, or after teardown.
    */
-  async start(): Promise<void> {
+  async boot(): Promise<void> {
+    if (this._isTornDown) {
+      throwInvalidState("boot", "kernel has been torn down");
+    }
+    if (this._bootCalled) {
+      throwInvalidState("boot", "boot() already called");
+    }
+    if (this._entryUrl === undefined) {
+      throwInvalidState("boot", "load() has not been called");
+    }
+    this._bootCalled = true;
+
     // Call register hooks for controllers actually loaded at this point (built-ins).
     // User-module kinds load their controllers during Phase 3 (Telo.Definition.init),
     // and registerController() fires their register hook there.
@@ -335,19 +375,86 @@ export class Kernel implements IKernel {
       this.rootContext.setInitOrder(order);
     }
 
-    // Initialize resources
+    await this.rootContext.initializeResources();
+    await this.eventBus.emit("Kernel.Initialized", {});
+
+    this._isBooted = true;
+  }
+
+  /**
+   * Run the manifest's `targets` (Telo.Service / Telo.Runnable instances).
+   * Emits Kernel.Starting before, Kernel.Started after.
+   *
+   * Throws ERR_KERNEL_STATE_INVALID if called before `boot()` completes, after
+   * teardown, or a second time.
+   */
+  async runTargets(): Promise<void> {
+    if (this._isTornDown) {
+      throwInvalidState("runTargets", "kernel has been torn down");
+    }
+    if (!this._isBooted) {
+      throwInvalidState("runTargets", "boot() has not completed");
+    }
+    if (this._targetsRan) {
+      throwInvalidState("runTargets", "runTargets() already called");
+    }
+    this._targetsRan = true;
+
+    await this.eventBus.emit("Kernel.Starting", {});
+    await this.rootContext.runTargets();
+    await this.eventBus.emit("Kernel.Started", {});
+  }
+
+  /**
+   * Tear down every initialized resource. Emits Kernel.Stopping before,
+   * Kernel.Stopped after. Idempotent — second call is a no-op (does not
+   * re-emit). Tolerates partial state — a boot() that threw mid-init still
+   * cleans up whichever resources had initialized.
+   */
+  async teardown(): Promise<void> {
+    if (this._isTornDown) return;
+    this._isTornDown = true;
+
+    await this.eventBus.emit("Kernel.Stopping", {});
+    if (this.rootContext) {
+      await this.rootContext.teardownResources();
+    }
+    await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
+  }
+
+  /**
+   * Convenience: boot → runTargets → waitForIdle → teardown. The try wraps
+   * boot() and runTargets() too — init-time failures still drive teardown and
+   * still emit Kernel.Stopping / Kernel.Stopped, matching pre-split semantics.
+   */
+  async start(): Promise<void> {
     try {
-      await this.rootContext.initializeResources();
-      await this.eventBus.emit("Kernel.Initialized", {});
-      await this.eventBus.emit("Kernel.Starting", {});
-      await this.rootContext.runTargets();
-      await this.eventBus.emit("Kernel.Started", {});
+      await this.boot();
+      await this.runTargets();
       await this.waitForIdle();
     } finally {
-      await this.eventBus.emit("Kernel.Stopping", {});
-      await this.rootContext.teardownResources();
-      await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
+      await this.teardown();
     }
+  }
+
+  /**
+   * Invoke a Telo.Invocable resource by `<kind>.<name>` (dot-form) or
+   * `{ kind, name }`. Resolves through the root module context, so the same
+   * dispatch, error path, and event emission that controller-to-controller
+   * invokes use apply here too.
+   */
+  async invoke<TInputs = any, TOutput = any>(
+    ref: string | { kind: string; name: string },
+    inputs: TInputs,
+  ): Promise<TOutput> {
+    if (this._isTornDown) {
+      throwInvalidState("invoke", "kernel has been torn down");
+    }
+    if (!this._isBooted) {
+      throwInvalidState("invoke", "boot() has not completed");
+    }
+    const parsed = typeof ref === "string" ? parseRef(ref) : ref;
+    return (await this.rootContext.invoke(parsed.kind, parsed.name, inputs)) as TOutput;
   }
 
   async emitRuntimeEvent(event: string, payload?: any): Promise<void> {
@@ -408,11 +515,14 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Force-resolve waitForIdle() regardless of active holds.
-   * Used for graceful shutdown when external signals (e.g. SIGINT) should
-   * bypass resource holds and proceed directly to teardown.
+   * Force-resolve any pending `waitForIdle()` even when holds are still active.
+   * Used by external signal handlers (SIGINT/SIGTERM) to unblock graceful exit
+   * so `start()`'s waitForIdle returns and its finally clause runs `teardown()`.
+   *
+   * Does not tear down on its own — call `teardown()` directly if you're not
+   * inside `start()`.
    */
-  shutdown(): void {
+  forceIdle(): void {
     const resolvers = this.idleResolvers.splice(0);
     for (const resolve of resolvers) resolve();
   }
