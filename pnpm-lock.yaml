@@ -519,6 +519,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+      '@telorun/http-dispatch':
+        specifier: workspace:*
+        version: link:../../../packages/http-dispatch/nodejs
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
@@ -538,6 +541,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/javascript/nodejs:
     dependencies:
@@ -771,6 +777,25 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  packages/http-dispatch/nodejs:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: ^0.34.48
+        version: 0.34.48
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   packages/ide-support:
     dependencies:
