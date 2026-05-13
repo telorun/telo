@@ -1,0 +1,73 @@
+{
+  "name": "@telorun/lambda",
+  "version": "0.1.0",
+  "description": "Telo AWS Lambda module — per-source handler kinds and the Lambda.Function dispatcher.",
+  "keywords": [
+    "telo",
+    "aws",
+    "lambda",
+    "serverless"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/lambda/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    "./function": {
+      "types": "./dist/function.d.ts",
+      "bun": "./src/function.ts",
+      "import": "./dist/function.js"
+    },
+    "./direct": {
+      "types": "./dist/direct.d.ts",
+      "bun": "./src/direct.ts",
+      "import": "./dist/direct.js"
+    },
+    "./http-api": {
+      "types": "./dist/http-api.d.ts",
+      "bun": "./src/http-api.ts",
+      "import": "./dist/http-api.js"
+    },
+    "./sqs": {
+      "types": "./dist/sqs.d.ts",
+      "bun": "./src/sqs.ts",
+      "import": "./dist/sqs.js"
+    },
+    "./managed.mjs": "./managed.mjs",
+    "./custom.mjs": "./custom.mjs"
+  },
+  "files": [
+    "dist",
+    "managed.mjs",
+    "custom.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "prepack": "cp ../../../LICENSE . && cp ../README.md ."
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "@telorun/http-dispatch": "workspace:*",
+    "@telorun/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@telorun/kernel": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

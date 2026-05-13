@@ -1,0 +1,117 @@
+# End-to-end smoke test for Lambda.Function + Lambda.HttpApi. Invokes the
+# Function with a synthetic API Gateway HTTP API v2 payload; the Function
+# classifies it as HttpApi (requestContext.http present), HttpApi walks routes,
+# matches the path, dispatches to a JavaScript handler, renders the response
+# via dispatchReturns. Asserts on the JSON-shaped response envelope.
+kind: Telo.Application
+metadata:
+  name: LambdaHttpApiDispatchTest
+  version: 1.0.0
+targets:
+  - TestHttpApiDispatch
+---
+kind: Telo.Import
+metadata:
+  name: Lambda
+source: ..
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../javascript
+---
+kind: Telo.Import
+metadata:
+  name: Type
+source: ../../type
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: JavaScript.Script
+metadata:
+  name: GreetById
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [message]
+    properties:
+      message: { type: string }
+code: |
+  function main({ id }) {
+    return { message: `Hello ${id}!` };
+  }
+---
+kind: Lambda.HttpApi
+metadata:
+  name: Web
+routes:
+  - request:
+      method: GET
+      path: "/users/{id}"
+    handler:
+      kind: JavaScript.Script
+      name: GreetById
+    inputs:
+      id: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Lambda.Function
+metadata:
+  name: Main
+handlers:
+  - { kind: Lambda.HttpApi, name: Web }
+---
+kind: Run.Sequence
+metadata:
+  name: TestHttpApiDispatch
+steps:
+  - name: InvokeFunction
+    inputs:
+      event:
+        version: "2.0"
+        rawPath: /users/42
+        requestContext:
+          http:
+            method: GET
+            path: /users/42
+        headers:
+          accept: application/json
+      context: {}
+    invoke:
+      kind: Lambda.Function
+      name: Main
+  - name: VerifyEnvelope
+    inputs:
+      statusCode: "${{ steps.InvokeFunction.result.statusCode }}"
+      body: "${{ steps.InvokeFunction.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          statusCode:
+            type: integer
+            const: 200
+          body:
+            type: string
+            const: '{"message":"Hello 42!"}'

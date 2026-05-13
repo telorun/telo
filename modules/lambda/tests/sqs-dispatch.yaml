@@ -1,0 +1,128 @@
+# End-to-end smoke test for Lambda.Function + Lambda.Sqs. Invokes the Function
+# with a synthetic SQS event; the Function classifies it (Records[0].eventSource
+# === "aws:sqs"), dispatches to a JavaScript handler that returns a partial-batch
+# failure shape. Asserts the controller passes it through.
+kind: Telo.Application
+metadata:
+  name: LambdaSqsDispatchTest
+  version: 1.0.0
+targets:
+  - TestSqsDispatch
+---
+kind: Telo.Import
+metadata:
+  name: Lambda
+source: ..
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../javascript
+---
+kind: Telo.Import
+metadata:
+  name: Type
+source: ../../type
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# Handler iterates the records and "fails" message id "bad" — surfaces it as a
+# partial-batch retry. Real consumers would do per-record business logic here.
+kind: JavaScript.Script
+metadata:
+  name: ProcessRecords
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [records]
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            messageId: { type: string }
+            body: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      batchItemFailures:
+        type: array
+        items:
+          type: object
+          properties:
+            itemIdentifier: { type: string }
+code: |
+  function main({ records }) {
+    const failures = records
+      .filter((r) => r.messageId === "bad")
+      .map((r) => ({ itemIdentifier: r.messageId }));
+    return { batchItemFailures: failures };
+  }
+---
+kind: Lambda.Sqs
+metadata:
+  name: Orders
+queue:
+  queueName: orders
+handler:
+  kind: JavaScript.Script
+  name: ProcessRecords
+inputs:
+  records: !cel "event.Records"
+---
+kind: Lambda.Function
+metadata:
+  name: Main
+handlers:
+  - { kind: Lambda.Sqs, name: Orders }
+---
+kind: Run.Sequence
+metadata:
+  name: TestSqsDispatch
+steps:
+  - name: InvokeFunction
+    inputs:
+      event:
+        Records:
+          - messageId: good
+            body: "{}"
+            eventSource: "aws:sqs"
+            eventSourceARN: arn:aws:sqs:us-east-1:000000000000:orders
+          - messageId: bad
+            body: "{}"
+            eventSource: "aws:sqs"
+            eventSourceARN: arn:aws:sqs:us-east-1:000000000000:orders
+      context: {}
+    invoke:
+      kind: Lambda.Function
+      name: Main
+  - name: VerifyPartialBatch
+    inputs:
+      batchItemFailures: "${{ steps.InvokeFunction.result.batchItemFailures }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          batchItemFailures:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              properties:
+                itemIdentifier:
+                  type: string
+                  const: "bad"

@@ -8,6 +8,14 @@ exports:
     - Server
     - Api
 ---
+# Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
+# and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
+# shape, MIME negotiation rules, and buffer/stream oneOf live in exactly one place.
+kind: Telo.Import
+metadata:
+  name: HttpDispatch
+source: ../../packages/http-dispatch
+---
 kind: "Telo.Definition"
 metadata:
   name: "Server"
@@ -220,147 +228,12 @@ schema:
               required: ["kind"]
               additionalProperties: true
         returns:
-          title: Returns
-          description: Rendering rules for values the handler resolved with.
-          type: "array"
           x-telo-outcome-list: returns
-          items:
-            title: Return Entry
-            description: Conditional rendering entry for a successful return.
-            type: "object"
-            properties:
-              status:
-                title: Status
-                default: 404
-                description: HTTP status code for this entry.
-                type: "integer"
-                minimum: 100
-                maximum: 599
-              when:
-                title: When
-                description: CEL condition that selects this entry.
-                type: "boolean"
-              mode:
-                title: Mode
-                description: "buffer (default): CEL body expansion + schema validation. stream: pipe handler.result.output through content[mime].encoder, then bytes to the response."
-                type: "string"
-                enum: ["buffer", "stream"]
-              headers:
-                title: Headers
-                description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
-                type: "object"
-                additionalProperties:
-                  type: "string"
-              content:
-                title: Content
-                description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
-                type: "object"
-                additionalProperties:
-                  type: "object"
-                  additionalProperties: false
-                  properties:
-                    body:
-                      title: Body
-                      description: CEL expression or object mapping for response body (buffer mode).
-                    schema:
-                      title: Schema
-                      description: JSON Schema used to validate the rendered body (buffer mode).
-                      type: "object"
-                    encoder:
-                      title: Encoder
-                      description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                      x-telo-ref: "std/codec#Encoder"
-                      oneOf:
-                        - title: Encoder Reference
-                          type: "string"
-                        - type: "object"
-                          title: Encoder Object
-                          properties:
-                            kind: { title: Kind, type: "string" }
-                            name: { title: Name, type: "string" }
-                          required: ["kind"]
-                          additionalProperties: true
-                    headers:
-                      title: Headers
-                      description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
-                      type: "object"
-                      additionalProperties:
-                        type: "string"
-            required: ["status"]
-            oneOf:
-              - title: Buffer mode
-                description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
-                anyOf:
-                  - not: { required: ["mode"] }
-                  - properties:
-                      mode: { const: "buffer" }
-                properties:
-                  content:
-                    type: "object"
-                    additionalProperties:
-                      type: "object"
-                      not: { required: ["encoder"] }
-              - title: Stream mode
-                description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
-                properties:
-                  mode: { const: "stream" }
-                  content:
-                    type: "object"
-                    minProperties: 1
-                    additionalProperties:
-                      type: "object"
-                      required: ["encoder"]
-                      not: { required: ["body"] }
-                required: ["mode", "content"]
+          x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Returns"
         catches:
-          title: Catches
-          description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
-          type: "array"
           x-telo-outcome-list: catches
           x-telo-catches-for: invoke
-          items:
-            title: Catch Entry
-            description: Conditional rendering entry for a thrown InvokeError.
-            type: "object"
-            properties:
-              status:
-                title: Status
-                description: HTTP status code for this entry.
-                type: "integer"
-                minimum: 100
-                maximum: 599
-              when:
-                title: When
-                description: CEL condition that selects this entry (sees `error` and `request`).
-                type: "boolean"
-              headers:
-                title: Headers
-                description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
-                type: "object"
-                additionalProperties:
-                  type: "string"
-              content:
-                title: Content
-                description: Per-MIME error-body shape. Buffer-mode only.
-                type: "object"
-                additionalProperties:
-                  type: "object"
-                  additionalProperties: false
-                  properties:
-                    body:
-                      title: Body
-                      description: CEL expression or object mapping for the error body.
-                    schema:
-                      title: Schema
-                      description: JSON Schema used to validate the rendered body.
-                      type: "object"
-                    headers:
-                      title: Headers
-                      description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
-                      type: "object"
-                      additionalProperties:
-                        type: "string"
-            required: ["status"]
+          x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
   required: ["port", "mounts"]
 ---
 kind: "Telo.Definition"
@@ -385,35 +258,8 @@ schema:
         additionalProperties: false
         properties:
           request:
-            title: Request
-            description: Request matcher for this route.
             x-telo-topology-role: matcher
-            type: "object"
-            properties:
-              path:
-                title: Path
-                description: Route path pattern.
-                type: "string"
-              method:
-                title: Method
-                description: HTTP method matched by the route.
-                type: "string"
-                enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-              query:
-                title: Query
-                description: Query parameter schema for request matching.
-                type: "object"
-              body:
-                title: Body
-                description: Request body schema for request matching.
-                type: "object"
-              headers:
-                title: Headers
-                description: Header schema for request matching. Values are matched as strings against the incoming header value.
-                type: "object"
-                additionalProperties:
-                  type: "string"
-            required: ["path", "method"]
+            x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
           inputs:
             title: Inputs
             type: "object"
