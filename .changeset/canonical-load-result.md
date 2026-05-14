@@ -1,5 +1,5 @@
 ---
-"@telorun/analyzer": major
+"@telorun/analyzer": minor
 "@telorun/ide-support": minor
 "@telorun/cli": patch
 "@telorun/kernel": patch

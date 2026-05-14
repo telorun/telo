@@ -55,6 +55,14 @@ When designing a new module or capability, ask: which of the above does this res
 
 **Browser compatibility:** The `analyzer` package must be runnable in the browser without Node.js polyfills. Do not import Node.js built-ins (`fs`, `path`, `url`, `child_process`, etc.) from analyzer code. Node.js-specific adapters belong in the consuming package (kernel, IDE extension, CLI).
 
+## Core goals
+
+- **Polyglot architecture** — Telo must support controllers and runtimes in any language, not just Node.js
+- **Visual editing** — Telo manifests must remain visually editable in a GUI editor; solutions must not break declarative structure or introduce constructs that can't be represented visually
+- **Performance** — the init loop, CEL evaluation, and resource resolution must stay fast; solutions must not introduce unnecessary overhead
+- **Static analysis** — YAML manifests must remain statically analyzable; solutions must preserve the ability to validate references, type-check CEL expressions, and detect errors without running the kernel
+- **Developer friendly** — Errors must not be swallowed; they should be surfaced clearly to developers. Error messages must be actionable and informative, guiding developers to concrete place in YAML manifest that needs fixing.
+
 ## Monorepo Structure
 
 - `kernel/nodejs/src/` — core runtime: orchestration, loading, controllers, init loop

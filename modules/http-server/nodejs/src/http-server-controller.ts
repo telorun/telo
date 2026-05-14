@@ -2,6 +2,12 @@ import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
 import {
+  CatchEntry,
+  dispatchCatches,
+  dispatchReturns,
+  ReturnEntry,
+} from "@telorun/http-dispatch";
+import {
   isInvokeError,
   type Invocable,
   type KindRef,
@@ -11,13 +17,8 @@ import {
 } from "@telorun/sdk";
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
-import {
-  CatchEntry,
-  dispatchCatches,
-  dispatchReturns,
-  HttpServerApi,
-  ReturnEntry,
-} from "./http-api-controller.js";
+import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { HttpServerApi } from "./http-api-controller.js";
 
 type CorsOptions = {
   origin?: string | boolean | string[];
@@ -218,6 +219,8 @@ class HttpServer implements ResourceInstance {
             | undefined
         )?.toString();
 
+        const sink = fastifyReplySink(reply);
+
         let result: any;
         try {
           result = await this.ctx.invoke(handler.kind, handler.name, requestContext);
@@ -230,7 +233,7 @@ class HttpServer implements ResourceInstance {
             acceptHeader,
             this.ctx.moduleContext,
             this.ctx.validateSchema.bind(this.ctx),
-            reply,
+            sink,
           );
         }
 
@@ -242,7 +245,7 @@ class HttpServer implements ResourceInstance {
             acceptHeader,
             this.ctx.moduleContext,
             this.ctx.validateSchema.bind(this.ctx),
-            reply,
+            sink,
           );
         }
         const status = result?.status ?? 200;

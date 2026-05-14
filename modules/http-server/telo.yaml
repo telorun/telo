@@ -287,6 +287,31 @@ schema:
                       additionalProperties:
                         type: "string"
             required: ["status"]
+            oneOf:
+              - title: Buffer mode
+                description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
+                anyOf:
+                  - not: { required: ["mode"] }
+                  - properties:
+                      mode: { const: "buffer" }
+                properties:
+                  content:
+                    type: "object"
+                    additionalProperties:
+                      type: "object"
+                      not: { required: ["encoder"] }
+              - title: Stream mode
+                description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
+                properties:
+                  mode: { const: "stream" }
+                  content:
+                    type: "object"
+                    minProperties: 1
+                    additionalProperties:
+                      type: "object"
+                      required: ["encoder"]
+                      not: { required: ["body"] }
+                required: ["mode", "content"]
         catches:
           title: Catches
           description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
@@ -521,6 +546,31 @@ schema:
                         additionalProperties:
                           type: "string"
               required: ["status"]
+              oneOf:
+                - title: Buffer mode
+                  description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
+                  anyOf:
+                    - not: { required: ["mode"] }
+                    - properties:
+                        mode: { const: "buffer" }
+                  properties:
+                    content:
+                      type: "object"
+                      additionalProperties:
+                        type: "object"
+                        not: { required: ["encoder"] }
+                - title: Stream mode
+                  description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
+                  properties:
+                    mode: { const: "stream" }
+                    content:
+                      type: "object"
+                      minProperties: 1
+                      additionalProperties:
+                        type: "object"
+                        required: ["encoder"]
+                        not: { required: ["body"] }
+                  required: ["mode", "content"]
           catches:
             title: Catches
             description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
