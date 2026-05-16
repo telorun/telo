@@ -25,9 +25,14 @@ The full pattern is documented at [Resource Lifecycle: Scopes](../../kernel/docs
 
 ## What `telo install` does
 
-`telo install ./telo.yaml` populates `.telo/npm/` with all transitive npm dependencies for every controller declared in the manifest. **Crucially, it caches everything before the artifact is packaged** — no registry calls happen at AWS-runtime boot.
+`telo install ./telo.yaml` populates two sibling trees under `<manifest-dir>/.telo/`:
 
-If your build pipeline somehow strips `.telo/`, the controller loader will try to consult `$TELO_REGISTRY_URL` at boot and fail loudly. Keep `.telo/` in your artifact.
+- `.telo/npm/` — every transitive npm dependency for every controller declared in the manifest.
+- `.telo/manifests/` — the raw YAML of every transitively-imported `Telo.Library`, keyed by registry namespace/name/version (or `__http/<host>/...` for direct HTTP imports).
+
+**Crucially, both caches are written before the artifact is packaged** — no registry calls happen at AWS-runtime boot. Controllers load from `.telo/npm/`; the manifest graph resolves from `.telo/manifests/`.
+
+If your build pipeline somehow strips `.telo/`, the kernel will fall back to `$TELO_REGISTRY_URL` for both controllers and manifests at boot. Outside a VPC with internet egress that fails immediately; even with egress, the round-trip-per-import will blow the cold-start budget. Keep `.telo/` in your artifact.
 
 ## Bootstrap overhead
 

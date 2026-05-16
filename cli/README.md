@@ -109,20 +109,31 @@ On success:
 
 ### `telo install <paths..>`
 
-Pre-downloads every controller declared by a manifest and its transitive `Telo.Import`s into the on-disk cache. At runtime the kernel finds each controller already installed and skips the boot-time `npm install` — removing the startup delay and the network dependency from production deployments.
+Pre-downloads every controller declared by a manifest and its transitive `Telo.Import`s into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every `Telo.Import` from disk — boot does zero network I/O.
 
-Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. Subsequent runs are idempotent — already-cached packages are skipped.
+Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
 
 ```bash
 telo install ./apps/my-app/telo.yaml
 telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 ```
 
+**Options:**
+
+- `--registry-url <url>` — Base URL for the telo module registry. Overrides `TELO_REGISTRY_URL`. Affects both the network fetches and the on-disk cache layout (manifests served by this registry are stored under `<namespace>/<name>/<version>/...`).
+
 **Environment:**
 
+- `TELO_REGISTRY_URL` — Default registry URL used when `--registry-url` is omitted.
 - `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
 
-The cache lives next to the manifest at `<entry-manifest-dir>/.telo/npm/`. Per-manifest scope means it is naturally portable: `COPY` the manifest dir into your image and the cached install travels with it; no environment variable is required.
+The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
+
+- `.telo/npm/` — controller node_modules tree (one realm per manifest).
+- `.telo/manifests/<namespace>/<name>/<version>/telo.yaml` — registry-served manifests.
+- `.telo/manifests/__http/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+
+Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` the manifest dir into your image and both caches travel with it; no environment variable is required.
 
 **Example output:**
 
@@ -150,7 +161,7 @@ COPY --from=build /srv /srv
 CMD ["apps/my-app/telo.yaml"]
 ```
 
-The build stage materializes `<manifest-dir>/.telo/npm/`; the production stage is a single `COPY` and does no network I/O at boot.
+The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.telo/manifests/`; the production stage is a single `COPY` and does no network I/O at boot.
 
 ---
 

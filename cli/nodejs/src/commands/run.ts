@@ -1,4 +1,11 @@
-import { Kernel, LocalFileSource, type RuntimeDiagnostic } from "@telorun/kernel";
+import {
+  Kernel,
+  LocalFileSource,
+  LocalManifestCacheSource,
+  resolveEntryDir,
+  type RuntimeDiagnostic,
+} from "@telorun/kernel";
+import type { ManifestSource } from "@telorun/analyzer";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -120,10 +127,26 @@ export async function run(argv: {
     // RegistrySource default. The kernel itself does no env lookup — programmatic
     // callers (tests, SDK) pass registryUrl explicitly when they need one.
     const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
+    // The manifest cache (populated by `telo install`) wins over the registry
+    // / HTTP sources so production images boot without any registry network
+    // I/O. A missing cache file falls through transparently — dev runs and
+    // ad-hoc invocations work unchanged.
+    const sources: ManifestSource[] = [new LocalFileSource()];
+    const entryDir = resolveEntryDir(argv.path);
+    if (entryDir) {
+      // Pass the same registry URL the kernel will use so the cache source's
+      // URL→path mapping matches what `telo install` wrote.
+      sources.push(
+        new LocalManifestCacheSource(
+          entryDir,
+          registryUrl ?? "https://registry.telo.run",
+        ),
+      );
+    }
     const kernel = new Kernel({
       argv: argv["--"],
       registryUrl,
-      sources: [new LocalFileSource()],
+      sources,
     });
     // Pretty controller-download progress. With --verbose, always render
     // (so captured logs/CI output get the lines too); otherwise gate on TTY

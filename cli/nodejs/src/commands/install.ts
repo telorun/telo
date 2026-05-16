@@ -1,10 +1,17 @@
 import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
-import { ControllerLoader, LocalFileSource } from "@telorun/kernel";
+import {
+  ControllerLoader,
+  LocalFileSource,
+  resolveEntryDir,
+  writeManifestCache,
+} from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
+
+const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 interface ControllerJob {
   purls: string[];
@@ -47,15 +54,29 @@ function collectControllerJobs(manifests: ResourceManifest[]): ControllerJob[] {
   return Array.from(byKey.values());
 }
 
-async function installOne(inputPath: string, log: Logger): Promise<boolean> {
+async function installOne(
+  inputPath: string,
+  registryUrl: string,
+  log: Logger,
+): Promise<boolean> {
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
   const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
 
-  const loader = new Loader([new LocalFileSource()]);
+  // The install pass deliberately does NOT register LocalManifestCacheSource:
+  // its job is to converge `.telo/manifests/` with whatever the registry
+  // currently serves for the pinned versions. Reading from the cache here
+  // would freeze stale bytes in place — re-running `telo install` could
+  // never refresh a corrupted or outdated entry without manual deletion.
+  const entryDir = resolveEntryDir(entryPath);
+  const loader = new Loader({
+    extraSources: [new LocalFileSource()],
+    registryUrl,
+  });
   let manifests: ResourceManifest[];
+  let graph: Awaited<ReturnType<typeof loader.loadGraph>>;
   try {
-    const graph = await loader.loadGraph(entryPath);
+    graph = await loader.loadGraph(entryPath);
     if (graph.errors.length > 0) throw graph.errors[0].error;
     manifests = flattenForAnalyzer(graph);
   } catch (err) {
@@ -64,6 +85,27 @@ async function installOne(inputPath: string, log: Logger): Promise<boolean> {
         (err instanceof Error ? err.message : String(err)),
     );
     return false;
+  }
+
+  // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
+  // boot path (`telo run`) can resolve every Telo.Import from disk and skip
+  // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
+  // line then carries this whole tree into the production image.
+  if (entryDir) {
+    try {
+      const written = await writeManifestCache(graph, entryDir, registryUrl);
+      if (written.length > 0) {
+        console.log(
+          `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), path.join(entryDir, ".telo/manifests")))}`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        `${displayPath}  ${log.error("error")}  failed to write manifest cache: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      return false;
+    }
   }
 
   const jobs = collectControllerJobs(manifests);
@@ -117,12 +159,22 @@ async function installOne(inputPath: string, log: Logger): Promise<boolean> {
   return false;
 }
 
-export async function install(argv: { paths: string[] }): Promise<void> {
+export async function install(argv: {
+  paths: string[];
+  registryUrl?: string;
+}): Promise<void> {
   const log = createLogger(false);
+
+  // Same fallback chain as `telo run`: --registry-url > TELO_REGISTRY_URL >
+  // built-in default. The configured URL drives both the network fetches and
+  // the on-disk cache layout (registry-served manifests are stored under
+  // `<namespace>/<name>/<version>/...`, everything else under `__http/...`).
+  const registryUrl =
+    argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 
   let failed = false;
   for (const p of argv.paths) {
-    const ok = await installOne(p, log);
+    const ok = await installOne(p, registryUrl, log);
     if (!ok) failed = true;
   }
 
@@ -134,12 +186,18 @@ export function installCommand(yargs: Argv): Argv {
     "install <paths..>",
     "Pre-download all controllers referenced by one or more Telo manifests into the local cache",
     (y) =>
-      y.positional("paths", {
-        describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
-        type: "string",
-        array: true,
-        demandOption: true,
-      }),
+      y
+        .positional("paths", {
+          describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
+          type: "string",
+          array: true,
+          demandOption: true,
+        })
+        .option("registry-url", {
+          type: "string",
+          describe:
+            "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+        }),
     async (argv) => {
       await install(argv as any);
     },
