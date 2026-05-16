@@ -13,7 +13,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
-    "directory": "packages/http-dispatch/nodejs"
+    "directory": "modules/http-dispatch/nodejs"
   },
   "homepage": "https://github.com/telorun/telo#readme",
   "bugs": {
