@@ -1,5 +1,11 @@
 # @telorun/http-dispatch
 
+## 0.2.1
+
+### Patch Changes
+
+- 1a3c226: Relocate the package source from `packages/http-dispatch/` to `modules/http-dispatch/` and update `repository.directory` accordingly. No runtime or API changes.
+
 ## 0.2.0
 
 ### Minor Changes
