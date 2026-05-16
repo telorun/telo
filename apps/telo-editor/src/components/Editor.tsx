@@ -57,7 +57,11 @@ import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
-import { setActiveRegistry } from "./views/source/register-completion";
+import {
+  setActiveRegistry,
+  setActiveSettings,
+  setActiveWorkspaceAdapter,
+} from "./views/source/register-completion";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -237,6 +241,17 @@ export function Editor() {
       if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     };
   }, [state.workspace]);
+
+  // Keep the source-view completion provider's side-channel refs in sync with
+  // the current workspace adapter + settings. The provider needs the
+  // WorkspaceAdapter (to list directories for relative-path completion) and
+  // the registry server list (to fan out search/version queries). Both are
+  // ambient at the time a completion request fires — refs avoid re-registering
+  // the Monaco provider on every workspace/settings change.
+  useEffect(() => {
+    setActiveWorkspaceAdapter(workspaceAdapterRef.current ?? undefined);
+    setActiveSettings(settings);
+  }, [state.workspace, settings]);
 
   // Persist deployment config on every mutation. Workspace-scoped, stored
   // under its own localStorage key (not via saveState).

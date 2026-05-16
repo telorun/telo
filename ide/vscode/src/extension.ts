@@ -69,7 +69,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerCompletionItemProvider(
       [{ language: "telo" }, { language: "yaml" }],
       completionProvider,
-      " ", ":",
+      " ", ":", "/", "@",
     ),
   );
 

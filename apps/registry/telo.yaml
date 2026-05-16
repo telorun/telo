@@ -799,8 +799,8 @@ entries:
       type: object
       properties:
         namespace: { type: string }
-        name:      { type: string }
-        version:   { type: string }
+        name: { type: string }
+        version: { type: string }
       required: [namespace, name, version]
       additionalProperties: false
     handler:
@@ -808,8 +808,8 @@ entries:
       name: GetModuleManifest
     inputs:
       namespace: "${{ request.arguments.namespace }}"
-      name:      "${{ request.arguments.name }}"
-      version:   "${{ request.arguments.version }}"
+      name: "${{ request.arguments.name }}"
+      version: "${{ request.arguments.version }}"
     result:
       content:
         - type: text

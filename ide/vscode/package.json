@@ -54,7 +54,17 @@
         "scopeName": "source.telo",
         "path": "./syntaxes/telo.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Telo",
+      "properties": {
+        "telo.registryUrl": {
+          "type": "string",
+          "default": "https://registry.telo.run",
+          "description": "Base URL of the Telo module registry used for autocomplete of `Telo.Import` source values."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "pnpm --filter @telorun/analyzer build && node esbuild.mjs",
