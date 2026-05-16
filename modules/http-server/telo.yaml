@@ -14,7 +14,7 @@ exports:
 kind: Telo.Import
 metadata:
   name: HttpDispatch
-source: ../../packages/http-dispatch
+source: ../http-dispatch
 ---
 kind: "Telo.Definition"
 metadata:

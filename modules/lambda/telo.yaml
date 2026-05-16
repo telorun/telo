@@ -15,7 +15,7 @@ exports:
 kind: Telo.Import
 metadata:
   name: HttpDispatch
-source: ../../packages/http-dispatch
+source: ../http-dispatch
 ---
 # Abstract dispatch contract. Concrete handler kinds (HttpApi, Sqs, Direct, ...)
 # extend this; a Lambda.Function dispatches incoming AWS events to whichever
