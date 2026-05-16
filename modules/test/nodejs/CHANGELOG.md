@@ -1,5 +1,15 @@
 # @telorun/test
 
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [5c49834]
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/kernel@0.10.0
+  - @telorun/sdk@0.10.0
+
 ## 0.3.6
 
 ### Patch Changes

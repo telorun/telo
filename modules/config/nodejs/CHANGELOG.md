@@ -1,5 +1,13 @@
 # @telorun/config
 
+## 0.1.11
+
+### Patch Changes
+
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/sdk@0.10.0
+
 ## 0.1.10
 
 ### Patch Changes
