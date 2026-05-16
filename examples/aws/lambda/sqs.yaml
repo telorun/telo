@@ -1,0 +1,91 @@
+# Lambda.Sqs example — process an SQS message batch, opt into per-message
+# retries via partialBatchResponse, and signal which messages failed.
+#
+# Drive it locally:
+#   telo install ./sqs.yaml
+#   cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
+#   # then via RIE with a synthetic SQS event payload
+kind: Telo.Application
+metadata:
+  name: lambda-sqs-example
+  version: 1.0.0
+targets:
+  - Main
+---
+kind: Telo.Import
+metadata: { name: Lambda }
+source: aws/lambda@0.2.1
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: std/javascript@0.3.0
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: std/type@1.0.5
+---
+# User handler: receives the full batch and reports per-message failures
+# via the batchItemFailures shape AWS expects.
+kind: JS.Script
+metadata: { name: ProcessOrders }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [records]
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            messageId: { type: string }
+            body:      { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      batchItemFailures:
+        type: array
+        items:
+          type: object
+          properties:
+            itemIdentifier: { type: string }
+code: |
+  function main({ records }) {
+    const failures = [];
+    for (const record of records) {
+      try {
+        const order = JSON.parse(record.body);
+        if (!order.sku) {
+          throw new Error(`order ${record.messageId}: missing sku`);
+        }
+        // … real per-record work here
+      } catch (err) {
+        console.error(`failed message ${record.messageId}:`, err.message);
+        failures.push({ itemIdentifier: record.messageId });
+      }
+    }
+    return { batchItemFailures: failures };
+  }
+---
+# queue.queueName / batchSize are informational — your AWS deploy template
+# wires the event-source mapping. The runtime doesn't consult them.
+kind: Lambda.Sqs
+metadata: { name: Orders }
+queue:
+  queueName: orders
+  queueArn: arn:aws:sqs:us-east-1:000000000000:orders
+batchSize: 10
+partialBatchResponse: true
+handler:
+  kind: JS.Script
+  name: ProcessOrders
+inputs:
+  records: !cel "event.Records"
+---
+kind: Lambda.Function
+metadata: { name: Main }
+handlers:
+  - { kind: Lambda.Sqs, name: Orders }

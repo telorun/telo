@@ -4,11 +4,13 @@ sidebar_label: Deploying
 
 # Deploying
 
-Telo ships no AWS-specific packaging resource. The deployment flow is a short sequence of standard commands.
+Telo ships no Lambda-specific packaging tool. The flow is `telo install` + `cp` + `zip` (or `docker build`), then your usual AWS deploy tool.
 
-## Single-Lambda backend
+Working examples to start from: [`examples/aws/lambda/`](https://github.com/telorun/telo/tree/main/examples/aws/lambda) (one per handler kind, plus a multi-kind setup).
 
-**1. Author the manifest** — one `Telo.Application` with one `Lambda.Function` listing your concrete handlers:
+## One Lambda
+
+**1. Author the manifest** with one `Telo.Application`, your handler resources, and one `Lambda.Function` listing them as `handlers:`. The Function MUST be in `targets:` — under the custom runtime model, Telo only starts the AWS-event loop for resources listed there.
 
 ```yaml
 kind: Telo.Application
@@ -17,7 +19,7 @@ targets: [Main]
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: aws/lambda@0.1.0
+source: aws/lambda@0.2.1
 ---
 kind: Lambda.HttpApi
 metadata: { name: Web }
@@ -29,83 +31,79 @@ handlers:
   - { kind: Lambda.HttpApi, name: Web }
 ```
 
-The Function MUST be in `targets:`. Custom-runtime deployments call `kernel.start()`, which only runs the targeted services' `run()` method — without this line, the poll loop never starts.
-
-**2. Install controllers and manifests hermetically:**
+**2. Install dependencies** hermetically into `.telo/npm/`:
 
 ```bash
 telo install ./telo.yaml
 ```
 
-Populates `.telo/npm/` with `@telorun/lambda` and all transitive dependencies, and `.telo/manifests/` with every transitively-imported `Telo.Library` YAML. Identical command across every Telo deployment shape — both caches travel together so AWS-runtime boot makes no registry calls.
+Same command Telo uses for any deployment — pre-downloads everything the manifest depends on, so the Lambda never hits the network at boot.
 
-**3. Pick the bootstrap that matches your AWS runtime.**
+**3. Pick a runtime model and copy the matching bootstrap.**
 
-**Managed runtime** (`nodejs20.x` / `nodejs24.x` — AWS-provided Node.js):
+**Managed Node (`nodejs24.x`)** — AWS invokes your exported handler per event:
 
 ```bash
 cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
 ```
 
-The bootstrap exports `handler` — AWS calls it per invocation.
+Point AWS at `index.handler`. Use this unless you have a specific reason not to.
 
-**Custom runtime** (`provided.al2023` or container image):
+**Custom (`provided.al2023` or container image)** — Telo runs the event loop itself:
 
 ```bash
 cp node_modules/@telorun/lambda/custom.mjs ./bootstrap
 chmod +x ./bootstrap
 ```
 
-The bootstrap polls the AWS Runtime API and posts responses through Telo's Function controller.
-
-The Function controller observes `$AWS_LAMBDA_RUNTIME_API` at runtime and picks the right adapter — the **manifest itself is identical across both modes**. You can switch runtime by re-copying the other bootstrap and redeploying.
+The Function detects which model it's under via `$AWS_LAMBDA_RUNTIME_API` at runtime. **The manifest is identical** in both cases — you can swap models by recopying the other bootstrap and redeploying.
 
 **4. Package.**
 
-**Zip target:**
+Zip target:
 
 ```bash
 zip -r function.zip telo.yaml index.mjs .telo node_modules
 ```
 
-For custom runtime, swap `index.mjs` for `bootstrap`.
+Swap `index.mjs` for `bootstrap` if you copied the custom bootstrap.
 
-**Image target:**
+Image target:
 
 ```dockerfile
-FROM telorun/lambda-managed:0.1.0
+FROM telorun/lambda-managed:latest
 COPY telo.yaml ${LAMBDA_TASK_ROOT}/
 COPY .telo/ ${LAMBDA_TASK_ROOT}/.telo/
 COPY node_modules/ ${LAMBDA_TASK_ROOT}/node_modules/
 ```
 
-(The `telorun/lambda-managed` / `telorun/lambda-custom` base images ship out-of-band with `@telorun/lambda`. Track their releases at [Docker Hub](https://hub.docker.com/r/telorun/lambda-managed).)
+`telorun/lambda-managed` (and `telorun/lambda-custom` for the custom variant) extends the AWS Lambda base image with Telo's runtime pre-installed. Your Dockerfile only adds the manifest, the install root, and your handler code.
 
-**5. Deploy** with any AWS tool — `aws lambda update-function-code`, SAM, CDK, Terraform, Serverless, your in-house CI, etc. The deployment template's responsibilities:
+**5. Deploy** with `aws lambda update-function-code`, SAM, CDK, Terraform, Serverless, or your own pipeline. The deployment template's job:
 
 - Set the AWS runtime (`nodejs24.x` for managed, `provided.al2023` for custom).
-- Configure event source mappings (API Gateway, SQS event source mapping, etc.) matching the handler kinds in the manifest.
-- Set the IAM role with the permissions the handler invocables need.
-- For container images, point the image URI at your ECR repo (built from the Dockerfile above).
+- Configure event source mappings (API Gateway, SQS event source mapping, EventBridge target, etc.) matching the handler kinds in your manifest.
+- Set the IAM role with the permissions your handlers need.
+- For container images: point the image URI at your ECR repo (built from the Dockerfile above).
 
-## Multi-Lambda backend
+## Multiple Lambdas in one project
 
-Each Lambda is its own ARN, IAM role, and scaling profile. Write **one Telo.Application manifest per Lambda** — there's no in-tree mode for one image serving multiple Lambdas (uncommon enough that the deliberate decision was to surface it via separate manifests). Shared code goes in a Lambda Layer or a shared module/import.
+Each Lambda is its own AWS function with its own ARN, IAM role, and scaling profile. Write **one Telo.Application manifest per Lambda** and package each independently — Telo doesn't ship a one-image-many-Lambdas mode.
 
 ```
 project/
 ├── apps/
 │   ├── webhook-receiver/
-│   │   └── telo.yaml        # Telo.Application with Lambda.Function named Main
+│   │   └── telo.yaml
 │   └── order-processor/
-│       └── telo.yaml        # Telo.Application with Lambda.Function named Main
+│       └── telo.yaml
 └── shared/
-    └── biz-logic/          # imported via Telo.Import from both apps
+    └── biz-logic/         # imported via Telo.Import from both apps
 ```
 
-Run the 5-step flow above per app — each gets its own zip / image. Deploy independently.
+Run the five-step flow above per app. Shared code goes through `Telo.Import` (in the manifest) or a Lambda Layer (on the AWS side).
 
-## SAM template snippet (managed mode)
+## SAM example (managed mode)
 
 ```yaml
 Resources:
@@ -129,12 +127,12 @@ The build step (run before `sam deploy`):
 ```bash
 cd apps/webhook-receiver
 telo install ./telo.yaml
+mkdir -p ./build
 cp node_modules/@telorun/lambda/managed.mjs ./build/index.mjs
 cp -r telo.yaml .telo node_modules ./build/
 ```
 
-## What's not in scope
+## Known limitations
 
-- **Pruning**: the artifact includes all resources the manifest declares, even ones a given Function doesn't dispatch to. For typical Lambda footprints this isn't measurable; if it becomes load-bearing for your project, surface it and pruning lands either as a `telo install` flag or a future `Lambda.Package` resource.
-- **SnapStart**: not yet supported. Controller state semantics interact with SnapStart's checkpoint/restore in ways that need separate analysis.
-- **Lambda Extensions API**: only basic `SIGTERM` handling is wired up — no Telegraph / OpenTelemetry / log-shipping extension hooks yet. When `@telorun/observability-aws` lands, these go through it.
+- **SnapStart** isn't supported.
+- **Lambda Extensions** — only basic `SIGTERM` handling is wired up; no log-shipping or OpenTelemetry extension hooks yet.

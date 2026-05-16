@@ -34,7 +34,9 @@ function compileWalker(value: unknown): Walker {
       } catch (error) {
         const expr = compiled.source ? `\${{ ${compiled.source} }}` : "unknown expression";
         const msg = error instanceof Error ? error.message : String(error);
-        throw new Error(`Expression ${expr} failed: ${msg}`);
+        const hint = compiled.source ? describeFailedAccess(compiled.source, ctx, msg) : null;
+        const suffix = hint ? `\n  ${hint}` : "";
+        throw new Error(`Expression ${expr} failed: ${msg}${suffix}`);
       }
     };
   }
@@ -669,6 +671,127 @@ function setNestedValue(obj: Record<string, unknown>, parts: string[], value: un
     current = next as Record<string, unknown>;
   }
   current[parts[parts.length - 1]] = value;
+}
+
+type AccessToken = { kind: "id"; name: string } | { kind: "index"; index: number };
+
+/**
+ * Tokenize a CEL source string as a simple member-access path
+ * (e.g. `steps.call.result.content[0].type`). Returns null when the source
+ * contains anything beyond bare identifiers, dot access, and numeric/string
+ * bracket access (function calls, operators, optionals, comprehensions, etc.)
+ * — the enrichment is best-effort for the common dotted-path case.
+ */
+function tokenizeAccessPath(source: string): AccessToken[] | null {
+  const s = source.trim();
+  const idRe = /^[A-Za-z_][A-Za-z0-9_]*/;
+  const root = idRe.exec(s);
+  if (!root) return null;
+  const tokens: AccessToken[] = [{ kind: "id", name: root[0] }];
+  let i = root[0].length;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === ".") {
+      i++;
+      if (s[i] === "?") return null;
+      const m = idRe.exec(s.slice(i));
+      if (!m) return null;
+      const afterId = i + m[0].length;
+      if (s[afterId] === "(") return null;
+      tokens.push({ kind: "id", name: m[0] });
+      i = afterId;
+    } else if (c === "[") {
+      if (s[i + 1] === "?") return null;
+      const close = s.indexOf("]", i);
+      if (close === -1) return null;
+      const inner = s.slice(i + 1, close).trim();
+      if (/^\d+$/.test(inner)) {
+        tokens.push({ kind: "index", index: parseInt(inner, 10) });
+      } else if (/^"[^"\\]*"$/.test(inner) || /^'[^'\\]*'$/.test(inner)) {
+        tokens.push({ kind: "id", name: inner.slice(1, -1) });
+      } else {
+        return null;
+      }
+      i = close + 1;
+    } else {
+      return null;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Best-effort enrichment for CEL "No such key" failures. Walks the source
+ * access path against the activation, finds the deepest reachable value, and
+ * returns a single-line hint describing what was actually at that point
+ * (object keys, array length, scalar type) so developers can immediately see
+ * which segment of the chain produced an unexpected shape.
+ *
+ * Returns null when the error isn't a key-access failure, when the source
+ * can't be parsed as a plain access path, or when the path can't be matched
+ * against the activation — callers fall back to the original error text.
+ */
+export function describeFailedAccess(
+  source: string,
+  ctx: unknown,
+  msg: string,
+): string | null {
+  const m = /^No such key:\s*(\S+)/.exec(msg);
+  if (!m) return null;
+  const missingKey = m[1];
+
+  const tokens = tokenizeAccessPath(source);
+  if (!tokens || tokens.length < 2) return null;
+  if (tokens[0].kind !== "id") return null;
+  if (typeof ctx !== "object" || ctx === null) return null;
+
+  const rootName = tokens[0].name;
+  if (!(rootName in (ctx as Record<string, unknown>))) return null;
+  let current: unknown = (ctx as Record<string, unknown>)[rootName];
+  const walked: string[] = [rootName];
+
+  for (let i = 1; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.kind === "id") {
+      if (
+        current === null ||
+        current === undefined ||
+        typeof current !== "object" ||
+        Array.isArray(current) ||
+        !(tok.name in (current as Record<string, unknown>))
+      ) {
+        if (tok.name !== missingKey) return null;
+        return `at ${walked.join("")}: ${describeMissingAccess(current, missingKey)}`;
+      }
+      current = (current as Record<string, unknown>)[tok.name];
+      walked.push("." + tok.name);
+    } else {
+      if (current === null || current === undefined || typeof current !== "object") {
+        return null;
+      }
+      current = (current as Record<number, unknown>)[tok.index];
+      walked.push(`[${tok.index}]`);
+    }
+  }
+  return null;
+}
+
+function describeMissingAccess(value: unknown, key: string): string {
+  if (value === null) return `cannot read '${key}' — value is null`;
+  if (value === undefined) return `cannot read '${key}' — value is undefined`;
+  if (Array.isArray(value)) {
+    return `cannot read '${key}' — value is an array of length ${value.length}`;
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length === 0) return `cannot read '${key}' — value is an empty object {}`;
+    return `cannot read '${key}' — available keys: ${keys.join(", ")}`;
+  }
+  if (typeof value === "string") {
+    const preview = value.length > 40 ? value.slice(0, 40) + "…" : value;
+    return `cannot read '${key}' — value is a string (${JSON.stringify(preview)})`;
+  }
+  return `cannot read '${key}' — value is ${typeof value} (${String(value)})`;
 }
 
 /**

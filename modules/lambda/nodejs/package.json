@@ -55,7 +55,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude '**/tests/e2e/**'",
+    "test:e2e": "vitest run tests/e2e",
     "test:watch": "vitest",
     "prepack": "cp ../../../LICENSE . && cp ../README.md ."
   },
@@ -67,6 +68,7 @@
   "devDependencies": {
     "@telorun/kernel": "workspace:*",
     "@types/node": "^20.0.0",
+    "testcontainers": "^10.16.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   }
