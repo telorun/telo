@@ -86,6 +86,11 @@ is given, the package's default export (`.`) is used.
 
 Every controller — registry tag, `file:`, and `local_path` alike — is installed
 into a single per-manifest tree rooted at `<entry-manifest-dir>/.telo/npm/`.
+A sibling `<entry-manifest-dir>/.telo/manifests/` tree, written by the same
+`telo install` pass, holds the YAML of every transitively-imported
+`Telo.Library` so boot can resolve manifests without hitting the module
+registry. See [Module System](./modules.md#7-manifest-cache) for the cache
+layout; this section covers controller resolution only.
 
 ```
 <entry-manifest-dir>/.telo/npm/

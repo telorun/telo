@@ -1,7 +1,3 @@
----
-sidebar_label: Overview
----
-
 # AWS Lambda
 
 `aws/lambda@0.1.0` — per-source handler kinds dispatched by a `Lambda.Function` `Telo.Service`. One Telo manifest declares one Lambda artifact (one ARN); the Function owns the AWS-facing transport and dispatches incoming events to whichever concrete handlers (`Lambda.Direct` in v1; `Lambda.HttpApi` / `Lambda.Sqs` follow) the user listed.

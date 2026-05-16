@@ -2,6 +2,12 @@ export { ControllerLoader } from "./controller-loader.js";
 export { ControllerRegistry } from "./controller-registry.js";
 export { EvaluationContext } from "./evaluation-context.js";
 export { LocalFileSource } from "./manifest-sources/local-file-source.js";
+export {
+  LocalManifestCacheSource,
+  cachePathForCanonical,
+  resolveEntryDir,
+  writeManifestCache,
+} from "./manifest-sources/local-manifest-cache-source.js";
 export { MemorySource } from "./manifest-sources/memory-source.js";
 export { EventStream } from "./event-stream.js";
 export { ExecutionContext } from "./execution-context.js";

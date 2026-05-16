@@ -1,0 +1,8 @@
+*
+!apps/registry
+
+tests
+plans
+Dockerfile*
+node_modules
+dist

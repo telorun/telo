@@ -13,21 +13,6 @@ WORKDIR /srv
 # Entry manifest
 COPY apps/registry/telo.yaml apps/registry/telo.yaml
 
-# Module definitions
-COPY modules/type/telo.yaml modules/type/telo.yaml
-COPY modules/http-server/telo.yaml modules/http-server/telo.yaml
-COPY modules/http-client/telo.yaml modules/http-client/telo.yaml
-COPY modules/config/telo.yaml modules/config/telo.yaml
-COPY modules/s3/telo.yaml modules/s3/telo.yaml
-COPY modules/sql/telo.yaml modules/sql/telo.yaml
-COPY modules/run/telo.yaml modules/run/telo.yaml
-COPY modules/codec/telo.yaml modules/codec/telo.yaml
-COPY modules/octet-codec/telo.yaml modules/octet-codec/telo.yaml
-COPY modules/plain-text-codec/telo.yaml modules/plain-text-codec/telo.yaml
-COPY modules/yaml/telo.yaml modules/yaml/telo.yaml
-COPY modules/mcp-server/telo.yaml modules/mcp-server/telo.yaml
-COPY packages/http-dispatch/telo.yaml packages/http-dispatch/telo.yaml
-
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).
 RUN telo install apps/registry/telo.yaml

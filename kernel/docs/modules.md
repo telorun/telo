@@ -273,3 +273,42 @@ variables:
 secrets:
   paymentProviderKey: "sk_live_12345"
 ```
+
+## 7. Manifest Cache
+
+`telo install` walks the full `Telo.Import` graph from a manifest, fetches every transitively-imported `Telo.Library`, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls to the module registry — the cache is the single trust boundary that pins which manifests the runtime will see.
+
+### Layout
+
+```text
+<entry-manifest-dir>/.telo/manifests/
+  <namespace>/<name>/<version>/telo.yaml   # registry refs (source: ns/name@x.y.z)
+  <namespace>/<name>/<version>/<partial>   # any include: target reachable from above
+  __http/<host>/<pathname>                 # arbitrary HTTP imports (source: https://…)
+```
+
+- Registry refs are stored under their namespaced path. The layout mirrors the URL the registry itself serves at `<registry>/<namespace>/<name>/<version>/telo.yaml`, so the cache is self-describing on disk.
+- Direct HTTP imports (`source: https://example.com/lib/telo.yaml`) land under `__http/`.
+- An HTTP URL whose host matches the configured registry URL is folded into the registry layout — `source: https://registry.telo.run/std/foo/1.0.0/telo.yaml` and `source: std/foo@1.0.0` hit the same cache file.
+- URLs with a query string or fragment get a short content-hash inserted before the file extension so two distinct manifests differing only in query never collide.
+- Partials reached through `include:` are written alongside their owning manifest using the same relative paths declared in the owner, so the loader's existing relative-resolution path keeps working unchanged once the owner is served from disk.
+
+### Wiring
+
+A `LocalManifestCacheSource` registered ahead of the network sources claims any URL that matches a populated cache file. The chain on a typical CLI invocation:
+
+1. `LocalFileSource` — `file://`, absolute, or relative paths (the entry manifest, plus any `include:` and partials of cache-served files).
+2. `LocalManifestCacheSource` — registry refs and HTTP URLs that have a corresponding file under `.telo/manifests/`.
+3. `HttpSource` / `RegistrySource` — built-in fallbacks. Hit on cache miss, allowing dev runs without `telo install` to work unchanged.
+
+The cache miss is silent: a missing file falls through to whichever network source claims the URL, exactly as if the cache layer weren't there. This is what keeps `telo install` optional for development and load-bearing only for hermetic deploys.
+
+### Provenance
+
+The cache is **content-addressed by URL**, not by content hash. `telo install` overwrites existing files with freshly fetched bytes on every run, so re-installing converges on whatever the registry currently serves for the pinned version. The trust model assumes versions are immutable in the registry; mutating a published version after install will silently shadow stale bytes until `telo install` runs again.
+
+The cache is never pruned automatically. Stale entries — for versions no longer referenced by the manifest — stay until `.telo/manifests/` is removed by hand. This matches the `.telo/npm/` convention and keeps re-installs fast.
+
+### Portability
+
+`<entry-manifest-dir>/.telo/` is one self-contained tree. Containerised deploys typically `COPY` the manifest directory into the image and inherit both caches with no further work — the build stage runs `telo install`, the production stage is a single `COPY --from=build`, and boot does no network I/O.

@@ -31,13 +31,13 @@ handlers:
 
 The Function MUST be in `targets:`. Custom-runtime deployments call `kernel.start()`, which only runs the targeted services' `run()` method — without this line, the poll loop never starts.
 
-**2. Install controllers hermetically:**
+**2. Install controllers and manifests hermetically:**
 
 ```bash
 telo install ./telo.yaml
 ```
 
-Populates `.telo/npm/` with `@telorun/lambda` and all transitive dependencies. Identical command across every Telo deployment shape.
+Populates `.telo/npm/` with `@telorun/lambda` and all transitive dependencies, and `.telo/manifests/` with every transitively-imported `Telo.Library` YAML. Identical command across every Telo deployment shape — both caches travel together so AWS-runtime boot makes no registry calls.
 
 **3. Pick the bootstrap that matches your AWS runtime.**
 
