@@ -433,7 +433,7 @@ export class StaticAnalyzer {
         rootModules.add(m.metadata.name as string);
       }
     }
-    const aliasesByModule = new Map<string, AliasResolver>();
+    const aliasesByModule = ctx?.aliasesByModule ?? new Map<string, AliasResolver>();
     for (const m of manifests) {
       if (isModuleKind(m.kind)) {
         const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
@@ -715,7 +715,9 @@ export class StaticAnalyzer {
     }
 
     // Validate resource references (Phase 3)
-    diagnostics.push(...validateReferences(allManifests, { aliases, definitions: defs }));
+    diagnostics.push(
+      ...validateReferences(allManifests, { aliases, definitions: defs, aliasesByModule }),
+    );
 
     // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
     diagnostics.push(...validateExtends(allManifests, defs, aliases));

@@ -86,6 +86,18 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },
         {
           type: "category",
+          label: "AWS Lambda",
+          items: [
+            { type: "doc", id: "modules/lambda/README", label: "Overview" },
+            { type: "doc", id: "modules/lambda/docs/http-api", label: "Lambda.HttpApi" },
+            { type: "doc", id: "modules/lambda/docs/sqs", label: "Lambda.Sqs" },
+            { type: "doc", id: "modules/lambda/docs/direct", label: "Lambda.Direct" },
+            { type: "doc", id: "modules/lambda/docs/deploying", label: "Deploying" },
+            { type: "doc", id: "modules/lambda/docs/cold-starts", label: "Cold Starts" },
+          ],
+        },
+        {
+          type: "category",
           label: "HTTP Server",
           items: [
             { type: "doc", id: "modules/http-server/README", label: "Overview" },

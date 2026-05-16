@@ -92,4 +92,10 @@ export interface AnalysisOptions {
 export interface AnalysisContext {
   aliases?: import("./alias-resolver.js").AliasResolver;
   definitions?: import("./definition-registry.js").DefinitionRegistry;
+  /** Per-library alias resolvers keyed by the library's module name. Populated by
+   *  the analyzer when imports are forwarded from inside imported libraries.
+   *  Validators that resolve schema-side annotations (e.g. x-telo-schema-from
+   *  pointing at an imported kind) consult the kind owner's scope here, since
+   *  the consumer's aliases will not contain a library's private imports. */
+  aliasesByModule?: Map<string, import("./alias-resolver.js").AliasResolver>;
 }

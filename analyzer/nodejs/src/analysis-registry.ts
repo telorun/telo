@@ -14,6 +14,7 @@ import type { AnalysisContext } from "./types.js";
 export class AnalysisRegistry {
   private readonly defs = new DefinitionRegistry();
   private readonly aliases = new AliasResolver();
+  private readonly aliasesByModule = new Map<string, AliasResolver>();
 
   registerDefinition(def: ResourceDefinition): void {
     this.defs.register(def);
@@ -94,6 +95,6 @@ export class AnalysisRegistry {
 
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */
   _context(): AnalysisContext {
-    return { aliases: this.aliases, definitions: this.defs };
+    return { aliases: this.aliases, definitions: this.defs, aliasesByModule: this.aliasesByModule };
   }
 }

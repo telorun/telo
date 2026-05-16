@@ -23,6 +23,11 @@ Focus on:
 - scope creep, missing steps, unstated assumptions, and risks
 - adherence to Telo's core goals
 
+Do not focus on:
+
+- minor implementation details that don't affect the overall soundness of the plan
+- gaps that can be easily filled in during implementation without affecting the overall design
+
 Ground your feedback in specific sections of the plan and, where relevant, specific file paths and line ranges in the codebase the plan affects. Provide actionable recommendations for improvement, and prioritize them based on impact and effort.
 
 Provide only important feedback that would significantly improve the plan. Avoid nitpicks or minor style issues unless they have a meaningful impact on readability or maintainability.

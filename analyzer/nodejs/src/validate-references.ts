@@ -73,6 +73,7 @@ export function validateReferences(
   const diagnostics: AnalysisDiagnostic[] = [];
   const aliases = context.aliases;
   const registry = context.definitions;
+  const aliasesByModule = context.aliasesByModule;
   if (!aliases || !registry) return diagnostics;
 
   // Build outer resource lookup by name for resolution check.
@@ -259,6 +260,73 @@ export function validateReferences(
 
       const anchorName = expr.slice(0, slashIdx);
       const jsonPointer = "/" + expr.slice(slashIdx + 1);
+
+      // Aliased absolute kind path — first segment carries a dot, e.g.
+      // "HttpDispatch.Outcomes/$defs/Returns". Resolves the alias through the
+      // *kind owner's* scope (not the consumer's), navigates the JSON Pointer
+      // into the resolved definition's schema, and validates each field value.
+      //
+      // Relative anchors are property names that cannot contain a dot
+      // (CEL-style identifiers), so a dot in anchorName is unambiguous.
+      if (!isAbsolute && anchorName.includes(".")) {
+        const resolvedResourceKind = aliases.resolveKind(r.kind) ?? r.kind;
+        const resourceDef =
+          registry.resolve(r.kind) ?? registry.resolve(resolvedResourceKind);
+        const owningModule = (resourceDef?.metadata as { module?: string } | undefined)?.module;
+        const ownerScope =
+          (owningModule ? aliasesByModule?.get(owningModule) : undefined) ?? aliases;
+
+        const targetKind = ownerScope.resolveKind(anchorName);
+        if (!targetKind) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_FROM_MISSING_PATH",
+            source: SOURCE,
+            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias '${anchorName}'`,
+            data: { resource: resourceData, filePath, path: fieldPath },
+          });
+          continue;
+        }
+
+        const targetDef = registry.resolve(targetKind);
+        if (!targetDef?.schema) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_FROM_MISSING_PATH",
+            source: SOURCE,
+            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema`,
+            data: { resource: resourceData, filePath, path: fieldPath },
+          });
+          continue;
+        }
+
+        const subSchema = navigateJsonPointer(targetDef.schema, jsonPointer);
+        if (subSchema === undefined) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_FROM_MISSING_PATH",
+            source: SOURCE,
+            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema path '${jsonPointer}'`,
+            data: { resource: resourceData, filePath, path: fieldPath },
+          });
+          continue;
+        }
+
+        for (const fieldValue of resolveFieldValues(r, fieldPath)) {
+          if (fieldValue == null) continue;
+          const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
+          for (const issue of issues) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "DEPENDENT_SCHEMA_MISMATCH",
+              source: SOURCE,
+              message: `${resourceLabel}: '${fieldPath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
+              data: { resource: resourceData, filePath, path: fieldPath },
+            });
+          }
+        }
+        continue;
+      }
 
       // Derive the anchor path in the resource config.
       let anchorPath: string;

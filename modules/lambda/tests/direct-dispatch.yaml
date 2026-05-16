@@ -1,0 +1,106 @@
+# End-to-end smoke test for Lambda.Function + Lambda.Direct. Invokes the
+# Function with a synthetic AWS payload; the Function classifies it as
+# Direct (catch-all), dispatches to a JavaScript handler, and returns
+# the result through Direct's returns: matching.
+kind: Telo.Application
+metadata:
+  name: LambdaDirectDispatchTest
+  version: 1.0.0
+targets:
+  - TestDirectDispatch
+---
+kind: Telo.Import
+metadata:
+  name: Lambda
+source: ..
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../javascript
+---
+kind: Telo.Import
+metadata:
+  name: Type
+source: ../../type
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# User-supplied invocable. Receives the Direct-resolved inputs and returns
+# a greeting payload.
+kind: JavaScript.Script
+metadata:
+  name: Greet
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties:
+      name: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [message]
+    properties:
+      message: { type: string }
+code: |
+  function main({ name }) {
+    return { message: `Hello ${name}!` };
+  }
+---
+# Direct handler: maps the AWS event's `name` field to the JS handler's input,
+# returns the handler's result verbatim.
+kind: Lambda.Direct
+metadata:
+  name: Greeter
+handler:
+  kind: JavaScript.Script
+  name: Greet
+inputs:
+  name: !cel "event.name"
+---
+# The AWS-facing service. Lists the Direct handler as a dispatch target.
+# Direct is the catch-all classifier — any event shape lands here when no
+# other handler kind matches.
+kind: Lambda.Function
+metadata:
+  name: Main
+handlers:
+  - { kind: Lambda.Direct, name: Greeter }
+---
+# Run.Sequence drives the test: call the Function with a synthetic payload
+# (simulates `kernel.invoke` from a managed-runtime bootstrap), assert the
+# returned message.
+kind: Run.Sequence
+metadata:
+  name: TestDirectDispatch
+steps:
+  - name: InvokeFunction
+    inputs:
+      event:
+        name: "World"
+      context: {}
+    invoke:
+      kind: Lambda.Function
+      name: Main
+  - name: VerifyMessage
+    inputs:
+      message: "${{ steps.InvokeFunction.result.message }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
+            const: "Hello World!"

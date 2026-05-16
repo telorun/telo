@@ -1,0 +1,292 @@
+kind: Telo.Library
+metadata:
+  namespace: aws
+  name: lambda
+  version: 0.1.0
+exports:
+  kinds:
+    - Handler
+    - Function
+    - HttpApi
+    - Sqs
+    - Direct
+---
+# Shared HTTP outcome + matcher schemas for HTTP-shaped handler kinds.
+kind: Telo.Import
+metadata:
+  name: HttpDispatch
+source: ../../packages/http-dispatch
+---
+# Abstract dispatch contract. Concrete handler kinds (HttpApi, Sqs, Direct, ...)
+# extend this; a Lambda.Function dispatches incoming AWS events to whichever
+# concrete instances it lists in its `handlers:` array.
+kind: Telo.Abstract
+metadata:
+  name: Handler
+capability: Telo.Invocable
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      event:   { type: object }
+      context: { type: object }
+    required: [event, context]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    # AWS-shaped response envelope. Concrete kinds narrow this per-source.
+    type: object
+---
+# API Gateway HTTP API v2 trigger. The kind IS the source — no `source:`
+# discriminator on a generic function.
+kind: Telo.Definition
+metadata:
+  name: HttpApi
+extends: Self.Handler
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/lambda@0.1.0?local_path=./nodejs#http-api
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      event:
+        type: object
+        properties:
+          version:        { type: string, const: "2.0" }
+          requestContext: { type: object }
+          headers:        { type: object, additionalProperties: true }
+          body:           {}
+          isBase64Encoded: { type: boolean }
+        required: [version, requestContext]
+      context: { type: object }
+    required: [event, context]
+schema:
+  type: object
+  properties:
+    cors:
+      type: object
+      additionalProperties: false
+      properties:
+        origin:         { oneOf: [{ type: string }, { type: array, items: { type: string } }] }
+        methods:        { type: array, items: { type: string } }
+        allowedHeaders: { type: array, items: { type: string } }
+        credentials:    { type: boolean }
+        maxAge:         { type: integer }
+    routes:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          request:
+            x-telo-topology-role: matcher
+            x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
+          handler:
+            x-telo-ref: telo#Invocable
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                inputs: { type: object, additionalProperties: true }
+                result: { type: object, additionalProperties: true }
+          inputs:
+            type: object
+            additionalProperties: true
+            x-telo-eval: runtime
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    method:  { type: string }
+                    path:    { type: string }
+                    query:   { type: object, additionalProperties: true }
+                    body:    { type: object, additionalProperties: true }
+                    headers: { type: object, additionalProperties: true }
+                    params:  { type: object, additionalProperties: true }
+          returns:
+            type: array
+            x-telo-outcome-list: returns
+            x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Returns"
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    method: { type: string }
+                    path:   { type: string }
+                result:
+                  x-telo-context-ref-from: "handler/outputType"
+                  type: object
+                  additionalProperties: true
+          catches:
+            type: array
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    method: { type: string }
+                    path:   { type: string }
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code:    { type: string }
+                    message: { type: string }
+                    data:    { type: object, additionalProperties: true }
+        required: [request, handler, returns]
+  required: [routes]
+---
+# SQS queue trigger. Single queue, single handler — no routes array (one Lambda
+# per queue is the standard AWS pattern).
+kind: Telo.Definition
+metadata:
+  name: Sqs
+extends: Self.Handler
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/lambda@0.1.0?local_path=./nodejs#sqs
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      event:
+        type: object
+        properties:
+          Records:
+            type: array
+            items:
+              type: object
+              properties:
+                messageId:          { type: string }
+                body:               { type: string }
+                attributes:         { type: object, additionalProperties: true }
+                messageAttributes:  { type: object, additionalProperties: true }
+                eventSourceARN:     { type: string }
+              required: [messageId, body, eventSourceARN]
+        required: [Records]
+      context: { type: object }
+    required: [event, context]
+schema:
+  type: object
+  properties:
+    queue:
+      type: object
+      additionalProperties: false
+      properties:
+        queueName: { type: string }
+        queueArn:  { type: string }
+    batchSize:
+      type: integer
+      minimum: 1
+      maximum: 10000
+    partialBatchResponse:
+      type: boolean
+      default: true
+    handler:
+      x-telo-ref: telo#Invocable
+    inputs:
+      type: object
+      additionalProperties: true
+      x-telo-eval: runtime
+    returns:
+      # SQS partial-batch-failure shape — bespoke, not HTTP-outcome-shaped.
+      type: object
+      additionalProperties: false
+      properties:
+        batchItemFailures:
+          type: array
+          items:
+            type: object
+            properties:
+              itemIdentifier: { type: string }
+            required: [itemIdentifier]
+  required: [handler]
+---
+# Direct (synchronous SDK invoke / Step Functions / internal callers). No fixed
+# matcher — payload is whatever the caller sent. Use for admin tooling, internal
+# RPC, EventBridge Scheduler with no transformation, or as a catch-all for
+# mixed-pattern functions.
+kind: Telo.Definition
+metadata:
+  name: Direct
+extends: Self.Handler
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/lambda@0.1.0?local_path=./nodejs#direct
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      event:   { type: object }
+      context: { type: object }
+    required: [event, context]
+schema:
+  type: object
+  properties:
+    handler:
+      x-telo-ref: telo#Invocable
+    inputs:
+      type: object
+      additionalProperties: true
+      x-telo-eval: runtime
+    returns:
+      type: array
+      x-telo-outcome-list: returns
+      items:
+        type: object
+        properties:
+          when: { type: boolean }
+          body: {}
+    catches:
+      type: array
+      x-telo-outcome-list: catches
+      x-telo-catches-for: handler
+      items:
+        type: object
+        properties:
+          code: { type: string }
+          when: { type: boolean }
+          body: {}
+  required: [handler]
+---
+# Function: AWS-facing transport. Represents the AWS Lambda function (one ARN).
+# The bootstrap calls kernel.invoke against a Function instance; the Function
+# classifies the incoming AWS event by shape (API Gateway requestContext.http
+# → HttpApi; Records[].eventSource === "aws:sqs" → Sqs; Direct as catch-all)
+# and dispatches via ctx.invoke to the matching handler.
+kind: Telo.Definition
+metadata:
+  name: Function
+capability: Telo.Service
+controllers:
+  - pkg:npm/@telorun/lambda@0.1.0?local_path=./nodejs#function
+schema:
+  type: object
+  properties:
+    handlers:
+      type: array
+      minItems: 1
+      items:
+        # x-telo-ref against the Lambda.Handler abstract; any concrete kind
+        # extending it satisfies the ref structurally and by kind-check.
+        x-telo-ref: "aws/lambda#Handler"
+  required: [handlers]
