@@ -9,7 +9,6 @@ CMD ["pnpm", "run", "telo", "./apps/registry/telo.yaml"]
 FROM telorun/telo:nodejs as build
 
 WORKDIR /srv
-ENV TELO_CACHE_DIR=/srv/.telo-cache
 
 # Entry manifest
 COPY apps/registry/telo.yaml apps/registry/telo.yaml
@@ -27,6 +26,7 @@ COPY modules/octet-codec/telo.yaml modules/octet-codec/telo.yaml
 COPY modules/plain-text-codec/telo.yaml modules/plain-text-codec/telo.yaml
 COPY modules/yaml/telo.yaml modules/yaml/telo.yaml
 COPY modules/mcp-server/telo.yaml modules/mcp-server/telo.yaml
+COPY packages/http-dispatch/telo.yaml packages/http-dispatch/telo.yaml
 
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).
@@ -37,7 +37,6 @@ CMD ["apps/registry/telo.yaml"]
 FROM telorun/telo:nodejs as production
 
 WORKDIR /srv
-ENV TELO_CACHE_DIR=/srv/.telo-cache
 COPY --from=build /srv /srv
 
 CMD ["apps/registry/telo.yaml"]
