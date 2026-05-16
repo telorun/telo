@@ -35,13 +35,21 @@ export class AnalysisRegistry {
   /**
    * Iterates a resource's reference and scope fields as declared by its definition.
    * Calls onRef for each plain reference field and onScope for each scope field.
+   *
+   * Uses the expanded field map so x-telo-schema-from entries contribute their
+   * nested ref/scope slots — Phase 5 injection sees encoders that live inside a
+   * sub-schema (e.g. Server.notFoundHandler.returns[].content[mime].encoder).
    */
   iterateFieldEntries(
     resource: ResourceManifest,
     onRef: (fieldPath: string) => void,
     onScope: (fieldPath: string) => void,
   ): void {
-    const fieldMap = this.defs.getFieldMapForKind(resource.kind, this.aliases);
+    const fieldMap = this.defs.expandedFieldMapForResource(
+      resource,
+      this.aliases,
+      this.aliasesByModule,
+    );
     if (!fieldMap) return;
     for (const [fieldPath, entry] of fieldMap) {
       if (isScopeEntry(entry)) {

@@ -87,7 +87,12 @@ export function validateReferences(
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
 
-    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
+    // Use the expanded map so refs nested behind x-telo-schema-from get the
+    // same kind-check / unresolved-name validation as locally-declared refs.
+    // Falls back to the base map when aliasesByModule isn't supplied.
+    const fieldMap = aliasesByModule
+      ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
+      : registry.getFieldMapForKind(r.kind, aliases);
     if (!fieldMap) continue;
 
     const resourceLabel = `${r.kind}/${r.metadata.name as string}`;

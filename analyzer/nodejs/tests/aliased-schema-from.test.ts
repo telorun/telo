@@ -26,6 +26,17 @@ const carrierDef: ResourceManifest = {
           properties: {
             status: { type: "integer", minimum: 100, maximum: 599 },
             mode: { type: "string", enum: ["buffer", "stream"] },
+            content: {
+              type: "object",
+              additionalProperties: {
+                type: "object",
+                properties: {
+                  // Nested encoder ref — the slot Phase 5 injection must reach
+                  // through the schema-from indirection.
+                  encoder: { "x-telo-ref": "std/codec#Encoder" },
+                },
+              },
+            },
           },
           required: ["status"],
         },
@@ -181,6 +192,94 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
     const missing = diagnostics.find((d) => d.code === "SCHEMA_FROM_MISSING_PATH");
     expect(missing).toBeDefined();
     expect(missing!.message).toContain("Bogus.Kind");
+  });
+
+  it("normalizes inline resources nested behind an x-telo-schema-from path", () => {
+    // The encoder lives inside HttpDispatch.Outcomes/$defs/Returns and the
+    // consumer never spells the slot out in its own schema. Without schema-from
+    // expansion, the inline `{kind: Codec.Encoder}` survives Phase 2 untouched
+    // and Phase 5 has no named ref to inject — exactly the registry-app 500.
+    const codecLibrary: ResourceManifest = {
+      kind: "Telo.Library",
+      metadata: { name: "codec", namespace: "std" },
+      exports: { kinds: ["Encoder"] },
+    } as unknown as ResourceManifest;
+
+    const codecDef: ResourceManifest = {
+      kind: "Telo.Definition",
+      metadata: { name: "Encoder", module: "codec", namespace: "std" },
+      capability: "Telo.Invocable",
+      schema: { type: "object", additionalProperties: false },
+    } as unknown as ResourceManifest;
+
+    const userImportOfCodec: ResourceManifest = {
+      kind: "Telo.Import",
+      metadata: { name: "Codec", resolvedModuleName: "codec", resolvedNamespace: "std" },
+      source: "../codec",
+    } as unknown as ResourceManifest;
+
+    // Build the analysis context first (so the registry knows about kinds and
+    // import aliases), then normalize a *fresh* manifest list — analyze mutates
+    // inline refs in-place, so normalize would otherwise see them already
+    // hoisted by the first pass.
+    const seedManifests = [
+      userApp,
+      userImportOfConsumer,
+      userImportOfCodec,
+      consumerLibrary,
+      consumerImport,
+      consumerDef,
+      carrierLibrary,
+      carrierDef,
+      codecLibrary,
+      codecDef,
+    ];
+
+    const registry = new AnalysisRegistry();
+    const analyzer = new StaticAnalyzer();
+    analyzer.analyze(seedManifests, {}, registry);
+
+    const resource: ResourceManifest = {
+      kind: "Cons.Endpoint",
+      metadata: { name: "Ep" },
+      returns: [
+        {
+          status: 200,
+          mode: "stream",
+          content: {
+            "application/octet-stream": {
+              encoder: { kind: "Codec.Encoder" },
+            },
+          },
+        },
+      ],
+    } as unknown as ResourceManifest;
+
+    const normalized = analyzer.normalize([...seedManifests, resource], registry);
+
+    const encoderRef = (
+      (normalized.find((m) => m.metadata?.name === "Ep") as any)?.returns?.[0]?.content?.[
+        "application/octet-stream"
+      ] as { encoder?: { kind?: string; name?: string } } | undefined
+    )?.encoder;
+    expect(encoderRef).toBeDefined();
+    expect(typeof encoderRef!.name).toBe("string");
+    expect(encoderRef!.kind).toBe("Codec.Encoder");
+    const extracted = normalized.find((m) => m.metadata?.name === encoderRef!.name);
+    expect(extracted, `expected to find extracted manifest for ${encoderRef!.name}`).toBeDefined();
+    expect(extracted!.kind).toBe("Codec.Encoder");
+
+    // The schema-from-derived ref must also produce a DAG edge so the kernel
+    // initializes the encoder before its parent; without this, Phase 5
+    // injection fires against a not-yet-created dependency at boot.
+    const { order, cycleError } = analyzer.prepare(normalized, registry);
+    expect(cycleError).toBeNull();
+    expect(order).not.toBeNull();
+    const epIdx = order!.indexOf("Ep");
+    const encIdx = order!.indexOf(encoderRef!.name);
+    expect(encIdx).toBeGreaterThanOrEqual(0);
+    expect(epIdx).toBeGreaterThanOrEqual(0);
+    expect(encIdx).toBeLessThan(epIdx);
   });
 
   it("persists aliasesByModule across analyze() → prepare() so schema-from resolution still works in the kernel-boot path", () => {

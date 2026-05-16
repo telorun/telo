@@ -135,6 +135,19 @@ function collectRefs(node: Record<string, any>): string[] {
   return refs;
 }
 
+/** Traverses an arbitrary JSON Schema starting at the given path prefix. Used to
+ *  expand x-telo-schema-from sub-schemas into nested ref/scope entries so Phase 2
+ *  inline normalization and Phase 5 injection see slots that the local field map
+ *  hid behind the schema-from indirection. */
+export function buildFieldMapAtPath(
+  schema: Record<string, any>,
+  pathPrefix: string,
+): ReferenceFieldMap {
+  const map: ReferenceFieldMap = new Map();
+  traverseNode(schema, pathPrefix, map);
+  return map;
+}
+
 function traverseNode(node: Record<string, any>, path: string, map: ReferenceFieldMap): void {
   // Scope slot — record and stop; do not recurse into scope contents
   if ("x-telo-scope" in node) {
