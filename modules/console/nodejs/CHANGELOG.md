@@ -1,5 +1,13 @@
 # @telorun/console
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/sdk@0.10.0
+
 ## 0.4.0
 
 ### Minor Changes

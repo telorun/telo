@@ -1,5 +1,13 @@
 # @telorun/type
 
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/sdk@0.10.0
+
 ## 0.0.8
 
 ### Patch Changes

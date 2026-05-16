@@ -1,5 +1,57 @@
 # @telorun/analyzer
 
+## 0.9.0
+
+### Minor Changes
+
+- 5c49834: Loader returns the canonical load result; editor stops re-parsing.
+
+  The analyzer's `Loader` now produces a single `LoadedFile` / `LoadedModule` / `LoadedGraph` that carries text, parsed `yaml.Document` ASTs, manifests, position metadata, and canonical identity together. Hosts consume the same parse — the editor no longer runs a parallel YAML pipeline, the VS Code extension and CLI no longer read positions from non-enumerable manifest metadata, and the kernel uses the same primitive for static analysis and runtime entry loads.
+
+  **Breaking changes** in `@telorun/analyzer`. The deprecated methods are removed in this release rather than kept as shims:
+
+  - `Loader.loadModule(url, opts)` now returns `LoadedModule` (was `ResourceManifest[]`).
+  - `Loader.loadModuleGraph` removed — use `loadGraph` + `flattenForAnalyzer`.
+  - `Loader.loadManifests` removed — use `loadGraph` + `flattenForAnalyzer`.
+  - `Loader.loadModuleForFile` legacy shape removed; the replacement is `loadGraphForFile(url) → { graph, ownerUrl } | null`.
+  - `attachPositionIndex` (the non-enumerable-metadata helper) removed; positions live on `LoadedFile.positions` and consumers look them up via `findPositions(graph, …)` from `@telorun/ide-support`.
+  - `LoadedGraph.importEdges` is now `Map<string, Map<string, ImportEdge>>` carrying `{targetSource, targetModuleName, targetNamespace}` rather than a bare target URL — `flattenForAnalyzer` reads library identity off the edge directly instead of re-deriving from manifest metadata.
+
+  **New surface**:
+
+  - `parseLoadedFile(source, requestedUrl, text, opts?)` — pure, I/O-free parse primitive shared between the editor's source-view debounce and the loader's `read()` post-processing.
+  - `Loader.loadFile(url, opts?)`, `Loader.loadGraph(entry, opts?)`, `Loader.loadGraphForFile(fileUrl)` — new methods returning the canonical types.
+  - `flattenForAnalyzer(graph)` and `flattenLoadedModule(mod)` — produce the flat `ResourceManifest[]` `analyze()` consumes (graph-wide vs. single-module).
+  - `@telorun/ide-support`: `findPositions(graph, diagnosticData)` returns `{file, positionIndex?, sourceLine?}` and replaces every host's hand-rolled "look up the file owning this diagnostic + its positions" loops.
+
+  **Internal effects**:
+
+  - `@telorun/cli`: migrated `check`, `install`, and `publish` to the new API; `formatAnalysisDiagnostics` takes a `LoadedGraph`.
+  - `@telorun/kernel`: the kernel's facade methods (`loadModule`, `loadManifests`) preserve their `ResourceManifest[]` API so module controllers don't need to migrate; internally they project from the new types via `flattenForAnalyzer` / `flattenLoadedModule`.
+  - The editor's `ModuleDocument` collapses to `{filePath, loaded: LoadedFile, dirty: boolean}`; the previous parallel `parseModuleDocument` pipeline (`text` / `docs` / `loadedJson` / `parseError` snapshots, in-memory adapter, chained adapter, populate/collect-partial passes, `mergeSubGraph`) is gone. Source-view edits and form edits both flow through `parseLoadedFile`; saves re-parse the just-written text to refresh the load-time snapshot.
+
+- 50ae578: Unify diagnostic position resolution so the Telo Editor and the VS Code extension report the same line/column for every analyzer diagnostic.
+
+  Previously, the editor's in-memory YAML pipeline projected manifests via `doc.toJSON()` and never stamped `positionIndex` / `sourceLine` onto `metadata`. With those fallbacks missing, `normalizeDiagnostic` collapsed every analyzer diagnostic to `(0,0)` — every squiggle landed on line 1 of the file, regardless of the actual problem location. The VS Code extension didn't have this issue because it goes through `Loader.loadModuleForFile`, which stamps the metadata as a side effect of reading from disk.
+
+  - `@telorun/analyzer`: extract the position-stamping helpers (`buildPositionIndex`, `documentLineOffsets`, `buildLineOffsets`, plus `buildDocumentPositions` / `attachPositionIndex` composers) out of the private bowels of `manifest-loader.ts` and export them. `Loader` itself now consumes the same exported helpers, so editor frontends that parse YAML in-memory can produce identically-stamped manifests without duplicating the offset / AST-walk logic.
+  - `@telorun/ide-support`: `NormalizedDiagnostic` now carries the original `data` field through normalization. Editor UIs (popovers, "at &lt;path&gt;" hints, future CodeAction wiring) can read the analyzer's stamps from a single normalized shape instead of holding a raw `AnalysisDiagnostic` alongside.
+
+### Patch Changes
+
+- 07c881a: Fix: schema-from anchors that reference an imported library's alias now resolve correctly when validation runs through `StaticAnalyzer.prepare()` (the kernel-boot path), not just through `analyze()`.
+
+  `AnalysisRegistry` now stores `aliasesByModule` (per-library alias scopes for `Telo.Import`s forwarded from inside imported libraries) alongside its existing `aliases` field, and exposes it via `_context()`. `StaticAnalyzer.analyze()` writes into the registry's map instead of a local one, so populations persist across the `analyze() → prepare()` sequence the kernel runs at boot. `prepare()`'s `validateReferences` call now sees both alias scopes and can resolve aliased `x-telo-schema-from` anchors like `"HttpDispatch.Outcomes/$defs/Returns"` (where `HttpDispatch` is an alias declared inside http-server's library, not the consumer's manifest).
+
+  Before this fix, the schema-from anchor on `Server.notFoundHandler.returns` / `.catches` (added in the http-dispatch carrier POC) silently worked only when validating http-server's own `telo.yaml`. The same fields in user manifests that imported http-server would have failed with `SCHEMA_FROM_MISSING_PATH: cannot resolve alias 'HttpDispatch.Outcomes'` — but no test exercised that path because no test fixture used `notFoundHandler` with a carrier anchor. The bug surfaced when migrating `Api.routes[].request` to the same anchor pattern.
+
+  No behavioural change for manifests that did not use forwarded-library schema-from anchors.
+
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/sdk@0.10.0
+  - @telorun/templating@0.2.2
+
 ## 0.8.1
 
 ### Patch Changes

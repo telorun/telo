@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sse-codec",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Server-Sent Events codec — event-record stream ↔ byte iterables.",
   "keywords": [
     "telo",
