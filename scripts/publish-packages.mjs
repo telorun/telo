@@ -76,8 +76,28 @@ console.log(`\nPushing ${manifests.length} module manifest(s) to ${registry}:`);
 for (const m of manifests) console.log(`  ${m.replace(ROOT + "/", "")}`);
 console.log("");
 
+const failures = [];
 for (const m of manifests) {
-  runLive(
-    `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ${m}`,
-  );
+  const rel = m.replace(ROOT + "/", "");
+  try {
+    runLive(
+      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ${m}`,
+    );
+  } catch (err) {
+    // Don't let one module's push abort the rest of the release. Pushes are
+    // idempotent PUTs, but the gate on HEAD^..HEAD means a manifest skipped
+    // here won't be retried until its npm version moves again — so the loop
+    // must give every changed manifest a shot before exiting non-zero.
+    failures.push({ path: rel, message: err instanceof Error ? err.message : String(err) });
+    console.error(`\n  push failed for ${rel} — continuing with remaining manifests.`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error(`\n${failures.length} manifest push(es) failed:`);
+  for (const f of failures) {
+    console.error(`  ${f.path}`);
+    if (f.message) console.error(`    ${f.message.split("\n")[0]}`);
+  }
+  process.exit(1);
 }

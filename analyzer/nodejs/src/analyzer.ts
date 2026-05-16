@@ -525,7 +525,7 @@ export class StaticAnalyzer {
     }
 
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
-    const allManifests = normalizeInlineResources(manifests, defs, aliases);
+    const allManifests = normalizeInlineResources(manifests, defs, aliases, aliasesByModule);
 
     // Build a name→manifest map for looking up referenced resources
     const byName = new Map<string, ResourceManifest>();
@@ -740,7 +740,12 @@ export class StaticAnalyzer {
 
   normalize(manifests: ResourceManifest[], registry: AnalysisRegistry): ResourceManifest[] {
     const ctx = registry._context();
-    return normalizeInlineResources(manifests, ctx.definitions!, ctx.aliases);
+    return normalizeInlineResources(
+      manifests,
+      ctx.definitions!,
+      ctx.aliases,
+      ctx.aliasesByModule,
+    );
   }
 
   prepare(
@@ -753,7 +758,12 @@ export class StaticAnalyzer {
     if (errors.length > 0) {
       return { diagnostics: errors, order: null, cycleError: null };
     }
-    const graph = buildDependencyGraph(manifests, ctx.definitions!, ctx.aliases);
+    const graph = buildDependencyGraph(
+      manifests,
+      ctx.definitions!,
+      ctx.aliases,
+      ctx.aliasesByModule,
+    );
     if (graph.cycle) {
       return { diagnostics: [], order: null, cycleError: formatCycle(graph.cycle) };
     }

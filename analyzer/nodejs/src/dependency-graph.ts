@@ -45,6 +45,7 @@ export function buildDependencyGraph(
   resources: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
 ): DependencyGraph {
   // --- Build node set ---
   const nodes = new Map<string, ResourceNode>();
@@ -62,7 +63,14 @@ export function buildDependencyGraph(
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
 
     const sourceKey = nodeKey(r.kind, r.metadata.name as string);
-    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
+    // Use the expanded map so refs nested behind x-telo-schema-from contribute
+    // edges to the DAG. Without these, a parent (e.g. Http.Server) can init
+    // before its extracted encoder and Phase 5 injection fires against a
+    // not-yet-created dependency.
+    const fieldMap =
+      aliases && aliasesByModule
+        ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
+        : registry.getFieldMapForKind(r.kind, aliases);
     if (!fieldMap) continue;
 
     // Collect names of resources declared inside scope fields — these are initialized

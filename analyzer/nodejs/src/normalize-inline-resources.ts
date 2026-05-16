@@ -36,6 +36,7 @@ export function normalizeInlineResources(
   resources: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
 ): ResourceManifest[] {
   const result = [...resources];
 
@@ -48,7 +49,13 @@ export function normalizeInlineResources(
   let i = 0;
   while (i < queue.length) {
     const resource = queue[i++];
-    const fieldMap = registry.getFieldMapForKind(resource.kind, aliases);
+    // When aliasesByModule is available, use the expanded map so inline refs
+    // hidden behind an x-telo-schema-from indirection (e.g. an encoder inside
+    // an HttpDispatch.Outcomes/$defs/Returns sub-schema) reach extraction.
+    const fieldMap =
+      aliases && aliasesByModule
+        ? registry.expandedFieldMapForResource(resource, aliases, aliasesByModule)
+        : registry.getFieldMapForKind(resource.kind, aliases);
     if (!fieldMap) continue;
 
     const parentName = resource.metadata.name as string;

@@ -1,7 +1,13 @@
-import type { ResourceDefinition } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
-import { buildReferenceFieldMap, type ReferenceFieldMap } from "./reference-field-map.js";
-import { createAjv, formatSingleError } from "./schema-compat.js";
+import {
+  buildFieldMapAtPath,
+  buildReferenceFieldMap,
+  isSchemaFromEntry,
+  type ReferenceFieldMap,
+} from "./reference-field-map.js";
+import { createAjv, formatSingleError, navigateJsonPointer } from "./schema-compat.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 export class DefinitionRegistry {
@@ -161,6 +167,73 @@ export class DefinitionRegistry {
     if (fm) return fm;
     const resolved = aliases?.resolveKind(kind);
     return resolved ? this.getFieldMap(resolved) : undefined;
+  }
+
+  /** Returns the field map for `resource.kind` with x-telo-schema-from entries replaced
+   *  by their nested ref/scope slots — so Phase 2 inline normalization and Phase 5
+   *  injection see encoders nested behind a schema-from indirection (e.g.
+   *  http-server `Server.notFoundHandler.returns[].content[mime].encoder`).
+   *
+   *  Only static absolute schema-from paths with a dotted alias anchor are expanded
+   *  (e.g. "HttpDispatch.Outcomes/$defs/Returns"). Relative and unqualified absolute
+   *  anchors depend on a sibling property at runtime and stay unexpanded; the
+   *  analyzer's reference validation phase already flags the cases that matter. */
+  expandedFieldMapForResource(
+    resource: ResourceManifest,
+    aliases: AliasResolver,
+    aliasesByModule: Map<string, AliasResolver>,
+  ): ReferenceFieldMap | undefined {
+    const baseMap = this.getFieldMapForKind(resource.kind, aliases);
+    if (!baseMap) return undefined;
+
+    const resolvedKind = aliases.resolveKind(resource.kind) ?? resource.kind;
+    const def = this.resolve(resource.kind) ?? this.resolve(resolvedKind);
+    const ownerModule = (def?.metadata as { module?: string } | undefined)?.module;
+    const ownerScope =
+      (ownerModule ? aliasesByModule.get(ownerModule) : undefined) ?? aliases;
+
+    const expanded: ReferenceFieldMap = new Map();
+    for (const [path, entry] of baseMap) {
+      if (!isSchemaFromEntry(entry)) {
+        expanded.set(path, entry);
+        continue;
+      }
+      const sub = this.resolveSchemaFromSubMap(entry.schemaFrom, path, ownerScope);
+      if (!sub) continue;
+      for (const [subPath, subEntry] of sub) expanded.set(subPath, subEntry);
+    }
+    return expanded;
+  }
+
+  private resolveSchemaFromSubMap(
+    schemaFrom: string,
+    fieldPath: string,
+    ownerScope: AliasResolver,
+  ): ReferenceFieldMap | null {
+    const isAbsolute = schemaFrom.startsWith("/");
+    const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
+    const slashIdx = expr.indexOf("/");
+    if (slashIdx === -1) return null;
+    const anchorName = expr.slice(0, slashIdx);
+    const jsonPointer = "/" + expr.slice(slashIdx + 1);
+
+    // Static form: absolute path whose anchor is a dotted alias (e.g.
+    // "HttpDispatch.Outcomes/$defs/Returns"). Polymorphic forms — relative
+    // anchors or single-segment absolute anchors — only resolve once we know a
+    // sibling property's value, which is per-resource.
+    if (!anchorName.includes(".")) return null;
+
+    const targetKind = ownerScope.resolveKind(anchorName);
+    if (!targetKind) return null;
+    const targetDef = this.resolve(targetKind);
+    if (!targetDef?.schema) return null;
+    const subSchema = navigateJsonPointer(
+      targetDef.schema as Record<string, unknown>,
+      jsonPointer,
+    );
+    if (!subSchema || typeof subSchema !== "object") return null;
+
+    return buildFieldMapAtPath(subSchema as Record<string, any>, fieldPath);
   }
 
   /** Returns all definitions that transitively extend the given abstract kind.
