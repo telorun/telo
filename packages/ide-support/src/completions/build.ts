@@ -1,6 +1,7 @@
 import type { AnalysisRegistry } from "@telorun/analyzer";
-import type { CompletionResult } from "../types.js";
+import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
 import { detectContext } from "./detect-context.js";
+import { importSourceCompletions } from "./import-source.js";
 import { propKeyCompletions } from "./prop-keys.js";
 import { CAPABILITY_VALUES } from "./valid-capabilities.js";
 
@@ -25,15 +26,22 @@ function capabilityCompletions(): CompletionResult[] {
   }));
 }
 
-export function buildCompletions(
+export async function buildCompletions(
   text: string,
   line: number,
   character: number,
   registry: AnalysisRegistry | undefined,
-): CompletionResult[] {
+  adapter?: IdeEnvironmentAdapter,
+): Promise<CompletionResult[]> {
   const ctx = detectContext(text, line, character);
   if (!ctx) return [];
   if (ctx.type === "kind") return kindCompletions(registry);
   if (ctx.type === "capability") return capabilityCompletions();
+  if (ctx.type === "field-value") {
+    if (ctx.docKind === "Telo.Import" && ctx.field === "source") {
+      return importSourceCompletions(ctx.prefix, ctx.valueStartColumn, adapter);
+    }
+    return [];
+  }
   return propKeyCompletions(ctx.docKind, ctx.yamlPath, ctx.existingKeys, registry);
 }

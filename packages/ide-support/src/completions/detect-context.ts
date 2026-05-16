@@ -1,7 +1,16 @@
 export type CompletionCtx =
   | { type: "kind" }
   | { type: "capability" }
-  | { type: "prop-key"; docKind: string; yamlPath: string[]; existingKeys: Set<string> };
+  | { type: "prop-key"; docKind: string; yamlPath: string[]; existingKeys: Set<string> }
+  | {
+      type: "field-value";
+      docKind: string;
+      field: string;
+      /** Text from the start of the value to the cursor. */
+      prefix: string;
+      /** 0-based column where the value starts (right after `<field>:` + whitespace). */
+      valueStartColumn: number;
+    };
 
 export function findDocBounds(lines: string[], cursorLine: number): { start: number; end: number } {
   let start = 0;
@@ -161,6 +170,20 @@ export function detectContext(
   }
 
   if (!docKind) return undefined;
+
+  // Field-value completion: `source: <prefix>` on a top-level Telo.Import field.
+  // The prefix runs from after `source:`+whitespace up to the cursor — that's
+  // what consumers complete against (filesystem paths or registry ids).
+  if (docKind === "Telo.Import") {
+    const sourceMatch = currentLine.match(/^(source:\s*)(\S*)$/);
+    if (sourceMatch) {
+      const valueStartColumn = sourceMatch[1].length;
+      if (character >= valueStartColumn) {
+        const prefix = currentLine.slice(valueStartColumn, character);
+        return { type: "field-value", docKind, field: "source", prefix, valueStartColumn };
+      }
+    }
+  }
 
   const trimmed = currentLine.trim();
 
