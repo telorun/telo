@@ -1,5 +1,12 @@
 # @telorun/lambda
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [1a3c226]
+  - @telorun/http-dispatch@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
