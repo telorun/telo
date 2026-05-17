@@ -1,0 +1,132 @@
+# Multi-kind example — one Lambda artifact (one ARN, one IAM role) that
+# handles three different AWS event sources. API Gateway, SQS event source
+# mapping, and direct SDK invokes all land on the same Lambda; Telo routes
+# each event to the matching handler based on the incoming shape.
+#
+# Drive it locally:
+#   telo install ./multi-kind.yaml
+#   cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
+#   # then POST any of the three event shapes via RIE
+kind: Telo.Application
+metadata:
+  name: lambda-multi-kind-example
+  version: 1.0.0
+targets:
+  - Main
+---
+kind: Telo.Import
+metadata: { name: Lambda }
+source: aws/lambda@0.2.1
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: std/javascript@0.3.0
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: std/type@1.0.5
+---
+# Three handlers — one per event source.
+kind: JS.Script
+metadata: { name: GetHealth }
+inputType: { kind: Type.JsonSchema, schema: { type: object } }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [status]
+    properties:
+      status: { type: string }
+code: |
+  function main() {
+    return { status: "ok" };
+  }
+---
+kind: JS.Script
+metadata: { name: ProcessEvents }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [records]
+    properties:
+      records: { type: array }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      batchItemFailures:
+        type: array
+        items: { type: object, properties: { itemIdentifier: { type: string } } }
+code: |
+  function main({ records }) {
+    console.log(`Processing ${records.length} SQS records`);
+    return { batchItemFailures: [] };
+  }
+---
+kind: JS.Script
+metadata: { name: AdminPing }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      caller: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      pong: { type: string }
+code: |
+  function main({ caller }) {
+    return { pong: caller ?? "anonymous" };
+  }
+---
+# HTTP API v2 events → HttpApi handler (matched on event.requestContext.http).
+kind: Lambda.HttpApi
+metadata: { name: Web }
+routes:
+  - request:
+      method: GET
+      path: "/health"
+    handler:
+      kind: JS.Script
+      name: GetHealth
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+# SQS events → Sqs handler (matched on Records[0].eventSource === "aws:sqs").
+kind: Lambda.Sqs
+metadata: { name: EventQueue }
+queue:
+  queueName: app-events
+handler:
+  kind: JS.Script
+  name: ProcessEvents
+inputs:
+  records: !cel "event.Records"
+---
+# Anything else (direct SDK invokes, Step Functions, internal RPC) → Direct.
+kind: Lambda.Direct
+metadata: { name: Admin }
+handler:
+  kind: JS.Script
+  name: AdminPing
+inputs:
+  caller: !cel "event.caller"
+---
+# One Function. Telo matches each incoming event against the registered
+# handlers and dispatches accordingly. AWS-side, bind API Gateway and the
+# SQS event source mapping to this Lambda's ARN.
+kind: Lambda.Function
+metadata: { name: Main }
+handlers:
+  - { kind: Lambda.HttpApi, name: Web }
+  - { kind: Lambda.Sqs, name: EventQueue }
+  - { kind: Lambda.Direct, name: Admin }

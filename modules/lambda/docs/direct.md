@@ -4,9 +4,33 @@ sidebar_label: Lambda.Direct
 
 # Lambda.Direct
 
-Catch-all handler kind. The `Lambda.Function` event-shape classifier picks `Direct` when no other concrete kind matches, so any synchronous SDK invoke, Step Functions task, EventBridge Scheduler call, or internal admin tool ends up here.
+Working example: [`examples/aws/lambda/direct.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/direct.yaml).
 
-## Shape
+Use `Lambda.Direct` when your Lambda receives events that don't fit a more specific handler kind:
+
+- Synchronous SDK invokes (`aws lambda invoke`, `lambda:Invoke` from another service, custom clients).
+- Step Functions tasks.
+- EventBridge Scheduler invocations with no payload transformation.
+- Internal admin tooling or ad-hoc RPC.
+- A catch-all in a Function that mostly handles HTTP/SQS but occasionally receives unrouted invokes.
+
+`Direct` is safe to list alongside `Lambda.HttpApi` and `Lambda.Sqs` in the same Function — Telo picks the more specific kind whenever it matches, so `Direct` only catches events nothing else claims.
+
+## Minimal example
+
+```yaml
+kind: Lambda.Direct
+metadata: { name: Worker }
+handler: { kind: My.Worker }
+inputs:
+  payload: !cel "event"
+```
+
+The handler is invoked with `{ payload: <the AWS event body> }`. Its return value becomes the Lambda's return value (visible to the SDK caller, Step Functions task output, etc.).
+
+## With response shaping
+
+`returns:` and `catches:` let you reshape the handler's result or render structured errors without touching the handler itself.
 
 ```yaml
 kind: Lambda.Direct
@@ -23,25 +47,24 @@ catches:
     body: !cel '{ error: { code: error.code, message: error.message } }'
 ```
 
-## Invocation
+**Matching rules:**
 
-1. The Function dispatches `{ event, context }` here when classification picks `Direct`.
-2. `inputs:` CEL expands against `{ event, context }`. The map keys become the keys passed to the handler.
-3. The handler is invoked with the resolved inputs.
-4. On success, `returns:` matches the first entry whose `when:` evaluates to `true`. Entries without `when:` are catch-all fallbacks (later entries override earlier matches only if they have explicit `when:`).
-5. The matched entry's `body:` (CEL-expanded with `{ event, context, result }` in scope) is returned to the caller (SDK / Step Functions / scheduler).
-6. On `InvokeError`, `catches:` matches by `code` first, then `when:`. The matched `body` is returned. If no catch matches, the error propagates to AWS — the SDK caller sees a failed invocation.
+- `returns[]` entries are walked top-to-bottom on successful handler return. The first entry whose `when:` evaluates to `true` wins; entries without `when:` are catch-all fallbacks (explicit `when` matches always beat catch-alls regardless of order).
+- `catches[]` is only consulted when the handler throws an `InvokeError`. The first entry whose `code:` matches and `when:` is truthy wins. If no catch matches, the error propagates to AWS — the caller sees a failed invocation.
+- Each matched entry's `body:` is CEL-expanded against `{ event, context, result }` (success) or `{ event, context, error }` (failure) and returned.
+- Omitting `returns:` entirely returns the handler's result verbatim.
 
-## When to use Direct vs HttpApi vs Sqs
+## CEL context
 
-| You're handling… | Use |
+| Inside | Available |
 |---|---|
-| API Gateway HTTP API v2 events with `requestContext.http` | `Lambda.HttpApi` |
-| SQS `Records[]` events with `eventSource: "aws:sqs"` | `Lambda.Sqs` |
-| Synchronous SDK invoke (`lambda.invoke`) | `Lambda.Direct` |
-| Step Functions task | `Lambda.Direct` |
-| EventBridge Scheduler with no transformation | `Lambda.Direct` |
-| Internal admin tooling | `Lambda.Direct` |
-| Anything else, or a catch-all in a mixed-source Function | `Lambda.Direct` |
+| `inputs:` | `event`, `context` |
+| `returns[].when` / `returns[].body` | `event`, `context`, `result` |
+| `catches[].when` / `catches[].body` | `event`, `context`, `error` (with `code`, `message`, `data`) |
 
-The Function's classifier prefers `HttpApi` / `Sqs` over `Direct` when their structural matches succeed, so listing `Direct` alongside another kind is safe — it only catches what nothing else claims.
+## When NOT to use Direct
+
+- API Gateway HTTP API v2 events — use [Lambda.HttpApi](./http-api.md) instead.
+- SQS batch events — use [Lambda.Sqs](./sqs.md), which expresses the partial-batch-failure contract.
+
+Direct accepts those events too (it's the catch-all), but you'd be re-implementing the HTTP/SQS-specific bits in your handler.

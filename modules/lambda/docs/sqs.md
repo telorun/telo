@@ -4,7 +4,9 @@ sidebar_label: Lambda.Sqs
 
 # Lambda.Sqs
 
-SQS queue trigger. One queue per `Lambda.Sqs` resource (standard AWS pattern). The Function dispatches the full batch event to the handler in a single invoke call; the handler iterates records internally and may return per-message retry information.
+Working example: [`examples/aws/lambda/sqs.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/sqs.yaml).
+
+Handle SQS message batches. One `Lambda.Sqs` resource binds one queue; AWS triggers the Lambda whenever messages arrive on that queue, batching up to your event-source-mapping's `BatchSize`. The handler receives the whole batch in a single call — you iterate inside it.
 
 ## Shape
 
@@ -12,30 +14,37 @@ SQS queue trigger. One queue per `Lambda.Sqs` resource (standard AWS pattern). T
 kind: Lambda.Sqs
 metadata: { name: Orders }
 queue:
-  queueName: orders            # informational; AWS-side event source mapping
-  queueArn: arn:aws:sqs:...:orders
-batchSize: 10                  # informational; AWS event-source-mapping field
-partialBatchResponse: true     # default
-handler: { kind: My.OrderProcessor }
+  queueName: orders
+  queueArn: arn:aws:sqs:us-east-1:000000000000:orders
+batchSize: 10
+partialBatchResponse: true
+handler:
+  kind: My.OrderProcessor
 inputs:
   records: !cel "event.Records"
 ```
 
-`queue.queueName` and `batchSize` are **informational** — AWS configures the actual event-source mapping (queue ARN, batch size, visibility timeout, etc.) via SAM / CDK / Terraform. The manifest captures the values so the deployment template can read them from one place, but the runtime doesn't consult them.
+`queue.queueName`, `queue.queueArn`, and `batchSize` are **informational** — your deployment template (SAM / CDK / Terraform) is what wires the queue to the Lambda and sets the actual batch size on the event-source mapping. Keeping them in the manifest lets the deploy template read configuration from one place; the runtime doesn't consult them.
 
-## Invocation contract
+## Per-message granularity
 
-The handler is invoked **once per Lambda invocation**, not per record. The full batch arrives via the `event.Records[]` array; iterate inside the handler:
+AWS delivers SQS events as a batch:
+
+```json
+{ "Records": [{ "messageId": "...", "body": "...", ... }, ...] }
+```
+
+Your handler is invoked **once per batch**, not per record. Iterate inside:
 
 ```yaml
-kind: JavaScript.Script
-metadata: { name: ProcessRecords }
+kind: JS.Script
+metadata: { name: OrderProcessor }
 code: |
   function main({ records }) {
     const failures = [];
     for (const record of records) {
       try {
-        // … per-record business logic
+        // per-record business logic
       } catch (err) {
         failures.push({ itemIdentifier: record.messageId });
       }
@@ -44,16 +53,22 @@ code: |
   }
 ```
 
-This matches AWS's SQS event-source-mapping semantics — Lambda hands you the whole batch, and partial-failure reporting is a return-value contract.
+## Partial-batch failures
 
-## Partial-batch responses
+With `partialBatchResponse: true` (the default), the handler can report which individual messages failed by returning:
 
-`partialBatchResponse: true` (default): the controller passes the handler's `batchItemFailures` array through to AWS. Returning `{ batchItemFailures: [] }` (or any non-conforming shape) signals full-batch success.
+```json
+{ "batchItemFailures": [{ "itemIdentifier": "<messageId>" }, ...] }
+```
 
-`partialBatchResponse: false`: the controller always returns `{ batchItemFailures: [] }`. Per-message retries are not available — an unhandled throw is the only retry mechanism (AWS retries the entire batch).
+`Lambda.Sqs` passes that shape through to AWS verbatim. AWS deletes the messages that succeeded (i.e. those NOT in `batchItemFailures`) and re-delivers the failed ones after the queue's visibility timeout.
 
-## Throws
+Returning anything else (or nothing) signals a full-batch success — every message is deleted from the queue.
 
-Unhandled exceptions from the handler propagate out of `invoke()` to the Function's poll loop, which posts the error to the AWS Runtime API. AWS treats this as a full-batch failure regardless of `partialBatchResponse`.
+With `partialBatchResponse: false`, per-message reporting is disabled; full-batch success is reported whenever the handler returns normally. Per-message retries aren't available — an unhandled throw is the only retry mechanism.
 
-`InvokeError` (declared via the handler's `throws:` field) is treated identically — the controller does not currently catch errors and translate them into `batchItemFailures`. If you need that pattern, catch inside the handler and add the failing record to the response array yourself.
+## Unhandled exceptions
+
+An unhandled exception from the handler is reported to AWS as a full-batch failure. Every message in the batch becomes eligible for retry, regardless of `partialBatchResponse`.
+
+If you want per-message retries, catch inside the handler and add the failing record to the `batchItemFailures` array yourself — don't let the exception escape.

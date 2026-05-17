@@ -27,6 +27,28 @@ describe("buildCelEnvironment", () => {
     expect(env.parse("input")({ input: stream })).toBe(stream);
   });
 
+  it("accepts a Stream produced by a 'foreign' sdk copy via the globalThis singleton", () => {
+    // Simulates the kernel + npm-loaded-controller realm split: a controller
+    // imports its own @telorun/sdk copy, that copy's stream.ts also calls
+    // `globalThis[Symbol.for("@telorun/sdk:Stream")] ??= ctor`, so the
+    // controller ends up using the *kernel's* Stream class. Two sdk copies =>
+    // one constructor identity, and cel-js's type-by-constructor check
+    // therefore matches the registered Stream regardless of which copy
+    // produced the value.
+    const ForeignStream = (globalThis as Record<symbol, unknown>)[
+      Symbol.for("@telorun/sdk:Stream")
+    ] as typeof Stream;
+    expect(ForeignStream).toBe(Stream);
+
+    const env = buildCelEnvironment();
+    const stream = new ForeignStream(
+      (async function* () {
+        yield "b";
+      })(),
+    );
+    expect(env.parse("input")({ input: stream })).toBe(stream);
+  });
+
   it("default sha256 stub throws a helpful error", () => {
     const env = buildCelEnvironment();
     expect(() => env.parse("sha256('x')")({})).toThrow(/sha256/);

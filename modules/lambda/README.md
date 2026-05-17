@@ -1,8 +1,8 @@
 # AWS Lambda
 
-`aws/lambda@0.1.0` — per-source handler kinds dispatched by a `Lambda.Function` `Telo.Service`. One Telo manifest declares one Lambda artifact (one ARN); the Function owns the AWS-facing transport and dispatches incoming events to whichever concrete handlers (`Lambda.Direct` in v1; `Lambda.HttpApi` / `Lambda.Sqs` follow) the user listed.
+Run your Telo manifest as an AWS Lambda function. One manifest = one Lambda artifact. The manifest declares which AWS event sources the Lambda accepts (HTTP requests, SQS messages, direct invokes, ...) and what each handler does; Telo owns the AWS-facing transport so you don't write boilerplate.
 
-## Shape
+## How it fits together
 
 ```yaml
 kind: Telo.Application
@@ -11,7 +11,7 @@ targets: [Main]
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: aws/lambda@0.1.0
+source: aws/lambda@0.2.1
 ---
 kind: Lambda.Direct
 metadata: { name: Worker }
@@ -25,45 +25,62 @@ handlers:
   - { kind: Lambda.Direct, name: Worker }
 ```
 
-`Lambda.Function` is the AWS-facing service — it owns the runtime transport (managed-runtime handler export, or custom-runtime AWS Runtime API poll loop). Concrete handler kinds (`Direct`, future `HttpApi`, `Sqs`) are `Telo.Invocable`s with no AWS-facing transport of their own — they only receive `{ event, context }` payloads when the Function dispatches into them. The Function classifies events by structural shape; the kind IS the source.
+`Lambda.Function` represents the AWS Lambda itself. The handler kinds (`Direct`, `HttpApi`, `Sqs`) describe what the Lambda does per incoming event. List them under `Lambda.Function.handlers` and Telo routes each event to the right one.
+
+## Picking a handler kind
+
+| Source | Use | Reference |
+|---|---|---|
+| HTTP request via API Gateway HTTP API v2 | `Lambda.HttpApi` | [Lambda.HttpApi](./docs/http-api.md) |
+| SQS message batch | `Lambda.Sqs` | [Lambda.Sqs](./docs/sqs.md) |
+| Synchronous SDK invoke, Step Functions, EventBridge Scheduler, internal RPC | `Lambda.Direct` | [Lambda.Direct](./docs/direct.md) |
+
+A single `Lambda.Function` can list multiple handler kinds. Bind the AWS-side event source mappings (API Gateway, SQS, etc.) to the same Lambda ARN and Telo routes each event to the matching handler:
+
+```yaml
+kind: Lambda.Function
+metadata: { name: Main }
+handlers:
+  - { kind: Lambda.HttpApi, name: WebApi }
+  - { kind: Lambda.Sqs, name: OrderProcessor }
+  - { kind: Lambda.Direct, name: AdminTools }
+```
 
 ## Deployment
 
-Two runtime modes; same manifest works for both. Pick by which bootstrap you copy:
+Telo supports both AWS Lambda runtime models. The manifest is identical across them — you pick a model by which bootstrap file you copy into the artifact.
 
-**Managed (`nodejs24.x`)** — AWS owns the outer loop:
-
-```bash
-telo install ./telo.yaml
-cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
-zip -r function.zip telo.yaml index.mjs .telo node_modules
-# Then deploy with AWS handler = index.handler, runtime = nodejs24.x.
-```
-
-**Custom (`provided.al2023` / container)** — Telo runs the loop against the AWS Runtime API:
-
-```bash
-telo install ./telo.yaml
-cp node_modules/@telorun/lambda/custom.mjs ./bootstrap && chmod +x ./bootstrap
-zip -r function.zip telo.yaml bootstrap .telo node_modules
-# Then deploy with runtime = provided.al2023.
-```
-
-The Function controller observes `$AWS_LAMBDA_RUNTIME_API` at runtime and picks the right adapter; the manifest itself is identical across modes.
-
-## v1 Surface
-
-| Kind | Capability | Reference |
+| Runtime | Bootstrap | When to use |
 |---|---|---|
-| `Lambda.Handler` | `Telo.Abstract` (Invocable) | Dispatch contract; concrete kinds `extend` it |
-| `Lambda.Function` | `Telo.Service` | AWS-facing transport, event classifier, dispatcher |
-| `Lambda.HttpApi` | `Telo.Invocable` | [Lambda.HttpApi](./docs/http-api.md) — API Gateway HTTP API v2 trigger |
-| `Lambda.Sqs` | `Telo.Invocable` | [Lambda.Sqs](./docs/sqs.md) — SQS queue trigger, partial-batch-failure envelope |
-| `Lambda.Direct` | `Telo.Invocable` | [Lambda.Direct](./docs/direct.md) — catch-all for synchronous invokes, Step Functions, internal RPC |
+| Managed Node (`nodejs24.x`) | `cp node_modules/@telorun/lambda/managed.mjs ./index.mjs` | Most cases. AWS owns the outer loop and calls your exported handler. |
+| Custom (`provided.al2023` / container image) | `cp node_modules/@telorun/lambda/custom.mjs ./bootstrap` | Containers, SnapStart-incompatible runtimes, anywhere you want full control over the boot sequence. |
 
-See also:
-- [Deploying](./docs/deploying.md) — packaging flow (zip + image; managed + custom runtimes).
-- [Cold Starts](./docs/cold-starts.md) — budget guidance, `x-telo-scope` patterns.
-- [Plan](./plans/lambda-function.md) — design rationale.
+The same manifest runs under either model — Telo detects which one AWS is using and adapts. You only change which bootstrap you copy.
 
-Out-of-scope follow-ups: response streaming (`mode: stream`), additional handler kinds (`Lambda.RestApi`, `Lambda.FunctionUrl`, `Lambda.EventBridge`, `Lambda.S3`, `Lambda.Schedule`), SnapStart, X-Ray tracing via `@telorun/observability-aws`.
+See [Deploying](./docs/deploying.md) for the full packaging flow and platform-specific deploy templates (SAM, CDK, Terraform).
+
+## Examples
+
+Working manifests under [`examples/aws/lambda/`](https://github.com/telorun/telo/tree/main/examples/aws/lambda) — copy one as a starting point:
+
+- [`direct.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/direct.yaml) — minimal `Lambda.Direct` setup.
+- [`http-api.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/http-api.yaml) — two HTTP routes with CORS and structured error rendering.
+- [`sqs.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/sqs.yaml) — SQS batch handling with per-message retry reporting.
+- [`multi-kind.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/multi-kind.yaml) — one Lambda artifact serving all three event sources.
+
+## Reference
+
+- [Lambda.HttpApi](./docs/http-api.md) — routes, request matching, response rendering, CORS.
+- [Lambda.Sqs](./docs/sqs.md) — batch handling, partial-batch failures.
+- [Lambda.Direct](./docs/direct.md) — synchronous invokes, returns matching.
+- [Deploying](./docs/deploying.md) — packaging, both runtime models, SAM / CDK / Terraform snippets.
+- [Cold Starts](./docs/cold-starts.md) — keeping init time under AWS's budget, `x-telo-scope` patterns.
+
+## Kinds at a glance
+
+| Kind | What it does |
+|---|---|
+| `Lambda.Function` | Represents your AWS Lambda function. Required in every manifest. |
+| `Lambda.HttpApi` | API Gateway HTTP API v2 trigger — routes, request matching, response rendering. |
+| `Lambda.Sqs` | SQS queue trigger with partial-batch-failure support. |
+| `Lambda.Direct` | Catch-all for synchronous invokes and event sources without a dedicated kind. |

@@ -148,11 +148,20 @@ code: |
       throw new Error(`MCP unexpected Content-Type '${ct}'. Body: ${raw}`);
     }
 
+    // Surface JSON-RPC errors as thrown errors so the test failure line carries
+    // the actual code/message. Otherwise the downstream assert trips on
+    // `result.content[0].type` and the underlying MCP error is invisible.
+    if (payload.error) {
+      throw new Error(
+        `MCP ${method} returned error ${payload.error.code}: ${payload.error.message}`,
+      );
+    }
+
     return {
       status,
-      hasError: !!payload.error,
+      hasError: false,
       result: payload.result || {},
-      error: payload.error || {},
+      error: {},
     };
   }
 ---

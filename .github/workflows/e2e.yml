@@ -1,0 +1,139 @@
+name: E2E Tests
+
+# Docker-driven end-to-end suites. Run in parallel with the main `test.yml`
+# job so multi-hundred-MB image pulls / compose bring-ups don't extend the
+# unit-test wall time. Each job is self-contained.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Brings up the registry stack (proxy / registry / db / storage) via
+  # docker-compose and runs `apps/registry/test-suite-e2e.yaml` against the
+  # live HTTP surface. The publish token is generated per run and read by
+  # both the registry container (`SeedRootPublishToken`) and the test
+  # runner via the CLI's loadEnvFiles — same path local devs use.
+  registry:
+    name: Registry E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Seed registry publish token
+        run: |
+          TOKEN=$(openssl rand -hex 32)
+          {
+            echo "TELO_PUBLISH_TOKEN=$TOKEN"
+            echo "TELO_REGISTRY_TOKEN=$TOKEN"
+          } > apps/registry/.env.local
+
+      - name: Bring up registry stack
+        run: |
+          mkdir -p apps/registry/.telo
+          docker compose up -d --build --wait --wait-timeout 120 db storage registry proxy
+
+      - name: Run registry e2e suite
+        run: pnpm run test:e2e
+
+      - name: Dump registry logs on failure
+        if: failure()
+        run: docker compose logs registry
+
+      - name: Stop registry stack
+        if: always()
+        run: |
+          docker compose down -v
+          rm -f apps/registry/.env.local
+
+  # Drives the real `managed.mjs` / `custom.mjs` bootstraps inside the AWS
+  # Lambda runtime image (via testcontainers) against the AWS Lambda Runtime
+  # Interface Emulator. Each handler kind (Direct / HttpApi / Sqs) runs in
+  # both modes — 12 cases.
+  lambda:
+    name: Lambda E2E (RIE)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm pack` ships only files listed in package.json `files` (i.e. `dist/`);
+      # the fixture builder relies on those, so dist must exist before packing.
+      - name: Build workspace packages
+        run: pnpm -r run build
+
+      - name: Warm AWS Lambda runtime image
+        run: docker pull public.ecr.aws/lambda/nodejs:24
+
+      - name: Run Lambda E2E suite
+        run: pnpm --filter @telorun/lambda test:e2e
+
+      - name: Dump leftover container logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          for cid in $(docker ps -a --format '{{.ID}}'); do
+            echo "==== $cid ===="
+            docker logs "$cid" 2>&1 | tail -50 || true
+          done

@@ -1,0 +1,118 @@
+# Lambda.HttpApi example — API Gateway HTTP API v2 trigger with three
+# routes (greeting, structured echo, error rendering via catches:).
+#
+# Drive it locally:
+#   telo install ./http-api.yaml
+#   cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
+#   # then via RIE with a synthetic HTTP API v2 event payload
+kind: Telo.Application
+metadata:
+  name: lambda-http-api-example
+  version: 1.0.0
+targets:
+  - Main
+---
+kind: Telo.Import
+metadata: { name: Lambda }
+source: aws/lambda@0.2.1
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: std/javascript@0.3.0
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: std/type@1.0.5
+---
+# GET /users/{id} → returns a greeting by id.
+kind: JS.Script
+metadata: { name: GreetById }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [message]
+    properties:
+      message: { type: string }
+code: |
+  function main({ id }) {
+    return { message: `Hello, user ${id}!` };
+  }
+---
+# POST /orders → echoes the parsed JSON body; throws ValidationError on
+# missing fields so the route's catches: block can render a 400.
+kind: JS.Script
+metadata: { name: PlaceOrder }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [body]
+    properties:
+      body:
+        type: object
+        properties:
+          sku:      { type: string }
+          quantity: { type: integer }
+code: |
+  function main({ body }) {
+    if (!body || typeof body.sku !== "string" || typeof body.quantity !== "number") {
+      throw new InvokeError("ValidationError", "sku (string) and quantity (number) are required");
+    }
+    return { orderId: `ord_${Date.now()}`, sku: body.sku, quantity: body.quantity };
+  }
+---
+kind: Lambda.HttpApi
+metadata: { name: Web }
+cors:
+  origin: "*"
+  methods: [GET, POST]
+  allowedHeaders: [Content-Type]
+routes:
+  - request:
+      method: GET
+      path: "/users/{id}"
+    handler:
+      kind: JS.Script
+      name: GreetById
+    inputs:
+      id: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      method: POST
+      path: "/orders"
+    handler:
+      kind: JS.Script
+      name: PlaceOrder
+    inputs:
+      body: !cel "request.body"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - code: ValidationError
+        status: 400
+        content:
+          application/json:
+            body:
+              error:
+                code: !cel "error.code"
+                message: !cel "error.message"
+---
+kind: Lambda.Function
+metadata: { name: Main }
+handlers:
+  - { kind: Lambda.HttpApi, name: Web }
