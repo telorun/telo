@@ -1,6 +1,6 @@
 {
   "name": "@telorun/octet-codec",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Raw-bytes codec — Uint8Array stream ↔ Uint8Array.",
   "keywords": [
     "telo",

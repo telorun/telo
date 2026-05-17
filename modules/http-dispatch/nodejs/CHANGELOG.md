@@ -1,5 +1,12 @@
 # @telorun/http-dispatch
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [58362c4]
+  - @telorun/sdk@0.11.1
+
 ## 0.2.1
 
 ### Patch Changes

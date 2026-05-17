@@ -1,5 +1,0 @@
----
-"@telorun/sdk": patch
----
-
-Make `Stream` a `globalThis`-keyed singleton so its constructor identity survives multiple `@telorun/sdk` copies in a single process. cel-js identifies CEL object types by constructor identity, and the kernel + an npm-loaded controller (e.g. `S3.Get`) routinely resolve to different sdk installs (workspace vs `.telo/npm/<hash>/...`). Before this change, a `Stream` value produced by a controller threw `Unsupported type: Stream` at runtime whenever it flowed through a CEL expression like `${{ steps.fetch.result.output }}` — even though both copies declared the same `Stream` class — because the registered constructor on the kernel side wasn't the constructor that produced the value. The fix is contained in the sdk's `stream.ts`: the first copy to load registers its `Stream` class on `globalThis` under `Symbol.for("@telorun/sdk:Stream")`; later copies discard their local class declaration at export time and re-export the registered one. No build artifact, `file:` symlink, or kernel-side realm-collapse install is required for class identity to hold.
