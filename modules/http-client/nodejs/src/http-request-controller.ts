@@ -229,8 +229,12 @@ class HttpRequestResource implements ResourceInstance {
           : DEFAULT_TIMEOUT;
     }
 
-    // Expand template fields from manifest.inputs using runtime input as context
-    // Manifest-level fields (url, method, etc.) serve as defaults when inputs is absent
+    // Build the effective inputs by layering, lowest precedence to highest:
+    //   1. manifest-level fields (url, method, ...) — fallback defaults
+    //   2. m.inputs — manifest-baked inputs (legacy, still supported when present)
+    //   3. call-site `input` — the canonical sibling-form invocation args
+    // CEL expressions inside any of these resolve against `input` as the context.
+    const callerInput = (input ?? {}) as Record<string, unknown>;
     const manifestInputs: HttpRequestInputs = {
       url: m.url,
       method: m.method,
@@ -238,8 +242,9 @@ class HttpRequestResource implements ResourceInstance {
       headers: m.headers,
       body: m.body,
       ...m.inputs,
+      ...callerInput,
     };
-    const resolved = ctx.expandValue(manifestInputs, input ?? {}) as HttpRequestInputs;
+    const resolved = ctx.expandValue(manifestInputs, callerInput) as HttpRequestInputs;
     const rawUrl = resolved.url as string;
     const method = ((resolved.method ?? "GET") || "GET").toUpperCase();
     const requestHeaders = normalizeHeaders((resolved.headers ?? {}) as Record<string, string>);

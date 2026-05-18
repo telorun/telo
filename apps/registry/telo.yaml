@@ -255,9 +255,9 @@ notFoundHandler:
       name: NotFoundHandler
       module: telo-registry
     mode: stream
-    inputs:
-      method: "${{ request.method }}"
-      url: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName + request.path }}"
+  inputs:
+    method: "${{ request.method }}"
+    url: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName + request.path }}"
   returns:
     - status: 200
       mode: stream

@@ -4,7 +4,8 @@ import { isCompiledValue } from "@telorun/sdk";
 export function createTemplateController(definition: {
   schema: Record<string, any>;
   resources?: any[];
-  invoke?: string | { kind?: string; name: string; inputs?: Record<string, any> };
+  invoke?: string | { kind?: string; name: string };
+  inputs?: Record<string, any>;
   run?: string;
 }): ControllerInstance {
   return {
@@ -13,13 +14,16 @@ export function createTemplateController(definition: {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
       const self = { ...resource, name: resource.metadata.name };
 
-      // Old string form: invoke is a plain string or a CompiledValue (after precompile).
-      // New object form: invoke is a plain object (non-CompiledValue) with at least `name`.
+      // `invoke` describes the dispatch target: a string name template (legacy
+      // shorthand) or an object `{ kind?, name }` for explicit kind-typed
+      // dispatch. `inputs:` lives as a sibling on the definition (same shape
+      // as Run.Sequence steps) — the values passed to the dispatch target's
+      // invoke() after CEL expansion.
       const objectInvoke =
         definition.invoke !== null &&
         typeof definition.invoke === "object" &&
         !isCompiledValue(definition.invoke)
-          ? (definition.invoke as { kind?: string; name: string; inputs?: Record<string, any> })
+          ? (definition.invoke as { kind?: string; name: string })
           : null;
       const invokeNameTemplate = objectInvoke ? objectInvoke.name : (definition.invoke ?? null);
       const invokeTarget = invokeNameTemplate
@@ -93,12 +97,14 @@ export function createTemplateController(definition: {
               if (!entry?.instance?.invoke) {
                 throw new Error(`Ephemeral resource '${name}' is not invocable`);
               }
-              // New object form: expand objectInvoke.inputs with invoke context and pass as arg.
-              // Old string form: the manifest inputs were computed during template expansion;
-              // pass expanded.inputs so Sql.Exec/Query controllers receive { sql, bindings }.
-              const invokeInputs = objectInvoke?.inputs != null
+              // Top-level `inputs:` (sibling of `invoke:`) carries the values passed
+              // to the dispatch target's invoke(). When absent, fall back to the
+              // expanded resource entry's own `inputs` field (legacy string-form
+              // shape where the inputs live on the resource declaration), then
+              // finally to the caller's `inputs` arg.
+              const invokeInputs = definition.inputs != null
                 ? ctx.moduleContext.expandWith(
-                    ctx.moduleContext.expandWith(objectInvoke.inputs, extraContext),
+                    ctx.moduleContext.expandWith(definition.inputs, extraContext),
                     extraContext,
                   )
                 : expanded.inputs ?? inputs;

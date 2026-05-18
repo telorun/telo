@@ -63,21 +63,20 @@ metadata:
   name: SetupDb
 steps:
   - name: CreateTable
-    inputs: {}
     invoke:
       kind: Sql.Exec
       connection:
         kind: Sql.Connection
         name: Db
-      inputs:
-        sql: |
-          CREATE TABLE IF NOT EXISTS feedback (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            text      TEXT    NOT NULL,
-            source    TEXT,
-            score     INTEGER NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
+    inputs:
+      sql: |
+        CREATE TABLE IF NOT EXISTS feedback (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          text      TEXT    NOT NULL,
+          source    TEXT,
+          score     INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
 ---
 kind: Http.Server
 metadata:
