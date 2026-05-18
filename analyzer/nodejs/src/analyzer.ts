@@ -14,6 +14,7 @@ import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kerne
 import { computeSuggestKind } from "./kind-suggest.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
+import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
   substituteCelFields,
@@ -923,7 +924,9 @@ export class StaticAnalyzer {
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
     diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));
 
-    return diagnostics;
+    // Reroute diagnostics on synthetic (inline-extracted) resources back to
+    // the chain root so position-index lookups land on the parent doc.
+    return rewriteSyntheticOrigins(diagnostics, allManifests);
   }
 
   analyzeErrors(

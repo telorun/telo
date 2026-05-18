@@ -1,5 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefEntry, isScopeEntry, isSchemaFromEntry, isInlineResource, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry, isSchemaFromEntry, isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -142,7 +142,7 @@ export function validateReferences(
         }
       }
 
-      for (const val of resolveFieldValues(r, fieldPath)) {
+      for (const { value: val, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
         if (!val) continue;
 
         // Name-only reference (plain string) — look up by name to validate.
@@ -166,8 +166,8 @@ export function validateReferences(
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",
               source: SOURCE,
-              message: `${resourceLabel}: reference at '${fieldPath}' → resource '${val}' not found`,
-              data: { resource: resourceData, filePath, path: fieldPath },
+              message: `${resourceLabel}: reference at '${concretePath}' → resource '${val}' not found`,
+              data: { resource: resourceData, filePath, path: concretePath },
             });
             continue;
           }
@@ -177,8 +177,8 @@ export function validateReferences(
               severity: DiagnosticSeverity.Error,
               code: "REFERENCE_KIND_MISMATCH",
               source: SOURCE,
-              message: `${resourceLabel}: reference at '${fieldPath}' → ${kindErrors.join("; ")}`,
-              data: { resource: resourceData, filePath, path: fieldPath },
+              message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
+              data: { resource: resourceData, filePath, path: concretePath },
             });
           }
           continue;
@@ -196,8 +196,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "INVALID_REFERENCE",
             source: SOURCE,
-            message: `${resourceLabel}: reference at '${fieldPath}' must have string 'kind' and 'name' fields`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: reference at '${concretePath}' must have string 'kind' and 'name' fields`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
           continue;
         }
@@ -209,8 +209,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "REFERENCE_KIND_MISMATCH",
             source: SOURCE,
-            message: `${resourceLabel}: reference at '${fieldPath}' → ${kindErrors.join("; ")}`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
         }
 
@@ -223,8 +223,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "UNRESOLVED_REFERENCE",
             source: SOURCE,
-            message: `${resourceLabel}: reference at '${fieldPath}' → resource '${refVal.name}' not found`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: reference at '${concretePath}' → resource '${refVal.name}' not found`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
         }
       }
@@ -317,7 +317,7 @@ export function validateReferences(
           continue;
         }
 
-        for (const fieldValue of resolveFieldValues(r, fieldPath)) {
+        for (const { value: fieldValue, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
           if (fieldValue == null) continue;
           const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
           for (const issue of issues) {
@@ -325,8 +325,8 @@ export function validateReferences(
               severity: DiagnosticSeverity.Error,
               code: "DEPENDENT_SCHEMA_MISMATCH",
               source: SOURCE,
-              message: `${resourceLabel}: '${fieldPath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
-              data: { resource: resourceData, filePath, path: fieldPath },
+              message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
+              data: { resource: resourceData, filePath, path: concretePath },
             });
           }
         }
@@ -347,10 +347,10 @@ export function validateReferences(
       const anchorValues = resolveFieldValues(r, anchorPath);
       if (anchorValues.length === 0) continue; // anchor field not set — nothing to validate
 
-      const fieldValues = resolveFieldValues(r, fieldPath);
+      const fieldEntries = resolveFieldEntries(r, fieldPath);
 
-      for (let i = 0; i < fieldValues.length; i++) {
-        const fieldValue = fieldValues[i];
+      for (let i = 0; i < fieldEntries.length; i++) {
+        const { value: fieldValue, path: concretePath } = fieldEntries[i];
         if (fieldValue == null) continue;
 
         // For absolute paths, the single anchor applies to all field values.
@@ -367,8 +367,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "SCHEMA_FROM_MISSING_PATH",
             source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
           continue;
         }
@@ -379,8 +379,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "SCHEMA_FROM_MISSING_PATH",
             source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
           continue;
         }
@@ -391,8 +391,8 @@ export function validateReferences(
             severity: DiagnosticSeverity.Error,
             code: "DEPENDENT_SCHEMA_MISMATCH",
             source: SOURCE,
-            message: `${resourceLabel}: '${fieldPath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+            message: `${resourceLabel}: '${concretePath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
+            data: { resource: resourceData, filePath, path: concretePath },
           });
         }
       }

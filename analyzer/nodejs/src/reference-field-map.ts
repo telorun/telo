@@ -63,23 +63,35 @@ export function isInlineResource(val: Record<string, unknown>): boolean {
   return true;
 }
 
-/** Resolves all values at a field map path in a resource config.
- *  Path-segment markers:
- *   - `[]`  iterate array values at this key
+/** A value found at a field-map path, paired with the concrete path that
+ *  produced it. `path` has every `[]` substituted with `[N]` and every `{}`
+ *  substituted with the actual map key, matching the format produced by
+ *  `buildPositionIndex`. Used so diagnostics emitted against a specific
+ *  array element / map entry can be resolved back to a YAML range. */
+export interface ResolvedFieldEntry {
+  value: unknown;
+  path: string;
+}
+
+/** Resolves all `{value, concretePath}` entries at a field map path in a
+ *  resource config. Path-segment markers:
+ *   - `[]`  iterate array values at this key (substituted with `[N]` per item)
  *   - `{}`  iterate map values (every value in an `additionalProperties`-typed
  *           object — used for fields like `content[mime]` whose schema declares
- *           a key-as-MIME map). The path is `<key>.{}.<rest>`. */
-export function resolveFieldValues(obj: unknown, path: string): unknown[] {
+ *           a key-as-MIME map; substituted with the literal key). The path is
+ *           `<key>.{}.<rest>`. */
+export function resolveFieldEntries(obj: unknown, path: string): ResolvedFieldEntry[] {
   const parts = path.split(".");
-  let current: unknown[] = [obj];
+  let current: ResolvedFieldEntry[] = [{ value: obj, path: "" }];
   for (const part of parts) {
     if (part === "{}") {
-      // Iterate the values of every map currently in `current`.
-      const next: unknown[] = [];
-      for (const item of current) {
-        if (!item || typeof item !== "object") continue;
-        for (const v of Object.values(item as Record<string, unknown>)) {
-          if (v != null) next.push(v);
+      const next: ResolvedFieldEntry[] = [];
+      for (const entry of current) {
+        if (!entry.value || typeof entry.value !== "object") continue;
+        for (const [k, v] of Object.entries(entry.value as Record<string, unknown>)) {
+          if (v != null) {
+            next.push({ value: v, path: entry.path ? `${entry.path}.${k}` : k });
+          }
         }
       }
       current = next;
@@ -87,17 +99,29 @@ export function resolveFieldValues(obj: unknown, path: string): unknown[] {
     }
     const isArray = part.endsWith("[]");
     const key = isArray ? part.slice(0, -2) : part;
-    const next: unknown[] = [];
-    for (const item of current) {
-      if (!item || typeof item !== "object") continue;
-      const val = (item as Record<string, unknown>)[key];
+    const next: ResolvedFieldEntry[] = [];
+    for (const entry of current) {
+      if (!entry.value || typeof entry.value !== "object") continue;
+      const val = (entry.value as Record<string, unknown>)[key];
       if (val == null) continue;
-      if (isArray && Array.isArray(val)) next.push(...val);
-      else if (!isArray) next.push(val);
+      const basePath = entry.path ? `${entry.path}.${key}` : key;
+      if (isArray && Array.isArray(val)) {
+        for (let i = 0; i < val.length; i++) {
+          if (val[i] != null) next.push({ value: val[i], path: `${basePath}[${i}]` });
+        }
+      } else if (!isArray) {
+        next.push({ value: val, path: basePath });
+      }
     }
     current = next;
   }
   return current;
+}
+
+/** Backwards-compat wrapper that drops the concrete path. Prefer
+ *  `resolveFieldEntries` for new code that wants positions. */
+export function resolveFieldValues(obj: unknown, path: string): unknown[] {
+  return resolveFieldEntries(obj, path).map((e) => e.value);
 }
 
 /**
