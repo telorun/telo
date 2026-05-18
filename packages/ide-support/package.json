@@ -37,6 +37,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepack": "cp ../../LICENSE . && cp ../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
@@ -45,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   }
 }
