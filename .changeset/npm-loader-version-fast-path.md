@@ -1,5 +1,0 @@
----
-"@telorun/kernel": patch
----
-
-Skip `npm install` for controller packages that are already present in `.telo/npm/node_modules/<pkg>` with the requested version. The previous fast path in `NpmControllerLoader.installPackage` compared the requested install spec (`@scope/pkg@0.3.4`) against the install root's `dependencies[<pkg>]` entry, but npm rewrites registry specs on `--save` (e.g. to `^0.3.4`), so the comparison never matched. Because a fresh `NpmControllerLoader` is constructed per `Telo.Definition.init`, every definition fell through to a no-op-but-~200ms `npm install --save <spec>` on every rerun, and each one emitted a `(npm-install, …ms)` line for its controller. The new path reads the installed package's own `package.json` `version` field and returns `"cache"` when it matches the PURL version — the CLI progress renderer already silences cache hits, so a warm rerun emits zero install lines, and a cold install emits one line per npm package rather than one per Telo resource sharing it.
