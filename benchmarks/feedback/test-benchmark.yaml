@@ -30,20 +30,20 @@ scenarios:
     weight: 3
     invoke:
       kind: Http.Request
-      inputs:
-        url: http://localhost:8844/v1/feedback
-        method: POST
-        headers:
-          content-type: application/json
-        body:
-          text: "Smoke feedback"
-          source: smoke
+    inputs:
+      url: http://localhost:8844/v1/feedback
+      method: POST
+      headers:
+        content-type: application/json
+      body:
+        text: "Smoke feedback"
+        source: smoke
     validate: "${{ result.status == 201 }}"
   - name: GetAll
     weight: 1
     invoke:
       kind: Http.Request
-      inputs:
-        url: http://localhost:8844/v1/feedback
-        method: GET
+    inputs:
+      url: http://localhost:8844/v1/feedback
+      method: GET
     validate: "${{ result.status == 200 }}"

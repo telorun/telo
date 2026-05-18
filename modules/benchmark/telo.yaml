@@ -105,6 +105,11 @@ schema:
                 type: string
             required: [kind]
             additionalProperties: true
+          inputs:
+            title: Inputs
+            description: Arguments passed to the invocable at invoke time.
+            type: object
+            additionalProperties: true
           validate:
             title: Validate
             type: boolean

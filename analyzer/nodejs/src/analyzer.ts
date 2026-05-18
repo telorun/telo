@@ -68,14 +68,108 @@ function lookupDefinitionTypeField(
 
 const SOURCE = "telo-analyzer";
 
+/** Build a closed JSON Schema for the `self` CEL variable available inside a
+ *  `Telo.Definition` template body. Mirrors the runtime template controller's
+ *  `const self = { ...resource, name: resource.metadata.name };` — every
+ *  property the user declared in `schema:` plus synthetic `name` / `kind` and
+ *  the metadata sub-object (kept open since metadata legitimately carries
+ *  arbitrary user-added fields). */
+function buildSelfSchema(definition: Record<string, any>): Record<string, any> {
+  const userSchema = (definition.schema ?? {}) as Record<string, any>;
+  const userProps = (userSchema.properties ?? {}) as Record<string, any>;
+  const userRequired = Array.isArray(userSchema.required) ? userSchema.required : [];
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      ...userProps,
+      name: { type: "string" },
+      kind: { type: "string" },
+      metadata: {
+        type: "object",
+        additionalProperties: true,
+        properties: { name: { type: "string" } },
+      },
+    },
+    required: [...userRequired, "name", "kind"],
+  };
+}
+
+/** Build the JSON Schema for the `inputs` CEL variable available inside an
+ *  invocable template body. Three-layer fallback mirroring the runtime's
+ *  caller-supplied inputs:
+ *    1. The definition's own `inputType:` field (preferred).
+ *    2. The `extends:`-declared abstract's `inputType:` (so a concrete
+ *       definition inheriting a contract gets typed inputs without
+ *       redeclaring them).
+ *    3. Undefined — caller signals opaque `map<string, dyn>` upstream. */
+function lookupTemplateInputsSchema(
+  definition: Record<string, any>,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  allManifests: Record<string, any>[],
+): Record<string, any> | undefined {
+  const own = resolveTypeFieldToSchema(definition.inputType, allManifests);
+  if (own) return own;
+  const ext = definition.extends as string | undefined;
+  if (typeof ext === "string" && ext.length > 0) {
+    const canonical = aliases.resolveKind(ext) ?? ext;
+    const abstractDef = defs.resolve(canonical);
+    if (abstractDef) {
+      const inherited = resolveTypeFieldToSchema(
+        (abstractDef as unknown as Record<string, unknown>).inputType,
+        allManifests,
+      );
+      if (inherited) return inherited;
+    }
+  }
+  return undefined;
+}
+
+/** Returns a "resolver-facing" view of the manifest where the fields used as
+ *  navigation roots by Telo.Definition's `x-telo-context-from-root` annotations
+ *  have been pre-augmented:
+ *    - `schema`     → augmented `self` schema (synthetic `name`/`kind`/metadata).
+ *    - `inputType`  → resolved with extends fallback when the field isn't
+ *                     declared directly on the definition.
+ *
+ *  For non-definition manifests the original object is returned. */
+function manifestRootForResolver(
+  m: Record<string, any>,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  allManifests: Record<string, any>[],
+): Record<string, any> {
+  if (m.kind !== "Telo.Definition") return m;
+  const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests);
+  return {
+    ...m,
+    schema: buildSelfSchema(m),
+    ...(inputs ? { inputType: inputs } : {}),
+  };
+}
+
 /**
  * Walk a JSON Schema tree and collect all `x-telo-context` annotations,
  * returning them as `{ scope, schema }` pairs using JSONPath-style scopes —
  * the same format the analyzer uses for CEL context validation.
+ *
+ * Result is sorted by scope specificity (longer scope first) so that the
+ * per-expression resolver's first-match-wins logic picks the most-specific
+ * context. Without this, a broader ancestor scope (e.g. `$.resources[*]`)
+ * could shadow a narrower descendant scope whose activation differs.
  */
 function extractContextsFromSchema(
   schema: Record<string, any>,
   path = "$",
+): Array<{ scope: string; schema: Record<string, any> }> {
+  const all = collectContexts(schema, path);
+  return all.sort((a, b) => b.scope.length - a.scope.length);
+}
+
+function collectContexts(
+  schema: Record<string, any>,
+  path: string,
 ): Array<{ scope: string; schema: Record<string, any> }> {
   if (!schema || typeof schema !== "object") return [];
   const results: Array<{ scope: string; schema: Record<string, any> }> = [];
@@ -86,18 +180,18 @@ function extractContextsFromSchema(
 
   if (schema.properties) {
     for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      results.push(...extractContextsFromSchema(value, `${path}.${key}`));
+      results.push(...collectContexts(value, `${path}.${key}`));
     }
   }
 
   if (schema.items && typeof schema.items === "object") {
-    results.push(...extractContextsFromSchema(schema.items, `${path}[*]`));
+    results.push(...collectContexts(schema.items, `${path}[*]`));
   }
 
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     if (Array.isArray(schema[key])) {
       for (const subschema of schema[key]) {
-        results.push(...extractContextsFromSchema(subschema, path));
+        results.push(...collectContexts(subschema, path));
       }
     }
   }
@@ -552,7 +646,11 @@ export class StaticAnalyzer {
         });
         continue;
       }
-      if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
+      // Abstracts carry only inputType / outputType schema fields and no template
+      // body — nothing for the per-resource walk to validate. Definitions are now
+      // walked: their template bodies (`resources` / `invoke` / `run` / `provide`)
+      // contain CEL that must be checked against `self` / `inputs` / `result`.
+      if (m.kind === "Telo.Abstract") {
         continue;
       }
 
@@ -610,6 +708,99 @@ export class StaticAnalyzer {
       }
 
       // (Invocation context compatibility check is handled via x-telo-context in the CEL pass below)
+    }
+
+    // Template-body structural validations: check that template entry-points produce
+    // values matching the contract of their dispatch target and (for `provide:`)
+    // the abstract this definition `extends`. CEL fields inside the templated
+    // values are replaced with type-appropriate placeholders before AJV runs —
+    // same pattern as the per-resource schema validation above.
+    for (const m of allManifests) {
+      if (m.kind !== "Telo.Definition") continue;
+      const filePath = (m.metadata as { source?: string } | undefined)?.source;
+      const name = (m.metadata as any)?.name as string | undefined;
+      if (!name) continue;
+      const resource = { kind: m.kind, name };
+      const md = m as Record<string, any>;
+
+      const emitTargetMismatch = (
+        targetKind: string,
+        valueSchema: Record<string, any>,
+        value: unknown,
+        path: string,
+      ) => {
+        const substituted = substituteCelFields(value, valueSchema);
+        const issues = validateAgainstSchema(substituted, valueSchema);
+        for (const issue of issues) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "TEMPLATE_TARGET_MISMATCH",
+            source: SOURCE,
+            message: `${m.kind}/${name}: ${path} does not satisfy ${targetKind}'s contract: ${issue.message}`,
+            data: { resource, filePath, path: issue.path ? `${path}.${issue.path}` : path },
+          });
+        }
+      };
+
+      // Resolve the dispatch target's kind, if statically known. Object-form
+      // `invoke: { kind, name }` and `provide: { kind, name }` carry it; the
+      // string-form `invoke: "name"` does not (the matching resource entry would
+      // need to be located by expanded name — out of scope here).
+      const invoke = md.invoke;
+      const provide = md.provide;
+      let dispatchKind: string | undefined;
+      if (invoke && typeof invoke === "object" && !Array.isArray(invoke) && typeof invoke.kind === "string") {
+        dispatchKind = invoke.kind;
+      } else if (
+        provide &&
+        typeof provide === "object" &&
+        !Array.isArray(provide) &&
+        typeof provide.kind === "string"
+      ) {
+        dispatchKind = provide.kind;
+      }
+
+      // Top-level `inputs:` (sibling of `invoke:` / `provide:`) carries the
+      // values passed to the dispatch target's invoke(). Validate against the
+      // target's declared `inputType` when both sides have one.
+      if (dispatchKind && md.inputs && typeof md.inputs === "object") {
+        const targetSchema = lookupDefinitionTypeField(
+          dispatchKind,
+          "inputType",
+          defs,
+          aliases,
+          allManifests as Record<string, any>[],
+        );
+        if (targetSchema) {
+          emitTargetMismatch(dispatchKind, targetSchema, md.inputs, "inputs");
+        }
+      }
+
+      // Top-level `result:` (a sibling, only meaningful with `provide:`) is a
+      // post-call mapping that must satisfy the abstract this definition
+      // `extends` (`outputType`). The target's outputType lives on `provide.kind`
+      // and is what `result` is typed against *inside* CEL — separate role.
+      if (
+        provide &&
+        typeof provide === "object" &&
+        !Array.isArray(provide) &&
+        md.result &&
+        typeof md.result === "object"
+      ) {
+        const extendsValue = md.extends as string | undefined;
+        if (typeof extendsValue === "string" && extendsValue.length > 0) {
+          const abstractSchema = lookupDefinitionTypeField(
+            extendsValue,
+            "outputType",
+            defs,
+            aliases,
+            allManifests as Record<string, any>[],
+          );
+          if (abstractSchema) {
+            emitTargetMismatch(extendsValue, abstractSchema, md.result, "result");
+          }
+        }
+      }
     }
 
     // Validate CEL syntax and context variable access in all manifests
@@ -670,11 +861,18 @@ export class StaticAnalyzer {
           const manifestItem = matchedScope
             ? getManifestItem(path, matchedScope, m as Record<string, any>)
             : (m as Record<string, any>);
-          const resolvedContext = resolveContextAnnotations(
-            matchedContext,
-            manifestItem,
+          const rootForResolver = manifestRootForResolver(
+            m as Record<string, any>,
+            defs,
+            aliases,
             allManifests as Record<string, any>[],
           );
+          const resolvedContext = resolveContextAnnotations(matchedContext, manifestItem, {
+            manifestRoot: rootForResolver,
+            defs,
+            aliases,
+            allManifests: allManifests as Record<string, any>[],
+          });
           effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
         }
 

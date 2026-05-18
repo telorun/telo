@@ -14,6 +14,7 @@ const ScenarioEntry = Type.Object(
     name: Type.String(),
     weight: Type.Optional(Type.Integer()),
     invoke: Type.Unsafe<KindRef<Invocable>>({ "x-telo-ref": "telo#Invocable" }),
+    inputs: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
     validate: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: true },
@@ -100,7 +101,7 @@ class BenchmarkSuite {
       const uniqueName = `${this.resource.metadata.name}_${scenario.name}`;
       const invoke = scenario.invoke as unknown as Record<string, unknown>;
       const ref = this.ctx.resolveChildren(invoke, uniqueName);
-      const inputs = (invoke.inputs as Record<string, unknown> | undefined) ?? {};
+      const inputs = (scenario.inputs as Record<string, unknown> | undefined) ?? {};
       this.resolved.push({
         scenarioName: scenario.name,
         kind: ref.kind,

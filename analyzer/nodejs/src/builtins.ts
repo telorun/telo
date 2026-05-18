@@ -40,7 +40,121 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     kind: "Telo.Definition",
     metadata: { name: "Definition", module: "Telo" },
     capability: "Telo.Template",
-    schema: { type: "object" },
+    // Top-level shape stays open (`additionalProperties: true`) so this change
+    // attaches x-telo-context annotations to known template-body fields without
+    // tightening the Telo.Definition shape itself. The annotations drive
+    // static CEL validation of expressions inside `resources:` / `invoke:` /
+    // `run:` / `provide:` / top-level `inputs:` / top-level `result:` against
+    // `self` (typed from `schema:`) and `inputs` (typed from `inputType:`,
+    // falling back to the extends-declared abstract).
+    //
+    // `inputs:` and `result:` live as top-level siblings of `invoke:` / `provide:`,
+    // matching how Run.Sequence steps factor dispatch from data. The dispatch
+    // entry-point (`invoke` / `provide` / `run`) determines how `inputs`/`result`
+    // are interpreted at runtime. See analyzer/nodejs/plans/template-internal-cel-validation.md.
+    schema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        resources: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+            "x-telo-context": {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                self: { "x-telo-context-from-root": "schema" },
+                inputs: { "x-telo-context-from-root": "inputType" },
+              },
+            },
+          },
+        },
+        invoke: {
+          oneOf: [
+            {
+              type: "string",
+              "x-telo-context": {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  self: { "x-telo-context-from-root": "schema" },
+                },
+              },
+            },
+            {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                kind: { type: "string" },
+                name: {
+                  type: "string",
+                  "x-telo-context": {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      self: { "x-telo-context-from-root": "schema" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        provide: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            kind: { type: "string" },
+            name: {
+              type: "string",
+              "x-telo-context": {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  self: { "x-telo-context-from-root": "schema" },
+                },
+              },
+            },
+          },
+        },
+        run: {
+          type: "string",
+          "x-telo-context": {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              self: { "x-telo-context-from-root": "schema" },
+            },
+          },
+        },
+        inputs: {
+          type: "object",
+          additionalProperties: true,
+          "x-telo-context": {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              self: { "x-telo-context-from-root": "schema" },
+              inputs: { "x-telo-context-from-root": "inputType" },
+            },
+          },
+        },
+        result: {
+          type: "object",
+          additionalProperties: true,
+          "x-telo-context": {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              self: { "x-telo-context-from-root": "schema" },
+              result: { "x-telo-context-from-ref-kind": "provide/kind#outputType" },
+            },
+          },
+        },
+      },
+    },
   },
   {
     kind: "Telo.Definition",

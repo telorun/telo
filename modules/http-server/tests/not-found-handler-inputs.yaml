@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: NotFoundHandlerInputsTest
+  version: 1.0.0
+  description: |
+    End-to-end: `Http.Server.notFoundHandler` must expand its `inputs:` sibling
+    against the request context and pass the result to the dispatch target.
+    Without this, a manifest migrated from the legacy nested `invoke.inputs`
+    shape to the canonical sibling form would break (the handler would see
+    only request.* and not the manifest-computed inputs).
+targets:
+  - Test
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: HttpClient }
+source: ../../http-client
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+# The "echo path" invocable used as the not-found target. It reads `inputs.path`
+# (the value the sibling `inputs:` block produces) and returns it verbatim, so
+# the test can assert that `inputs:` actually reached the handler.
+kind: JS.Script
+metadata: { name: EchoPath }
+code: |
+  async function main({ path, method }) {
+    return { path, method };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
+      method: { type: string }
+    required: [path]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
+      method: { type: string }
+    required: [path]
+---
+kind: HttpClient.Client
+metadata: { name: SelfClient }
+baseUrl: http://127.0.0.1:8947
+---
+# Helper: fetch a URL and parse the JSON response.
+kind: JS.Script
+metadata: { name: FetchJson }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    const body = await r.json();
+    return { status: r.status, body };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+    required: [url]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      body: { type: object, additionalProperties: true }
+    required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8947
+    baseUrl: http://127.0.0.1:8947
+    logger: false
+    openapi:
+      info: { title: NotFoundHandlerInputsTest, version: 1.0.0 }
+    mounts: []
+    notFoundHandler:
+      invoke: { kind: JS.Script, name: EchoPath }
+      inputs:
+        path: "${{ request.path }}"
+        method: "${{ request.method }}"
+      returns:
+        - status: 404
+          content:
+            application/json:
+              body:
+                receivedPath: "${{ result.path }}"
+                receivedMethod: "${{ result.method }}"
+targets:
+  - Server
+steps:
+  - name: HitMissing
+    inputs:
+      url: http://127.0.0.1:8947/no-such-route
+    invoke: { kind: JS.Script, name: FetchJson }
+  - name: AssertResponse
+    inputs:
+      status: "${{ steps.HitMissing.result.status }}"
+      receivedPath: "${{ steps.HitMissing.result.body.receivedPath }}"
+      receivedMethod: "${{ steps.HitMissing.result.body.receivedMethod }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          receivedPath: { const: "/no-such-route" }
+          receivedMethod: { const: "GET" }
+        required: [status, receivedPath, receivedMethod]
