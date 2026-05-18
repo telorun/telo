@@ -150,7 +150,13 @@ export class NpmControllerLoader {
 
     const installRoot = await this.ensureInstallRoot();
     const resolved = await resolveInstallSpec(parsed, packageName, baseUri);
-    const source = await this.installPackage(installRoot, packageName, resolved.spec, resolved.kind);
+    const source = await this.installPackage(
+      installRoot,
+      packageName,
+      resolved.spec,
+      resolved.kind,
+      parsed.version ?? null,
+    );
     const instance = await loadFromInstall(installRoot, packageName, parsed.subpath ?? null, purl);
     return { instance, source };
   }
@@ -299,6 +305,7 @@ export class NpmControllerLoader {
     packageName: string,
     spec: string,
     kind: SpecKind,
+    requestedVersion: string | null,
   ): Promise<NpmResolveSource> {
     const cacheKey = `${packageName}@${spec}`;
     if (this.installedSpecs.has(cacheKey)) return "cache";
@@ -309,22 +316,37 @@ export class NpmControllerLoader {
       return "cache";
     }
 
-    // Lock-free fast path: consult the in-process snapshot of the install
-    // root's `dependencies` map (seeded by `materializeInstallRoot`). If the
-    // spec matches what's already wired in and the package directory exists,
-    // there's nothing to do — no lock, no fork, no per-load file read. This
-    // is the dominant case for warm test suites: every Kernel touches the
-    // same controllers and a fresh-on-disk read per (Kernel × controller)
-    // dominates wall time even when the actual installs are already done.
-    //
-    // Normalize specs before comparing because npm rewrites absolute `file:`
-    // deps to relative paths inside the install root's `package.json`. The
-    // loader passes absolute paths (resolved against the declaring library's
-    // baseUri); the on-disk record is `file:../../foo`. Without normalization
-    // every fast-path read is a string-mismatch and the loader would fall
-    // through to a real `npm install` per controller per Kernel — turning a
-    // 1ms hit into a 150–200ms one.
     const targetPath = path.join(installRoot, "node_modules", ...packageName.split("/"));
+
+    // Registry fast path: compare against the installed package's own
+    // `package.json` version field. `rootDeps[packageName]` can't be used
+    // here because npm rewrites registry specs on `--save` — we pass
+    // `@scope/pkg@0.3.4`, npm writes `^0.3.4` — so a string comparison
+    // never matches and every fresh `NpmControllerLoader` (one per
+    // `Telo.Definition.init`) would fall through to a no-op but ~200ms
+    // `npm install`. Reading the installed package.json sidesteps that
+    // entirely: if the requested PURL version equals what's on disk, we
+    // already have the right thing.
+    //
+    // Ranges (`^1.0.0`, `~2.3.0`) fall through to a real `npm install` —
+    // they're rare in PURLs (which typically pin) and a proper range check
+    // would need a semver dep here.
+    if (kind === "registry") {
+      const installedVersion = await readInstalledVersion(targetPath);
+      if (
+        installedVersion !== null &&
+        (requestedVersion === null || requestedVersion === installedVersion)
+      ) {
+        this.installedSpecs.add(cacheKey);
+        return "cache";
+      }
+    }
+
+    // Local (`file:`) spec fast path: consult the in-process snapshot of the
+    // install root's `dependencies` map (seeded by `materializeInstallRoot`).
+    // Normalize because npm rewrites absolute `file:` deps to relative paths
+    // inside the install root's `package.json` — the loader passes the
+    // absolute path, the on-disk record is `file:../../foo`.
     const cachedSpec = this.rootDeps[packageName];
     if (
       cachedSpec !== undefined &&
@@ -615,6 +637,24 @@ async function readJsonField(filePath: string, field: string): Promise<unknown> 
     return parsed?.[field];
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Read the `version` field from `<packageRoot>/package.json`, or null if the
+ * file is missing/unreadable/malformed or carries a non-string version. Used
+ * by the registry fast path to decide whether an existing install already
+ * satisfies the requested PURL version — the install-root's own
+ * `dependencies` map can't answer that because npm rewrites registry specs
+ * on `--save`.
+ */
+async function readInstalledVersion(packageRoot: string): Promise<string | null> {
+  try {
+    const text = await fs.readFile(path.join(packageRoot, "package.json"), "utf8");
+    const pkg = JSON.parse(text);
+    return typeof pkg?.version === "string" ? pkg.version : null;
+  } catch {
+    return null;
   }
 }
 
