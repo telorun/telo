@@ -101,6 +101,43 @@ export class AnalysisRegistry {
     return computeSuggestKind(badKind, this.aliases, this.defs);
   }
 
+  /** Returns every user-facing (alias-form) kind that satisfies the given
+   *  `x-telo-ref` constraint string (e.g. `"telo#Invocable"`, `"std/sql#Connection"`).
+   *  Resolution mirrors `validateReferences.checkKind`: abstract targets expand to
+   *  the set of definitions extending them; concrete targets yield just themselves.
+   *  Returns `undefined` when the ref can't be resolved (e.g. unregistered identity),
+   *  so callers can fall back to the unfiltered kind list. */
+  userFacingKindsForRef(xTeloRef: string): string[] | undefined {
+    const targetKind = this.defs.resolveRef(xTeloRef);
+    if (!targetKind) return undefined;
+    const targetDef = this.defs.resolve(targetKind);
+    if (!targetDef) return undefined;
+
+    const canonicalKinds: string[] = [];
+    if (targetDef.kind === "Telo.Abstract") {
+      for (const def of this.defs.getByExtends(targetKind)) {
+        const module = (def.metadata as { module?: string } | undefined)?.module;
+        if (module && def.metadata?.name) {
+          canonicalKinds.push(`${module}.${def.metadata.name as string}`);
+        }
+      }
+    } else {
+      canonicalKinds.push(targetKind);
+    }
+
+    const out = new Set<string>();
+    for (const kind of canonicalKinds) {
+      const dot = kind.indexOf(".");
+      if (dot === -1) continue;
+      const moduleName = kind.slice(0, dot);
+      const typeName = kind.slice(dot + 1);
+      for (const alias of this.aliases.aliasesFor(moduleName)) {
+        out.add(`${alias}.${typeName}`);
+      }
+    }
+    return Array.from(out);
+  }
+
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */
   _context(): AnalysisContext {
     return { aliases: this.aliases, definitions: this.defs, aliasesByModule: this.aliasesByModule };

@@ -67,7 +67,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @telorun/analyzer build && node esbuild.mjs",
+    "build": "pnpm --filter @telorun/analyzer --filter @telorun/ide-support build && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch"
   },
   "dependencies": {
