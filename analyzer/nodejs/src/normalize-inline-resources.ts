@@ -82,7 +82,14 @@ export function normalizeInlineResources(
       );
 
       const invocationContext = isRefEntry(entry) ? entry.context : undefined;
-      const extracted = extractInlinesAtPath(resource, fieldPath, parentName, parentModule, invocationContext);
+      const extracted = extractInlinesAtPath(
+        resource,
+        fieldPath,
+        parentName,
+        resource.kind,
+        parentModule,
+        invocationContext,
+      );
       for (const manifest of extracted) {
         result.push(manifest);
         queue.push(manifest as ResourceManifest & { metadata: { name: string } });
@@ -99,18 +106,42 @@ export function normalizeInlineResources(
  * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal).
  * Mutates the resource in-place: replaces each inline value with `{kind, name}`.
  * Returns the extracted manifests.
+ *
+ * Each extracted manifest carries `metadata.xTeloOrigin` so downstream
+ * diagnostics can be rerouted back to the parent doc's YAML position:
+ *   - `parentKind` / `parentName` — the resource that owned the inline slot
+ *   - `pathFromParent` — concrete dotted path with `[N]` indices, matching
+ *     `buildPositionIndex` keys (e.g. `routes[0].handler`)
  */
 function extractInlinesAtPath(
   resource: ResourceManifest,
   fieldPath: string,
   parentName: string,
+  parentKind: string,
   parentModule: string | undefined,
   invocationContext?: Record<string, any>,
 ): ResourceManifest[] {
   const extracted: ResourceManifest[] = [];
   const parts = fieldPath.split(".");
 
-  function traverse(obj: unknown, partsLeft: string[], nameParts: string[]): void {
+  function emit(
+    inline: Record<string, unknown>,
+    nameSegments: string[],
+    concretePath: string,
+  ): string {
+    const name = sanitizeName([parentName, ...nameSegments].join("_"));
+    extracted.push(
+      buildManifest(inline, name, parentKind, parentName, concretePath, parentModule, invocationContext),
+    );
+    return name;
+  }
+
+  function traverse(
+    obj: unknown,
+    partsLeft: string[],
+    nameParts: string[],
+    pathSoFar: string,
+  ): void {
     if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
 
     const [head, ...rest] = partsLeft;
@@ -123,15 +154,15 @@ function extractInlinesAtPath(
         const elem = container[mapKey];
         if (!elem || typeof elem !== "object") continue;
         const sanitizedKey = sanitizeName(mapKey);
+        const childPath = pathSoFar ? `${pathSoFar}.${mapKey}` : mapKey;
 
         if (rest.length === 0) {
           if (isInlineResource(elem as Record<string, unknown>)) {
-            const name = sanitizeName([parentName, ...nameParts, sanitizedKey].join("_"));
-            extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule, invocationContext));
+            const name = emit(elem as Record<string, unknown>, [...nameParts, sanitizedKey], childPath);
             container[mapKey] = { kind: (elem as Record<string, unknown>).kind, name };
           }
         } else {
-          traverse(elem, rest, [...nameParts, sanitizedKey]);
+          traverse(elem, rest, [...nameParts, sanitizedKey], childPath);
         }
       }
       return;
@@ -142,6 +173,7 @@ function extractInlinesAtPath(
     const container = obj as Record<string, unknown>;
     const val = container[key];
     if (val == null) return;
+    const keyPath = pathSoFar ? `${pathSoFar}.${key}` : key;
 
     if (isArr) {
       if (!Array.isArray(val)) return;
@@ -152,39 +184,41 @@ function extractInlinesAtPath(
           typeof (elem as Record<string, unknown>).name === "string"
             ? ((elem as Record<string, unknown>).name as string)
             : String(idx);
+        const childPath = `${keyPath}[${idx}]`;
 
         if (rest.length === 0) {
           // Array element itself is the ref slot
           if (isInlineResource(elem as Record<string, unknown>)) {
-            const name = sanitizeName([parentName, ...nameParts, key, elemId].join("_"));
-            extracted.push(buildManifest(elem as Record<string, unknown>, name, parentModule, invocationContext));
+            const name = emit(elem as Record<string, unknown>, [...nameParts, key, elemId], childPath);
             val[idx] = { kind: (elem as Record<string, unknown>).kind, name };
           }
         } else {
-          traverse(elem, rest, [...nameParts, key, elemId]);
+          traverse(elem, rest, [...nameParts, key, elemId], childPath);
         }
       }
     } else {
       if (rest.length === 0) {
         // val is the ref slot
         if (val && typeof val === "object" && !Array.isArray(val) && isInlineResource(val as Record<string, unknown>)) {
-          const name = sanitizeName([parentName, ...nameParts, key].join("_"));
-          extracted.push(buildManifest(val as Record<string, unknown>, name, parentModule, invocationContext));
+          const name = emit(val as Record<string, unknown>, [...nameParts, key], keyPath);
           container[key] = { kind: (val as Record<string, unknown>).kind, name };
         }
       } else {
-        traverse(val, rest, [...nameParts, key]);
+        traverse(val, rest, [...nameParts, key], keyPath);
       }
     }
   }
 
-  traverse(resource, parts, []);
+  traverse(resource, parts, [], "");
   return extracted;
 }
 
 function buildManifest(
   inline: Record<string, unknown>,
   name: string,
+  parentKind: string,
+  parentName: string,
+  pathFromParent: string,
   parentModule: string | undefined,
   invocationContext?: Record<string, any>,
 ): ResourceManifest {
@@ -200,6 +234,7 @@ function buildManifest(
       // Inherit parent module only if the inline doesn't already declare one
       ...(parentModule && !existingMeta.module ? { module: parentModule } : {}),
       ...(invocationContext ? { xTeloInvocationContext: invocationContext } : {}),
+      xTeloOrigin: { parentKind, parentName, pathFromParent },
     },
-  } as ResourceManifest;
+  } as unknown as ResourceManifest;
 }
