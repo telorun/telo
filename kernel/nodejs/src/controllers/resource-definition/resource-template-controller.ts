@@ -1,12 +1,32 @@
 import type { ControllerInstance, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 
+/** Reports the resources: entries available to dispatch against, by expanded
+ *  name and kind. Used in error messages to guide the developer back to the
+ *  template's `resources:` array when a dispatch target doesn't match. */
+function describeAvailableTargets(
+  ctx: ResourceContext,
+  resources: any[] | undefined,
+  self: Record<string, unknown>,
+): string {
+  if (!resources || resources.length === 0) return "<none>";
+  return resources
+    .map((r) => {
+      const expanded = ctx.moduleContext.expandWith(r?.metadata?.name ?? "", { self }) as string;
+      const kind = typeof r?.kind === "string" ? r.kind : "<unknown-kind>";
+      return `'${expanded || "<unnamed>"}' (${kind})`;
+    })
+    .join(", ");
+}
+
 export function createTemplateController(definition: {
   schema: Record<string, any>;
   resources?: any[];
   invoke?: string | { kind?: string; name: string };
   inputs?: Record<string, any>;
   run?: string;
+  provide?: { kind: string; name: string };
+  result?: Record<string, any>;
 }): ControllerInstance {
   return {
     schema: definition.schema ?? { type: "object", additionalProperties: true },
@@ -32,6 +52,9 @@ export function createTemplateController(definition: {
       const runTarget = definition.run
         ? (ctx.moduleContext.expandWith(definition.run, { self }) as string)
         : null;
+      const provideTarget = definition.provide?.name
+        ? (ctx.moduleContext.expandWith(definition.provide.name, { self }) as string)
+        : null;
 
       const persistentManifests: any[] = [];
       let ephemeralTemplate: any = null;
@@ -40,7 +63,10 @@ export function createTemplateController(definition: {
         const expandedName = ctx.moduleContext.expandWith(template.metadata?.name ?? "", {
           self,
         }) as string;
-        const isTarget = expandedName === invokeTarget || expandedName === runTarget;
+        const isTarget =
+          expandedName === invokeTarget ||
+          expandedName === runTarget ||
+          expandedName === provideTarget;
         if (isTarget) {
           ephemeralTemplate = template;
         } else {
@@ -84,7 +110,8 @@ export function createTemplateController(definition: {
           invoke: async (inputs: any) => {
             if (!ephemeralTemplate) {
               throw new Error(
-                `Template '${resource.metadata.name}': no ephemeral resource for invoke target '${invokeTarget}'`,
+                `Template '${resource.metadata.name}': 'invoke:' targets '${invokeTarget}' ` +
+                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
               );
             }
             const extraContext = { self, inputs };
@@ -95,7 +122,13 @@ export function createTemplateController(definition: {
             return withEphemeral(expanded, async (name) => {
               const entry = ctx.moduleContext.resourceInstances.get(name);
               if (!entry?.instance?.invoke) {
-                throw new Error(`Ephemeral resource '${name}' is not invocable`);
+                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
+                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
+                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
+                throw new Error(
+                  `Template '${resource.metadata.name}': 'invoke:' target '${targetKind}/${invokeTarget}' ` +
+                    `has capability '${actualCap}', not Telo.Invocable. Update 'invoke:' to a Telo.Invocable kind, or change the target's kind in 'resources:'.`,
+                );
               }
               // Top-level `inputs:` (sibling of `invoke:`) carries the values passed
               // to the dispatch target's invoke(). When absent, fall back to the
@@ -108,7 +141,13 @@ export function createTemplateController(definition: {
                     extraContext,
                   )
                 : expanded.inputs ?? inputs;
-              return entry.instance.invoke(invokeInputs);
+              const raw = await entry.instance.invoke(invokeInputs);
+              if (definition.result == null) return raw;
+              const resultContext = { self, result: raw };
+              return ctx.moduleContext.expandWith(
+                ctx.moduleContext.expandWith(definition.result, resultContext),
+                resultContext,
+              );
             });
           },
         }),
@@ -117,20 +156,69 @@ export function createTemplateController(definition: {
           run: async () => {
             if (!ephemeralTemplate) {
               throw new Error(
-                `Template '${resource.metadata.name}': no ephemeral resource for run target '${runTarget}'`,
+                `Template '${resource.metadata.name}': 'run:' targets '${runTarget}' ` +
+                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
               );
             }
             const extraContext = { self };
             const expanded = ctx.moduleContext.expandWith(
               ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
               extraContext,
-            );
+            ) as any;
             return withEphemeral(expanded, async (name) => {
               const entry = ctx.moduleContext.resourceInstances.get(name);
               if (!entry?.instance?.run) {
-                throw new Error(`Ephemeral resource '${name}' is not runnable`);
+                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
+                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
+                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
+                throw new Error(
+                  `Template '${resource.metadata.name}': 'run:' target '${targetKind}/${runTarget}' ` +
+                    `has capability '${actualCap}', not Telo.Runnable. Update 'run:' to a Telo.Runnable kind, or change the target's kind in 'resources:'.`,
+                );
               }
               return entry.instance.run();
+            });
+          },
+        }),
+
+        ...(provideTarget && {
+          provide: async () => {
+            if (!ephemeralTemplate) {
+              throw new Error(
+                `Template '${resource.metadata.name}': 'provide:' targets '${provideTarget}' ` +
+                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
+              );
+            }
+            const extraContext = { self };
+            const expanded = ctx.moduleContext.expandWith(
+              ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
+              extraContext,
+            ) as any;
+            return withEphemeral(expanded, async (name) => {
+              const entry = ctx.moduleContext.resourceInstances.get(name);
+              if (!entry?.instance?.invoke) {
+                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
+                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
+                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
+                throw new Error(
+                  `Template '${resource.metadata.name}': 'provide:' target '${targetKind}/${provideTarget}' ` +
+                    `has capability '${actualCap}', not Telo.Invocable. Update 'provide:' to a Telo.Invocable kind, or change the target's kind in 'resources:'.`,
+                );
+              }
+              const provideInputs: any =
+                definition.inputs != null
+                  ? ctx.moduleContext.expandWith(
+                      ctx.moduleContext.expandWith(definition.inputs, extraContext),
+                      extraContext,
+                    )
+                  : {};
+              const raw = await entry.instance.invoke(provideInputs);
+              if (definition.result == null) return raw;
+              const resultContext = { self, result: raw };
+              return ctx.moduleContext.expandWith(
+                ctx.moduleContext.expandWith(definition.result, resultContext),
+                resultContext,
+              );
             });
           },
         }),

@@ -18,6 +18,7 @@ type ResourceDefinitionResource = RuntimeResource & {
   schema: Record<string, any>;
   capability?: string;
   controllers?: Array<string>;
+  provide?: unknown;
 };
 
 /**
@@ -31,6 +32,11 @@ class ResourceDefinition implements ResourceInstance {
 
   async init(ctx: ResourceContext) {
     if (!this.resource.controllers?.length) {
+      if (this.resource.capability === "Telo.Provider" && this.resource.provide == null) {
+        throw new Error(
+          `Telo.Definition '${this.resource.metadata.name}': 'capability: Telo.Provider' requires either 'controllers:' (TS-backed) or 'provide:' (template-backed).`,
+        );
+      }
       const controllerInstance = createTemplateController(this.resource as any);
       ctx.registerDefinition(this.resource);
       await ctx.registerController(

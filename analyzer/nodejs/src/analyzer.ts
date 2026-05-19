@@ -29,6 +29,7 @@ import {
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
 import { validateExtends } from "./validate-extends.js";
+import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
@@ -777,17 +778,15 @@ export class StaticAnalyzer {
         }
       }
 
-      // Top-level `result:` (a sibling, only meaningful with `provide:`) is a
-      // post-call mapping that must satisfy the abstract this definition
-      // `extends` (`outputType`). The target's outputType lives on `provide.kind`
+      // Top-level `result:` is a post-call mapping that must satisfy the abstract
+      // this definition `extends` (`outputType`). It's a sibling of whichever
+      // dispatch entry-point declared a kind-typed target (`provide:` or
+      // `invoke:`). The target's outputType lives on the dispatcher's `kind`
       // and is what `result` is typed against *inside* CEL — separate role.
-      if (
-        provide &&
-        typeof provide === "object" &&
-        !Array.isArray(provide) &&
-        md.result &&
-        typeof md.result === "object"
-      ) {
+      const hasDispatchObject =
+        (provide && typeof provide === "object" && !Array.isArray(provide)) ||
+        (invoke && typeof invoke === "object" && !Array.isArray(invoke));
+      if (hasDispatchObject && md.result && typeof md.result === "object") {
         const extendsValue = md.extends as string | undefined;
         if (typeof extendsValue === "string" && extendsValue.length > 0) {
           const abstractSchema = lookupDefinitionTypeField(
@@ -920,6 +919,9 @@ export class StaticAnalyzer {
 
     // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
     diagnostics.push(...validateExtends(allManifests, defs, aliases));
+
+    // Validate provider coherence rules for `provide:` template-target definitions.
+    diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
     diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));

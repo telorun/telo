@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: provider-missing-impl-lib
+  version: 1.0.0
+---
+# Telo.Provider with neither `controllers:` (TS-backed) nor `provide:` (template-backed).
+# The analyzer rejects this with PROVIDER_MISSING_IMPLEMENTATION; this fixture
+# exists to assert the kernel surfaces the same condition at boot.
+kind: Telo.Definition
+metadata:
+  name: BrokenProvider
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: true

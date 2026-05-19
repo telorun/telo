@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: ProviderMissingImplApp
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata: { name: Lib }
+source: ./lib
+---
+kind: Lib.BrokenProvider
+metadata:
+  name: Anything

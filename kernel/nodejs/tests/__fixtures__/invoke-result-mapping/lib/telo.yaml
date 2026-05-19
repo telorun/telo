@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: invoke-result-lib
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../../../../../modules/javascript
+---
+kind: Telo.Definition
+metadata:
+  name: GreetWrapper
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [prefix]
+  additionalProperties: true
+  properties:
+    prefix: { type: string }
+resources:
+  - kind: JS.Script
+    metadata:
+      name: ${{ self.name }}-echo
+    inputType: { type: object, additionalProperties: true }
+    outputType: { type: object, additionalProperties: true }
+    code: |
+      function main(input) { return { greeting: input.text }; }
+invoke:
+  kind: JS.Script
+  name: ${{ self.name }}-echo
+inputs:
+  text: "${{ self.prefix }} ${{ inputs.who }}"
+result:
+  shouted: "${{ result.greeting }}!"

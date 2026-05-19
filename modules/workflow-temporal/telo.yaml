@@ -21,6 +21,8 @@ metadata:
   name: Backend
 capability: Telo.Provider
 extends: Workflow.Backend
+controllers:
+  - pkg:npm/@telorun/workflow-temporal@0.1.0?local_path=./nodejs#backend
 schema:
   type: object
   properties:

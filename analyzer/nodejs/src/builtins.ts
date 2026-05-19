@@ -149,7 +149,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             additionalProperties: false,
             properties: {
               self: { "x-telo-context-from-root": "schema" },
-              result: { "x-telo-context-from-ref-kind": "provide/kind#outputType" },
+              result: {
+                "x-telo-context-from-ref-kind": [
+                  "provide/kind#outputType",
+                  "invoke/kind#outputType",
+                ],
+              },
             },
           },
         },
