@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, and publishes module manifests to the Telo registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `Telo.Import` pins with `telo upgrade`, and publishes module manifests to the Telo registry with `telo publish`.
 
 ## Installation
 
@@ -162,6 +162,56 @@ CMD ["apps/my-app/telo.yaml"]
 ```
 
 The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.telo/manifests/`; the production stage is a single `COPY` and does no network I/O at boot.
+
+---
+
+### `telo upgrade <paths..>`
+
+Scans one or more manifests for `Telo.Import` declarations whose `source` is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version of each, and rewrites the `source` field in place when a newer version is available. The rewrite operates at the byte level: only the version characters of changed `source:` values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the `source:` value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
+
+Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. The command never follows imports recursively — only the imports declared in the files you pass on the command line are inspected.
+
+```bash
+telo upgrade ./apps/my-app/telo.yaml
+telo upgrade ./apps/my-app                       # directory → ./apps/my-app/telo.yaml
+telo upgrade ./apps/a ./apps/b --dry-run
+telo upgrade ./manifest.yaml --include-prerelease
+```
+
+**Options:**
+
+- `--registry-url <url>` — Base URL for the Telo registry. Falls back to `TELO_REGISTRY_URL`, then `https://registry.telo.run`. Matches the `install` / `run` fallback chain.
+- `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
+- `--dry-run` — Show the proposed rewrites without touching any files.
+
+**Behavior per import:**
+
+| Pinned version state | Action | Log marker |
+| --- | --- | --- |
+| Equal to the latest published | leave unchanged | `=  already at <ver>` |
+| Lower than the latest, and itself in the registry | rewrite to latest | `↑  <old> → <new>` |
+| Not present in the registry's version list | rewrite to latest (repair) — flagged with `(pinned version not in registry)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
+| Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions in registry` |
+| `source` is not a `<namespace>/<name>@<version>` ref (relative path, HTTP URL, alias) | leave unchanged | `·  skipped (not a registry ref)` |
+
+A non-existent pin is always treated as broken and repaired against the registry — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 registry errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
+
+**Environment:**
+
+- `TELO_REGISTRY_URL` — Default registry URL used when `--registry-url` is omitted.
+
+**Example output:**
+
+```text
+Upgrading apps/my-app/telo.yaml
+  ↑  std/run  0.2.4 → 0.2.7
+  =  std/http-server  already at 2.0.0
+  ↓  std/foo  9.9.9 → 0.4.1  (pinned version not in registry)
+  !  std/does-not-exist  no published versions in registry
+  ·  ../sibling  skipped (not a registry ref)
+
+2 upgraded, 1 already current, 2 skipped
+```
 
 ---
 
