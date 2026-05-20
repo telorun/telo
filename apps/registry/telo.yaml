@@ -14,29 +14,29 @@ targets:
 kind: Telo.Import
 metadata:
   name: Type
-source: std/type@1.0.5
+source: std/type@1.0.7
 ---
 kind: Telo.Import
 metadata:
   name: Http
-source: std/http-server@0.4.0
+source: std/http-server@2.0.0
 ---
 kind: Telo.Import
 metadata:
   name: HttpClient
-source: std/http-client@0.2.0
+source: std/http-client@0.2.3
 
 ---
 kind: Telo.Import
 metadata:
   name: Config
-source: std/config@0.1.5
+source: std/config@0.1.7
 
 ---
 kind: Telo.Import
 metadata:
   name: S3
-source: std/s3@1.2.0
+source: std/s3@1.2.2
 secrets:
   accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
   secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
@@ -44,32 +44,32 @@ secrets:
 kind: Telo.Import
 metadata:
   name: Sql
-source: std/sql@0.2.1
+source: std/sql@0.2.3
 ---
 kind: Telo.Import
 metadata:
   name: Run
-source: std/run@0.2.4
+source: std/run@0.2.7
 ---
 kind: Telo.Import
 metadata:
   name: Octet
-source: std/octet-codec@0.2.1
+source: std/octet-codec@0.2.3
 ---
 kind: Telo.Import
 metadata:
   name: PlainText
-source: std/plain-text-codec@0.2.1
+source: std/plain-text-codec@0.2.3
 ---
 kind: Telo.Import
 metadata:
   name: Yaml
-source: std/yaml@0.2.0
+source: std/yaml@0.2.2
 ---
 kind: Telo.Import
 metadata:
   name: Mcp
-source: std/mcp-server@0.3.0
+source: std/mcp-server@0.4.2
 ---
 # ── Configuration ─────────────────────────────────────────────────────────────
 

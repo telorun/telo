@@ -6,6 +6,7 @@ import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
 import { publishCommand } from "./commands/publish.js";
 import { runCommand } from "./commands/run.js";
+import { upgradeCommand } from "./commands/upgrade.js";
 
 let cli = yargs(hideBin(process.argv))
   .scriptName("telo")
@@ -15,6 +16,7 @@ cli = checkCommand(cli) as typeof cli;
 cli = installCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
 cli = runCommand(cli) as typeof cli;
+cli = upgradeCommand(cli) as typeof cli;
 
 cli
   .option("verbose", {
