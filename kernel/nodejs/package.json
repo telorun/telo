@@ -45,7 +45,7 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc && node ../../scripts/generate-runtime-deps.mjs .",
+    "build": "tsc",
     "dev": "tsc --watch",
     "prepublishOnly": "tsc",
     "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs .",
@@ -57,7 +57,6 @@
     "@marcbachmann/cel-js": "^7.5.3",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",
-    "@telorun/sdk": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "minimatch": "^10.2.5",
@@ -68,5 +67,8 @@
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

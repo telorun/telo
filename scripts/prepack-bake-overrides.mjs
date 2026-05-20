@@ -13,9 +13,6 @@
 //   3. Adds `overrides` and `pnpm.overrides` for every direct dependency,
 //      using the npm `$<name>` syntax (npm 8.3+) which pins the override to
 //      whatever version this very package.json declares for the dep.
-//   4. Re-runs scripts/generate-runtime-deps.mjs against the rewritten
-//      package.json so the runtime carries the same name list the published
-//      manifest declares.
 //
 // Usage: node scripts/prepack-bake-overrides.mjs <pkg-dir>
 // Env:   TELO_PREPACK_WORKSPACE_ROOT overrides the monorepo root used for
@@ -24,7 +21,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateRuntimeDeps } from "./generate-runtime-deps.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = process.env.TELO_PREPACK_WORKSPACE_ROOT
@@ -135,11 +131,3 @@ console.log(
   `prepack-bake-overrides: ${pkg.name} → ${deps.length} overrides written to ` +
     `package.json (and pnpm.overrides mirror).`,
 );
-
-// Regenerate runtime-deps.json against the rewritten manifest so runtime
-// metadata matches the published deps list exactly. Direct call (rather
-// than fork-exec) keeps `pkgDir` out of any shell — argument quoting was
-// the previous shape's footgun — and avoids the cost of spinning a second
-// Node process during pack.
-const runtimeDepsPath = generateRuntimeDeps(pkgDir);
-console.log(`prepack-bake-overrides: regenerated ${runtimeDepsPath}`);

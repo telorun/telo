@@ -38,11 +38,13 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
-    "@telorun/kernel": "workspace:*",
-    "@telorun/sdk": "workspace:*"
+    "@telorun/kernel": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

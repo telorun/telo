@@ -9,9 +9,9 @@ const {
   resolvePackageExportTarget,
   resolveExportTargetValue,
   tryResolveFile,
-  walkUpToPackageRoot,
   EXPORTS_MAX_DEPTH,
   DEFAULT_RESOLVER_CONDITIONS,
+  REALM_COLLAPSE_NAMES,
 } = __testing__;
 
 describe("normalizeFileSpec", () => {
@@ -157,41 +157,11 @@ describe("tryResolveFile", () => {
   });
 });
 
-describe("walkUpToPackageRoot", () => {
-  let tmp: string;
-  beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "telo-walkup-"));
-  });
-  afterEach(async () => {
-    await fs.rm(tmp, { recursive: true, force: true });
-  });
-
-  it("returns the directory itself when package.json sits there", async () => {
-    await fs.writeFile(path.join(tmp, "package.json"), "{}");
-    expect(await walkUpToPackageRoot(tmp)).toBe(tmp);
-  });
-
-  it("walks up to find the nearest package.json", async () => {
-    const nested = path.join(tmp, "a", "b", "c");
-    await fs.mkdir(nested, { recursive: true });
-    await fs.writeFile(path.join(tmp, "package.json"), "{}");
-    expect(await walkUpToPackageRoot(nested)).toBe(tmp);
-  });
-
-  it("returns null when no package.json exists between the start and the filesystem root", async () => {
-    // os.tmpdir's parent chain doesn't reliably contain or omit a package.json
-    // depending on the host. Use a self-contained path that's guaranteed
-    // ancestor-less by passing a deeply nested temp dir with no package.json
-    // anywhere from `tmp` downward, then asserting we don't accidentally
-    // claim `tmp` as the root.
-    const nested = path.join(tmp, "x", "y");
-    await fs.mkdir(nested, { recursive: true });
-    const found = await walkUpToPackageRoot(nested);
-    // Either we got null (no package.json between nested and /), or we got
-    // some ancestor outside tmp — both are fine. The contract is that we
-    // never falsely return a directory below tmp that has no package.json.
-    if (found !== null) {
-      expect(found.startsWith(tmp)).toBe(false);
-    }
+describe("REALM_COLLAPSE_NAMES", () => {
+  it("lists @telorun/sdk so the install-root wires it as a file: dep", () => {
+    // The runtime guarantee modules rely on (peerDependencies → install-root
+    // provides the single copy) only holds if the loader knows to put sdk in
+    // the install root. Pin the list here so removals are deliberate.
+    expect(REALM_COLLAPSE_NAMES).toContain("@telorun/sdk");
   });
 });

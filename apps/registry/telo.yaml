@@ -19,7 +19,7 @@ source: std/type@1.0.5
 kind: Telo.Import
 metadata:
   name: Http
-source: std/http-server@0.3.1
+source: std/http-server@0.4.0
 ---
 kind: Telo.Import
 metadata:
@@ -495,7 +495,7 @@ routes:
               type: string
               default: ""
               description: "Filter by module id (e.g. 'namespace/name@version')."
-            limit: { type: integer, default: 20, description: "Number of results to return." }
+            limit: { type: integer, default: 50, description: "Number of results to return." }
             offset:
               type: integer
               default: 0
@@ -877,30 +877,97 @@ instructions: !literal |
 
   ## Comprehensive example
 
-  A complete `Telo.Application` that imports two modules and wires them
-  together. Note the document separators (`---`), the alias prefixes on
-  resource kinds (`Http.Server`, `JS.Script`), and the `!cel`-tagged
-  expressions:
+  A `Telo.Application` that persists notes in SQLite. It imports four modules,
+  runs migrations on boot, and serves a small HTTP API. The example shows the
+  patterns you will use most often:
+
+  - **Shared resources**: declare a resource once at the top level and reference
+    it from many places by `{ kind: <Kind>, name: <Name> }` (here: a single
+    `Sql.Connection` named `Db` is reused by migrations, a named handler, and
+    an inline handler).
+  - **Inline-defined resources**: a handler can also be written *inline* on the
+    route — no top-level resource, no name. Useful for one-off route logic.
+  - **JSON Schema on requests**: `request.schema.{query,body,params,headers}`
+    is plain JSON Schema; values become typed `request.query.x` / `request.body.x`
+    / `request.params.x` inside CEL.
+  - **JSON Schema on responses**: a reusable handler declares `inputType` /
+    `outputType` via `Type.JsonSchema`. The route's `returns[].content` then
+    shapes the public response from the typed `result`.
+  - **SQL with migrations**: `Sql.Migrations` is the runner (listed as an
+    application `target` so it executes on boot); each `Sql.Migration` is a
+    sibling resource — the runner auto-discovers them via the shared
+    connection.
 
   ```yaml
   kind: Telo.Application
   metadata:
-    name: hello-app
+    name: notes-app
     version: 1.0.0
   targets:
+    - Migrations   # run schema migrations before the server starts
     - Server
   ---
   kind: Telo.Import
   metadata: { name: Http }
-  source: std/http-server@1.0.0
+  source: std/http-server@0.4.0
   ---
   kind: Telo.Import
-  metadata: { name: JS }
-  source: std/javascript@0.3.0
+  metadata: { name: Sql }
+  source: std/sql@0.2.1
   ---
   kind: Telo.Import
   metadata: { name: Type }
-  source: std/type@0.2.0
+  source: std/type@1.0.5
+  ---
+  # ── Shared resource: one Sql.Connection referenced by name from everywhere.
+  kind: Sql.Connection
+  metadata: { name: Db }
+  driver: sqlite
+  file: ./notes.db
+  ---
+  # ── Migrations: the runner + its migration ledger entries.
+  kind: Sql.Migrations
+  metadata: { name: Migrations }
+  connection: { kind: Sql.Connection, name: Db }
+  ---
+  kind: Sql.Migration
+  metadata: { name: Migration_20260520120000_CreateNotes }
+  version: 20260520120000_CreateNotes
+  sql: |
+    CREATE TABLE notes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      title      TEXT    NOT NULL,
+      body       TEXT    NOT NULL,
+      created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  ---
+  # ── Shared, named handler — referenced by route below as { kind, name }.
+  # Declaring inputType/outputType once lets the analyzer type-check every
+  # caller and every `result.*` access against the same schemas.
+  kind: Sql.Select
+  metadata: { name: ListNotes }
+  connection: { kind: Sql.Connection, name: Db }
+  from: notes
+  columns:
+    - id
+    - title
+    - body
+    - { column: created_at, as: createdAt }
+  orderBy: [{ column: created_at, direction: desc }]
+  limit: !cel "inputs.limit"
+  inputType:
+    kind: Type.JsonSchema
+    schema:
+      type: object
+      properties:
+        limit: { type: integer, default: 20 }
+  outputType:
+    kind: Type.JsonSchema
+    schema:
+      type: object
+      properties:
+        rows:     { type: array }
+        rowCount: { type: integer }
   ---
   kind: Http.Server
   metadata: { name: Server }
@@ -908,42 +975,56 @@ instructions: !literal |
   port: 8080
   mounts:
     - path: /
-      type: Http.Api.HelloApi
+      type: Http.Api.NotesApi
   ---
   kind: Http.Api
-  metadata: { name: HelloApi }
+  metadata: { name: NotesApi }
   routes:
+    # GET /notes — references the SHARED ListNotes handler by { kind, name }.
     - request:
-        path: /hello/:name
+        path: /notes
         method: GET
-      handler:
-        kind: JS.Script
-        name: HelloHandler
+        schema:                          # JSON Schema for the request.
+          query:
+            type: object
+            properties:
+              limit: { type: integer, default: 20, maximum: 100 }
+      handler: { kind: Sql.Select, name: ListNotes }
       inputs:
-        name: !cel "request.params.name"
+        limit: !cel "request.query.limit"
       returns:
         - status: 200
           content:
             application/json:
               body:
-                greeting: !cel "result.text"
-  ---
-  kind: JS.Script
-  metadata: { name: HelloHandler }
-  inputType:
-    kind: Type.JsonSchema
-    schema:
-      type: object
-      properties: { name: { type: string } }
-      required: [name]
-  outputType:
-    kind: Type.JsonSchema
-    schema:
-      type: object
-      properties: { text: { type: string } }
-      required: [text]
-  code: |
-    function main({ name }) { return { text: "Hello, " + name + "!" }; }
+                items: !cel "result.rows"
+                count: !cel "result.rowCount"
+
+    # POST /notes — handler defined INLINE on the route. The Sql.Exec has no
+    # top-level resource, but still references the shared `Db` connection.
+    - request:
+        path: /notes
+        method: POST
+        schema:
+          body:                          # JSON Schema for the request body.
+            type: object
+            properties:
+              title: { type: string, minLength: 1 }
+              body:  { type: string }
+            required: [title, body]
+      handler:
+        kind: Sql.Exec
+        connection: { kind: Sql.Connection, name: Db }
+      inputs:
+        sql: "INSERT INTO notes (title, body) VALUES (?, ?)"
+        bindings:
+          - !cel "request.body.title"
+          - !cel "request.body.body"
+      returns:
+        - status: 201
+          content:
+            application/json:
+              body: { created: true }
   ```
 
   ## Workflow when composing a new application
