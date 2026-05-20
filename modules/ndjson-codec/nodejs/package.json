@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ndjson-codec",
-  "version": "0.2.3",
+  "version": "1.0.0",
   "description": "NDJSON codec — one JSON record per line ↔ byte iterables.",
   "keywords": [
     "telo",
