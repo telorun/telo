@@ -20,4 +20,10 @@ Focus on:
 - cohesion and coupling
 - adherence to Telo's core goals
 
+Detect if implementer was struggling with making the implementation natural and decided to hack around.
+
 Ground your feedback in specific file paths and line ranges. Provide actionable recommendations for improvement, and prioritize them based on impact and effort.
+
+Make sure there is no major version bump in any of the packages or modules.
+
+Ignore any file changes that are not coherent with the overall feature or fix being implemented and seem out of scope.

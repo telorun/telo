@@ -119,6 +119,11 @@ export function pathMatchesScope(exprPath: string, scope: string): boolean {
  *   `manifestRoot.provide.kind` as a kind name, looks up the kind's Telo.Definition,
  *   and returns the `outputType` schema.
  *
+ *   Accepts either a single string or an array of strings. With an array, paths
+ *   are tried in order and the first one that resolves to a usable schema wins —
+ *   used by `result:` to find its dispatch target under whichever entry-point
+ *   field (`provide:` or `invoke:`) the definition declares.
+ *
  * - `x-telo-context-ref-from`: existing form — reads `{kind, name}` object from
  *   `manifestItem.<path>`, looks up the named manifest, returns its `<subpath>` field.
  *
@@ -153,8 +158,16 @@ export function resolveContextAnnotations(
   }
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
-  const fromRefKind = schema["x-telo-context-from-ref-kind"] as string | undefined;
-  if (fromRoot || fromRefKind) {
+  const fromRefKindRaw = schema["x-telo-context-from-ref-kind"] as
+    | string
+    | string[]
+    | undefined;
+  const fromRefKinds = fromRefKindRaw == null
+    ? []
+    : Array.isArray(fromRefKindRaw)
+      ? fromRefKindRaw
+      : [fromRefKindRaw];
+  if (fromRoot || fromRefKinds.length > 0) {
     if (fromRoot) {
       const resolved = navigatePath(manifestRoot, fromRoot.split("/")) as
         | Record<string, any>
@@ -163,22 +176,22 @@ export function resolveContextAnnotations(
         return resolved;
       }
     }
-    if (fromRefKind && defs) {
-      const hashIdx = fromRefKind.indexOf("#");
-      if (hashIdx > 0) {
+    if (defs) {
+      for (const fromRefKind of fromRefKinds) {
+        const hashIdx = fromRefKind.indexOf("#");
+        if (hashIdx <= 0) continue;
         const refPath = fromRefKind.slice(0, hashIdx);
         const field = fromRefKind.slice(hashIdx + 1);
         const kindValue = navigatePath(manifestRoot, refPath.split("/"));
-        if (typeof kindValue === "string" && kindValue.length > 0) {
-          const canonical = aliases?.resolveKind(kindValue) ?? kindValue;
-          const def = defs.resolve(canonical);
-          const typeField = def
-            ? (def as Record<string, unknown>)[field]
-            : undefined;
-          const resolved = resolveTypeFieldToSchema(typeField, allManifests ?? []);
-          if (resolved && typeof resolved === "object") {
-            return resolved;
-          }
+        if (typeof kindValue !== "string" || kindValue.length === 0) continue;
+        const canonical = aliases?.resolveKind(kindValue) ?? kindValue;
+        const def = defs.resolve(canonical);
+        const typeField = def
+          ? (def as Record<string, unknown>)[field]
+          : undefined;
+        const resolved = resolveTypeFieldToSchema(typeField, allManifests ?? []);
+        if (resolved && typeof resolved === "object") {
+          return resolved;
         }
       }
     }

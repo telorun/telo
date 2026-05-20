@@ -1,3 +1,3 @@
-export interface Provider {
-  init(): Promise<void>;
+export interface Provider<TOutput = unknown> {
+  provide(): Promise<TOutput>;
 }

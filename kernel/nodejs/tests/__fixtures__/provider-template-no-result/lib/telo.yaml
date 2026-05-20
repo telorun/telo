@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: provider-template-raw-lib
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../../../../../modules/javascript
+---
+kind: Telo.Definition
+metadata:
+  name: RawProvider
+capability: Telo.Provider
+schema:
+  type: object
+  required: [value]
+  additionalProperties: true
+  properties:
+    value: { type: string }
+resources:
+  - kind: JS.Script
+    metadata:
+      name: ${{ self.name }}-source
+    inputType: { type: object, additionalProperties: true }
+    outputType: { type: object, additionalProperties: true }
+    code: |
+      function main(input) { return { raw: input.value }; }
+provide:
+  kind: JS.Script
+  name: ${{ self.name }}-source
+inputs:
+  value: ${{ self.value }}

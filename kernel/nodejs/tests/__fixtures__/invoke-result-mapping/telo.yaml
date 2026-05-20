@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: InvokeResultApp
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../../../../modules/javascript
+---
+kind: Telo.Import
+metadata: { name: Lib }
+source: ./lib
+---
+kind: Lib.GreetWrapper
+metadata:
+  name: Greeter
+prefix: hello
