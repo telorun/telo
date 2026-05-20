@@ -57,12 +57,14 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@telorun/sdk": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "fastify": "^5.7.2",
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

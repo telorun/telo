@@ -62,8 +62,7 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
-    "@telorun/http-dispatch": "workspace:*",
-    "@telorun/sdk": "workspace:*"
+    "@telorun/http-dispatch": "workspace:*"
   },
   "devDependencies": {
     "@telorun/kernel": "workspace:*",
@@ -71,5 +70,8 @@
     "testcontainers": "^10.16.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

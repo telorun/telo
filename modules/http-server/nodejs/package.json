@@ -48,7 +48,6 @@
     "@scalar/fastify-api-reference": "^1.44.6",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/http-dispatch": "workspace:*",
-    "@telorun/sdk": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "fastify": "^5.7.2"
@@ -57,5 +56,8 @@
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

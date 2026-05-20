@@ -35,11 +35,13 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.48",
-    "@telorun/sdk": "workspace:*"
+    "@sinclair/typebox": "^0.34.48"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

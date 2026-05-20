@@ -49,10 +49,10 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.48",
-    "@telorun/sdk": "workspace:*"
+    "@sinclair/typebox": "^0.34.48"
   },
   "peerDependencies": {
+    "@telorun/sdk": "workspace:*",
     "vitest": "^2.1.8 || ^3.0.0"
   },
   "peerDependenciesMeta": {

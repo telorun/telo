@@ -8,13 +8,13 @@ import { fileURLToPath } from "url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..");
 const prepackScript = path.join(repoRoot, "scripts", "prepack-bake-overrides.mjs");
-const generateRuntimeDepsScript = path.join(repoRoot, "scripts", "generate-runtime-deps.mjs");
 
 /**
  * The prepack hook bakes `overrides` and `pnpm.overrides` into the published
- * package.json so a user installing the kernel directly gets a pinned tree.
- * The hook also re-runs `generate-runtime-deps.mjs` so the runtime metadata
- * mirrors the published manifest.
+ * package.json so a user installing the kernel directly gets a pinned tree
+ * for its `dependencies`. `peerDependencies` (notably `@telorun/sdk`) are
+ * intentionally NOT baked — peer deps express a single-instance contract the
+ * consumer must satisfy, and an override on that name would defeat the point.
  */
 describe("prepack-bake-overrides", () => {
   it("rewrites workspace: specifiers using sibling versions from the monorepo", async () => {
@@ -113,8 +113,14 @@ describe("prepack-bake-overrides", () => {
         name: "@telorun/test-pkg",
         version: "1.2.3",
         dependencies: {
-          "@telorun/sdk": "^0.7.0",
+          "@telorun/templating": "^0.7.0",
           "some-lib": "^1.0.0",
+        },
+        peerDependencies: {
+          // Peer deps must NOT receive an override — that would force the
+          // consumer's resolution to a baked value and defeat the
+          // single-instance contract peer deps exist to express.
+          "@telorun/sdk": "workspace:*",
         },
       };
       await fs.writeFile(path.join(tmp, "package.json"), JSON.stringify(pkg, null, 2));
@@ -123,38 +129,13 @@ describe("prepack-bake-overrides", () => {
 
       const written = JSON.parse(await fs.readFile(path.join(tmp, "package.json"), "utf8"));
       expect(written.overrides).toEqual({
-        "@telorun/sdk": "$@telorun/sdk",
+        "@telorun/templating": "$@telorun/templating",
         "some-lib": "$some-lib",
       });
       expect(written.pnpm.overrides).toEqual({
-        "@telorun/sdk": "$@telorun/sdk",
+        "@telorun/templating": "$@telorun/templating",
         "some-lib": "$some-lib",
       });
-
-      // The same script chains the runtime-deps regeneration. Confirm a
-      // fresh runtime-deps.json was emitted.
-      const runtimeDepsPath = path.join(tmp, "dist", "generated", "runtime-deps.json");
-      const runtimeDeps = JSON.parse(await fs.readFile(runtimeDepsPath, "utf8"));
-      expect(runtimeDeps.names).toBeInstanceOf(Array);
-    } finally {
-      await fs.rm(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it("generate-runtime-deps emits the realm-collapse name list independent of the manifest's deps", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "telo-genrd-"));
-    try {
-      const pkg = { name: "@telorun/anything", version: "0.0.1", dependencies: {} };
-      await fs.writeFile(path.join(tmp, "package.json"), JSON.stringify(pkg, null, 2));
-      execFileSync("node", [generateRuntimeDepsScript, tmp], { encoding: "utf8" });
-
-      const out = JSON.parse(
-        await fs.readFile(path.join(tmp, "dist", "generated", "runtime-deps.json"), "utf8"),
-      );
-      // The realm-collapse list is curated in the script, not derived from the
-      // package's own deps. A consumer (or future kernel-only doc) can grep
-      // for the list there; this test pins the existing entry.
-      expect(out.names).toContain("@telorun/sdk");
     } finally {
       await fs.rm(tmp, { recursive: true, force: true });
     }

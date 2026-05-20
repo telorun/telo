@@ -71,11 +71,11 @@
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
-  "dependencies": {
-    "@telorun/sdk": "workspace:*"
-  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

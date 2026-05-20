@@ -65,7 +65,6 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@telorun/sdk": "workspace:*",
     "better-sqlite3": "^12.8.0",
     "pg": "^8.20.0",
     "kysely": "^0.28.15"
@@ -76,5 +75,8 @@
     "@types/node": "^20.0.0",
     "@types/pg": "^8.0.0",
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*"
   }
 }

@@ -68,7 +68,7 @@ describe("NpmControllerLoader single-realm install", () => {
   );
 
   it(
-    "writes overrides + pnpm.overrides pinning @telorun/sdk to the kernel's resolution",
+    "writes @telorun/sdk as a file: dep pointing at the kernel's resolution",
     async () => {
       const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
@@ -81,10 +81,12 @@ describe("NpmControllerLoader single-realm install", () => {
         await fs.readFile(path.join(workDir, ".telo", "npm", "package.json"), "utf8"),
       );
 
+      // Single mechanism now: modules declare @telorun/sdk as a peer dep,
+      // the install root provides exactly one copy via `file:`. No overrides
+      // needed — that block existed only to enforce what peer deps now do.
       expect(installRootPkgJson.dependencies["@telorun/sdk"]).toMatch(/^file:/);
-      expect(installRootPkgJson.overrides["@telorun/sdk"]).toBe("$@telorun/sdk");
-      // Mirror under pnpm.overrides so both package managers honour the pin.
-      expect(installRootPkgJson.pnpm.overrides["@telorun/sdk"]).toBe("$@telorun/sdk");
+      expect(installRootPkgJson.overrides).toBeUndefined();
+      expect(installRootPkgJson.pnpm).toBeUndefined();
     },
     { timeout: 60_000 },
   );
