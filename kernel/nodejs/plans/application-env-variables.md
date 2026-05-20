@@ -100,11 +100,13 @@ Keeping this check outside the schema lets the Library entry schema remain a pur
 
 Root Application population currently happens in [`kernel/nodejs/src/kernel.ts:294-315`](../src/kernel.ts#L294-L315), and the comment on line 309-311 explicitly says *"Applications have no variables/secrets fields — those are a Library-only contract."* That line is now wrong; replace the comment block and add a new step that mirrors [`modules/config/nodejs/src/env-controller.ts:25-80`](../../../modules/config/nodejs/src/env-controller.ts#L25-L80):
 
+**Residual schema** (used in both the steps below and the polyglot spec): the entry object with `env` and `default` keys stripped. `type:` is **kept** so the residual schema enforces the declared JSON top-level shape after coercion (especially important for object / array entries, where `JSON.parse` could produce a wrong-typed value and the residual schema is what catches it via the standard validator path). This is the single definition referenced everywhere else in this plan — the analyzer-side normalization (Section 4) and the runtime residual-schema validation (polyglot spec steps 2 and 4) must produce the same object.
+
 For each `[name, entry]` in `manifest.variables ?? {}` and `manifest.secrets ?? {}`:
 
 1. Read `raw = process.env[entry.env]`.
 2. If `raw === undefined`:
-   - If `entry.default !== undefined`: validate the default against the entry's residual JSON Schema (the entry with `env` and `default` keys stripped) and store it.
+   - If `entry.default !== undefined`: validate the default against the entry's residual schema and store it.
    - Else: collect an error `${name}: environment variable ${entry.env} is not set (no default)`.
 3. Else: coerce `raw` per `entry.type` (see the coercion table in the polyglot spec below — string passthrough; integer; number; boolean; object / array via `JSON.parse` constrained to the matching top-level type), then validate against the residual schema. Collect any coercion or validation error keyed by `name`.
 
@@ -118,7 +120,7 @@ The Node `populateApplicationEnv` helper is the first implementation of the "Pol
 
 [`analyzer/nodejs/src/kernel-globals.ts:62-63`](../../../analyzer/nodejs/src/kernel-globals.ts#L62-L63) calls `buildSchemaMapSchema(moduleManifest?.variables)` on the manifest's raw variables block. Today that block IS the JSON Schema property map (Library shape); under this plan, the Application shape's entries carry `env:` / `type:` / `default:` keys and CEL doesn't want those.
 
-Add a normalization step that strips the kernel-specific keys (`env`, `default`) from each entry before handing it to `buildSchemaMapSchema`; everything else passes through. For Library manifests the strip is a no-op. For Application manifests the result is a pure JSON Schema property map describing the *coerced* shape CEL sees at runtime — `port: { type: "integer", minimum: 1024 }`, not `port: { env, type, default, minimum }`. The same normalization works for object / array entries (`tls: { type: "object", properties: {...} }` after stripping `env` / `default`).
+Add a normalization step that produces the **residual schema** defined in Section 3 (strip `env` and `default`; keep `type:` and every other JSON Schema keyword) for each entry before handing it to `buildSchemaMapSchema`. This must be the same residual-schema function the runtime helper in Section 3 uses — extract it into a single shared utility so the analyzer and the kernel cannot drift. For Library manifests the strip is a no-op. For Application manifests the result is a pure JSON Schema property map describing the coerced shape CEL sees at runtime — `port: { type: "integer", minimum: 1024 }`, not `port: { env, type, default, minimum }`. The same normalization works for object / array entries (`tls: { type: "object", properties: {...} }` after stripping `env` / `default`).
 
 The function comment at [`kernel-globals.ts:25-35`](../../../analyzer/nodejs/src/kernel-globals.ts#L25-L35) updates to reflect that Application now contributes variables/secrets to the typed globals scope (today it falls back to Library; tomorrow Application is the primary source whenever present, with the same fallback).
 
@@ -136,32 +138,35 @@ The Application-level env contract gets a documentation page colocated with wher
 
 ### 7. Telo editor — Environment tab
 
-The editor must render Application-level `variables` / `secrets` in its Environment tab so authors can add, edit, and remove env-mapped entries visually. This is in scope for this plan, not a follow-up.
+The Environment tab is a **run-configuration surface** for the editor's Run feature. It **never edits the manifest**: nothing in this tab writes back to `Telo.Application.variables` / `.secrets`. Its only purpose is to collect the env-var values the editor will export to `process.env` when the user launches the application from the editor — analogous to a Run/Launch configuration in other IDEs, scoped to the workspace.
 
-Current state (verified during planning): the editor parses Application and Library manifests through [`apps/telo-editor/src/loader/parse.ts:57-110`](../../../apps/telo-editor/src/loader/parse.ts#L57-L110) and exposes `variables` / `secrets` structurally on `ParsedManifest.metadata`, but no part of the editor renders those fields through the resource-schema-form system today. The Environment tab must be wired explicitly.
+The tab's shape is **derived** entirely from the Application's declared `variables` / `secrets` block: one row per declared entry. If the user wants a new variable, they edit the manifest (Source view); the tab re-renders. The tab itself has no add / rename / delete / type-change / constraints-edit controls.
+
+Current state (verified during planning): the editor parses Application manifests through [`apps/telo-editor/src/loader/parse.ts:57-110`](../../../apps/telo-editor/src/loader/parse.ts#L57-L110) and exposes `variables` / `secrets` structurally on `ParsedManifest.metadata`, but no part of the editor renders those fields today. The Environment tab must be wired explicitly.
 
 Scope for this plan:
 
-- **Environment tab gains two grouped sections**: "Variables" and "Secrets". Each section lists the entries declared in `Telo.Application.variables` / `.secrets`, one row per entry.
-- **Per-row controls**:
-  - **Name** — the entry key (rename updates the YAML key in place).
-  - **Env var** — bound to the `env:` field. Plain text input, validated as a non-empty string (typical convention `SCREAMING_SNAKE_CASE`, but not enforced — the spec doesn't restrict env-var names).
-  - **Type** — dropdown sourced from the `enum` in the entry schema (`string | integer | number | boolean | object | array`). Changing the type clears `default:` if its current value no longer matches.
-  - **Default** — type-aware input. For scalars, a single-line input. For `object` / `array`, a Monaco JSON editor pane (the editor already uses Monaco for `JS.Script` and similar), validated as JSON parseable into the declared top-level type.
-  - **Schema constraints** — a collapsible "Constraints" pane that surfaces any extra JSON Schema keywords already in the entry (`minimum`, `maximum`, `enum`, `pattern`, `items`, `properties`, …). The pane re-uses whatever generic JSON Schema editor is in place for resource schemas; we do not write a bespoke form for each constraint here.
-  - **Delete** — removes the entry.
-- **Add-entry control** — single button per section that appends `{ env: "", type: "string" }` and focuses the name field.
-- **Secret rows are visually distinct**: padlock icon next to the name, default-value input masked unless toggled, "this value will be redacted in logs" hint.
-- **Validation surfacing**: schema diagnostics from the analyzer (Section 2) appear inline on the offending row, not in a global error banner. Same routing the editor already uses for resource-schema errors.
-- **Library manifests show a read-only Environment tab**: same listing of `variables` / `secrets`, no `env:` field, no add control, plus a banner explaining that Libraries receive values from importers. This is the visual counterpart to the Section 2 load-time rejection.
+- **Two grouped sections**: "Variables" and "Secrets", one row per entry declared in the Application manifest.
+- **Each row displays (read-only, derived from the manifest)**:
+  - The entry's **name** (`port`, `databaseUrl`, …).
+  - The mapped **env var name** (`PORT`, `DATABASE_URL`, …).
+  - The declared **type** (`string | integer | number | boolean | object | array`).
+  - The entry's **default** if declared (muted hint).
+  - A one-line **constraints summary** derived from the entry's residual schema (`min 1024`, `enum: debug, info, warn, error`, `array of string`, …).
+- **Each row has one editable surface**: a **value input** holding the user-supplied value for the local Run feature. Type-aware: single-line for scalars, masked single-line for secrets, Monaco JSON pane for `object` / `array`. Inputs are validated client-side against the entry's residual schema (Section 3) so what the editor accepts is what the kernel will accept on launch.
+- **Run wiring**: when the user invokes the editor's Run feature on an Application, the editor builds the child process's `env` from these values keyed by each entry's `env:` name. Empty / unset rows simply omit the var (the kernel then applies the manifest's `default:` or fails with the missing-required diagnostic from Section 3, exactly as if the user ran the manifest from a shell with no env set).
+- **Storage**: entered values are persisted in the editor's existing workspace-local run-configuration store (whatever already holds per-workspace launch state — confirm during implementation). The manifest YAML on disk is untouched.
+- **Secrets are visually distinct**: padlock icon, masked value input with a toggle, "redacted in logs" hint. Storage for secret values follows whatever the editor already uses for secret-like workspace state (env-flagged in the run-config store, OS keychain if that's the existing convention — confirm).
+- **Validation surfacing**: residual-schema diagnostics for the entered value appear inline on the offending row. Manifest-level diagnostics (Section 2 / analyzer) appear on the Source view, not duplicated here.
+- **Library manifests**: no Environment tab. Libraries are not runnable; the Run feature is Application-only, so there is no run-config surface to render for them.
 
-Out of scope for the editor work in this plan: refactoring the existing Monaco / JSON Schema form components, redesigning the tab layout, and any non-Environment-tab surfaces (e.g. inline `${{ variables.X }}` autocompletion already lives in the CEL editor and follows from Section 4's typed globals without further editor work here).
+Out of scope for the editor work in this plan: refactoring the existing Monaco / form components; redesigning the tab layout; any UI for editing the manifest's `variables` / `secrets` declarations (Source view continues to own that); building the editor's Run feature itself — this section assumes it already exists and only adds the env-var input surface that feeds it.
 
 Touch points (confirm exact paths during implementation):
 
-- `apps/telo-editor/src/components/environment-tab/*` — new tab component or extension of an existing one; check current layout structure.
-- `apps/telo-editor/src/loader/parse.ts` — extend `ParsedManifest.metadata` to carry the new per-entry shape (`env`, `type`, `default`, plus residual constraints) without losing the existing Library-shape support.
-- `apps/telo-editor/src/yaml-document.ts` — extend `buildInitialModuleDocument` so new Applications scaffolded by the editor seed an empty `variables: {}` block ready for entries.
+- `apps/telo-editor/src/components/environment-tab/*` — new tab component, read-only shape with value-input rows.
+- `apps/telo-editor/src/loader/parse.ts` — surface the per-entry shape (`name`, `env`, `type`, `default`, residual schema) on `ParsedManifest.metadata` so the tab can render without re-parsing.
+- Wherever the editor's Run feature builds its child-process environment — extend it to merge in the values held by this tab's run-config store, keyed by `entry.env`.
 
 ## Polyglot spec — env-var resolution
 
@@ -171,7 +176,7 @@ For each `(name, entry)` in `Telo.Application.variables` (then `.secrets`), proc
 
 1. **Lookup** — read `raw = host_env[entry.env]` using the host's native "unset" semantics (Node: `process.env[k] === undefined`).
 2. **Unset path** — if `raw` is unset:
-   - If `entry.default` is present: validate `default` against the entry's *residual* schema (the entry with `env`, `type`, `default` stripped) and store it.
+   - If `entry.default` is present: validate `default` against the entry's residual schema (definition in Section 3 — strip `env` and `default`, keep `type:`) and store it.
    - Else: collect error `"{name}: environment variable {entry.env} is not set (no default)"`.
 3. **Coercion** — if `raw` is set, convert per `entry.type`:
    - `string`: identity.

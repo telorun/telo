@@ -63,7 +63,11 @@ function offsetToPosition(offset: number, lineOffsets: number[]): Position {
 }
 
 /** Walks the YAML AST and records source ranges for every field value, keyed
- *  by dotted path (e.g. "kind", "config.handler", "config.routes[0].path"). */
+ *  by dotted path (e.g. "kind", "config.handler", "config.routes[0].path").
+ *  Map keys are also recorded under the `@key:<path>` namespace so diagnostic
+ *  resolvers can squiggle just the key identifier instead of the full value
+ *  block — used when a diagnostic targets a missing child property and the
+ *  resolver has to fall back to the parent. */
 export function buildPositionIndex(doc: Document, lineOffsets: number[]): PositionIndex {
   const index: PositionIndex = new Map();
 
@@ -83,6 +87,9 @@ export function buildPositionIndex(doc: Document, lineOffsets: number[]): Positi
         const key = isScalar(pair.key) ? String(pair.key.value) : null;
         if (key == null) continue;
         const childPath = path ? `${path}.${key}` : key;
+        if (pair.key && (pair.key as any).range) {
+          recordNode(pair.key, `@key:${childPath}`);
+        }
         if (pair.value != null) {
           recordNode(pair.value, childPath);
           walk(pair.value, childPath);

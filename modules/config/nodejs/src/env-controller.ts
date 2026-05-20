@@ -23,6 +23,11 @@ class ConfigEnv implements ResourceInstance {
   ) {}
 
   async init(): Promise<void> {
+    this.ctx.stderr.write(
+      `[deprecation] Config.Env "${this.resource.metadata.name}" — Config.Env is deprecated; ` +
+        `prefer Telo.Application-level variables/secrets with an env: mapping. ` +
+        `See modules/config/docs/env.md.\n`,
+    );
     const errors: string[] = [];
 
     const variableEntries = Object.entries(this.resource.variables ?? {}).map(

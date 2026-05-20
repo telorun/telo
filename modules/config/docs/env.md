@@ -1,5 +1,7 @@
 # Config.Env
 
+> **Deprecated.** Prefer declaring `variables:` / `secrets:` directly on `Telo.Application` with per-field `env:` mappings — the values then land in the root `variables.X` / `secrets.X` CEL scope without an intermediate resource. See the [Application environment contract](../../../kernel/nodejs/docs/application-env-variables.md) for the recommended shape. `Config.Env` continues to work; this page is retained as a reference for existing manifests.
+>
 > Examples below assume this module is imported with `Telo.Import` alias `Config`. Kind references (`Config.Env`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
 Reads values from environment variables and exposes them as named, typed config values to the rest of the module.

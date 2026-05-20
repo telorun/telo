@@ -30,6 +30,7 @@ import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
+import { resolveApplicationEnv } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
 
@@ -304,14 +305,34 @@ export class Kernel implements IKernel {
     const normalizedManifests = this.analyzer.normalize(allManifests, this.registry);
     this.staticManifests = normalizedManifests;
 
+    let rootApplicationManifest: ResourceManifest | undefined;
     for (const manifest of normalizedManifests) {
       if (isModuleKind(manifest.kind)) {
-        // Root is always Telo.Application (Library root rejected above). Applications
-        // have no variables/secrets fields — those are a Library-only contract, populated
-        // by importers, not by the root manifest itself.
+        // Root is always Telo.Application (Library root rejected above).
+        // Application-level `variables` / `secrets` declarations carry an `env:`
+        // mapping per field; the kernel populates the root scope from
+        // `process.env` after the manifest loop so imports can read
+        // `${{ variables.X }}` during their own init.
         this.rootContext.setTargets(manifest.targets ?? []);
+        if (manifest.kind === "Telo.Application") {
+          rootApplicationManifest = manifest;
+        }
       }
       this.rootContext.registerManifest(manifest);
+    }
+
+    if (rootApplicationManifest) {
+      const { variables, secrets } = resolveApplicationEnv(
+        rootApplicationManifest as Record<string, any>,
+        this.env,
+        this.sharedSchemaValidator,
+      );
+      if (Object.keys(variables).length > 0) {
+        this.rootContext.setVariables(variables);
+      }
+      if (Object.keys(secrets).length > 0) {
+        this.rootContext.setSecrets(secrets);
+      }
     }
   }
 

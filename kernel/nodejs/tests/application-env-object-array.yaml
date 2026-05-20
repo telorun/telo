@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: ApplicationEnvObjectArrayTest
+  version: 1.0.0
+variables:
+  tls:
+    env: APP_TLS
+    type: object
+    properties:
+      cert:
+        type: string
+      key:
+        type: string
+    required: [cert, key]
+  origins:
+    env: APP_ORIGINS
+    type: array
+    items:
+      type: string
+    minItems: 1
+targets:
+  - TestApplicationEnvObjectArray
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../modules/run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestApplicationEnvObjectArray
+steps:
+  - name: AssertTls
+    inputs:
+      cert: !cel "variables.tls.cert"
+      key: !cel "variables.tls.key"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          cert:
+            type: string
+            const: abc
+          key:
+            type: string
+            const: def
+        required: [cert, key]
+  - name: AssertOrigins
+    inputs:
+      first: !cel "variables.origins[0]"
+      second: !cel "variables.origins[1]"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          first:
+            type: string
+            const: a
+          second:
+            type: string
+            const: b
+        required: [first, second]

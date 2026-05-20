@@ -631,6 +631,35 @@ export class StaticAnalyzer {
       }
     }
 
+    // Library env: rejection — `env:` on a Library `variables` / `secrets`
+    // entry is forbidden. The Library entry schema is otherwise open so that
+    // any JSON Schema property schema is valid; this targeted check produces
+    // a clear diagnostic instead of a generic "additional property" error.
+    for (const m of allManifests) {
+      if (m.kind !== "Telo.Library") continue;
+      const filePath = (m.metadata as { source?: string } | undefined)?.source;
+      const moduleName = m.metadata?.name as string | undefined;
+      const resource = moduleName ? { kind: m.kind, name: moduleName } : undefined;
+      for (const block of ["variables", "secrets"] as const) {
+        const entries = (m as Record<string, any>)[block];
+        if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+        for (const [entryName, entry] of Object.entries(entries)) {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+          if ("env" in (entry as Record<string, unknown>)) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "LIBRARY_ENV_KEY_REJECTED",
+              source: SOURCE,
+              message:
+                `Telo.Library ${block}/${entryName}: 'env:' is only permitted on Telo.Application entries. ` +
+                `Libraries must receive values from importers via the parent manifest's variables / secrets block.`,
+              data: { resource, filePath, path: `${block}.${entryName}.env` },
+            });
+          }
+        }
+      }
+    }
+
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
     const kernelGlobals = buildKernelGlobalsSchema(allManifests);

@@ -42,6 +42,11 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "kernel/docs/resource-references", label: "Resource References" },
         { type: "doc", id: "kernel/docs/controllers", label: "Controllers" },
         { type: "doc", id: "kernel/docs/modules", label: "Module System" },
+        {
+          type: "doc",
+          id: "kernel/docs/application-env-variables",
+          label: "Application Environment Variables",
+        },
         { type: "doc", id: "kernel/docs/module-grants", label: "Module Grants" },
         { type: "doc", id: "kernel/docs/evaluation-context", label: "Evaluation Context" },
         { type: "doc", id: "kernel/docs/signals", label: "Signals" },

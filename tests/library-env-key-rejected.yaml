@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: LibraryEnvKeyRejectedTest
+  version: 1.0.0
+targets:
+  - TestLibraryEnvKeyRejected
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Assert.Manifest
+metadata:
+  name: TestLibraryEnvKeyRejected
+source: ./__fixtures__/library-with-env-on-variable.yaml
+expect:
+  errors:
+    - code: LIBRARY_ENV_KEY_REJECTED
+      message: "variables/shouldBeRejected: 'env:' is only permitted on Telo.Application entries"

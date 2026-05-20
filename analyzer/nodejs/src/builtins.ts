@@ -227,6 +227,44 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
+        // Application-level environment contract. Each entry layers `env:`
+        // (required, names the source env var) and `default:` (optional, used
+        // when the env var is unset) on top of an open JSON Schema property
+        // schema. `type:` constrains the coercion rule applied to the raw env
+        // string (scalars per-type; `object` / `array` via JSON.parse with the
+        // matching top-level type). All other JSON Schema keywords are passed
+        // through unchanged and applied to the coerced value via the standard
+        // schema validator. See kernel/nodejs/src/application-env.ts.
+        variables: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            required: ["env", "type"],
+            properties: {
+              env: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["string", "integer", "number", "boolean", "object", "array"],
+              },
+              default: {},
+            },
+          },
+        },
+        secrets: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            required: ["env", "type"],
+            properties: {
+              env: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["string", "integer", "number", "boolean", "object", "array"],
+              },
+              default: {},
+            },
+          },
+        },
       },
       required: ["metadata"],
       additionalProperties: false,
