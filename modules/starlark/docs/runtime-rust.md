@@ -22,7 +22,7 @@ By default, `Telo.Import` of `std/starlark` resolves to the kernel-native implem
 kind: Telo.Import
 metadata:
   name: Starlark
-source: ../modules/starlark
+source: std/starlark@0.3.5
 runtime: rust
 ```
 

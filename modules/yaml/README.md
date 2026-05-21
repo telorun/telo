@@ -24,11 +24,11 @@ targets: [ParseExample]
 ---
 kind: Telo.Import
 metadata: { name: Yaml }
-source: ../modules/yaml
+source: std/yaml@0.2.2
 ---
 kind: Telo.Import
 metadata: { name: Run }
-source: ../modules/run
+source: std/run@0.2.7
 ---
 kind: Run.Sequence
 metadata: { name: ParseExample }

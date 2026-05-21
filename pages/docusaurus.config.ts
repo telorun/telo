@@ -32,6 +32,25 @@ const config: Config = {
   onBrokenLinks: "warn",
 
   markdown: {
+    format: "detect",
+    // Inject `/standard-library/...` slugs for every doc under `modules/`.
+    // Keeps Docusaurus-only annotations out of README.md files (project rule)
+    // and out of co-located module docs in general, so the markdown files
+    // stay clean for GitHub + IDE consumers.
+    parseFrontMatter: async ({ filePath, fileContent, defaultParseFrontMatter }) => {
+      const result = await defaultParseFrontMatter({ filePath, fileContent });
+      const m = filePath.replace(/\\/g, "/").match(/\/modules\/(.+\.md)$/);
+      if (m && result.frontMatter.slug === undefined) {
+        let rel = m[1].replace(/\.md$/, "");
+        if (rel === "README") {
+          rel = "";
+        } else {
+          rel = rel.replace(/\/README$/, "");
+        }
+        result.frontMatter.slug = rel ? `/standard-library/${rel}` : "/standard-library";
+      }
+      return result;
+    },
     hooks: {
       onBrokenMarkdownLinks: "warn",
     },
@@ -56,14 +75,23 @@ const config: Config = {
     ],
   ],
 
-  plugins: [["./plugins/llms-txt", { sidebar: sidebars.docs }]],
+  plugins: [
+    [
+      "./plugins/llms-txt",
+      {
+        sections: [
+          { sidebar: sidebars.docs, docsPath: "..", urlBasePath: "" },
+        ],
+      },
+    ],
+  ],
 
   themeConfig: {
     navbar: {
       title: "⚡ Telo",
       items: [
         { to: "/kernel/", label: "Kernel", position: "left" },
-        { to: "/modules/", label: "Modules", position: "left" },
+        { to: "/standard-library/", label: "Standard Library", position: "left" },
         { to: "/sdk/", label: "SDK", position: "left" },
         {
           href: "https://github.com/telorun/telo",

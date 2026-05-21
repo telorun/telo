@@ -27,11 +27,11 @@ targets: [Server]
 ---
 kind: Telo.Import
 metadata: { name: Mcp }
-source: ../modules/mcp-server
+source: std/mcp-server@0.4.2
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: ../modules/javascript
+source: std/javascript@0.3.2
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }
@@ -100,4 +100,4 @@ and [`docs/stdio-server.md`](./docs/stdio-server.md).
 - Server-initiated `sampling`, `roots`, OAuth.
 - A polymorphic `Telo.Mount` dispatch protocol — `Mcp.HttpEndpoint` duck-types `register(app, prefix)` to satisfy `Http.Server`'s mount loop today.
 
-See [docs/](./docs) for per-kind reference.
+See the [Mcp.StdioServer](./docs/stdio-server.md), [Mcp.HttpEndpoint](./docs/http-endpoint.md), and [Mcp.Tools](./docs/tools.md) pages for per-kind reference.

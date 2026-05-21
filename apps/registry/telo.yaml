@@ -4,6 +4,34 @@ kind: Telo.Application
 metadata:
   name: telo-registry
   version: 1.0.0
+variables:
+  port:
+    env: PORT
+    type: integer
+    default: 3000
+  bucketName:
+    env: S3_BUCKET_NAME
+    type: string
+  s3Endpoint:
+    env: S3_ENDPOINT
+    type: string
+  s3ForcePathStyle:
+    env: S3_FORCE_PATH_STYLE
+    type: boolean
+    default: false
+  dbConnection:
+    env: DB_CONNECTION
+    type: string
+secrets:
+  accessKeyId:
+    env: S3_ACCESS_KEY_ID
+    type: string
+  secretAccessKey:
+    env: S3_SECRET_ACCESS_KEY
+    type: string
+  publishToken:
+    env: TELO_PUBLISH_TOKEN
+    type: string
 targets:
   - Migrations
   - SeedRootPublishToken
@@ -29,17 +57,11 @@ source: std/http-client@0.2.3
 ---
 kind: Telo.Import
 metadata:
-  name: Config
-source: std/config@0.1.7
-
----
-kind: Telo.Import
-metadata:
   name: S3
 source: std/s3@1.2.2
 secrets:
-  accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
-  secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
+  accessKeyId: "${{ secrets.accessKeyId }}"
+  secretAccessKey: "${{ secrets.secretAccessKey }}"
 ---
 kind: Telo.Import
 metadata:
@@ -71,51 +93,16 @@ metadata:
   name: Mcp
 source: std/mcp-server@0.4.2
 ---
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-kind: Config.Env
-metadata:
-  name: AppConfig
-variables:
-  port:
-    env: PORT
-    type: integer
-    default: 3000
-  bucketName:
-    env: S3_BUCKET_NAME
-    type: string
-  s3Endpoint:
-    env: S3_ENDPOINT
-    type: string
-  s3ForcePathStyle:
-    env: S3_FORCE_PATH_STYLE
-    type: boolean
-    default: false
-  dbConnection:
-    env: DB_CONNECTION
-    type: string
-secrets:
-  accessKeyId:
-    env: S3_ACCESS_KEY_ID
-    type: string
-  secretAccessKey:
-    env: S3_SECRET_ACCESS_KEY
-    type: string
-  publishToken:
-    env: TELO_PUBLISH_TOKEN
-    type: string
-
----
 # ── Storage ───────────────────────────────────────────────────────────────────
 
 kind: S3.Bucket
 metadata:
   name: ModuleStore
-bucketName: "${{ resources.AppConfig.bucketName }}"
-endpoint: "${{ resources.AppConfig.s3Endpoint }}"
-forcePathStyle: "${{ resources.AppConfig.s3ForcePathStyle }}"
-accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
-secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
+bucketName: "${{ variables.bucketName }}"
+endpoint: "${{ variables.s3Endpoint }}"
+forcePathStyle: "${{ variables.s3ForcePathStyle }}"
+accessKeyId: "${{ secrets.accessKeyId }}"
+secretAccessKey: "${{ secrets.secretAccessKey }}"
 createIfMissing: true
 publicRead: true
 ---
@@ -125,7 +112,7 @@ kind: Sql.Connection
 metadata:
   name: Db
 driver: postgres
-connectionString: "${{ resources.AppConfig.dbConnection }}"
+connectionString: "${{ variables.dbConnection }}"
 ---
 kind: Sql.Migrations
 metadata:
@@ -218,14 +205,14 @@ steps:
         SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root'
         ON CONFLICT (user_id, label) DO UPDATE SET token_hash = EXCLUDED.token_hash
       bindings:
-        - "${{ sha256(resources.AppConfig.publishToken) }}"
+        - "${{ sha256(secrets.publishToken) }}"
 
 ---
 kind: Http.Server
 metadata:
   name: RegistryServer
 host: "0.0.0.0"
-port: "${{ resources.AppConfig.port }}"
+port: "${{ variables.port }}"
 logger: true
 contentTypeParsers:
   - contentType: text/yaml
@@ -257,7 +244,7 @@ notFoundHandler:
     mode: stream
   inputs:
     method: "${{ request.method }}"
-    url: "${{ resources.AppConfig.s3Endpoint + '/' + resources.AppConfig.bucketName + request.path }}"
+    url: "${{ variables.s3Endpoint + '/' + variables.bucketName + request.path }}"
   returns:
     - status: 200
       mode: stream
@@ -840,6 +827,32 @@ instructions: !literal |
   dependencies via a multi-pass init loop, and controllers implement each
   resource kind. CEL expressions are written as `!cel "..."` YAML tags.
 
+  For broader context on Telo (guides, kernel reference, full module
+  documentation), fetch <https://telo.run/llms.txt>.
+
+  ## File layout
+
+  Each application or library lives in its own directory and is rooted at
+  a file named `telo.yaml`. That file holds the `Telo.Application` (for
+  runnable apps) or `Telo.Library` (for importable units), plus its
+  imports, definitions, and resources. The directory name is the
+  human-facing name; the kernel routes to it via the `telo.yaml` inside.
+
+  Recommended monorepo layout:
+
+  ```
+  apps/
+    some-app/
+      telo.yaml
+  libs/
+    some-lib/
+      telo.yaml
+  ```
+
+  Relative `source:` paths on `Telo.Import` resolve from the importing
+  manifest's directory — e.g. `source: ../../libs/some-lib` from
+  `apps/some-app/telo.yaml`.
+
   ## Built-in kinds (do not need importing)
 
   These kinds are part of the kernel itself, not published modules — they
@@ -848,8 +861,7 @@ instructions: !literal |
   - `Telo.Application` — the runnable root of every Telo file. Required
     fields: `metadata.name` (kebab-case), `metadata.version`. Optional:
     `targets` (resources to run on boot — services that should auto-start are
-    omitted). Forbidden in applications: `variables`, `secrets`, `exports`
-    (those belong on `Telo.Library`).
+    omitted).
   - `Telo.Library` — importable unit of kinds / definitions. Same metadata
     shape; adds optional `variables` (JSON Schema map declaring the
     contract importers must supply), `secrets` (same shape), `exports.kinds`
@@ -897,12 +909,31 @@ instructions: !literal |
     application `target` so it executes on boot); each `Sql.Migration` is a
     sibling resource — the runner auto-discovers them via the shared
     connection.
+  - **Application env wiring**: declare `variables:` and `secrets:` directly
+    on the `Telo.Application`, each entry binding a name to a host env var
+    via `env:` plus `type:` (`string | integer | number | boolean | object
+    | array`) and any other JSON Schema keywords. Values resolve at load
+    time into the root `variables.X` / `secrets.X` CEL scope — no
+    intermediate `Config.Env` resource needed.
 
   ```yaml
   kind: Telo.Application
   metadata:
     name: notes-app
     version: 1.0.0
+  variables:
+    port:
+      env: PORT
+      type: integer
+      default: 8080
+    dbFile:
+      env: DB_FILE
+      type: string
+      default: ./notes.db
+  secrets:
+    adminToken:
+      env: ADMIN_TOKEN
+      type: string
   targets:
     - Migrations   # run schema migrations before the server starts
     - Server
@@ -919,11 +950,12 @@ instructions: !literal |
   metadata: { name: Type }
   source: std/type@1.0.5
   ---
+
   # ── Shared resource: one Sql.Connection referenced by name from everywhere.
   kind: Sql.Connection
   metadata: { name: Db }
   driver: sqlite
-  file: ./notes.db
+  file: !cel "variables.dbFile"
   ---
   # ── Migrations: the runner + its migration ledger entries.
   kind: Sql.Migrations
@@ -972,7 +1004,7 @@ instructions: !literal |
   kind: Http.Server
   metadata: { name: Server }
   host: 0.0.0.0
-  port: 8080
+  port: !cel "variables.port"
   mounts:
     - path: /
       type: Http.Api.NotesApi

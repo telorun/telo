@@ -21,6 +21,7 @@ services:
           - editor.telo.localhost
           - storage.telo.localhost
           - runner.telo.localhost
+          - pages.telo.localhost
   registry:
     image: telorun/registry:${DOCKER_TAG:-latest}
     build:
@@ -72,6 +73,14 @@ services:
     depends_on:
       runner:
         condition: service_healthy
+
+  pages:
+    image: node:24
+    command: 'sh -c "corepack enable && rm -rf /telo/pages/.docusaurus /telo/pages/node_modules/.cache && exec pnpm --filter @telorun/pages exec docusaurus start --host 0.0.0.0 --port 3000 --poll 1000"'
+    init: true
+    volumes:
+      - .:/telo
+    working_dir: /telo
 
   runner:
     image: telorun/docker-runner:${DOCKER_TAG:-latest}

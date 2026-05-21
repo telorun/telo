@@ -8,55 +8,138 @@ const matter = require("gray-matter");
  * top-level sidebar categories; nested categories are flattened under their
  * top-level parent (the llms.txt spec only allows one level of H2 sections
  * with a flat bullet list beneath each).
+ *
+ * Files are written to the site's `static/` directory so they are served
+ * by both the dev server and the production build. (`static/` is copied
+ * verbatim into the build output at `docusaurus build` time.)
  */
 module.exports = function llmsTxtPlugin(context, options = {}) {
-  const sidebar = Array.isArray(options.sidebar) ? options.sidebar : [];
+  const inputSections = Array.isArray(options.sections)
+    ? options.sections
+    : Array.isArray(options.sidebar)
+      ? [{ sidebar: options.sidebar, docsPath: undefined, urlBasePath: "" }]
+      : [];
+
+  // Track files we generate so each rebuild can clean its own leftovers
+  // (stale per-doc .md files from renamed/removed docs) without disturbing
+  // hand-authored static assets like images.
+  const trackerPath = path.resolve(context.siteDir, "static", ".llms-txt-generated.json");
 
   return {
     name: "llms-txt",
 
-    async postBuild({ outDir, siteConfig }) {
-      const docsConfig = siteConfig.presets
+    async contentLoaded() {
+      const staticDir = path.resolve(context.siteDir, "static");
+      const siteConfig = context.siteConfig;
+      const baseUrl = siteConfig.baseUrl ?? "/";
+      const siteUrl = siteConfig.url + baseUrl;
+      // Dev preview wants paths that resolve against whatever host the user
+      // opened (pages.telo.localhost, etc.) — not the production URL baked
+      // into siteConfig.
+      const isDev = process.env.NODE_ENV !== "production";
+
+      const fallbackDocsConfig = siteConfig.presets
         .flat()
         .map((p) => (Array.isArray(p) ? p[1] : p))
         .find((opts) => opts?.docs)?.docs;
 
-      if (!docsConfig) return;
+      // Clean previously-generated files so renames don't leave orphans.
+      cleanPreviousGeneration(staticDir, trackerPath);
 
-      const docsPath = path.resolve(context.siteDir, docsConfig.path ?? "docs");
-      const siteUrl = siteConfig.url + (siteConfig.baseUrl ?? "/");
-
-      const sections = walkSidebar(sidebar);
+      const generatedFiles = [];
       const resolvedSections = [];
       let totalEntries = 0;
 
-      for (const section of sections) {
-        const entries = [];
-        for (const doc of section.items) {
-          const entry = resolveDoc(doc, { docsPath, outDir, siteUrl });
-          if (entry) entries.push(entry);
-        }
-        if (entries.length) {
-          resolvedSections.push({ title: section.title, entries });
-          totalEntries += entries.length;
+      for (const input of inputSections) {
+        const docsPath = path.resolve(
+          context.siteDir,
+          input.docsPath ?? fallbackDocsConfig?.path ?? "docs"
+        );
+        const urlBasePath = (input.urlBasePath ?? "").replace(/^\/|\/$/g, "");
+
+        const sections = walkSidebar(input.sidebar ?? [], input.sectionTitle ?? null);
+
+        for (const section of sections) {
+          const entries = [];
+          for (const doc of section.items) {
+            const entry = resolveDoc(doc, {
+              docsPath,
+              outDir: staticDir,
+              siteUrl,
+              baseUrl,
+              isDev,
+              urlBasePath,
+              generatedFiles,
+            });
+            if (entry) entries.push(entry);
+          }
+          if (entries.length) {
+            resolvedSections.push({ title: section.title, entries });
+            totalEntries += entries.length;
+          }
         }
       }
 
-      writeLlmsTxt(outDir, siteConfig, resolvedSections);
-      writeLlmsFullTxt(outDir, siteConfig, resolvedSections);
+      const llmsTxtPath = path.join(staticDir, "llms.txt");
+      const llmsFullTxtPath = path.join(staticDir, "llms-full.txt");
+      writeLlmsTxt(llmsTxtPath, siteConfig, resolvedSections);
+      writeLlmsFullTxt(llmsFullTxtPath, siteConfig, resolvedSections);
+      generatedFiles.push(llmsTxtPath, llmsFullTxtPath);
+
+      fs.mkdirSync(path.dirname(trackerPath), { recursive: true });
+      fs.writeFileSync(
+        trackerPath,
+        JSON.stringify(
+          generatedFiles.map((p) => path.relative(staticDir, p)),
+          null,
+          2
+        ),
+        "utf8"
+      );
 
       console.log(
-        `[llms-txt] Generated llms.txt (${totalEntries} entries across ${resolvedSections.length} sections) and llms-full.txt`
+        `[llms-txt] Generated llms.txt (${totalEntries} entries across ${resolvedSections.length} sections), llms-full.txt, and ${generatedFiles.length - 2} per-doc markdown files in static/`
       );
     },
   };
 };
 
-function walkSidebar(sidebar) {
-  // First section has no title: entries before the first H2 in llms.txt (the
-  // spec allows unsectioned link lists between the blockquote and first H2).
-  const sections = [{ title: null, items: [] }];
+function cleanPreviousGeneration(staticDir, trackerPath) {
+  if (!fs.existsSync(trackerPath)) return;
+  const staticDirReal = path.resolve(staticDir);
+  const containedIn = (abs) => {
+    const rel = path.relative(staticDirReal, abs);
+    // Inside the static dir iff the relative path doesn't start with `..`
+    // and isn't an absolute path on its own.
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  };
+  try {
+    const prev = JSON.parse(fs.readFileSync(trackerPath, "utf8"));
+    if (!Array.isArray(prev)) return;
+    for (const rel of prev) {
+      if (typeof rel !== "string") continue;
+      const abs = path.resolve(staticDirReal, rel);
+      // Reject anything that escapes the static directory — protects against
+      // a corrupt or tampered tracker file containing `../...` entries.
+      if (!containedIn(abs)) continue;
+      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      // Best-effort cleanup of empty parent dirs.
+      let dir = path.dirname(abs);
+      while (dir !== staticDirReal && containedIn(dir) && fs.existsSync(dir)) {
+        try {
+          fs.rmSync(dir, { recursive: false });
+          dir = path.dirname(dir);
+        } catch {
+          break;
+        }
+      }
+    }
+  } catch {
+    // Tracker corrupt or unreadable — skip cleanup, next write replaces it.
+  }
+}
 
+function walkSidebar(sidebar, forceSectionTitle = null) {
   const collectDocs = (items, bucket) => {
     for (const item of items) {
       if (typeof item === "string") {
@@ -71,6 +154,18 @@ function walkSidebar(sidebar) {
     }
   };
 
+  // If a section title is forced, flatten everything under it — useful when
+  // an entire input (e.g. the modules sidebar) should land under a single
+  // H2 like "Standard Library" rather than be split per sub-category.
+  if (forceSectionTitle !== null) {
+    const items = [];
+    collectDocs(sidebar, items);
+    return [{ title: forceSectionTitle, items }];
+  }
+
+  // Default: top-level docs land in an untitled lead section, and each
+  // top-level category becomes its own H2.
+  const sections = [{ title: null, items: [] }];
   for (const item of sidebar) {
     if (typeof item === "string") {
       sections[0].items.push({ id: item, label: null });
@@ -89,7 +184,10 @@ function walkSidebar(sidebar) {
   return sections;
 }
 
-function resolveDoc({ id, label }, { docsPath, outDir, siteUrl }) {
+function resolveDoc(
+  { id, label },
+  { docsPath, outDir, siteUrl, baseUrl = "/", isDev = false, urlBasePath = "", generatedFiles }
+) {
   const srcFile = path.join(docsPath, `${id}.md`);
   if (!fs.existsSync(srcFile)) return null;
 
@@ -104,33 +202,46 @@ function resolveDoc({ id, label }, { docsPath, outDir, siteUrl }) {
     path.basename(id);
   const title = cleanTitle(rawTitle);
 
-  const slug = frontmatter.slug;
-  let routePath;
+  const slug = frontmatter.slug ?? syntheticSlugForId(id);
+  let docPath;
   if (slug !== undefined) {
-    routePath = slug.replace(/^\//, "");
+    docPath = slug.replace(/^\//, "");
+  } else if (id === "README") {
+    // Bare `README` is the root index of its docs plugin (no path prefix).
+    docPath = "";
   } else {
-    routePath = id.replace(/\/README$/, "");
+    docPath = id.replace(/\/README$/, "");
   }
+
+  const routePath = urlBasePath
+    ? docPath
+      ? `${urlBasePath}/${docPath}`
+      : urlBasePath
+    : docPath;
 
   const mdOutputPath = routePath
     ? path.join(outDir, routePath + ".md")
     : path.join(outDir, "index.md");
   fs.mkdirSync(path.dirname(mdOutputPath), { recursive: true });
   fs.writeFileSync(mdOutputPath, content.trim() + "\n", "utf8");
+  generatedFiles?.push(mdOutputPath);
 
-  const url = routePath ? `${siteUrl}${routePath}` : siteUrl;
+  // Link to the raw markdown companion (already generated alongside this
+  // entry) so LLMs follow links straight into source — never into HTML.
+  const url = isDev
+    ? routePath
+      ? `${baseUrl}${routePath}.md`
+      : `${baseUrl}index.md`
+    : routePath
+      ? `${siteUrl}${routePath}.md`
+      : `${siteUrl}index.md`;
   const description = (frontmatter.description || "").replace(/\n/g, " ").trim();
 
   return { title, url, description, content: content.trim() };
 }
 
-function writeLlmsTxt(outDir, siteConfig, sections) {
-  const lines = [
-    `# ${siteConfig.title}`,
-    "",
-    `> ${siteConfig.tagline}`,
-    "",
-  ];
+function writeLlmsTxt(filePath, siteConfig, sections) {
+  const lines = [`# ${siteConfig.title}`, "", `> ${siteConfig.tagline}`, ""];
 
   for (const section of sections) {
     if (section.title) lines.push(`## ${section.title}`, "");
@@ -141,16 +252,12 @@ function writeLlmsTxt(outDir, siteConfig, sections) {
     lines.push("");
   }
 
-  fs.writeFileSync(path.join(outDir, "llms.txt"), lines.join("\n"), "utf8");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, lines.join("\n"), "utf8");
 }
 
-function writeLlmsFullTxt(outDir, siteConfig, sections) {
-  const lines = [
-    `# ${siteConfig.title}`,
-    "",
-    `> ${siteConfig.tagline}`,
-    "",
-  ];
+function writeLlmsFullTxt(filePath, siteConfig, sections) {
+  const lines = [`# ${siteConfig.title}`, "", `> ${siteConfig.tagline}`, ""];
 
   for (const section of sections) {
     if (section.title) lines.push(`## ${section.title}`, "");
@@ -162,7 +269,30 @@ function writeLlmsFullTxt(outDir, siteConfig, sections) {
     }
   }
 
-  fs.writeFileSync(path.join(outDir, "llms-full.txt"), lines.join("\n"), "utf8");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, lines.join("\n"), "utf8");
+}
+
+/**
+ * Mirror of the `markdown.parseFrontMatter` hook in docusaurus.config.ts:
+ * docs under `modules/` serve under `/standard-library/...` but the slug
+ * is injected at build time, so the raw `.md` files don't carry it.
+ * The llms-txt plugin reads the files directly, so it has to apply the
+ * same mapping itself or it would emit `/modules/...` URLs that no
+ * Docusaurus route ever serves.
+ *
+ * Returns `undefined` for ids that don't need a synthetic slug, so the
+ * default id-based logic in `resolveDoc` still runs for non-module docs.
+ */
+function syntheticSlugForId(id) {
+  if (!id.startsWith("modules/")) return undefined;
+  let rel = id.slice("modules/".length);
+  if (rel === "README") {
+    rel = "";
+  } else {
+    rel = rel.replace(/\/README$/, "");
+  }
+  return rel ? `/standard-library/${rel}` : "/standard-library";
 }
 
 function cleanTitle(s) {

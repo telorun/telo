@@ -30,7 +30,7 @@ For per-property control, prefix the value with an explicit YAML tag:
 ```yaml
 greeting: !cel       'variables.name'
 header:   !literal   '${{ this is not interpolated }}'
-fallback: 'Hello ${{ variables.name }}!'   # untagged — existing behavior
+fallback: 'Hello ${{ variables.name }}!'   # untagged
 ```
 
 | Tag | Semantics |

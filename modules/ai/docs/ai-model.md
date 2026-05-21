@@ -109,7 +109,7 @@ exports:
 kind: Telo.Import
 metadata:
   name: Ai
-source: ../ai
+source: std/ai@0.1.3
 ---
 kind: Telo.Definition
 metadata:

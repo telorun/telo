@@ -12,11 +12,11 @@ sidebar_label: Ai.Text
 ```yaml
 kind: Telo.Import
 metadata: { name: Ai }
-source: ../modules/ai
+source: std/ai@0.1.3
 ---
 kind: Telo.Import
 metadata: { name: AiOpenai }
-source: ../modules/ai-openai
+source: std/ai-openai@0.1.6
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
