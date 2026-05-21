@@ -62,6 +62,7 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         {renderedView === "source" && <SourceView {...viewProps} />}
         {renderedView === "deployment" && (
           <DeploymentView
+            manifest={viewProps.viewData.manifest}
             environment={viewProps.deployment.activeEnvironment}
             onSetEnvVars={viewProps.deployment.onSetEnvVars}
             onSetPorts={viewProps.deployment.onSetPorts}

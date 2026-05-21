@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata:
+  name: library-with-env
+  namespace: tests
+  version: 1.0.0
+variables:
+  shouldBeRejected:
+    env: SOME_ENV_VAR
+    type: string

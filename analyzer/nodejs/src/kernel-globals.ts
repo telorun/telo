@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { residualEntrySchemaMap } from "./residual-schema.js";
 
 /**
  * Kernel global names available in every CEL evaluation context at runtime.
@@ -72,20 +73,17 @@ export function buildKernelGlobalsSchema(
 }
 
 /** Wrap a JSON Schema property map (like `Telo.Application.variables`) into a
- *  closed object schema suitable for chain-access validation. Falls back to
- *  an open map when the module declares no variables/secrets. */
+ *  closed object schema suitable for chain-access validation. For Application
+ *  entries the per-entry shape carries kernel-specific keys (`env`, `default`)
+ *  on top of an otherwise-standard JSON Schema property schema; those keys are
+ *  stripped via `residualEntrySchemaMap` so CEL sees the coerced shape, not
+ *  the env-binding wrapper. Library entries are pure JSON Schema property
+ *  schemas and pass through the same call unchanged. Falls back to an open map
+ *  when the module declares no variables/secrets. */
 function buildSchemaMapSchema(
   schemaMap: Record<string, any> | null | undefined,
 ): Record<string, any> {
-  if (!schemaMap || typeof schemaMap !== "object" || Array.isArray(schemaMap)) {
-    return { type: "object", additionalProperties: true };
-  }
-  const props: Record<string, any> = {};
-  for (const [key, value] of Object.entries(schemaMap)) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      props[key] = value;
-    }
-  }
+  const props = residualEntrySchemaMap(schemaMap);
   if (Object.keys(props).length === 0) {
     return { type: "object", additionalProperties: true };
   }

@@ -104,8 +104,9 @@ A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the 
 - `keepAlive` — prevent kernel exit when idle
 - `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Telo.Application`, `Telo.Library`, `Telo.Import`, or `Telo.Definition`
 - `targets` — optional; run after all resources init; must reference `Telo.Runnable` or `Telo.Service`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
-- Receives `env: process.env` when it is the root loaded manifest.
-- `variables` / `secrets` / `exports` are **forbidden** — an Application is a root with no parent to supply inputs. Use `env` for runtime config. If you want to export or accept variables/secrets, the file is a Library.
+- Receives `env: process.env` when it is the root loaded manifest — raw `process.env` map for keys the manifest hasn't pre-declared.
+- `variables` / `secrets` — each entry binds a name to a host environment variable via an `env:` key, plus `type:` (`string | integer | number | boolean | object | array`), optional `default:`, and any further JSON Schema keywords. Values resolve at `kernel.load()` into the root `variables.X` / `secrets.X` CEL scope (object / array values are JSON-decoded from the env var; missing required vars or coercion / schema failures aggregate into `ERR_MANIFEST_VALIDATION_FAILED` before any controller init).
+- `exports` is **forbidden** — an Application is a root with no importer. If you want to export kinds, the file is a Library.
 
 ### `kind: Telo.Library`
 

@@ -89,6 +89,12 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Env"
+  description: |
+    [Deprecated] Prefer declaring `variables:` / `secrets:` directly on
+    Telo.Application with per-field `env:` mappings. The Application-level
+    contract lands the values in the root `variables.X` / `secrets.X` CEL
+    scope without an intermediate resource. Config.Env continues to work for
+    now.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@1.0.0?local_path=./nodejs#env-controller

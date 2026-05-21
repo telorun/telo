@@ -17,6 +17,7 @@ const WORKSPACE_PACKAGES = [
   { name: "@telorun/kernel", dir: "kernel/nodejs" },
   { name: "@telorun/sdk", dir: "sdk/nodejs" },
   { name: "@telorun/analyzer", dir: "analyzer/nodejs" },
+  { name: "@telorun/templating", dir: "templating/nodejs" },
 ];
 
 /** Registry id used by fixture manifests' `Telo.Import` of the Lambda module.
