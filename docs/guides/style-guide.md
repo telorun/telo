@@ -1,5 +1,6 @@
 ---
 description: "Naming conventions for Telo identifiers, kinds, imports, and variables to ensure CEL expression correctness"
+slug: /guides/style-guide
 ---
 
 # Telo Official Style Guide: Naming Conventions

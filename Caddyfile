@@ -13,3 +13,7 @@ http://storage.telo.localhost:8060 {
 http://runner.telo.localhost:8060 {
 	reverse_proxy runner:8061
 }
+
+http://pages.telo.localhost:8060 {
+	reverse_proxy pages:3000
+}

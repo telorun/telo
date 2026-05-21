@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/telo.png" alt="Telo" width="200" />
+  <img src="https://raw.githubusercontent.com/telorun/telo/main/assets/telo.png" alt="Telo" width="200" />
 </p>
 
 <h1 align="center">Telo</h1>
@@ -61,12 +61,12 @@ targets:
 kind: Telo.Import
 metadata:
   name: Http
-source: ../modules/http-server
+source: std/http-server@0.4.0
 ---
 kind: Telo.Import
 metadata:
   name: Sql
-source: ../modules/sql
+source: std/sql@0.2.3
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection

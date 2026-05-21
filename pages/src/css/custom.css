@@ -1,1 +1,39 @@
 /* Telo docs custom styles */
+
+.heroBanner {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #1e293b;
+  padding: 4rem 0;
+}
+
+.heroBanner .hero__title,
+.heroBanner .hero__subtitle {
+  color: #1e293b;
+}
+
+[data-theme="dark"] .heroBanner {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .heroBanner .hero__title,
+[data-theme="dark"] .heroBanner .hero__subtitle {
+  color: #f8fafc;
+}
+
+.heroBanner .button--primary {
+  --ifm-color-primary: #72a1ed;
+  --ifm-color-primary-darker: #538ce9;
+  --ifm-color-primary-darkest: #3578e5;
+  border-color: #72a1ed;
+}
+
+.heroBanner .button--outline.button--primary {
+  color: #538ce9;
+  border-color: #72a1ed;
+}
+
+.heroBanner .button--outline.button--primary:hover {
+  background-color: #72a1ed;
+  color: #ffffff;
+}

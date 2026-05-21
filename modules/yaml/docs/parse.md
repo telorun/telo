@@ -49,11 +49,10 @@ error list (each with `message` and parser-supplied `code`) is preserved on
 
 CEL's `has()` macro only walks `.`-field chains and rejects array indexing
 in the path, so `has(steps.parse.result.docs[0].metadata)` would throw at
-compile time. The kernel enables CEL's optional types
-(see [yaml-cel-templating README](../../../yaml-cel-templating/README.md#11-cel-stdlib)),
-which gives you `[?index]` for optional indexing and `.?field` for optional
-access — chain them with `.orValue(default)` to land on a fallback when any
-intermediate is missing:
+compile time. The kernel enables CEL's optional types, which give you
+`[?index]` for optional indexing and `.?field` for optional access — chain
+them with `.orValue(default)` to land on a fallback when any intermediate
+is missing:
 
 ```yaml
 - name: parse

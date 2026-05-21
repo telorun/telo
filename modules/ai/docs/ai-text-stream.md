@@ -14,11 +14,11 @@ sidebar_label: Ai.TextStream
 ```yaml
 kind: Telo.Import
 metadata: { name: Ai }
-source: ../modules/ai
+source: std/ai@0.1.3
 ---
 kind: Telo.Import
 metadata: { name: AiOpenai }
-source: ../modules/ai-openai
+source: std/ai-openai@0.1.6
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
@@ -71,7 +71,7 @@ Pipe `result.output` through a format-codec encoder. Each encoder produces `{ ou
 ```yaml
 kind: Telo.Import
 metadata: { name: Ndjson }
-source: ../modules/ndjson-codec
+source: std/ndjson-codec@0.2.3
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }

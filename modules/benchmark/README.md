@@ -68,7 +68,7 @@ If any threshold is breached after the run completes, `Benchmark.Suite` exits no
 kind: Telo.Import
 metadata:
   name: Benchmark
-source: ../../modules/benchmark
+source: std/benchmark@1.1.0
 ---
 kind: HttpClient.Client
 metadata:

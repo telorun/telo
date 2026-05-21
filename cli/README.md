@@ -308,12 +308,3 @@ You can run manifests directly from URLs without downloading them:
 ```bash
 telo https://example.com/my-manifest.yaml
 ```
-
-## Status
-
-The CLI is part of the Telo project and follows the same early prototype status. The command-line interface and behavior may change.
-
-## See Also
-
-- [Telo Kernel](../kernel/README.md) - Core concepts and resource types
-- [Modules](../modules/README.md) - Available built-in modules

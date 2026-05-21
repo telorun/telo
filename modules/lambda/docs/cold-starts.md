@@ -21,7 +21,7 @@ When a heavy resource sits behind `x-telo-scope`, the kernel doesn't initialise 
 
 This shifts the cost from Init (under AWS's hard cap) to the first invocation (capped only by your user-facing timeout). For a 2 GB ML model load, this is the difference between a Lambda that's runnable and one that times out at startup.
 
-See [Resource Lifecycle: Scopes](../../kernel/docs/resource-lifecycle.md) for the full pattern.
+See [Resource Lifecycle: Scopes](../../../kernel/docs/resource-lifecycle.md) for the full pattern.
 
 ## What `telo install` does
 

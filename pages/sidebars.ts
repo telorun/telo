@@ -2,17 +2,17 @@ import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
 
 const sidebars: SidebarsConfig = {
   docs: [
-    { type: "doc", id: "README", label: "Introduction" },
-    {
-      type: "category",
-      label: "Getting Started",
-      items: [{ type: "doc", id: "cli/README", label: "Installation & CLI" }],
-    },
+    { type: "doc", id: "docs/guides/getting-started", label: "Getting Started" },
     {
       type: "category",
       label: "Guides",
-      items: [{ type: "doc", id: "guides/style-guide", label: "Style Guide" }],
+      items: [
+        { type: "doc", id: "docs/guides/style-guide", label: "Style Guide" },
+        { type: "doc", id: "tests/README", label: "Testing" },
+      ],
     },
+    { type: "doc", id: "cli/README", label: "Installation & CLI" },
+    { type: "doc", id: "docs/coding-agents", label: "Coding Agents" },
     {
       type: "category",
       label: "Kernel Reference",
@@ -160,11 +160,7 @@ const sidebars: SidebarsConfig = {
           label: "Starlark",
           items: [
             { type: "doc", id: "modules/starlark/README", label: "Overview" },
-            {
-              type: "doc",
-              id: "modules/starlark/docs/runtime-rust",
-              label: "Rust runtime",
-            },
+            { type: "doc", id: "modules/starlark/docs/runtime-rust", label: "Rust runtime" },
           ],
         },
         { type: "doc", id: "modules/test/docs/suite", label: "Test.Suite" },
@@ -183,16 +179,21 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "SDK & Testing",
+      label: "SDK",
       items: [
-        { type: "doc", id: "sdk/README", label: "SDK" },
-        { type: "doc", id: "sdk/nodejs/README", label: "Node.js SDK" },
+        { type: "doc", id: "sdk/README", label: "Overview" },
         {
-          type: "doc",
-          id: "templating/nodejs/docs/templating-engines",
-          label: "Templating Engines",
+          type: "category",
+          label: "Node.js",
+          items: [
+            { type: "doc", id: "sdk/nodejs/README", label: "Overview" },
+            {
+              type: "doc",
+              id: "templating/nodejs/docs/templating-engines",
+              label: "Templating Engines",
+            },
+          ],
         },
-        { type: "doc", id: "tests/README", label: "Testing" },
       ],
     },
   ],
