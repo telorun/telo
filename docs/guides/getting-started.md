@@ -28,7 +28,7 @@ telo --version
 Prefer not to install globally? Run Telo via Docker:
 
 ```bash
-docker run -v .:/srv -w /srv telorun/telo ./manifest.yaml
+docker run -v .:/srv -w /srv telorun/node:latest-slim ./manifest.yaml
 ```
 
 ## Your first manifest

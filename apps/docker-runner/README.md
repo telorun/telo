@@ -4,7 +4,7 @@ HTTP service that runs Telo Applications in Docker containers on the host daemon
 
 ## How it works
 
-The runner binds the host Docker socket (`/var/run/docker.sock`), receives bundle files over HTTP, writes them into a shared named volume, and spawns `telorun/telo:nodejs` (or any compatible image) as a sibling container on the host daemon. Logs stream back to the client via Server-Sent Events.
+The runner binds the host Docker socket (`/var/run/docker.sock`), receives bundle files over HTTP, writes them into a shared named volume, and spawns `telorun/node:latest-slim` (or any compatible image) as a sibling container on the host daemon. Logs stream back to the client via Server-Sent Events.
 
 Because the runner lives in a container and spawns other containers on the host daemon, bundle files must live on a path visible to both the runner and the spawned containers. A named Docker volume mounted at `/bundles` inside the runner and `/srv` inside every spawn satisfies that.
 
@@ -92,7 +92,7 @@ docker compose up -d runner
 curl -s http://localhost:8061/v1/health
 curl -s -X POST http://localhost:8061/v1/probe \
   -H 'content-type: application/json' \
-  -d '{"config":{"image":"telorun/telo:nodejs","pullPolicy":"missing"}}'
+  -d '{"config":{"image":"telorun/node:latest-slim","pullPolicy":"missing"}}'
 
 # start a one-file session that echoes and exits
 curl -s -X POST http://localhost:8061/v1/sessions \
@@ -103,7 +103,7 @@ curl -s -X POST http://localhost:8061/v1/sessions \
       "files": [{"relativePath":"telo.yaml","contents":"kind: Telo.Application\nmetadata:\n  name: hello\ntargets: [hello]\nresources:\n  - kind: Console.Log\n    name: hello\n    message: \"Hello from telo!\"\n"}]
     },
     "env": {},
-    "config": {"image":"telorun/telo:nodejs","pullPolicy":"missing"}
+    "config": {"image":"telorun/node:latest-slim","pullPolicy":"missing"}
   }'
 # → { sessionId, streamUrl }
 

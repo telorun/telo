@@ -1,3 +1,7 @@
+# Global build arg available in FROM lines below. Defaults to `latest` for
+# local builds; CI overrides with the exact CLI release to pin reproducibly.
+ARG TELO_NODE_VERSION=latest
+
 FROM node:24 as development
 
 WORKDIR /app
@@ -6,7 +10,7 @@ RUN corepack enable
 
 CMD ["pnpm", "run", "telo", "./apps/registry/telo.yaml"]
 
-FROM telorun/telo:nodejs as build
+FROM telorun/node:${TELO_NODE_VERSION}-slim as build
 
 WORKDIR /srv
 
@@ -19,7 +23,7 @@ RUN telo install apps/registry/telo.yaml
 
 CMD ["apps/registry/telo.yaml"]
 
-FROM telorun/telo:nodejs as production
+FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
 WORKDIR /srv
 COPY --from=build /srv /srv
