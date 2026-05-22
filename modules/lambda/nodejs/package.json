@@ -1,6 +1,6 @@
 {
   "name": "@telorun/lambda",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Telo AWS Lambda module — per-source handler kinds and the Lambda.Function dispatcher.",
   "keywords": [
     "telo",
