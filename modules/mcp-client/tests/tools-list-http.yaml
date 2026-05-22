@@ -1,0 +1,101 @@
+kind: Telo.Application
+metadata: { name: McpClientToolsListHttpTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../../mcp-server
+---
+kind: Telo.Import
+metadata: { name: McpClient }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+kind: JS.Script
+metadata: { name: PingImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema: { type: object, properties: {}, additionalProperties: true }
+outputType:
+  kind: Type.JsonSchema
+  schema: { type: object, properties: { pong: { type: boolean } }, required: [pong] }
+code: |
+  function main() { return { pong: true }; }
+---
+kind: Mcp.Tools
+metadata: { name: ListedTools }
+entries:
+  - name: ping
+    description: Synthetic ping.
+    argumentsSchema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    handler: { kind: JS.Script, name: PingImpl }
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: pong
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-list, version: 1.0.0 }
+tools: [ListedTools]
+---
+kind: McpClient.HttpClient
+metadata: { name: ClientUnderTest }
+url: http://127.0.0.1:8956/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsList
+metadata: { name: ListTools }
+client: ClientUnderTest
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8956
+    baseUrl: http://127.0.0.1:8956
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpClientToolsListHttpTest.McpHttp }
+targets: [Server]
+steps:
+  - name: List
+    inputs: {}
+    invoke: { kind: McpClient.ToolsList, name: ListTools }
+  - name: AssertListed
+    inputs:
+      toolName: "${{ steps.List.result.tools[0].name }}"
+      toolDescription: "${{ steps.List.result.tools[0].description }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          toolName: { const: ping }
+          toolDescription: { const: "Synthetic ping." }
+        required: [toolName, toolDescription]

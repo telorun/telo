@@ -1,0 +1,76 @@
+{
+  "name": "@telorun/mcp-client",
+  "version": "0.1.0",
+  "description": "Telo MCP Client module — Model Context Protocol client resource kinds for Telo manifests.",
+  "keywords": [
+    "telo",
+    "mcp",
+    "model-context-protocol",
+    "client",
+    "tools",
+    "stdio",
+    "streamable-http"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/mcp-client/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "exports": {
+    "./http-client": {
+      "types": "./dist/http-client-controller.d.ts",
+      "bun": "./src/http-client-controller.ts",
+      "import": "./dist/http-client-controller.js"
+    },
+    "./stdio-client": {
+      "types": "./dist/stdio-client-controller.d.ts",
+      "bun": "./src/stdio-client-controller.ts",
+      "import": "./dist/stdio-client-controller.js"
+    },
+    "./tools-call": {
+      "types": "./dist/tools-call-controller.d.ts",
+      "bun": "./src/tools-call-controller.ts",
+      "import": "./dist/tools-call-controller.js"
+    },
+    "./tools-list": {
+      "types": "./dist/tools-list-controller.d.ts",
+      "bun": "./src/tools-list-controller.ts",
+      "import": "./dist/tools-list-controller.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "vitest": "^2.1.8 || ^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  }
+}

@@ -42,6 +42,26 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@1.0.0?local_path=./nodejs#http-request
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [status, headers, body]
+    properties:
+      status:
+        type: integer
+        description: HTTP response status code.
+      headers:
+        type: object
+        additionalProperties: { type: string }
+        description: Response headers, normalized to lowercase keys (per §2 of the Response Contract).
+      body:
+        description: |
+          Parsed JSON when content-type is application/json (or null on an empty body
+          with a JSON content-type); raw string otherwise. Open shape — per-call
+          narrowing is the manifest author's concern (use CEL or downstream
+          Type kinds).
 schema:
   type: "object"
   properties:

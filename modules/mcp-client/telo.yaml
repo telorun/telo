@@ -1,0 +1,348 @@
+kind: Telo.Library
+metadata:
+  name: mcp-client
+  namespace: std
+  version: 0.1.0
+  description: |
+    Model Context Protocol (MCP) client resource kinds. Transport-pluggable:
+    Mcp.HttpClient (Streamable HTTP) and Mcp.StdioClient (child-process stdio)
+    both implement the Mcp.Client abstract. Mcp.ToolsCall and Mcp.ToolsList
+    dispatch RPCs through any concrete client without transport knowledge.
+exports:
+  kinds:
+    - Client
+    - SessionProvider
+    - HttpClient
+    - StdioClient
+    - ToolsCall
+    - ToolsList
+---
+# Mcp.Client — generic JSON-RPC request contract every transport satisfies.
+# Callers pass {method, params}; the concrete transport handles framing,
+# session lifecycle, content-type negotiation, and SSE parsing. Returns the
+# parsed `result` payload. Protocol- and tool-level errors throw (see §4 of
+# the implementation plan); the success path is never `{result, isError: true}`.
+kind: Telo.Abstract
+metadata:
+  name: Client
+capability: Telo.Invocable
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [method]
+    properties:
+      method:
+        # Closed set of supported RPC methods. Keeps the two transport
+        # paths (SDK-backed self-handshake and hand-rolled external-provider)
+        # in lock-step: a manifest that calls an unsupported method is a
+        # static error, not a runtime ERR_MCP_PROTOCOL whose surface depends
+        # on whether sessionProvider: is set. Widen this enum in the same
+        # change that adds the corresponding transport dispatch.
+        type: string
+        enum:
+          - tools/call
+          - tools/list
+      params:
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    # The JSON-RPC success `result` payload, verbatim. Each MCP RPC has its
+    # own result shape (tools/call vs tools/list vs resources/read), so the
+    # abstract stays open at this internal controller-to-controller boundary.
+    # User CEL never reads from this directly — Mcp.Tools.* declare tight
+    # outputTypes for their callers (§3.4, §3.5).
+    type: object
+    additionalProperties: true
+---
+# Mcp.SessionProvider — Telo.Provider that supplies an externally-sourced
+# MCP session ID per request. Only Mcp.HttpClient consumes this abstract;
+# Mcp.StdioClient has no equivalent session concept.
+#
+# No bundled concretes ship here. Concrete providers — static-from-secret,
+# per-call SQL lookup, Vault read, OIDC token exchange — are authored as
+# Telo.Definitions in consuming libraries via `extends: Mcp.SessionProvider`,
+# composed from existing kinds, no TypeScript controller required.
+kind: Telo.Abstract
+metadata:
+  name: SessionProvider
+capability: Telo.Provider
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [sessionId]
+    properties:
+      sessionId: { type: string }
+---
+# Mcp.HttpClient — Streamable HTTP transport for MCP.
+#
+# Owns the entire HTTP transport lifecycle: lazy `initialize` handshake on
+# first call, cached `Mcp-Session-Id` for stateful endpoints, transparent
+# re-handshake on session-invalid responses (404/410), best-effort `DELETE`
+# on teardown. Session handling forks on the presence of `sessionProvider:`:
+#
+#  - absent → client owns the handshake + cache + re-handshake-on-invalid.
+#  - present → each call asks the provider for `sessionId` and forwards it on
+#    the request; the client never handshakes. Refresh policy on rejection
+#    is the workflow's `catches:` responsibility.
+kind: Telo.Definition
+metadata:
+  name: HttpClient
+capability: Telo.Invocable
+extends: Self.Client
+controllers:
+  - pkg:npm/@telorun/mcp-client@0.1.0?local_path=./nodejs#http-client
+schema:
+  type: object
+  additionalProperties: false
+  required: [url]
+  properties:
+    url:
+      title: URL
+      description: MCP endpoint URL (Streamable HTTP). The transport POSTs JSON-RPC to this URL.
+      type: string
+    headers:
+      title: Headers
+      description: |
+        Static headers applied to every request. Evaluated once at controller init
+        and fixed for the life of the client. Dynamic / rotating headers (refreshing
+        bearer tokens) need a future `headerProvider:` slot (not in v1).
+      type: object
+      additionalProperties: { type: string }
+    sessionProvider:
+      title: Session Provider
+      description: |
+        Optional reference to a resource extending Mcp.SessionProvider. When
+        present, each invoke() calls provider.provide() and forwards the
+        returned sessionId; the client never handshakes. Omit for self-managed
+        handshake mode.
+      type: string
+      x-telo-ref: "std/mcp-client#SessionProvider"
+    clientInfo:
+      title: Client Info
+      description: Identity advertised to MCP servers during initialize. Used in self-handshake mode only.
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        version: { type: string }
+      required: [name, version]
+    protocolVersion:
+      title: Protocol Version
+      description: |
+        MCP protocol version string sent in the initialize request. Defaults
+        to a pinned constant ("2024-11-05" at v0.1.0); the value does not
+        auto-track the @modelcontextprotocol/sdk dependency. Override only
+        when targeting a server that requires a different protocol revision.
+      type: string
+---
+# Mcp.StdioClient — stdio child-process transport for MCP.
+#
+# Spawns and owns a long-lived MCP-server child process; speaks newline-
+# delimited JSON-RPC over stdin/stdout per the MCP stdio transport spec. The
+# stdio connection itself is the session — no Mcp-Session-Id, no handshake
+# retry, no sessionProvider slot. The process lifecycle replaces the HTTP
+# session lifecycle entirely.
+kind: Telo.Definition
+metadata:
+  name: StdioClient
+capability: Telo.Invocable
+extends: Self.Client
+controllers:
+  - pkg:npm/@telorun/mcp-client@0.1.0?local_path=./nodejs#stdio-client
+schema:
+  type: object
+  additionalProperties: false
+  required: [command]
+  properties:
+    command:
+      title: Command
+      description: Executable to spawn (absolute path or a name resolvable on PATH).
+      type: string
+    args:
+      title: Arguments
+      description: Argv to pass to the child process.
+      type: array
+      items: { type: string }
+    env:
+      title: Environment
+      description: |
+        Extra environment variables merged into the child's environment on top
+        of process.env. Not exposed via snapshot() — the user-supplied map can
+        carry secrets.
+      type: object
+      additionalProperties: { type: string }
+    clientInfo:
+      title: Client Info
+      description: Identity advertised to MCP servers during initialize.
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        version: { type: string }
+      required: [name, version]
+    shutdownGraceMs:
+      title: Shutdown grace period
+      description: |
+        Milliseconds to wait for a clean child exit after SIGTERM before sending
+        SIGKILL on teardown.
+      type: integer
+      minimum: 0
+      default: 5000
+---
+# Mcp.ToolsCall — dispatches `tools/call` against a referenced Mcp.Client.
+#
+# Has zero transport knowledge: delegates to client.invoke({method, params})
+# and reshapes the success payload to its declared outputType. Whether the
+# client is HTTP (self-handshake or external sessionProvider) or stdio is
+# invisible at this layer. A response with `isError: true` is converted to an
+# ERR_MCP_TOOL_ERROR throw, so the success path never observes it.
+kind: Telo.Definition
+metadata:
+  name: ToolsCall
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/mcp-client@0.1.0?local_path=./nodejs#tools-call
+schema:
+  type: object
+  additionalProperties: false
+  required: [client]
+  properties:
+    client:
+      title: Client
+      description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
+      type: string
+      x-telo-ref: "std/mcp-client#Client"
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name:
+        title: Tool name
+        description: Tool identifier sent in the tools/call request.
+        type: string
+      arguments:
+        title: Arguments
+        description: Tool arguments object, validated server-side against the tool's argumentsSchema.
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content]
+    properties:
+      content:
+        title: Content
+        description: Array of MCP content blocks returned by the tool.
+        type: array
+        items:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [type, text]
+              properties:
+                type: { const: text }
+                text: { type: string }
+            - type: object
+              additionalProperties: false
+              required: [type, data, mimeType]
+              properties:
+                type: { const: image }
+                data: { type: string, contentEncoding: base64 }
+                mimeType: { type: string }
+            - type: object
+              additionalProperties: false
+              required: [type, data, mimeType]
+              properties:
+                type: { const: audio }
+                data: { type: string, contentEncoding: base64 }
+                mimeType: { type: string }
+            - type: object
+              additionalProperties: false
+              required: [type, uri]
+              properties:
+                type: { const: resource_link }
+                uri: { type: string }
+                name: { type: string }
+                description: { type: string }
+                mimeType: { type: string }
+            - type: object
+              additionalProperties: false
+              required: [type, resource]
+              properties:
+                type: { const: resource }
+                resource:
+                  type: object
+                  additionalProperties: false
+                  required: [uri]
+                  properties:
+                    uri: { type: string }
+                    mimeType: { type: string }
+                    text: { type: string }
+                    blob: { type: string, contentEncoding: base64 }
+      structuredContent:
+        title: Structured content
+        description: |
+          Optional structured payload defined by the tool's per-tool outputSchema.
+          Statically opaque in v1 (the MCP spec ties this to a per-tool schema
+          mcp-client doesn't know); a typed Mcp.Tool / Mcp.ToolsCallTyped variant
+          lands when per-tool schemas are first-class.
+        type: object
+        additionalProperties: true
+---
+# Mcp.ToolsList — dispatches `tools/list` against a referenced Mcp.Client.
+kind: Telo.Definition
+metadata:
+  name: ToolsList
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/mcp-client@0.1.0?local_path=./nodejs#tools-list
+schema:
+  type: object
+  additionalProperties: false
+  required: [client]
+  properties:
+    client:
+      title: Client
+      description: Reference to any Mcp.Client implementation.
+      type: string
+      x-telo-ref: "std/mcp-client#Client"
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [tools]
+    properties:
+      tools:
+        title: Tools
+        description: Tools advertised by the MCP server.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, inputSchema]
+          properties:
+            name: { type: string }
+            description: { type: string }
+            inputSchema:
+              # Per-tool JSON Schema. Statically opaque — only the server knows
+              # which arguments each tool accepts.
+              type: object
+              additionalProperties: true

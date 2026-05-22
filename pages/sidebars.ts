@@ -116,6 +116,30 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "modules/javascript/README", label: "JavaScript" },
         {
           type: "category",
+          label: "MCP Client",
+          items: [
+            { type: "doc", id: "modules/mcp-client/README", label: "Overview" },
+            {
+              type: "doc",
+              id: "modules/mcp-client/docs/http-client",
+              label: "Mcp.HttpClient",
+            },
+            {
+              type: "doc",
+              id: "modules/mcp-client/docs/stdio-client",
+              label: "Mcp.StdioClient",
+            },
+            { type: "doc", id: "modules/mcp-client/docs/tools-call", label: "Mcp.ToolsCall" },
+            { type: "doc", id: "modules/mcp-client/docs/tools-list", label: "Mcp.ToolsList" },
+            {
+              type: "doc",
+              id: "modules/mcp-client/docs/session-providers",
+              label: "Session providers",
+            },
+          ],
+        },
+        {
+          type: "category",
           label: "MCP Server",
           items: [
             { type: "doc", id: "modules/mcp-server/README", label: "Overview" },
