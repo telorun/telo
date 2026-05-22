@@ -22,16 +22,12 @@ metadata: { name: HttpClient }
 source: ../../../../modules/http-client
 ---
 kind: Telo.Import
+metadata: { name: McpClient }
+source: ../../../../modules/mcp-client
+---
+kind: Telo.Import
 metadata: { name: Config }
 source: ../../../../modules/config
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../../../modules/javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../../../modules/type
 ---
 kind: Telo.Import
 metadata: { name: Run }
@@ -51,119 +47,18 @@ secrets:
     env: TELO_REGISTRY_TOKEN
     type: string
 ---
-# Hand-rolled MCP Streamable-HTTP client (initialize → notifications/initialized
-# → tools/call). Same pattern as modules/mcp-server/tests/http-tool-call.yaml's
-# McpFetch — duplicated rather than shared because the e2e suite must run
-# against a real registry process and we want this file to be self-contained.
-kind: JS.Script
-metadata: { name: McpFetch }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      url: { type: string }
-      method: { type: string }
-      params: { type: object, additionalProperties: true }
-    required: [url, method]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      status: { type: integer }
-      result: { type: object, additionalProperties: true }
-      error: { type: object, additionalProperties: true }
-      hasError: { type: boolean }
-    required: [status, hasError]
-# FIXME: Create MCP client module
-code: |
-  async function main({ url, method, params }) {
-    const initBody = {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2024-11-05",
-        capabilities: {},
-        clientInfo: { name: "telo-test", version: "1.0.0" },
-      },
-    };
-    const initResp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-      },
-      body: JSON.stringify(initBody),
-    });
-    if (initResp.status >= 400) {
-      const text = await initResp.text();
-      throw new Error(`MCP initialize failed: ${initResp.status} ${text}`);
-    }
-    // Stateful endpoints mint an Mcp-Session-Id and require it on subsequent
-    // requests; stateless endpoints (the new default) omit the header — both
-    // protocol modes are exercised by other tests, this fetch supports either.
-    const sessionId = initResp.headers.get("mcp-session-id");
-    await initResp.text();
-
-    const sessionHeaders = sessionId ? { "Mcp-Session-Id": sessionId } : {};
-
-    if (sessionId) {
-      await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
-          ...sessionHeaders,
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
-      }).then((r) => r.text());
-    }
-
-    const callResp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        ...sessionHeaders,
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params: params || {} }),
-    });
-    const status = callResp.status;
-    const ct = (callResp.headers.get("content-type") || "").toLowerCase();
-    const raw = await callResp.text();
-
-    let payload;
-    if (ct.startsWith("application/json")) {
-      payload = JSON.parse(raw);
-    } else if (ct.startsWith("text/event-stream")) {
-      const dataLines = raw
-        .split(/\r?\n/)
-        .filter((l) => l.startsWith("data:"))
-        .map((l) => l.slice(5).trimStart());
-      if (dataLines.length === 0) throw new Error(`MCP SSE body had no data lines. Raw: ${raw}`);
-      payload = JSON.parse(dataLines[0]);
-    } else {
-      throw new Error(`MCP unexpected Content-Type '${ct}'. Body: ${raw}`);
-    }
-
-    // Surface JSON-RPC errors as thrown errors so the test failure line carries
-    // the actual code/message. Otherwise the downstream assert trips on
-    // `result.content[0].type` and the underlying MCP error is invisible.
-    if (payload.error) {
-      throw new Error(
-        `MCP ${method} returned error ${payload.error.code}: ${payload.error.message}`,
-      );
-    }
-
-    return {
-      status,
-      hasError: false,
-      result: payload.result || {},
-      error: {},
-    };
-  }
+# Typed MCP client + tool-call dispatcher. Replaces the hand-rolled
+# JS.Script McpFetch that previously crashed when the success envelope was
+# empty — Mcp.ToolsCall's tight outputType makes `result.content[0].text`
+# statically valid and structurally distinguishes errors from successes.
+kind: McpClient.HttpClient
+metadata: { name: RegistryMcp }
+url: http://registry.telo.localhost:8060/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsCall
+metadata: { name: McpToolCall }
+client: RegistryMcp
 ---
 # Reproduces the failure: GetModuleManifest pipes S3.Get's stream-typed
 # `output` through `${{ steps.fetch.result.output }}` into PlainText.Decoder.
@@ -202,28 +97,23 @@ steps:
         required: [status]
   - name: call
     inputs:
-      url: http://registry.telo.localhost:8060/mcp
-      method: tools/call
-      params:
-        name: get_module_manifest
-        arguments: { namespace: std, name: e2e-mcp-fixture, version: 1.0.0 }
-    invoke: { kind: JS.Script, name: McpFetch }
+      name: get_module_manifest
+      arguments: { namespace: std, name: e2e-mcp-fixture, version: 1.0.0 }
+    invoke: { kind: McpClient.ToolsCall, name: McpToolCall }
   - name: assert
     inputs:
-      hasError: "${{ steps.call.result.hasError }}"
-      contentType: "${{ steps.call.result.result.content[0].type }}"
-      contentText: "${{ steps.call.result.result.content[0].text }}"
+      contentType: "${{ steps.call.result.content[0].type }}"
+      contentText: "${{ steps.call.result.content[0].text }}"
     invoke:
       kind: Assert.Schema
       metadata: { name: AssertGetModuleManifest }
       schema:
         type: object
         properties:
-          hasError: { const: false }
           contentType: { const: text }
           contentText:
             type: string
             # The S3 round-trip preserves bytes exactly; we just assert the
             # decoded body still contains the description we just published.
             pattern: "e2e test fixture for MCP get_module_manifest"
-        required: [hasError, contentType, contentText]
+        required: [contentType, contentText]

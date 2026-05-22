@@ -68,7 +68,7 @@ tighten Http.Request.outputType" sub-section.)
   for arbitrary header values). Pull this in when the first consumer asks —
   this plan deliberately leaves the slot open rather than shipping a
   half-typed map.
-- Per-tool typing of `Mcp.Tools.Call.outputType.structuredContent`. The MCP
+- Per-tool typing of `Mcp.ToolsCall.outputType.structuredContent`. The MCP
   spec ties `structuredContent` to a per-tool `outputSchema` that mcp-client
   doesn't know statically; v1 carries it as `additionalProperties: true`
   (acknowledged dyn leak — see §3.4). The typed-tool follow-up is sketched
@@ -88,16 +88,16 @@ Mcp.SessionProvider (Telo.Abstract over Telo.Provider, sessionId contract)
   ↑ extends ─────────────────────────────────────────────────────────────
     user-defined providers (template, any library)  ←  composed from existing kinds
 
-Mcp.Tools.Call   (Telo.Invocable)  ←  tools/call against a referenced Mcp.Client
-Mcp.Tools.List   (Telo.Invocable)  ←  tools/list against a referenced Mcp.Client
+Mcp.ToolsCall   (Telo.Invocable)  ←  tools/call against a referenced Mcp.Client
+Mcp.ToolsList   (Telo.Invocable)  ←  tools/list against a referenced Mcp.Client
 ```
 
 mcp-client ships two transport concretes from day one — `Mcp.HttpClient` and
 `Mcp.StdioClient` — both extending the `Mcp.Client` abstract. The abstract is
 over `Telo.Invocable`, not `Telo.Provider`: every transport implements a
 generic `invoke({ method, params })` that issues one JSON-RPC request and
-returns the parsed `result` payload (errors throw — §4). `Mcp.Tools.Call` and
-`Mcp.Tools.List` delegate to `client.invoke()` and have **zero transport
+returns the parsed `result` payload (errors throw — §4). `Mcp.ToolsCall` and
+`Mcp.ToolsList` delegate to `client.invoke()` and have **zero transport
 knowledge** — JSON-RPC framing, session handling, SSE parsing (HTTP), stdio
 framing, content-type negotiation, and reconnect-on-invalidation all live
 one level down, inside each transport's controller. Adding a third
@@ -129,7 +129,15 @@ inputType:
     additionalProperties: false
     required: [method]
     properties:
-      method: { type: string }
+      method:
+        type: string
+        # Closed v1 enum keeps the two session modes (SDK-backed self-handshake
+        # and hand-rolled external-provider) in lock-step: a manifest that
+        # calls an unsupported method is a static error, not a runtime
+        # ERR_MCP_PROTOCOL whose surface depends on whether sessionProvider:
+        # is set. Widen this enum in the same change that adds the
+        # corresponding transport dispatch.
+        enum: [tools/call, tools/list]
       params:
         type: object
         additionalProperties: true
@@ -139,7 +147,7 @@ outputType:
     # The JSON-RPC success `result` payload, verbatim. Each MCP RPC has its
     # own result shape (tools/call vs tools/list vs resources/read), so the
     # abstract stays open here at an internal controller-to-controller
-    # boundary. Narrowing happens in the Mcp.Tools.* outputTypes that
+    # boundary. Narrowing happens in the Mcp.ToolsCall / Mcp.ToolsList outputTypes that
     # consume this generically — those are the surfaces user CEL reads
     # from, and they are tight (§3.4, §3.5).
     type: object
@@ -147,8 +155,8 @@ outputType:
 ```
 
 `outputType` being open here is **not** the dyn leak the bug report names:
-the only callers of `Mcp.Client.invoke()` are `Mcp.Tools.Call` and
-`Mcp.Tools.List`, both TypeScript controllers that programmatically reshape
+the only callers of `Mcp.Client.invoke()` are `Mcp.ToolsCall` and
+`Mcp.ToolsList`, both TypeScript controllers that programmatically reshape
 the payload into their own tight `outputType`. User CEL never reads from
 `Mcp.Client.invoke()` directly.
 
@@ -171,7 +179,7 @@ headers:
   authorization: "Bearer ${{ resources.Env.token }}"
 sessionProvider: RegistrySession   # optional, any kind extending Mcp.SessionProvider
 clientInfo: { name: telo-test, version: 1.0.0 }
-protocolVersion: "2024-11-05"      # optional, default tracks the SDK
+protocolVersion: "2024-11-05"      # optional; defaults to a pinned constant (HttpClient is hand-rolled)
 ```
 
 | `sessionProvider` | Session lifecycle | Re-handshake on invalid |
@@ -180,10 +188,10 @@ protocolVersion: "2024-11-05"      # optional, default tracks the SDK
 | **present** | Each `invoke()` calls `sessionProvider.provide()` and forwards the returned `sessionId` on the request. The controller never handshakes. | No — provider sources sessions externally (DB row, Vault, secret); the client can't refresh what it doesn't own. Consumer's workflow-level `catches:` owns refresh policy. |
 
 The session-invalid retry loop lives **inside `invoke()`**, so there is no
-back-channel between `Mcp.Tools.Call` and the client. `Tools.Call.invoke()`
+back-channel between `Mcp.ToolsCall` and the client. `ToolsCall.invoke()`
 calls `client.invoke({ method: "tools/call", params: ... })`, the client
 handles retry internally if needed, and either returns the success payload
-or throws. Tools.Call sees one shape and one error contract regardless of
+or throws. ToolsCall sees one shape and one error contract regardless of
 mode and regardless of transport — the same pattern `Sql.Connection`
 uses to absorb its TCP reconnect logic, kept here at the level where the
 session-invalid signal is actually observed (on the wire, inside the
@@ -234,7 +242,6 @@ args: ["--stdio", "--cwd", "/srv"]
 env:                              # optional; merged into the child's environment
   MCP_LOG_LEVEL: debug
 clientInfo: { name: telo-test, version: 1.0.0 }
-protocolVersion: "2024-11-05"
 shutdownGraceMs: 5000             # optional, default 5000
 ```
 
@@ -256,9 +263,12 @@ Lifecycle:
   session IDs to invalidate. Concurrent calls are serialized by a per-
   controller request-id counter and a `Map<id, pendingResolve>`; out-of-
   order responses are matched by id, not by call ordering.
-- `snapshot()` exposes `{ command, argv, protocolVersion, pid }`. `pid` is
-  a useful debug surface that doesn't leak credentials. `env` is **not**
-  exposed — the user-supplied map can carry secrets.
+- `snapshot()` exposes `{ command, argv, pid }`. `pid` is a useful debug
+  surface that doesn't leak credentials. `env` is **not** exposed — the
+  user-supplied map can carry secrets. The MCP protocol version is
+  negotiated by the SDK during the initialize handshake; there is no
+  manifest-level override (HttpClient keeps one because it speaks the
+  protocol hand-rolled).
 - `teardown()` sends `SIGTERM`, waits up to `shutdownGraceMs` for clean
   exit, then `SIGKILL`. Stdout/stderr streams are drained and closed. Any
   in-flight `invoke()` calls reject with `ERR_MCP_TRANSPORT`.
@@ -269,19 +279,19 @@ Stderr is not part of any user-facing surface — manifest authors who need
 to inspect server logs run the server out-of-band.
 
 Because `Mcp.StdioClient` implements the same `Mcp.Client` contract,
-`Mcp.Tools.Call` and `Mcp.Tools.List` work against it byte-for-byte the
-same as against `Mcp.HttpClient` — no consumer changes, no Tools.Call
+`Mcp.ToolsCall` and `Mcp.ToolsList` work against it byte-for-byte the
+same as against `Mcp.HttpClient` — no consumer changes, no ToolsCall
 branching. Users who run an MCP server as a local subprocess simply swap
 `Mcp.HttpClient` for `Mcp.StdioClient` in their manifest; nothing
 downstream notices.
 
-### 3.4 `Mcp.Tools.Call` (Telo.Invocable)
+### 3.4 `Mcp.ToolsCall` (Telo.Invocable)
 
 The replacement for the hand-rolled `tools/call` block.
 
 ```yaml
 kind: Telo.Definition
-metadata: { name: Tools.Call }
+metadata: { name: ToolsCall }
 capability: Telo.Invocable
 schema:
   type: object
@@ -374,7 +384,7 @@ outputType:
       # a per-tool `outputSchema` declared by the server, so its shape is
       # not knowable to mcp-client statically. v2 path: introduce
       # `Mcp.Tool` (Telo.Abstract) carrying `argumentsSchema` and
-      # `outputSchema`, and a typed `Mcp.Tools.CallTyped` variant that uses
+      # `outputSchema`, and a typed `Mcp.ToolsCallTyped` variant that uses
       # `x-telo-schema-from` to pull the referenced tool's outputSchema
       # into this property's effective schema. Until then, callers reading
       # `${{ result.structuredContent.X }}` get dyn typing on `X`. v1
@@ -413,16 +423,16 @@ async invoke(inputs: { name: string; arguments?: object }) {
 }
 ```
 
-Tools.Call has zero transport knowledge and zero session knowledge. It
+ToolsCall has zero transport knowledge and zero session knowledge. It
 delegates to `client.invoke()` and reshapes the success payload to its
 declared `outputType`. Whether the referenced client is HTTP (with self-
 handshake or external `sessionProvider:`) or stdio is invisible at this
 layer — that distinction is internal to the client's `invoke()`. Adding a
 third transport later requires no changes here.
 
-`ERR_MCP_TOOL_ERROR` is the one error class Tools.Call originates itself
+`ERR_MCP_TOOL_ERROR` is the one error class ToolsCall originates itself
 (soft tool failures aren't a transport concern, so the client passes the
-raw payload through and Tools.Call converts `isError: true` into a throw).
+raw payload through and ToolsCall converts `isError: true` into a throw).
 Every other `ERR_MCP_*` code (§4) originates inside `Mcp.Client.invoke()`
 and propagates through untouched.
 
@@ -431,10 +441,10 @@ the only code that calls `sessionProvider.provide()` is the HttpClient
 controller, and the call goes through the SDK's `ProviderInstance`
 interface that already exists for every `Telo.Provider`.
 
-### 3.5 `Mcp.Tools.List` (Telo.Invocable)
+### 3.5 `Mcp.ToolsList` (Telo.Invocable)
 
 Same `schema:` (single `client:` ref) and same throws contract as
-`Mcp.Tools.Call`. Delegates to `client.invoke({ method: "tools/list" })`.
+`Mcp.ToolsCall`. Delegates to `client.invoke({ method: "tools/list" })`.
 Takes no inputs:
 
 ```yaml
@@ -551,7 +561,7 @@ sessionProvider: RegistryVaultSession
 
 ## 4. Throws contract
 
-`Mcp.Tools.Call` and `Mcp.Tools.List` declare a closed `throws` union so
+`Mcp.ToolsCall` and `Mcp.ToolsList` declare a closed `throws` union so
 `catches:` blocks and analyzer rule-9 coverage have something concrete:
 
 | Code                          | When                                                                                  |
@@ -579,7 +589,7 @@ modules/mcp-client/
 ├── README.md
 ├── telo.yaml                          # Library (namespace: std, name: mcp-client) +
 │                                      # Mcp.Client abstract + Mcp.SessionProvider abstract +
-│                                      # Mcp.HttpClient + Mcp.StdioClient + Mcp.Tools.Call + Mcp.Tools.List
+│                                      # Mcp.HttpClient + Mcp.StdioClient + Mcp.ToolsCall + Mcp.ToolsList
 ├── docs/
 │   ├── http-client.md
 │   ├── stdio-client.md
@@ -594,8 +604,8 @@ modules/mcp-client/
 │   └── src/
 │       ├── http-client-controller.ts   # Mcp.HttpClient (Telo.Invocable) — owns the self-handshake state machine, the session cache, sessionProvider delegation, and SSE/JSON parsing; invoke({method, params}) returns the JSON-RPC result
 │       ├── stdio-client-controller.ts  # Mcp.StdioClient (Telo.Invocable) — owns child-process spawn/teardown, stdin/stdout framing, request-id correlation; invoke({method, params}) returns the JSON-RPC result
-│       ├── tools-call-controller.ts    # Mcp.Tools.Call  (Telo.Invocable) — delegates to client.invoke({method:"tools/call",...}), converts isError into ERR_MCP_TOOL_ERROR
-│       ├── tools-list-controller.ts    # Mcp.Tools.List  (Telo.Invocable) — delegates to client.invoke({method:"tools/list"})
+│       ├── tools-call-controller.ts    # Mcp.ToolsCall  (Telo.Invocable) — delegates to client.invoke({method:"tools/call",...}), converts isError into ERR_MCP_TOOL_ERROR
+│       ├── tools-list-controller.ts    # Mcp.ToolsList  (Telo.Invocable) — delegates to client.invoke({method:"tools/list"})
 │       ├── jsonrpc.ts                  # transport-agnostic request/response framing + id correlation; shared by both client controllers
 │       └── errors.ts                   # InvokeError factories per §4
 └── tests/
@@ -610,16 +620,31 @@ modules/mcp-client/
 
 ### Transport implementation
 
-Depend on `@modelcontextprotocol/sdk` (already a dep of `modules/mcp-server`)
-and use its `Client` + `StreamableHTTPClientTransport` (for `Mcp.HttpClient`)
-and `StdioClientTransport` (for `Mcp.StdioClient`). Free spec compliance,
-schema validation, session handling, and stdio framing. Hand-rolling was
-only justified inside `JS.Script` where npm resolution isn't available.
+Mixed strategy, chosen per-transport based on lifecycle compatibility with
+the host kernel:
 
-Both controllers share `jsonrpc.ts` for the small surface the SDK doesn't
-own — request-id allocation, the `Map<id, pendingResolve>` pattern, and the
-shape adapters between SDK responses and the `Mcp.Client` contract — so a
-third transport in the future drops in with the same shared scaffolding.
+- **`Mcp.StdioClient`** uses `@modelcontextprotocol/sdk`'s `Client` +
+  `StdioClientTransport`. The child-process lifecycle is owned end-to-end by
+  the SDK; nothing in the kernel competes for the stdin/stdout pipes.
+- **`Mcp.HttpClient`** is hand-rolled on top of `fetch`, sharing
+  `jsonrpc.ts` for request framing. The SDK's
+  `StreamableHTTPClientTransport` was not viable here: on
+  `notifications/initialized` it opens a server-pushed SSE GET stream that
+  stays alive until the client calls `transport.close()`. When the
+  HttpClient sits alongside an `Http.Server` (every test, every realistic
+  deployment) the SSE GET stream deadlocks Fastify's `server.close()` during
+  teardown — `app.close()` waits for in-flight responses to drain, but the
+  SSE stream only closes once `Mcp.HttpClient.teardown()` runs, and that
+  doesn't run until the surrounding `with:` scope tears down. v1 has no use
+  for server→client notifications (explicit non-goal in §2), so the simpler
+  hand-rolled path that opens one fetch per RPC is the right call.
+
+Both controllers share `jsonrpc.ts`'s monotonic `createIdAllocator()` and
+the Streamable-HTTP envelope parser (`application/json` vs
+`text/event-stream` data lines, JSON-RPC error → `ERR_MCP_*` mapping). A
+third HTTP-family transport drops in via the same helper; a different
+underlying-protocol transport plugs in alongside the SDK path the stdio
+client already uses.
 
 ### Co-shipped: tighten `Http.Request.outputType`
 
@@ -690,7 +715,7 @@ Two manifests stop hand-rolling MCP and consume the new kinds:
 
 - [`modules/mcp-server/tests/http-tool-call.yaml`](../../../modules/mcp-server/tests/http-tool-call.yaml) —
   delete the `JS.Script McpFetch` block; replace `steps.CallGetWeather` with
-  an `Mcp.Tools.Call` invoke against an `Mcp.HttpClient` provider. The fixture
+  an `Mcp.ToolsCall` invoke against an `Mcp.HttpClient` provider. The fixture
   server is stateless, so `sessionProvider` is omitted entirely (no header
   echoed). Assertions tighten to read `result.content[0].text` directly.
 - [`apps/registry/tests/e2e/mcp-tools.yaml`](../../../apps/registry/tests/e2e/mcp-tools.yaml) —
@@ -748,7 +773,7 @@ plans, separately.
 
 - `modules/mcp-client/tests/tools-call-http-self-handshake.yaml` — boots
   an `Http.Server` with a stateful `Mcp.HttpEndpoint` mount (in-process
-  fixture, issues `Mcp-Session-Id` on initialize). Drives `Mcp.Tools.Call`
+  fixture, issues `Mcp-Session-Id` on initialize). Drives `Mcp.ToolsCall`
   with **no** `sessionProvider:` on `Mcp.HttpClient`. Asserts that the
   client transparently handshakes on first call and reuses the session on
   a second call. A third call follows server-forced session invalidation;
@@ -764,10 +789,10 @@ plans, separately.
   `Mcp.StdioClient` pointing at `node`, with `args:
   [./__fixtures__/stdio-server.mjs]`. The fixture is a minimal MCP server
   that speaks the stdio transport (handshake + a single `echo` tool).
-  Drives `Mcp.Tools.Call` against it; asserts the child process is spawned
+  Drives `Mcp.ToolsCall` against it; asserts the child process is spawned
   at boot, the handshake completes before `init()` returns, the tool call
   succeeds, and the process is terminated cleanly on teardown. Same
-  Tools.Call manifest shape as the HTTP tests — proves the consumer is
+  ToolsCall manifest shape as the HTTP tests — proves the consumer is
   transport-agnostic.
 - `modules/mcp-client/tests/tools-call-errors.yaml` — fixture endpoints
   (both HTTP and stdio variants) intentionally return / emit each error
@@ -787,10 +812,10 @@ plans, separately.
   - Positive: `${{ steps.call.result.content[0].text }}` against a
     content item validates.
   - Negative (v1): `${{ steps.call.result.nonExistentField }}` against
-    `Mcp.Tools.Call`'s closed `outputType` produces `CEL_UNKNOWN_FIELD` —
+    `Mcp.ToolsCall`'s closed `outputType` produces `CEL_UNKNOWN_FIELD` —
     this is the rejection class the whole module exists to enforce.
   - Negative (v1): `${{ steps.list.result.content }}` against
-    `Mcp.Tools.List`'s output (which has no `content` property, only
+    `Mcp.ToolsList`'s output (which has no `content` property, only
     `tools`) produces `CEL_UNKNOWN_FIELD`.
   - Deferred: `${{ steps.call.result.content[0].data }}` against a
     `type: text` variant is currently *accepted* (cross-variant access
@@ -817,13 +842,11 @@ mcp-client cannot land until both prerequisites ship, in order:
 - `createTemplateController` synthesizes `provide()` implementations.
 - Analyzer recognizes `provide.kind` / `provide.name` as reference targets
   and enforces `Telo.Provider` + `extends:` contracts on templates.
-- Six standard-library provider controllers (`Http.Client`,
-  `Sql.Connection`, `S3.Client`, `Workflow.Connection`,
-  `Workflow-Temporal.Connection`, `Config.*`) ship `provide()` in the same
-  release. mcp-client itself no longer needs `provide:` for `Mcp.Client`
-  (since the abstract is over `Telo.Invocable` now — §3.1), but the
-  `Mcp.SessionProvider` abstract still depends on it for user-authored
-  template providers.
+
+mcp-client itself no longer needs `provide:` for `Mcp.Client` (since the
+abstract is over `Telo.Invocable` now — §3.1), but the
+`Mcp.SessionProvider` abstract still depends on it for user-authored
+template providers.
 
 The analyzer plan merges first; the kernel plan follows; mcp-client lands
 in a third PR. The in-scope `Http.Request.outputType` tightening (§5)

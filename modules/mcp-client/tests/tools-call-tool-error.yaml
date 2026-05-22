@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata: { name: McpClientToolErrorTest, version: 1.0.0 }
+targets: [TestRun]
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../../mcp-server
+---
+kind: Telo.Import
+metadata: { name: McpClient }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../../http-server
+---
+kind: Telo.Import
+metadata: { name: JS }
+source: ../../javascript
+---
+kind: Telo.Import
+metadata: { name: Type }
+source: ../../type
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert
+---
+# Handler renders an isError: true envelope so the server returns a successful
+# JSON-RPC response carrying the soft tool-failure shape. Mcp.Tools.Call must
+# convert this into an ERR_MCP_TOOL_ERROR throw, which the surrounding
+# Run.Sequence try/catch then observes.
+kind: JS.Script
+metadata: { name: WeatherImpl }
+inputType:
+  kind: Type.JsonSchema
+  schema: { type: object, properties: { city: { type: string } }, required: [city] }
+outputType:
+  kind: Type.JsonSchema
+  schema: { type: object, properties: { summary: { type: string } }, required: [summary] }
+code: |
+  function main({ city }) { return { summary: `unreachable ${city}` }; }
+---
+kind: Mcp.Tools
+metadata: { name: BrokenTools }
+entries:
+  - name: broken_weather
+    description: Always returns isError true.
+    argumentsSchema:
+      type: object
+      properties: { city: { type: string } }
+      required: [city]
+    handler: { kind: JS.Script, name: WeatherImpl }
+    inputs:
+      city: "${{ request.arguments.city }}"
+    result:
+      isError: true
+      content:
+        - type: text
+          text: "city '${{ request.arguments.city }}' unavailable"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpHttp }
+serverInfo: { name: telo-test-broken, version: 1.0.0 }
+tools: [BrokenTools]
+---
+kind: McpClient.HttpClient
+metadata: { name: ClientUnderTest }
+url: http://127.0.0.1:8957/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsCall
+metadata: { name: CallBroken }
+client: ClientUnderTest
+---
+kind: Run.Sequence
+metadata: { name: TestRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8957
+    baseUrl: http://127.0.0.1:8957
+    logger: false
+    mounts:
+      - { path: /mcp, type: McpClientToolErrorTest.McpHttp }
+targets: [Server]
+steps:
+  - name: Wrap
+    try:
+      - name: BrokenCall
+        inputs:
+          name: broken_weather
+          arguments: { city: Atlantis }
+        invoke: { kind: McpClient.ToolsCall, name: CallBroken }
+    catch:
+      - name: AssertToolError
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_MCP_TOOL_ERROR }
+            required: [code]
