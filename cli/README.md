@@ -149,17 +149,26 @@ Installing 20 controllers for apps/my-app/telo.yaml
 **Typical Dockerfile usage:**
 
 ```dockerfile
-FROM telorun/telo:nodejs as build
+FROM telorun/node:latest-slim as build
 WORKDIR /srv
 COPY apps/my-app/ apps/my-app/
 COPY modules/ modules/
 RUN telo install apps/my-app/telo.yaml
 
-FROM telorun/telo:nodejs as production
+FROM telorun/node:latest-slim as production
 WORKDIR /srv
 COPY --from=build /srv /srv
 CMD ["apps/my-app/telo.yaml"]
 ```
+
+Available image variants:
+
+- `telorun/node:<version>` — debian base, no rust toolchain.
+- `telorun/node:<version>-slim` — debian-slim base, no rust toolchain (smallest footprint; recommended for production).
+- `telorun/node:<version>-rust-<rust-version>` — debian + rust toolchain (controllers that compile native deps at install time).
+- `telorun/node:<version>-rust-<rust-version>-slim` — slim + rust toolchain.
+
+Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
 
 The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.telo/manifests/`; the production stage is a single `COPY` and does no network I/O at boot.
 

@@ -16,6 +16,9 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,6 +42,7 @@ jobs:
         run: pnpm -r --if-present build
 
       - name: Create Release PR or publish
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version-packages
@@ -50,3 +54,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_REGISTRY: ${{ vars.TELO_REGISTRY }}
           TELO_REGISTRY_TOKEN: ${{ secrets.TELO_REGISTRY_TOKEN }}
+
+  docker:
+    name: Publish release Docker images
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/publish-docker.yml
+    with:
+      published-packages: ${{ needs.release.outputs.publishedPackages }}
+    secrets: inherit

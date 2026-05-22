@@ -71,13 +71,12 @@ Swap `index.mjs` for `bootstrap` if you copied the custom bootstrap.
 Image target:
 
 ```dockerfile
-FROM telorun/lambda-managed:latest
+FROM telorun/lambda-node-managed:latest
 COPY telo.yaml ${LAMBDA_TASK_ROOT}/
 COPY .telo/ ${LAMBDA_TASK_ROOT}/.telo/
-COPY node_modules/ ${LAMBDA_TASK_ROOT}/node_modules/
 ```
 
-`telorun/lambda-managed` (and `telorun/lambda-custom` for the custom variant) extends the AWS Lambda base image with Telo's runtime pre-installed. Your Dockerfile only adds the manifest, the install root, and your handler code.
+`telorun/lambda-node-managed` (and `telorun/lambda-node-custom` for the custom variant) extends the AWS Lambda base image with Telo's runtime pre-installed at `${LAMBDA_TASK_ROOT}`. Your Dockerfile only adds the manifest and the install root. The `-node-` segment flags the kernel runtime baked in, reserving the namespace for future `telorun/lambda-rust-*` images. Pin to an exact version (`telorun/lambda-node-managed:1.0.0`) for reproducible builds; `latest` rolls with each `@telorun/lambda` release.
 
 **5. Deploy** with `aws lambda update-function-code`, SAM, CDK, Terraform, Serverless, or your own pipeline. The deployment template's job:
 

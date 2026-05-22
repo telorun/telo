@@ -1,0 +1,341 @@
+name: Publish Docker Images
+
+# Two triggers:
+#  * push:main        → dev images. The kernel image publishes sha-tagged
+#                       slim variants only (amd64-only) and does NOT mutate
+#                       `:latest`. Application artifacts (registry,
+#                       telo-runner) are not npm-gated, so they publish
+#                       both `:latest` and `:sha-<short>` on every push.
+#  * workflow_call    → release images (semver-tagged, all variants, multi-arch).
+#                       Caller passes `published-packages` (the
+#                       changesets/action `publishedPackages` JSON output) so
+#                       per-image jobs can gate on the package they ship.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/docker-runner/**"
+      - "apps/registry/**"
+      - "modules/**"
+      - "cli/**"
+      - "kernel/**"
+      - "sdk/**"
+      - "analyzer/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/publish-docker.yml"
+  workflow_call:
+    inputs:
+      published-packages:
+        description: 'JSON array of {name, version} from changesets/action publishedPackages output'
+        type: string
+        default: '[]'
+
+concurrency:
+  group: publish-docker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  context:
+    name: Determine build context
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.compute.outputs.mode }}
+      cli-version: ${{ steps.compute.outputs.cli-version }}
+      lambda-version: ${{ steps.compute.outputs.lambda-version }}
+      rust-version: ${{ steps.compute.outputs.rust-version }}
+      node-major: ${{ steps.compute.outputs.node-major }}
+      short-sha: ${{ steps.compute.outputs.short-sha }}
+      release-cli: ${{ steps.compute.outputs.release-cli }}
+      release-lambda: ${{ steps.compute.outputs.release-lambda }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: compute
+        env:
+          PUBLISHED: ${{ inputs.published-packages }}
+        run: |
+          PUBLISHED="${PUBLISHED:-[]}"
+
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            MODE=release
+          else
+            MODE=dev
+          fi
+
+          CLI_VERSION=$(echo "$PUBLISHED" | jq -r '[.[] | select(.name=="@telorun/cli")][0].version // ""')
+          LAMBDA_VERSION=$(echo "$PUBLISHED" | jq -r '[.[] | select(.name=="@telorun/lambda")][0].version // ""')
+          RUST_VERSION=$(grep -E '^ARG RUST_VERSION=' cli/nodejs/Dockerfile | head -1 | cut -d= -f2)
+          NODE_MAJOR=$(grep -E '^ARG NODE_MAJOR=' modules/lambda/nodejs/managed.Dockerfile | head -1 | cut -d= -f2)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          {
+            echo "mode=$MODE"
+            echo "cli-version=$CLI_VERSION"
+            echo "lambda-version=$LAMBDA_VERSION"
+            echo "rust-version=$RUST_VERSION"
+            echo "node-major=$NODE_MAJOR"
+            echo "short-sha=$SHORT_SHA"
+            [ -n "$CLI_VERSION" ] && echo "release-cli=true" || echo "release-cli=false"
+            [ -n "$LAMBDA_VERSION" ] && echo "release-lambda=true" || echo "release-lambda=false"
+          } >> "$GITHUB_OUTPUT"
+
+  kernel-dev:
+    name: Build telorun/node dev tags
+    if: github.event_name == 'push'
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push lean-slim (sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: lean-slim
+          push: true
+          platforms: linux/amd64
+          tags: telorun/node:sha-${{ needs.context.outputs.short-sha }}-slim
+          cache-from: type=gha,scope=kernel-lean-slim
+          cache-to: type=gha,mode=max,scope=kernel-lean-slim
+
+      - name: Build & push rust-slim (sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: rust-slim
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            RUST_VERSION=${{ needs.context.outputs.rust-version }}
+          tags: telorun/node:sha-${{ needs.context.outputs.short-sha }}-rust-${{ needs.context.outputs.rust-version }}-slim
+          cache-from: |
+            type=gha,scope=kernel-rust-slim
+            type=gha,scope=kernel-lean-slim
+          cache-to: type=gha,mode=max,scope=kernel-rust-slim
+
+  kernel-release:
+    name: Build telorun/node release tags
+    if: needs.context.outputs.release-cli == 'true'
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tag matrix
+        id: tags
+        env:
+          V: ${{ needs.context.outputs.cli-version }}
+          RV: ${{ needs.context.outputs.rust-version }}
+        run: |
+          MAJOR=$(echo "$V" | cut -d. -f1)
+          MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
+
+          tagset() {
+            local suffix="$1"
+            echo "telorun/node:${V}${suffix}"
+            echo "telorun/node:${MAJOR_MINOR}${suffix}"
+            echo "telorun/node:${MAJOR}${suffix}"
+            echo "telorun/node:latest${suffix}"
+          }
+
+          {
+            echo 'lean<<EOF'
+            tagset ""
+            echo EOF
+            echo 'lean-slim<<EOF'
+            tagset "-slim"
+            echo EOF
+            echo 'rust<<EOF'
+            tagset "-rust-${RV}"
+            echo EOF
+            echo 'rust-slim<<EOF'
+            tagset "-rust-${RV}-slim"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build & push lean
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: lean
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.lean }}
+          cache-from: type=gha,scope=kernel-lean
+          cache-to: type=gha,mode=max,scope=kernel-lean
+
+      - name: Build & push lean-slim
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: lean-slim
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.lean-slim }}
+          cache-from: type=gha,scope=kernel-lean-slim
+          cache-to: type=gha,mode=max,scope=kernel-lean-slim
+
+      - name: Build & push rust
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: rust
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            RUST_VERSION=${{ needs.context.outputs.rust-version }}
+          tags: ${{ steps.tags.outputs.rust }}
+          cache-from: |
+            type=gha,scope=kernel-rust
+            type=gha,scope=kernel-lean
+          cache-to: type=gha,mode=max,scope=kernel-rust
+
+      - name: Build & push rust-slim
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: rust-slim
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            RUST_VERSION=${{ needs.context.outputs.rust-version }}
+          tags: ${{ steps.tags.outputs.rust-slim }}
+          cache-from: |
+            type=gha,scope=kernel-rust-slim
+            type=gha,scope=kernel-lean-slim
+          cache-to: type=gha,mode=max,scope=kernel-rust-slim
+
+  lambda-release:
+    name: Build telorun/lambda-node-* release tags
+    if: needs.context.outputs.release-lambda == 'true'
+    needs: context
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [managed, custom]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push lambda-node-${{ matrix.variant }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: modules/lambda/nodejs/${{ matrix.variant }}.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            NODE_MAJOR=${{ needs.context.outputs.node-major }}
+          tags: |
+            telorun/lambda-node-${{ matrix.variant }}:${{ needs.context.outputs.lambda-version }}
+            telorun/lambda-node-${{ matrix.variant }}:${{ needs.context.outputs.lambda-version }}-node${{ needs.context.outputs.node-major }}
+            telorun/lambda-node-${{ matrix.variant }}:latest
+          cache-from: type=gha,scope=lambda-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=lambda-${{ matrix.variant }}
+
+  registry:
+    name: Build telorun/registry
+    # Build on every push (latest + sha) and on a CLI release.
+    # On push: FROM telorun/node:sha-<short>-slim — pins to the kernel image
+    # built from the same commit, so the registry sha-tagged image is
+    # reproducible and exercises kernel changes in the same PR.
+    # On release: FROM telorun/node:<cli-version>-slim — pins to the
+    # just-published exact release.
+    # `always()` lets registry run even when an upstream kernel job was
+    # skipped (kernel-dev on workflow_call, kernel-release on push).
+    if: |
+      always() &&
+      (github.event_name == 'push' || needs.context.outputs.release-cli == 'true') &&
+      needs.context.result == 'success' &&
+      (needs.kernel-dev.result == 'success' || needs.kernel-dev.result == 'skipped') &&
+      (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
+    needs: [context, kernel-dev, kernel-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve TELO_NODE_VERSION
+        id: telo
+        env:
+          CLI_VERSION: ${{ needs.context.outputs.cli-version }}
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: |
+          # On a CLI release commit, pin to the just-published version.
+          # On a plain push, pin to the same-commit dev kernel tag so the
+          # sha-scoped registry image is reproducible and exercises kernel
+          # changes from the current commit.
+          if [ -n "$CLI_VERSION" ]; then
+            echo "version=$CLI_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & push registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/registry/Dockerfile
+          target: production
+          push: true
+          build-args: |
+            TELO_NODE_VERSION=${{ steps.telo.outputs.version }}
+          tags: |
+            telorun/registry:latest
+            telorun/registry:sha-${{ needs.context.outputs.short-sha }}
+          cache-from: type=gha,scope=registry
+          cache-to: type=gha,mode=max,scope=registry
+
+  runner:
+    name: Build telorun/telo-runner
+    if: github.event_name == 'push'
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/docker-runner/Dockerfile
+          target: production
+          push: true
+          tags: |
+            telorun/telo-runner:latest
+            telorun/telo-runner:sha-${{ needs.context.outputs.short-sha }}
+          cache-from: type=gha,scope=runner
+          cache-to: type=gha,mode=max,scope=runner
