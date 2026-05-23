@@ -65,9 +65,3 @@ throws:
 ```
 
 `inherit` is driven by the analyzer's dataflow pass over `x-telo-step-context` arrays; future composers opt in by declaring both the annotation and `inherit: true`. See [modules/run/docs/structured-errors.md](../../modules/run/docs/structured-errors.md) for the end-to-end flow.
-
-## Related Docs
-
-- Kernel overview: [kernel/README.md](../../kernel/README.md)
-- Built‑in modules: [Standard Library](../../modules/README.md)
-- SDKs index: [sdk/README.md](../README.md)

@@ -5,3 +5,4 @@ Language‑specific SDKs for building Telo modules. Each SDK exposes the same co
 ## Available SDKs
 
 - [**Node.js**](nodejs/README.md)
+- [**Rust**](rust/README.md)

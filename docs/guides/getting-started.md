@@ -1,6 +1,6 @@
 ---
 sidebar_label: Getting Started
-slug: /guides/getting-started
+slug: /getting-started
 ---
 
 # Getting Started
@@ -12,6 +12,8 @@ This guide walks through installing Telo, running a minimal manifest, and
 understanding what just happened.
 
 ## Install
+
+Currently Telo kernel is written only in NodeJS (Rust version is planned next). Install it globally with npm or pnpm:
 
 ```bash
 npm install -g @telorun/cli
@@ -99,7 +101,7 @@ When you ran `telo ./hello.yaml`, the kernel:
 4. **Dispatched** the `targets` declared on the Application — here,
    `Main` — and ran the sequence to completion.
 
-Telo itself doesn't know what a console *is*. Each `kind:` is owned by a
+Telo itself doesn't know what a console _is_. Each `kind:` is owned by a
 controller module (loaded over npm at boot) that implements the resource's
 lifecycle. The kernel just orchestrates loading, init order, references,
 and dispatch.

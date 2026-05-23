@@ -218,6 +218,11 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: "category",
+          label: "Rust",
+          items: [{ type: "doc", id: "sdk/rust/README", label: "Overview" }],
+        },
       ],
     },
   ],
