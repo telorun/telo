@@ -1,30 +1,80 @@
 # Telo Standard Library
 
-Here you can find standard Telo modules ready to use by the kernel. Each module is self‑contained and declared by its own manifest, resources, and definitions.
+The Telo standard library is the collection of modules that ship with the kernel — ready-to-import building blocks for AI, HTTP, storage, workflow orchestration, encoding, runtime targets, scripting, and ops. Each module is self-contained, declared by its own `telo.yaml`, and composes into your application through `Telo.Import`.
 
-## How Modules Fit Together
+For how modules are defined, imported, and composed, see the [Module Specification](../kernel/docs/modules.md).
 
-Modules own specific **resource kinds**. A kernel manifest composes multiple modules into one host, and execution is routed by Kind to the owning module. This keeps the system modular and lets teams add or replace capabilities without changing the core kernel.
+## Modules by domain
 
-For a full explanation of how modules are defined, imported, and composed, see the [Module Specification](../kernel/docs/modules.md).
-
-## Included Modules
+### AI
 
 | Module | Description |
-| ------ | ----------- |
-| [**assert**](./assert/docs/manifest.md) | Assertion and value verification for testing (`Assert.Schema`) |
-| [**benchmark**](./benchmark/README.md) | Load benchmarking for any invocable Telo resource |
-| [**config**](./config/README.md) | Environment variables, secrets, and composed config via `Config.*` |
-| [**console**](./console/README.md) | Console I/O via `Console.WriteLine` and `Console.ReadLine` |
-| [**http-client**](./http-client/README.md) | Outgoing HTTP calls via `Http.Request` and `Http.Client` |
-| [**http-server**](./http-server/README.md) | HTTP server and routing via `Http.Server` and `Http.Api` |
-| [**javascript**](./javascript/README.md) | Inline JavaScript execution via `JavaScript.Script` |
-| [**run**](./run/docs/structured-errors.md) | Unified sequence execution with invoke, if, while, switch, and try steps |
-| [**s3**](./s3/docs/bucket.md) | S3-compatible object storage |
-| [**sql**](./sql/README.md) | SQL database access for PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Exec`, `Sql.Select`, and `Sql.Transaction` |
-| [**sql-repository**](./sql-repository/README.md) | Domain-shaped CRUD over a table via `SqlRepository.Read/Create/Delete` |
-| [**starlark**](./starlark/README.md) | Deterministic, bounded scripting via `Starlark.Script` |
-| [**test**](./test/docs/suite.md) | Test runner for YAML-based test suites |
-| [**type**](./type/README.md) | Named data types via `Type.JsonSchema` |
-| [**workflow**](./workflow/README.md) | Workflow orchestration primitives with pluggable backends |
-| [**workflow-temporal**](./workflow-temporal/README.md) | Temporal backend for `Workflow.Graph` |
+| --- | --- |
+| [ai](./ai/README.md) | LLM access via `Ai.Model`, `Ai.Text` (buffered), and `Ai.TextStream` (streaming). |
+| [ai-openai](./ai-openai/README.md) | OpenAI provider implementing `Ai.OpenaiModel`. |
+
+### HTTP & APIs
+
+| Module | Description |
+| --- | --- |
+| [http-server](./http-server/README.md) | Language-agnostic HTTP server and routing (`Http.Server`, `Http.Api`). |
+| [http-client](./http-client/README.md) | Outgoing HTTP calls (`Http.Client`, `Http.Request`). |
+| [mcp-server](./mcp-server/README.md) | Model Context Protocol server transports and tool bundles. |
+| [mcp-client](./mcp-client/README.md) | MCP client transports plus `tools/call` and `tools/list` dispatch. |
+
+### Storage & Data
+
+| Module | Description |
+| --- | --- |
+| [sql](./sql/README.md) | PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Exec`, `Sql.Select`, `Sql.Transaction`, and migrations. |
+| [sql-repository](./sql-repository/README.md) | Domain-shaped CRUD over a table via `SqlRepository.Read/Create/Delete`. |
+| [s3](./s3/README.md) | S3-compatible object storage. |
+| [type](./type/README.md) | Named data types via `Type.JsonSchema`. |
+| [yaml](./yaml/README.md) | YAML parsing primitives. |
+
+### Workflow & Control Flow
+
+| Module | Description |
+| --- | --- |
+| [run](./run/README.md) | Unified sequence execution with invoke, if, while, switch, and try steps. |
+| [workflow](./workflow/README.md) | Workflow orchestration primitives with pluggable backends. |
+| [workflow-temporal](./workflow-temporal/README.md) | Temporal backend for `Workflow.Graph`. |
+
+### Encoding & Streams
+
+| Module | Description |
+| --- | --- |
+| [codec](./codec/README.md) | `Codec.Encoder` and `Codec.Decoder` abstracts. |
+| [plain-text-codec](./plain-text-codec/README.md) | UTF-8 plain-text encoder and decoder. |
+| [ndjson-codec](./ndjson-codec/README.md) | Newline-delimited JSON encoder. |
+| [sse-codec](./sse-codec/README.md) | Server-Sent Events encoder. |
+| [octet-codec](./octet-codec/README.md) | Raw byte encoder and decoder. |
+| [record-stream](./record-stream/README.md) | Record stream primitives. |
+
+### Runtime Targets
+
+| Module | Description |
+| --- | --- |
+| [lambda](./lambda/README.md) | Run your manifest as an AWS Lambda function (`Lambda.Function`, `Lambda.HttpApi`, `Lambda.Sqs`, `Lambda.Direct`). |
+
+### Scripting
+
+| Module | Description |
+| --- | --- |
+| [javascript](./javascript/README.md) | Inline JavaScript execution via `JavaScript.Script`. |
+| [starlark](./starlark/README.md) | Deterministic, bounded scripting via `Starlark.Script`. |
+
+### Configuration & Ops
+
+| Module | Description |
+| --- | --- |
+| [config](./config/README.md) | Environment variables, secrets, and composed config via `Config.*`. |
+| [console](./console/README.md) | Console I/O via `Console.WriteLine` and `Console.ReadLine`. |
+| [benchmark](./benchmark/README.md) | Load benchmarking for any invocable Telo resource. |
+
+### Testing
+
+| Module | Description |
+| --- | --- |
+| [assert](./assert/README.md) | Assertion and value verification for testing. |
+| [test](./test/README.md) | Test runner for YAML-based test suites. |

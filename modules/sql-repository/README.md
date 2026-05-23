@@ -1,26 +1,60 @@
 # SQL Repository
 
-Domain-shaped CRUD over a table. `SqlRepository.Read`, `SqlRepository.Create`, and `SqlRepository.Delete` each take a table name and a connection and expose a typed invocable whose inputs describe the operation in domain terms (`filters`, `data`) rather than SQL.
+Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connection` and exposes a typed invocable whose inputs describe the operation in domain terms (`filters`, `data`) instead of raw SQL.
 
-The module has no controllers — each kind is a parameterized template that expands into one or more `Sql.Query` / `Sql.Exec` resources at load time. That means everything you know about `Sql` (connections, transactions, bindings, result shape) carries over directly.
+## Why use this
 
----
+- **Domain-shaped inputs** — pass `filters` or `data` objects; the module generates parameterized SQL.
+- **No new controllers** — each kind is a parameterized template that expands into `Sql.Query` / `Sql.Exec` resources at load time.
+- **Transaction-aware** — generated invocations honour `Sql.Transaction` via `AsyncLocalStorage` exactly like hand-written SQL.
+- **Straightforward CRUD** — ideal for HTTP routes fronting a single table, admin panels, and simple internal APIs.
 
-## SqlRepository.Read
+## Kinds
 
-Reads rows from a table filtered by an equality map.
+| Kind | Purpose |
+| --- | --- |
+| `SqlRepository.Read` | Reads rows from a table filtered by an equality map. |
+| `SqlRepository.Create` | Inserts a row from a domain object. |
+| `SqlRepository.Delete` | Removes rows matching an equality map. |
+
+## Example
 
 ```yaml
+kind: Telo.Application
+metadata: { name: users-api, version: 1.0.0 }
+secrets:
+  DATABASE_URL: { type: string }
+---
+kind: Telo.Import
+metadata: { name: Sql }
+source: std/sql@1.0.0
+---
+kind: Telo.Import
+metadata: { name: SqlRepository }
+source: std/sql-repository@0.1.0
+---
+kind: Sql.Connection
+metadata: { name: Db }
+driver: postgres
+connectionString: "${{ secrets.DATABASE_URL }}"
+---
 kind: SqlRepository.Read
-metadata:
-  name: FindUsers
-connection:
-  kind: Sql.Connection
-  name: Db
+metadata: { name: FindUsers }
+connection: { kind: Sql.Connection, name: Db }
+table: users
+---
+kind: SqlRepository.Create
+metadata: { name: InsertUser }
+connection: { kind: Sql.Connection, name: Db }
+table: users
+---
+kind: SqlRepository.Delete
+metadata: { name: RemoveUser }
+connection: { kind: Sql.Connection, name: Db }
 table: users
 ```
 
-Invoke with a `filters` object — each key becomes an `= ?` predicate joined with `AND`. An empty `filters` selects every row.
+Invoke from a handler step:
 
 ```yaml
 handler:
@@ -32,83 +66,6 @@ inputs:
     status: active
 ```
 
-Generated query (shape):
+## When to Use It
 
-```sql
-SELECT * FROM users WHERE email = ? AND status = ?
-```
-
-Result: the same `{ rows, rowCount }` shape as `Sql.Query`.
-
----
-
-## SqlRepository.Create
-
-Inserts a row from a domain object.
-
-```yaml
-kind: SqlRepository.Create
-metadata:
-  name: InsertUser
-connection:
-  kind: Sql.Connection
-  name: Db
-table: users
-```
-
-```yaml
-handler:
-  kind: SqlRepository.Create
-  name: InsertUser
-inputs:
-  data:
-    email: "${{ request.body.email }}"
-    status: pending
-```
-
-Generated statement (shape):
-
-```sql
-INSERT INTO users (email, status) VALUES (?, ?)
-```
-
----
-
-## SqlRepository.Delete
-
-Removes rows matching an equality map.
-
-```yaml
-kind: SqlRepository.Delete
-metadata:
-  name: RemoveUser
-connection:
-  kind: Sql.Connection
-  name: Db
-table: users
-```
-
-```yaml
-handler:
-  kind: SqlRepository.Delete
-  name: RemoveUser
-inputs:
-  filters:
-    id: "${{ request.params.id }}"
-```
-
-Generated statement (shape):
-
-```sql
-DELETE FROM users WHERE id = ?
-```
-
-A `Delete` without filters would generate `DELETE FROM users WHERE` — which is invalid SQL. Make sure every invocation supplies at least one filter.
-
----
-
-## When to use it
-
-`SqlRepository.*` is designed for straightforward CRUD — HTTP routes that front a single table, admin panels, simple internal APIs. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Select`](../sql/select.md) or `Sql.Query` directly.
-
-Because each repository kind expands into ordinary `Sql.*` resources, it participates in transactions exactly like hand-written SQL — wrap a sequence in `Sql.Transaction` and the generated invocations pick up the active transaction automatically.
+`SqlRepository.*` is designed for straightforward CRUD. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Select`](../sql/select.md) or `Sql.Query` directly. A `SqlRepository.Delete` without filters would generate invalid SQL (`DELETE FROM users WHERE`) — make sure every invocation supplies at least one filter.

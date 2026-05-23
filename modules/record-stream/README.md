@@ -1,23 +1,37 @@
-# record-stream
+# Record Stream
 
-Stream operations on structured records. Format-neutral transformers / sources / sinks that operate on `Stream<record>` — distinct from byte-stream codecs (`Octet`, `Ndjson`, `Sse`, `PlainText`) which all produce `Stream<Uint8Array>`.
+Stream operations on structured records. Format-neutral transformers, sources, and sinks that operate on `Stream<record>` — distinct from byte-stream codecs (`Octet`, `Ndjson`, `Sse`, `PlainText`) which all produce `Stream<Uint8Array>`.
 
-The package's namespace is the input shape it operates on; sibling `byte-stream/` and `text-stream/` packages with parallel structure may exist alongside it later.
+## Why use this
 
-## RecordStream.ExtractText
+- **Tagged-union projection** — `ExtractText` projects a discriminated stream down to `Stream<string>` via a per-variant `emit` / `drop` / `throw` action map.
+- **Loud on unknown variants** — unmapped discriminator values throw `ERR_UNKNOWN_RECORD`; new record kinds never silently disappear.
+- **Lazy fan-out** — `Tee` serializes source pulls and buffers per-consumer, so each branch sees every item in order.
+- **Stream-typed** — every input and output is `x-telo-stream: true`, so chains compose with codecs, sinks, and other stream kinds.
 
-Projects a discriminated stream of records down to a `Stream<string>` using a per-variant action map.
+## Kinds
+
+| Kind | Purpose |
+| --- | --- |
+| `RecordStream.ExtractText` | Project a discriminated `Stream<record>` to `Stream<string>` via a per-variant action map. |
+| `RecordStream.Tee` | Fan one input stream out to two consumers; each output sees every item. |
+
+## Example
 
 ```yaml
 kind: RecordStream.ExtractText
 metadata:
   name: Deltas
-discriminator: type            # optional, defaults to 'type'
+discriminator: type
 records:
   text-delta: { do: emit, field: delta }
   finish:     { do: drop }
   error:      { do: throw, field: error }
 ```
+
+## RecordStream.ExtractText
+
+Projects a discriminated stream of records down to a `Stream<string>` using a per-variant action map.
 
 Each item flowing through `input` is matched on `record[discriminator]` against the `records` map. The matched entry's `do` action selects behaviour:
 
@@ -33,23 +47,11 @@ Records whose discriminator value isn't listed throw `ERR_UNKNOWN_RECORD` — lo
 
 The canonical use case is projecting `Ai.TextStream`'s `Stream<StreamPart>` (where parts are `text-delta` / `finish` / `error`) down to a `Stream<string>` of plain text deltas — typically piped into a text-aware sink like `Console.WriteStream` or an HTTP response body.
 
-```yaml
-kind: RecordStream.ExtractText
-metadata: { name: Deltas }
-discriminator: type
-records:
-  text-delta: { do: emit, field: delta }
-  finish:     { do: drop }
-  error:      { do: throw, field: error }
-```
-
-The pipeline becomes `Ai.TextStream → RecordStream.ExtractText → Console.WriteStream` — no codec, no byte-encoding intermediate.
+The pipeline becomes `Ai.TextStream -> RecordStream.ExtractText -> Console.WriteStream` — no codec, no byte-encoding intermediate.
 
 ### Forward-compatibility
 
 When the upstream record union widens (e.g. AI providers add `tool-call-delta`, `thinking`, citation parts), existing consumers either add a new `records` entry or get the `ERR_UNKNOWN_RECORD` failure. There's no silent loss of new record kinds.
-
----
 
 ## RecordStream.Tee
 
@@ -82,4 +84,3 @@ Source is pulled lazily — at most one source `next()` is in flight at any time
 ### Errors
 
 If the source iterator throws, both outputs throw the same error on their next pull.
-

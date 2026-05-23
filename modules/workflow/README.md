@@ -1,16 +1,24 @@
 # Workflow
 
-**Warning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
+Workflow orchestration primitives with pluggable backend providers. `Workflow.Graph` declares the shape of a workflow; a `Workflow.Backend` implementation executes it.
 
-Workflow orchestration primitives with pluggable backend providers. `Workflow.Graph` declares the shape of a workflow — a list of named nodes, each invoking a resource — and delegates execution to a `Workflow.Backend` implementation.
+> **Warning**: this module is planned to be implemented, it is not available yet. The README is a placeholder for the intended design and API.
 
-The module ships the contract; backends live in their own modules. `workflow-temporal` provides the Temporal-backed implementation; additional backends (local, SQS, custom queueing) can be authored the same way.
+## Why use this
 
----
+- **Backend-agnostic graphs** — the same `Workflow.Graph` targets Temporal, an in-process loop, or a queue-based executor without changes.
+- **Invocable nodes** — each node calls any `Telo.Invocable` (HTTP, SQL, scripts, other graphs).
+- **Backend-typed options** — per-node `options` is schema-driven via `x-telo-schema-from`, so retry policies and timeouts type-check against the chosen backend.
+- **Composable** — graphs are themselves runnable / invocable, so they slot into `Run.Sequence` and Application `targets`.
 
-## The shape
+## Kinds
 
-A `Workflow.Graph` is a runnable made of nodes. Each node invokes a resource with a capability of `Telo.Invocable` — an HTTP call, a `Sql.Exec`, a `JavaScript.Script`, another graph, anything.
+| Kind | Purpose |
+| --- | --- |
+| `Workflow.Backend` | Abstract — implemented by backend modules (e.g. `workflow-temporal`). |
+| `Workflow.Graph` | Runnable list of named nodes that invoke resources via a `Workflow.Backend`. |
+
+## Example
 
 ```yaml
 kind: Workflow.Graph
@@ -34,19 +42,17 @@ nodes:
         initialInterval: 10s
 ```
 
+## The shape
+
 - `backend` references a provider that implements the `Workflow.Backend` abstract. Its `$defs.NodeOptions` schema shape dictates what keys `options` accepts per node (resolved via `x-telo-schema-from`).
 - `nodes[].invoke` is any `Telo.Invocable` reference.
 - `nodes[].options` is backend-specific — retry policies, timeouts, task queues, etc.
-
----
 
 ## Backends
 
 `Workflow.Backend` is a `Telo.Abstract` — it defines a capability with no concrete controller of its own. A backend module declares a `Telo.Definition` whose `capability: Workflow.Backend` and provides the runtime that actually executes the graph.
 
 See [workflow-temporal](../workflow-temporal/README.md) for the reference implementation.
-
----
 
 ## Why a separate abstract
 
@@ -57,8 +63,6 @@ Keeping the backend pluggable means the same `Workflow.Graph` declaration can ta
 - **Queue-based** (SQS, Pub/Sub, etc.) — when you want durability without the weight of a workflow engine.
 
 Callers don't care which backend is behind the graph; they just invoke it.
-
----
 
 ## Notes
 

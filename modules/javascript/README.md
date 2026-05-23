@@ -1,55 +1,53 @@
 # JavaScript
 
-Inline JavaScript executed by the kernel. Use `JavaScript.Script` for per-request compute that is too complex for a CEL expression but does not warrant a dedicated controller — input transforms, response shaping, ad-hoc arithmetic, glue logic inside a `Run.Sequence`.
+Inline JavaScript executed by the kernel. `JavaScript.Script` is a `Telo.Invocable` for per-request compute that is too complex for a CEL expression but does not warrant a dedicated controller.
 
-`JavaScript.Script` is a `Telo.Invocable` — it exposes an `invoke(inputs)` contract and is callable from any invocable slot (HTTP handlers, sequence steps, workflow nodes, etc).
+## Why use this
 
----
+- **Invocable anywhere** — usable from HTTP handlers, sequence steps, workflow nodes, or any invocable slot.
+- **Typed inputs and outputs** — `inputType` / `outputType` accept inline JSON Schema or a named `Type.JsonSchema`; the runtime validates inputs before `main` runs.
+- **Async-aware** — `main` may be `async`; the kernel awaits the return value.
+- **Structured errors** — thrown `Error`s surface through the normal `Run.Sequence` `try/catch` flow.
 
-## The script contract
+## Kinds
 
-The `code` field must define a `main` function. The kernel calls it with the invocation inputs and uses the returned value as the result.
+| Kind | Purpose |
+| --- | --- |
+| `JavaScript.Script` | Run an inline `main({ ... })` JavaScript function as an invocable resource. |
+
+## Example
 
 ```yaml
 kind: JavaScript.Script
 metadata:
   name: Add
+inputType:
+  type: object
+  properties:
+    a: { type: number }
+    b: { type: number }
+  required: [a, b]
+outputType:
+  type: object
+  properties:
+    sum: { type: number }
 code: |
   function main({ a, b }) {
     return { sum: a + b };
   }
 ```
 
+## The script contract
+
+The `code` field must define a `main` function. The kernel calls it with the invocation inputs and uses the returned value as the result.
+
 - `main` may be `async` — the kernel awaits its return.
 - The returned value is the full result; property access (`result.sum`) works downstream.
 - Throwing an `Error` surfaces as an invocation error through the normal `Run.Sequence` `try/catch` flow.
 
----
-
 ## Typed inputs and outputs
 
 `inputType` and `outputType` accept either an inline JSON Schema or a named `Type.JsonSchema` reference. They drive analyzer validation and the editor's autocomplete — the runtime itself also validates inputs before `main` runs.
-
-```yaml
-kind: JavaScript.Script
-metadata:
-  name: Normalize
-inputType:
-  type: object
-  properties:
-    email: { type: string }
-  required: [email]
-outputType:
-  type: object
-  properties:
-    normalized: { type: string }
-code: |
-  function main({ email }) {
-    return { normalized: email.trim().toLowerCase() };
-  }
-```
-
-Or reference a named type:
 
 ```yaml
 kind: Type.JsonSchema
@@ -70,8 +68,6 @@ code: |
     return { normalized: email.trim().toLowerCase() };
   }
 ```
-
----
 
 ## Using it in a sequence
 
@@ -94,8 +90,6 @@ steps:
 outputs:
   total: "${{ steps.compute.result.gross }}"
 ```
-
----
 
 ## Notes
 

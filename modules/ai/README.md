@@ -1,34 +1,30 @@
-# Telo AI
+# AI
 
-LLM access for Telo. `@telorun/ai` defines `Ai.Model` — the abstract every provider implements — and ships two ready-to-use consumers: `Ai.Text` for buffered single-turn calls and `Ai.TextStream` for streaming output. Providers (OpenAI, Anthropic, Ollama, third-party) plug in via `Telo.Abstract`, so swapping models is a config change, not a code change.
+LLM access for Telo — defines the `Ai.Model` abstract every provider implements and ships ready-to-use buffered and streaming consumers.
 
-`@telorun/ai` ships **three kinds**:
+## Why use this
 
-| Kind            | Capability       | Purpose                                                                                          |
-| --------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
-| `Ai.Model`      | `Telo.Abstract`  | Contract every LLM provider implements (`invoke` + `stream`).                                    |
-| `Ai.Text`       | `Telo.Invocable` | Buffered single-turn LLM call delegating to any `Ai.Model` implementation.                       |
-| `Ai.TextStream` | `Telo.Invocable` | Streaming counterpart: drives `model.stream()`, returns `{ output: Stream<StreamPart> }`.        |
+- **Provider-agnostic** — swap models by changing one resource reference; no controller code touches LLM SDKs directly.
+- **Buffered and streaming** — `Ai.Text` returns a complete response; `Ai.TextStream` exposes an async iterable of `StreamPart` records.
+- **Composable encoding** — pipe a stream through any `Codec.Encoder` (NDJSON, SSE, plain text, raw bytes) without bespoke serialization.
+- **Open for extension** — `Ai.Model` is a `Telo.Abstract`; any module declaring `extends: Ai.Model` is a drop-in provider.
+- **Typed contract** — provider input (`messages`, `options`) and output (`text`, `usage`, `finishReason`) are validated by JSON Schema.
 
-Concrete provider models live in their own packages so users only install the SDKs they need:
+## Kinds
 
-| Package              | Provides                           |
-| -------------------- | ---------------------------------- |
-| `@telorun/ai-openai` | `Ai.OpenaiModel`                   |
-| (third party)        | any `extends: Ai.Model` definition |
+| Kind | Purpose |
+| --- | --- |
+| `Ai.Model` | Abstract contract every LLM provider implements (`invoke` + `stream`). |
+| `Ai.Text` | Buffered single-turn LLM call delegating to any `Ai.Model` implementation. |
+| `Ai.TextStream` | Streaming counterpart that returns `{ output: Stream<StreamPart> }`. |
 
----
-
-## Buffered usage — `Ai.Text`
+## Example
 
 ```yaml
 kind: Telo.Application
 metadata: { name: my-app, version: 1.0.0 }
-targets:
-  - Workflow
 secrets:
-  OPENAI_API_KEY:
-    type: string
+  OPENAI_API_KEY: { type: string }
 ---
 kind: Telo.Import
 metadata: { name: Ai }
@@ -51,74 +47,15 @@ model:
 system: "Summarize concisely."
 ```
 
-Invoke from a `Run.Sequence`:
+## Reference
 
-```yaml
-- name: Summarize
-  inputs:
-    prompt: "Summarize: ${{ vars.text }}"
-  invoke:
-    kind: Ai.Text
-    name: Summarizer
-- name: Use
-  inputs:
-    summary: "${{ steps.Summarize.result.text }}"
-  invoke: ...
-```
+- [`Ai.Model`](docs/ai-model.md) — provider contract and implementation walkthrough.
+- [`Ai.Text`](docs/ai-text.md) — buffered single-turn call.
+- [`Ai.TextStream`](docs/ai-text-stream.md) — streaming consumer.
 
-See [docs/ai-text.md](./docs/ai-text.md) for the full field reference.
+## Provider Contract
 
----
-
-## Streaming usage — `Ai.TextStream`
-
-`Ai.TextStream.invoke(...)` resolves to `{ output: Stream<StreamPart> }`. The `output` property is marked `x-telo-stream: true` — CEL passes it through by reference, the analyzer treats it as opaque (no member access past `result.output`). Encoding (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility: pipe `result.output` through a format-codec encoder kind, or iterate the stream directly in a `JS.Script` step.
-
-```yaml
-kind: Ai.TextStream
-metadata: { name: ChatStream }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4o
----
-# NDJSON encoder from @telorun/ndjson-codec — turns StreamPart records into
-# `JSON.stringify(part) + "\n"` byte chunks.
-kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
----
-kind: Run.Sequence
-metadata: { name: ChatToNdjson }
-steps:
-  - name: Stream
-    inputs: { prompt: "Hello" }
-    invoke: { kind: Ai.TextStream, name: ChatStream }
-  - name: Encode
-    inputs:
-      input: "${{ steps.Stream.result.output }}"
-    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
-  # steps.Encode.result.output is now Stream<Uint8Array> — pipe to a transport,
-  # or collect via PlainText.Decoder for inspection.
-```
-
-Format codecs ship as separate packages (one per format, both directions where applicable):
-
-| Package                       | Provides                                            |
-| ----------------------------- | --------------------------------------------------- |
-| `@telorun/codec`              | `Codec.Encoder`, `Codec.Decoder` abstracts          |
-| `@telorun/plain-text-codec`   | `PlainText.Encoder`, `PlainText.Decoder` (UTF-8)    |
-| `@telorun/ndjson-codec`       | `Ndjson.Encoder` (one JSON record per line)         |
-| `@telorun/sse-codec`          | `Sse.Encoder` (Server-Sent Events frames)           |
-| `@telorun/octet-codec`        | `Octet.Encoder`, `Octet.Decoder` (raw bytes)        |
-
-See [docs/ai-text-stream.md](./docs/ai-text-stream.md) for the full format reference and `JS.Script` iteration patterns.
-
----
-
-## Implementing a new provider
-
-`Ai.Model` is an open-for-extension `Telo.Abstract`. Any module declaring `kind: Telo.Definition` with `capability: Telo.Invocable, extends: Ai.Model` is a drop-in provider — no changes to `@telorun/ai` required. Walkthrough: [docs/ai-model.md](./docs/ai-model.md).
-
-The runtime contract every provider honours:
+Any module declaring `kind: Telo.Definition` with `capability: Telo.Invocable` and `extends: Ai.Model` is a drop-in provider. The runtime contract every provider honours:
 
 ```ts
 interface AiModelInstance {
@@ -137,34 +74,10 @@ type StreamPart =
   | { type: "error"; error: { message: string; code?: string; data?: unknown } };
 ```
 
-`Ai.Text` calls `invoke()`; `Ai.TextStream` wraps `stream()` and exposes the iterable as `{ output: Stream<StreamPart> }`. Providers expose both methods (using e.g. Vercel AI SDK's `generateText` + `streamText`). `StreamPart.error` is a plain JSON-serializable object — providers translate native `Error` instances at yield time so generic encoders can frame error parts without bespoke serialization.
+`Ai.Text` calls `invoke()`; `Ai.TextStream` wraps `stream()` and exposes the iterable as `{ output: Stream<StreamPart> }`. `StreamPart.error` is a plain JSON-serializable object — providers translate native `Error` instances at yield time so generic encoders can frame error parts without bespoke serialization.
 
----
+## Out of Scope
 
-## Out of scope (this module)
-
-- **Tool use / function calling** → planned for `Ai.Agent` / `Ai.Worker`, separate kinds with their own future plans.
-- **Multimodal input** → `content` is `string` today; widening to `string | ContentPart[]` is additive when needed.
-- **Structured outputs / JSON mode** → not in the core contract; providers may expose via `options`.
-
-## Layout
-
-```text
-modules/ai/
-├── README.md                ← you are here
-├── telo.yaml                ← Telo.Library + Telo.Abstract(Model) + Telo.Definition(Text, TextStream)
-├── docs/
-│   ├── ai-model.md          ← provider contract & implementation walkthrough
-│   ├── ai-text.md           ← Ai.Text field reference (buffered)
-│   └── ai-text-stream.md    ← Ai.TextStream field reference (streaming)
-├── tests/                   ← hermetic tests using internal AiEcho fixture
-│   └── __fixtures__/
-│       └── ai-echo.yaml     ← test-only Ai.Model that echoes the last message
-└── nodejs/src/
-    ├── ai-text-controller.ts
-    ├── ai-text-stream-controller.ts
-    ├── ai-echo-controller.ts
-    ├── stream-collector-controller.ts ← test-support: consumes stream(), collects parts
-    ├── redact.ts                     ← shared snapshot helper for providers
-    └── types.ts                      ← Message, Usage, FinishReason, StreamPart, AiModelInstance
-```
+- **Tool use / function calling** — planned for `Ai.Agent` / `Ai.Worker`, separate kinds.
+- **Multimodal input** — `content` is `string` today; widening to `string | ContentPart[]` is additive when needed.
+- **Structured outputs / JSON mode** — not in the core contract; providers may expose via `options`.

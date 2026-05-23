@@ -275,24 +275,46 @@ function writeLlmsFullTxt(filePath, siteConfig, sections) {
 
 /**
  * Mirror of the `markdown.parseFrontMatter` hook in docusaurus.config.ts:
- * docs under `modules/` serve under `/standard-library/...` but the slug
- * is injected at build time, so the raw `.md` files don't carry it.
- * The llms-txt plugin reads the files directly, so it has to apply the
- * same mapping itself or it would emit `/modules/...` URLs that no
- * Docusaurus route ever serves.
+ * docs co-located with their source live under various route prefixes
+ * (`/reference/std/...`, `/reference/kernel/...`, `/extend/sdk/...`, …)
+ * but the slug is injected at build time, so the raw `.md` files don't
+ * carry it. The llms-txt plugin reads the files directly, so it has to
+ * apply the same mapping itself or it would emit ids that no Docusaurus
+ * route ever serves.
  *
  * Returns `undefined` for ids that don't need a synthetic slug, so the
- * default id-based logic in `resolveDoc` still runs for non-module docs.
+ * default id-based logic in `resolveDoc` still runs for non-mapped docs.
  */
 function syntheticSlugForId(id) {
-  if (!id.startsWith("modules/")) return undefined;
-  let rel = id.slice("modules/".length);
-  if (rel === "README") {
-    rel = "";
-  } else {
-    rel = rel.replace(/\/README$/, "");
+  if (id === "modules/lambda/docs/deploying") return "/build/deploying-to-lambda";
+
+  if (id.startsWith("modules/")) {
+    let rel = id.slice("modules/".length);
+    if (rel === "README") rel = "";
+    else rel = rel.replace(/\/README$/, "");
+    return rel ? `/reference/std/${rel}` : "/reference/std";
   }
-  return rel ? `/standard-library/${rel}` : "/standard-library";
+
+  if (id === "kernel/README") return "/reference/kernel";
+  if (id.startsWith("kernel/docs/")) {
+    return `/reference/kernel/${id.slice("kernel/docs/".length)}`;
+  }
+
+  if (id === "sdk/README") return "/extend/sdk";
+  if (id === "sdk/nodejs/README") return "/extend/sdk/nodejs";
+  if (id === "sdk/rust/README") return "/extend/sdk/rust";
+  if (id.startsWith("templating/nodejs/docs/")) {
+    return `/extend/sdk/nodejs/${id.slice("templating/nodejs/docs/".length)}`;
+  }
+
+  if (id === "cli/README") return "/learn/installation-and-cli";
+  if (id === "tests/README") return "/build/testing";
+  if (id === "docs/coding-agents") return "/build/coding-agents";
+  if (id.startsWith("docs/guides/")) return `/learn/${id.slice("docs/guides/".length)}`;
+
+  if (id === "examples/INDEX") return "/examples";
+
+  return undefined;
 }
 
 function cleanTitle(s) {

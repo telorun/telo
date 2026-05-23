@@ -1,36 +1,38 @@
 # MCP Client
 
-Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP +
-stdio transports, transport-agnostic `tools/call` and `tools/list` dispatch.
+Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP and stdio transports, transport-agnostic `tools/call` and `tools/list` dispatch.
 
-The module mirrors `mcp-server`'s factoring: **transport kinds**
-(`Mcp.HttpClient`, `Mcp.StdioClient`) own the connection and session lifecycle;
-**RPC kinds** (`Mcp.ToolsCall`, `Mcp.ToolsList`) reference any concrete
-client and dispatch through it without transport knowledge. A third transport
-(WebSocket, in-process, …) drops in as another `Mcp.Client` implementation —
-nothing in any consumer changes.
+## Why use this
 
-## Capabilities at a glance
+- **Transport-agnostic dispatch** — `Mcp.ToolsCall` and `Mcp.ToolsList` reference any concrete client; HTTP, stdio, and future transports are interchangeable.
+- **Self-managed session lifecycle** — `Mcp.HttpClient` handshakes lazily, caches `Mcp-Session-Id`, and re-handshakes transparently on session-invalid responses.
+- **Pluggable session providers** — supply MCP session IDs from secrets, SQL, Vault, or OIDC by declaring an `Mcp.SessionProvider` implementation; no controller code required.
+- **Long-lived stdio children** — `Mcp.StdioClient` spawns and supervises a child MCP server with a clean shutdown grace period.
+- **Closed error contract** — a stable, enumerated set of `ERR_MCP_*` codes for `catches:` blocks.
 
-| Kind                  | Capability       | Role                                                                          |
-| --------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| `Mcp.Client`          | `Telo.Abstract`  | Generic JSON-RPC request contract; every transport satisfies it.              |
-| `Mcp.HttpClient`      | `Telo.Invocable` | Streamable HTTP transport. Owns lazy handshake + session cache + DELETE.      |
-| `Mcp.StdioClient`     | `Telo.Invocable` | Child-process stdio transport. Owns spawn + handshake + clean teardown.       |
-| `Mcp.SessionProvider` | `Telo.Abstract`  | Pluggable source for externally-managed MCP session IDs (HTTP-only).          |
-| `Mcp.ToolsCall`       | `Telo.Invocable` | Dispatches `tools/call` through a referenced `Mcp.Client`.                    |
-| `Mcp.ToolsList`       | `Telo.Invocable` | Dispatches `tools/list` through a referenced `Mcp.Client`.                    |
+## Kinds
 
-## Minimal Streamable HTTP example
+| Kind | Purpose |
+| --- | --- |
+| `Mcp.Client` | Abstract JSON-RPC request contract every transport satisfies. |
+| `Mcp.HttpClient` | Streamable HTTP transport with lazy handshake, session caching, and DELETE on teardown. |
+| `Mcp.StdioClient` | Child-process stdio transport with spawn, handshake, and clean teardown. |
+| `Mcp.SessionProvider` | Abstract provider for externally-managed MCP session IDs (HTTP-only). |
+| `Mcp.ToolsCall` | Dispatches `tools/call` through a referenced `Mcp.Client`. |
+| `Mcp.ToolsList` | Dispatches `tools/list` through a referenced `Mcp.Client`. |
+
+## Example
 
 ```yaml
 kind: Telo.Application
 metadata: { name: my-mcp-app, version: 1.0.0 }
 targets: [GetWeather]
+secrets:
+  MCP_TOKEN: { type: string }
 ---
 kind: Telo.Import
 metadata: { name: McpClient }
-source: std/mcp-client@0.1.0
+source: std/mcp-client@0.2.0
 ---
 kind: Telo.Import
 metadata: { name: Run }
@@ -47,9 +49,6 @@ kind: McpClient.ToolsCall
 metadata: { name: CallGetWeather }
 client: RemoteMcp
 ---
-# `targets:` must point at a Runnable, so wrap the tool call in a
-# Run.Sequence. Inputs live on the step, not the McpClient.ToolsCall
-# resource itself.
 kind: Run.Sequence
 metadata: { name: GetWeather }
 steps:
@@ -60,56 +59,31 @@ steps:
     invoke: { kind: McpClient.ToolsCall, name: CallGetWeather }
 ```
 
-`Mcp.HttpClient` self-handshakes on the first `invoke()` (no `sessionProvider`
-declared), caches the `Mcp-Session-Id` for the life of the resource, and
-transparently re-handshakes if the server invalidates the session.
+## Reference
 
-## Minimal stdio example
+- [`Mcp.HttpClient`](docs/http-client.md) — Streamable HTTP transport, handshake, session cache.
+- [`Mcp.StdioClient`](docs/stdio-client.md) — child-process spawn, env, shutdown grace.
+- [`Mcp.ToolsCall`](docs/tools-call.md) — request/response shape, error mapping.
+- [`Mcp.ToolsList`](docs/tools-list.md) — listing the tools an MCP server advertises.
+- [Session providers](docs/session-providers.md) — externally-managed MCP session IDs.
 
-```yaml
-kind: McpClient.StdioClient
-metadata: { name: LocalMcp }
-command: /usr/local/bin/some-mcp-server
-args: ["--stdio"]
-env:
-  MCP_LOG_LEVEL: debug
-clientInfo: { name: my-mcp-app, version: 1.0.0 }
----
-kind: McpClient.ToolsCall
-metadata: { name: CallGetWeather }
-client: LocalMcp
-```
+## Error Contract
 
-The child process is spawned and handshaked at boot; swap the `client:`
-reference in the `Run.Sequence` step from the HTTP example above and the
-same `targets: [GetWeather]` flow runs unchanged against stdio.
+Both `Mcp.ToolsCall` and `Mcp.ToolsList` surface a closed error union via `InvokeError`s so `catches:` blocks have a stable code surface:
 
-## Error contract
+| Code | When |
+| --- | --- |
+| `ERR_MCP_TRANSPORT` | Network failure, non-2xx HTTP, unexpected Content-Type, child-process exit. |
+| `ERR_MCP_PROTOCOL` | Malformed JSON-RPC envelope (missing `jsonrpc`, neither `result` nor `error`). |
+| `ERR_MCP_JSON_RPC_ERROR` | Server returned a JSON-RPC error envelope (`error.code`, `error.message`). |
+| `ERR_MCP_TOOL_ERROR` | Server returned `isError: true` in the success envelope (soft tool failure). |
+| `ERR_MCP_SESSION_INVALID` | HTTP-only: server rejected the session after the client's internal retry. |
 
-Both `Mcp.ToolsCall` and `Mcp.ToolsList` surface a closed error union via
-`InvokeError`s so `catches:` blocks have a stable code surface:
+A response with `isError: true` is converted to `ERR_MCP_TOOL_ERROR` so the success path never observes it — the `outputType` of `Mcp.ToolsCall` does not include an `isError` field.
 
-| Code                      | When                                                                            |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `ERR_MCP_TRANSPORT`       | Network failure, non-2xx HTTP, unexpected Content-Type, child-process exit.     |
-| `ERR_MCP_PROTOCOL`        | Malformed JSON-RPC envelope (missing `jsonrpc`, neither `result` nor `error`).  |
-| `ERR_MCP_JSON_RPC_ERROR`  | Server returned a JSON-RPC error envelope (`error.code`, `error.message`).      |
-| `ERR_MCP_TOOL_ERROR`      | Server returned `isError: true` in the success envelope (soft tool failure).    |
-| `ERR_MCP_SESSION_INVALID` | HTTP-only: server rejected the session after the client's internal retry.       |
+## Out of Scope for v1
 
-A response with `isError: true` is converted to `ERR_MCP_TOOL_ERROR` so the
-success path never observes it — the `outputType` of `Mcp.ToolsCall` does not
-include an `isError` field.
-
-See [docs/http-client.md](./docs/http-client.md),
-[docs/stdio-client.md](./docs/stdio-client.md),
-[docs/tools-call.md](./docs/tools-call.md),
-[docs/tools-list.md](./docs/tools-list.md), and
-[docs/session-providers.md](./docs/session-providers.md) for per-kind reference.
-
-## Out of scope for v1
-
-- `resources/read`, `prompts/get`, `sampling`, server notifications, roots. v1 covers `tools/call` + `tools/list`.
+- `resources/read`, `prompts/get`, `sampling`, server notifications, roots — v1 covers `tools/call` and `tools/list`.
 - Per-tool typing of `structuredContent` (open shape in v1).
 - Dynamic / rotating header values (future `headerProvider:` slot).
 - Bidirectional / long-lived subscriptions exposed as kernel-level abstractions.

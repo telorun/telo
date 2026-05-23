@@ -1,36 +1,89 @@
-# Telo HTTP Standard Specification (v1.0 Draft)
+# HTTP Server
 
-## Overview
+Language- and framework-agnostic HTTP server for Telo. Declarative routes, schema-validated requests, and a typed return/catch rendering pipeline.
 
-The `Http.Server` and `Http.Api` manifests in Telo are designed to be strictly **language-agnostic** and **framework-agnostic**. To maintain the "Zero Lock-in" promise, the underlying HTTP engine (e.g., Fastify in Node.js, Actix in Rust) is treated purely as an implementation detail.
+## Why use this
 
-All HTTP modules integrated into the Telo kernel **must** adhere to this behavioral contract. This ensures that a YAML manifest written today will execute with exactly the same I/O and validation behavior regardless of the underlying language or framework.
+- **Framework-neutral** — the underlying engine (Fastify, Actix, …) is an implementation detail; the same manifest runs on any compliant adapter.
+- **OpenAPI-style paths** — `/users/{id}` syntax everywhere; the adapter translates to its native router.
+- **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standardized HTTP 400 with `details[]` on failure.
+- **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
+- **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
+- **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
 
+## Kinds
+
+| Kind | Purpose |
+| --- | --- |
+| `Http.Server` | Long-lived HTTP listener that hosts mounts on configured paths and ports. |
+| `Http.Api` | Mountable router exposing route definitions with returns/catches rendering. |
+
+## Example
+
+```yaml
+kind: Telo.Application
+metadata: { name: hello-http, version: 1.0.0 }
+targets: [Server]
 ---
-
-## 1. Routing Contract (Path Definitions)
-
-Different web frameworks use different syntaxes for path parameters (e.g., `/users/:id` vs. `/users/{id}`).
-
-Telo standardizes on the **OpenAPI specification format** for paths.
-
-- **Standard:** Path parameters MUST be enclosed in curly braces: `{parameterName}`.
-- **Module Responsibility:** The underlying HTTP module must parse the Telo path and translate it into its framework's native routing syntax at startup.
-
-**Example Manifest Path:** `/api/v1/users/{userId}`
-
-- _Node.js (Fastify) Adapter translates to:_ `/api/v1/users/:userId`
-- _Rust (Actix) Adapter translates to:_ `/api/v1/users/{userId}`
-
+kind: Telo.Import
+metadata: { name: Http }
+source: pkg:npm/@telorun/http-server@^1.0.0
 ---
+kind: Telo.Import
+metadata: { name: JS }
+source: pkg:npm/@telorun/javascript@^1.0.0
+---
+kind: Http.Server
+metadata: { name: Server }
+port: 8080
+mounts:
+  - path: /api
+    type: Api
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request: { method: GET, path: /hello/{name} }
+    inputs:
+      name: "${{ request.params.name }}"
+    handler: { kind: JS.Script, name: Greet }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { message: "${{ result.message }}" }
+---
+kind: JS.Script
+metadata: { name: Greet }
+code: |
+  return { message: `Hello, ${inputs.name}!` };
+```
 
-## 2. The I/O Context Contract
+## Reference
 
-When an incoming HTTP request is received, the underlying framework must normalize it into a standard **Telo Request Object** before passing it to the Handler/CEL engine. Conversely, it must accept a standard **Telo Response Object** to send back to the client.
+- [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
 
-### 2.1. Standardized Telo Request Object (Input)
+## Implementation Contract
 
-The HTTP module must construct and pass the following exact payload to the execution environment:
+The `Http.Server` and `Http.Api` manifests in Telo are designed to be strictly language-agnostic and framework-agnostic. To maintain the "Zero Lock-in" promise, the underlying HTTP engine (e.g. Fastify in Node.js, Actix in Rust) is treated purely as an implementation detail. All HTTP modules integrated into the Telo kernel MUST adhere to this behavioural contract.
+
+### 1. Routing (path definitions)
+
+Telo standardizes on the OpenAPI specification format for paths.
+
+- **Standard:** path parameters MUST be enclosed in curly braces: `{parameterName}`.
+- **Module responsibility:** the underlying HTTP module must parse the Telo path and translate it into its framework's native routing syntax at startup.
+
+**Example manifest path:** `/api/v1/users/{userId}`
+
+- Node.js (Fastify) adapter translates to: `/api/v1/users/:userId`
+- Rust (Actix) adapter translates to: `/api/v1/users/{userId}`
+
+### 2. I/O context contract
+
+When an incoming HTTP request is received, the underlying framework must normalize it into a standard Telo Request Object before passing it to the handler/CEL engine. Conversely, it must accept a standard Telo Response Object to send back to the client.
+
+#### 2.1 Standardized Telo Request Object (input)
 
 ```json
 {
@@ -51,12 +104,12 @@ The HTTP module must construct and pass the following exact payload to the execu
 }
 ```
 
-- **Constraint:** All `headers` keys MUST be normalized to lowercase.
-- **Constraint:** If the `content-type` is `application/json`, the `body` MUST be parsed into a native object/dictionary before evaluation.
+- All `headers` keys MUST be normalized to lowercase.
+- If the `content-type` is `application/json`, the `body` MUST be parsed into a native object/dictionary before evaluation.
 
-### 2.2. Standardized Telo Response Object (Output)
+#### 2.2 Standardized Telo Response Object (output)
 
-After the Handler executes and the `response.mapping` evaluates, the engine will return an object to the HTTP module. The module must map this directly to the native HTTP response.
+After the handler executes and the `response.mapping` evaluates, the engine returns an object to the HTTP module. The module must map this directly to the native HTTP response.
 
 ```json
 {
@@ -72,17 +125,9 @@ After the Handler executes and the `response.mapping` evaluates, the engine will
 }
 ```
 
----
+### 3. Validation and error handling
 
-## 3. Validation & Error Handling Contract
-
-When a request fails schema validation (defined in the `request.schema` of the manifest), the underlying engine (e.g., AJV in Fastify) will generate native errors. **These internal errors must not leak to the client.**
-
-All Telo HTTP modules MUST intercept framework-specific validation errors and return a standardized HTTP 400 Bad Request payload.
-
-### Standardized Validation Error Format
-
-The response body must strictly follow this JSON structure:
+When a request fails schema validation (defined in the `request.schema` of the manifest), the underlying engine (e.g. AJV in Fastify) will generate native errors. These internal errors must not leak to the client. All Telo HTTP modules MUST intercept framework-specific validation errors and return a standardized HTTP 400 Bad Request payload.
 
 ```json
 {
@@ -104,12 +149,10 @@ The response body must strictly follow this JSON structure:
 }
 ```
 
-- **`location` enum:** `body` | `query` | `params` | `headers`
-- **Module Responsibility:** The module author must write an error handler/mapper that transforms the native framework's validation output into the Telo `details` array.
+- **`location` enum:** `body` | `query` | `params` | `headers`.
+- **Module responsibility:** the module author must write an error handler/mapper that transforms the native framework's validation output into the Telo `details` array.
 
----
-
-## 4. Manifest Schema Upgrades
+### 4. Manifest schema upgrades
 
 To fully support this contract, the `Http.Api` JSON Schema definition includes the following structural definitions for the `request` block:
 

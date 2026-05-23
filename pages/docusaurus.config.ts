@@ -1,6 +1,13 @@
+import path from "node:path";
+
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
+
+import { generateExamplesIndex } from "./lib/generate-examples-index";
 import sidebars from "./sidebars";
+
+const repoRoot = path.resolve(__dirname, "..");
+generateExamplesIndex(path.join(repoRoot, "examples"), path.join(repoRoot, "examples", "INDEX.md"));
 
 function collectDocIds(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
@@ -33,22 +40,80 @@ const config: Config = {
 
   markdown: {
     format: "detect",
-    // Inject `/standard-library/...` slugs for every doc under `modules/`.
-    // Keeps Docusaurus-only annotations out of README.md files (project rule)
-    // and out of co-located module docs in general, so the markdown files
-    // stay clean for GitHub + IDE consumers.
+    // Inject route slugs for co-located docs at build time. Keeps
+    // Docusaurus-only annotations out of the markdown files (project rule)
+    // so READMEs and module docs stay clean for GitHub + IDE consumers.
     parseFrontMatter: async ({ filePath, fileContent, defaultParseFrontMatter }) => {
       const result = await defaultParseFrontMatter({ filePath, fileContent });
-      const m = filePath.replace(/\\/g, "/").match(/\/modules\/(.+\.md)$/);
-      if (m && result.frontMatter.slug === undefined) {
-        let rel = m[1].replace(/\.md$/, "");
+      if (result.frontMatter.slug !== undefined) return result;
+      const normalized = filePath.replace(/\\/g, "/");
+
+      // Pages promoted out of their module into the Build group get an
+      // explicit `/build/` slug; everything else under modules/ falls
+      // through to the `/reference/std/` catch-all below.
+      const lambdaDeployingMatch = normalized.match(/\/modules\/lambda\/docs\/deploying\.md$/);
+      if (lambdaDeployingMatch) {
+        result.frontMatter.slug = "/build/deploying-to-lambda";
+        return result;
+      }
+
+      const stdMatch = normalized.match(/\/modules\/(.+\.md)$/);
+      if (stdMatch) {
+        let rel = stdMatch[1].replace(/\.md$/, "");
         if (rel === "README") {
           rel = "";
         } else {
           rel = rel.replace(/\/README$/, "");
         }
-        result.frontMatter.slug = rel ? `/standard-library/${rel}` : "/standard-library";
+        result.frontMatter.slug = rel ? `/reference/std/${rel}` : "/reference/std";
+        return result;
       }
+
+      const kernelMatch = normalized.match(/\/kernel\/(README|docs\/.+)\.md$/);
+      if (kernelMatch) {
+        const rel = kernelMatch[1] === "README" ? "" : kernelMatch[1].replace(/^docs\//, "");
+        result.frontMatter.slug = rel ? `/reference/kernel/${rel}` : "/reference/kernel";
+        return result;
+      }
+
+      const sdkMatch = normalized.match(/\/sdk\/(README|nodejs\/README|rust\/README)\.md$/);
+      if (sdkMatch) {
+        const tail = sdkMatch[1];
+        let rel: string;
+        if (tail === "README") rel = "";
+        else if (tail === "nodejs/README") rel = "nodejs";
+        else rel = "rust";
+        result.frontMatter.slug = rel ? `/extend/sdk/${rel}` : "/extend/sdk";
+        return result;
+      }
+
+      const templatingMatch = normalized.match(/\/templating\/nodejs\/docs\/(.+)\.md$/);
+      if (templatingMatch) {
+        result.frontMatter.slug = `/extend/sdk/nodejs/${templatingMatch[1]}`;
+        return result;
+      }
+
+      if (/\/cli\/README\.md$/.test(normalized)) {
+        result.frontMatter.slug = "/learn/installation-and-cli";
+        return result;
+      }
+
+      if (/\/tests\/README\.md$/.test(normalized)) {
+        result.frontMatter.slug = "/build/testing";
+        return result;
+      }
+
+      const docsGuideMatch = normalized.match(/\/docs\/guides\/(.+)\.md$/);
+      if (docsGuideMatch) {
+        result.frontMatter.slug = `/learn/${docsGuideMatch[1]}`;
+        return result;
+      }
+
+      if (/\/docs\/coding-agents\.md$/.test(normalized)) {
+        result.frontMatter.slug = "/build/coding-agents";
+        return result;
+      }
+
       return result;
     },
     hooks: {
@@ -88,10 +153,11 @@ const config: Config = {
     navbar: {
       title: "⚡ Telo",
       items: [
-        { to: "/getting-started", label: "Getting Started", position: "left" },
-        { to: "/kernel/", label: "Kernel", position: "left" },
-        { to: "/standard-library/", label: "Standard Library", position: "left" },
-        { to: "/sdk/", label: "SDK", position: "left" },
+        { to: "/learn/getting-started", label: "Learn", position: "left" },
+        { to: "/build/testing", label: "Build", position: "left" },
+        { to: "/reference/kernel", label: "Reference", position: "left" },
+        { to: "/extend/sdk", label: "Extend", position: "left" },
+        { to: "/examples", label: "Examples", position: "left" },
         {
           href: "https://github.com/telorun/telo",
           label: "GitHub",
