@@ -77,7 +77,7 @@ metadata:
   # Module reference: kebab-case
   module: my-awesome-app
 # Source: kebab-case
-source: digly/secure-api-template@v1.0.0
+source: telo/secure-api-template@v1.0.0
 variables:
   listenPort: 8080
 secrets:

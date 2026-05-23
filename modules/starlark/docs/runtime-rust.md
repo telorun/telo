@@ -51,4 +51,4 @@ First-run cost is the cold cargo build (~30s). Subsequent runs hit Cargo's incre
 
 The Rust controller crate at `modules/starlark/rust/` is a textbook Rust project — `Cargo.toml` + `src/`. The contributor never writes `use napi::*` or `#[napi]` attributes; the `#[controller]` macro from `telorun-sdk` generates all FFI plumbing.
 
-See [the SDK README](https://github.com/codenet-pl/DiglyAI/blob/main/sdk/rust/README.md) for the controller-author contract.
+See [the SDK README](https://github.com/telorun/telo/blob/main/sdk/rust/README.md) for the controller-author contract.
