@@ -62,14 +62,6 @@ code: |
 inputType: ScriptInput
 outputType: ScriptOutput
 ---
-kind: Console.WriteLine
-metadata:
-  name: WriteResult
-inputType: ScriptOutput
-output: |
-  Evaluated starlark code.
-  Result is: ${{ result }}
----
 kind: Run.Sequence
 metadata:
   name: RunScriptOnEvent
@@ -81,11 +73,11 @@ steps:
       kind: Starlark.Script
       name: ExampleStarlarkScript
   - name: Step2
+    invoke: { kind: Console.WriteLine }
     inputs:
-      result: "${{ steps.Step1.result.result }}"
-    invoke:
-      kind: Console.WriteLine
-      name: WriteResult
+      output: |
+        Evaluated starlark code.
+        Result is: ${{ steps.Step1.result.result }}
 ---
 kind: Assert.Events
 metadata:

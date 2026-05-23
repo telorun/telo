@@ -25,4 +25,5 @@ steps:
       metadata:
         name: Result
         module: ExampleConsole
+    inputs:
       output: "Product name: Sample Product"

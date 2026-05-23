@@ -28,16 +28,19 @@ steps:
       kind: Console.ReadLine
       metadata:
         name: ReadUsername
+    inputs:
       prompt: "Username: "
   - name: ReadPassword
     invoke:
       kind: Console.ReadLine
       metadata:
         name: ReadPassword
+    inputs:
       prompt: "Password: "
   - name: WriteResult
     invoke:
       kind: Console.WriteLine
       metadata:
         name: Result
+    inputs:
       output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"

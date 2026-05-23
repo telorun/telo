@@ -26,42 +26,38 @@ metadata:
   name: Greeter
 steps:
   - name: Ask
-    invoke:
-      kind: Console.ReadLine
+    invoke: { kind: Console.ReadLine }
+    inputs:
       prompt: "Name: "
   - name: Greet
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "Hello, ${{ steps.Ask.result.value }}!"
 ```
 
 ## Console.WriteLine
 
-Writes `output` to stdout followed by a newline.
+Writes `inputs.output` to stdout followed by a newline. Pass `output` via the step's `inputs:` so `${{ }}` expressions resolve against the caller's scope (variables, secrets, resource snapshots, and — inside a `Run.Sequence` — `steps.<name>.result`).
 
 ```yaml
-kind: Console.WriteLine
-metadata:
-  name: Greet
-output: "Hello, ${{ inputs.name }}!"
+- name: Greet
+  invoke: { kind: Console.WriteLine }
+  inputs:
+    output: "Hello, ${{ steps.Ask.result.value }}!"
 ```
-
-`output` supports `${{ }}` templating like any other runtime field — variables, secrets, resource snapshots, and (inside a `Run.Sequence`) `steps.<name>.result` are all in scope.
 
 ## Console.ReadLine
 
-Reads a single line from stdin. The `prompt` field is written to stdout character-for-character — no trailing newline, no auto-appended `: ` — so the caret stays on the same line wherever you put it.
+Reads a single line from stdin. Pass `prompt` via the step's `inputs:`. The prompt is written to stdout character-for-character — no trailing newline, no auto-appended `: ` — so the caret stays on the same line wherever you put it.
 
 ```yaml
-kind: Console.ReadLine
-metadata:
-  name: AskName
-prompt: "What's your name? "
+- name: AskName
+  invoke: { kind: Console.ReadLine }
+  inputs:
+    prompt: "What's your name? "
 ```
 
-The captured value surfaces via the runnable's result. The usual pattern is to wrap `Console.ReadLine` inline in a `Run.Sequence` step.
-
-Markup tags inside `prompt` are rendered at write time. On a TTY, `prompt: "{cyan you} > "` shows the label in cyan; piped to a file the same prompt is plain text.
+The captured value surfaces as `steps.<name>.result.value`. Markup tags inside `prompt` are rendered at write time. On a TTY, `prompt: "{cyan you} > "` shows the label in cyan; piped to a file the same prompt is plain text.
 
 ## Console.WriteStream
 
