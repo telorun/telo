@@ -88,6 +88,7 @@ const config: Config = {
     navbar: {
       title: "⚡ Telo",
       items: [
+        { to: "/getting-started", label: "Getting Started", position: "left" },
         { to: "/kernel/", label: "Kernel", position: "left" },
         { to: "/standard-library/", label: "Standard Library", position: "left" },
         { to: "/sdk/", label: "SDK", position: "left" },
