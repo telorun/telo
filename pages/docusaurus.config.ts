@@ -79,9 +79,7 @@ const config: Config = {
     [
       "./plugins/llms-txt",
       {
-        sections: [
-          { sidebar: sidebars.docs, docsPath: "..", urlBasePath: "" },
-        ],
+        sections: [{ sidebar: sidebars.docs, docsPath: "..", urlBasePath: "" }],
       },
     ],
   ],
@@ -102,7 +100,7 @@ const config: Config = {
     },
     footer: {
       style: "dark",
-      copyright: `Copyright © ${new Date().getFullYear()} DiglyAI. Released under the Fair-code License.`,
+      copyright: `Copyright © ${new Date().getFullYear()} CodeNet Sp. z o.o. Released under the Sustainable Use License.`,
     },
   } satisfies Preset.ThemeConfig,
 };
