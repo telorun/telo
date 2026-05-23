@@ -1,6 +1,6 @@
 ---
 sidebar_label: Coding Agents
-slug: /coding-agents
+slug: /build/coding-agents
 description: Connect Claude Code, Cursor, or any MCP-aware editor to a live Telo module catalog so the LLM can author manifests against the real surface.
 ---
 

@@ -1,16 +1,21 @@
-# Telo Ai.OpenaiModel
+# AI OpenAI
 
-OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`. Implements both the buffered `invoke` path (used by `Ai.Text`) and the streaming `stream` path (used by `Ai.TextStream`) via the Vercel AI SDK.
+OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`, backed by the Vercel AI SDK.
 
-## Install
+## Why use this
 
-```bash
-pnpm add @telorun/ai-openai
-```
+- **Drop-in `Ai.Model`** — works with `Ai.Text`, `Ai.TextStream`, or any consumer that takes an `Ai.Model` reference.
+- **Buffered and streaming** — implements both the `invoke` path and the `stream` path via `@ai-sdk/openai`.
+- **OpenAI-compatible endpoints** — `baseUrl` opt-in for Azure OpenAI, gateways, and self-hosted OpenAI-compatible servers.
+- **Option layering** — model-level defaults are shallow-merged with per-call options; downstream wins.
 
-Pulls in `ai` + `@ai-sdk/openai` as dependencies. `@telorun/ai` is also required (peer-style — install it explicitly if not already present).
+## Kinds
 
-## Usage
+| Kind | Purpose |
+| --- | --- |
+| `Ai.OpenaiModel` | OpenAI implementation of `Ai.Model`. Pass to any `Ai.Model` consumer. |
+
+## Example
 
 ```yaml
 kind: Telo.Application
@@ -41,6 +46,6 @@ model:
   name: Gpt4oMini
 ```
 
-See [docs/ai-openai-model.md](./docs/ai-openai-model.md) for schema, options, redaction, Azure setup, and the Vercel finish-reason mapping.
+## Reference
 
-The contract that makes this provider drop-in compatible with any `Ai.Model` consumer (including third-party kinds) is documented at [`@telorun/ai`'s docs/ai-model.md](../ai/docs/ai-model.md).
+- [`Ai.OpenaiModel`](docs/ai-openai-model.md) — schema, options, redaction, Azure setup, Vercel finish-reason mapping.

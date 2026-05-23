@@ -1,6 +1,6 @@
 ---
 sidebar_label: Getting Started
-slug: /getting-started
+slug: /learn/getting-started
 ---
 
 # Getting Started

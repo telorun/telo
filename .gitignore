@@ -1,6 +1,9 @@
 # Runtime artifacts
 tmp/
 
+# Generated docs index (rebuilt on every docusaurus build)
+examples/INDEX.md
+
 # Common
 .DS_Store
 Thumbs.db

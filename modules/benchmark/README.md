@@ -2,73 +2,32 @@
 
 Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one or more scenarios against a fixed duration or request budget, collects latency and error metrics, and optionally fails the run when thresholds are breached.
 
-A suite does not care what it is hitting — HTTP calls, SQL queries, a `JavaScript.Script`, a local `Run.Sequence`. Anything with the `Telo.Invocable` capability can be a scenario.
+## Why use this
 
----
+- **Invocable-agnostic** — HTTP calls, SQL queries, `JavaScript.Script`, a local `Run.Sequence` — anything with the `Telo.Invocable` capability is a valid scenario target.
+- **Weighted scenarios** — run mixed workloads in parallel with per-scenario `weight`.
+- **Threshold gating** — `report.thresholds` exits non-zero when `p99` / `p95` / `p50` / `errorRate` are breached; drop straight into CI.
+- **Result validation** — per-scenario CEL `validate` expression flags failed responses without halting the suite.
+- **Warm-up window** — `warmup` discards pre-roll samples to keep metrics honest.
 
-## Benchmark.Suite
+## Kinds
 
-A runnable that executes scenarios in parallel and reports the result. One of `duration` or `requests` must be set; they are mutually exclusive.
+| Kind | Purpose |
+| --- | --- |
+| `Benchmark.Suite` | Runnable that executes weighted scenarios against an invocable and reports latency / error metrics. |
 
-| Field         | Type    | Notes                                                                                          |
-| ------------- | ------- | ---------------------------------------------------------------------------------------------- |
-| `duration`    | string  | Wall-clock budget (e.g. `30s`, `1m`, `500ms`). Workers keep firing until the window closes.    |
-| `requests`    | integer | Fixed total across all workers.                                                                |
-| `concurrency` | integer | Number of parallel workers. Defaults to `1`.                                                   |
-| `warmup`      | string  | A pre-roll window (e.g. `5s`) whose samples are discarded from the reported metrics.           |
-| `scenarios`   | array   | One or more scenario entries (see below). At least one is required.                            |
-| `report`      | object  | Output format and optional threshold checks.                                                   |
-
-### Scenarios
-
-Each scenario names an invocable resource and (optionally) a CEL validator. Weight controls relative frequency when multiple scenarios share a run.
-
-```yaml
-scenarios:
-  - name: search
-    weight: 4
-    invoke:
-      kind: HttpClient.Request
-      client: Api
-      inputs:
-        method: GET
-        url: /search?q=telo
-    validate: "result.status == 200"
-  - name: publish
-    weight: 1
-    invoke:
-      kind: HttpClient.Request
-      client: Api
-      inputs:
-        method: POST
-        url: /publish
-```
-
-`validate` is evaluated against `result` after each invocation; a `false` result counts as an error in the scenario's metrics without halting the suite.
-
-### Report and thresholds
-
-```yaml
-report:
-  format: table   # or json
-  thresholds:
-    - scenario: search
-      p99: 250     # ms
-      p95: 150
-      errorRate: 0.01
-```
-
-If any threshold is breached after the run completes, `Benchmark.Suite` exits non-zero — useful as a gate in a `Run.Sequence` or CI pipeline.
-
----
-
-## Full example
+## Example
 
 ```yaml
 kind: Telo.Import
 metadata:
   name: Benchmark
 source: std/benchmark@1.1.0
+---
+kind: Telo.Import
+metadata:
+  name: HttpClient
+source: std/http-client@1.0.1
 ---
 kind: HttpClient.Client
 metadata:
@@ -98,3 +57,57 @@ report:
       p99: 250
       errorRate: 0.01
 ```
+
+## Top-level fields
+
+One of `duration` or `requests` must be set; they are mutually exclusive.
+
+| Field         | Type    | Notes                                                                                          |
+| ------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `duration`    | string  | Wall-clock budget (e.g. `30s`, `1m`, `500ms`). Workers keep firing until the window closes.    |
+| `requests`    | integer | Fixed total across all workers.                                                                |
+| `concurrency` | integer | Number of parallel workers. Defaults to `1`.                                                   |
+| `warmup`      | string  | A pre-roll window (e.g. `5s`) whose samples are discarded from the reported metrics.           |
+| `scenarios`   | array   | One or more scenario entries (see below). At least one is required.                            |
+| `report`      | object  | Output format and optional threshold checks.                                                   |
+
+## Scenarios
+
+Each scenario names an invocable resource and (optionally) a CEL validator. Weight controls relative frequency when multiple scenarios share a run.
+
+```yaml
+scenarios:
+  - name: search
+    weight: 4
+    invoke:
+      kind: HttpClient.Request
+      client: Api
+      inputs:
+        method: GET
+        url: /search?q=telo
+    validate: "result.status == 200"
+  - name: publish
+    weight: 1
+    invoke:
+      kind: HttpClient.Request
+      client: Api
+      inputs:
+        method: POST
+        url: /publish
+```
+
+`validate` is evaluated against `result` after each invocation; a `false` result counts as an error in the scenario's metrics without halting the suite.
+
+## Report and thresholds
+
+```yaml
+report:
+  format: table   # or json
+  thresholds:
+    - scenario: search
+      p99: 250     # ms
+      p95: 150
+      errorRate: 0.01
+```
+
+If any threshold is breached after the run completes, `Benchmark.Suite` exits non-zero — useful as a gate in a `Run.Sequence` or CI pipeline.

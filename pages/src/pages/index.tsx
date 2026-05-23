@@ -18,10 +18,10 @@ export default function Home() {
           <h1 className="hero__title">Telo</h1>
           <p className="hero__subtitle">Runtime for declarative backends.</p>
           <div>
-            <Link className="button button--primary button--lg margin-right--md" to="/guides/getting-started">
+            <Link className="button button--primary button--lg margin-right--md" to="/learn/getting-started">
               Get started
             </Link>
-            <Link className="button button--outline button--primary button--lg" to="/kernel/">
+            <Link className="button button--outline button--primary button--lg" to="/reference/kernel">
               Read the kernel reference
             </Link>
           </div>
@@ -36,7 +36,7 @@ export default function Home() {
           manifests and runs them.
         </p>
 
-        <h2 className="text--center">Designed to be</h2>
+        <h2 className="text--center margin-top--xl margin-bottom--lg">Designed to be</h2>
         <div className="row">
           <div className="col col--4">
             <div className="card">
@@ -82,7 +82,7 @@ export default function Home() {
           </div>
         </div>
 
-        <h2 className="text--center">Why Telo?</h2>
+        <h2 className="text--center margin-top--xl margin-bottom--lg">Why Telo?</h2>
         <div className="row">
           <div className="col col--6 margin-bottom--md">
             <div className="card">

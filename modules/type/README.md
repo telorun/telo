@@ -1,12 +1,21 @@
 # Type
 
-Named data types for Telo. A `Type.JsonSchema` resource defines a reusable type — a JSON Schema body, optional inheritance from other named types, and optional CEL-based business rules. Any invocable that accepts `inputType` or `outputType` (`JavaScript.Script`, `Starlark.Script`, `Sql.Select`, HTTP handlers) can reference it by name.
+Named, reusable data types for Telo manifests, built on JSON Schema with optional inheritance and CEL-based business rules.
 
-Defining types once and referencing them keeps schemas consistent across producers and consumers and lets the analyzer check CEL expressions against known field shapes.
+## Why use this
 
----
+- **Reusable schemas** — define a shape once and reference it by name from every producer and consumer.
+- **Schema composition** — `extends` merges parent types property-by-property and accumulates required fields.
+- **Business invariants** — CEL `rules` augment structural validation with predicates that fire after the JSON Schema check.
+- **Analyzer-aware** — referenced types feed CEL type-checking and editor autocomplete for any field annotated `x-telo-ref: "telo#Type"`.
 
-## Type.JsonSchema
+## Kinds
+
+| Kind | Purpose |
+| --- | --- |
+| `Type.JsonSchema` | Declare a reusable named type from a JSON Schema body, optional `extends`, and optional CEL `rules`. |
+
+## Example
 
 ```yaml
 kind: Type.JsonSchema
@@ -19,17 +28,7 @@ schema:
     email: { type: string, format: email }
     createdAt: { type: string, format: date-time }
   required: [id, email]
-```
-
-The `schema` field is validated with the standard JSON Schema dialect the analyzer ships with (Draft-07 features plus common Draft-2020-12 keywords). Everything you would put in an inline schema works here.
-
 ---
-
-## Referencing a type
-
-Any field annotated `x-telo-ref: "telo#Type"` accepts a type name as a string:
-
-```yaml
 kind: JavaScript.Script
 metadata:
   name: LoadUser
@@ -41,9 +40,11 @@ code: |
   }
 ```
 
-The analyzer follows the reference, expands the schema, and validates the CEL expressions that feed the script against the declared input shape.
+## Schema details
 
----
+The `schema` field is validated with the standard JSON Schema dialect the analyzer ships with (Draft-07 features plus common Draft-2020-12 keywords). Everything you would put in an inline schema works here.
+
+Any field annotated `x-telo-ref: "telo#Type"` accepts a type name as a string. The analyzer follows the reference, expands the schema, and validates the CEL expressions that feed the script against the declared input shape.
 
 ## `extends` — type composition
 
@@ -74,8 +75,6 @@ schema:
 
 `extends` accepts a single name or a list. Conflicts (two parents defining the same property with incompatible schemas) are flagged by the analyzer.
 
----
-
 ## `rules` — business invariants
 
 Rules augment the JSON Schema with CEL-based predicates. The `condition` must return `true` for valid data; failure surfaces a diagnostic with the declared `code` and optional `message`.
@@ -102,8 +101,6 @@ rules:
 Inside `condition`, `this` is bound to the value being validated. Rules fire after the JSON Schema check passes — so you can assume structural correctness.
 
 Rule codes are invocation error codes (see [Run.Sequence structured errors](../run/docs/structured-errors.md)) — any catch block that matches the code can react to a specific business-rule failure.
-
----
 
 ## Usage patterns
 

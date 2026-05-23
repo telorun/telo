@@ -2,13 +2,20 @@
 
 Execute [Starlark](https://github.com/bazelbuild/starlark) code from a Telo resource. `Starlark.Script` reads inputs, runs the script, and returns its result.
 
-Starlark is a deterministic, bounded subset of Python — useful when you want user-authored logic that you can execute without worrying about filesystem access, external network calls, or non-termination. If you trust the authored code and want full JavaScript power, use [`JavaScript.Script`](../javascript/README.md) instead.
+## Why use this
 
----
+- **Bounded and deterministic** — Starlark cannot read files, open sockets, or spawn processes; safe for less-trusted authored logic.
+- **Pythonic syntax** — a deterministic subset of Python; familiar to most authors.
+- **Typed inputs and outputs** — `inputType` / `outputType` accept inline JSON Schema or a named `Type.JsonSchema`; validation runs before and after `run`.
+- **Multi-runtime** — Node.js (WASM) and Rust controllers ship in this module.
 
-## The script contract
+## Kinds
 
-The script must define a `run(input)` function. The controller calls it with the invocation inputs and uses the returned dict as the result.
+| Kind | Purpose |
+| --- | --- |
+| `Starlark.Script` | Run an inline `run(input)` Starlark function as a runnable resource. |
+
+## Example
 
 ```yaml
 kind: Starlark.Script
@@ -28,9 +35,17 @@ code: |
       return { "total": input["quantity"] * input["unitPrice"] }
 ```
 
+## Reference
+
+- [`Starlark.Script` Rust runtime](docs/runtime-rust.md) — notes on the Rust controller implementation.
+
+## The script contract
+
+The script must define a `run(input)` function. The controller calls it with the invocation inputs and uses the returned dict as the result.
+
 The returned value must be a dict (object) or list; other values are returned as raw strings.
 
----
+If you trust the authored code and want full JavaScript power, use [`JavaScript.Script`](../javascript/README.md) instead.
 
 ## Typed inputs and outputs
 
@@ -56,8 +71,6 @@ code: |
       return { "total": input["quantity"] * input["unitPrice"] }
 ```
 
----
-
 ## Using it in a sequence
 
 ```yaml
@@ -77,8 +90,6 @@ steps:
 outputs:
   total: "${{ steps.compute.result.total }}"
 ```
-
----
 
 ## Notes
 
