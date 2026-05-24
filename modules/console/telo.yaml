@@ -9,7 +9,7 @@ metadata:
   name: WriteLine
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@2.0.0?local_path=./nodejs#writeline
+  - pkg:npm/@telorun/console@0.5.0?local_path=./nodejs#writeline
 inputType:
   kind: Type.JsonSchema
   schema:
