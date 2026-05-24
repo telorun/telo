@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: console
   namespace: std
-  version: 3.0.0
+  version: 1.5.0
 ---
 kind: Telo.Definition
 metadata:
