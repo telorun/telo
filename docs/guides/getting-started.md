@@ -53,7 +53,7 @@ source: std/run@0.2.7
 kind: Telo.Import
 metadata:
   name: Console
-source: std/console@1.4.2
+source: std/console@1.5.1
 ---
 kind: Run.Sequence
 metadata:
@@ -62,9 +62,6 @@ steps:
   - name: SayHello
     invoke:
       kind: Console.WriteLine
-      metadata:
-        name: Greeting
-        module: HelloConsole
     inputs:
       output: "Hello from Telo!"
 ```

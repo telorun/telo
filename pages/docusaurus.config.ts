@@ -48,12 +48,12 @@ const config: Config = {
       if (result.frontMatter.slug !== undefined) return result;
       const normalized = filePath.replace(/\\/g, "/");
 
-      // Pages promoted out of their module into the Build group get an
-      // explicit `/build/` slug; everything else under modules/ falls
-      // through to the `/reference/std/` catch-all below.
+      // Pages promoted out of their module into the top-level Deploy
+      // group get an explicit `/deploy/` slug; everything else under
+      // modules/ falls through to the `/reference/std/` catch-all below.
       const lambdaDeployingMatch = normalized.match(/\/modules\/lambda\/docs\/deploying\.md$/);
       if (lambdaDeployingMatch) {
-        result.frontMatter.slug = "/build/deploying-to-lambda";
+        result.frontMatter.slug = "/deploy/lambda";
         return result;
       }
 
@@ -154,9 +154,10 @@ const config: Config = {
       title: "⚡ Telo",
       items: [
         { to: "/learn/getting-started", label: "Learn", position: "left" },
-        { to: "/build/testing", label: "Build", position: "left" },
-        { to: "/reference/kernel", label: "Reference", position: "left" },
+        { to: "/build", label: "Build", position: "left" },
+        { to: "/deploy", label: "Deploy", position: "left" },
         { to: "/extend/sdk", label: "Extend", position: "left" },
+        { to: "/reference/kernel", label: "Reference", position: "left" },
         { to: "/examples", label: "Examples", position: "left" },
         {
           href: "https://github.com/telorun/telo",

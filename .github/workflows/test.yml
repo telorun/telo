@@ -54,6 +54,20 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
+      - name: Disallow major version bumps in changesets
+        if: github.event_name == 'pull_request'
+        run: |
+          failed=0
+          for f in .changeset/*.md; do
+            [ -f "$f" ] || continue
+            [ "$(basename "$f")" = "README.md" ] && continue
+            if awk '/^---$/{c++; next} c==1' "$f" | grep -Eq "^['\"]?[^'\":]+['\"]?:[[:space:]]*major[[:space:]]*$"; then
+              echo "::error file=$f::Major version bumps are not allowed in changesets."
+              failed=1
+            fi
+          done
+          exit $failed
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml
 
