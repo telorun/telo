@@ -1,5 +1,11 @@
 # @telorun/console
 
+## 0.5.1
+
+### Patch Changes
+
+- c1e26b8: Re-release of the `Console.WriteLine` / `Console.ReadLine` `Telo.Invocable` refactor (previously shipped as a major bump) under a minor bump after the prior version was rolled back due to a bug.
+
 ## 2.0.0
 
 ### Major Changes
