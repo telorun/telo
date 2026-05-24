@@ -1,22 +1,103 @@
 import { evaluate } from "@marcbachmann/cel-js";
 import { DataValidator, RuntimeError, TypeRule } from "@telorun/sdk";
-import AjvModule from "ajv";
+import AjvModule, { type ValidateFunction } from "ajv";
+import standaloneCodeMod from "ajv/dist/standalone/index.js";
 import addFormats from "ajv-formats";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import * as path from "node:path";
 import { formatAjvErrors } from "./manifest-schemas.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
+// AJV's standalone subpath is CJS — the default export shows up as either
+// the function itself or `.default` depending on how the bundler/loader
+// rewrites it. Normalise once.
+const standaloneCode: (...args: any[]) => string =
+  (standaloneCodeMod as any).default ?? (standaloneCodeMod as any);
+
+/** `require` resolved from this file's URL — used to satisfy `ajv/dist/...`
+ *  / `ajv-formats/...` imports embedded in standalone-compiled validators
+ *  loaded back off disk. Anchored here so it always resolves through the
+ *  kernel package's node_modules, regardless of where the cache file
+ *  lives on disk. */
+const kernelRequire = createRequire(import.meta.url);
+
+/** Resolved AJV + ajv-formats versions, baked into every cache key so a
+ *  pnpm/npm install that upgrades either package invalidates all stale
+ *  `<hash>.cjs` files automatically. Standalone-compiled validators
+ *  embed `require("ajv/dist/runtime/...")` — running a validator built
+ *  against an older AJV against the current runtime is undefined
+ *  behaviour, so the version pin must be part of the hash, not a manual
+ *  bump. Falls back to walking up from the package's main entry when
+ *  the dependency restricts subpath access via `exports`. */
+function readDepVersion(spec: string): string {
+  try {
+    const pkg = kernelRequire(`${spec}/package.json`);
+    if (typeof pkg.version === "string") return pkg.version;
+  } catch {
+    // restricted exports — try the filesystem walk below
+  }
+  try {
+    const entry = kernelRequire.resolve(spec);
+    let dir = path.dirname(entry);
+    while (dir !== path.dirname(dir)) {
+      const candidate = path.join(dir, "package.json");
+      try {
+        const pkg = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+        const expectedName = spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
+        if (typeof pkg.name === "string" && pkg.name === expectedName) {
+          return typeof pkg.version === "string" ? pkg.version : "unknown";
+        }
+      } catch {
+        // keep walking — not at the package root yet
+      }
+      dir = path.dirname(dir);
+    }
+  } catch {
+    // package not installed
+  }
+  return "unknown";
+}
+const AJV_VERSION = readDepVersion("ajv");
+const AJV_FORMATS_VERSION = readDepVersion("ajv-formats");
+const VALIDATOR_RUNTIME_TAG = `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}`;
+
+const SHA256_HEADER_PATTERN = /^\/\/ sha256:([0-9a-f]{64})\n/;
+
+/** Verify a cached validator file's SHA-256 integrity header and return
+ *  the body when the digest matches. Returns `null` on any mismatch /
+ *  malformed header — the caller treats that as a cache miss and
+ *  recompiles + overwrites the file. */
+function verifyAndExtractBody(text: string): string | null {
+  const match = text.match(SHA256_HEADER_PATTERN);
+  if (!match) return null;
+  const body = text.slice(match[0].length);
+  const actual = createHash("sha256").update(body).digest("hex");
+  return actual === match[1] ? body : null;
+}
 
 export class SchemaValidator {
   private ajv: InstanceType<typeof Ajv>;
   private typeRules = new Map<string, TypeRule[]>();
   private rawSchemas = new Map<string, object>();
   private compiledValidators = new WeakMap<object, DataValidator>();
+  private cacheDir: string | undefined;
+  /** Tracks (schema-hash → in-memory compiled validator) so two distinct
+   *  but content-equal schema objects share one compile across the kernel
+   *  process — `compiledValidators` is keyed by object identity and would
+   *  miss those cases. */
+  private hashCache = new Map<string, DataValidator>();
 
   constructor() {
     this.ajv = new Ajv({
       strict: false,
       removeAdditional: false,
       useDefaults: true,
+      // Required for `standaloneCode` extraction — tells AJV to keep the
+      // generated validator's source available rather than wrapping it
+      // through `new Function`. The cost at compile time is negligible.
+      code: { source: true },
     });
     addFormats.default(this.ajv);
     for (const kw of [
@@ -54,6 +135,19 @@ export class SchemaValidator {
     return this.typeRules.get(name);
   }
 
+  /** Enable the on-disk validator cache rooted at `dir`. Compiled AJV
+   *  validators are written as standalone CJS modules keyed by content
+   *  hash, so subsequent process invocations skip the ≈2–10 ms AJV
+   *  codegen for each unseen schema. Safe to call before or after
+   *  `compile()` — already-compiled in-memory entries are unaffected.
+   *  The caller is responsible for choosing a writable directory; the
+   *  kernel anchors this under `<entry-dir>/.telo/manifests/__validators/`
+   *  so it lives next to the manifest cache and rides along in
+   *  `COPY --from=build /srv /srv` Docker images. */
+  setCacheDir(dir: string | undefined): void {
+    this.cacheDir = dir;
+  }
+
   compile(schema: any): DataValidator {
     if (schema && typeof schema === "object") {
       const cached = this.compiledValidators.get(schema as object);
@@ -85,7 +179,20 @@ export class SchemaValidator {
             },
           }
         : normalized;
-    const validate = this.ajv.compile(injected);
+
+    const hash = createHash("sha256")
+      .update(JSON.stringify({ runtime: VALIDATOR_RUNTIME_TAG, schema: injected }))
+      .digest("hex")
+      .slice(0, 32);
+    const cachedByHash = this.hashCache.get(hash);
+    if (cachedByHash) {
+      if (schema && typeof schema === "object") {
+        this.compiledValidators.set(schema as object, cachedByHash);
+      }
+      return cachedByHash;
+    }
+
+    const validate = this.compileAjvOrLoadCached(injected, hash);
 
     const validator = {
       validate: (data: any) => {
@@ -102,11 +209,75 @@ export class SchemaValidator {
       },
     };
 
+    this.hashCache.set(hash, validator);
     if (schema && typeof schema === "object") {
       this.compiledValidators.set(schema as object, validator);
     }
 
     return validator;
+  }
+
+  /** Load `<cacheDir>/<hash>.cjs` if present, else compile via AJV and
+   *  persist as standalone CJS. Cached files start with a
+   *  `// sha256:<hex>\n` header covering the rest of the file; a
+   *  mismatch (truncated write, FS corruption, tampering inside a baked
+   *  Docker image) is treated as a cache miss and the validator is
+   *  recompiled — and overwritten — so the cache self-heals. The cached
+   *  body is wrapped so its embedded `require("ajv/...")` /
+   *  `require("ajv-formats/...")` calls resolve against the kernel
+   *  package; the cache file lives outside any `node_modules` tree, so a
+   *  bare `require()` from its own path would fail. Read/write failures
+   *  surface to stderr but never abort compilation. */
+  private compileAjvOrLoadCached(
+    schema: any,
+    hash: string,
+  ): ValidateFunction {
+    const cacheDir = this.cacheDir;
+    if (cacheDir) {
+      const cachePath = path.join(cacheDir, `${hash}.cjs`);
+      try {
+        const text = fs.readFileSync(cachePath, "utf-8");
+        const body = verifyAndExtractBody(text);
+        if (body !== null) {
+          const factory = new Function(
+            "require",
+            "module",
+            "exports",
+            `${body}\nreturn module.exports;`,
+          );
+          const mod: { exports: any } = { exports: {} };
+          const loaded = factory(kernelRequire, mod, mod.exports);
+          if (typeof loaded === "function") {
+            return loaded as ValidateFunction;
+          }
+        }
+        // Header missing / mismatched / non-function export — fall
+        // through and recompile. The write step below overwrites the
+        // stale file with a fresh hash header.
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          process.stderr.write(
+            `[telo:kernel] validator cache load failed (${hash}): ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      }
+    }
+
+    const validate = this.ajv.compile(schema) as ValidateFunction;
+    if (cacheDir) {
+      try {
+        const body = standaloneCode(this.ajv, validate);
+        const integrity = createHash("sha256").update(body).digest("hex");
+        const payload = `// sha256:${integrity}\n${body}`;
+        fs.mkdirSync(cacheDir, { recursive: true });
+        fs.writeFileSync(path.join(cacheDir, `${hash}.cjs`), payload, "utf-8");
+      } catch (err) {
+        process.stderr.write(
+          `[telo:kernel] validator cache write failed (${hash}): ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
+    }
+    return validate;
   }
 
   composeWithRules(base: DataValidator, typeName: string, rules: TypeRule[]): DataValidator {

@@ -176,6 +176,14 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.loadManifests(url);
   }
 
+  isImportValidatedAtLoad(url: string): boolean {
+    return this.kernel.isImportValidatedAtLoad(url);
+  }
+
+  resolveImportUrl(fromSource: string, importSource: string): string {
+    return this.kernel.resolveImportUrl(fromSource, importSource);
+  }
+
   /**
    * Resolves a resource into a normalized {kind, name} reference.
    * If the resource contains a definition (kind + properties), registers it as a manifest.

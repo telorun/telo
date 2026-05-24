@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import { createRequire } from "module";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +10,11 @@ import {
   resolveEntryDir,
   writeManifestCache,
 } from "../src/manifest-sources/local-manifest-cache-source.js";
+import {
+  computeAnalysisSignature,
+  readAnalysisStamp,
+  writeAnalysisStamp,
+} from "../src/manifest-sources/analysis-stamp.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 
 let workdir: string;
@@ -525,5 +531,84 @@ describe("resolveEntryDir", () => {
 
   it("returns null for HTTP URLs", () => {
     expect(resolveEntryDir("https://example.com/x/telo.yaml")).toBeNull();
+  });
+});
+
+describe("analysis stamp", () => {
+  function makeGraph(files: Array<{ source: string; text: string }>) {
+    const modules = new Map<
+      string,
+      { owner: { source: string; text: string }; partials: never[] }
+    >();
+    for (const f of files) {
+      modules.set(f.source, { owner: f, partials: [] });
+    }
+    return {
+      rootSource: files[0]?.source ?? "",
+      modules,
+      importEdges: new Map(),
+      errors: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  it("computeAnalysisSignature is stable across permutations of the same files", () => {
+    const graphA = makeGraph([
+      { source: "file:///a.yaml", text: "kind: Telo.Application" },
+      { source: "file:///b.yaml", text: "kind: Telo.Library" },
+    ]);
+    const graphB = makeGraph([
+      { source: "file:///b.yaml", text: "kind: Telo.Library" },
+      { source: "file:///a.yaml", text: "kind: Telo.Application" },
+    ]);
+    expect(computeAnalysisSignature(graphA)).toBe(computeAnalysisSignature(graphB));
+  });
+
+  it("computeAnalysisSignature changes when any file text changes", () => {
+    const before = computeAnalysisSignature(
+      makeGraph([{ source: "file:///a.yaml", text: "kind: Telo.Application" }]),
+    );
+    const after = computeAnalysisSignature(
+      makeGraph([
+        { source: "file:///a.yaml", text: "kind: Telo.Application # edited" },
+      ]),
+    );
+    expect(after).not.toBe(before);
+  });
+
+  it("writeAnalysisStamp + readAnalysisStamp round-trip", async () => {
+    const signature = "deadbeef".repeat(8);
+    await writeAnalysisStamp(workdir, signature);
+    const stamp = await readAnalysisStamp(workdir);
+    expect(stamp?.signature).toBe(signature);
+    expect(stamp?.version).toBe(1);
+  });
+
+  it("readAnalysisStamp returns undefined when no stamp file exists", async () => {
+    expect(await readAnalysisStamp(workdir)).toBeUndefined();
+  });
+
+  it("@telorun/analyzer/package.json is reachable so its version pins the signature", () => {
+    // Regression: when the analyzer's `exports` map omitted
+    // `./package.json`, this require failed and `readDepVersion`
+    // collapsed to "unknown" — breaking the "pnpm install of a new
+    // analyzer invalidates every stamp" guarantee. Asserting the
+    // require works keeps that promise enforced.
+    const myRequire = createRequire(import.meta.url);
+    const pkg = myRequire("@telorun/analyzer/package.json");
+    expect(typeof pkg.version).toBe("string");
+    expect(pkg.version).not.toBe("unknown");
+    expect(pkg.name).toBe("@telorun/analyzer");
+  });
+
+  it("readAnalysisStamp rejects a stamp from an unknown protocol version", async () => {
+    const target = path.join(workdir, ".telo/manifests/.validated.json");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(
+      target,
+      JSON.stringify({ version: 9999, signature: "x" }),
+      "utf-8",
+    );
+    expect(await readAnalysisStamp(workdir)).toBeUndefined();
   });
 });

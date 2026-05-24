@@ -623,6 +623,16 @@ export class StaticAnalyzer {
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
     const allManifests = normalizeInlineResources(manifests, defs, aliases, aliasesByModule);
 
+    // Trusted-input fast path: when the caller has already attested that
+    // this exact manifest set passes analysis (e.g. via the kernel's
+    // hash-stamped `.validated.json` cache), skip the validation walk.
+    // Registration of identities / aliases / definitions and inline-resource
+    // normalisation have already run above; that's all downstream
+    // consumers (prepare, init loop) require.
+    if (options?.skipValidation) {
+      return diagnostics;
+    }
+
     // Build a name→manifest map for looking up referenced resources
     const byName = new Map<string, ResourceManifest>();
     for (const m of allManifests) {

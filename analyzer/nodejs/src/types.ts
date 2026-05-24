@@ -81,6 +81,18 @@ export interface LoaderInitOptions {
 
 export interface AnalysisOptions {
   strictContexts?: boolean;
+  /** When true, `analyze()` runs the state-mutating setup (module identity /
+   *  alias / definition registration plus `normalizeInlineResources`) but
+   *  skips every diagnostic-producing pass — per-resource validation, the
+   *  Library `env:` check, `validateExtends`, `validateProviderCoherence`,
+   *  and `validateThrowsCoverage`. Used by the kernel when a previous load
+   *  has already stamped the manifest set as valid (by content hash), so
+   *  the registry still gets populated without paying the validation walk
+   *  on every cold start. The caller takes responsibility for the
+   *  correctness guarantee — pass this only when something durable
+   *  (on-disk stamp) attests that the manifests passed a real analyze
+   *  pass at the same analyzer / kernel version. */
+  skipValidation?: boolean;
 }
 
 /** Pre-seeded state for incremental analysis. Passed to StaticAnalyzer.analyze() so it does

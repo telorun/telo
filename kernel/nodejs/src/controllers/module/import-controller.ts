@@ -1,26 +1,14 @@
 import { DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+import type { BuiltinControllerContext } from "../../internal-context.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 
-const importAnalysisCache = new Map<
-  string,
-  { signature: string; errors: string[] }
->();
-
-// Only resolve relative/absolute-path sources against the importer's URL. Registry refs
-// (std/foo@1.2.3) and absolute URLs (https://, file://) must pass through unchanged so the
-// loader's source chain can dispatch them — otherwise `new URL("std/foo@1", "file:///srv/telo.yaml")`
-// turns a registry ref into a bogus file path and LocalFileSource ENOENTs on it.
-function resolveImportSource(source: string, baseSource: string): string {
-  if (source.startsWith(".") || source.startsWith("/")) {
-    return new URL(source, baseSource).toString();
-  }
-  return source;
-}
-
-export async function create(resource: any, ctx: ResourceContext): Promise<ResourceInstance> {
+export async function create(
+  resource: any,
+  ctx: BuiltinControllerContext,
+): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
 
   const moduleSource: string = resource.module ?? resource.source;
@@ -36,27 +24,36 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   // Validate the imported module and all its transitive imports before loading for runtime.
   // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
   // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
-  const resolvedUrl = resolveImportSource(moduleSource, base);
-  const analysisManifests = await ctx.loadManifests(resolvedUrl);
-  const signature = JSON.stringify(analysisManifests);
-  const cached = importAnalysisCache.get(resolvedUrl);
-  let errors: string[];
+  //
+  // Route URL resolution through the kernel/loader's own helper rather than
+  // a hand-rolled `new URL(...).toString()`. For LocalFileSource the
+  // outputs match; for any custom `ManifestSource` with a non-trivial
+  // `resolveRelative`, only this path produces the canonical URL the
+  // loader keyed its caches under — without which fast paths like
+  // `isImportValidatedAtLoad` silently miss.
+  const resolvedUrl = ctx.resolveImportUrl(base, moduleSource);
 
-  if (cached && cached.signature === signature) {
-    errors = cached.errors;
-  } else {
+  // Fast path: when the kernel's load-time `analyzeErrors` already covered
+  // this import's subtree (the common case — every Telo.Import declared in
+  // the entry graph is walked by `loadGraph` and validated by
+  // `kernel.load`), skip the redundant per-import StaticAnalyzer pass.
+  // Falls through to the full analysis for URLs that arrived
+  // programmatically after `load()` (e.g. dynamically constructed imports
+  // in tests). Two Telo.Imports with the same source but distinct
+  // metadata.name would each re-run analysis here — a memoisation hook
+  // can be reintroduced if that turns into a measurable cost.
+  if (!ctx.isImportValidatedAtLoad(resolvedUrl)) {
+    const analysisManifests = await ctx.loadManifests(resolvedUrl);
     const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
-    errors = diagnostics
+    const errors = diagnostics
       .filter((d) => d.severity === DiagnosticSeverity.Error)
       .map((d) => d.message);
-    importAnalysisCache.set(resolvedUrl, { signature, errors });
-  }
-
-  if (errors.length > 0) {
-    throw new RuntimeError(
-      "ERR_MANIFEST_VALIDATION_FAILED",
-      errors.join("\n"),
-    );
+    if (errors.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        errors.join("\n"),
+      );
+    }
   }
 
   // Load target module manifests for runtime. Inject variables/secrets as compile context so
