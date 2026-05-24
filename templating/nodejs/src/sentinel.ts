@@ -23,3 +23,12 @@ export function isTaggedSentinel(v: unknown): v is TaggedSentinel {
 export function makeTaggedSentinel(engine: string, source: string): TaggedSentinel {
   return { __tagged: true, engine, source };
 }
+
+/** True when `v` is a `!ref <name>` sentinel — i.e. a resource reference
+ *  marked at parse time. Downstream walkers (analyzer ref validation,
+ *  inline normalization, dependency graph, kernel resource resolution)
+ *  use this to tell a reference from an inline definition without
+ *  inferring intent from field presence. */
+export function isRefSentinel(v: unknown): v is TaggedSentinel & { engine: "ref" } {
+  return isTaggedSentinel(v) && v.engine === "ref";
+}

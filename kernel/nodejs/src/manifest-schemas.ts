@@ -2,6 +2,16 @@ import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 const Ajv = AjvModule.default ?? AjvModule;
 
+// Re-export the shared ResourceRef fragment from the templating package
+// so consumers that pull it from the kernel manifest-schemas surface keep
+// working. The canonical home is `@telorun/templating` because the
+// fragment describes the parsed shape of the `!ref` tag's TaggedSentinel.
+export {
+  MANIFEST_SCHEMA_URI,
+  ManifestRootSchema,
+  ResourceRefSchema,
+} from "@telorun/templating";
+
 const metadataSchema = {
   type: "object",
   required: ["name"],

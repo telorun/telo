@@ -1,7 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefEntry, isScopeEntry, resolveFieldValues } from "./reference-field-map.js";
+import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 export interface ResourceNode {
   kind: string;
@@ -16,16 +18,6 @@ export interface DependencyGraph {
    *  The first and last elements are the same resource, tracing the full loop. */
   cycle?: ReadonlyArray<ResourceNode>;
 }
-
-/** System resource kinds that are not runtime nodes in the dependency graph.
- *  Module-identity docs (Telo.Application, Telo.Library) are intentionally
- *  not in this set: an Application's `targets` use `x-telo-ref` to real
- *  Runnable/Service resources, so the Application legitimately depends on
- *  them in boot order — modeling that as a graph edge is correct. A Library
- *  has no `targets`, so it becomes a zero-edge node, which is harmless.
- *  If the graph is ever consumed as "things to init", skip these kinds at
- *  the consumer site; the controller already runs them separately. */
-const SYSTEM_KINDS = new Set(["Telo.Definition", "Telo.Import"]);
 
 const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
 
@@ -47,12 +39,18 @@ export function buildDependencyGraph(
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
 ): DependencyGraph {
-  // --- Build node set ---
+  // --- Build node set + name index ---
   const nodes = new Map<string, ResourceNode>();
+  // Sentinel lookup (`!ref <name>`) needs to resolve a bare name to its
+  // declared kind. Names are unique within a manifest scope, so a flat
+  // map suffices and lets the sentinel branch below avoid a full
+  // O(N) scan of the node set on every reference.
+  const nodesByName = new Map<string, ResourceNode>();
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
-    const key = nodeKey(r.kind, r.metadata.name as string);
-    nodes.set(key, { kind: r.kind, name: r.metadata.name as string });
+    const node = { kind: r.kind, name: r.metadata.name as string };
+    nodes.set(nodeKey(node.kind, node.name), node);
+    nodesByName.set(node.name, node);
   }
 
   // --- Build adjacency: from → deps (from depends on dep) ---
@@ -90,7 +88,22 @@ export function buildDependencyGraph(
       if (!isRefEntry(entry)) continue;
 
       for (const val of resolveFieldValues(r, fieldPath)) {
-        if (!val || typeof val !== "object") continue;
+        if (!val) continue;
+
+        // `!ref <name>` sentinel — look up the target's kind from the
+        // name (resources are unique by name) so the edge carries the
+        // concrete kind, matching the {kind, name} edge shape below.
+        if (isRefSentinel(val)) {
+          const refName = val.source;
+          if (scopedNames.has(refName)) continue;
+          const node = nodesByName.get(refName);
+          if (node) {
+            deps.get(sourceKey)!.add(nodeKey(node.kind, node.name));
+          }
+          continue;
+        }
+
+        if (typeof val !== "object") continue;
         const ref = val as Record<string, unknown>;
         if (!ref.kind || !ref.name) continue;
         // Edges to scoped resources are runtime deps, not boot-time deps — exclude from DAG

@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { formatAjvErrors } from "./manifest-schemas.js";
+import { ManifestRootSchema } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;
 // AJV's standalone subpath is CJS — the default export shows up as either
@@ -114,6 +115,10 @@ export class SchemaValidator {
     ]) {
       this.ajv.addKeyword(kw);
     }
+    // Register the shared manifest root so module schemas can
+    // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
+    // bundling its own copy. Mirrors the analyzer's createAjv().
+    this.ajv.addSchema(ManifestRootSchema);
   }
 
   addSchema(name: string, schema: object): void {

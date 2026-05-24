@@ -1,16 +1,23 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { isTaggedSentinel } from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel, ManifestRootSchema } from "@telorun/templating";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
 /** Creates a configured AJV instance (allErrors, strict: false, with formats).
- *  Called once for the module-level instance and once per DefinitionRegistry instance. */
+ *  Also registers the kernel manifest root schema under `telo://manifest` so
+ *  module YAMLs can `$ref` into the shared `$defs/ResourceRef` (and any future
+ *  shared fragments) from this analyzer's AJV without each module having to
+ *  bundle its own copy.
+ *
+ *  Called once for the module-level instance and once per
+ *  DefinitionRegistry instance. */
 export function createAjv(): InstanceType<typeof Ajv> {
   const instance = new Ajv({ allErrors: true, strict: false });
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
+  instance.addSchema(ManifestRootSchema);
   return instance;
 }
 
@@ -300,6 +307,16 @@ export function substituteCelFields(
 
   if (typeof data === "string" && CEL_PURE_RE.test(data)) {
     return celPlaceholderForSchema(resolved);
+  }
+  // `!ref <name>` sentinels are identity markers, not runtime values —
+  // schemas that opt into `$ref: "telo://manifest#/$defs/ResourceRef"`
+  // (or `anyOf` it alongside other shapes) need the actual sentinel
+  // object so AJV validates it against ResourceRefSchema. Collapsing it
+  // to a CEL placeholder would either fail the schema (when the slot
+  // expects the ResourceRef shape) or mask validation errors (when the
+  // slot expects something else entirely).
+  if (isRefSentinel(data)) {
+    return data;
   }
   if (isTaggedSentinel(data)) {
     return celPlaceholderForSchema(resolved);
