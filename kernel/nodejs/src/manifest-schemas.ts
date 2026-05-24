@@ -1,15 +1,6 @@
-import { Type } from "@sinclair/typebox";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 const Ajv = AjvModule.default ?? AjvModule;
-
-export const RuntimeResourceSchema = Type.Object(
-  {
-    kind: Type.String(),
-    metadata: Type.Object({ name: Type.String() }, { additionalProperties: true }),
-  },
-  { additionalProperties: true },
-);
 
 const metadataSchema = {
   type: "object",
@@ -149,9 +140,28 @@ export const ResourceAbstractSchema = {
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats.default(ajv);
 
-export const validateRuntimeResource = ajv.compile(RuntimeResourceSchema);
-export const validateResourceDefinition = ajv.compile(ResourceDefinitionSchema);
-export const validateResourceAbstract = ajv.compile(ResourceAbstractSchema);
+// Lazy-compile validator: the AJV codegen cost (≈10–15 ms for these
+// schemas) is only paid when a definition / abstract actually needs
+// validating. A hello-world that loads no Telo.Definition or
+// Telo.Abstract documents never triggers either compile; apps that
+// do see them only pay once per process.
+interface LazyValidator {
+  (data: unknown): boolean | Promise<unknown>;
+  errors?: any[] | null;
+}
+function lazyValidator(schema: object): LazyValidator {
+  let compiled: ReturnType<typeof ajv.compile> | undefined;
+  const fn: LazyValidator = (data: unknown) => {
+    if (!compiled) compiled = ajv.compile(schema);
+    const ok = compiled(data);
+    fn.errors = compiled.errors as any[] | null | undefined;
+    return ok;
+  };
+  return fn;
+}
+
+export const validateResourceDefinition = lazyValidator(ResourceDefinitionSchema);
+export const validateResourceAbstract = lazyValidator(ResourceAbstractSchema);
 
 export function formatAjvErrors(errors: any[] | null | undefined): string {
   if (!errors || errors.length === 0) return "Unknown schema error";

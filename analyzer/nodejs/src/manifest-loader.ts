@@ -33,6 +33,14 @@ export class Loader {
    *  get distinct entries, so neither sees the wrong manifest tree. */
   private readonly fileCache = new Map<string, LoadedFile>();
 
+  /** requestUrl → canonical `source`. Lets `loadFile` skip the source read
+   *  when a URL it has already canonicalised is requested again — kernel
+   *  load → boot and the import-controller each ask the loader for the same
+   *  modules. Without this fast path every duplicate request re-runs the
+   *  source's `read()` (a `fetch` for `RegistrySource`, a disk read for
+   *  `LocalFileSource`). */
+  private readonly urlToSource = new Map<string, string>();
+
   protected sources: ManifestSource[];
   private readonly celEnv: Environment;
 
@@ -67,8 +75,22 @@ export class Loader {
   }
 
   async resolveEntryPoint(url: string): Promise<string> {
-    const { source } = await this.pick(url).read(url);
-    return source;
+    // Route through `loadFile` so the resolved source URL and parsed
+    // entry are populated in `urlToSource` + `fileCache` in one read.
+    // Callers (kernel.load) immediately call `loadGraph(entryUrl)`
+    // afterwards — without this priming, the entry file would be read
+    // twice (twice over the network for `RegistrySource`).
+    const file = await this.loadFile(url);
+    return file.source;
+  }
+
+  /** Returns the canonical source URL the loader has already mapped `url`
+   *  to during a prior `loadFile`/`loadModule`/`loadGraph` call, or
+   *  `undefined` when the URL has not been seen. Callers use it to test
+   *  set-membership against a previous graph walk's modules without
+   *  triggering an extra source read. */
+  canonicalize(url: string): string | undefined {
+    return this.urlToSource.get(url);
   }
 
   // --- New API: returns LoadedFile / LoadedModule / LoadedGraph ----------
@@ -78,8 +100,42 @@ export class Loader {
    *  private mutable copy must call `parseLoadedFile` directly with the
    *  LoadedFile's `text`. */
   async loadFile(url: string, options?: LoadOptions): Promise<LoadedFile> {
+    const compileKey = options?.compile ? "compiled" : "raw";
+    const knownSource = this.urlToSource.get(url);
+    if (knownSource) {
+      const cached = this.fileCache.get(`${compileKey}:${knownSource}`);
+      if (cached) return cached;
+      // The other compile-mode entry is cached — reparse from its text
+      // instead of re-reading the source.
+      //
+      // NOTE for watch-mode reactivation (cli/nodejs/src/commands/run.ts
+      // currently has `setupWatchMode` commented out): this branch
+      // assumes file contents don't change underneath a single Loader.
+      // Reviving watch mode will need a public `invalidate(url)` (or
+      // similar) that drops both `urlToSource[url]` and the cached
+      // entries for its canonical source before the loader serves the
+      // file again.
+      const altKey = `${compileKey === "compiled" ? "raw" : "compiled"}:${knownSource}`;
+      const alt = this.fileCache.get(altKey);
+      if (alt) {
+        const reparsed = parseLoadedFile(knownSource, url, alt.text, {
+          compile: options?.compile,
+          celEnv: this.celEnv,
+        });
+        this.fileCache.set(`${compileKey}:${knownSource}`, reparsed);
+        return reparsed;
+      }
+    }
+
     const { text, source } = await this.pick(url).read(url);
-    const cacheKey = `${options?.compile ? "compiled" : "raw"}:${source}`;
+    this.urlToSource.set(url, source);
+    // Also map the canonical source to itself so subsequent `loadFile`
+    // calls that already received a canonical URL — `kernel.load` passes
+    // the result of `resolveEntryPoint` to `loadGraph`, which then asks
+    // for that exact URL — hit the urlToSource fast path instead of
+    // falling through to a redundant `pick(url).read(url)`.
+    this.urlToSource.set(source, source);
+    const cacheKey = `${compileKey}:${source}`;
     const cached = this.fileCache.get(cacheKey);
     if (cached && cached.text === text) return cached;
 
@@ -224,7 +280,16 @@ export class Loader {
     return { rootSource, entry, modules, importEdges, errors };
   }
 
-  private resolveImportUrl(fromSource: string, importSource: string): string {
+  /** Resolve an `import` URL against the file it appears in. Relative /
+   *  absolute-path forms run through the owning `ManifestSource`'s
+   *  `resolveRelative`; registry refs and full URLs pass through
+   *  unchanged. Exposed so the import-controller (and any other
+   *  caller-side resolver) lands on the *exact same* canonical URL the
+   *  loader used when walking the entry graph — divergent resolution
+   *  would silently break optimizations like `canonicalize()`-keyed
+   *  cache hits whenever a non-trivial `ManifestSource.resolveRelative`
+   *  is in play. */
+  resolveImportUrl(fromSource: string, importSource: string): string {
     if (importSource.startsWith(".") || importSource.startsWith("/")) {
       return this.pick(fromSource).resolveRelative(fromSource, importSource);
     }

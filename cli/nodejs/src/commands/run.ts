@@ -3,6 +3,7 @@ import {
   LocalFileSource,
   LocalManifestCacheSource,
   resolveEntryDir,
+  writeManifestCache,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import type { ManifestSource } from "@telorun/analyzer";
@@ -186,6 +187,34 @@ export async function run(argv: {
 
     loadEnvFiles(argv.path);
     await kernel.load(argv.path);
+
+    // Write-through to `<entry-dir>/.telo/manifests/` after the first
+    // successful load. Same persistence path as `telo install` — reuses
+    // `writeManifestCache` so cache contents converge no matter which
+    // command populates them. Idempotent: a graph whose files all came
+    // from `file://` sources (cache hit) results in no writes, since
+    // `cachePathForCanonical` returns null for non-cacheable schemes.
+    // On read-only filesystems (e.g. baked Docker images) we surface the
+    // error but do not abort — caching is an optimization.
+    if (entryDir) {
+      const graph = kernel.getLoadedGraph();
+      if (graph) {
+        try {
+          await writeManifestCache(
+            graph,
+            entryDir,
+            registryUrl ?? "https://registry.telo.run",
+          );
+        } catch (err) {
+          // Warnings belong on stderr — stdout is reserved for the
+          // manifest's own output (consumers may pipe `telo run` into
+          // jq / a downstream process).
+          process.stderr.write(
+            `${log.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
+          );
+        }
+      }
+    }
 
     await kernel.start();
     if (kernel.exitCode !== 0) {

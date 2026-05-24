@@ -5,6 +5,7 @@ import {
   isModuleKind,
   Loader,
   StaticAnalyzer,
+  type LoadedGraph,
   type ManifestSource,
 } from "@telorun/analyzer";
 import {
@@ -30,6 +31,12 @@ import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
+import {
+  computeAnalysisSignature,
+  readAnalysisStamp,
+  writeAnalysisStamp,
+} from "./manifest-sources/analysis-stamp.js";
+import { resolveEntryDir } from "./manifest-sources/local-manifest-cache-source.js";
 import { resolveApplicationEnv } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
@@ -118,6 +125,7 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
+  private _loadedGraph?: LoadedGraph;
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
   private _bootCalled = false;
@@ -186,6 +194,37 @@ export class Kernel implements IKernel {
     return this.registry;
   }
 
+  /** The full LoadedGraph captured during `load()`. Used by the CLI to
+   *  feed `writeManifestCache` so a successful `telo run` populates
+   *  `<entry-dir>/.telo/manifests/` for subsequent runs — the same on-disk
+   *  layout `telo install` writes. Undefined before `load()` has been
+   *  called or if it threw before the graph was captured. */
+  getLoadedGraph(): LoadedGraph | undefined {
+    return this._loadedGraph;
+  }
+
+  /** True when `url` resolves (via the loader's URL → canonical-source map)
+   *  to a module that was already part of the entry graph successfully
+   *  analyzed during `load()`. The import-controller uses it to skip its
+   *  per-import `analyze()` pass when the kernel's load-time validation
+   *  already covered the same subtree. */
+  isImportValidatedAtLoad(url: string): boolean {
+    if (!this._loadedGraph) return false;
+    const canonical = this.loader.canonicalize(url);
+    if (!canonical) return false;
+    return this._loadedGraph.modules.has(canonical);
+  }
+
+  /** Resolve a `Telo.Import.source` against the importing file's URL
+   *  through the same source-chain `resolveRelative` the loader used at
+   *  graph-walk time. The import-controller routes through here so its
+   *  `resolveImportSource` no longer second-guesses the loader for
+   *  custom `ManifestSource`s — `isImportValidatedAtLoad` etc. only hit
+   *  when both sides agree on the canonical URL. */
+  resolveImportUrl(fromSource: string, importSource: string): string {
+    return this.loader.resolveImportUrl(fromSource, importSource);
+  }
+
   /**
    * Load built-in Runtime definitions (e.g., Telo.Application, Telo.Library).
    * Also declares all known module namespaces upfront so that resources can be
@@ -226,6 +265,16 @@ export class Kernel implements IKernel {
   async load(url: string): Promise<void> {
     const sourceUrl = await this.loader.resolveEntryPoint(url);
     this._entryUrl = sourceUrl;
+    // Point the shared schema validator at the entry-anchored cache so
+    // compiled AJV validators are persisted (standalone CJS) under
+    // `<entry-dir>/.telo/manifests/__validators/`. Memory- or HTTP-rooted
+    // entries skip the cache; their schema compiles stay in-process only.
+    const validatorCacheDir = resolveEntryDir(sourceUrl);
+    this.sharedSchemaValidator.setCacheDir(
+      validatorCacheDir
+        ? `${validatorCacheDir}/.telo/manifests/__validators`
+        : undefined,
+    );
     this.rootContext = new ModuleContext(
       sourceUrl,
       {},
@@ -254,6 +303,7 @@ export class Kernel implements IKernel {
     if (analysisGraph.errors.length > 0) {
       throw analysisGraph.errors[0].error;
     }
+    this._loadedGraph = analysisGraph;
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
 
@@ -276,7 +326,22 @@ export class Kernel implements IKernel {
       }
     }
 
-    const errors = this.analyzer.analyzeErrors(staticManifests, {}, this.registry);
+    // Hash-keyed analysis cache: when the entry's full LoadedGraph matches
+    // a previously-stamped successful run (same file bytes, same stamp
+    // protocol version), skip the per-resource validation walk inside
+    // `analyzeErrors`. Registration of identities / aliases / definitions
+    // and inline-resource normalisation still runs — only the diagnostic
+    // passes are elided. Memory- / HTTP-rooted entries have no
+    // local stamp store and always re-validate.
+    const entryDir = resolveEntryDir(sourceUrl);
+    const analysisSignature = computeAnalysisSignature(analysisGraph);
+    const stamp = entryDir ? await readAnalysisStamp(entryDir) : undefined;
+    const skipValidation = stamp?.signature === analysisSignature;
+    const errors = this.analyzer.analyzeErrors(
+      staticManifests,
+      { skipValidation },
+      this.registry,
+    );
     if (errors.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
@@ -290,6 +355,19 @@ export class Kernel implements IKernel {
             : undefined,
         })),
       );
+    }
+    if (entryDir && !skipValidation) {
+      // Best-effort: stamp the verdict so subsequent loads hit the fast
+      // path. A read-only filesystem (baked Docker image) reports the
+      // failure on stderr and keeps running — the lookup above will
+      // simply miss next time.
+      try {
+        await writeAnalysisStamp(entryDir, analysisSignature);
+      } catch (err) {
+        this.stderr.write(
+          `[telo:kernel] analysis stamp write failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
     }
 
     // Load runtime configuration — root module gets access to host env.
@@ -440,6 +518,13 @@ export class Kernel implements IKernel {
     if (this.rootContext) {
       await this.rootContext.teardownResources();
     }
+    // Drop the load-time graph so a teardown'd kernel doesn't pin every
+    // manifest file's text in memory (LoadedFile retains the parsed
+    // documents + the original YAML bytes). Reusing the kernel after
+    // teardown is a hard error elsewhere, so this is purely a memory
+    // hygiene step.
+    this._loadedGraph = undefined;
+    this.staticManifests = [];
     await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
   }
 

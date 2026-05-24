@@ -127,6 +127,26 @@ metadata:
     expect(kernel.exitCode).toBe(0);
   });
 
+  it("exposes the loaded graph after load() so callers can persist it", async () => {
+    const memory = new MemorySource();
+    memory.set(
+      "app",
+      `kind: Telo.Application
+metadata:
+  name: ExposedGraphApp
+  version: 1.0.0
+`,
+    );
+
+    const kernel = new Kernel({ sources: [memory], env: {} });
+    expect(kernel.getLoadedGraph()).toBeUndefined();
+    await kernel.load("memory://app");
+    const graph = kernel.getLoadedGraph();
+    expect(graph).toBeDefined();
+    expect(graph!.rootSource).toBe("memory://app/telo.yaml");
+    expect(graph!.modules.size).toBe(1);
+  });
+
   it("resolves a memory:// Telo.Import from an in-memory Application", async () => {
     const memory = new MemorySource();
     memory.set(
