@@ -17,9 +17,45 @@ const sidebars: SidebarsConfig = {
       label: "Build",
       collapsed: false,
       items: [
-        { type: "doc", id: "tests/README", label: "Testing your manifests" },
+        { type: "doc", id: "docs/build/overview", label: "Overview" },
+        { type: "doc", id: "docs/build/editor", label: "Telo Editor" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
-        { type: "doc", id: "modules/lambda/docs/deploying", label: "Deploying to AWS Lambda" },
+        { type: "doc", id: "tests/README", label: "Testing your manifests" },
+      ],
+    },
+    {
+      type: "category",
+      label: "Deploy",
+      collapsed: false,
+      items: [
+        { type: "doc", id: "docs/deploy/overview", label: "Overview" },
+        { type: "doc", id: "docs/deploy/docker", label: "Docker image" },
+        { type: "doc", id: "modules/lambda/docs/deploying", label: "AWS Lambda" },
+      ],
+    },
+    {
+      type: "category",
+      label: "Extend",
+      collapsed: false,
+      items: [
+        { type: "doc", id: "sdk/README", label: "Overview" },
+        {
+          type: "category",
+          label: "Node.js",
+          items: [
+            { type: "doc", id: "sdk/nodejs/README", label: "Overview" },
+            {
+              type: "doc",
+              id: "templating/nodejs/docs/templating-engines",
+              label: "Templating Engines",
+            },
+          ],
+        },
+        {
+          type: "category",
+          label: "Rust",
+          items: [{ type: "doc", id: "sdk/rust/README", label: "Overview" }],
+        },
       ],
     },
     {
@@ -36,9 +72,17 @@ const sidebars: SidebarsConfig = {
               type: "category",
               label: "Concepts",
               items: [
-                { type: "doc", id: "kernel/docs/resource-definition", label: "Resource Definition" },
+                {
+                  type: "doc",
+                  id: "kernel/docs/resource-definition",
+                  label: "Resource Definition",
+                },
                 { type: "doc", id: "kernel/docs/resource-lifecycle", label: "Resource Lifecycle" },
-                { type: "doc", id: "kernel/docs/resource-references", label: "Resource References" },
+                {
+                  type: "doc",
+                  id: "kernel/docs/resource-references",
+                  label: "Resource References",
+                },
                 { type: "doc", id: "kernel/docs/inheritance", label: "Inheritance" },
                 { type: "doc", id: "kernel/docs/evaluation-context", label: "Evaluation Context" },
                 { type: "doc", id: "kernel/docs/data-types", label: "Data Types" },
@@ -283,7 +327,11 @@ const sidebars: SidebarsConfig = {
                   label: "Starlark",
                   items: [
                     { type: "doc", id: "modules/starlark/README", label: "Overview" },
-                    { type: "doc", id: "modules/starlark/docs/runtime-rust", label: "Rust runtime" },
+                    {
+                      type: "doc",
+                      id: "modules/starlark/docs/runtime-rust",
+                      label: "Rust runtime",
+                    },
                   ],
                 },
               ],
@@ -320,31 +368,6 @@ const sidebars: SidebarsConfig = {
               ],
             },
           ],
-        },
-      ],
-    },
-    {
-      type: "category",
-      label: "Extend",
-      collapsed: false,
-      items: [
-        { type: "doc", id: "sdk/README", label: "Overview" },
-        {
-          type: "category",
-          label: "Node.js",
-          items: [
-            { type: "doc", id: "sdk/nodejs/README", label: "Overview" },
-            {
-              type: "doc",
-              id: "templating/nodejs/docs/templating-engines",
-              label: "Templating Engines",
-            },
-          ],
-        },
-        {
-          type: "category",
-          label: "Rust",
-          items: [{ type: "doc", id: "sdk/rust/README", label: "Overview" }],
         },
       ],
     },

@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: HelloConsole
+  version: 1.0.0
+targets:
+  - Main
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: std/run@0.2.7
+---
+kind: Telo.Import
+metadata:
+  name: Console
+source: std/console@1.5.1
+---
+kind: Run.Sequence
+metadata:
+  name: Main
+steps:
+  - name: SayHello
+    invoke:
+      kind: Console.WriteLine
+    inputs:
+      output: "Hello from Telo!"

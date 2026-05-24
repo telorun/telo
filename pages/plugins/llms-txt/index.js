@@ -286,7 +286,7 @@ function writeLlmsFullTxt(filePath, siteConfig, sections) {
  * default id-based logic in `resolveDoc` still runs for non-mapped docs.
  */
 function syntheticSlugForId(id) {
-  if (id === "modules/lambda/docs/deploying") return "/build/deploying-to-lambda";
+  if (id === "modules/lambda/docs/deploying") return "/deploy/lambda";
 
   if (id.startsWith("modules/")) {
     let rel = id.slice("modules/".length);

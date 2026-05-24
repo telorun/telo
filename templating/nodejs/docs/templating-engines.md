@@ -101,4 +101,4 @@ interface TemplatingEngine {
   `isCompiledValue(v) && v.call(ctx)`; it does not learn about engines.
 - **One registry, one parse config.** The `defaultCustomTags()` helper
   memoizes the `customTags` array built from the default registry. Every
-  `parseAllDocuments` call site in the repo imports it.
+  `parseAllDocuments` call site imports it.
