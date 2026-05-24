@@ -57,16 +57,8 @@ steps:
       kind: JavaScript.Script
       name: MultiplyBy2
   - name: PrintResult
+    invoke: { kind: Console.WriteLine }
     inputs:
-      result: "${{ steps.Step1.result.result }}"
-    invoke:
-      kind: Console.WriteLine
-      inputType:
-        kind: Type.JsonSchema
-        schema:
-          type: object
-          properties:
-            result: { type: number }
       output: |
         Evaluated JavaScript code.
-        Result is: ${{ result }}
+        Result is: ${{ steps.Step1.result.result }}

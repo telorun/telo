@@ -65,6 +65,7 @@ steps:
       metadata:
         name: Greeting
         module: HelloConsole
+    inputs:
       output: "Hello from Telo!"
 ```
 

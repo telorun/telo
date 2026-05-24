@@ -48,20 +48,6 @@ outputType:
       result: { type: number }
     required: [result]
 ---
-kind: Console.WriteLine
-metadata:
-  name: WriteResult
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      result: { type: number }
-    required: [result]
-output: |
-  Evaluated starlark code.
-  Result is: ${{ result }}
----
 kind: Run.Sequence
 metadata:
   name: RunScriptOnEvent
@@ -73,8 +59,8 @@ steps:
       kind: Starlark.Script
       name: ExampleStarlarkScript
   - name: Step2
+    invoke: { kind: Console.WriteLine }
     inputs:
-      result: "${{ steps.Step1.result.result }}"
-    invoke:
-      kind: Console.WriteLine
-      name: WriteResult
+      output: |
+        Evaluated starlark code.
+        Result is: ${{ steps.Step1.result.result }}

@@ -7,38 +7,50 @@ metadata:
 kind: Telo.Definition
 metadata:
   name: WriteLine
-capability: Telo.Runnable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@1.0.0?local_path=./nodejs#writeline
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        title: Output
+        description: |
+          Text content written to standard output. Markup tags `{style content}`
+          are rendered to ANSI on a TTY and stripped to plain text otherwise.
+        type: string
+    required: [output]
+    additionalProperties: false
 schema:
   type: object
-  properties:
-    output:
-      title: Output
-      description: |
-        Text content written to standard output. Markup tags `{style content}`
-        are rendered to ANSI on a TTY and stripped to plain text otherwise.
-      type: string
-  required: ["output"]
+  additionalProperties: false
 ---
 kind: Telo.Definition
 metadata:
   name: ReadLine
-capability: Telo.Runnable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@1.0.0?local_path=./nodejs#readline
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      prompt:
+        title: Prompt
+        description: |
+          Prompt text written to stdout before reading input. Rendered
+          character-for-character — no auto-appended `: ` suffix. Markup
+          tags `{style content}` are rendered to ANSI on a TTY and stripped
+          to plain text otherwise.
+        type: string
+    required: [prompt]
+    additionalProperties: false
 schema:
   type: object
-  properties:
-    prompt:
-      title: Prompt
-      description: |
-        Prompt text written to stdout before reading input. Rendered
-        character-for-character — no auto-appended `: ` suffix. Markup
-        tags `{style content}` are rendered to ANSI on a TTY and stripped
-        to plain text otherwise.
-      type: string
-  required: ["prompt"]
+  additionalProperties: false
 ---
 # Drain a `Stream<string | Uint8Array>` to stdout. Strings use Node's native
 # UTF-8 path; Uint8Array chunks pass through unchanged. No newline policy —

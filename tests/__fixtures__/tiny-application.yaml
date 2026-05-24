@@ -11,4 +11,3 @@ source: ../../modules/console
 kind: Console.WriteLine
 metadata:
   name: Unreachable
-output: "never runs"

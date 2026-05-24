@@ -50,32 +50,32 @@ kind: Run.Sequence
 metadata: { name: TestWriteLine }
 steps:
   - name: SoloStyle
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{red error}"
   - name: ChainedStyles
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{red.bold ERROR}"
   - name: BackgroundStyle
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{red.bgWhite warning}"
   - name: HexColor
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{#ff8800 highlight}"
   - name: Nesting
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "hi {red {bold WORLD}!}"
   - name: Escapes
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "literal: \\{red\\} not a tag"
   - name: PlainText
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "no markup at all"
   - name: AssertWriteLineReached
     invoke: { kind: Assert.Equals }
@@ -115,20 +115,20 @@ kind: Run.Sequence
 metadata: { name: TestUnknownStyleFallback }
 steps:
   - name: UnknownStyle
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{notARealStyle hello}"
   - name: PartiallyKnown
-    invoke:
-      kind: Console.WriteLine
+    invoke: { kind: Console.WriteLine }
+    inputs:
       output: "{red.notARealAttr text}"
   - name: NestedKnownInsideUnknown
-    invoke:
-      kind: Console.WriteLine
-      # The inner `{red hi}` must come out as literal `{red hi}` — no
-      # ANSI escapes, no markup stripping — because the outer wrapper
-      # is unknown. Earlier impl bug: re-rendered children and leaked
-      # ANSI through the wrapper.
+    invoke: { kind: Console.WriteLine }
+    # The inner `{red hi}` must come out as literal `{red hi}` — no
+    # ANSI escapes, no markup stripping — because the outer wrapper
+    # is unknown. Earlier impl bug: re-rendered children and leaked
+    # ANSI through the wrapper.
+    inputs:
       output: "{notARealStyle {red hi}}"
   - name: AssertUnknownReached
     invoke: { kind: Assert.Equals }

@@ -1,6 +1,5 @@
 import type {
   ControllerContext,
-  DataValidator,
   ResourceContext,
   ResourceInstance,
   ResourceManifest,
@@ -9,20 +8,16 @@ import { isTtyStream, render } from "./markup.js";
 
 export function register(ctx: ControllerContext): void {}
 
-class ConsoleWriteLineResource implements ResourceInstance {
-  private inputValidator: DataValidator;
+interface WriteLineInputs {
+  output: string;
+}
 
-  constructor(
-    readonly ctx: ResourceContext,
-    readonly manifest: any,
-  ) {
-    this.inputValidator = ctx.createTypeValidator(manifest.inputType);
-  }
+class ConsoleWriteLineResource implements ResourceInstance<WriteLineInputs, string> {
+  constructor(readonly ctx: ResourceContext) {}
 
-  invoke(input: any) {
-    this.inputValidator.validate(input);
-    const output = this.ctx.expandValue(this.manifest.output, input ?? {});
-    const rendered = render(String(output ?? ""), isTtyStream(this.ctx.stdout as any));
+  async invoke(inputs: WriteLineInputs): Promise<string> {
+    const output = String(inputs?.output ?? "");
+    const rendered = render(output, isTtyStream(this.ctx.stdout as any));
     this.ctx.stdout.write(rendered);
     this.ctx.stdout.write("\n");
     this.ctx.emit("StdOut.LineWritten", { line: output });
@@ -34,5 +29,5 @@ export async function create(
   resource: ResourceManifest,
   ctx: ResourceContext,
 ): Promise<ConsoleWriteLineResource> {
-  return new ConsoleWriteLineResource(ctx, resource);
+  return new ConsoleWriteLineResource(ctx);
 }
