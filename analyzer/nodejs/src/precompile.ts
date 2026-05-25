@@ -1,6 +1,6 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import { isCompiledValue } from "@telorun/sdk";
-import { compileString, defaultRegistry, isTaggedSentinel } from "@telorun/templating";
+import { compileString, defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 
 /**
  * Walks a raw YAML document and replaces all `${{ expr }}` strings (and
@@ -21,6 +21,13 @@ export function precompileDoc(doc: unknown, env: Environment): unknown {
   // analyzer's diagnostic walk can identify it on compiled trees too;
   // engines returning plain values (e.g. `literal` → a string) pass through
   // verbatim — the runtime contract is "any scalar value is fine."
+  // `!ref` sentinels are identity markers, not templating values. They must
+  // survive precompile intact so the analyzer's `resolveRefSentinels` pass
+  // can substitute them with `{kind, name}` objects against the resolved
+  // resource manifest. Running the engine's `compile` here would prematurely
+  // collapse the sentinel into its source string and the ref slot would
+  // arrive at the controller as a bare name with no kind.
+  if (isRefSentinel(doc)) return doc;
   if (isTaggedSentinel(doc)) {
     const engine = defaultRegistry().get(doc.engine);
     if (!engine) {

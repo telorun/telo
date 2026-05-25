@@ -1,0 +1,36 @@
+# Reference Syntax Unification
+
+## Problem
+
+Resource references in Telo manifests come in too many shapes. Across the standard library there are three divergent JSON Schema styles for `x-telo-ref` slots (no constraint, `oneOf` with string-and-object, string-only), and on the value side users may write a bare name, a dotted-FQN string, or an object with `{kind, name}`. The same object shape doubles as an inline resource definition (`{kind, …config}` with no `name`), so reference and definition are visually indistinguishable — a typo that omits `name` silently becomes an inline declaration instead of an unresolved reference. The HTTP server `mounts[].type` slot is the worst case: string-only, dotted-FQN, named with a misleading word, and inconsistent with every other ref slot. Run.Sequence's step `invoke:` advertises a `Runnable` alternative that the controller never dispatches on, so the schema actively lies. Telo is pre-release; converging on one canonical shape now avoids carrying the divergence forward.
+
+## Solution
+
+Introduce a new YAML tag `!ref` for references; inline definitions remain plain objects. The two roles in the YAML — pointing at an existing resource vs. declaring a new one — get visually distinct surfaces, and the discrimination becomes structural rather than inferred.
+
+**Reference shape.** Tagged string: `handler: !ref SayHello`. The tag carries a bare resource name; no `kind:` field. The slot's `x-telo-ref` already pins the acceptable kinds and the analyzer's existing `checkKind` validates the resolved target's actual kind (which may be a concrete kind extending an abstract that the slot declares). The user-written name may be any kind that satisfies the slot's constraint, including a resource declared with an abstract kind. Names are unique within a manifest (the `byName` Map already enforces this), so a bare name is unambiguous — no qualification is ever needed.
+
+**Inline shape.** Plain object: `outputType: {kind: Type.JsonSchema, schema: {…}}`. No tag. The kind's body schema validates the object as a top-level resource declaration would. The plan does not move inline definitions to top-level resources — the verbosity tax is unacceptable.
+
+**Per-call extras.** Per-call data (Run.Sequence step `inputs:`, `retry:`, etc.) lives at the *parent* level, never inside a ref. The earlier appearance of "ref with extras" in existing manifests was always inline definitions in disguise; the new shape makes that explicit.
+
+**Tag registration.** The `!ref` tag is registered in the templating engine registry alongside `!cel` ([templating/nodejs/src/yaml-tags.ts](../../../templating/nodejs/src/yaml-tags.ts) — the same `buildTagForEngine` mechanism). At parse time it produces a `TaggedSentinel({engine: "ref", source: "<name>"})`; the analyzer and kernel both recognize the sentinel.
+
+**Validator.** [analyzer/nodejs/src/validate-references.ts](../../../analyzer/nodejs/src/validate-references.ts) is rewritten around the tag: a value at an `x-telo-ref` slot is either a ref-sentinel (do name lookup in `byName`/visible scope manifests, then `checkKind`) or a plain object (AJV-validate against the kind's body schema). The dotted-FQN string parsing path is removed. The current cross-module string-skip rule ([validate-references.ts:158-164](../../../analyzer/nodejs/src/validate-references.ts#L158-L164)) is removed: per Telo's import encapsulation, resources declared inside imported libraries are not addressable from the parent, so every ref name resolves locally or it's `UNRESOLVED_REFERENCE`.
+
+**Schema sites.** A shared fragment in [kernel/nodejs/src/manifest-schemas.ts](../src/manifest-schemas.ts) describes the tagged-string ref form, exposed to module schemas via AJV external schema registration under the stable URI `telo://manifest`. Module YAMLs reference it as `$ref: "telo://manifest#/$defs/ResourceRef"`. Every `x-telo-ref` slot in `modules/http-server`, `modules/sql`, `modules/sql-repository`, `modules/lambda`, `modules/workflow`, `modules/mcp-client`, `modules/mcp-server`, `modules/javascript`, `modules/run`, `modules/starlark` is converted to the unified shape.
+
+**Mount slot.** [modules/http-server/telo.yaml](../../../modules/http-server/telo.yaml) renames `mounts[].type` → `mounts[].mount` and adopts the unified shape. The controller under `modules/http-server/nodejs/` reads the new field.
+
+**Run.Sequence.** [modules/run/telo.yaml](../../../modules/run/telo.yaml) drops the unused `Runnable` alternative from step `invoke:` so the schema matches [modules/run/nodejs/src/sequence.ts](../../../modules/run/nodejs/src/sequence.ts), which only calls `.invoke()`. If Runnable dispatch is wanted later, it's a separate plan.
+
+**Migration.** Examples under `examples/` and tests under `modules/*/tests/` are migrated: every existing string ref or `{kind, name}` object becomes `!ref <name>`; every `mounts[].type:` is renamed. [CLAUDE.md](../../../CLAUDE.md) is updated to document `!ref` as the only ref shape, plain objects as inline definitions, and per-call extras living at parent slots.
+
+## Decisions
+
+- **`!ref` tag with a bare name string is the only reference shape.** The two roles in a manifest (point at an existing resource vs. declare a new one inline) get visually distinct surfaces — typos can't slip from one to the other. The `kind:` field that earlier drafts kept on the ref object is redundant: the slot's `x-telo-ref` already pins what kinds are acceptable and `checkKind` already validates the resolved target. Rejected: object-form `!ref {kind, name}` — weird-looking and adds no information; bare-name string without a tag — reintroduces the inline-vs-ref ambiguity; dotted-FQN strings — silently break when an alias gains a dot.
+- **Inline definitions stay as plain objects at the ref slot.** Verbose top-level-only inline (the alternative considered earlier) was rejected for the cost it imposes on every `outputType:`/`inputType:`/one-off-handler site. The tag presence vs absence cleanly disambiguates ref from inline, so co-locating inline definitions costs nothing in clarity.
+- **Names are always local; no cross-module ref resolution.** Telo imports are encapsulated (per CLAUDE.md), so resources inside imported libraries are not addressable from the parent. Removing this case eliminates the cross-module-skip rule the analyzer carries today and removes a category of false-negative diagnostics.
+- **Mount field renamed `type` → `mount`.** `type` reads as a kind discriminator; the slot actually carries a named instance reference. Worth the breaking rename while pre-release.
+- **Run.Sequence drops the `Runnable` schema alternative.** The controller never dispatches on `.run()`; making the schema honest is a precondition for any future Runnable support.
+- **Shared `ResourceRef` fragment exposed via AJV external schema under the stable URI `telo://manifest`.** Registered at analyzer init before any module schema is compiled. Rejected: loader-injected fragment per module schema (duplication, drift risk) and compile-time URI rewrite (opaque to editor introspection, awkward in the browser flow). External-schema registration is the only option that works in the browser, supports third-party modules, and keeps editor introspection straightforward.

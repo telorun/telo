@@ -1,17 +1,13 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isRefSentinel } from "@telorun/templating";
 import { isRefEntry, isScopeEntry, isSchemaFromEntry, isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
 import { navigateJsonPointer } from "./schema-compat.js";
+import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 const SOURCE = "telo-analyzer";
-/** Kinds skipped by reference validation. Telo.Application and Telo.Library
- *  are intentionally not here: Application has `targets` with x-telo-ref that
- *  must be validated, and Library has no ref-bearing fields so flows through
- *  harmlessly. Telo.Import is also not here for the same reason — its
- *  `source` field isn't x-telo-ref, so nothing gets checked. */
-const SYSTEM_KINDS = new Set(["Telo.Definition", "Telo.Abstract"]);
 
 /**
  * Checks whether `kind` satisfies the ref constraint in `entry`.
@@ -144,6 +140,38 @@ export function validateReferences(
 
       for (const { value: val, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
         if (!val) continue;
+
+        // `!ref <name>` sentinel — bare resource name marked at parse time as a
+        // reference. Look it up against the slot's x-telo-ref constraint exactly
+        // like the legacy bare-string path; the only difference is the value's
+        // shape (a TaggedSentinel rather than a raw string), which removed the
+        // string/inline ambiguity at the source.
+        if (isRefSentinel(val)) {
+          const refName = val.source;
+          const target =
+            byName.get(refName) ?? visibleScopeManifests.find((m) => m.metadata?.name === refName);
+          if (!target) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "UNRESOLVED_REFERENCE",
+              source: SOURCE,
+              message: `${resourceLabel}: reference at '${concretePath}' → resource '${refName}' not found`,
+              data: { resource: resourceData, filePath, path: concretePath },
+            });
+            continue;
+          }
+          const kindErrors = checkKind(target.kind as string, entry, registry, aliases);
+          if (kindErrors.length > 0) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "REFERENCE_KIND_MISMATCH",
+              source: SOURCE,
+              message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
+              data: { resource: resourceData, filePath, path: concretePath },
+            });
+          }
+          continue;
+        }
 
         // Name-only reference (plain string) — look up by name to validate.
         // Qualified references use "Kind.Name" format (e.g. "Http.Api.PaymentApi");

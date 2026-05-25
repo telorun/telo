@@ -14,6 +14,7 @@ import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kerne
 import { computeSuggestKind } from "./kind-suggest.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
+import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
@@ -623,6 +624,12 @@ export class StaticAnalyzer {
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
     const allManifests = normalizeInlineResources(manifests, defs, aliases, aliasesByModule);
 
+    // Phase 2.5: resolve `!ref <name>` sentinels at every ref slot to canonical
+    // {kind, name} objects so downstream phases (validation, dependency graph,
+    // kernel controllers) see a uniform shape. Runs after normalize so both
+    // original and inline-extracted manifests have their sentinels resolved.
+    resolveRefSentinels(allManifests, defs, aliases, aliasesByModule);
+
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
     // hash-stamped `.validated.json` cache), skip the validation walk.
@@ -982,12 +989,17 @@ export class StaticAnalyzer {
 
   normalize(manifests: ResourceManifest[], registry: AnalysisRegistry): ResourceManifest[] {
     const ctx = registry._context();
-    return normalizeInlineResources(
+    const normalized = normalizeInlineResources(
       manifests,
       ctx.definitions!,
       ctx.aliases,
       ctx.aliasesByModule,
     );
+    // Resolve !ref sentinels after normalize so both the original and
+    // inline-extracted manifests get their refs canonicalized to
+    // {kind, name} for the kernel that consumes this output.
+    resolveRefSentinels(normalized, ctx.definitions!, ctx.aliases, ctx.aliasesByModule);
+    return normalized;
   }
 
   prepare(

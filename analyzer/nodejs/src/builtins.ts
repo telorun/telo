@@ -220,6 +220,20 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             anyOf: [
               { type: "string", "x-telo-ref": "telo#Runnable" },
               { type: "string", "x-telo-ref": "telo#Service" },
+              // Post-resolution shape that `resolveRefSentinels`
+              // substitutes a `!ref <name>` sentinel into. The
+              // adjacent `x-telo-ref` constraints govern the kind
+              // check; this branch only admits the structural form so
+              // AJV doesn't reject a resolved ref.
+              {
+                type: "object",
+                required: ["kind", "name"],
+                properties: {
+                  kind: { type: "string" },
+                  name: { type: "string" },
+                },
+                additionalProperties: true,
+              },
             ],
           },
         },

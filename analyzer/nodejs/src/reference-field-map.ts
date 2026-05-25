@@ -142,7 +142,7 @@ export function buildReferenceFieldMap(schema: Record<string, any>): ReferenceFi
   const map: ReferenceFieldMap = new Map();
   if (schema.properties) {
     for (const [key, propSchema] of Object.entries(schema.properties)) {
-      traverseNode(propSchema as Record<string, any>, key, map);
+      traverseNode(propSchema as Record<string, any>, key, map, schema);
     }
   }
   return map;
@@ -172,11 +172,29 @@ export function buildFieldMapAtPath(
   pathPrefix: string,
 ): ReferenceFieldMap {
   const map: ReferenceFieldMap = new Map();
-  traverseNode(schema, pathPrefix, map);
+  traverseNode(schema, pathPrefix, map, schema);
   return map;
 }
 
-function traverseNode(node: Record<string, any>, path: string, map: ReferenceFieldMap): void {
+function traverseNode(
+  node: Record<string, any>,
+  path: string,
+  map: ReferenceFieldMap,
+  root?: Record<string, any>,
+  visitedRefs: Set<string> = new Set(),
+): void {
+  // Local `$ref` is intentionally NOT followed. Descending into shared
+  // `$defs` (notably `Run.Sequence`'s `step` definition) would surface
+  // ref slots like `steps[].invoke` that Phase 5 then injects live
+  // instances into; today's `Run.Sequence` controller calls
+  // `instance.invoke()` directly when handed an instance, bypassing
+  // the kernel's `runInvoke` emit-Invoked path. The walker fix and the
+  // dispatcher fix need to land together — see the follow-up in
+  // [kernel/nodejs/plans/reference-syntax-unification.md] and the
+  // stopgap in `resource-context.ts:resolveChildren`. `visitedRefs`
+  // stays as a parameter so the recursive calls below thread the right
+  // signature; turning the descent back on is a single-branch change.
+  if (typeof node?.$ref === "string") return;
   // Scope slot — record and stop; do not recurse into scope contents
   if ("x-telo-scope" in node) {
     map.set(path, { scope: node["x-telo-scope"] });
@@ -200,13 +218,32 @@ function traverseNode(node: Record<string, any>, path: string, map: ReferenceFie
 
   // Array — recurse into items
   if (node.type === "array" && node.items) {
-    traverseNode(node.items as Record<string, any>, path + "[]", map);
+    traverseNode(node.items as Record<string, any>, path + "[]", map, root, visitedRefs);
   }
 
   // Object — recurse into properties
   if (node.properties) {
     for (const [key, propSchema] of Object.entries(node.properties)) {
-      traverseNode(propSchema as Record<string, any>, `${path}.${key}`, map);
+      traverseNode(propSchema as Record<string, any>, `${path}.${key}`, map, root, visitedRefs);
+    }
+  }
+
+  // Variant branches — descend into every alternative's properties / items.
+  // Schemas that discriminate on shape (Run.Sequence's step kinds:
+  // `oneOf: [{properties: {invoke}}, {properties: {try}}, ...]`) hide ref
+  // slots inside the branch. Walking each branch surfaces those slots into
+  // the field map so downstream passes (ref validation, sentinel
+  // resolution, dependency graph) cover them without a runtime fallback.
+  // The same field path may be added by multiple branches; the later
+  // assignment wins, which is fine — branches with the same field path
+  // share the same ref/context configuration (any divergence is already
+  // a schema bug).
+  for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
+    const variants = node[variantKey];
+    if (!Array.isArray(variants)) continue;
+    for (const variant of variants) {
+      if (!variant || typeof variant !== "object") continue;
+      traverseVariant(variant as Record<string, any>, path, map, root, visitedRefs);
     }
   }
 
@@ -218,6 +255,46 @@ function traverseNode(node: Record<string, any>, path: string, map: ReferenceFie
     typeof node.additionalProperties === "object" &&
     !Array.isArray(node.additionalProperties)
   ) {
-    traverseNode(node.additionalProperties as Record<string, any>, `${path}.{}`, map);
+    traverseNode(
+      node.additionalProperties as Record<string, any>,
+      `${path}.{}`,
+      map,
+      root,
+      visitedRefs,
+    );
+  }
+}
+
+/** Walk a single variant of a `oneOf` / `anyOf` / `allOf` branch. Only
+ *  the properties / items / map slots are followed — collectRefs at the
+ *  variant root is handled by the parent's `collectRefs(node)` already
+ *  (anyOf of x-telo-ref branches is the canonical multi-ref shape). */
+function traverseVariant(
+  variant: Record<string, any>,
+  path: string,
+  map: ReferenceFieldMap,
+  root?: Record<string, any>,
+  visitedRefs: Set<string> = new Set(),
+): void {
+  if (variant.properties) {
+    for (const [key, propSchema] of Object.entries(variant.properties)) {
+      traverseNode(propSchema as Record<string, any>, `${path}.${key}`, map, root, visitedRefs);
+    }
+  }
+  if (variant.type === "array" && variant.items) {
+    traverseNode(variant.items as Record<string, any>, path + "[]", map, root, visitedRefs);
+  }
+  if (
+    variant.additionalProperties &&
+    typeof variant.additionalProperties === "object" &&
+    !Array.isArray(variant.additionalProperties)
+  ) {
+    traverseNode(
+      variant.additionalProperties as Record<string, any>,
+      `${path}.{}`,
+      map,
+      root,
+      visitedRefs,
+    );
   }
 }

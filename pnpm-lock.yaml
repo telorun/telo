@@ -366,6 +366,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@telorun/templating':
+        specifier: workspace:*
+        version: link:../../templating/nodejs
       ajv:
         specifier: ^8.17.1
         version: 8.17.1

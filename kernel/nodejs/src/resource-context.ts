@@ -13,6 +13,7 @@ import {
   type ParsedArgs,
   type TypeRule,
 } from "@telorun/sdk";
+import { isRefSentinel } from "@telorun/templating";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -200,6 +201,31 @@ export class ResourceContextImpl implements ResourceContext {
         "ERR_INVALID_VALUE",
         `[${this.metadata.name}] Resource must be an object. Got: ${typeof resource}`,
       );
+    }
+
+    // Stopgap: `!ref <name>` sentinels can reach the controller directly
+    // when the slot is hidden behind a local `$ref: "#/$defs/..."` — the
+    // analyzer's field-map walker descends `oneOf`/`anyOf` variant
+    // properties but intentionally early-returns on `$ref` (see
+    // `analyzer/nodejs/src/reference-field-map.ts`). Enabling the `$ref`
+    // descent regresses the kernel's `<Kind>.<Name>.Invoked` event
+    // emission for kinds (notably `Run.Sequence`) whose controllers
+    // call `instance.invoke()` directly on Phase-5-injected instances;
+    // the walker fix needs to land together with routing those callers
+    // through `EvaluationContext.invokeResolved`. Until then, the Node
+    // kernel resolves the sentinel here. Polyglot controllers don't get
+    // this rescue — schemas exercising those hidden slots must use the
+    // legacy string or `{kind, name}` forms for now.
+    if (isRefSentinel(resource)) {
+      const refName = resource.source;
+      const entry = this.moduleContext.resourceInstances.get(refName);
+      if (!entry) {
+        throw new RuntimeError(
+          "ERR_RESOURCE_NOT_FOUND",
+          `[${this.metadata.name}] !ref '${refName}' did not resolve to a registered resource.`,
+        );
+      }
+      return { kind: entry.resource.kind as string, name: refName };
     }
 
     if (!resource.kind) {
