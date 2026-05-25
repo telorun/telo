@@ -48,10 +48,21 @@ describe("documentLineOffsets", () => {
     expect(documentLineOffsets("")).toEqual([0]);
   });
 
-  it("treats a leading '---' directive as a doc start at line 1", () => {
-    // First doc still anchored at line 0 (the offsets array is seeded with 0);
-    // the explicit '---' on line 0 adds the next-line entry at 1.
-    expect(documentLineOffsets("---\nkind: Foo\n")).toEqual([0, 1]);
+  it("treats a leading '---' as doc 0's start marker, not a separator", () => {
+    // A '---' at line 0 marks the beginning of doc 0; the yaml parser still
+    // emits exactly one document. The offsets array must stay [0] so it
+    // aligns with parsedDocs.length — otherwise diagnostics for later docs
+    // get attributed one entry too early and land inside the previous doc.
+    expect(documentLineOffsets("---\nkind: Foo\n")).toEqual([0]);
+  });
+
+  it("aligns offsets with parsed docs when a multi-doc file starts with '---'", () => {
+    // Two docs, file starts with '---'. The leading '---' is doc 0's start
+    // marker; only the inner '---' is a real separator. Offsets stay [0, 3]
+    // (one per doc), preventing the off-by-one that previously misattributed
+    // doc N's diagnostics to doc N-1's line range.
+    const text = ["---", "kind: A", "---", "kind: B", ""].join("\n");
+    expect(documentLineOffsets(text)).toEqual([0, 3]);
   });
 
   it("records each '---' separator as a new doc start (next line)", () => {
@@ -267,11 +278,9 @@ describe("buildDocumentPositions", () => {
     const docs = parse(text);
     const positions = buildDocumentPositions(text, docs);
 
-    // Single document, but documentLineOffsets reports [0, 1] — the parser
-    // produces one Document. positions[0].sourceLine is the first offset (0);
-    // the second offset is unused by buildDocumentPositions because docs.length
-    // is 1. This pins the "extra offset is silently ignored" behaviour so a
-    // future change can't accidentally blow the index.
+    // The parser produces a single document and documentLineOffsets reports
+    // [0] — the leading '---' is doc 0's start marker, not a separator, so
+    // there is no extra offset to drift later docs' sourceLine attribution.
     expect(positions).toHaveLength(1);
     expect(positions[0].sourceLine).toBe(0);
     expect(sliceByRange(text, positions[0].positionIndex.get("kind")!)).toBe("Foo");
