@@ -29,13 +29,21 @@ export function buildDocumentPositions(
 
 /** Line numbers (0-indexed) where each YAML document in a multi-doc file
  *  starts. The first document is always at line 0; subsequent entries point
- *  to the line after each `---` directive. */
+ *  to the line after each `---` separator.
+ *
+ *  A `---` at line 0 is the doc-start marker for doc 0 (the parser still
+ *  emits a single document), not a separator before an empty doc — skipping
+ *  it keeps `offsets.length === parsedDocs.length` so diagnostics for doc N
+ *  don't land inside doc N-1's text. */
 export function documentLineOffsets(text: string): number[] {
   const offsets = [0];
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trimEnd();
-    if (t === "---" || t.startsWith("--- ")) offsets.push(i + 1);
+    if (t === "---" || t.startsWith("--- ")) {
+      if (i === 0) continue;
+      offsets.push(i + 1);
+    }
   }
   return offsets;
 }

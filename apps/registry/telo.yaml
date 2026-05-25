@@ -887,6 +887,34 @@ instructions: !literal |
   - `!cel "steps.x.result.docs[?0].?metadata.?description.orValue('')"` —
     optional access; safely handles missing intermediates.
 
+  ## Common pitfalls
+
+  Patterns that look reasonable but break Telo manifests. These are the
+  most frequent mistakes in LLM-authored submissions — verify against
+  the actual `Telo.Definition` schemas via `get_module_manifest` if
+  ever unsure.
+
+  - **No `spec:` wrapper.** Resource fields go directly under the
+    resource doc, alongside `kind` and `metadata`. There is no
+    Kubernetes-style `spec:` block. `Http.Server`'s `port` and `mounts`,
+    `Http.Api`'s `routes`, `Run.Sequence`'s `steps`, and `JS.Script`'s
+    `code` all live at the top level. A `spec:` field is rejected as
+    `additional property not allowed`.
+
+  - **`variables:` and `secrets:` need `env:` and `type:`.** Each entry
+    binds a name to a host env var via `env: <VAR_NAME>` plus a JSON
+    Schema `type:` (`string` / `integer` / `number` / `boolean` /
+    `object` / `array`), plus any other JSON Schema keywords you want.
+    Without `env:`, the entry is a schema violation. The value resolves
+    at load time into the `variables.X` / `secrets.X` CEL scope.
+
+  - **`JS.Script` is a last resort.** Before reaching for it, search
+    the registry for a kind that does the work declaratively — most
+    transformations belong as a new resource kind, not as inline JS.
+    Acceptable when (a) the logic is genuinely one-off and not
+    reusable, or (b) it bridges to a host API the kernel doesn't yet
+    expose.
+
   ## Comprehensive example
 
   A `Telo.Application` that persists notes in SQLite. It imports four modules,
