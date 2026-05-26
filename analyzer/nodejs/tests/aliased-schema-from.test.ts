@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** A carrier library that publishes a value-shape schema as $defs on a
  *  Telo.Type definition. Models @telorun/http-dispatch publishing Outcomes. */
@@ -118,7 +119,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
       returns: [{ status: 200, mode: "buffer" }],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([...baseManifests, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([...baseManifests, resource]));
     const schemaFromErrors = diagnostics.filter(
       (d) =>
         d.code === "DEPENDENT_SCHEMA_MISMATCH" || d.code === "SCHEMA_FROM_MISSING_PATH",
@@ -134,7 +135,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
       returns: [{ mode: "buffer" }],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([...baseManifests, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([...baseManifests, resource]));
     const mismatch = diagnostics.find((d) => d.code === "DEPENDENT_SCHEMA_MISMATCH");
     expect(mismatch).toBeDefined();
     expect(mismatch!.message).toContain("HttpDispatch.Outcomes/$defs/Returns");
@@ -149,7 +150,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
       returns: [{ status: 42, mode: "bogus" }],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([...baseManifests, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([...baseManifests, resource]));
     const mismatches = diagnostics.filter((d) => d.code === "DEPENDENT_SCHEMA_MISMATCH");
     expect(mismatches.length).toBeGreaterThan(0);
   });
@@ -188,7 +189,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
       resource,
     ];
 
-    const diagnostics = new StaticAnalyzer().analyze(manifests);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(manifests));
     const missing = diagnostics.find((d) => d.code === "SCHEMA_FROM_MISSING_PATH");
     expect(missing).toBeDefined();
     expect(missing!.message).toContain("Bogus.Kind");
@@ -237,7 +238,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
 
     const registry = new AnalysisRegistry();
     const analyzer = new StaticAnalyzer();
-    analyzer.analyze(seedManifests, {}, registry);
+    analyzer.analyze(withSyntheticPositions(seedManifests), {}, registry);
 
     const resource: ResourceManifest = {
       kind: "Cons.Endpoint",
@@ -300,7 +301,7 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
 
     const registry = new AnalysisRegistry();
     const analyzer = new StaticAnalyzer();
-    const analyzeDiagnostics = analyzer.analyze(manifests, {}, registry);
+    const analyzeDiagnostics = analyzer.analyze(withSyntheticPositions(manifests), {}, registry);
     expect(
       analyzeDiagnostics.filter(
         (d) =>

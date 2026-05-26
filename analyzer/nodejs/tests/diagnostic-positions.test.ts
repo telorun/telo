@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** Smoke tests for diagnostic positioning:
  *  - Layer 1: ref diagnostics carry the concrete `[N]` path so position-index
@@ -73,7 +74,7 @@ describe("ref diagnostics — Layer 1 (concrete path threading)", () => {
       code: "noop",
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...baseManifests, api, knownHandler]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...baseManifests, api, knownHandler]));
     const unresolved = diags.find((d) => d.code === "UNRESOLVED_REFERENCE");
     expect(unresolved).toBeDefined();
     expect((unresolved!.data as { path: string }).path).toBe("routes[1].handler");
@@ -102,7 +103,7 @@ describe("ref diagnostics — Layer 2 (synthetic origin rewriting)", () => {
       ],
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...baseManifests, inlineWithBadChild]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...baseManifests, inlineWithBadChild]));
     const schemaViolation = diags.find((d) => d.code === "SCHEMA_VIOLATION");
     expect(schemaViolation).toBeDefined();
 

@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 const sessionAbstract: ResourceManifest = {
   kind: "Telo.Abstract",
@@ -65,7 +66,7 @@ function makeVaultSession(resultBody: Record<string, unknown>): ResourceManifest
 describe("Telo.Definition: structural validation of top-level `result`", () => {
   it("accepts a result that satisfies the abstract's outputType", () => {
     const def = makeVaultSession({ sessionId: "${{ result.body.data.session_id }}" });
-    const diagnostics = new StaticAnalyzer().analyze([mcpImport, sessionAbstract, httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([mcpImport, sessionAbstract, httpRequestKind, def]));
     const violations = diagnostics.filter(
       (d) => d.code === "TEMPLATE_TARGET_MISMATCH" || d.code === "CEL_UNKNOWN_FIELD",
     );
@@ -75,7 +76,7 @@ describe("Telo.Definition: structural validation of top-level `result`", () => {
   it("rejects CEL access to fields not on the dispatch target's outputType", () => {
     // `result.body.data.session_id` is correct; `result.bogus` is not.
     const def = makeVaultSession({ sessionId: "${{ result.bogus }}" });
-    const diagnostics = new StaticAnalyzer().analyze([mcpImport, sessionAbstract, httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([mcpImport, sessionAbstract, httpRequestKind, def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
     expect(unknown[0].severity).toBe(DiagnosticSeverity.Error);
@@ -94,12 +95,12 @@ describe("Telo.Definition: structural validation of top-level `result`", () => {
       result: { other: "static-value" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([
       mcpImport,
       sessionAbstract,
       httpRequestKind,
       def,
-    ]);
+    ]));
     const violations = diagnostics.filter((d) => d.code === "TEMPLATE_TARGET_MISMATCH");
     expect(violations.length).toBeGreaterThanOrEqual(1);
     expect(violations[0].severity).toBe(DiagnosticSeverity.Error);

@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** Minimal Run.Sequence-shaped definition: a `steps` array with a step that
  *  may carry either an `invoke` (real result-producer) or a `try`/`then`
@@ -84,7 +85,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
       ],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([sequenceDef, seq]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown[0].message).toContain("'steps.wrapParse' is not defined");
@@ -109,7 +110,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
       ],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([sequenceDef, seq]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown[0].message).toContain("'steps.checkSomething' is not defined");
@@ -129,7 +130,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
       ],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([sequenceDef, seq]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown).toEqual([]);
   });
@@ -154,7 +155,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
       ],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([sequenceDef, seq]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown[0].message).toContain("'steps.parseManifest' is not defined");

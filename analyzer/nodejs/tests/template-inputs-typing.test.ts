@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** Build a Telo.Abstract that declares an `inputType`. The concrete definition
  *  inherits this via `extends:` and the analyzer should fall back to it when
@@ -40,7 +41,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       inputs: { sql: "${{ keys(inputs.filters).size() > 0 ? 'y' : 'n' }}" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown).toEqual([]);
   });
@@ -56,7 +57,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       inputs: { sql: "${{ keys(inputs.filters).size() > 0 ? 'y' : 'n' }}" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([aliasImport, repositoryAbstract, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([aliasImport, repositoryAbstract, def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown).toEqual([]);
   });
@@ -76,7 +77,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       inputs: { sql: "${{ inputs.bogus }}" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
     expect(unknown[0].severity).toBe(DiagnosticSeverity.Error);
@@ -93,7 +94,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       inputs: { sql: "${{ inputs.anything }}" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown).toEqual([]);
   });
@@ -121,7 +122,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       invoke: "${{ self.name }}-exec",
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown).toEqual([]);
   });

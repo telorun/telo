@@ -14,6 +14,7 @@ import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kerne
 import { computeSuggestKind } from "./kind-suggest.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
+import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
@@ -35,6 +36,39 @@ import { validateReferences } from "./validate-references.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
 const SELF_PREFIX = "Self.";
+
+/**
+ * `StaticAnalyzer.analyze()` requires `metadata.source` (non-empty) and
+ * `metadata.sourceLine` (number) on every non-system manifest — see the
+ * JSDoc on `analyze()`. Production callers stamp these via the `Loader` /
+ * `flattenForAnalyzer` / `emitDocsFor` paths; programmatic callers (tests,
+ * scripts) should pre-process inputs with `withSyntheticPositions(...)`.
+ * Surfacing the violation here turns silent dedup misbehaviour into a
+ * loud, actionable error.
+ */
+function assertManifestPositions(manifests: ResourceManifest[]): void {
+  for (let i = 0; i < manifests.length; i++) {
+    const m = manifests[i];
+    if (REF_VALIDATION_SKIP_KINDS.has(m.kind)) continue;
+    const meta = m.metadata as { source?: string; sourceLine?: number } | undefined;
+    const okSource = typeof meta?.source === "string" && meta.source.length > 0;
+    const okLine = typeof meta?.sourceLine === "number";
+    if (okSource && okLine) continue;
+    const label = `${m.kind}/${m.metadata?.name ?? "(unnamed)"}`;
+    const missing = [
+      !okSource ? "metadata.source" : null,
+      !okLine ? "metadata.sourceLine" : null,
+    ]
+      .filter(Boolean)
+      .join(" and ");
+    throw new Error(
+      `StaticAnalyzer.analyze(): manifest #${i} (${label}) is missing ${missing}. ` +
+        `Real callers stamp positions automatically; programmatic callers ` +
+        `(tests, ad-hoc scripts) should pass inputs through ` +
+        `\`withSyntheticPositions(manifests)\` before calling analyze().`,
+    );
+  }
+}
 
 /** Resolve an alias-prefixed kind value (e.g. `Self.Encoder` or `Ai.Model`)
  *  to its canonical form. `Self.<Name>` resolves to `<ownModule>.<Name>` —
@@ -496,11 +530,27 @@ export class StaticAnalyzer {
     this.celEnv = buildCelEnvironment(options.celHandlers);
   }
 
+  /**
+   * Run static analysis over a flattened manifest list.
+   *
+   * **Contract**: every non-system manifest (anything outside `Telo.Definition`,
+   * `Telo.Abstract`) must carry `metadata.source` (non-empty string) and
+   * `metadata.sourceLine` (number). The dedup that backs
+   * `DUPLICATE_RESOURCE_NAME` reads those fields to tell a pipeline echo
+   * apart from a genuine collision, and downstream diagnostic positioning
+   * depends on them too. Real callers stamp positions already (the `Loader`,
+   * `flattenForAnalyzer`, the telo-editor's `emitDocsFor`, the VSCode
+   * extension). Programmatic callers — tests, ad-hoc scripts — should pass
+   * their inputs through `withSyntheticPositions(...)` before calling
+   * `analyze()`. A missing position throws a clear error rather than
+   * silently producing wrong diagnostics.
+   */
   analyze(
     manifests: ResourceManifest[],
     options?: AnalysisOptions,
     registry?: AnalysisRegistry,
   ): AnalysisDiagnostic[] {
+    assertManifestPositions(manifests);
     const diagnostics: AnalysisDiagnostic[] = [];
 
     // Use pre-seeded registries from the provided AnalysisRegistry, or create fresh ones.

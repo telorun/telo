@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** Definition whose `schema:` declares two typed fields. The template body
  *  references both via `${{ self.X }}`. Used across positive/negative cases. */
@@ -34,7 +35,7 @@ function makeReadDefinition(invokeName: string): ResourceManifest {
 
 describe("Telo.Definition: static CEL validation for `self`", () => {
   it("accepts `${{ self.<declared field> }}` inside the template body", () => {
-    const diagnostics = new StaticAnalyzer().analyze([makeReadDefinition("${{ self.name }}-query")]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([makeReadDefinition("${{ self.name }}-query")]));
     const cel = diagnostics.filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "CEL_SYNTAX_ERROR",
     );
@@ -45,7 +46,7 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
     // `self.tabel` is a typo for `self.table` — was previously silent because
     // template bodies were skipped by the analyzer.
     const def = makeReadDefinition("${{ self.tabel }}-query");
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
     expect(unknown[0].severity).toBe(DiagnosticSeverity.Error);
@@ -66,7 +67,7 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
       run: "${{ self.name }}",
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const cel = diagnostics.filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "CEL_SYNTAX_ERROR",
     );
@@ -82,7 +83,7 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
       run: "${{ self.nothing }}",
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
     expect(unknown[0].message).toContain("self.nothing");

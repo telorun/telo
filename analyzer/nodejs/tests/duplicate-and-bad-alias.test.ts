@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /**
  * Regression coverage for two bugs that historically only surfaced at runtime:
@@ -75,7 +76,7 @@ describe("duplicate metadata.name across kinds", () => {
       handler: { kind: "Lib.Script", name: "Collide" },
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, first, second]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, first, second]));
     const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
     expect(dup, JSON.stringify(diags, null, 2)).toBeDefined();
     expect(dup!.message).toContain("Collide");
@@ -94,14 +95,14 @@ describe("duplicate metadata.name across kinds", () => {
       code: "noop",
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([
       userImport,
       library,
       scriptDef,
       dispatcherDef,
       collidingApp,
       collidingResource,
-    ]);
+    ]));
     const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
     expect(dup, JSON.stringify(diags, null, 2)).toBeDefined();
     expect(dup!.message).toContain("HelloApi");
@@ -114,9 +115,86 @@ describe("duplicate metadata.name across kinds", () => {
       code: "noop",
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, a]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, a]));
     const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
     expect(dup).toBeUndefined();
+  });
+
+  it("analyze() throws when a non-system manifest lacks positional metadata", () => {
+    // Hard contract: production callers (Loader / flattenForAnalyzer /
+    // emitDocsFor) stamp positions; programmatic callers (tests, scripts)
+    // route their inputs through `withSyntheticPositions`. A naked
+    // manifest reaching `analyze()` is a programmer error and must throw
+    // loudly rather than silently producing wrong diagnostics.
+    const naked: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Naked" },
+      code: "noop",
+    } as unknown as ResourceManifest;
+    expect(() => new StaticAnalyzer().analyze([...withSyntheticPositions(base), naked])).toThrow(
+      /metadata\.source.*metadata\.sourceLine|metadata\.sourceLine|withSyntheticPositions/,
+    );
+  });
+
+  it("does NOT flag the SAME physical doc emitted twice by the pipeline (same source + sourceLine)", () => {
+    // Caller-side artefact: hosts like the telo editor's `toAnalysisManifests`
+    // emit the same physical doc twice when a file is reachable from
+    // multiple workspace modules. Same kind, name, source AND source line
+    // = same doc — collapse.
+    const r1: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/chat.yaml", sourceLine: 10 },
+      code: "noop",
+    } as unknown as ResourceManifest;
+    const r2: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/chat.yaml", sourceLine: 10 },
+      code: "noop",
+    } as unknown as ResourceManifest;
+
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, r1, r2]));
+    const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
+    expect(dup).toBeUndefined();
+  });
+
+  it("DOES flag two textually-distinct duplicates in the same file (same source, different sourceLine)", () => {
+    // User-intentional duplicate: pasted the same resource twice in the file.
+    // Different source lines → different fingerprints → flagged. Diagnostic
+    // carries a `range` pointing at the SECOND occurrence's line so the
+    // editor's squiggle lands on the duplicate, not the original.
+    const r1: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/chat.yaml", sourceLine: 10 },
+      code: "noop",
+    } as unknown as ResourceManifest;
+    const r2: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/chat.yaml", sourceLine: 25 },
+      code: "noop",
+    } as unknown as ResourceManifest;
+
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, r1, r2]));
+    const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
+    expect(dup, JSON.stringify(diags, null, 2)).toBeDefined();
+    expect(dup!.range?.start.line).toBe(25);
+  });
+
+  it("DOES flag same-kind same-name entries from different source files", () => {
+    // A real cross-file collision — the kernel would reject this at boot.
+    const r1: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/a.yaml" },
+      code: "noop",
+    } as unknown as ResourceManifest;
+    const r2: ResourceManifest = {
+      kind: "Lib.Script",
+      metadata: { name: "Same", source: "/tmp/b.yaml" },
+      code: "noop",
+    } as unknown as ResourceManifest;
+
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, r1, r2]));
+    const dup = diags.find((d) => d.code === "DUPLICATE_RESOURCE_NAME");
+    expect(dup, JSON.stringify(diags, null, 2)).toBeDefined();
   });
 
   it("does NOT count Telo.Definition / Telo.Abstract as duplicates of resources", () => {
@@ -135,7 +213,7 @@ describe("duplicate metadata.name across kinds", () => {
       handler: { kind: "Lib.Script", name: "Script" },
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, scriptInstanceA, scriptInstanceB]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, scriptInstanceA, scriptInstanceB]));
     const dups = diags.filter((d) => d.code === "DUPLICATE_RESOURCE_NAME");
     expect(dups.length, JSON.stringify(diags, null, 2)).toBe(1);
     expect(dups[0].message).toContain("Script");
@@ -198,7 +276,7 @@ describe("object-form reference with an unknown alias prefix (abstract target)",
       handler: { kind: "NotAnAlias.HandlerScript", name: "DoStuff" },
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...abstractBase, knownImpl, dispatcher]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...abstractBase, knownImpl, dispatcher]));
     const bad = diags.find(
       (d) => d.code === "REFERENCE_KIND_MISMATCH" || d.code === "UNKNOWN_KIND_ALIAS",
     );
@@ -224,7 +302,7 @@ describe("object-form reference with an unknown alias prefix", () => {
       handler: { kind: "NotAnAlias.Script", name: "DoStuff" },
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, knownScript, dispatcher]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, knownScript, dispatcher]));
     const bad = diags.find(
       (d) => d.code === "REFERENCE_KIND_MISMATCH" || d.code === "UNKNOWN_KIND_ALIAS",
     );
@@ -244,7 +322,7 @@ describe("object-form reference with an unknown alias prefix", () => {
       handler: { kind: "Lib.Script", name: "DoStuff" },
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, knownScript, dispatcher]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, knownScript, dispatcher]));
     const bad = diags.find(
       (d) => d.code === "REFERENCE_KIND_MISMATCH" || d.code === "UNKNOWN_KIND_ALIAS",
     );
