@@ -1,7 +1,15 @@
 kind: Telo.Application
 metadata:
-  name: example
+  name: HelloApiExample
   version: 1.0.0
+  description: |
+    Simplest possible HTTP API: a single `GET /v1/hello?name=…` route backed
+    by a typed `JS.Script`. Shows how `Http.Server` mounts an `Http.Api`, how
+    the request schema feeds a CEL expression on `inputs`, and how the
+    script's output flows into the response body via `result.*`.
+
+    Run, then:
+        curl 'http://localhost:8845/v1/hello?name=World'
 targets:
   - ExampleServer
 ---
@@ -23,7 +31,7 @@ source: ../modules/javascript
 kind: Http.Server
 metadata:
   name: ExampleServer
-baseUrl: http://localhost:8844
+baseUrl: http://localhost:8845
 port: 8845
 logger: true
 openapi:
@@ -49,7 +57,7 @@ routes:
               type: string
           required: ["name"]
     handler:
-      kind: JavaScript.Script
+      kind: JS.Script
       name: SayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression

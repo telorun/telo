@@ -72,13 +72,52 @@ export function validateReferences(
   const aliasesByModule = context.aliasesByModule;
   if (!aliases || !registry) return diagnostics;
 
-  // Build outer resource lookup by name for resolution check.
-  // Exclude system kinds (Telo.Definition) — they are type blueprints, not instances,
-  // and their names (e.g. "Server", "Job") would shadow user-defined resource instances.
-  const byName = new Map<string, ResourceManifest>();
+  // Build outer resource lookup by name for resolution check, collecting
+  // every entry per name so we can surface name collisions as diagnostics
+  // (the kernel's resource registry shares one namespace across all
+  // non-system kinds — e.g. `Telo.Application HelloApi` and `Http.Api
+  // HelloApi` collide at boot with `ERR_DUPLICATE_RESOURCE`. Catching it
+  // statically removes a class of "everything analyzes clean, then the
+  // kernel refuses to start" surprises.)
+  //
+  // Telo.Import is excluded from the duplicate check on top of the
+  // SYSTEM_KINDS skip: its `metadata.name` is an alias, not a resource
+  // identity (aliases live in a separate namespace from resources, and
+  // colliding aliases vs. resource names is benign — the alias is only
+  // ever read as a kind prefix).
+  const byNameAll = new Map<string, ResourceManifest[]>();
   for (const r of resources) {
-    if (r.metadata?.name && !SYSTEM_KINDS.has(r.kind)) byName.set(r.metadata.name as string, r);
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || r.kind === "Telo.Import") continue;
+    const name = r.metadata.name as string;
+    const existing = byNameAll.get(name);
+    if (existing) existing.push(r);
+    else byNameAll.set(name, [r]);
   }
+  for (const [name, list] of byNameAll) {
+    if (list.length <= 1) continue;
+    const [first, ...rest] = list;
+    const firstLabel = `${first.kind}/${name}`;
+    for (const dup of rest) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "DUPLICATE_RESOURCE_NAME",
+        source: SOURCE,
+        message: `${dup.kind}/${name}: resource name collides with ${firstLabel} declared earlier (kernel runtime would fail with ERR_DUPLICATE_RESOURCE)`,
+        data: {
+          resource: { kind: dup.kind, name },
+          filePath: (dup.metadata as { source?: string } | undefined)?.source,
+          path: "metadata.name",
+        },
+      });
+    }
+  }
+  // Single-resource map for the resolution / scope lookups below — when a
+  // collision exists, falling back to the first occurrence keeps the rest
+  // of the pass behaving the same as before the duplicate diagnostic was
+  // added (resolution still finds *something*; the duplicate diagnostic
+  // is what surfaces the underlying problem to the user).
+  const byName = new Map<string, ResourceManifest>();
+  for (const [name, list] of byNameAll) byName.set(name, list[0]);
 
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;

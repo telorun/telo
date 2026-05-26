@@ -9,6 +9,12 @@ kind: Telo.Application
 metadata:
   name: lambda-http-api-example
   version: 1.0.0
+  description: |
+    `Lambda.HttpApi` example: an AWS Lambda fronted by API Gateway HTTP API
+    v2. Declares two routes (GET /users/{id}, POST /orders) plus a CORS
+    block and a per-route `catches:` mapping that turns a thrown
+    `ValidationError` into a 400 with a structured body. See
+    `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
 targets:
   - Main
 ---

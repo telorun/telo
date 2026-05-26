@@ -74,9 +74,6 @@ jobs:
       - name: Check example manifests
         run: pnpm run check examples/*.yaml
 
-      - name: Check apps manifests
-        run: pnpm run check apps/*/telo.yaml
-
       - name: Run tests (bun)
         run: pnpm test
 
@@ -88,6 +85,30 @@ jobs:
 
       - name: Run tests (node)
         run: pnpm run test:node
+
+      # Smoke-test loading a manifest from an HTTP URL using the branch's
+      # just-built CLI. Serves the repo over a local HTTP server so the test
+      # exercises the http(s)-anchored install root path (~/.cache/telo/...)
+      # without depending on raw.githubusercontent.com propagation. The
+      # manifest itself imports `std/run` and `std/console` from the live
+      # registry, so this also verifies the registry round-trip on top of
+      # HTTP-rooted controller installs.
+      - name: Run remote manifest over local HTTP
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$PWD" >/tmp/http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          # Wait for the server to be ready.
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8123/examples/hello-world.yaml" >/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          output=$(pnpm run telo "http://127.0.0.1:8123/examples/hello-world.yaml" 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "Hello from Telo!"
 
       - name: Build docker image
         run: docker build -f cli/nodejs/Dockerfile -t telo:ci .

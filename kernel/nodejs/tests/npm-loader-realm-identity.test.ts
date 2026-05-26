@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as crypto from "crypto";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { NpmControllerLoader } from "../src/controller-loaders/npm-loader.js";
+import { NpmControllerLoader, __testing__ } from "../src/controller-loaders/npm-loader.js";
 import { ControllerEnvMissingError } from "../src/controller-loaders/napi-loader.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -92,23 +93,59 @@ describe("NpmControllerLoader single-realm install", () => {
   );
 
   it(
-    "rejects http(s) entry URLs as env-missing so the dispatcher can fall back to other candidates",
+    "anchors http(s) entry URLs to a hash-keyed cache directory and materializes a working install root",
     async () => {
-      const loader = new NpmControllerLoader({ entryUrl: "https://example.com/manifest.yaml" });
-      const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
-      // Specifically `ControllerEnvMissingError` (not a plain Error): the
-      // dispatcher uses that type as the signal to advance to the next
-      // candidate in a mixed list (e.g. `pkg:npm` + `pkg:cargo`).
+      // `TELO_NPM_CACHE_DIR` overrides the default `~/.cache/telo/remote` so
+      // the test doesn't pollute the developer's cache. The path inside is
+      // still derived from sha256(entryUrl), exactly as a real `pnpm telo
+      // https://...yaml` invocation would compute it.
+      const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-remote-cache-"));
+      const originalCacheDir = process.env.TELO_NPM_CACHE_DIR;
+      process.env.TELO_NPM_CACHE_DIR = cacheDir;
       try {
-        await loader.load(
+        const entryUrl = "https://example.com/manifest.yaml";
+        const loader = new NpmControllerLoader({ entryUrl });
+
+        // baseUri = file:// so `local_path` resolves — in a real remote run
+        // the baseUri would also be HTTP (registry-served definitions) and
+        // the loader would fall through to a registry install. The hash-keyed
+        // root computation is the same either way; using `local_path` here
+        // keeps the test off the public npm registry.
+        const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
+        const result = await loader.load(
           "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
           fakeBaseUri,
         );
-        expect.fail("expected load() to throw");
-      } catch (err) {
-        expect(err).toBeInstanceOf(ControllerEnvMissingError);
-        expect((err as Error).message).toMatch(/scheme 'https' is not supported/);
+        expect(result.instance).toBeDefined();
+
+        const expectedHash = crypto.createHash("sha256").update(entryUrl).digest("hex");
+        const expectedRoot = path.join(cacheDir, expectedHash, "npm");
+        expect(__testing__.computeInstallRoot(entryUrl)).toBe(expectedRoot);
+
+        // Sanity: the install root was actually materialized at the expected path.
+        const stat = await fs.stat(path.join(expectedRoot, "node_modules"));
+        expect(stat.isDirectory()).toBe(true);
+      } finally {
+        if (originalCacheDir === undefined) delete process.env.TELO_NPM_CACHE_DIR;
+        else process.env.TELO_NPM_CACHE_DIR = originalCacheDir;
+        await fs.rm(cacheDir, { recursive: true, force: true });
       }
+    },
+    { timeout: 60_000 },
+  );
+
+  it(
+    "rejects unsupported entry URL schemes as env-missing so the dispatcher can fall back",
+    async () => {
+      // Anything that isn't file://, http://, https://, or a bare path is
+      // env-missing rather than a hard error — the dispatcher uses this as
+      // the signal to advance to a non-npm candidate.
+      expect(() => __testing__.computeInstallRoot("ftp://example.com/manifest.yaml")).toThrow(
+        ControllerEnvMissingError,
+      );
+      expect(() =>
+        __testing__.computeInstallRoot("ftp://example.com/manifest.yaml"),
+      ).toThrow(/scheme 'ftp' is not supported/);
     },
     { timeout: 10_000 },
   );
