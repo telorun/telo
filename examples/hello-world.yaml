@@ -2,6 +2,11 @@ kind: Telo.Application
 metadata:
   name: HelloConsole
   version: 1.0.0
+  description: |
+    Smallest possible runnable Telo application: imports the `std/run` and
+    `std/console` modules and prints a single line via `Run.Sequence`. Useful
+    as a "does my setup work?" smoke test and as a starting skeleton for
+    larger script-style manifests.
 targets:
   - Main
 ---

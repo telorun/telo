@@ -2,6 +2,15 @@ kind: Telo.Application
 metadata:
   name: templated-api-usage
   version: 1.0.0
+  description: |
+    Imports `templated-api.yaml` as a `Telo.Library` and mounts its
+    `HelloApi` twice on the same `Http.Server` — under `/v1` and `/v2`.
+    Shows that a single library-defined kind can be reused across multiple
+    mount points without duplicating the route definition.
+
+    Run, then:
+        curl 'http://localhost:8845/v1/hello?name=World'
+        curl 'http://localhost:8845/v2/hello?name=World'
 ---
 kind: Telo.Import
 metadata:

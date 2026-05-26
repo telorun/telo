@@ -105,8 +105,13 @@ schema:
             type: "string"
           parser:
             title: Parser
-            description: Invocable parser resource for this content type.
-            x-telo-ref: "telo#Invocable"
+            description: Invocable or runnable parser resource for this content type.
+            # Accept either capability: a controller may implement `invoke()`
+            # (typical) or `run()` (e.g. a Run.Sequence dispatching to a parser
+            # pipeline). The kernel calls whichever method exists.
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
             oneOf:
               - title: Parser Reference
                 description: String reference to an invocable parser.
@@ -211,8 +216,11 @@ schema:
       properties:
         invoke:
           title: Invoke
-          description: Resource invoked to generate not-found response data.
-          x-telo-ref: "telo#Invocable"
+          description: Resource invoked (or run) to generate not-found response data.
+          # Accept either capability so dual-mode kinds like Run.Sequence fit.
+          anyOf:
+            - x-telo-ref: "telo#Invocable"
+            - x-telo-ref: "telo#Runnable"
           oneOf:
             - title: Invoke Reference
               description: String reference to an invocable fallback handler.
@@ -300,9 +308,15 @@ schema:
                     method: { type: string }
           handler:
             title: Handler
-            description: Invocable route handler.
+            description: Route handler — Invocable or Runnable.
             x-telo-topology-role: handler
-            x-telo-ref: "telo#Invocable"
+            # Accept either capability. Run.Sequence (Telo.Runnable, but
+            # whose controller also implements `invoke()`) is a real-world
+            # consumer here — its `run()` and `invoke()` both produce the
+            # response body, the kernel calls whichever is appropriate.
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
             x-telo-context:
               type: object
               properties:

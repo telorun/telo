@@ -81,10 +81,13 @@ export interface NpmControllerLoaderOptions {
 }
 
 /**
- * The npm-loader maintains a single install root per kernel process at
- * `<entry-manifest-dir>/.telo/npm/`. Every controller — registry tag or
- * `local_path` — is installed via `npm install <spec>` into this root, then
- * imported from `<root>/node_modules/<pkg>`. This collapses two parallel
+ * The npm-loader maintains a single install root per kernel process. For a
+ * local entry manifest (`file://` URL or bare path) the root lives at
+ * `<entry-manifest-dir>/.telo/npm/`; for an HTTP(S) entry URL it lives in a
+ * user-level cache keyed by `sha256(entryUrl)` (see `computeInstallRoot`).
+ * Every controller — registry tag or `local_path` — is installed via
+ * `npm install <spec>` into this root, then imported from
+ * `<root>/node_modules/<pkg>`. This collapses two parallel
  * module realms (kernel-side @telorun/sdk vs. controller-side @telorun/sdk)
  * into one: the kernel's own SDK is wired in as a `file:` dep, npm/pnpm
  * symlink it, and Node's ESM resolver follows the symlink to the same
@@ -190,16 +193,7 @@ export class NpmControllerLoader {
       );
     }
     const entryUrlStr = this.entryUrl;
-    // The install root is anchored next to the entry manifest on disk. For an
-    // http(s):// entry URL there is no such anchor — `path.resolve` would
-    // silently turn `http://host/x.yaml` into something like
-    // `<cwd>/http:/host/x.yaml`, materializing a `.telo/npm` tree in an
-    // unrelated directory. Reject the case loudly until we ship an explicit
-    // strategy (e.g. a hash-keyed cache under `~/.cache/telo`) for HTTP-sourced
-    // manifests; today nothing in the workspace exercises this path.
-    const entryPath = parseFileUrlOrThrow(entryUrlStr);
-    const entryDir = path.dirname(path.resolve(entryPath));
-    const installRoot = path.join(entryDir, ".telo", "npm");
+    const installRoot = computeInstallRoot(entryUrlStr);
 
     // Build the install-root package.json: kernel-runtime deps as `file:` refs
     // pointing at the kernel-side realpath. Modules declare these names as
@@ -634,35 +628,56 @@ async function readDepSpec(installRoot: string, packageName: string): Promise<st
 }
 
 /**
- * Convert an entry-manifest URL to its on-disk path, throwing a descriptive
- * error for any URL scheme that doesn't map to a local filesystem location.
- * The install-root anchoring story requires a real directory next to the
- * manifest; non-file schemes (e.g. `http://`, `https://`) have no such
- * anchor and would otherwise silently produce a junk path via
- * `path.resolve("http://host/x")`.
+ * Decide where the per-kernel install root lives for a given entry URL.
  *
- * Bare paths without a scheme are accepted as-is — callers that hand the
- * loader an absolute filesystem path are common and there's no ambiguity
- * to surface.
+ * - `file://` URL or bare filesystem path: anchored next to the manifest at
+ *   `<entry-dir>/.telo/npm/`. Same as before — keeps the "install lives with
+ *   the project" story for local development and Docker builds where the
+ *   tree is `COPY`-d into the image.
+ * - `http(s)://` URL: there is no on-disk anchor next to the manifest, so
+ *   the install root lives in a user-level cache keyed by the SHA-256 of
+ *   the entry URL: `<cacheDir>/<hash>/npm/`. Repeat runs of the same URL
+ *   hit the same cache; distinct URLs get isolated trees so two unrelated
+ *   remote apps don't share `node_modules` (different controller versions,
+ *   different realm-collapse pins).
+ *
+ *   Cache location, in priority order:
+ *     1. `$TELO_NPM_CACHE_DIR` (explicit override — tests use this to avoid
+ *        polluting the developer's `~/.cache`).
+ *     2. `$XDG_CACHE_HOME/telo/remote` (standard XDG path on Linux).
+ *     3. `<os.homedir()>/.cache/telo/remote` (POSIX fallback / macOS).
+ *
+ * Unrecognised schemes (anything that isn't `file://`, `http://`, or
+ * `https://`) still throw `ControllerEnvMissingError` so the dispatcher can
+ * advance to a non-npm candidate.
  */
-function parseFileUrlOrThrow(entryUrl: string): string {
-  if (entryUrl.startsWith("file://")) return fileURLToPath(entryUrl);
-  // A scheme is anything before the first `://` — distinguish a URL from a
-  // bare filesystem path (which has no `://`).
-  const schemeMatch = entryUrl.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
-  if (schemeMatch) {
-    // Env-missing rather than a hard error: the dispatcher should advance
-    // to the next candidate when an HTTP-sourced manifest is paired with a
-    // `pkg:cargo` (or other non-npm) fallback. Hard-failing would lock the
-    // whole resolve chain to this branch.
-    throw new ControllerEnvMissingError(
-      `[telo] entry URL scheme '${schemeMatch[1]}' is not supported by the npm controller ` +
-        `loader. The install root must live next to a local manifest; HTTP-sourced manifests ` +
-        `have no such anchor. Resolve the manifest to disk first, or use file:// directly. ` +
-        `(entryUrl: ${entryUrl})`,
-    );
+function computeInstallRoot(entryUrl: string): string {
+  if (entryUrl.startsWith("file://")) {
+    const entryPath = fileURLToPath(entryUrl);
+    return path.join(path.dirname(path.resolve(entryPath)), ".telo", "npm");
   }
-  return entryUrl;
+  const schemeMatch = entryUrl.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
+  if (!schemeMatch) {
+    // Bare filesystem path: same anchor as `file://`.
+    return path.join(path.dirname(path.resolve(entryUrl)), ".telo", "npm");
+  }
+  const scheme = schemeMatch[1].toLowerCase();
+  if (scheme === "http" || scheme === "https") {
+    const cacheBase =
+      process.env.TELO_NPM_CACHE_DIR ||
+      (process.env.XDG_CACHE_HOME
+        ? path.join(process.env.XDG_CACHE_HOME, "telo", "remote")
+        : path.join(os.homedir(), ".cache", "telo", "remote"));
+    return path.join(cacheBase, sha256(entryUrl), "npm");
+  }
+  // Env-missing rather than a hard error: the dispatcher should advance to
+  // the next candidate when a non-npm scheme is paired with a `pkg:cargo`
+  // (or other) fallback.
+  throw new ControllerEnvMissingError(
+    `[telo] entry URL scheme '${schemeMatch[1]}' is not supported by the npm controller ` +
+      `loader. Supported schemes: file://, http://, https://, or a bare filesystem path. ` +
+      `(entryUrl: ${entryUrl})`,
+  );
 }
 
 /**
@@ -913,6 +928,7 @@ export const __testing__ = {
   resolvePackageExportTarget,
   resolveExportTargetValue,
   tryResolveFile,
+  computeInstallRoot,
   EXPORTS_MAX_DEPTH,
   DEFAULT_RESOLVER_CONDITIONS,
   REALM_COLLAPSE_NAMES,

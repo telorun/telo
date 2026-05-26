@@ -1,11 +1,28 @@
 kind: Telo.Application
 metadata:
-  name: ConfigExample
----
-kind: Telo.Import
-metadata:
-  name: Config
-source: ../modules/config
+  name: ConfigurableHttpServer
+  version: 1.0.0
+  description: |
+    HTTP server demonstrating how application-level `variables` (env-bound,
+    non-secret) and `secrets` flow into a `JavaScript.Script` handler at
+    runtime. The handler echoes the configured upstream URL and a masked
+    hint of the secret so you can verify both values made it end-to-end.
+
+    Set the inputs in a sibling `.env.local`:
+        API_BASE_URL=https://api.example.com
+        STRIPE_SECRET_KEY=sk_test_demo_value
+    Run, then:
+        curl -X POST http://localhost:4444/v1/charge
+targets:
+  - PaymentServer
+variables:
+  apiBaseUrl:
+    env: API_BASE_URL
+    type: string
+secrets:
+  stripeSecretKey:
+    env: STRIPE_SECRET_KEY
+    type: string
 ---
 kind: Telo.Import
 metadata:
@@ -17,19 +34,6 @@ metadata:
   name: JavaScript
 source: ../modules/javascript
 ---
-# Declare an optional variable
-kind: Config.Env
-metadata:
-  name: Config
-variables:
-  apiBaseUrl:
-    env: API_BASE_URL
-    type: string
-  stripeSecretKey:
-    env: STRIPE_SECRET_KEY
-    type: string
----
-# Consume in another resource
 kind: Http.Api
 metadata:
   name: PaymentApi
@@ -41,26 +45,29 @@ routes:
       kind: JavaScript.Script
       code: |
         function main({ apiKey, baseUrl }) {
-          return {
-            success: true,
-          }
+          const keyHint = apiKey
+            ? `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`
+            : "(unset)";
+          return { upstream: baseUrl ?? "(unset)", keyHint };
         }
     inputs:
-      apiKey: "${{ resources.Config.stripeSecretKey }}"
-      baseUrl: "${{ resources.Config.apiBaseUrl }}"
+      apiKey: "${{ secrets.stripeSecretKey }}"
+      baseUrl: "${{ variables.apiBaseUrl }}"
     returns:
       - status: 200
         content:
           application/json:
             body:
-              message: Payment accepted
+              ok: true
+              upstream: "${{ result.upstream }}"
+              keyHint: "${{ result.keyHint }}"
 ---
 kind: Http.Server
 metadata:
   name: PaymentServer
 openapi:
   info:
-    title: Payment gateway
+    title: Configurable HTTP server
     version: 1.0.0
 port: 4444
 mounts:

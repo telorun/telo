@@ -9,6 +9,13 @@ kind: Telo.Application
 metadata:
   name: lambda-direct-example
   version: 1.0.0
+  description: |
+    `Lambda.Direct` example: a synchronous AWS Lambda that receives a raw
+    event payload, maps it via CEL into a JS handler, and returns the
+    handler's result. Use this shape for SDK invokes, Step Functions
+    tasks, EventBridge Scheduler events, or any catch-all trigger that
+    isn't HTTP API or SQS. See `examples/aws/lambda/README.md` for the
+    full packaging + deploy walkthrough.
 targets:
   - Main
 ---

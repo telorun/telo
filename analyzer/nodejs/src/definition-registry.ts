@@ -80,6 +80,21 @@ export class DefinitionRegistry {
    *  @param namespace  The module's metadata.namespace (e.g. "std"), or null for telo built-ins.
    *  @param moduleName The module's metadata.name (e.g. "pipeline", "http-server"). */
   registerModuleIdentity(namespace: string | null, moduleName: string): void {
+    // The "telo" identity is reserved for the Telo built-in module and gets
+    // populated automatically when a Telo.Abstract definition registers (see
+    // `register` below). A user app / library without a namespace must NOT
+    // claim it — silently overwriting the built-in entry breaks every
+    // x-telo-ref that resolves through "telo#…". Concretely, the
+    // `Http.Api.routes[].handler` slot in the http-server schema carries
+    // `x-telo-ref: "telo#Invocable"`. If the entry application is, say,
+    // `Telo.Application/HelloApi` (no namespace), this method previously
+    // overwrote `"telo" → "Telo"` with `"telo" → "HelloApi"`. The handler's
+    // ref then resolved to a nonexistent `HelloApi.Invocable`, the
+    // kind-mismatch check inside `validate-references.ts` short-circuited
+    // on partial context, and the analyzer reported zero issues for a
+    // manifest that explodes at runtime. Skip non-Telo no-namespace modules;
+    // they have no x-telo-ref identity to declare anyway.
+    if (!namespace && moduleName !== "Telo") return;
     const identity = namespace ? `${namespace}/${moduleName}` : "telo";
     this.identityMap.set(identity, moduleName);
     this.reverseIdentityMap.set(moduleName, identity);

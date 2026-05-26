@@ -85,7 +85,10 @@ schema:
             x-telo-topology-role: matcher
             x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
           handler:
-            x-telo-ref: telo#Invocable
+            # Accept either capability so dual-mode kinds like Run.Sequence fit.
+            anyOf:
+              - x-telo-ref: telo#Invocable
+              - x-telo-ref: telo#Runnable
             x-telo-context:
               type: object
               additionalProperties: false
@@ -201,7 +204,9 @@ schema:
       type: boolean
       default: true
     handler:
-      x-telo-ref: telo#Invocable
+      anyOf:
+        - x-telo-ref: telo#Invocable
+        - x-telo-ref: telo#Runnable
     inputs:
       type: object
       additionalProperties: true
@@ -243,7 +248,9 @@ schema:
   type: object
   properties:
     handler:
-      x-telo-ref: telo#Invocable
+      anyOf:
+        - x-telo-ref: telo#Invocable
+        - x-telo-ref: telo#Runnable
     inputs:
       type: object
       additionalProperties: true

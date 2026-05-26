@@ -13,6 +13,10 @@ metadata:
 targets:
   - InitSchema
   - ChatLoop
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
 ---
 kind: Telo.Import
 metadata: { name: AiOpenai }
@@ -67,7 +71,7 @@ connection: { kind: Sql.Connection, name: ChatDb }
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt54Nano }
 model: gpt-5.4-nano
-apiKey: "${{ env.OPENAI_API_KEY }}"
+apiKey: "${{ secrets.openaiApiKey }}"
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }

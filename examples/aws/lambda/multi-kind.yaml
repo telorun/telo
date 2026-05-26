@@ -11,6 +11,13 @@ kind: Telo.Application
 metadata:
   name: lambda-multi-kind-example
   version: 1.0.0
+  description: |
+    Multi-kind AWS Lambda example: one Lambda artifact (one ARN, one IAM
+    role) wired up to three event sources at once — API Gateway HTTP API,
+    SQS event-source mapping, and direct SDK invokes. Telo dispatches each
+    incoming event to the matching `Lambda.HttpApi` / `Lambda.Sqs` /
+    `Lambda.Direct` handler based on the event shape. See
+    `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
 targets:
   - Main
 ---

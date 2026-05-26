@@ -50,9 +50,12 @@ schema:
             type: "object"
           handler:
             title: Handler
-            description: Invocable that implements the tool's behaviour. Receives the result of `inputs:` and returns a value rendered by `result:`.
+            description: Resource that implements the tool's behaviour — Invocable or Runnable. Receives the result of `inputs:` and returns a value rendered by `result:`.
             x-telo-topology-role: handler
-            x-telo-ref: "telo#Invocable"
+            # Accept either capability so dual-mode kinds like Run.Sequence fit.
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
             oneOf:
               - title: Handler Reference
                 description: String reference to a handler resource by name.
@@ -222,9 +225,11 @@ schema:
             type: "string"
           handler:
             title: Handler
-            description: Invocable that produces resource contents on read.
+            description: Resource that produces contents on read — Invocable or Runnable.
             x-telo-topology-role: handler
-            x-telo-ref: "telo#Invocable"
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
             oneOf:
               - type: "string"
               - type: "object"
@@ -311,9 +316,11 @@ schema:
               required: ["name"]
           handler:
             title: Handler
-            description: Invocable that produces the prompt message array on get.
+            description: Resource that produces the prompt message array on get — Invocable or Runnable.
             x-telo-topology-role: handler
-            x-telo-ref: "telo#Invocable"
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
             oneOf:
               - type: "string"
               - type: "object"

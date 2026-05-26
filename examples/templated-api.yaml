@@ -2,6 +2,12 @@ kind: Telo.Library
 metadata:
   name: templated-server
   version: 1.0.0
+  description: |
+    Reusable Telo.Library that defines a single `HelloApi` (`Http.Api`) plus
+    the `SayHello` script it dispatches to. Importers receive `HelloApi`
+    under their chosen alias and can mount it on any `Http.Server`. Paired
+    with `templated-api-usage.yaml`, which mounts the same library twice
+    under `/v1` and `/v2` to show import + mount reuse.
 exports:
   kinds:
     - HelloApi

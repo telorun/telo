@@ -1,13 +1,14 @@
 kind: Telo.Application
 metadata:
-  name: ConsoleConfigExample
+  name: ConsoleInputExample
+  version: 1.0.0
+  description: |
+    Reads two lines from stdin (username, password) and echoes them back
+    via Console.WriteLine. Demonstrates Console.ReadLine inside a
+    Run.Sequence and how each step's result.value is wired into the next
+    step's inputs via a steps.<step>.result.value CEL expression.
 targets:
-  - ConsoleConfigExampleFlow
----
-kind: Telo.Import
-metadata:
-  name: Config
-source: ../modules/config
+  - ConsoleInputFlow
 ---
 kind: Telo.Import
 metadata:
@@ -21,7 +22,7 @@ source: ../modules/run
 ---
 kind: Run.Sequence
 metadata:
-  name: ConsoleConfigExampleFlow
+  name: ConsoleInputFlow
 steps:
   - name: ReadUsername
     invoke:

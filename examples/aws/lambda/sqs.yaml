@@ -9,6 +9,13 @@ kind: Telo.Application
 metadata:
   name: lambda-sqs-example
   version: 1.0.0
+  description: |
+    `Lambda.Sqs` example: an AWS Lambda triggered by an SQS event-source
+    mapping. The handler processes the message batch and uses
+    `partialBatchResponse: true` to report per-message failures via the
+    `batchItemFailures` shape, so AWS only retries the ones that actually
+    failed. See `examples/aws/lambda/README.md` for the full packaging +
+    deploy walkthrough.
 targets:
   - Main
 ---
