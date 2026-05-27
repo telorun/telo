@@ -1,31 +1,6 @@
 # @telorun/kernel
 
-## 1.3.2
-
-### Patch Changes
-
-- Updated dependencies [c0129c0]
-  - @telorun/analyzer@1.5.0
-
-## 1.3.1
-
-### Patch Changes
-
-- 0331069: Fix loading manifests from `http(s)://` URLs as the entry point.
-
-  The npm controller loader previously required the entry URL to be a local path or `file://` URL so the per-kernel install root could be anchored at `<entry-dir>/.telo/npm/`. HTTP-sourced manifests were rejected with `ControllerEnvMissingError`, so `pnpm run telo https://…/manifest.yaml` failed before any controller could be installed.
-
-  The loader now picks an install root based on the entry URL scheme:
-
-  - `file://` URL or bare filesystem path → unchanged (`<entry-dir>/.telo/npm/`)
-  - `http://` / `https://` URL → user-level cache keyed by `sha256(entryUrl)` at `$TELO_NPM_CACHE_DIR` (override) or `$XDG_CACHE_HOME/telo/remote` or `~/.cache/telo/remote`. Repeat runs of the same URL hit the same cache; distinct URLs get isolated trees so two unrelated remote apps don't share `node_modules`.
-
-  Single-realm install semantics are preserved: each kernel process still uses exactly one install root that pins `@telorun/sdk` (and every other realm-collapse name) to the kernel's own resolution via a `file:` dep, so class identity (`Stream`, etc.) is the same across the kernel/controller boundary regardless of where the install root physically lives.
-
-- Updated dependencies [0331069]
-  - @telorun/analyzer@1.4.0
-
-## 1.3.0
+## 0.13.0
 
 ### Minor Changes
 
@@ -39,17 +14,6 @@
 
   The legacy ref shapes (bare-name strings and `{kind, name}` objects) are unchanged and continue to work. This change is non-breaking — no existing manifests, schemas, or controllers need to migrate yet. A subsequent migration sweep will convert every module schema to `$ref: "telo://manifest#/$defs/ResourceRef"` and rewrite example/test manifests to `!ref`, after which the legacy paths can be removed.
 
-### Patch Changes
-
-- Updated dependencies [77c1c86]
-- Updated dependencies [7889023]
-  - @telorun/analyzer@1.3.0
-  - @telorun/templating@1.1.0
-
-## 1.2.0
-
-### Minor Changes
-
 - f3e5fbc: Make warm `telo run` ~3× faster by populating the local manifest cache automatically and deduplicating loader reads.
 
   - **analyzer**: `Loader.loadFile` now keys a fast path on the request URL, skipping the source `read()` round-trip when the same URL is loaded twice in one kernel lifetime. When the cache has the file in the other compile mode it reparses from cached text instead of re-reading. Previously every duplicate request re-ran the underlying `read()` — a `fetch` for `RegistrySource`, a disk read for `LocalFileSource`.
@@ -62,16 +26,6 @@
   - **#9 — analyzer / kernel**: hash-keyed analysis cache. `analyzer.analyze` accepts a new `skipValidation` option that runs only the state-mutating setup (identity / alias / definition registration + `normalizeInlineResources`) and elides every diagnostic-producing pass. The kernel stamps `<entry-dir>/.telo/manifests/.validated.json` with a content signature of the full LoadedGraph (manifest bytes + `@telorun/kernel` + `@telorun/analyzer` versions) after each successful validation; the next load with the same signature skips the per-resource validation walk (≈25 ms warm on hello-world).
   - **#4 — kernel**: persistent AJV validator cache. `SchemaValidator` writes compiled validators as standalone CJS modules under `<entry-dir>/.telo/manifests/__validators/<schema-hash>.cjs` and reloads them through a `createRequire` anchored at the kernel package so embedded `require("ajv/...")` / `require("ajv-formats/...")` calls keep resolving. Drops total `ajv.compile` calls during a warm hello-world from 9 to 1 (the remaining one is now lazy — only paid when a `Telo.Definition` document is actually validated). Also removes the unused `validateRuntimeResource` validator (10–15 ms of dead module-init compile time).
 
-### Patch Changes
-
-- Updated dependencies [f3e5fbc]
-- Updated dependencies [f3e5fbc]
-  - @telorun/analyzer@1.2.0
-
-## 1.1.0
-
-### Minor Changes
-
 - 39aef08: `Telo.Application` accepts `variables:` / `secrets:` with per-field `env:` mapping; values resolve at `kernel.load()` into the root `variables.X` / `secrets.X` CEL scope before any controller or import initialises. `type:` supports `string | integer | number | boolean | object | array` — object and array values are JSON-decoded from a single env var. Coercion / schema / missing-required failures aggregate into one `ERR_MANIFEST_VALIDATION_FAILED` at load.
 
   `Telo.Library` variables / secrets remain pure JSON Schema property maps. An `env:` key on a Library entry is now rejected at load time with a `LIBRARY_ENV_KEY_REJECTED` diagnostic that explains importers must supply the value.
@@ -81,15 +35,6 @@
   `Config.Env` is deprecated in favour of the new Application-level shape. The kind continues to work; the controller logs a deprecation notice at init and the docs page is marked deprecated. Migrating consumers is recommended but not forced.
 
   Diagnostics that target a missing child property now squiggle just the parent key identifier instead of the whole value block. `buildPositionIndex` additionally records map keys under the `@key:<path>` namespace, and the IDE range resolver prefers that key range when the leaf path isn't indexed.
-
-### Patch Changes
-
-- Updated dependencies [39aef08]
-  - @telorun/analyzer@1.1.0
-
-## 1.0.0
-
-### Minor Changes
 
 - 849f57a: Add `provide:` template target to `Telo.Definition` and an optional typed `provide()` member to `Telo.Provider`.
 
@@ -140,12 +85,41 @@
 
 ### Patch Changes
 
+- Updated dependencies [c0129c0]
+  - @telorun/analyzer@0.12.0
+
+- 0331069: Fix loading manifests from `http(s)://` URLs as the entry point.
+
+  The npm controller loader previously required the entry URL to be a local path or `file://` URL so the per-kernel install root could be anchored at `<entry-dir>/.telo/npm/`. HTTP-sourced manifests were rejected with `ControllerEnvMissingError`, so `pnpm run telo https://…/manifest.yaml` failed before any controller could be installed.
+
+  The loader now picks an install root based on the entry URL scheme:
+
+  - `file://` URL or bare filesystem path → unchanged (`<entry-dir>/.telo/npm/`)
+  - `http://` / `https://` URL → user-level cache keyed by `sha256(entryUrl)` at `$TELO_NPM_CACHE_DIR` (override) or `$XDG_CACHE_HOME/telo/remote` or `~/.cache/telo/remote`. Repeat runs of the same URL hit the same cache; distinct URLs get isolated trees so two unrelated remote apps don't share `node_modules`.
+
+  Single-realm install semantics are preserved: each kernel process still uses exactly one install root that pins `@telorun/sdk` (and every other realm-collapse name) to the kernel's own resolution via a `file:` dep, so class identity (`Stream`, etc.) is the same across the kernel/controller boundary regardless of where the install root physically lives.
+
+- Updated dependencies [0331069]
+  - @telorun/analyzer@0.12.0
+
+- Updated dependencies [77c1c86]
+- Updated dependencies [7889023]
+  - @telorun/analyzer@0.12.0
+  - @telorun/templating@0.3.0
+
+- Updated dependencies [f3e5fbc]
+- Updated dependencies [f3e5fbc]
+  - @telorun/analyzer@0.12.0
+
+- Updated dependencies [39aef08]
+  - @telorun/analyzer@0.12.0
+
 - Updated dependencies [849f57a]
 - Updated dependencies [e411584]
 - Updated dependencies [e411584]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
-  - @telorun/analyzer@1.0.0
+  - @telorun/sdk@0.12.0
+  - @telorun/analyzer@0.12.0
 
 ## 0.12.0
 

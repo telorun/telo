@@ -1,62 +1,6 @@
 # @telorun/plain-text-codec
 
-## 1.0.0
-
-### Patch Changes
-
-- be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
-
-  The SDK carries the `Stream` class registered with `@marcbachmann/cel-js` for stream-typed CEL values. cel-js identifies object types by constructor identity, so a second copy of `@telorun/sdk` in the install tree silently breaks streaming-typed evaluations with `Unsupported type: Stream`. The contract was previously enforced with three layered mechanisms (a generated `dist/generated/runtime-deps.json` driving install-root `dependencies`, `overrides` + `pnpm.overrides` blocks, and a `globalThis`-keyed singleton in `stream.ts`); the build artifact silently degraded when the kernel was run without a build step, defeating the layering.
-
-  The new shape:
-
-  - Every package that imports `@telorun/sdk` declares it as a `peerDependency`. Consumers (the kernel's install root, the CLI, apps) provide a single copy and `peerDependencies` cause npm/pnpm to resolve every transitive import to it.
-  - The kernel's `NpmControllerLoader` no longer reads `runtime-deps.json`; the realm-collapse name list is a hardcoded constant (`REALM_COLLAPSE_NAMES = ["@telorun/sdk"]`) in `npm-loader.ts`. The install-root `package.json` it writes drops the `overrides` and `pnpm.overrides` blocks — peer-dep resolution makes them redundant.
-  - `scripts/generate-runtime-deps.mjs` and the generated artifact are removed; `scripts/prepack-bake-overrides.mjs` no longer chains the runtime-deps regeneration.
-  - The `globalThis` singleton in `sdk/nodejs/src/stream.ts` is **kept** as a safety net for environments that still end up with mismatched SDK copies (e.g. a controller install from a tarball that predates this change).
-
-  Consumers installing `@telorun/kernel` or any module directly must now ensure `@telorun/sdk` is present in their dependency tree. The kernel already lists it via the install root for any manifest it boots, so kernel-driven usage is unaffected.
-
-- Updated dependencies [849f57a]
-- Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
-
-## 0.2.3
-
-### Patch Changes
-
-- Updated dependencies [58362c4]
-  - @telorun/sdk@0.11.1
-
-## 0.2.2
-
-### Patch Changes
-
-- Updated dependencies [f1c35bc]
-- Updated dependencies [47f7d83]
-  - @telorun/sdk@0.10.0
-
-## 0.2.1
-
-### Patch Changes
-
-- d7d38d7: Reset versioning for the codec module family to align with the rest of the in-development standard library. Telo itself hasn't shipped 1.0.0, so these modules getting onto a 1.x track was accidental.
-
-  The `1.1.0` npm artifacts were unpublished and the manifests + `package.json` files were manually set to `0.2.0`. The Telo registry has the manifests at `0.2.0`; npm now has nothing for these packages. This changeset triggers CI to bump `package.json` from `0.2.0` to `0.2.1` and republish to npm — the `0.2.0` slot is permanently reserved by the prior unpublish (npm forbids slot reuse), but unused.
-
-  Affected packages:
-
-  - `std/codec` / `@telorun/codec`
-  - `std/ndjson-codec` / `@telorun/ndjson-codec`
-  - `std/octet-codec` / `@telorun/octet-codec`
-  - `std/plain-text-codec` / `@telorun/plain-text-codec`
-  - `std/sse-codec` / `@telorun/sse-codec`
-
-  PURLs in the four codec implementations (`ndjson-codec`, `octet-codec`, `plain-text-codec`, `sse-codec`) were updated alongside the manifest reset to `@telorun/<name>@0.2.0`; the base `codec` module has no PURLs (pure abstract definitions). After this CI run, the next `telo publish` will rewrite those PURLs to `@0.2.1` automatically.
-
-  Orphaned versions remain on the Telo registry (no DELETE endpoint yet — see `cli/nodejs/plans/unpublish-command.md`): `std/codec@1.1.0`, `std/ndjson-codec@1.1.0`, `std/octet-codec@1.1.0`, `std/plain-text-codec@1.1.0`, `std/sse-codec@1.1.0`.
-
-## 1.1.0
+## 0.3.0
 
 ### Minor Changes
 
@@ -107,5 +51,57 @@
 
 ### Patch Changes
 
+- be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
+
+  The SDK carries the `Stream` class registered with `@marcbachmann/cel-js` for stream-typed CEL values. cel-js identifies object types by constructor identity, so a second copy of `@telorun/sdk` in the install tree silently breaks streaming-typed evaluations with `Unsupported type: Stream`. The contract was previously enforced with three layered mechanisms (a generated `dist/generated/runtime-deps.json` driving install-root `dependencies`, `overrides` + `pnpm.overrides` blocks, and a `globalThis`-keyed singleton in `stream.ts`); the build artifact silently degraded when the kernel was run without a build step, defeating the layering.
+
+  The new shape:
+
+  - Every package that imports `@telorun/sdk` declares it as a `peerDependency`. Consumers (the kernel's install root, the CLI, apps) provide a single copy and `peerDependencies` cause npm/pnpm to resolve every transitive import to it.
+  - The kernel's `NpmControllerLoader` no longer reads `runtime-deps.json`; the realm-collapse name list is a hardcoded constant (`REALM_COLLAPSE_NAMES = ["@telorun/sdk"]`) in `npm-loader.ts`. The install-root `package.json` it writes drops the `overrides` and `pnpm.overrides` blocks — peer-dep resolution makes them redundant.
+  - `scripts/generate-runtime-deps.mjs` and the generated artifact are removed; `scripts/prepack-bake-overrides.mjs` no longer chains the runtime-deps regeneration.
+  - The `globalThis` singleton in `sdk/nodejs/src/stream.ts` is **kept** as a safety net for environments that still end up with mismatched SDK copies (e.g. a controller install from a tarball that predates this change).
+
+  Consumers installing `@telorun/kernel` or any module directly must now ensure `@telorun/sdk` is present in their dependency tree. The kernel already lists it via the install root for any manifest it boots, so kernel-driven usage is unaffected.
+
+- Updated dependencies [849f57a]
+- Updated dependencies [be79957]
+  - @telorun/sdk@0.12.0
+
 - Updated dependencies [b62e535]
-  - @telorun/sdk@0.7.0
+  - @telorun/sdk@0.12.0
+
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [58362c4]
+  - @telorun/sdk@0.11.1
+
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/sdk@0.10.0
+
+## 0.2.1
+
+### Patch Changes
+
+- d7d38d7: Reset versioning for the codec module family to align with the rest of the in-development standard library. Telo itself hasn't shipped 1.0.0, so these modules getting onto a 1.x track was accidental.
+
+  The `1.1.0` npm artifacts were unpublished and the manifests + `package.json` files were manually set to `0.2.0`. The Telo registry has the manifests at `0.2.0`; npm now has nothing for these packages. This changeset triggers CI to bump `package.json` from `0.2.0` to `0.2.1` and republish to npm — the `0.2.0` slot is permanently reserved by the prior unpublish (npm forbids slot reuse), but unused.
+
+  Affected packages:
+
+  - `std/codec` / `@telorun/codec`
+  - `std/ndjson-codec` / `@telorun/ndjson-codec`
+  - `std/octet-codec` / `@telorun/octet-codec`
+  - `std/plain-text-codec` / `@telorun/plain-text-codec`
+  - `std/sse-codec` / `@telorun/sse-codec`
+
+  PURLs in the four codec implementations (`ndjson-codec`, `octet-codec`, `plain-text-codec`, `sse-codec`) were updated alongside the manifest reset to `@telorun/<name>@0.2.0`; the base `codec` module has no PURLs (pure abstract definitions). After this CI run, the next `telo publish` will rewrite those PURLs to `@0.2.1` automatically.
+
+  Orphaned versions remain on the Telo registry (no DELETE endpoint yet — see `cli/nodejs/plans/unpublish-command.md`): `std/codec@1.1.0`, `std/ndjson-codec@1.1.0`, `std/octet-codec@1.1.0`, `std/plain-text-codec@1.1.0`, `std/sse-codec@1.1.0`.

@@ -1,6 +1,6 @@
 # @telorun/workflow-temporal
 
-## 1.0.0
+## 0.1.0
 
 ### Minor Changes
 
@@ -23,4 +23,4 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.12.0

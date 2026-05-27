@@ -1,6 +1,6 @@
 # @telorun/http-client
 
-## 1.0.1
+## 0.3.0
 
 ### Patch Changes
 
@@ -72,10 +72,6 @@ unknown }` — that the runtime controller already returns. Pure schema-only
   relies on this tightening for end-to-end chain validation of
   `${{ result.body.data.session_id }}`.
 
-## 1.0.0
-
-### Patch Changes
-
 - be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
 
   The SDK carries the `Stream` class registered with `@marcbachmann/cel-js` for stream-typed CEL values. cel-js identifies object types by constructor identity, so a second copy of `@telorun/sdk` in the install tree silently breaks streaming-typed evaluations with `Unsupported type: Stream`. The contract was previously enforced with three layered mechanisms (a generated `dist/generated/runtime-deps.json` driving install-root `dependencies`, `overrides` + `pnpm.overrides` blocks, and a `globalThis`-keyed singleton in `stream.ts`); the build artifact silently degraded when the kernel was run without a build step, defeating the layering.
@@ -91,7 +87,7 @@ unknown }` — that the runtime controller already returns. Pure schema-only
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.12.0
 
 ## 0.2.3
 

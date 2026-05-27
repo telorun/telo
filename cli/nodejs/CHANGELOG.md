@@ -1,36 +1,6 @@
 # @telorun/cli
 
-## 1.3.2
-
-### Patch Changes
-
-- Updated dependencies [c0129c0]
-  - @telorun/analyzer@1.5.0
-  - @telorun/kernel@1.3.2
-  - @telorun/ide-support@0.4.8
-
-## 1.3.1
-
-### Patch Changes
-
-- Updated dependencies [0331069]
-- Updated dependencies [0331069]
-  - @telorun/analyzer@1.4.0
-  - @telorun/kernel@1.3.1
-  - @telorun/ide-support@0.4.7
-
-## 1.3.0
-
-### Patch Changes
-
-- Updated dependencies [77c1c86]
-- Updated dependencies [7889023]
-  - @telorun/analyzer@1.3.0
-  - @telorun/templating@1.1.0
-  - @telorun/kernel@1.3.0
-  - @telorun/ide-support@0.4.6
-
-## 1.2.0
+## 0.13.0
 
 ### Minor Changes
 
@@ -40,17 +10,37 @@
   - **kernel**: `Kernel.load()` retains the full `LoadedGraph` and exposes it via `kernel.getLoadedGraph()` so the CLI can hand it to `writeManifestCache` without re-walking the graph.
   - **cli**: `telo run` now writes through to `<entry-dir>/.telo/manifests/` after a successful first load, reusing the same `writeManifestCache` path `telo install` already uses. Subsequent runs hit the local cache and skip the registry round-trip — without requiring an explicit `telo install`. Cache writes are best-effort: read-only filesystems (e.g. baked Docker images) log a warning and continue.
 
+- 768f5d7: Add `telo upgrade <paths..>` — scans the given manifest files for `Telo.Import` declarations whose `source` is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version, and rewrites the source in place when a newer version is available.
+
+  The command uses the same registry-URL fallback as `install` / `run` (`--registry-url` flag > `TELO_REGISTRY_URL` > `https://registry.telo.run`). Pre-release versions are excluded by default; pass `--include-prerelease` to consider them. `--dry-run` reports the proposed upgrades without touching the file.
+
+  Non-registry sources (relative paths, HTTP URLs) and unparseable versions are skipped with a notice rather than treated as errors.
+
 ### Patch Changes
+
+- Updated dependencies [c0129c0]
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.8
+
+- Updated dependencies [0331069]
+- Updated dependencies [0331069]
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.7
+
+- Updated dependencies [77c1c86]
+- Updated dependencies [7889023]
+  - @telorun/analyzer@0.12.0
+  - @telorun/templating@0.3.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.6
 
 - Updated dependencies [f3e5fbc]
 - Updated dependencies [f3e5fbc]
-  - @telorun/analyzer@1.2.0
-  - @telorun/kernel@1.2.0
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
   - @telorun/ide-support@0.4.5
-
-## 1.1.1
-
-### Patch Changes
 
 - 3e3f134: Migrate Docker image publishing to a per-runtime-repo scheme with variant + multi-arch tagging.
 
@@ -65,36 +55,20 @@
 
   **CI**: docker publishing now runs from `.github/workflows/publish-docker.yml`, called by `publish.yml` after `changesets/action` actually publishes packages. Per-image gating reads `outputs.publishedPackages` so kernel images rebuild only when `@telorun/cli` bumps and lambda images only when `@telorun/lambda` bumps.
 
-## 1.1.0
-
-### Minor Changes
-
-- 768f5d7: Add `telo upgrade <paths..>` — scans the given manifest files for `Telo.Import` declarations whose `source` is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version, and rewrites the source in place when a newer version is available.
-
-  The command uses the same registry-URL fallback as `install` / `run` (`--registry-url` flag > `TELO_REGISTRY_URL` > `https://registry.telo.run`). Pre-release versions are excluded by default; pass `--include-prerelease` to consider them. `--dry-run` reports the proposed upgrades without touching the file.
-
-  Non-registry sources (relative paths, HTTP URLs) and unparseable versions are skipped with a notice rather than treated as errors.
-
-### Patch Changes
-
 - Updated dependencies [39aef08]
-  - @telorun/kernel@1.1.0
-  - @telorun/analyzer@1.1.0
+  - @telorun/kernel@0.13.0
+  - @telorun/analyzer@0.12.0
   - @telorun/ide-support@0.4.4
-
-## 1.0.0
-
-### Patch Changes
 
 - Updated dependencies [849f57a]
 - Updated dependencies [e411584]
 - Updated dependencies [e411584]
 - Updated dependencies [be79957]
-  - @telorun/kernel@1.0.0
-  - @telorun/sdk@1.0.0
-  - @telorun/analyzer@1.0.0
+  - @telorun/kernel@0.13.0
+  - @telorun/sdk@0.12.0
+  - @telorun/analyzer@0.12.0
   - @telorun/ide-support@0.4.3
-  - @telorun/templating@1.0.0
+  - @telorun/templating@0.3.0
 
 ## 0.12.0
 

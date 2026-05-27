@@ -1,12 +1,6 @@
 # @telorun/console
 
-## 0.5.1
-
-### Patch Changes
-
-- c1e26b8: Re-release of the `Console.WriteLine` / `Console.ReadLine` `Telo.Invocable` refactor (previously shipped as a major bump) under a minor bump after the prior version was rolled back due to a bug.
-
-## 2.0.0
+## 0.6.0
 
 ### Major Changes
 
@@ -36,8 +30,6 @@
       output: "Hello, ${{ steps.Ask.result.value }}!"
   ```
 
-## 1.0.0
-
 ### Patch Changes
 
 - be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
@@ -55,7 +47,13 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.12.0
+
+## 0.5.1
+
+### Patch Changes
+
+- c1e26b8: Re-release of the `Console.WriteLine` / `Console.ReadLine` `Telo.Invocable` refactor (previously shipped as a major bump) under a minor bump after the prior version was rolled back due to a bug.
 
 ## 0.4.2
 

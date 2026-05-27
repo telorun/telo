@@ -1,6 +1,6 @@
 # @telorun/config
 
-## 1.1.0
+## 0.2.0
 
 ### Minor Changes
 
@@ -13,8 +13,6 @@
   `Config.Env` is deprecated in favour of the new Application-level shape. The kind continues to work; the controller logs a deprecation notice at init and the docs page is marked deprecated. Migrating consumers is recommended but not forced.
 
   Diagnostics that target a missing child property now squiggle just the parent key identifier instead of the whole value block. `buildPositionIndex` additionally records map keys under the `@key:<path>` namespace, and the IDE range resolver prefers that key range when the leaf path isn't indexed.
-
-## 1.0.0
 
 ### Patch Changes
 
@@ -33,7 +31,7 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.12.0
 
 ## 0.1.12
 

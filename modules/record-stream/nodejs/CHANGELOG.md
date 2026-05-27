@@ -1,6 +1,6 @@
 # @telorun/record-stream
 
-## 1.0.0
+## 0.4.0
 
 ### Patch Changes
 
@@ -19,7 +19,7 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.12.0
 
 ## 0.3.2
 
