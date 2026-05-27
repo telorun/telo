@@ -27,7 +27,7 @@ secrets:
 ---
 kind: Telo.Import
 metadata: { name: Sql }
-source: std/sql@1.0.0
+source: std/sql@0.3.0
 ---
 kind: Telo.Import
 metadata: { name: SqlRepository }

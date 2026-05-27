@@ -12,7 +12,7 @@ OpenAI provider for the `Ai.Model` abstract. Implements the full `AiModelInstanc
 ```yaml
 kind: Telo.Import
 metadata: { name: AiOpenai }
-source: std/ai-openai@0.1.6
+source: std/ai-openai@0.2.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }

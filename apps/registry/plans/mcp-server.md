@@ -24,8 +24,8 @@ Two MCP tools, both backed by handlers that already exist (or compose trivially)
 ```json
 {
   "results": [
-    { "id": "std/http-server@1.1.0", "namespace": "std", "name": "http-server",
-      "version": "1.1.0", "description": "...", "publishedAt": "..." }
+    { "id": "std/http-server@0.5.0", "namespace": "std", "name": "http-server",
+      "version": "0.5.0", "description": "...", "publishedAt": "..." }
   ],
   "count": 47
 }

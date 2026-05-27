@@ -9,7 +9,7 @@ Out of scope: changes to controller execution, kernel boot sequence, schema vali
 Today two layers parse the same YAML files with two different identity systems, and stay in sync by ad-hoc bookkeeping that keeps producing bugs:
 
 - **Two parsers.** `Loader.loadModule` parses via `yaml.parseAllDocuments` and projects to `ResourceManifest[]` ([analyzer/manifest-loader.ts:78](../src/manifest-loader.ts#L78)). Independently, the editor's `parseModuleDocument` parses the same text again to retain the `yaml.Document` AST for editing ([apps/telo-editor/src/yaml-document.ts:11](../../../apps/telo-editor/src/yaml-document.ts#L11)). On every workspace load both run on every file. On every source-view debounce the editor reparses; the analyzer never sees that result and reparses again on the next analyze pass.
-- **Two identities.** The analyzer keys on the source adapter's resolved URL (registry refs become `https://…/telo.yaml`); `metadata.source` carries the resolved form. The editor's workspace map (`subGraph` keys, `documents` map keys, `modules` map keys) uses the user-facing input URL (registry ref `std/javascript@0.3.0` is kept verbatim). `collectPartialDocuments` compares the two, misclassifies every imported library's entry resources as "partials," and tries to re-fetch them through `chainedAdapter` which has no `HttpSource` — producing the "Failed to read … for ModuleDocument" console noise the user reported.
+- **Two identities.** The analyzer keys on the source adapter's resolved URL (registry refs become `https://…/telo.yaml`); `metadata.source` carries the resolved form. The editor's workspace map (`subGraph` keys, `documents` map keys, `modules` map keys) uses the user-facing input URL (registry ref `std/javascript@0.3.2` is kept verbatim). `collectPartialDocuments` compares the two, misclassifies every imported library's entry resources as "partials," and tries to re-fetch them through `chainedAdapter` which has no `HttpSource` — producing the "Failed to read … for ModuleDocument" console noise the user reported.
 - **Two adapters.** The analyzer holds its own source chain (registry + http + local). The editor builds a parallel `chainedAdapter` ([loader.ts:184](../../../apps/telo-editor/src/loader.ts#L184)) plus an `inMemoryAdapter` that exists solely to feed the analyzer the editor's already-loaded text on the second parse pass.
 - **B1 (just merged) only narrowed the gap.** It made `positionIndex`/`sourceLine` stamping a shared helper so both parsers produce identical position metadata. The right answer is one parser, not synchronized clones.
 
@@ -31,7 +31,7 @@ export interface LoadedFile {
    *  HTTPS for http/registry, an absolute path for local. Every map key, every
    *  cross-reference, every editor-side cache uses this exact string. */
   source: string;
-  /** The URL the caller supplied (e.g. registry ref `std/javascript@0.3.0`).
+  /** The URL the caller supplied (e.g. registry ref `std/javascript@0.3.2`).
    *  Differs from `source` only for adapter-resolved URLs; surfaced so editor
    *  UI can display "what the user wrote" vs "what we fetched" when relevant. */
   requestedUrl: string;

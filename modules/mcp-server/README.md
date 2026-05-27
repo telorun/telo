@@ -29,11 +29,11 @@ targets: [Server]
 ---
 kind: Telo.Import
 metadata: { name: Mcp }
-source: std/mcp-server@1.0.0
+source: std/mcp-server@0.5.0
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@1.0.0
+source: std/javascript@0.3.2
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }

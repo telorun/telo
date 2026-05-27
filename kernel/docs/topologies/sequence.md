@@ -242,7 +242,7 @@ metadata: { name: Sequence, module: Run }
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@0.1.1#sequence
+  - pkg:npm/@telorun/run@0.3.0#sequence
 schema:
   type: object
   $defs:

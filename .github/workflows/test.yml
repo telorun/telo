@@ -87,26 +87,17 @@ jobs:
         run: pnpm run test:node
 
       # Smoke-test loading a manifest from an HTTP URL using the branch's
-      # just-built CLI. Serves the repo over a local HTTP server so the test
-      # exercises the http(s)-anchored install root path (~/.cache/telo/...)
-      # without depending on raw.githubusercontent.com propagation. The
-      # manifest itself imports `std/run` and `std/console` from the live
-      # registry, so this also verifies the registry round-trip on top of
-      # HTTP-rooted controller installs.
-      - name: Run remote manifest over local HTTP
+      # just-built CLI. Pulls the example over raw.githubusercontent.com at
+      # the workflow's commit SHA, so the test exercises the https-anchored
+      # install root path (~/.cache/telo/...) end-to-end. The manifest itself
+      # imports `std/run` and `std/console` from the live registry, so this
+      # also verifies the registry round-trip on top of HTTP-rooted
+      # controller installs.
+      - name: Run remote manifest over raw.githubusercontent.com
         run: |
           set -euo pipefail
-          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$PWD" >/tmp/http.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          # Wait for the server to be ready.
-          for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:8123/examples/hello-world.yaml" >/dev/null; then
-              break
-            fi
-            sleep 0.5
-          done
-          output=$(pnpm run telo "http://127.0.0.1:8123/examples/hello-world.yaml" 2>&1)
+          URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world.yaml"
+          output=$(pnpm run telo "$URL" 2>&1)
           echo "$output"
           echo "$output" | grep -q "Hello from Telo!"
 
