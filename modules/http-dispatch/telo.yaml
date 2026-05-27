@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: http-dispatch
   namespace: std
-  version: 1.0.0
+  version: 0.3.0
 exports:
   kinds:
     - Outcomes

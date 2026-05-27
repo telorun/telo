@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-dispatch",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "Telo HTTP Dispatch - Transport-neutral returns:/catches: rendering shared between HTTP-shaped transports (http-server, lambda, …).",
   "keywords": [
     "telo",
