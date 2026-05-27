@@ -1,5 +1,11 @@
 # @telorun/s3
 
+## 0.1.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
 ## 0.1.0
 
 ### Minor Changes
@@ -23,39 +29,49 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [58362c4]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [f1c35bc]
 - Updated dependencies [47f7d83]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [b62e535]
+
   - @telorun/sdk@0.12.0
 
 - dccd3a6: Removed leftover debug `console.log` calls from `S3.List` controller (`invoke` and pre-`ListObjectsCommand` traces).
 - Updated dependencies [dccd3a6]
 - Updated dependencies [2e0ad31]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [f76dd0f]
 - Updated dependencies [fc4a562]
+
   - @telorun/sdk@0.12.0
 
 - f061c35: `S3.Bucket` with `createIfMissing: true` now issues a `HeadBucketCommand` first and only calls `CreateBucketCommand` when the head returns 404. This avoids the spurious create-then-catch round trip against providers that log "bucket exists" attempts loudly (R2, MinIO). The existing `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` catch is kept as a guard against a head-vs-create race.
 
 - Updated dependencies [3c4ac58]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [353d7e5]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies
+
   - @telorun/sdk@0.12.0
 
 - Automated release.

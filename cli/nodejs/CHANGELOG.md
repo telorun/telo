@@ -1,5 +1,11 @@
 # @telorun/cli
 
+## 0.13.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
 ## 0.13.0
 
 ### Minor Changes
@@ -19,18 +25,21 @@
 ### Patch Changes
 
 - Updated dependencies [c0129c0]
+
   - @telorun/analyzer@0.12.0
   - @telorun/kernel@0.13.0
   - @telorun/ide-support@0.4.8
 
 - Updated dependencies [0331069]
 - Updated dependencies [0331069]
+
   - @telorun/analyzer@0.12.0
   - @telorun/kernel@0.13.0
   - @telorun/ide-support@0.4.7
 
 - Updated dependencies [77c1c86]
 - Updated dependencies [7889023]
+
   - @telorun/analyzer@0.12.0
   - @telorun/templating@0.3.0
   - @telorun/kernel@0.13.0
@@ -38,6 +47,7 @@
 
 - Updated dependencies [f3e5fbc]
 - Updated dependencies [f3e5fbc]
+
   - @telorun/analyzer@0.12.0
   - @telorun/kernel@0.13.0
   - @telorun/ide-support@0.4.5
@@ -56,6 +66,7 @@
   **CI**: docker publishing now runs from `.github/workflows/publish-docker.yml`, called by `publish.yml` after `changesets/action` actually publishes packages. Per-image gating reads `outputs.publishedPackages` so kernel images rebuild only when `@telorun/cli` bumps and lambda images only when `@telorun/lambda` bumps.
 
 - Updated dependencies [39aef08]
+
   - @telorun/kernel@0.13.0
   - @telorun/analyzer@0.12.0
   - @telorun/ide-support@0.4.4

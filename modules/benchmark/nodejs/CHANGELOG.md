@@ -1,5 +1,11 @@
 # @telorun/benchmark
 
+## 0.3.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
 ## 0.3.0
 
 ### Patch Changes
