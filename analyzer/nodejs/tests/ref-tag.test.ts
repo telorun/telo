@@ -3,6 +3,7 @@ import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { createAjv } from "../src/schema-compat.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** End-to-end analyzer coverage for the new `!ref <name>` YAML tag and the
  *  shared `ResourceRef` schema fragment registered under `telo://manifest`. */
@@ -52,12 +53,20 @@ describe("`!ref` sentinel at a top-level ref slot", () => {
     } as unknown as ResourceManifest;
 
     const analyzer = new StaticAnalyzer();
-    const diags = analyzer.analyze([...base, knownScript, dispatcher]);
+    // `withSyntheticPositions` returns a new array with cloned `metadata` on
+    // any manifests it stamps, so the analyzer's in-place sentinel
+    // substitution lands on the stamped copy — assert against that, not the
+    // pre-stamp original.
+    const stamped = withSyntheticPositions([...base, knownScript, dispatcher]);
+    const diags = analyzer.analyze(stamped);
     const unresolved = diags.find((d) => d.code === "UNRESOLVED_REFERENCE");
     expect(unresolved).toBeUndefined();
 
-    // After analyze() runs, the sentinel has been substituted in place.
-    expect(dispatcher.handler).toEqual({ kind: "std.Script", name: "DoStuff" });
+    const stampedDispatcher = stamped.find((m) => m.metadata.name === "Main");
+    expect((stampedDispatcher as { handler?: unknown }).handler).toEqual({
+      kind: "std.Script",
+      name: "DoStuff",
+    });
   });
 
   it("emits UNRESOLVED_REFERENCE when the sentinel points at a missing name", () => {
@@ -67,7 +76,7 @@ describe("`!ref` sentinel at a top-level ref slot", () => {
       handler: makeTaggedSentinel("ref", "NotDeclared"),
     } as unknown as ResourceManifest;
 
-    const diags = new StaticAnalyzer().analyze([...base, dispatcher]);
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...base, dispatcher]));
     const unresolved = diags.find((d) => d.code === "UNRESOLVED_REFERENCE");
     expect(unresolved).toBeDefined();
     expect(unresolved!.message).toContain("NotDeclared");

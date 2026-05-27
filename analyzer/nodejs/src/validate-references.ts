@@ -85,10 +85,37 @@ export function validateReferences(
   // identity (aliases live in a separate namespace from resources, and
   // colliding aliases vs. resource names is benign — the alias is only
   // ever read as a kind prefix).
+  // Group manifests by name to detect collisions. Two subtleties:
+  //
+  //   1. Some analyzer hosts emit the SAME physical document twice through
+  //      their pipeline — e.g. the telo-editor's `toAnalysisManifests` walks
+  //      each workspace module's documents independently, and a file
+  //      reachable from two angles (entry module + `include:` partial)
+  //      shows up twice. The fingerprint includes `sourceLine` so identical
+  //      docs (same kind, name, source, AND source line) collapse to one,
+  //      while two textually-separate documents in the same file (different
+  //      source lines) keep separate fingerprints and trip the diagnostic.
+  //   2. The diagnostic carries a precomputed `range` pointing at the
+  //      duplicate's source line — editor hosts that resolve diagnostic
+  //      positions via a `${file}::${kind}::${name}` lookup would otherwise
+  //      collide on duplicates (Map.set overwrites) and place the squiggle
+  //      ambiguously. The explicit `range` short-circuits that lookup.
+  // Dedup pipeline echoes — the same physical document emitted twice
+  // through an analyzer host's pipeline. Keyed on (kind, name, source,
+  // sourceLine), so two textually-distinct docs in the same file (same
+  // source, different sourceLine) keep separate fingerprints and still
+  // trip the diagnostic. `analyze()` enforces that every non-system
+  // manifest carries both positional fields — no defensive guard needed.
   const byNameAll = new Map<string, ResourceManifest[]>();
+  const seen = new Set<string>();
   for (const r of resources) {
     if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || r.kind === "Telo.Import") continue;
     const name = r.metadata.name as string;
+    // `analyze()` guarantees both fields are present on non-system manifests.
+    const meta = r.metadata as unknown as { source: string; sourceLine: number };
+    const fingerprint = `${r.kind} ${name} ${meta.source} ${meta.sourceLine}`;
+    if (seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
     const existing = byNameAll.get(name);
     if (existing) existing.push(r);
     else byNameAll.set(name, [r]);
@@ -98,14 +125,23 @@ export function validateReferences(
     const [first, ...rest] = list;
     const firstLabel = `${first.kind}/${name}`;
     for (const dup of rest) {
+      const dupMeta = dup.metadata as { source?: string; sourceLine?: number } | undefined;
+      const range =
+        typeof dupMeta?.sourceLine === "number"
+          ? {
+              start: { line: dupMeta.sourceLine, character: 0 },
+              end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
+            }
+          : undefined;
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "DUPLICATE_RESOURCE_NAME",
         source: SOURCE,
         message: `${dup.kind}/${name}: resource name collides with ${firstLabel} declared earlier (kernel runtime would fail with ERR_DUPLICATE_RESOURCE)`,
+        ...(range ? { range } : {}),
         data: {
           resource: { kind: dup.kind, name },
-          filePath: (dup.metadata as { source?: string } | undefined)?.source,
+          filePath: dupMeta?.source,
           path: "metadata.name",
         },
       });

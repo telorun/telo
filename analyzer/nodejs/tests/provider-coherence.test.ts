@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 const httpRequestKind: ResourceManifest = {
   kind: "Telo.Definition",
@@ -32,7 +33,7 @@ describe("validateProviderCoherence", () => {
       provide: { kind: "http-client.Request", name: "r" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_ON_NON_PROVIDER");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("Telo.Provider");
@@ -49,7 +50,7 @@ describe("validateProviderCoherence", () => {
       invoke: { kind: "http-client.Request", name: "r" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_DISPATCHER_CONFLICT");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("invoke");
@@ -66,7 +67,7 @@ describe("validateProviderCoherence", () => {
       run: "r",
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_DISPATCHER_CONFLICT");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("run");
@@ -82,7 +83,7 @@ describe("validateProviderCoherence", () => {
       provide: { kind: "http-client.Request", name: "wrongName" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_TARGET_UNKNOWN");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("wrongName");
@@ -98,7 +99,7 @@ describe("validateProviderCoherence", () => {
       provide: { kind: "sql.Exec", name: "r" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([sqlExecKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sqlExecKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_TARGET_NOT_INVOCABLE");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("Telo.Invocable");
@@ -112,7 +113,7 @@ describe("validateProviderCoherence", () => {
       schema: { type: "object", additionalProperties: true },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDER_MISSING_IMPLEMENTATION");
     expect(violations.length).toBe(1);
   });
@@ -130,7 +131,7 @@ describe("validateProviderCoherence", () => {
       provide: { kind: "sql.Exec", name: "r" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, sqlExecKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, sqlExecKind, def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_KIND_MISMATCH");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("sql.Exec");
@@ -147,7 +148,7 @@ describe("validateProviderCoherence", () => {
       provide: { kind: "http-client.Request", name: "r" },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([httpRequestKind, def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
     const violations = diagnostics.filter((d) =>
       d.code === "PROVIDE_ON_NON_PROVIDER" ||
       d.code === "PROVIDE_DISPATCHER_CONFLICT" ||
@@ -167,7 +168,7 @@ describe("validateProviderCoherence", () => {
       controllers: ["pkg:npm/example@1.0.0?local_path=./nodejs#example"],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const violations = diagnostics.filter((d) => d.code === "PROVIDER_MISSING_IMPLEMENTATION");
     expect(violations).toEqual([]);
   });

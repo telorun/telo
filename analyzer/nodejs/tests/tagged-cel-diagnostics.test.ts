@@ -3,6 +3,7 @@ import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** Build a `Telo.Definition` for an arbitrary kind so the analyzer can resolve
  *  it. `metadata.module` is what the registry keys on (the loader stamps it
@@ -48,7 +49,7 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
       expr: makeTaggedSentinel("cel", "request.bogus"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def, resource]));
     const unknownField = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknownField).toHaveLength(1);
     expect(unknownField[0].severity).toBe(DiagnosticSeverity.Error);
@@ -64,7 +65,7 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
       expr: makeTaggedSentinel("cel", "@@@"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def, resource]));
     const syntax = diagnostics.filter((d) => d.code === "CEL_SYNTAX_ERROR");
     expect(syntax).toHaveLength(1);
     expect(syntax[0].severity).toBe(DiagnosticSeverity.Error);
@@ -79,7 +80,7 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
       expr: makeTaggedSentinel("cel", "request.name"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def, resource]));
     const cel = diagnostics.filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "CEL_SYNTAX_ERROR",
     );
@@ -94,7 +95,7 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
       expr: makeTaggedSentinel("literal", "anything goes ${{ even.this }}"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def, resource]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def, resource]));
     const cel = diagnostics.filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "CEL_SYNTAX_ERROR",
     );
@@ -118,10 +119,10 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
     } as unknown as ResourceManifest;
 
     const taggedDiag = new StaticAnalyzer()
-      .analyze([def, tagged])
+      .analyze(withSyntheticPositions([def, tagged]))
       .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     const untaggedDiag = new StaticAnalyzer()
-      .analyze([def, untagged])
+      .analyze(withSyntheticPositions([def, untagged]))
       .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
 
     expect(taggedDiag).toHaveLength(1);
@@ -150,7 +151,7 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
       expr: makeTaggedSentinel("cel", "request.name"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze([def, literalRes, celRes]);
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def, literalRes, celRes]));
     const schemaViolations = diagnostics.filter((d) => d.code === "SCHEMA_VIOLATION");
     expect(schemaViolations).toEqual([]);
   });
