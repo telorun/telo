@@ -22,12 +22,12 @@ Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one 
 kind: Telo.Import
 metadata:
   name: Benchmark
-source: std/benchmark@1.1.0
+source: std/benchmark@0.3.0
 ---
 kind: Telo.Import
 metadata:
   name: HttpClient
-source: std/http-client@1.0.1
+source: std/http-client@0.3.0
 ---
 kind: HttpClient.Client
 metadata:

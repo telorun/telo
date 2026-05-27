@@ -260,7 +260,7 @@ Add a second PURL alongside the existing one:
 
 ```yaml
 controllers:
-  - pkg:npm/@telorun/starlark@0.1.11?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@0.3.0?local_path=./nodejs#script
   - pkg:cargo/telorun-starlark?local_path=./rust
 ```
 

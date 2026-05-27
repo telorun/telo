@@ -33,7 +33,7 @@ source: aws/lambda@1.0.1
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@1.0.0
+source: std/javascript@0.3.2
 ---
 kind: JS.Script
 metadata: { name: Worker }

@@ -23,15 +23,15 @@ targets:
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: aws/lambda@0.2.1
+source: aws/lambda@0.3.0
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@0.3.0
+source: std/javascript@0.3.2
 ---
 kind: Telo.Import
 metadata: { name: Type }
-source: std/type@1.0.5
+source: std/type@0.1.0
 ---
 # Three handlers — one per event source.
 kind: JS.Script

@@ -19,7 +19,7 @@ Declares an S3-compatible bucket. Constructs and owns the S3 client used by `S3.
 kind: Telo.Import
 metadata:
   name: S3
-source: std/s3@1.2.2
+source: std/s3@0.1.0
 secrets:
   accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
   secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"

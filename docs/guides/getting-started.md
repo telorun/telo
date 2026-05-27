@@ -48,12 +48,12 @@ targets:
 kind: Telo.Import
 metadata:
   name: Run
-source: std/run@0.2.7
+source: std/run@0.3.0
 ---
 kind: Telo.Import
 metadata:
   name: Console
-source: std/console@1.5.1
+source: std/console@0.6.0
 ---
 kind: Run.Sequence
 metadata:

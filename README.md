@@ -61,12 +61,12 @@ targets:
 kind: Telo.Import
 metadata:
   name: Http
-source: std/http-server@0.4.0
+source: std/http-server@0.5.0
 ---
 kind: Telo.Import
 metadata:
   name: Sql
-source: std/sql@0.2.3
+source: std/sql@0.3.0
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection

@@ -13,7 +13,7 @@ an in-memory `Map` that dies with the process. Only the npm controller packages
 get persisted (to `<entry-dir>/.telo/npm/`).
 
 At runtime, `Kernel.load()` calls `loadGraph` again, so every `Telo.Import` with
-a registry source (e.g. `std/type@1.0.5`) hits
+a registry source (e.g. `std/type@0.1.0`) hits
 [`RegistrySource.read`](../../../analyzer/nodejs/src/sources/registry-source.ts#L19)
 and `fetch()`es against `registry.telo.run`. Two consequences:
 
@@ -41,7 +41,7 @@ Cache root: `<entry-dir>/.telo/manifests/`. Same `<entry-dir>` anchor as
 
 Two subtrees, one per source scheme:
 
-- **Registry refs** (`std/type@1.0.5`):
+- **Registry refs** (`std/type@0.1.0`):
   `<entry-dir>/.telo/manifests/<namespace>/<name>/<version>/telo.yaml`
 - **HTTP imports** (`https://example.com/path/telo.yaml`):
   `<entry-dir>/.telo/manifests/__http/<host>/<pathname>` (literal `__http`
@@ -178,7 +178,7 @@ existing `loader.loadGraph(entryPath)` succeeds and before the controller pass:
    - Map `canonicalSource` to its cache path:
      - The canonical source is whatever the originating `ManifestSource.read()`
        returned. `RegistrySource` returns the *resolved* URL (the registry
-       HTTP URL), not the original `std/type@1.0.5` ref — so the cache path
+       HTTP URL), not the original `std/type@0.1.0` ref — so the cache path
        has to be derived from the registry URL structure
        (`<registryUrl>/<modulePath>/<version>/telo.yaml`) rather than from the
        import ref. Strip the registry URL prefix and reuse the trailing path

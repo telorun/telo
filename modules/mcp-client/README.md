@@ -36,7 +36,7 @@ source: std/mcp-client@0.2.0
 ---
 kind: Telo.Import
 metadata: { name: Run }
-source: std/run@1.0.0
+source: std/run@0.3.0
 ---
 kind: McpClient.HttpClient
 metadata: { name: RemoteMcp }

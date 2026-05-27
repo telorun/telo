@@ -167,7 +167,7 @@ metadata:
   name: Validate
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.1.12#schema
+  - pkg:npm/@telorun/assert@0.1.0#schema
 schema:
   type: object
   properties:
@@ -225,7 +225,7 @@ memory.set("lib", [
     kind: "Telo.Definition",
     metadata: { name: "Validate" },
     capability: "Telo.Runnable",
-    controllers: ["pkg:npm/@telorun/assert@0.1.12#schema"],
+    controllers: ["pkg:npm/@telorun/assert@0.1.0#schema"],
     schema: {
       type: "object",
       properties: {
