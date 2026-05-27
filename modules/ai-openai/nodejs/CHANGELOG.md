@@ -1,5 +1,13 @@
 # @telorun/ai-openai
 
+## 0.2.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+- Updated dependencies [4c1a50b]
+  - @telorun/ai@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
@@ -39,6 +47,7 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
+
   - @telorun/sdk@0.12.0
   - @telorun/ai@0.2.0
 
@@ -90,11 +99,13 @@
   - New http-server integration test (`modules/http-server/tests/text-stream-via-http.yaml`) — exercises three single-format routes plus a four-format negotiated route with five Accept variants.
 
 - Updated dependencies [b62e535]
+
   - @telorun/sdk@0.12.0
   - @telorun/ai@0.2.0
 
 - Updated dependencies [dccd3a6]
 - Updated dependencies [2e0ad31]
+
   - @telorun/sdk@0.12.0
   - @telorun/ai@0.2.0
 

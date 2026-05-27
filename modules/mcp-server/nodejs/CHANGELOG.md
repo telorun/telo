@@ -1,5 +1,11 @@
 # @telorun/mcp-server
 
+## 0.5.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
 ## 0.5.0
 
 ### Minor Changes

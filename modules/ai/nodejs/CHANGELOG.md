@@ -1,5 +1,11 @@
 # @telorun/ai
 
+## 0.2.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
 ## 0.2.0
 
 ### Major Changes
@@ -86,13 +92,16 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [b62e535]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [dccd3a6]
 - Updated dependencies [2e0ad31]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [f76dd0f]
