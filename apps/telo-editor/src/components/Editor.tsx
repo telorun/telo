@@ -265,6 +265,15 @@ export function Editor() {
       ? (state.workspace.modules.get(state.activeModulePath) ?? null)
       : null;
 
+  // Run history + status for the active Application — drives the TopBar Run
+  // button's status dot and its chevron dropdown of recent runs.
+  const activeAppPath =
+    activeManifest?.kind === "Application" ? activeManifest.filePath : null;
+  const activeAppRuns = activeAppPath ? runContext.runsForApp(activeAppPath) : [];
+  const activeAppRun = activeAppPath
+    ? (runContext.liveRunForApp(activeAppPath) ?? runContext.latestRunForApp(activeAppPath))
+    : null;
+
   // ---------------------------------------------------------------------------
   // Workspace lifecycle
   // ---------------------------------------------------------------------------
@@ -395,14 +404,11 @@ export function Editor() {
       return;
     }
 
-    if (
-      runContext.activeRun &&
-      (runContext.activeRun.status.kind === "starting" ||
-        runContext.activeRun.status.kind === "running")
-    ) {
-      const proceed = window.confirm("Stop current run and start new?");
+    const liveRun = runContext.liveRunForApp(filePath);
+    if (liveRun) {
+      const proceed = window.confirm("Stop the current run and start a new one?");
       if (!proceed) return;
-      await runContext.stopRun();
+      await runContext.stopRun(liveRun.id);
     }
 
     // save-before-run is a no-op today: every mutation in the editor persists
@@ -430,6 +436,7 @@ export function Editor() {
 
     try {
       await runContext.startRun({
+        appPath: filePath,
         adapter,
         config,
         request: { bundle, env: environment.env, ports: environment.ports },
@@ -894,8 +901,9 @@ export function Editor() {
             ? () => void handleRunModule(activeManifest.filePath)
             : undefined
         }
-        runStatus={runContext.activeRun?.status ?? null}
-        onOpenRunView={runContext.openRunView}
+        runStatus={activeAppRun?.status ?? null}
+        runs={activeAppRuns}
+        onSelectRun={runContext.selectRun}
         onUndo={canUndo ? () => void handleUndo() : undefined}
         onRedo={canRedo ? () => void handleRedo() : undefined}
         canUndo={canUndo}

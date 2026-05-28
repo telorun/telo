@@ -6,23 +6,24 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
-import type { RunIo, RunIoConnection } from "../types";
+import type { TerminalBuffer } from "../terminal-buffer";
 
 interface TerminalViewProps {
-  io: RunIo;
+  terminal: TerminalBuffer;
   /** True once the run has reached a terminal status. The terminal stays
    *  visible (so the user can scroll the final output) but input is detached. */
   inputDisabled: boolean;
 }
 
-/** xterm.js host for the live PTY byte stream of a run session. Mounts the
- *  terminal imperatively and adapts the React component lifecycle around it.
- *  The component is deliberately framework-agnostic on the inside — xterm
- *  owns rendering, scrollback, selection, and ANSI parsing. */
-export function TerminalView({ io, inputDisabled }: TerminalViewProps) {
+/** xterm.js host for a run's PTY byte transcript. Mounts the terminal
+ *  imperatively and adapts the React component lifecycle around it. Attaches
+ *  to the run's TerminalBuffer, which replays the recorded transcript and then
+ *  streams live bytes — so re-mounting or selecting a past run re-renders its
+ *  output without re-opening the (single-shot) transport. xterm owns
+ *  rendering, scrollback, selection, and ANSI parsing. */
+export function TerminalView({ terminal, inputDisabled }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
-  const connectionRef = useRef<RunIoConnection | null>(null);
   const dataDisposerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -62,24 +63,14 @@ export function TerminalView({ io, inputDisabled }: TerminalViewProps) {
 
     const encoder = new TextEncoder();
 
-    const conn = io.open({
-      onData(bytes) {
-        // xterm accepts Uint8Array directly and handles UTF-8 framing
-        // internally — partial sequences across chunks are fine.
-        term.write(bytes);
-      },
-      onClose() {
-        // Detach the keystroke listener so further user input drops on the
-        // floor rather than reaching a closed transport.
-        dataDisposerRef.current?.();
-        dataDisposerRef.current = null;
-      },
-    });
-    connectionRef.current = conn;
+    // Replays the recorded transcript into this fresh xterm, then streams live
+    // bytes. xterm accepts Uint8Array directly and handles UTF-8 framing
+    // internally — partial sequences across chunks are fine.
+    const detach = terminal.attach((bytes) => term.write(bytes));
     termRef.current = term;
 
     const sub = term.onData((s) => {
-      conn.send(encoder.encode(s));
+      terminal.send(encoder.encode(s));
     });
     dataDisposerRef.current = () => sub.dispose();
 
@@ -94,7 +85,7 @@ export function TerminalView({ io, inputDisabled }: TerminalViewProps) {
         // tick will retry.
         return;
       }
-      conn.resize(term.cols, term.rows);
+      terminal.resize(term.cols, term.rows);
     });
     ro.observe(host);
 
@@ -102,16 +93,13 @@ export function TerminalView({ io, inputDisabled }: TerminalViewProps) {
       ro.disconnect();
       dataDisposerRef.current?.();
       dataDisposerRef.current = null;
-      try {
-        conn.close();
-      } catch {
-        /* already closed */
-      }
-      connectionRef.current = null;
+      // Detach only — the buffer (and its transport) outlives the view so the
+      // transcript stays replayable for history. Teardown happens on eviction.
+      detach();
       term.dispose();
       termRef.current = null;
     };
-  }, [io]);
+  }, [terminal]);
 
   // When the run reaches terminal status, drop the keystroke listener but
   // keep the terminal mounted so the user can scroll the final transcript.
