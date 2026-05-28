@@ -31,8 +31,7 @@ source: ../modules/run
 kind: Sql.Connection
 metadata:
   name: Db
-driver: sqlite
-file: ./tmp/feedback-repo.db
+connectionString: sqlite:./tmp/feedback-repo.db
 ---
 kind: SqlRepository.Create
 metadata:

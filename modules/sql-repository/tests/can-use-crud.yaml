@@ -28,8 +28,7 @@ source: ../../assert
 kind: Sql.Connection
 metadata:
   name: Db
-driver: sqlite
-file: ":memory:"
+connectionString: "sqlite::memory:"
 ---
 kind: SqlRepository.Create
 metadata:

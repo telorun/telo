@@ -37,7 +37,6 @@ source: std/sql@0.3.0
 ---
 kind: Sql.Connection
 metadata: { name: Db }
-driver: postgres
 connectionString: "${{ secrets.DATABASE_URL }}"
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
@@ -67,14 +66,18 @@ orderBy:
 limit: 50
 ```
 
-## Driver Notes
+## Connection strings
 
-| Driver | Backend | Notes |
+The `connectionString` scheme selects the driver — there is no separate `driver` field, and the scheme is mandatory.
+
+| Scheme | Backend | Examples |
 | --- | --- | --- |
-| `postgres` | `pg` + Kysely | Production default. Pool settings are tunable. |
-| `sqlite` | Node SQLite | Use `:memory:` for tests, a file path otherwise. |
+| `postgres://` / `postgresql://` | `pg` + Kysely | `postgres://user:pass@host:5432/db` |
+| `sqlite:` | Node SQLite (better-sqlite3) | `sqlite::memory:`, `sqlite:./data.db`, `sqlite:///abs/path.db` |
 
-For Postgres provide `connectionString` or the structured fields (`host`, `port`, `database`, `user`, `password`). `ssl: true` opts into TLS with relaxed CA verification — suitable for managed Postgres services that self-sign. For SQLite use `driver: sqlite` and `file:` (path or `:memory:`).
+PostgreSQL TLS is configured with the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it. Omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) apply to PostgreSQL only.
+
+SQLite file paths auto-create their parent directory on connect; use `sqlite::memory:` for an ephemeral database.
 
 ## Migrations
 

@@ -29,8 +29,7 @@ kind: Sql.Connection
 metadata:
   name: Db
   module: FeedbackApi
-driver: sqlite
-file: /tmp/feedback.db
+connectionString: sqlite:/tmp/feedback.db
 ---
 # Startup migration: runs once before the server accepts requests
 kind: Run.Sequence
