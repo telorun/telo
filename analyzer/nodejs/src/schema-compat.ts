@@ -146,6 +146,10 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
       validate = ajv.compile(schema);
       compiledSchemaValidators.set(schema, validate);
     } catch {
+      // A schema that won't compile is reported loudly (once, on the owning
+      // definition) by the analyzer's definition-schema compile check
+      // (`DefinitionRegistry.schemaCompileError`), so returning `[]` here does
+      // not silently accept resources of that kind.
       return [];
     }
   }
@@ -273,7 +277,7 @@ export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 
 /** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
-function resolveRef(schema: Record<string, any>, root: Record<string, any>): Record<string, any> {
+export function resolveRef(schema: Record<string, any>, root: Record<string, any>): Record<string, any> {
   if (schema.$ref && typeof schema.$ref === "string" && schema.$ref.startsWith("#/$defs/")) {
     const defName = schema.$ref.slice("#/$defs/".length);
     const resolved = root.$defs?.[defName];
@@ -283,7 +287,7 @@ function resolveRef(schema: Record<string, any>, root: Record<string, any>): Rec
 }
 
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
-function collectProperties(schema: Record<string, any>): Record<string, any> {
+export function collectProperties(schema: Record<string, any>): Record<string, any> {
   const props: Record<string, any> = { ...(schema.properties ?? {}) };
   for (const sub of schema.oneOf ?? schema.anyOf ?? []) {
     if (sub && typeof sub === "object" && sub.properties) {

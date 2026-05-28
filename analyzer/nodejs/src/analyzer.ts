@@ -31,6 +31,7 @@ import {
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
 import { validateExtends } from "./validate-extends.js";
+import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
@@ -698,6 +699,32 @@ export class StaticAnalyzer {
       }
     }
 
+    // Fail loud on definition schemas AJV cannot compile. `validateAgainstSchema`
+    // and `validateWithRefs` swallow compile failures (returning no issues),
+    // which would silently skip schema validation for every resource of that
+    // kind — surface the broken schema once, anchored on the definition itself.
+    for (const m of allManifests) {
+      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      const schema = (m as Record<string, any>).schema;
+      if (!schema || typeof schema !== "object") continue;
+      const name = m.metadata?.name as string | undefined;
+      if (!name) continue;
+      const compileError = defs.schemaCompileError(schema as Record<string, any>);
+      if (compileError) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "SCHEMA_COMPILE_ERROR",
+          source: SOURCE,
+          message: `${m.kind}/${name}: definition schema failed to compile: ${compileError}`,
+          data: {
+            resource: { kind: m.kind, name },
+            filePath: (m.metadata as { source?: string } | undefined)?.source,
+            path: "schema",
+          },
+        });
+      }
+    }
+
     // Library env: rejection — `env:` on a Library `variables` / `secrets`
     // entry is forbidden. The Library entry schema is otherwise open so that
     // any JSON Schema property schema is valid; this targeted check produces
@@ -803,6 +830,39 @@ export class StaticAnalyzer {
             data: { resource, filePath, path: issue.path },
           });
         }
+      }
+
+      // Validate inline resources nested inside this resource's body (e.g. a
+      // Run.Sequence step's `invoke: { kind, ...config }`). These sit at
+      // x-telo-ref slots reached only through local `$ref`s, which the
+      // reference field map intentionally does not follow, so they escape both
+      // inline-extraction and the per-resource schema check above.
+      if (definition.schema) {
+        // Resolve inline kinds in the parent resource's scope: direct kind
+        // first, then the parent module's own aliases (for resources declared
+        // inside an imported module), then the root aliases. Mirrors how the
+        // analyzer resolves kinds elsewhere so module-scoped aliases don't
+        // produce false UNDEFINED_KIND diagnostics.
+        const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+        const scopeResolver =
+          ownModule && !rootModules.has(ownModule) ? aliasesByModule.get(ownModule) : undefined;
+        diagnostics.push(
+          ...validateNestedInlineResources(
+            m,
+            definition.schema as Record<string, any>,
+            (kind: string) => {
+              const direct = defs.resolve(kind);
+              if (direct) return direct;
+              const viaScope = scopeResolver?.resolveKind(kind);
+              if (viaScope) {
+                const scoped = defs.resolve(viaScope);
+                if (scoped) return scoped;
+              }
+              const viaRoot = aliases.resolveKind(kind);
+              return viaRoot ? defs.resolve(viaRoot) : undefined;
+            },
+          ),
+        );
       }
 
       // (Invocation context compatibility check is handled via x-telo-context in the CEL pass below)
@@ -973,7 +1033,18 @@ export class StaticAnalyzer {
         }
 
         const engine = defaultRegistry().get(engineName);
-        if (!engine) return;
+        if (!engine) {
+          // No registered engine owns this tag — the expression would go
+          // entirely unanalyzed. Surface it rather than skipping silently.
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "UNKNOWN_ENGINE",
+            source: SOURCE,
+            message: `${m.kind}/${resource.name}: no templating engine registered for '!${engineName}' at '${path}'.`,
+            data: { resource, filePath, path },
+          });
+          return;
+        }
         const findings = engine.analyze(expr, { celEnv: this.celEnv, contextSchema: effectiveContext });
         for (const f of findings) {
           if (f.code === "CEL_SYNTAX_ERROR") {

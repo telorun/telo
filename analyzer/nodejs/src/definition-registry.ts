@@ -119,7 +119,10 @@ export class DefinitionRegistry {
   }
 
   /** Validates data against a schema using this registry's AJV instance, which has all
-   *  registered definition schemas loaded — enabling cross-module $ref resolution. */
+   *  registered definition schemas loaded — enabling cross-module $ref resolution.
+   *  A compile failure returns `[]` here; it is surfaced loudly (once, on the
+   *  owning definition) by `schemaCompileError` via the analyzer's
+   *  definition-schema compile check, so resources are never silently skipped. */
   validateWithRefs(data: unknown, schema: Record<string, any>): string[] {
     let validate: ReturnType<typeof this.ajv.compile>;
     try {
@@ -129,6 +132,22 @@ export class DefinitionRegistry {
     }
     if (validate(data)) return [];
     return (validate.errors ?? []).map(formatSingleError);
+  }
+
+  /** Returns the AJV compile error for `schema`, or `undefined` when it compiles.
+   *  Compiles on this registry's instance, which has every loaded module schema
+   *  plus the manifest root registered, so local `#/$defs`, `telo://manifest`,
+   *  and cross-module `$ref`s all resolve. Used to fail loud on a definition
+   *  schema that AJV cannot compile — otherwise `validateAgainstSchema` /
+   *  `validateWithRefs` would swallow the failure and silently skip every
+   *  resource of that kind. */
+  schemaCompileError(schema: Record<string, any>): string | undefined {
+    try {
+      this.ajv.compile(schema);
+      return undefined;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
   }
 
   private tryRegisterSchema(

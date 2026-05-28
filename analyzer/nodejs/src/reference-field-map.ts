@@ -148,7 +148,7 @@ export function buildReferenceFieldMap(schema: Record<string, any>): ReferenceFi
   return map;
 }
 
-function collectRefs(node: Record<string, any>): string[] {
+export function collectRefs(node: Record<string, any>): string[] {
   const refs: string[] = [];
   if (typeof node["x-telo-ref"] === "string") {
     refs.push(node["x-telo-ref"]);
