@@ -49,8 +49,7 @@ source: ../modules/sql
 # --- Persistence -----------------------------------------------------------
 kind: Sql.Connection
 metadata: { name: ChatDb }
-driver: sqlite
-file: ./tmp/chat-history.sqlite
+connectionString: sqlite:./tmp/chat-history.sqlite
 ---
 kind: Sql.Migration
 metadata: { name: CreateMessagesTable }

@@ -35,7 +35,6 @@ source: std/sql-repository@0.1.0
 ---
 kind: Sql.Connection
 metadata: { name: Db }
-driver: postgres
 connectionString: "${{ secrets.DATABASE_URL }}"
 ---
 kind: SqlRepository.Read

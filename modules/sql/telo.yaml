@@ -14,47 +14,18 @@ controllers:
 schema:
   type: object
   required:
-    - driver
+    - connectionString
   properties:
-    driver:
-      title: Driver
-      type: string
-      enum: [postgres, sqlite]
-      description: Database driver
     connectionString:
       title: Connection String
       type: string
-      description: PostgreSQL connection URL (e.g. postgres://user:pass@host/db)
-    host:
-      title: Host
-      type: string
-      description: PostgreSQL host
-    port:
-      title: Port
-      type: integer
-      default: 5432
-      description: PostgreSQL port
-    database:
-      title: Database
-      type: string
-      description: PostgreSQL database name
-    user:
-      title: User
-      type: string
-      description: PostgreSQL user
-    password:
-      title: Password
-      type: string
-      description: PostgreSQL password
-    ssl:
-      title: SSL
-      type: boolean
-      default: false
-      description: Enable SSL for PostgreSQL
-    file:
-      title: File
-      type: string
-      description: SQLite file path or ':memory:'
+      description: >-
+        Database connection URL. The scheme selects the driver and is
+        mandatory: `postgres://` or `postgresql://` for PostgreSQL,
+        `sqlite:` for SQLite (`sqlite::memory:`, `sqlite:./data.db`,
+        `sqlite:///abs/path.db`). PostgreSQL TLS is configured with the
+        standard libpq `?sslmode=` query parameter (`disable`, `require`,
+        `verify-ca`, `verify-full`).
     pool:
       title: Pool
       description: Database connection pool configuration.

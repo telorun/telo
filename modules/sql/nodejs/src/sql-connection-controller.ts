@@ -22,19 +22,11 @@ interface PoolConfig {
 
 interface SqlConnectionManifest {
   metadata: { name: string; module: string };
-  driver: "postgres" | "sqlite";
-  connectionString?: string;
-  host?: string;
-  port?: number;
-  database?: string;
-  user?: string;
-  password?: string;
-  ssl?: boolean;
-  file?: string;
+  connectionString: string;
   pool?: PoolConfig;
 }
 
-export type SqlDriver = SqlConnectionManifest["driver"];
+export type SqlDriver = "postgres" | "sqlite";
 
 export class SqlConnectionResource implements ResourceInstance {
   readonly driver: SqlDriver;
@@ -42,16 +34,17 @@ export class SqlConnectionResource implements ResourceInstance {
   private readonly sqlite?: SqliteDb;
 
   constructor(m: SqlConnectionManifest, sqlite?: SqliteDb) {
-    this.driver = m.driver;
+    this.driver = driverFromConnectionString(m.connectionString);
 
-    if (m.driver === "postgres") {
+    if (this.driver === "postgres") {
+      const url = new URL(m.connectionString);
+      const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
+      url.searchParams.delete("sslmode");
       this.db = new Kysely({
         dialect: new PostgresDialect({
           pool: new Pool({
-            ...(m.connectionString
-              ? { connectionString: m.connectionString }
-              : { host: m.host, port: m.port ?? 5432, database: m.database, user: m.user, password: m.password }),
-            ssl: m.ssl ? { rejectUnauthorized: false } : false,
+            connectionString: url.toString(),
+            ssl,
             min: m.pool?.min ?? 1,
             max: m.pool?.max ?? 10,
             idleTimeoutMillis: m.pool?.idleTimeoutMs,
@@ -59,7 +52,7 @@ export class SqlConnectionResource implements ResourceInstance {
           }),
         }),
       });
-    } else if (m.driver === "sqlite") {
+    } else {
       if (!sqlite) {
         throw new Error("Sql: sqlite database was not initialized");
       }
@@ -69,8 +62,6 @@ export class SqlConnectionResource implements ResourceInstance {
           database: this.sqlite,
         }),
       });
-    } else {
-      throw new Error("Invalid SQL Connection driver");
     }
   }
 
@@ -154,17 +145,67 @@ export async function create(
   resource: SqlConnectionManifest,
   ctx: ResourceContext,
 ): Promise<SqlConnectionResource> {
-  const sqlite = resource.driver === "sqlite" ? await openSqliteDatabase(resource.file) : undefined;
+  const sqlite =
+    driverFromConnectionString(resource.connectionString) === "sqlite"
+      ? await openSqliteDatabase(sqliteTargetFromConnectionString(resource.connectionString))
+      : undefined;
   return new SqlConnectionResource(resource, sqlite);
+}
+
+type SslOption =
+  | false
+  | { rejectUnauthorized: boolean; checkServerIdentity?: () => undefined };
+
+function driverFromConnectionString(connectionString: string): SqlDriver {
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(connectionString)?.[1]?.toLowerCase();
+  switch (scheme) {
+    case "postgres":
+    case "postgresql":
+      return "postgres";
+    case "sqlite":
+      return "sqlite";
+    default:
+      throw new Error(
+        `Sql.Connection: connectionString must start with a driver scheme — ` +
+          `'postgres://' or 'postgresql://' for PostgreSQL, 'sqlite:' for SQLite. ` +
+          `Got ${scheme ? `'${scheme}:'` : "a string with no scheme"}: ${JSON.stringify(connectionString)}`,
+      );
+  }
+}
+
+function sqliteTargetFromConnectionString(connectionString: string): string {
+  const path = decodeURIComponent(new URL(connectionString).pathname);
+  // `sqlite:` / `sqlite://` with no path resolves to an in-memory database.
+  return path === "" || path === "/" ? ":memory:" : path;
+}
+
+function sslFromSslmode(mode: string | null): SslOption {
+  switch (mode) {
+    case null:
+    case "disable":
+      return false;
+    case "require":
+      return { rejectUnauthorized: false };
+    case "verify-ca":
+      // libpq `verify-ca` validates the CA chain but not the hostname; Node's
+      // default `checkServerIdentity` enforces the hostname, so disable it.
+      return { rejectUnauthorized: true, checkServerIdentity: () => undefined };
+    case "verify-full":
+      return { rejectUnauthorized: true };
+    default:
+      throw new Error(
+        `Sql.Connection: unsupported sslmode '${mode}'. ` +
+          `Use 'disable', 'require', 'verify-ca', or 'verify-full'.`,
+      );
+  }
 }
 
 async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
   // Auto-create the parent directory for file-backed databases. SQLite
   // drivers fail-fast when the directory doesn't exist; mirroring `mkdir
   // -p` here lets manifests use paths like `./tmp/foo.sqlite` without a
-  // separate filesystem-prep step. `:memory:` and `file::memory:?...`
-  // skip filesystem entirely.
-  if (file !== ":memory:" && !file.startsWith("file::memory:")) {
+  // separate filesystem-prep step. `:memory:` skips filesystem entirely.
+  if (file !== ":memory:") {
     const { mkdir } = await import("node:fs/promises");
     const { dirname } = await import("node:path");
     const dir = dirname(file);
