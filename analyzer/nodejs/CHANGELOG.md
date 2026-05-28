@@ -1,5 +1,12 @@
 # @telorun/analyzer
 
+## 0.12.1
+
+### Patch Changes
+
+- 6ce1a52: Fail loud instead of silently accepting manifests the analyzer can't fully process. A `Telo.Definition` whose schema AJV cannot compile (e.g. an unresolvable local `$ref`) previously had its compile error swallowed, silently skipping schema validation for every resource of that kind — it is now reported once as `SCHEMA_COMPILE_ERROR` on the definition. An expression tagged with an unregistered templating engine (`!foo`) was silently left unanalyzed and is now reported as `UNKNOWN_ENGINE`.
+- 6ce1a52: Validate inline resources nested inside resource bodies. Inline resources sitting at `x-telo-ref` slots reached only through a local `$ref` (notably `Run.Sequence`'s `steps[].invoke`) were never analyzed, so a manifest like `invoke: { kind: Console.ReadLine, prompt: "…" }` — where `prompt` belongs in the step's `inputs` — passed analysis but failed at runtime. The analyzer now walks each resource against its definition schema and, at those reference slots, validates each inline resource's config against its own kind's schema and reports an unknown inline kind (`UNDEFINED_KIND`) — neither of which any field-map-driven pass could see.
+
 ## 0.12.0
 
 ### Minor Changes
@@ -100,6 +107,7 @@
 
 - 77c1c86: Fix diagnostic line attribution in multi-doc YAML files that start with `---`. The leading `---` is the start marker for doc 0, not a separator before an empty doc; treating it as a separator drifted every subsequent doc's `sourceLine` by one entry, so diagnostics for doc N landed inside doc N-1's text (e.g. an `Http.Server` error squiggling on a preceding `Telo.Import` block).
 - Updated dependencies [7889023]
+
   - @telorun/templating@0.3.0
 
 - e411584: Reference and schema diagnostics now resolve to the correct line in the editor. Two bugs were stacking to make `x-telo-ref` errors land on the resource's top line — or, for inline-extracted children, on the wrong document entirely:

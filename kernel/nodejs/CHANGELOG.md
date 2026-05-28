@@ -1,5 +1,13 @@
 # @telorun/kernel
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [6ce1a52]
+- Updated dependencies [6ce1a52]
+  - @telorun/analyzer@0.12.1
+
 ## 0.13.0
 
 ### Minor Changes
@@ -86,6 +94,7 @@
 ### Patch Changes
 
 - Updated dependencies [c0129c0]
+
   - @telorun/analyzer@0.12.0
 
 - 0331069: Fix loading manifests from `http(s)://` URLs as the entry point.
@@ -100,18 +109,22 @@
   Single-realm install semantics are preserved: each kernel process still uses exactly one install root that pins `@telorun/sdk` (and every other realm-collapse name) to the kernel's own resolution via a `file:` dep, so class identity (`Stream`, etc.) is the same across the kernel/controller boundary regardless of where the install root physically lives.
 
 - Updated dependencies [0331069]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [77c1c86]
 - Updated dependencies [7889023]
+
   - @telorun/analyzer@0.12.0
   - @telorun/templating@0.3.0
 
 - Updated dependencies [f3e5fbc]
 - Updated dependencies [f3e5fbc]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [39aef08]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [849f57a]

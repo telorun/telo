@@ -1,5 +1,11 @@
 # @telorun/test
 
+## 0.1.1
+
+### Patch Changes
+
+- @telorun/kernel@0.13.2
+
 ## 0.1.0
 
 ### Patch Changes
@@ -7,16 +13,20 @@
 - @telorun/kernel@0.13.0
 
 - Updated dependencies [0331069]
+
   - @telorun/kernel@0.13.0
 
 - Updated dependencies [7889023]
+
   - @telorun/kernel@0.13.0
 
 - Updated dependencies [f3e5fbc]
 - Updated dependencies [f3e5fbc]
+
   - @telorun/kernel@0.13.0
 
 - Updated dependencies [39aef08]
+
   - @telorun/kernel@0.13.0
 
 - be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
