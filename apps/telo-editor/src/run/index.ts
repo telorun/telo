@@ -1,6 +1,6 @@
 export type {
-  ActiveRun,
   LogLine,
+  RunRecord,
   UnavailableRun,
 } from "./context";
 export { RunProvider, useRun } from "./context";
@@ -21,6 +21,7 @@ export { buildRunBundle } from "./bundle";
 export { registry } from "./registry";
 export { AdapterConfigForm } from "./ui/AdapterConfigForm";
 export { RunSettingsSection } from "./ui/RunSettingsSection";
+export { RunStatusChip } from "./ui/RunStatusChip";
 export { RunView } from "./ui/RunView";
 
 import { isTauri } from "@tauri-apps/api/core";

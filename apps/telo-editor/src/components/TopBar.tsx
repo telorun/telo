@@ -1,10 +1,18 @@
-import { Redo2, Undo2 } from "lucide-react";
+import { ChevronDown, Redo2, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
-import type { RunStatus } from "../run";
+import type { RunRecord, RunStatus } from "../run";
+import { RunStatusChip } from "../run";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 function formatSubPath(workspace: Workspace | null, manifest: ParsedManifest | null): string {
   if (!workspace) return "";
@@ -17,16 +25,24 @@ function formatSubPath(workspace: Workspace | null, manifest: ParsedManifest | n
   return manifest.filePath;
 }
 
+function formatRunTime(startedAt: number): string {
+  return new Date(startedAt).toLocaleTimeString();
+}
+
 interface TopBarProps {
   workspace: Workspace | null;
   activeManifest: ParsedManifest | null;
   onOpen: () => void;
   onOpenSettings: () => void;
   onRun?: () => void;
-  /** Latest status of the active run, or null when no run is active.
+  /** Status of the active Application's live (or most recent) run, or null.
    *  Drives the Run button's spinner (in-flight) / dot (terminal). */
   runStatus?: RunStatus | null;
-  onOpenRunView?: () => void;
+  /** Newest-first run history for the active Application — shown in the Run
+   *  button's chevron dropdown. */
+  runs?: RunRecord[];
+  /** Open the output view for a past/selected run. */
+  onSelectRun?: (runId: string) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -40,7 +56,8 @@ export function TopBar({
   onOpenSettings,
   onRun,
   runStatus,
-  onOpenRunView,
+  runs = [],
+  onSelectRun,
   onUndo,
   onRedo,
   canUndo,
@@ -101,33 +118,61 @@ export function TopBar({
         <Button variant="ghost" size="sm" disabled>
           Save
         </Button>
-        <Button
-          variant={canRun ? "default" : "ghost"}
-          size="sm"
-          onClick={
-            runInFlight
-              ? onOpenRunView
-              : canRun
-                ? onRun
-                : undefined
-          }
-          disabled={!canRun && !runInFlight}
-        >
-          {runInFlight ? (
-            <span
-              className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
-              aria-hidden
-            />
-          ) : runTerminal ? (
-            <span
-              className={`mr-1 inline-block h-2 w-2 rounded-full ${
-                runTerminalOk ? "bg-green-500" : "bg-red-500"
-              }`}
-              aria-hidden
-            />
-          ) : null}
-          Run
-        </Button>
+        <div className="flex items-stretch">
+          <Button
+            variant={canRun ? "default" : "ghost"}
+            size="sm"
+            className="rounded-r-none"
+            onClick={canRun ? onRun : undefined}
+            disabled={!canRun}
+          >
+            {runInFlight ? (
+              <span
+                className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+                aria-hidden
+              />
+            ) : runTerminal ? (
+              <span
+                className={`mr-1 inline-block h-2 w-2 rounded-full ${
+                  runTerminalOk ? "bg-green-500" : "bg-red-500"
+                }`}
+                aria-hidden
+              />
+            ) : null}
+            Run
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={canRun ? "default" : "ghost"}
+                size="icon-sm"
+                className="rounded-l-none border-l border-l-black/15 dark:border-l-white/15"
+                disabled={!canRun && runs.length === 0}
+                aria-label="Recent runs"
+                title="Recent runs"
+              >
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Recent runs</DropdownMenuLabel>
+              {runs.length === 0 ? (
+                <DropdownMenuItem disabled>No runs yet</DropdownMenuItem>
+              ) : (
+                runs.map((run) => (
+                  <DropdownMenuItem
+                    key={run.id}
+                    onSelect={() => onSelectRun?.(run.id)}
+                    className="justify-between gap-3"
+                  >
+                    <span className="truncate tabular-nums">{formatRunTime(run.startedAt)}</span>
+                    <RunStatusChip status={run.status} />
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
         </Button>

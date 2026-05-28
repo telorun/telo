@@ -6,20 +6,22 @@ import { LogStream } from "./LogStream";
 import { RunStatusChip } from "./RunStatusChip";
 import { TerminalView } from "./TerminalView";
 
-/** Full-canvas replacement shown while a run is active (or an
- *  unavailable/setup-required message needs surfacing). Renders in place of
- *  the normal view multiplexer; closing it returns to the previous view. */
+/** Full-canvas output viewer for the selected run (or an unavailable/
+ *  setup-required message). Renders in place of the normal view multiplexer;
+ *  closing it returns to the previous view. The run shown is driven by the
+ *  RunContext's `selectedRun` — a freshly started run or one picked from the
+ *  Run-button history dropdown. */
 export function RunView() {
   const {
-    activeRun,
+    selectedRun,
     unavailableRun,
     isStarting,
     stopRun,
-    clearLog,
     closeRunView,
+    getTerminal,
   } = useRun();
 
-  if (unavailableRun && !activeRun) {
+  if (unavailableRun) {
     return (
       <AdapterUnavailable
         adapterDisplayName={unavailableRun.adapterDisplayName}
@@ -31,56 +33,62 @@ export function RunView() {
     );
   }
 
-  if (!activeRun) {
+  if (isStarting) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
-        {isStarting ? (
-          <>
-            <span
-              className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"
-              aria-hidden
-            />
-            <span>Starting run…</span>
-          </>
-        ) : (
-          <span className="text-zinc-400 dark:text-zinc-600">No active run.</span>
-        )}
+        <span
+          className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"
+          aria-hidden
+        />
+        <span>Starting run…</span>
+      </div>
+    );
+  }
+
+  if (!selectedRun) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <span className="text-zinc-400 dark:text-zinc-600">No run selected.</span>
       </div>
     );
   }
 
   const isRunning =
-    activeRun.status.kind === "starting" || activeRun.status.kind === "running";
+    selectedRun.status.kind === "starting" || selectedRun.status.kind === "running";
+  const terminal = selectedRun.hasTerminal ? getTerminal(selectedRun.id) : null;
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
         <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-          {activeRun.adapterDisplayName}
+          {selectedRun.adapterDisplayName}
         </span>
-        <RunStatusChip status={activeRun.status} />
-        {activeRun.status.kind === "running" && (
-          <EndpointChips endpoints={activeRun.status.endpoints ?? []} />
+        <RunStatusChip status={selectedRun.status} />
+        {selectedRun.status.kind === "running" && (
+          <EndpointChips endpoints={selectedRun.status.endpoints ?? []} />
         )}
         <div className="flex-1" />
-        <Button size="sm" variant="outline" onClick={stopRun} disabled={!isRunning}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void stopRun(selectedRun.id)}
+          disabled={!isRunning}
+        >
           Stop
-        </Button>
-        <Button size="sm" variant="ghost" onClick={clearLog} disabled={isRunning}>
-          Clear
         </Button>
         <Button size="sm" variant="ghost" onClick={closeRunView}>
           ×
         </Button>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        {activeRun.session.io ? (
+        {terminal ? (
           <TerminalView
-            io={activeRun.session.io}
-            inputDisabled={isTerminal(activeRun.status)}
+            key={selectedRun.id}
+            terminal={terminal}
+            inputDisabled={isTerminal(selectedRun.status)}
           />
         ) : (
-          <LogStream lines={activeRun.lines} truncated={activeRun.truncated} />
+          <LogStream lines={selectedRun.lines} truncated={selectedRun.truncated} />
         )}
       </div>
     </div>
