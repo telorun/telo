@@ -1,24 +1,37 @@
 # @telorun/assert
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [6ce1a52]
+- Updated dependencies [6ce1a52]
+  - @telorun/analyzer@0.12.1
+
 ## 0.1.0
 
 ### Patch Changes
 
 - Updated dependencies [c0129c0]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [0331069]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [77c1c86]
 - Updated dependencies [7889023]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [f3e5fbc]
 - Updated dependencies [f3e5fbc]
+
   - @telorun/analyzer@0.12.0
 
 - Updated dependencies [39aef08]
+
   - @telorun/analyzer@0.12.0
 
 - be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
