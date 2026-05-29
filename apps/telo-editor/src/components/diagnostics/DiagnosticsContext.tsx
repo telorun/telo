@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { AnalysisRegistry, type Range } from "@telorun/analyzer";
+import type { Range } from "@telorun/analyzer";
 import type { WorkspaceDiagnostics } from "../../analysis";
 
 export interface DiagnosticsContextValue {
@@ -51,7 +51,7 @@ export function useDiagnosticsState(): { diagnostics: WorkspaceDiagnostics } {
     diagnostics: {
       byResource: new Map(),
       byFile: new Map(),
-      registry: new AnalysisRegistry(),
+      registryByFile: new Map(),
     },
   };
 }

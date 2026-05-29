@@ -59,7 +59,7 @@ services:
 
   editor:
     image: node:24
-    command: 'sh -c "corepack enable && exec pnpm run --filter telo-editor dev"'
+    command: 'sh -c "corepack enable && exec pnpm run --filter @telorun/editor dev"'
     init: true
     volumes:
       - .:/telo

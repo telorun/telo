@@ -253,6 +253,156 @@ describe("analyzeWorkspace — imported library kinds", () => {
     ).toHaveLength(0);
   });
 
+  it("isolates apps importing different versions of the same library", async () => {
+    // Two Applications each import `std/widget`, but at incompatible versions.
+    // The two library versions define the same kind (`widget.Box`) with
+    // mutually exclusive schemas. Pre-fix, the whole workspace shared one
+    // AnalysisRegistry, so whichever version registered last overwrote the
+    // other's `widget.Box` definition — and exactly one app got a spurious
+    // SCHEMA_VIOLATION validating its resource against the wrong version.
+    const widgetLib = (required: string, prop: string, propSchema: string): string =>
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: widget",
+        "  namespace: std",
+        "  version: 1.0.0",
+        "exports:",
+        "  kinds:",
+        "    - Box",
+        "---",
+        "kind: Telo.Definition",
+        "metadata:",
+        "  name: Box",
+        "capability: Telo.Service",
+        "controllers:",
+        "  pkg:npm: '@telorun/widget'",
+        "schema:",
+        "  type: object",
+        "  additionalProperties: false",
+        `  required: [${required}]`,
+        "  properties:",
+        `    ${prop}: ${propSchema}`,
+        "",
+      ].join("\n");
+
+    const app = (version: string, field: string): string =>
+      [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "---",
+        "kind: Telo.Import",
+        "metadata:",
+        "  name: Widget",
+        `source: std/widget@${version}`,
+        "---",
+        "kind: Widget.Box",
+        "metadata:",
+        "  name: box",
+        field,
+        "",
+      ].join("\n");
+
+    const files: Record<string, string> = {
+      // app-a uses v1 (size: integer); valid only under v1.
+      "/ws/app-a/telo.yaml": app("1.0.0", "size: 5"),
+      // app-b uses v2 (label: string); valid only under v2.
+      "/ws/app-b/telo.yaml": app("2.0.0", "label: hi"),
+    };
+
+    const registryFiles: Record<string, Record<string, string>> = {
+      "std/widget@1.0.0": { "telo.yaml": widgetLib("size", "size", "{ type: integer }") },
+      "std/widget@2.0.0": { "telo.yaml": widgetLib("label", "label", "{ type: string }") },
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const registry = inMemoryRegistry(registryFiles);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
+
+    // Both versions coexist in the workspace under distinct canonical paths.
+    expect(workspace.modules.has("registry://std/widget@1.0.0/telo.yaml")).toBe(true);
+    expect(workspace.modules.has("registry://std/widget@2.0.0/telo.yaml")).toBe(true);
+
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const violations: Array<{ message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values()) {
+      for (const list of fileMap.values()) {
+        for (const d of list) if (d.code === "SCHEMA_VIOLATION") violations.push({ message: d.message });
+      }
+    }
+    for (const list of diagnostics.byFile.values()) {
+      for (const d of list) if (d.code === "SCHEMA_VIOLATION") violations.push({ message: d.message });
+    }
+
+    expect(
+      violations,
+      `each app should validate against its own imported version; got: ${JSON.stringify(violations, null, 2)}`,
+    ).toHaveLength(0);
+
+    // Each app's resource is owned by its own closure registry.
+    expect(diagnostics.registryByFile.has("/ws/app-a/telo.yaml")).toBe(true);
+    expect(diagnostics.registryByFile.has("/ws/app-b/telo.yaml")).toBe(true);
+    expect(diagnostics.registryByFile.get("/ws/app-a/telo.yaml")).not.toBe(
+      diagnostics.registryByFile.get("/ws/app-b/telo.yaml"),
+    );
+  });
+
+  it("routes diagnostics to the resource's own file when two modules share a (kind, name)", async () => {
+    // Resource names are module-scoped, so an app and a library it imports may
+    // each legitimately declare `Widget.Box/dup`. Both sit in the app's
+    // analysis closure. Routing must use each diagnostic's own `data.filePath`
+    // rather than a `${kind}/${name}` projection (which collapses the two to a
+    // single file and misattributes one module's diagnostic to the other).
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "---",
+        "kind: Telo.Import",
+        "metadata:",
+        "  name: Mod",
+        "source: ../mod",
+        "---",
+        "kind: Widget.Box", // undefined kind → UNDEFINED_KIND, in app's file
+        "metadata:",
+        "  name: dup",
+        "",
+      ].join("\n"),
+      "/ws/mod/telo.yaml": [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: mod",
+        "  version: 1.0.0",
+        "---",
+        "kind: Widget.Box", // same kind+name, in the library's file
+        "metadata:",
+        "  name: dup",
+        "",
+      ].join("\n"),
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const appDup = diagnostics.byResource.get("/ws/app/telo.yaml")?.get("dup");
+    const modDup = diagnostics.byResource.get("/ws/mod/telo.yaml")?.get("dup");
+
+    expect(
+      appDup?.some((d) => d.code === "UNDEFINED_KIND"),
+      "app's Widget.Box/dup should report against /ws/app/telo.yaml",
+    ).toBe(true);
+    expect(
+      modDup?.some((d) => d.code === "UNDEFINED_KIND"),
+      "library's Widget.Box/dup should report against /ws/mod/telo.yaml",
+    ).toBe(true);
+  });
+
   it("resolves diagnostic positions per (kind, name), not name alone", async () => {
     // Two resources share `metadata.name: dup` but have different kinds.
     // Both emit UNDEFINED_KIND (no Telo.Definition for either kind).
