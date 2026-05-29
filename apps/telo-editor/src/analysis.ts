@@ -6,7 +6,7 @@ import {
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
-import { normalizePath } from "./loader";
+import { isWorkspaceModule, normalizePath } from "./loader";
 import type { ModuleDocument, Workspace } from "./model";
 
 interface EnrichedMetadata {
@@ -42,11 +42,13 @@ type PositionMap = Map<string, DocumentPosition>;
  */
 function toAnalysisManifests(
   app: Workspace,
+  includeOwners?: Set<string>,
 ): { manifests: ResourceManifest[]; positions: PositionMap } {
   const result: ResourceManifest[] = [];
   const positions: PositionMap = new Map();
 
   for (const [ownerPath, manifest] of app.modules) {
+    if (includeOwners && !includeOwners.has(ownerPath)) continue;
     const ownerKey = normalizePath(ownerPath);
     const ownerDoc = app.documents.get(ownerKey);
     if (!ownerDoc) continue;
@@ -137,9 +139,12 @@ export interface WorkspaceDiagnostics {
   /** filePath → diagnostics NOT tied to a named resource. Includes
    *  `UNKNOWN_FILE_KEY` when the analyzer gives us nothing to route on. */
   byFile: Map<string, NormalizedDiagnostic[]>;
-  /** Populated AnalysisRegistry from the pass. Needed by the Monaco
-   *  completion provider. */
-  registry: AnalysisRegistry;
+  /** filePath → the AnalysisRegistry of the closure that owns that file.
+   *  Each Application (and each orphan library) is analyzed against its own
+   *  registry so two apps importing different versions of the same library
+   *  never share — and thus never overwrite — each other's definitions. The
+   *  Monaco completion provider selects the registry for the active module. */
+  registryByFile: Map<string, AnalysisRegistry>;
 }
 
 /**
@@ -155,12 +160,69 @@ export interface WorkspaceDiagnostics {
  * of silently dropping unscoped diagnostics — notably MISSING_KIND_OR_NAME
  * on manifests that never reach a resource identity.
  */
-export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
-  const { manifests, positions } = toAnalysisManifests(app);
+/** Transitive import closure of `root` over the workspace import graph,
+ *  including `root` itself. Each closure is a self-consistent version set:
+ *  an Application picks specific library versions, so its closure can never
+ *  contain two versions of the same module — which is exactly what keeps the
+ *  per-closure AnalysisRegistry free of name collisions. */
+function computeClosure(root: string, importGraph: Map<string, Set<string>>): Set<string> {
+  const out = new Set<string>();
+  const queue = [root];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (out.has(current)) continue;
+    out.add(current);
+    const deps = importGraph.get(current);
+    if (deps) for (const d of deps) if (!out.has(d)) queue.push(d);
+  }
+  return out;
+}
+
+/** The set of modules that anchor an independent analysis context: every
+ *  Application, plus any workspace-local module not reachable from one (orphan
+ *  libraries being edited on their own). Sorted for deterministic closure
+ *  ordering — the first closure to contain a file owns its diagnostics. */
+function computeClosureRoots(app: Workspace): string[] {
+  const roots: string[] = [];
+  const covered = new Set<string>();
+
+  const appPaths = [...app.modules.keys()]
+    .filter((p) => app.modules.get(p)!.kind === "Application")
+    .sort();
+  for (const p of appPaths) {
+    roots.push(p);
+    for (const f of computeClosure(p, app.importGraph)) covered.add(f);
+  }
+
+  const localPaths = [...app.modules.keys()].filter((p) => isWorkspaceModule(app, p)).sort();
+  for (const p of localPaths) {
+    if (covered.has(p)) continue;
+    roots.push(p);
+    for (const f of computeClosure(p, app.importGraph)) covered.add(f);
+  }
+
+  return roots;
+}
+
+interface MergeAccumulators {
+  byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
+  byFile: Map<string, NormalizedDiagnostic[]>;
+  registryByFile: Map<string, AnalysisRegistry>;
+  /** Files whose diagnostics were already emitted by an earlier closure.
+   *  Shared libraries appear in multiple closures with identical diagnostics;
+   *  first-closure-wins keeps a single copy and a single owning registry. */
+  coveredFiles: Set<string>;
+  /** Dedup key set for diagnostics that route to no file at all. */
+  unknownSeen: Set<string>;
+}
+
+/** Analyzes a single closure with its own registry and merges the results
+ *  into the shared accumulators. */
+function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAccumulators): void {
+  const { manifests, positions } = toAnalysisManifests(app, closurePaths);
 
   // Enrich Telo.Import metadata with resolved module identity from the
-  // cross-module projection (workspace.modules). Done post-emission so we
-  // have the whole workspace's import-target names at hand.
+  // cross-module projection (workspace.modules).
   for (const m of manifests) {
     if (m.kind !== "Telo.Import") continue;
     const meta = m.metadata as EnrichedMetadata;
@@ -181,21 +243,20 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
   const sourceByManifest = new Map<string, string>();
+  const closureFiles = new Set<string>();
   for (const m of manifests) {
     const source = (m.metadata as EnrichedMetadata).source;
     if (source) {
       sourceByManifest.set(`${m.kind}/${m.metadata.name}`, source);
+      closureFiles.add(source);
     }
   }
 
-  const byResource = new Map<string, Map<string, NormalizedDiagnostic[]>>();
-  const byFile = new Map<string, NormalizedDiagnostic[]>();
-
   const appendByFile = (filePath: string, diag: NormalizedDiagnostic) => {
-    let bucket = byFile.get(filePath);
+    let bucket = acc.byFile.get(filePath);
     if (!bucket) {
       bucket = [];
-      byFile.set(filePath, bucket);
+      acc.byFile.set(filePath, bucket);
     }
     bucket.push(diag);
   };
@@ -207,15 +268,21 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     const kind = data?.resource?.kind;
     const name = data?.resource?.name;
 
-    // Look up the resource's positions so the normalizer can recover ranges
-    // from `positionIndex` / `sourceLine` when the analyzer didn't include
-    // an inline `d.range`. Positions live in the side-table built during
-    // emission instead of being smuggled on manifest metadata.
-    const filePath = kind && name ? sourceByManifest.get(`${kind}/${name}`) : undefined;
+    // Resolve the owning file. The analyzer stamps the precise per-resource
+    // source on `data.filePath`; prefer it over the `${kind}/${name}`
+    // projection, which collapses resources that share a name across modules
+    // in the same closure (resource names are module-scoped, so two modules
+    // may each declare e.g. `Http.Server/main`). Fall back to the projection
+    // only when the diagnostic carries no `filePath`.
+    //
+    // The position side-table lets the normalizer recover ranges from
+    // `positionIndex` / `sourceLine` when the analyzer didn't include an
+    // inline `d.range`; it is keyed by the same per-doc source.
+    const stampedFilePath = data?.filePath;
+    const filePath =
+      kind && name ? (stampedFilePath ?? sourceByManifest.get(`${kind}/${name}`)) : undefined;
     const ownerPosition =
-      filePath && kind && name
-        ? positions.get(`${filePath}::${kind}::${name}`)
-        : undefined;
+      filePath && kind && name ? positions.get(`${filePath}::${kind}::${name}`) : undefined;
     const normalized = normalizeDiagnostic(diag, {
       registry,
       positionIndex: ownerPosition?.positionIndex,
@@ -223,10 +290,11 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     });
 
     if (filePath) {
-      let moduleMap = byResource.get(filePath);
+      if (acc.coveredFiles.has(filePath)) continue;
+      let moduleMap = acc.byResource.get(filePath);
       if (!moduleMap) {
         moduleMap = new Map();
-        byResource.set(filePath, moduleMap);
+        acc.byResource.set(filePath, moduleMap);
       }
       let list = moduleMap.get(name!);
       if (!list) {
@@ -237,12 +305,42 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
       continue;
     }
 
-    // Fall through: resource stamp absent or doesn't resolve to a loaded
-    // manifest — route by data.filePath if the analyzer provided it,
-    // otherwise the unknown-file bucket.
-    const stampedPath = data?.filePath;
-    appendByFile(stampedPath ?? UNKNOWN_FILE_KEY, normalized);
+    // Fall through: no resource identity — route by data.filePath if the
+    // analyzer provided it, otherwise the unknown-file bucket (deduped
+    // across closures).
+    if (stampedFilePath) {
+      if (acc.coveredFiles.has(stampedFilePath)) continue;
+      appendByFile(stampedFilePath, normalized);
+      continue;
+    }
+    const dedupKey = `${normalized.code}::${normalized.message}`;
+    if (acc.unknownSeen.has(dedupKey)) continue;
+    acc.unknownSeen.add(dedupKey);
+    appendByFile(UNKNOWN_FILE_KEY, normalized);
   }
 
-  return { byResource, byFile, registry };
+  for (const f of closureFiles) {
+    if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
+    acc.coveredFiles.add(f);
+  }
+}
+
+export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
+  const acc: MergeAccumulators = {
+    byResource: new Map(),
+    byFile: new Map(),
+    registryByFile: new Map(),
+    coveredFiles: new Set(),
+    unknownSeen: new Set(),
+  };
+
+  for (const root of computeClosureRoots(app)) {
+    analyzeClosure(app, computeClosure(root, app.importGraph), acc);
+  }
+
+  return {
+    byResource: acc.byResource,
+    byFile: acc.byFile,
+    registryByFile: acc.registryByFile,
+  };
 }

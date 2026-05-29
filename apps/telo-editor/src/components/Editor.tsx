@@ -1,4 +1,4 @@
-import { AnalysisRegistry, type ManifestSource } from "@telorun/analyzer";
+import type { ManifestSource } from "@telorun/analyzer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
@@ -79,7 +79,7 @@ const INITIAL_STATE: EditorState = {
   diagnostics: {
     byResource: new Map(),
     byFile: new Map(),
-    registry: new AnalysisRegistry(),
+    registryByFile: new Map(),
   },
   sourceRevealRequest: null,
   deploymentsByApp: {},
@@ -231,7 +231,6 @@ export function Editor() {
     const workspace = state.workspace;
     analysisTimerRef.current = setTimeout(() => {
       const diagnostics = analyzeWorkspace(workspace);
-      setActiveRegistry(diagnostics.registry);
       setState((s) => {
         if (s.workspace !== workspace) return s;
         return { ...s, diagnostics };
@@ -241,6 +240,15 @@ export function Editor() {
       if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     };
   }, [state.workspace]);
+
+  // Point the completion provider at the registry of the active module's
+  // analysis closure. Each Application (and orphan library) owns an isolated
+  // registry, so completion reflects exactly the kinds in scope for the file
+  // being edited — never a sibling app's differently-versioned imports.
+  useEffect(() => {
+    const path = state.activeModulePath;
+    setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
+  }, [state.diagnostics, state.activeModulePath]);
 
   // Keep the source-view completion provider's side-channel refs in sync with
   // the current workspace adapter + settings. The provider needs the
