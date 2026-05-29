@@ -1,6 +1,13 @@
 import { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
-import { jsonSchemaToCelType } from "./schema-compat.js";
+import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
+
+/** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
+ *  value carries. Mirrors the `protocol` enum in the Application schema. */
+const PORT_PROTOCOL_BRAND: Record<string, string> = {
+  tcp: "TcpPort",
+  udp: "UdpPort",
+};
 
 export { buildCelEnvironment } from "@telorun/templating";
 export type { CelHandlers } from "@telorun/templating";
@@ -19,9 +26,22 @@ export function buildTypedCelEnvironment(
   baseEnv: Environment,
   manifest: ResourceManifest,
   extraContextSchema?: Record<string, any> | null,
+  // The `ports` namespace is Application-only and lives on the module doc, not
+  // on the resource being analyzed. When validating a resource, the caller
+  // passes the module manifest here so `${{ ports.X }}` types cross-doc.
+  rootModuleManifest?: ResourceManifest,
 ): Environment {
   try {
     const env = baseEnv.clone();
+
+    // Register nominal value brands (TcpPort/UdpPort/…) on the *clone* so the
+    // type-checker can distinguish structurally-identical values. The base env
+    // (shared with the kernel runtime) is untouched — a branded value flows as
+    // a plain integer at runtime, so only static checking needs these. cel-js
+    // auto-generates a field-less wrapper class; no runtime constructor needed.
+    for (const brand of Object.keys(VALUE_BRAND_BASE)) {
+      (env as any).registerType(brand, { fields: {} });
+    }
 
     // Build typed ObjectSchema from manifest.variables if it looks like a schema map
     const vars = (manifest as Record<string, unknown>).variables;
@@ -40,6 +60,27 @@ export function buildTypedCelEnvironment(
       }
     } else {
       env.registerVariable("variables", "map");
+    }
+
+    // `ports` namespace: each entry types as the brand its `protocol` selects
+    // (tcp → TcpPort, udp → UdpPort), so `${{ ports.http }}` carries a nominal
+    // type that consuming fields can check against.
+    const portsManifest = ((rootModuleManifest ?? manifest) as Record<string, unknown>).ports;
+    if (portsManifest !== null && typeof portsManifest === "object" && !Array.isArray(portsManifest)) {
+      const portEntries = Object.entries(portsManifest as Record<string, any>).filter(
+        ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
+      );
+      if (portEntries.length > 0) {
+        const schema: Record<string, string> = {};
+        for (const [k, v] of portEntries) {
+          schema[k] = PORT_PROTOCOL_BRAND[(v as { protocol?: string }).protocol ?? "tcp"] ?? "int";
+        }
+        (env as any).registerVariable({ name: "ports", schema });
+      } else {
+        env.registerVariable("ports", "map");
+      }
+    } else {
+      env.registerVariable("ports", "map");
     }
 
     env.registerVariable("secrets", "map");

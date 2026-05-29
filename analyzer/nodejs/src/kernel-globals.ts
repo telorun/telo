@@ -12,7 +12,7 @@ import { residualEntrySchemaMap } from "./residual-schema.js";
  * There is no `imports` namespace at runtime — import snapshots are stored
  * under `resources.<alias>`.
  */
-export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "env"] as const;
+export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "ports", "env"] as const;
 
 const SYSTEM_KINDS = new Set([
   "Telo.Definition",
@@ -67,9 +67,30 @@ export function buildKernelGlobalsSchema(
         properties: resourceProps,
         additionalProperties: false,
       },
+      ports: buildPortsSchema(moduleManifest?.ports),
       env: { type: "object", additionalProperties: true },
     },
   };
+}
+
+/** Build the closed `ports` chain-access schema: each declared port is an
+ *  integer, so `ports.<name>` resolves and `ports.typo` (or member access past
+ *  a port, like `ports.http.foo`) is flagged. Falls back to an open map when
+ *  the module declares no ports. */
+function buildPortsSchema(
+  ports: Record<string, any> | null | undefined,
+): Record<string, any> {
+  if (!ports || typeof ports !== "object" || Array.isArray(ports)) {
+    return { type: "object", additionalProperties: true };
+  }
+  const props: Record<string, any> = {};
+  for (const name of Object.keys(ports)) {
+    props[name] = { type: "integer" };
+  }
+  if (Object.keys(props).length === 0) {
+    return { type: "object", additionalProperties: true };
+  }
+  return { type: "object", properties: props, additionalProperties: false };
 }
 
 /** Wrap a JSON Schema property map (like `Telo.Application.variables`) into a

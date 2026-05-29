@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: ApplicationPorts
+  version: 1.0.0
+# Declared inbound port. `PORT` is unset under the test runner, so the
+# `default` applies. `${{ ports.http }}` must resolve to this integer at
+# runtime and feed the HTTP server.
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8858
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../modules/http-server
+---
+kind: Telo.Import
+metadata:
+  name: HttpClient
+source: ../modules/http-client
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../modules/run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../modules/assert
+---
+kind: Run.Sequence
+metadata:
+  name: TestPorts
+with:
+  - kind: Http.Api
+    metadata:
+      name: TestApi
+    routes:
+      - request:
+          path: /ping
+          method: GET
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body:
+                  pong: true
+  - kind: Http.Server
+    metadata:
+      name: TestServer
+    port: "${{ ports.http }}"
+    baseUrl: "http://localhost:${{ ports.http }}"
+    host: "${{ 'localhost' }}"
+    logger: false
+    mounts:
+      - path: /api
+        type: ApplicationPorts.TestApi
+targets:
+  - TestServer
+steps:
+  - name: Ping
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8858/api/ping
+      method: GET
+
+  - name: AssertPong
+    inputs:
+      pong: "${{ steps.Ping.result.body.pong }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          pong:
+            type: boolean
+            const: true
+        required:
+          - pong

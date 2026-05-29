@@ -41,16 +41,18 @@ export async function buildFailureManifest(
   const nameMatch = /metadata:\s*\n(?:\s+[^\n]*\n)*?\s+name:\s*["']?([^"'\n]+)["']?/m.exec(rawYaml);
   const fallbackName = filePath.split("/").slice(-2, -1)[0] ?? "module";
 
-  return {
+  const base = {
     filePath,
-    kind,
     metadata: { name: (nameMatch?.[1] ?? fallbackName).trim() },
-    targets: [],
     imports: [],
     resources: [],
     loadError: error instanceof Error ? error.message : String(error),
     rawYaml,
   };
+  if (kind === "Library") {
+    return { ...base, kind: "Library" };
+  }
+  return { ...base, kind: "Application", targets: [] };
 }
 
 export function buildParsedManifest(filePath: string, docs: ResourceManifest[]): ParsedManifest {
@@ -116,9 +118,8 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
 
   const moduleMeta = moduleDoc as Record<string, unknown> | undefined;
 
-  return {
+  const base = {
     filePath,
-    kind: moduleKind,
     metadata: {
       name:
         (moduleDoc?.metadata.name as string | undefined) ??
@@ -130,12 +131,23 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
       version: moduleDoc?.metadata.version as string | undefined,
       description: moduleDoc?.metadata.description as string | undefined,
       namespace: (moduleDoc?.metadata as Record<string, unknown>)?.namespace as string | undefined,
-      variables: moduleMeta?.variables as Record<string, unknown> | undefined,
-      secrets: moduleMeta?.secrets as Record<string, unknown> | undefined,
     },
-    targets: rawTargets,
     imports,
     resources,
     ...(include?.length ? { include } : {}),
+  };
+
+  if (moduleKind === "Library") {
+    return { ...base, kind: "Library" };
+  }
+  // `variables` / `secrets` / `ports` are top-level Application doc fields,
+  // carried flat (not under `metadata`); ports/targets are Application-only.
+  return {
+    ...base,
+    kind: "Application",
+    targets: rawTargets,
+    variables: moduleMeta?.variables as Record<string, unknown> | undefined,
+    secrets: moduleMeta?.secrets as Record<string, unknown> | undefined,
+    ports: moduleMeta?.ports as Record<string, unknown> | undefined,
   };
 }

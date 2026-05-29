@@ -11,10 +11,26 @@ interface EnvEntry {
   [key: string]: unknown;
 }
 
+interface PortEntry {
+  env: string;
+  protocol?: "tcp" | "udp";
+  default?: number;
+}
+
 export interface EnvResolutionResult {
   variables: Record<string, unknown>;
   secrets: Record<string, unknown>;
+  ports: Record<string, number>;
 }
+
+/** Residual schema every resolved port value is validated against. Ports are
+ *  implicitly integers in the IANA range; `protocol` selects transport and
+ *  carries no validation. */
+const PORT_RESIDUAL_SCHEMA: Record<string, unknown> = {
+  type: "integer",
+  minimum: 1,
+  maximum: 65535,
+};
 
 /**
  * Populate the root Application's `variables` / `secrets` namespaces from
@@ -53,6 +69,7 @@ export function resolveApplicationEnv(
     errors,
     true,
   );
+  const ports = resolvePorts(manifest.ports ?? {}, env, validator, errors);
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
@@ -60,7 +77,63 @@ export function resolveApplicationEnv(
         errors.map((e) => `  - ${e}`).join("\n"),
     );
   }
-  return { variables, secrets };
+  return { variables, secrets, ports };
+}
+
+/**
+ * Populate the root Application's `ports` namespace from host environment
+ * variables. Mirrors `resolveBlock` but fixes the value type to a port integer
+ * (1–65535): read `entry.env`, coerce the raw value as an integer, validate it
+ * against `PORT_RESIDUAL_SCHEMA`, and fall back to `entry.default` when the env
+ * var is unset. Failures aggregate into the shared `errors` list so they
+ * surface alongside variable/secret problems.
+ */
+function resolvePorts(
+  block: Record<string, PortEntry> | unknown,
+  env: Record<string, string | undefined>,
+  validator: SchemaValidator,
+  errors: string[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return out;
+  }
+  for (const [name, entry] of Object.entries(block as Record<string, PortEntry>)) {
+    if (!entry || typeof entry !== "object") continue;
+    const envKey = entry.env;
+    const raw = env[envKey];
+
+    if (raw === undefined || raw === null) {
+      if (entry.default !== undefined) {
+        const validation = validateResidual(entry.default, PORT_RESIDUAL_SCHEMA, validator);
+        if (validation) {
+          errors.push(`${name}: ${validation}`);
+        } else {
+          out[name] = entry.default;
+        }
+        continue;
+      }
+      errors.push(`${name}: environment variable ${envKey} is not set (no default)`);
+      continue;
+    }
+
+    let coerced: unknown;
+    try {
+      coerced = coerce(raw, "integer", envKey, false);
+    } catch (e) {
+      errors.push(`${name}: ${(e as Error).message}`);
+      continue;
+    }
+
+    const validation = validateResidual(coerced, PORT_RESIDUAL_SCHEMA, validator);
+    if (validation) {
+      errors.push(`${name}: ${validation}`);
+      continue;
+    }
+
+    out[name] = coerced as number;
+  }
+  return out;
 }
 
 function resolveBlock(

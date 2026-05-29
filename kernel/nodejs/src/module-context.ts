@@ -42,8 +42,8 @@ function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
 }
 
 /**
- * Persistent, module-scoped context. Three reserved CEL namespaces:
- * variables, secrets, resources.
+ * Persistent, module-scoped context. Reserved CEL namespaces:
+ * variables, secrets, resources, ports (Application-only).
  *
  * Unlike the base EvaluationContext, ModuleContext is stateful and mutable:
  * variables/secrets/resources accumulate during multi-pass initialization and
@@ -57,6 +57,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   private _variables: Record<string, unknown>;
   private _secrets: Record<string, unknown>;
   private _resources: Record<string, unknown>;
+  /** Resolved inbound ports (`ports.<name>` → integer). Application-only:
+   *  populated on the root context from the Application's `ports` block;
+   *  imported child modules keep this empty. */
+  private _ports: Record<string, unknown> = {};
 
   /** Maps import alias → real module name for kind resolution. */
   private readonly importAliases = new Map<string, string>();
@@ -102,8 +106,17 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return this._resources;
   }
 
+  get ports(): Record<string, unknown> {
+    return this._ports;
+  }
+
   setVariables(vars: Record<string, unknown>): void {
     this._variables = vars;
+    this._rebuildContext();
+  }
+
+  setPorts(ports: Record<string, unknown>): void {
+    this._ports = ports;
     this._rebuildContext();
   }
 
@@ -212,6 +225,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       variables: this._variables,
       secrets: this._secrets,
       resources: this._resources,
+      ports: this._ports,
       ...(this._hostEnv ? { env: lenientEnv(this._hostEnv) } : {}),
     };
     this._secretValues = collectSecretValues(this._secrets);

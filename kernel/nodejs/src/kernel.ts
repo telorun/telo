@@ -419,7 +419,7 @@ export class Kernel implements IKernel {
     }
 
     if (rootApplicationManifest) {
-      const { variables, secrets } = resolveApplicationEnv(
+      const { variables, secrets, ports } = resolveApplicationEnv(
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
@@ -429,6 +429,9 @@ export class Kernel implements IKernel {
       }
       if (Object.keys(secrets).length > 0) {
         this.rootContext.setSecrets(secrets);
+      }
+      if (Object.keys(ports).length > 0) {
+        this.rootContext.setPorts(ports);
       }
     }
   }

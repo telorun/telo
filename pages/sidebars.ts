@@ -111,11 +111,15 @@ const sidebars: SidebarsConfig = {
               label: "Modules & Imports",
               items: [
                 { type: "doc", id: "kernel/docs/modules", label: "Module System" },
-                { type: "doc", id: "kernel/docs/module-grants", label: "Module Grants" },
                 {
                   type: "doc",
                   id: "kernel/docs/application-env-variables",
                   label: "Application Environment Variables",
+                },
+                {
+                  type: "doc",
+                  id: "kernel/docs/application-ports",
+                  label: "Application Ports",
                 },
               ],
             },

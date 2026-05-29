@@ -36,6 +36,7 @@ schema:
       description: TCP port used by the HTTP server.
       type: "integer"
       x-telo-eval: compile
+      x-telo-type: TcpPort
       minimum: 1
       maximum: 65535
     baseUrl:

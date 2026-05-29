@@ -2,10 +2,8 @@ import type { DeclaredEnvEntry } from "./DeclaredEnvEditor";
 
 interface ManifestLike {
   kind: "Application" | "Library";
-  metadata: {
-    variables?: Record<string, unknown>;
-    secrets?: Record<string, unknown>;
-  };
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
 }
 
 /** Project a parsed Application manifest's declared env contract into the
@@ -17,8 +15,8 @@ export function extractDeclaredEnvEntries(
 ): DeclaredEnvEntry[] {
   if (!manifest || manifest.kind !== "Application") return [];
   const out: DeclaredEnvEntry[] = [];
-  collect(manifest.metadata.variables, false, out);
-  collect(manifest.metadata.secrets, true, out);
+  collect(manifest.variables, false, out);
+  collect(manifest.secrets, true, out);
   return out;
 }
 

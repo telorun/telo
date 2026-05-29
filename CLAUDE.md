@@ -8,7 +8,7 @@ Implementation plans should live in the package they affect the most, eg. `apps/
 
 Follow this strictly:
 
-- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `fix`, `apply`, `update`, `implement`, `add`, `remove`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
+- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `fix`, `apply`, `update`, `implement`, `add`, `remove`, `move`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
 - never add underscores to unused function arguments
 - never look at commit history
 - never use git stash
@@ -106,6 +106,7 @@ A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the 
 - `targets` — optional; run after all resources init; must reference `Telo.Runnable` or `Telo.Service`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
 - Receives `env: process.env` when it is the root loaded manifest — raw `process.env` map for keys the manifest hasn't pre-declared.
 - `variables` / `secrets` — each entry binds a name to a host environment variable via an `env:` key, plus `type:` (`string | integer | number | boolean | object | array`), optional `default:`, and any further JSON Schema keywords. Values resolve at `kernel.load()` into the root `variables.X` / `secrets.X` CEL scope (object / array values are JSON-decoded from the env var; missing required vars or coercion / schema failures aggregate into `ERR_MANIFEST_VALIDATION_FAILED` before any controller init).
+- `ports` — **Application-only** name-keyed map of inbound ports the app listens on. Each entry binds a host env var via `env:`, plus optional `protocol:` (`tcp` default | `udp`) and `default:`; the value is implicitly a port integer (1–65535, no `type:`). Resolves at `kernel.load()` (mirroring `variables`, same `ERR_MANIFEST_VALIDATION_FAILED` aggregation) into the root `ports.X` CEL scope, so a binding resource reads `${{ ports.http }}` as the single source of truth and a runner knows the exposed ports before boot. The analyzer brands each value by `protocol` (`tcp → TcpPort`, `udp → UdpPort`) for static wiring checks (see `x-telo-type`). `Telo.Library` does not get `ports`.
 - `exports` is **forbidden** — an Application is a root with no importer. If you want to export kinds, the file is a Library.
 
 ### `kind: Telo.Library`
@@ -167,6 +168,7 @@ Inside `Telo.Definition` schema blocks:
 - `x-telo-step-context: { invoke, outputType }` — on an array field, tells the analyzer to build typed `steps.<name>.result` context from each item's invoked resource's output type.
 - `x-telo-widget: "code"` — on a string field, tells the telo editor to render a Monaco code widget instead of a single-line input. The language is resolved from the field's standard `contentMediaType` (e.g. `application/javascript`) via Monaco's own language registry, so adding a new language is purely a schema change — no editor code to touch.
 - `x-telo-stream: true` — on a property in an `inputType` or `outputType` schema, marks it as carrying a `Stream<T>` (the class exported by `@telorun/sdk`). Producers wrap their `AsyncIterable` in `new Stream(...)` so the value's constructor is recognized — CEL's runtime type-checker rejects unrecognized object constructors, and the analyzer's `buildCelEnvironment` registers `Stream` so `${{ steps.X.result.output }}` evaluations pass through as opaque values. The analyzer's chain validator forbids member access _past_ a stream-marked property (`result.output` is fine; `result.output.text` / `result.output[0]` are diagnostics). Convention: streaming Invocables put their stream on the `input` property of `inputs` and the `output` property of the result. Consumers iterate with `for await`. Forward-compatible: today a boolean; later may evolve to `x-telo-stream: { items: <JsonSchema> }` for element-type validation under the typed-abstracts plan, with `true` aliasing to `{ items: any }`.
+- `x-telo-type: "<Brand>"` — analyzer-only nominal value brand (e.g. `TcpPort`, `UdpPort`). Marks a value as a distinct CEL type even when its base type is identical (a `TcpPort` and a `UdpPort` are both integers), so wiring a `UdpPort` into a `TcpPort`-branded field is a static error. Standard JSON Schema keywords (`type`, `minimum`/`maximum`) still do the real validation; the brand carries only nominal identity and has no runtime effect (the value flows as its base type). Brands register on the analyzer's cloned CEL registry only, never the kernel runtime env. A plain base value flows into a branded field (gradual typing); only a conflicting brand is rejected. General mechanism — not port-specific; `ports` entries get their brand from `protocol` automatically.
 
 ## CEL Templates (`${{ }}`)
 
@@ -175,6 +177,7 @@ Pure expression: `"${{ variables.port }}"` → typed value. Inline: `"Hello ${{ 
 Available in `${{ }}`:
 
 - `variables`, `secrets` — always available (module inputs)
+- `ports.<name>` — root Application only; resolved inbound port integers (Application `ports` block)
 - `resources.<name>` — after that resource's `snapshot()`
 - `steps.<step>.result` — inside `Run.Sequence` steps
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)

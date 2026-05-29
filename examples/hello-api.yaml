@@ -12,6 +12,11 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
 targets:
   - ExampleServer
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8845
 ---
 kind: Telo.Import
 metadata:
@@ -31,8 +36,8 @@ source: ../modules/javascript
 kind: Http.Server
 metadata:
   name: ExampleServer
-baseUrl: http://localhost:8845
-port: 8845
+baseUrl: http://localhost:${{ ports.http }}
+port: !cel "ports.http"
 logger: true
 openapi:
   info:
