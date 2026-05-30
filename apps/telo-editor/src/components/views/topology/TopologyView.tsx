@@ -12,12 +12,16 @@ export function TopologyView({
   viewData,
   registry,
   graphContext,
+  selectedResource,
   onUpdateResource,
+  onDeleteResource,
   onUpdateApplicationTargets,
   onCreateResource,
   onSelectResource,
   onSelect,
   onClearSelection,
+  canvasViewport,
+  onCanvasViewportChange,
 }: ViewProps) {
   const graphResource = graphContext
     ? (viewData.manifest.resources.find(
@@ -57,6 +61,11 @@ export function TopologyView({
         topology={graphTopology}
         resolvedResources={resolvedResources}
         applicationModel={applicationModel}
+        viewportKey={viewData.manifest.filePath}
+        canvasViewport={canvasViewport}
+        onCanvasViewportChange={onCanvasViewportChange}
+        selectedResource={selectedResource}
+        onDeleteResource={onDeleteResource}
         onUpdateApplicationTargets={isApplication ? onUpdateApplicationTargets : undefined}
         onCreateResource={onCreateResource}
         onUpdateResource={onUpdateResource}

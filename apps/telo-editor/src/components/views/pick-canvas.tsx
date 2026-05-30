@@ -1,5 +1,5 @@
 import { MODULE_OVERVIEW_TOPOLOGY } from "../../application-adapter";
-import type { ParsedResource, Selection } from "../../model";
+import type { CanvasViewport, ParsedResource, Selection } from "../../model";
 import type { ResolvedResourceOption } from "../resource-schema-form/types";
 import { ResourceCanvas } from "./resource-canvas/ResourceCanvas";
 import { ApplicationTopologyCanvas } from "./topology/ApplicationTopologyCanvas";
@@ -19,6 +19,16 @@ interface PickCanvasProps {
   /** Module-wide overview model — supplied by `TopologyView` only when
    *  `topology === "Application"`. Other canvases ignore it. */
   applicationModel?: AppCanvasModel | null;
+  /** Active module's filePath — keys the overview canvas's viewport per app/lib. */
+  viewportKey?: string;
+  /** Saved overview-canvas viewport for the active module, or null to fit. */
+  canvasViewport?: CanvasViewport | null;
+  /** Persists the overview-canvas viewport after pan/zoom. */
+  onCanvasViewportChange?: (viewport: CanvasViewport) => void;
+  /** Currently selected resource — highlights the matching overview node. */
+  selectedResource?: { kind: string; name: string } | null;
+  /** Removes a resource (overview-canvas Delete key). */
+  onDeleteResource?: (kind: string, name: string) => void;
   /** Rewrites the Application's `targets` (drag-to-wire). Read-only when absent. */
   onUpdateApplicationTargets?: (targets: string[]) => void;
   /** Opens the create-resource flow (Application canvas action). */
@@ -41,6 +51,11 @@ export function PickCanvas({
   onSelect,
   onBackgroundClick,
   applicationModel,
+  viewportKey,
+  canvasViewport,
+  onCanvasViewportChange,
+  selectedResource,
+  onDeleteResource,
   onUpdateApplicationTargets,
   onCreateResource,
   hideHeader,
@@ -56,6 +71,11 @@ export function PickCanvas({
     return (
       <ApplicationTopologyCanvas
         model={applicationModel}
+        viewportKey={viewportKey ?? ""}
+        viewport={canvasViewport}
+        onViewportChange={onCanvasViewportChange}
+        selectedResource={selectedResource}
+        onDeleteResource={onDeleteResource}
         onSelectResource={onSelectResource}
         onTargetsChange={onUpdateApplicationTargets}
         onCreateResource={onCreateResource}

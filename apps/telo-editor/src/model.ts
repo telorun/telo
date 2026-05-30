@@ -231,6 +231,17 @@ export interface EditorState {
    *  Hydrated from `storage-deployments.ts` on workspace load and persisted
    *  on every mutation. */
   deploymentsByApp: Record<string, ApplicationDeployment>;
+  /** Per-module overview-canvas viewport (pan/zoom), keyed by module filePath,
+   *  so the Application/Library graph restores its position when navigating back
+   *  to it. In-memory only — not persisted across reloads. */
+  viewportByModule: Record<string, CanvasViewport>;
+}
+
+/** Pan/zoom of the overview canvas — mirrors `@xyflow/react`'s `Viewport`. */
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
 }
 
 export interface SourceRevealRequest {

@@ -5,7 +5,15 @@ import {
   LIBRARY_KIND_ID,
   isModuleRootKind,
 } from "../../../application-adapter";
+import { isRecord } from "../../../lib/utils";
 import type { ModuleViewData } from "../../../model";
+import {
+  getTopologyRole,
+  getVariants,
+  matchVariant,
+  resolveRef,
+  type VariantMeta,
+} from "../../../schema-utils";
 import {
   AMBIENT_CAPABILITIES,
   NODE_CAPABILITIES,
@@ -15,6 +23,23 @@ import {
   type UsesChip,
 } from "./overview-graph";
 
+/** A single step rendered inside a sequence-like node. Each step owns a source
+ *  handle on the node so an edge can anchor to the exact invoke it came from
+ *  instead of the node's outer handle. */
+export interface NodeStep {
+  /** Concrete path of the step element (`steps[0]`, `steps[1].do[3]`) — used as
+   *  the source-handle anchor and the prefix edges match their `fromPath`
+   *  against. */
+  path: string;
+  /** Step name (`step.name`), or a fallback when unnamed. */
+  name: string;
+  /** Short descriptor: the invoke target name, or a control-flow keyword. */
+  detail?: string;
+  /** Nesting depth — 0 for top-level steps, +1 inside each branch / case /
+   *  loop body. Drives the row's indentation. */
+  depth: number;
+}
+
 /** A resource rendered as a graph node or a side-strip entry. */
 export interface GraphNode {
   kind: string;
@@ -22,6 +47,11 @@ export interface GraphNode {
   capability: string;
   /** True for the synthetic module root node (Application or Library). */
   isRoot?: boolean;
+  /** Steps when the kind declares an `x-telo-topology-role: steps` field (e.g.
+   *  Run.Sequence); omitted for plain nodes. Nested branch / case / loop bodies
+   *  are flattened into their own depth-indented rows (see `NodeStep.depth`),
+   *  each keeping its full concrete path. */
+  steps?: NodeStep[];
 }
 
 /** Field label carried on the Application→target edges. */
@@ -59,6 +89,124 @@ function toManifest(r: { kind: string; name: string; fields: Record<string, unkn
   return { kind: r.kind, metadata: { name: r.name }, ...r.fields } as unknown as ResourceManifest;
 }
 
+function stepLabel(step: Record<string, unknown>): string {
+  return typeof step.name === "string" && step.name ? step.name : "step";
+}
+
+/** B1-flat descriptor for one step: an invocable step shows its target name; a
+ *  control-flow step shows its keyword (first segment of the variant title). */
+function stepDetail(step: Record<string, unknown>, variant: VariantMeta | null): string | undefined {
+  if (variant?.invokeField) return refTargetName(step[variant.invokeField]);
+  const title = variant?.title?.trim();
+  return title ? title.split("/")[0].trim() : undefined;
+}
+
+/** The field carrying a branch-list entry's nested steps (role `branch`),
+ *  e.g. `elseif[].then`. Falls back to `then` when the schema doesn't name it. */
+function branchListBranchKey(
+  variant: VariantMeta,
+  field: string,
+  root: Record<string, unknown>,
+): string {
+  const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
+  const listProp = isRecord(props[field]) ? props[field] : {};
+  const items = resolveRef(listProp.items, root);
+  if (isRecord(items) && isRecord(items.properties)) {
+    for (const [k, p] of Object.entries(items.properties)) {
+      if (getTopologyRole(p) === "branch") return k;
+    }
+  }
+  return "then";
+}
+
+/** Recursively flattens a step list into ordered rows, descending into every
+ *  branch (`do` / `then` / `else`), case map (`cases`), and branch list
+ *  (`elseif`). Each row carries its full concrete `path` so an edge anchors to
+ *  the exact invoke it came from, and a `depth` for indentation. */
+function collectSteps(
+  steps: unknown[],
+  variants: VariantMeta[],
+  root: Record<string, unknown>,
+  parentPath: string,
+  depth: number,
+  out: NodeStep[],
+): void {
+  steps.forEach((step, i) => {
+    const r = isRecord(step) ? step : {};
+    const variant = matchVariant(r, variants);
+    const path = `${parentPath}[${i}]`;
+    out.push({ path, name: stepLabel(r), detail: stepDetail(r, variant), depth });
+    if (!variant) return;
+
+    for (const f of variant.branchFields) {
+      const arr = Array.isArray(r[f]) ? r[f] : [];
+      collectSteps(arr, variants, root, `${path}.${f}`, depth + 1, out);
+    }
+    for (const f of variant.caseMaps) {
+      const cases = isRecord(r[f]) ? r[f] : {};
+      for (const [key, val] of Object.entries(cases)) {
+        const arr = Array.isArray(val) ? val : [];
+        collectSteps(arr, variants, root, `${path}.${f}.${key}`, depth + 1, out);
+      }
+    }
+    for (const f of variant.branchLists) {
+      const entries = Array.isArray(r[f]) ? r[f] : [];
+      const branchKey = branchListBranchKey(variant, f, root);
+      entries.forEach((entry, k) => {
+        const arr = isRecord(entry) && Array.isArray(entry[branchKey]) ? entry[branchKey] : [];
+        collectSteps(arr, variants, root, `${path}.${f}[${k}].${branchKey}`, depth + 1, out);
+      });
+    }
+  });
+}
+
+/** Enumerates every step of a node whose kind schema declares an
+ *  `x-telo-topology-role: steps` field — fully annotation-driven, no kind name.
+ *  Returns [] for plain nodes. Nested steps (loop / branch bodies) are flattened
+ *  with a `depth`, each keeping its full concrete path so edges anchor to the
+ *  exact invoke. */
+function buildNodeSteps(
+  fields: Record<string, unknown>,
+  kindSchema: Record<string, unknown>,
+): NodeStep[] {
+  const props = kindSchema.properties;
+  if (!isRecord(props)) return [];
+
+  let field: string | null = null;
+  let itemsSchema: Record<string, unknown> | null = null;
+  for (const [name, prop] of Object.entries(props)) {
+    if (getTopologyRole(prop) === "steps" && isRecord(prop)) {
+      field = name;
+      const items = resolveRef(prop.items, kindSchema);
+      itemsSchema = isRecord(items) ? items : null;
+      break;
+    }
+  }
+  if (!field || !itemsSchema) return [];
+
+  const raw = fields[field];
+  const steps: unknown[] = Array.isArray(raw) ? raw : [];
+  const variants = getVariants(itemsSchema, kindSchema);
+  const out: NodeStep[] = [];
+  collectSteps(steps, variants, kindSchema, field, 0, out);
+  return out;
+}
+
+/** Picks the source-handle anchor for an edge: the longest step path that is a
+ *  prefix of the edge's concrete ref `fromPath`, so a nested invoke anchors to
+ *  its top-level step (B1). Undefined when the node has no steps or the ref
+ *  isn't inside one — the edge then docks on the node's outer handle. */
+function anchorStep(steps: NodeStep[] | undefined, fromPath: string | undefined): string | undefined {
+  if (!steps || !fromPath) return undefined;
+  let best: string | undefined;
+  for (const s of steps) {
+    const inside =
+      fromPath === s.path || fromPath.startsWith(s.path + ".") || fromPath.startsWith(s.path + "[");
+    if (inside && (!best || s.path.length > best.length)) best = s.path;
+  }
+  return best;
+}
+
 /**
  * Projects the active module's view data into the overview model. Used for both
  * Application and Library roots — the only difference is `targets` (Library
@@ -91,14 +239,28 @@ export function buildApplicationCanvasModel(
   ];
   const stripItems: GraphNode[] = [];
   for (const r of resources) {
-    const capability = viewData.kinds.get(r.kind)?.capability;
+    const kindData = viewData.kinds.get(r.kind);
+    const capability = kindData?.capability;
     if (!capability) continue;
     const node: GraphNode = { kind: r.kind, name: r.name, capability };
-    if (NODE_CAPABILITIES.has(capability)) nodes.push(node);
-    else if (AMBIENT_CAPABILITIES.has(capability)) stripItems.push(node);
+    if (NODE_CAPABILITIES.has(capability)) {
+      const steps = kindData ? buildNodeSteps(r.fields, kindData.schema) : [];
+      if (steps.length) node.steps = steps;
+      nodes.push(node);
+    } else if (AMBIENT_CAPABILITIES.has(capability)) stripItems.push(node);
   }
 
   const overview = buildOverviewGraph(resources.map(toManifest), registry);
+
+  // Anchor each ref edge to the step it originates from, when the source node
+  // renders an internal step topology.
+  const stepsByNode = new Map(
+    nodes.filter((n) => n.steps?.length).map((n) => [n.name, n.steps!] as const),
+  );
+  const refEdges: LabeledEdge[] = overview.edges.map((e) => ({
+    ...e,
+    fromStepPath: anchorStep(stepsByNode.get(e.from), e.fromPath),
+  }));
 
   // Root→target edges: one per declared target that resolves to a node.
   // Targets are `!ref <name>` sentinels (or plain strings), so normalize first.
@@ -115,7 +277,7 @@ export function buildApplicationCanvasModel(
   return {
     appName,
     nodes,
-    edges: [...targetEdges, ...overview.edges],
+    edges: [...targetEdges, ...refEdges],
     chips: overview.chips,
     stripItems,
     targets: resolvedTargets,
