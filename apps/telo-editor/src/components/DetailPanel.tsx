@@ -5,8 +5,8 @@ import { isRecord } from "../lib/utils";
 import type { CelEvalMode } from "./resource-schema-form/cel-utils";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
-import { isModuleRootKind } from "../application-adapter";
-import { ModuleRootDetailBody } from "./ModuleRootDetailBody";
+import { APPLICATION_KIND_ID, isModuleRootKind, moduleRootFormSchema } from "../application-adapter";
+import { ModuleRootTargetsSummary } from "./ModuleRootDetailBody";
 import { Button } from "./ui/button";
 import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
@@ -106,7 +106,23 @@ export function DetailPanel({
   );
 
   const selectionContext = useMemo(() => {
-    if (!resource || !selection) return null;
+    if (!resource) return null;
+
+    // The module root (Telo.Application / Telo.Library) has no pointer-scoped
+    // selection. Synthesize a context rooted at the whole fields object so it
+    // flows through the same schema form + debounced-commit pipeline as any
+    // other resource. The form schema exposes only variables/secrets; the
+    // remaining fields (metadata/targets/ports) pass through untouched.
+    if (isModuleRootKind(resource.kind)) {
+      return {
+        resource: { kind: resource.kind, name: resource.name },
+        pointer: "",
+        schema: moduleRootFormSchema(resource.kind === APPLICATION_KIND_ID),
+        values: resource.fields,
+      };
+    }
+
+    if (!selection) return null;
     if (
       selection.resource.kind !== resource.kind ||
       selection.resource.name !== resource.name
@@ -229,7 +245,7 @@ export function DetailPanel({
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-100 px-3 dark:border-zinc-800">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-            {selectionContext
+            {selectionContext && selectionContext.pointer
               ? `${resource.name} • ${selectionContext.pointer}`
               : resource.name}
           </span>
@@ -252,10 +268,11 @@ export function DetailPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {isModuleRootKind(resource.kind) ? (
-          <ModuleRootDetailBody fields={resource.fields} />
-        ) : selectionContext ? (
-          <div className="p-3">
+        {selectionContext ? (
+          <div className="flex flex-col gap-3 p-3">
+            {isModuleRootKind(resource.kind) && (
+              <ModuleRootTargetsSummary fields={resource.fields} />
+            )}
             <ResourceSchemaForm
               schema={selectionContext.schema}
               values={pointerFields}
@@ -264,6 +281,7 @@ export function DetailPanel({
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
+              flat={isModuleRootKind(resource.kind)}
             />
           </div>
         ) : !resourceSchema ? (

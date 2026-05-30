@@ -1,6 +1,5 @@
 import { isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
-import { makeTaggedSentinel } from "@telorun/templating";
 import type { ModuleDocument, ParsedManifest, Workspace } from "../model";
 import {
   addResourceDocument,
@@ -10,7 +9,6 @@ import {
   removeResourceDocument,
   type EditOp,
 } from "../yaml-document";
-import { APPLICATION_KIND_ID } from "../application-adapter";
 import { normalizePath } from "./paths";
 import { buildParsedManifest } from "./parse";
 
@@ -170,8 +168,20 @@ export function withDocs(modDoc: ModuleDocument, docs: import("yaml").Document[]
  *  `newFields` (convention: `undefined` → delete, `null` → explicit null,
  *  `""` → empty string, other → set), translates to EditOps rooted at the
  *  resource's document, applies them, and re-derives the ParsedManifest.
- *  Returns the original workspace when the resource has no AST entry
- *  (stale resourceDocIndex after a rename, parse error on the file, etc.). */
+ *
+ *  Resolves the target document in two steps so a single generic writer covers
+ *  every resource, including the synthesized module root:
+ *   1. `resourceDocIndex` — declared resources (owner file or an included
+ *      partial).
+ *   2. owner-doc fallback — the `Telo.Application` / `Telo.Library` root never
+ *      appears in `manifest.resources` (hence not in the index), but it is a
+ *      real YAML doc in the owner file, locatable by `kind` + `metadata.name`.
+ *      The root always lives in the owner file, never a partial.
+ *
+ *  Returns the original workspace when neither resolves (stale index after a
+ *  rename, parse error on the file, etc.) or when nothing changed. Tagged
+ *  `!ref` / `!cel` values are diffed as opaque leaves (see `diffFields`), so a
+ *  reference array like `targets` round-trips without losing its tags. */
 export function setResourceFields(
   workspace: Workspace,
   modulePath: string,
@@ -180,53 +190,29 @@ export function setResourceFields(
   oldFields: Record<string, unknown>,
   newFields: Record<string, unknown>,
 ): Workspace {
+  let filePath: string;
+  let docIndex: number;
+
   const indexEntry = workspace.resourceDocIndex
     .get(normalizePath(modulePath))
     ?.get(`${kind}::${name}`);
-  if (!indexEntry) return workspace;
+  if (indexEntry) {
+    ({ filePath, docIndex } = indexEntry);
+  } else {
+    const ownerKey = normalizePath(modulePath);
+    const modDoc = workspace.documents.get(ownerKey);
+    const found = modDoc
+      ? findDocForResource(modDoc.loaded.documents, kind, name)
+      : undefined;
+    if (found === undefined) return workspace;
+    filePath = ownerKey;
+    docIndex = found;
+  }
 
   const ops = diffFields(oldFields, newFields, "");
   if (ops.length === 0) return workspace;
 
-  const updated = applyOpsToDocument(workspace, indexEntry.filePath, indexEntry.docIndex, ops);
-  return rebuildManifestFromDocuments(updated, modulePath);
-}
-
-/** Rewrites the Application root's `targets` array in the AST and re-derives
- *  the ParsedManifest. Distinct from `setResourceFields` because the
- *  Application root lives on the module's document root, not in
- *  `manifest.resources` / `resourceDocIndex`.
- *
- *  `targets` are passed as bare resource names and written as `!ref <name>`
- *  sentinels — the canonical reference form (the `defaultCustomTags` serializer
- *  round-trips the sentinel back to `!ref <name>`). An empty list writes
- *  `targets: []` (semantically equivalent to a no-targets app). Returns the
- *  original workspace when the module isn't an Application or has no parsable
- *  Application doc. */
-export function setApplicationTargets(
-  workspace: Workspace,
-  modulePath: string,
-  targets: string[],
-): Workspace {
-  const manifest = workspace.modules.get(modulePath);
-  if (manifest?.kind !== "Application") return workspace;
-
-  const modDoc = workspace.documents.get(normalizePath(modulePath));
-  if (!modDoc) return workspace;
-
-  const docIndex = findDocForResource(
-    modDoc.loaded.documents,
-    APPLICATION_KIND_ID,
-    manifest.metadata.name,
-  );
-  if (docIndex === undefined) return workspace;
-
-  const op: EditOp = {
-    op: "set",
-    pointer: "/targets",
-    value: targets.map((name) => makeTaggedSentinel("ref", name)),
-  };
-  const updated = applyOpsToDocument(workspace, modulePath, docIndex, [op]);
+  const updated = applyOpsToDocument(workspace, filePath, docIndex, ops);
   return rebuildManifestFromDocuments(updated, modulePath);
 }
 

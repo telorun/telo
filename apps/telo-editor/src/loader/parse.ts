@@ -118,6 +118,12 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
 
   const moduleMeta = moduleDoc as Record<string, unknown> | undefined;
 
+  // `variables` / `secrets` are top-level doc fields (flat, not under
+  // `metadata`) shared by both module variants: Applications bind them from the
+  // host env, Libraries declare them as the importer contract.
+  const variables = moduleMeta?.variables as Record<string, unknown> | undefined;
+  const secrets = moduleMeta?.secrets as Record<string, unknown> | undefined;
+
   const base = {
     filePath,
     metadata: {
@@ -135,19 +141,18 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     imports,
     resources,
     ...(include?.length ? { include } : {}),
+    ...(variables ? { variables } : {}),
+    ...(secrets ? { secrets } : {}),
   };
 
   if (moduleKind === "Library") {
     return { ...base, kind: "Library" };
   }
-  // `variables` / `secrets` / `ports` are top-level Application doc fields,
-  // carried flat (not under `metadata`); ports/targets are Application-only.
+  // `ports` and `targets` are Application-only.
   return {
     ...base,
     kind: "Application",
     targets: rawTargets,
-    variables: moduleMeta?.variables as Record<string, unknown> | undefined,
-    secrets: moduleMeta?.secrets as Record<string, unknown> | undefined,
     ports: moduleMeta?.ports as Record<string, unknown> | undefined,
   };
 }

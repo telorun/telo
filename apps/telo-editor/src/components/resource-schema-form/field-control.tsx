@@ -37,6 +37,9 @@ interface FieldControlProps {
   /** Whether the parent schema marks this field as required. Used by
    *  `ObjectField`/`MapField` to decide whether to expose a Clear affordance. */
   required?: boolean;
+  /** Editor layout hint forwarded to `ObjectField`/`MapField` to render entries
+   *  inline (horizontal) instead of behind an accordion. Set by the consumer. */
+  flat?: boolean;
 }
 
 export function inferType(prop: JsonSchemaProperty): string {
@@ -99,6 +102,7 @@ export function FieldControl({
   onSelectResource,
   label,
   required,
+  flat,
 }: FieldControlProps) {
   const kind = inferType(prop);
   const onBlur = () => onFieldBlur?.(rootFieldName);
@@ -140,6 +144,7 @@ export function FieldControl({
           onSelectResource={onSelectResource}
           label={label}
           required={required}
+          flat={flat}
         />
       );
     }
@@ -176,6 +181,7 @@ export function FieldControl({
           onSelectResource={onSelectResource}
           label={label}
           required={required}
+          flat={flat}
         />
       );
     }

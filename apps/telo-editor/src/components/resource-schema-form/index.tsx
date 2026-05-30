@@ -12,6 +12,9 @@ export interface ResourceSchemaFormProps {
   resolvedResources?: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  /** Render object/map entries inline (horizontal) instead of behind an
+   *  accordion. An editor layout choice set by the consuming view. */
+  flat?: boolean;
 }
 
 export type { ResolvedResourceOption } from "./types";
@@ -25,6 +28,7 @@ export function ResourceSchemaForm({
   resolvedResources = [],
   rootCelEval,
   onSelectResource,
+  flat,
 }: ResourceSchemaFormProps) {
   const typedSchema = schema as JsonSchema;
   const properties = useMemo(() => typedSchema.properties ?? {}, [typedSchema.properties]);
@@ -92,6 +96,7 @@ export function ResourceSchemaForm({
               onSelectResource={onSelectResource}
               label={labelText}
               required={required.has(name)}
+              flat={flat}
             />
           </div>
         );

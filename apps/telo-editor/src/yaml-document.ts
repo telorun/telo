@@ -1,4 +1,5 @@
 import { parseLoadedFile, type LoadedFile } from "@telorun/analyzer";
+import { isTaggedSentinel } from "@telorun/templating";
 import { Document, isDocument, isNode, isScalar } from "yaml";
 import type { ModuleDocument } from "./model";
 
@@ -274,6 +275,16 @@ function diffInto(
     if (oldVal !== undefined) ops.push({ op: "delete", pointer });
     return;
   }
+  // Tagged sentinels (`!ref` / `!cel` / `!literal`) are opaque leaves — a
+  // single tagged YAML scalar, not a map. Their `{__tagged, engine, source}`
+  // JS shape would otherwise be deep-diffed into `set /…/source` ops that
+  // destroy the tag (a `!ref foo` scalar has no `source` child node). Treat
+  // either side being a sentinel as a wholesale replace. `applyEdit` swaps the
+  // scalar value in place, preserving the tag.
+  if (isTaggedSentinel(oldVal) || isTaggedSentinel(newVal)) {
+    if (!sentinelsEqual(oldVal, newVal)) ops.push({ op: "set", pointer, value: newVal });
+    return;
+  }
   // Primitive or shape-mismatched → replace wholesale when values differ.
   if (
     newVal === null ||
@@ -295,6 +306,13 @@ function diffInto(
     pointer,
     ops,
   );
+}
+
+/** Two sentinels are equal when both their engine and source match; a sentinel
+ *  is never equal to a non-sentinel (so a ref→plain-value change emits a set). */
+function sentinelsEqual(a: unknown, b: unknown): boolean {
+  if (!isTaggedSentinel(a) || !isTaggedSentinel(b)) return false;
+  return a.engine === b.engine && a.source === b.source;
 }
 
 function diffArray(

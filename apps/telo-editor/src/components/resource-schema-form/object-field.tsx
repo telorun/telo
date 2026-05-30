@@ -22,6 +22,10 @@ interface ObjectFieldProps {
   /** Whether this field is required by the parent schema. When false, the
    *  header exposes a Clear button that unsets the whole object. */
   required?: boolean;
+  /** Render the fields inline in a horizontal wrapping row instead of behind a
+   *  collapsible accordion. An editor layout choice, not a schema concern — set
+   *  by the consumer (e.g. the module-root variables/secrets form). */
+  flat?: boolean;
 }
 
 function setObjectChild(
@@ -51,6 +55,7 @@ export function ObjectField({
   onSelectResource,
   label,
   required,
+  flat = false,
 }: ObjectFieldProps) {
   const objectValue = isRecord(value) ? value : {};
   const objectRequired = new Set(prop.required ?? []);
@@ -60,6 +65,46 @@ export function ObjectField({
     (typeof prop.title === "string" ? prop.title : undefined) ?? label ?? "object";
   const canClear = !required && value !== undefined && value !== null;
   const description = typeof prop.description === "string" ? prop.description : undefined;
+
+  const fields = Object.entries(properties).map(([childName, childProp]) => {
+    const childValue = objectValue[childName];
+    const childKind = inferType(childProp);
+    const childLabel = typeof childProp.title === "string" ? childProp.title : childName;
+    const childOwnsLabel = ownsLabel(childProp);
+
+    return (
+      <div
+        key={`${fieldPath}.${childName}`}
+        className={flat ? "flex min-w-28 flex-1 flex-col gap-0.5" : "flex flex-col gap-1"}
+      >
+        {!childOwnsLabel && (
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {childLabel}
+            {objectRequired.has(childName) ? <span className="ml-1 text-red-500">*</span> : null}
+            <span className="ml-1 text-zinc-400 dark:text-zinc-600">({childKind})</span>
+          </label>
+        )}
+        <FieldControl
+          rootFieldName={rootFieldName}
+          fieldPath={`${fieldPath}.${childName}`}
+          prop={childProp}
+          value={childValue}
+          onValueChange={(next) => onValueChange(setObjectChild(objectValue, childName, next))}
+          onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
+          resolvedResources={resolvedResources}
+          rootCelEval={rootCelEval}
+          onSelectResource={onSelectResource}
+          label={childLabel}
+          required={objectRequired.has(childName)}
+        />
+      </div>
+    );
+  });
+
+  if (flat) {
+    return <div className="flex flex-1 flex-wrap items-start gap-2">{fields}</div>;
+  }
 
   return (
     <CollapsiblePrimitive.Root className="group rounded border border-zinc-200 dark:border-zinc-800">
@@ -100,43 +145,7 @@ export function ObjectField({
         )}
       </div>
       <CollapsiblePrimitive.Content className="flex flex-col gap-2 border-t border-zinc-200 p-2 dark:border-zinc-800">
-        {Object.entries(properties).map(([childName, childProp]) => {
-          const childValue = objectValue[childName];
-          const childKind = inferType(childProp);
-          const childLabel =
-            typeof childProp.title === "string" ? childProp.title : childName;
-          const childOwnsLabel = ownsLabel(childProp);
-
-          return (
-            <div key={`${fieldPath}.${childName}`} className="flex flex-col gap-1">
-              {!childOwnsLabel && (
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                  {childLabel}
-                  {objectRequired.has(childName) ? (
-                    <span className="ml-1 text-red-500">*</span>
-                  ) : null}
-                  <span className="ml-1 text-zinc-400 dark:text-zinc-600">({childKind})</span>
-                </label>
-              )}
-              <FieldControl
-                rootFieldName={rootFieldName}
-                fieldPath={`${fieldPath}.${childName}`}
-                prop={childProp}
-                value={childValue}
-                onValueChange={(next) =>
-                  onValueChange(setObjectChild(objectValue, childName, next))
-                }
-                onFieldBlur={onFieldBlur}
-                onErrorChange={onErrorChange}
-                resolvedResources={resolvedResources}
-                rootCelEval={rootCelEval}
-                onSelectResource={onSelectResource}
-                label={childLabel}
-                required={objectRequired.has(childName)}
-              />
-            </div>
-          );
-        })}
+        {fields}
       </CollapsiblePrimitive.Content>
     </CollapsiblePrimitive.Root>
   );

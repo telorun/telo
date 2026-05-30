@@ -20,6 +20,10 @@ interface MapFieldProps {
   onSelectResource?: (kind: string, name: string) => void;
   label?: string;
   required?: boolean;
+  /** Render each entry inline: an aligned key column plus the value object's
+   *  fields on one horizontal row. An editor layout choice set by the consumer,
+   *  not a schema concern. */
+  flat?: boolean;
 }
 
 interface Row {
@@ -47,6 +51,7 @@ export function MapField({
   onSelectResource,
   label,
   required,
+  flat = false,
 }: MapFieldProps) {
   const valueSchema: JsonSchemaProperty = isPlainSchema(prop.additionalProperties)
     ? prop.additionalProperties
@@ -192,6 +197,10 @@ export function MapField({
   const description = typeof prop.description === "string" ? prop.description : undefined;
   const canClear = !required && rows.length > 0;
   const entryCount = rows.length;
+  // When `flat`, pair the key column into the entry's horizontal row (see
+  // ObjectField) with an aligned label, so the whole entry reads as one labeled
+  // line instead of key-above, fields-beside.
+  const flatEntry = flat;
 
   return (
     <CollapsiblePrimitive.Root
@@ -245,7 +254,8 @@ export function MapField({
                 : err === "pattern"
                   ? `Key must match pattern ${keyPattern}`
                   : undefined;
-          const keyInputClass = `w-full rounded border bg-white px-2 py-0.5 text-xs outline-none focus:border-zinc-500 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400 ${
+          const keySizing = flatEntry ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs";
+          const keyInputClass = `w-full rounded border bg-white outline-none focus:border-zinc-500 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400 ${keySizing} ${
             err
               ? "border-red-500 dark:border-red-500"
               : "border-zinc-300 dark:border-zinc-700"
@@ -254,9 +264,25 @@ export function MapField({
           return (
             <div
               key={row.id}
-              className="flex items-start gap-2 rounded border border-zinc-100 p-2 dark:border-zinc-800/60"
+              className={
+                flatEntry
+                  ? "flex flex-wrap items-start gap-2 rounded border border-zinc-100 p-2 dark:border-zinc-800/60"
+                  : "flex items-start gap-2 rounded border border-zinc-100 p-2 dark:border-zinc-800/60"
+              }
             >
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div
+                className={
+                  flatEntry
+                    ? "flex min-w-28 flex-1 flex-col gap-0.5"
+                    : "flex min-w-0 flex-1 flex-col gap-0.5"
+                }
+              >
+                {flatEntry && (
+                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                    name
+                    <span className="ml-1 text-zinc-400 dark:text-zinc-600">(string)</span>
+                  </label>
+                )}
                 <input
                   type="text"
                   value={row.key}
@@ -278,7 +304,7 @@ export function MapField({
                   </p>
                 )}
               </div>
-              <div className="flex-[2] min-w-0">
+              <div className={flatEntry ? "min-w-0 flex-[3]" : "min-w-0 flex-[2]"}>
                 <FieldControl
                   rootFieldName={rootFieldName}
                   fieldPath={`${fieldPath}.${row.id}`}
@@ -290,6 +316,7 @@ export function MapField({
                   resolvedResources={resolvedResources}
                   rootCelEval={rootCelEval}
                   onSelectResource={onSelectResource}
+                  flat={flatEntry}
                 />
               </div>
               <button
