@@ -204,9 +204,29 @@ export function navigateSchemaToExprPath(
   return current;
 }
 
+/**
+ * Recognized `x-telo-type` value brands and the CEL primitive each refines.
+ * A brand is a nominal type the analyzer registers (see cel-environment.ts) so
+ * structurally-identical values (a `TcpPort` and a `UdpPort` are both integers)
+ * stay distinct for static wiring checks. Brands carry no runtime effect — the
+ * value flows as its base type. Add new brands here (e.g. `Url: "string"`).
+ */
+export const VALUE_BRAND_BASE: Record<string, string> = {
+  TcpPort: "int",
+  UdpPort: "int",
+};
+
+/** Read a recognized `x-telo-type` brand off a schema, or undefined. */
+export function brandOfSchema(schema: Record<string, any> | undefined): string | undefined {
+  const brand = schema?.["x-telo-type"];
+  return typeof brand === "string" && brand in VALUE_BRAND_BASE ? brand : undefined;
+}
+
 /** Map a JSON Schema type annotation to a CEL type string. */
 export function jsonSchemaToCelType(schema: Record<string, any> | undefined): string {
   if (!schema || typeof schema !== "object") return "dyn";
+  const brand = brandOfSchema(schema);
+  if (brand) return brand;
   if (schema.anyOf || schema.oneOf || schema.allOf) return "dyn";
   if (Array.isArray(schema.type)) return "dyn";
   switch (schema.type) {
@@ -233,6 +253,18 @@ export function jsonSchemaToCelType(schema: Record<string, any> | undefined): st
 /** Check whether a CEL return type is compatible with a JSON Schema type constraint. */
 export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
   if (celType === "dyn") return true;
+  // Nominal value brands: when the expression's type is a recognized brand,
+  // a branded consuming field must match exactly (a UdpPort wired into a
+  // TcpPort-branded field is the error we want). An unbranded field accepts
+  // the brand as its base type — gradual typing, so a TcpPort flows freely
+  // into a plain integer field. (A plain integer into a branded field is also
+  // allowed: only a *conflicting* brand is rejected.)
+  const sourceBase = VALUE_BRAND_BASE[celType];
+  if (sourceBase) {
+    const fieldBrand = brandOfSchema(schema);
+    if (fieldBrand) return fieldBrand === celType;
+    celType = sourceBase;
+  }
   if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
   if (schema.anyOf || schema.oneOf || schema.allOf) return true;
   const schemaTypes = Array.isArray(schema.type) ? schema.type : [schema.type];

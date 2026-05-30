@@ -115,6 +115,16 @@ Application environment validation failed:
 
 ---
 
+## Unused declarations
+
+A declared `variables` / `secrets` / `ports` entry that no CEL expression references is flagged by the analyzer with an `UNUSED_DECLARATION` warning — dead config at best, and for `ports` actively misleading (a runner would advertise a port the app never listens on). The check is Application-only: a `Telo.Library`'s entries are a public contract consumed by its controllers, so they are not flagged.
+
+## Ports
+
+`Telo.Application` also declares the inbound ports it listens on via a `ports:` block — env-bound like `variables`, but specialised for ports (implicit integer in the 1–65535 range, its own `ports.<name>` CEL scope, and transport brands for static wiring checks). See [Application Ports](./application-ports.md).
+
+---
+
 ## Library variables — no env binding
 
 `Telo.Library` `variables:` / `secrets:` entries are pure JSON Schema property maps. Libraries receive values from their importer (the parent Application's `Telo.Import` block), never from host env directly. An `env:` key on a Library entry is rejected at load time:

@@ -37,18 +37,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export type ModuleKind = "Application" | "Library";
 
-export interface ParsedManifest {
+/** Fields common to both module variants — identity, metadata, and the
+ *  module body. Application-only fields live on `ApplicationManifest`. */
+interface BaseParsedManifest {
   filePath: string;
-  kind: ModuleKind;
   metadata: {
     name: string;
     version?: string;
     description?: string;
     namespace?: string;
-    variables?: Record<string, unknown>;
-    secrets?: Record<string, unknown>;
   };
-  targets: string[];
   imports: ParsedImport[];
   resources: ParsedResource[];
   include?: string[];
@@ -58,6 +56,27 @@ export interface ParsedManifest {
   loadError?: string;
   rawYaml?: string;
 }
+
+/** A parsed `Telo.Application` — a runnable root. Carries the Application-only
+ *  contract: `targets` plus the env-bound `variables` / `secrets` / `ports`
+ *  blocks (flat, as they appear at the top level of the YAML doc). */
+export interface ApplicationManifest extends BaseParsedManifest {
+  kind: "Application";
+  targets: string[];
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  /** Declared inbound ports (`name → { env, protocol?, default? }`). */
+  ports?: Record<string, unknown>;
+}
+
+/** A parsed `Telo.Library` — an importable unit of kinds/definitions. No
+ *  `targets` (run-only) and no `ports` (Application-only). */
+export interface LibraryManifest extends BaseParsedManifest {
+  kind: "Library";
+}
+
+/** A parsed module, discriminated on `kind`. */
+export type ParsedManifest = ApplicationManifest | LibraryManifest;
 
 export type ImportKind = "local" | "registry" | "remote";
 

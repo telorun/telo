@@ -68,7 +68,10 @@ function isASTNode(v: unknown): v is ASTNode {
   return v !== null && typeof v === "object" && "op" in (v as object);
 }
 
-const INDEX_SEGMENT = "[*]";
+/** Sentinel chain segment emitted for index access (`obj[expr]`) — a dynamic
+ *  member that can't be resolved to a static name. Consumers that attribute
+ *  chains to declared names treat this as "unknown member". */
+export const INDEX_SEGMENT = "[*]";
 
 function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
   if (node.op === "id") {

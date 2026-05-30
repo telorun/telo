@@ -279,6 +279,31 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             },
           },
         },
+        // Inbound ports the Application listens on. A name-keyed map mirroring
+        // `variables`: each entry binds a host env var (`env:`) that supplies a
+        // port integer (implicitly typed `integer`, 1–65535), with an optional
+        // `default:` used when the env var is unset. `protocol:` (default `tcp`)
+        // selects the transport — the runner reads this list to know the
+        // exposed ports before launch, and the analyzer brands the resolved
+        // `ports.<name>` value (tcp → TcpPort, udp → UdpPort) for static wiring
+        // checks. Application-only. See kernel/nodejs/src/application-env.ts.
+        ports: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            required: ["env"],
+            properties: {
+              env: { type: "string" },
+              protocol: {
+                type: "string",
+                enum: ["tcp", "udp"],
+                default: "tcp",
+              },
+              default: { type: "integer", minimum: 1, maximum: 65535 },
+            },
+            additionalProperties: false,
+          },
+        },
       },
       required: ["metadata"],
       additionalProperties: false,

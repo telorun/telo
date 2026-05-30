@@ -112,6 +112,7 @@ export class SchemaValidator {
       "x-telo-topology-role",
       "x-telo-step-context",
       "x-telo-widget",
+      "x-telo-type",
     ]) {
       this.ajv.addKeyword(kw);
     }

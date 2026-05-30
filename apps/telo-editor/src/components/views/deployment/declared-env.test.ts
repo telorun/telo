@@ -5,19 +5,17 @@ describe("extractDeclaredEnvEntries", () => {
   it("returns variables and secrets rows for an Application", () => {
     const rows = extractDeclaredEnvEntries({
       kind: "Application",
-      metadata: {
-        variables: {
-          port: { env: "PORT", type: "integer", minimum: 1024, default: 3000 },
-          logLevel: {
-            env: "LOG_LEVEL",
-            type: "string",
-            enum: ["debug", "info", "warn", "error"],
-            default: "info",
-          },
+      variables: {
+        port: { env: "PORT", type: "integer", minimum: 1024, default: 3000 },
+        logLevel: {
+          env: "LOG_LEVEL",
+          type: "string",
+          enum: ["debug", "info", "warn", "error"],
+          default: "info",
         },
-        secrets: {
-          databaseUrl: { env: "DATABASE_URL", type: "string" },
-        },
+      },
+      secrets: {
+        databaseUrl: { env: "DATABASE_URL", type: "string" },
       },
     });
     expect(rows).toEqual([
@@ -51,10 +49,8 @@ describe("extractDeclaredEnvEntries", () => {
   it("returns an empty list for Library manifests", () => {
     const rows = extractDeclaredEnvEntries({
       kind: "Library",
-      metadata: {
-        variables: {
-          port: { type: "integer", minimum: 1024 },
-        },
+      variables: {
+        port: { type: "integer", minimum: 1024 },
       },
     });
     expect(rows).toEqual([]);
@@ -63,11 +59,9 @@ describe("extractDeclaredEnvEntries", () => {
   it("skips entries with no env: mapping", () => {
     const rows = extractDeclaredEnvEntries({
       kind: "Application",
-      metadata: {
-        variables: {
-          legacy: { type: "string" },
-          ok: { env: "OK", type: "string" },
-        },
+      variables: {
+        legacy: { type: "string" },
+        ok: { env: "OK", type: "string" },
       },
     });
     expect(rows.map((r) => r.name)).toEqual(["ok"]);
@@ -76,20 +70,18 @@ describe("extractDeclaredEnvEntries", () => {
   it("summarises object and array constraints", () => {
     const rows = extractDeclaredEnvEntries({
       kind: "Application",
-      metadata: {
-        variables: {
-          tls: {
-            env: "TLS",
-            type: "object",
-            properties: { cert: { type: "string" }, key: { type: "string" } },
-            required: ["cert", "key"],
-          },
-          origins: {
-            env: "ORIGINS",
-            type: "array",
-            items: { type: "string" },
-            minItems: 1,
-          },
+      variables: {
+        tls: {
+          env: "TLS",
+          type: "object",
+          properties: { cert: { type: "string" }, key: { type: "string" } },
+          required: ["cert", "key"],
+        },
+        origins: {
+          env: "ORIGINS",
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
         },
       },
     });

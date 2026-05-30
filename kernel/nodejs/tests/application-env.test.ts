@@ -291,4 +291,72 @@ describe("resolveApplicationEnv", () => {
       }
     });
   });
+
+  describe("ports", () => {
+    it("resolves ports from env as integers", () => {
+      const result = resolveApplicationEnv(
+        {
+          ports: {
+            http: { env: "PORT", protocol: "tcp" },
+            dns: { env: "DNS_PORT", protocol: "udp" },
+          },
+        },
+        { PORT: "8080", DNS_PORT: "5353" },
+        buildValidator(),
+      );
+      expect(result.ports).toEqual({ http: 8080, dns: 5353 });
+    });
+
+    it("applies the port default when the env var is unset", () => {
+      const result = resolveApplicationEnv(
+        { ports: { http: { env: "PORT", default: 3000 } } },
+        {},
+        buildValidator(),
+      );
+      expect(result.ports).toEqual({ http: 3000 });
+    });
+
+    it("errors when a port env var is unset and has no default", () => {
+      let thrown: unknown;
+      try {
+        resolveApplicationEnv(
+          { ports: { http: { env: "PORT" } } },
+          {},
+          buildValidator(),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(RuntimeError);
+      expect((thrown as RuntimeError).code).toBe("ERR_MANIFEST_VALIDATION_FAILED");
+      expect((thrown as Error).message).toContain(
+        "http: environment variable PORT is not set",
+      );
+    });
+
+    it("rejects a port outside the 1–65535 range", () => {
+      let thrown: unknown;
+      try {
+        resolveApplicationEnv(
+          { ports: { http: { env: "PORT" } } },
+          { PORT: "70000" },
+          buildValidator(),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(RuntimeError);
+      expect((thrown as Error).message).toContain("http:");
+    });
+
+    it("rejects a non-integer port value", () => {
+      expect(() =>
+        resolveApplicationEnv(
+          { ports: { http: { env: "PORT" } } },
+          { PORT: "abc" },
+          buildValidator(),
+        ),
+      ).toThrow(RuntimeError);
+    });
+  });
 });

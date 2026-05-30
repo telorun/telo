@@ -1,6 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
-import { defaultRegistry, walkCelExpressions } from "@telorun/templating";
+import { defaultRegistry, isTaggedSentinel, walkCelExpressions } from "@telorun/templating";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
@@ -34,6 +34,7 @@ import { validateExtends } from "./validate-extends.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
+import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
 const SELF_PREFIX = "Self.";
@@ -439,20 +440,31 @@ function collectCelTypeIssues(
   manifest: ResourceManifest,
   baseTypedEnv: Environment,
   rootEnv: Environment,
+  rootModuleManifest?: ResourceManifest,
 ): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
 
-  if (typeof data === "string" && CEL_PURE_RE.test(data)) {
-    const exprMatch = data.match(CEL_EXPR_RE);
-    if (exprMatch) {
-      const expr = exprMatch[1].trim();
+  // A pure CEL value type-checks the same regardless of surface form: a
+  // `${{ … }}` string and a `!cel`-tagged sentinel must behave identically.
+  let celExpr: string | undefined;
+  if (isTaggedSentinel(data)) {
+    // Non-CEL engines (e.g. `!literal`) are analyzed by their own engine pass.
+    if (data.engine !== "cel") return issues;
+    celExpr = data.source;
+  } else if (typeof data === "string" && CEL_PURE_RE.test(data)) {
+    celExpr = data.match(CEL_EXPR_RE)?.[1]?.trim();
+  }
+
+  if (celExpr !== undefined) {
+    {
+      const expr = celExpr;
 
       // Merge x-telo-context variables for this path if applicable
       let typedEnv = baseTypedEnv;
       if (definition.schema) {
         for (const ctx of extractContextsFromSchema(definition.schema)) {
           if (!pathMatchesScope(path, ctx.scope)) continue;
-          typedEnv = buildTypedCelEnvironment(rootEnv, manifest, ctx.schema);
+          typedEnv = buildTypedCelEnvironment(rootEnv, manifest, ctx.schema, rootModuleManifest);
           break;
         }
       }
@@ -475,8 +487,9 @@ function collectCelTypeIssues(
       } else if (checkResult?.valid && checkResult.type && schema) {
         const celType = checkResult.type.split("<")[0]!;
         if (!celTypeSatisfiesJsonSchema(celType, schema)) {
+          const expected = schema["x-telo-type"] ?? schema.type ?? "unknown";
           issues.push({
-            message: `CEL returns '${checkResult.type}' but field expects '${schema.type ?? "unknown"}'`,
+            message: `CEL returns '${checkResult.type}' but field expects '${expected}'`,
             path,
           });
         }
@@ -497,6 +510,7 @@ function collectCelTypeIssues(
           manifest,
           baseTypedEnv,
           rootEnv,
+          rootModuleManifest,
         ),
       );
     }
@@ -512,6 +526,7 @@ function collectCelTypeIssues(
           manifest,
           baseTypedEnv,
           rootEnv,
+          rootModuleManifest,
         ),
       );
     }
@@ -758,6 +773,13 @@ export class StaticAnalyzer {
     // recognises variables, secrets, resources, env automatically
     const kernelGlobals = buildKernelGlobalsSchema(allManifests);
 
+    // The module doc (Application/Library) carries the Application-only `ports`
+    // namespace; threaded into per-resource CEL typing so `${{ ports.X }}`
+    // resolves its nominal brand cross-doc.
+    const moduleManifest =
+      allManifests.find((mm) => mm.kind === "Telo.Application") ??
+      allManifests.find((mm) => mm.kind === "Telo.Library");
+
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
       const filePath = (m.metadata as { source?: string } | undefined)?.source;
@@ -816,8 +838,17 @@ export class StaticAnalyzer {
               }
             : definition.schema;
         // Phase 1: CEL type checking — walk data+schema together, check env.check() return types
-        const baseTypedEnv = buildTypedCelEnvironment(this.celEnv, m);
-        const celIssues = collectCelTypeIssues(m, schema, "", definition, m, baseTypedEnv, this.celEnv);
+        const baseTypedEnv = buildTypedCelEnvironment(this.celEnv, m, undefined, moduleManifest);
+        const celIssues = collectCelTypeIssues(
+          m,
+          schema,
+          "",
+          definition,
+          m,
+          baseTypedEnv,
+          this.celEnv,
+          moduleManifest,
+        );
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
         const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
         const issues = [...celIssues, ...ajvIssues];
@@ -1092,6 +1123,9 @@ export class StaticAnalyzer {
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
     diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));
+
+    // Warn about declared variables / secrets / ports that no CEL references.
+    diagnostics.push(...validateUnusedDeclarations(allManifests, this.celEnv));
 
     // Reroute diagnostics on synthetic (inline-extracted) resources back to
     // the chain root so position-index lookups land on the parent doc.
