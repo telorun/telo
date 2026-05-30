@@ -73,7 +73,7 @@ export class AnalysisRegistry {
   visitManifest(
     resources: ResourceManifest[],
     visitor: ManifestVisitor,
-    opts?: { skipKinds?: ReadonlySet<string>; expand?: boolean },
+    opts?: { skipKinds?: ReadonlySet<string>; expand?: boolean; discoverNestedRefs?: boolean },
   ): void {
     runVisitManifest(resources, this.defs, visitor, {
       aliases: this.aliases,

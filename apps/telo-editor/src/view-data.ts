@@ -1,3 +1,4 @@
+import { moduleRootKind, moduleRootResource } from "./application-adapter";
 import { getAvailableKinds, normalizePath } from "./loader";
 import type {
   AvailableKind,
@@ -39,8 +40,20 @@ export function buildModuleViewData(
     });
   }
 
+  // Surface the module root (Application or Library) as a synthesized kind +
+  // resource so every view finds it through the same `kinds` /
+  // `manifest.resources` lookups the rest of the resources use. `viewData` is a
+  // pure view projection (not the analyzer / persistence manifest), so
+  // augmenting its resource list here is local to the views and never leaks
+  // into analysis or save.
+  const rootKind = moduleRootKind(manifest);
+  kinds.set(rootKind.fullKind, rootKind);
+  const projectedManifest: ParsedManifest = {
+    ...manifest,
+    resources: [moduleRootResource(manifest), ...manifest.resources],
+  };
   return {
-    manifest,
+    manifest: projectedManifest,
     kinds,
     sourceFiles: collectSourceFiles(workspace, manifest),
   };

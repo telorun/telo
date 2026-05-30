@@ -1,5 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { walkCelExpressions } from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel, walkCelExpressions } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -80,6 +80,13 @@ export interface RefSiteEvent {
   inScope: boolean;
   /** Scope manifests visible to this ref path (non-empty only when `inScope`). */
   visibleScopeManifests: ResourceManifest[];
+  /** True when the site was found by value-tree scanning rather than the field
+   *  map (only when `discoverNestedRefs` is set) — a ref nested behind a `$ref`
+   *  the field map doesn't descend (e.g. `Run.Sequence` `steps[].invoke`).
+   *  Nested sites carry no x-telo-ref constraint (`entry.refs` is empty) and no
+   *  scope info; `concretePath` still points at the exact location, so consumers
+   *  can anchor to it. */
+  nested?: boolean;
 }
 
 export interface SchemaFromSiteEvent {
@@ -123,6 +130,58 @@ export interface VisitOptions {
    *  so refs nested behind `x-telo-schema-from` are surfaced. `SchemaFromSite`
    *  events are always emitted from the base map regardless of this flag. */
   expand?: boolean;
+  /** When true, additionally discover refs by scanning each resource's value
+   *  tree for `!ref` sentinels and `{kind, name}` reference objects — surfacing
+   *  refs the field map never lists because they sit behind a `$ref` it doesn't
+   *  descend (notably `Run.Sequence` step `invoke`s). Emitted as `RefSite`s with
+   *  `nested: true`, deduped against the field-map sites by concrete path.
+   *  Opt-in: the validators / dependency graph must NOT enable it (those refs
+   *  are runtime-resolved, not boot dependencies). */
+  discoverNestedRefs?: boolean;
+}
+
+/** Synthetic entry for a value-tree-discovered ref — these carry no declared
+ *  x-telo-ref constraint. */
+const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], isArray: false };
+
+/** Scans a value tree for ref-shaped values, emitting each with its concrete
+ *  path. Recognizes `!ref <name>` sentinels and named `{kind, name}` reference
+ *  objects. Other tagged sentinels (`!cel`, `!literal`) and precompiled nodes
+ *  are leaves. Path format matches `resolveFieldEntries` / `walkCelExpressions`
+ *  (`a.b[0].c`).
+ *
+ *  Stops at every `{kind, …}` resource boundary: a named ref is emitted, an
+ *  inline resource (`{kind}` with no name) is left alone, and **neither is
+ *  descended into**. A nested resource's own refs belong to its inner topology,
+ *  not the enclosing node — e.g. an inline `Sql.Exec` step's `connection` is the
+ *  Exec's dependency, not the surrounding `Run.Sequence`'s. The scan is started
+ *  per top-level field (not on the resource object) so the resource's own
+ *  `kind` doesn't trip this boundary. */
+function walkRefValues(
+  value: unknown,
+  path: string,
+  cb: (value: unknown, path: string) => void,
+): void {
+  if (isRefSentinel(value)) {
+    cb(value, path);
+    return;
+  }
+  if (isTaggedSentinel(value)) return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => walkRefValues(v, `${path}[${i}]`, cb));
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if ((value as { __compiled?: unknown }).__compiled) return;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.kind === "string") {
+    // Resource boundary — emit if it's a named ref, then stop descending.
+    if (typeof obj.name === "string") cb(value, path);
+    return;
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    walkRefValues(v, path ? `${path}.${k}` : k, cb);
+  }
 }
 
 const scopePrefixOf = (pointer: string): string =>
@@ -139,12 +198,13 @@ export function visitManifest(
   visitor: ManifestVisitor,
   options: VisitOptions = {},
 ): void {
-  const { aliases, aliasesByModule, skipKinds, expand } = options;
+  const { aliases, aliasesByModule, skipKinds, expand, discoverNestedRefs } = options;
 
   const wantsRefs = !!visitor.onRef;
   const wantsScope = !!visitor.onScope;
   const wantsSchemaFrom = !!visitor.onSchemaFrom;
   const wantsCel = !!visitor.onCel;
+  const wantsNested = wantsRefs && !!discoverNestedRefs;
 
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind) continue;
@@ -156,6 +216,10 @@ export function visitManifest(
       (resolvedKind ? registry.resolve(resolvedKind) : undefined);
 
     visitor.onResourceEnter?.({ source: r, definition });
+
+    // Concrete paths emitted from the field map — so the value-tree scan below
+    // doesn't re-emit a ref the field map already covered.
+    const emittedRefPaths = wantsNested ? new Set<string>() : null;
 
     if (wantsRefs || wantsScope || wantsSchemaFrom) {
       const baseMap = aliases
@@ -208,6 +272,7 @@ export function visitManifest(
 
             for (const { value, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
               if (!value) continue;
+              emittedRefPaths?.add(concretePath);
               visitor.onRef!({
                 source: r,
                 fieldPath,
@@ -227,6 +292,30 @@ export function visitManifest(
           if (!isSchemaFromEntry(entry)) continue;
           visitor.onSchemaFrom!({ source: r, fieldPath, entry });
         }
+      }
+    }
+
+    // Value-tree-driven nested ref discovery — refs the field map can't reach
+    // because they sit behind a `$ref` it doesn't descend (e.g. Run.Sequence
+    // step `invoke`s). Deduped against the field-map sites by concrete path.
+    // Scanned per top-level field so the resource's own `kind` isn't treated as
+    // a resource boundary by `walkRefValues`.
+    if (wantsNested) {
+      const emitNested = (value: unknown, path: string) => {
+        if (emittedRefPaths!.has(path)) return;
+        visitor.onRef!({
+          source: r,
+          fieldPath: path,
+          concretePath: path,
+          value,
+          entry: NESTED_REF_ENTRY,
+          inScope: false,
+          visibleScopeManifests: [],
+          nested: true,
+        });
+      };
+      for (const [key, value] of Object.entries(r as Record<string, unknown>)) {
+        walkRefValues(value, key, emitNested);
       }
     }
 

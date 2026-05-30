@@ -1,3 +1,4 @@
+import type { AnalysisRegistry } from "@telorun/analyzer";
 import type {
   DeploymentEnvironment,
   ModuleDocument,
@@ -10,12 +11,21 @@ import type {
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
   viewData: ModuleViewData;
+  /** Analysis registry for the active module's closure — supplies the field
+   *  maps / capability lookups the overview graph needs. Null before the first
+   *  analysis pass completes for the module. */
+  registry: AnalysisRegistry | null;
   selectedResource: { kind: string; name: string } | null;
   /** The "canvas focus" resource — last resource the user worked with in a canvas view. */
   graphContext: { kind: string; name: string } | null;
   onSelectResource: (kind: string, name: string) => void;
   onNavigateResource: (kind: string, name: string) => void;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
+  /** Rewrites the active Application's `targets`. Used by the overview graph's
+   *  drag-to-wire — the only field the Application root edits visually. */
+  onUpdateApplicationTargets: (targets: string[]) => void;
+  /** Opens the create-resource flow. Surfaced as a canvas action. */
+  onCreateResource: () => void;
   onSelect: (selection: Selection) => void;
   onClearSelection: () => void;
   /** Commit a source-view edit for one specific file in the active module.

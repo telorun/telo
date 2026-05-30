@@ -22,6 +22,7 @@ import {
   reconcileImports,
   removeImportViaAst,
   reopenWorkspaceAt,
+  setApplicationTargets,
   setResourceFields,
   upgradeImportViaAst,
 } from "../loader";
@@ -105,6 +106,19 @@ function pickInitialActiveModule(workspace: Workspace): string | null {
   const lib = entries.find(([, m]) => m.kind === "Library");
   if (lib) return lib[0];
   return null;
+}
+
+/** The canvas focus a module lands on when opened — its overview graph, rooted
+ *  at the synthesized `Telo.Application` / `Telo.Library` node. */
+function defaultGraphContext(
+  workspace: Workspace | null,
+  modulePath: string | null,
+): { kind: string; name: string } | null {
+  if (!workspace || !modulePath) return null;
+  const module = workspace.modules.get(modulePath);
+  if (!module) return null;
+  const kind = module.kind === "Application" ? "Telo.Application" : "Telo.Library";
+  return { kind, name: module.metadata.name };
 }
 
 export function Editor() {
@@ -213,6 +227,7 @@ export function Editor() {
           workspace,
           activeModulePath: nextActiveModulePath,
           activeView: nextActiveView,
+          graphContext: defaultGraphContext(workspace, nextActiveModulePath),
           deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
         }));
       } catch (err) {
@@ -300,10 +315,12 @@ export function Editor() {
         opened.workspaceAdapter,
         createRegistryAdapters(settings),
       );
+      const initialActivePath = pickInitialActiveModule(workspace);
       setState({
         ...INITIAL_STATE,
         workspace,
-        activeModulePath: pickInitialActiveModule(workspace),
+        activeModulePath: initialActivePath,
+        graphContext: defaultGraphContext(workspace, initialActivePath),
         deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
     } catch (err) {
@@ -590,7 +607,7 @@ export function Editor() {
         ...s,
         activeModulePath: filePath,
         activeView,
-        graphContext: null,
+        graphContext: defaultGraphContext(s.workspace, filePath),
         selectedResource: null,
         panelStack: [],
       };
@@ -707,6 +724,13 @@ export function Editor() {
       prev.fields,
       fields,
     );
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  async function handleUpdateApplicationTargets(targets: string[]) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const updated = setApplicationTargets(state.workspace, state.activeModulePath, targets);
     const persisted = await persistModule(updated, state.activeModulePath);
     setState((s) => ({ ...s, workspace: persisted }));
   }
@@ -941,11 +965,8 @@ export function Editor() {
           activeManifest={activeManifest}
           activeModulePath={state.activeModulePath}
           selectedResource={state.selectedResource}
-          graphContext={state.graphContext}
           registryServers={settings.registryServers}
-          viewData={viewData}
           onSelectResource={handleSelectResource}
-          onNavigateResource={handleNavigateResource}
           onOpenModule={handleOpenModule}
           onCreateModule={handleCreateModule}
           onDeleteModule={handleDeleteModule}
@@ -953,7 +974,6 @@ export function Editor() {
           onAddImport={handleAddImport}
           onRemoveImport={handleRemoveImport}
           onUpgradeImport={handleUpgradeImport}
-          onCreateResource={() => setCreateResourceOpen(true)}
         />
         {runContext.isRunViewOpen ? (
           <RunView />
@@ -977,11 +997,17 @@ export function Editor() {
                 onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
                 viewProps={{
                   viewData,
+                  registry:
+                    (state.activeModulePath
+                      ? state.diagnostics.registryByFile.get(state.activeModulePath)
+                      : undefined) ?? null,
                   selectedResource: state.selectedResource,
                   graphContext: state.graphContext,
                   onSelectResource: handleSelectResource,
                   onNavigateResource: handleNavigateResource,
                   onUpdateResource: handleUpdateResource,
+                  onUpdateApplicationTargets: handleUpdateApplicationTargets,
+                  onCreateResource: () => setCreateResourceOpen(true),
                   onSelect: handleSelect,
                   onClearSelection: handleClearSelection,
                   onSourceEdit: handleSourceEdit,

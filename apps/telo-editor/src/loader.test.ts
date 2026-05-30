@@ -3,6 +3,7 @@ import {
   createResourceViaAst,
   rebuildManifestFromDocuments,
   saveModuleFromDocuments,
+  setApplicationTargets,
   setResourceFields,
 } from "./loader";
 import type {
@@ -517,5 +518,60 @@ describe("rebuildManifestFromDocuments", () => {
       .get("/ws/app/telo.yaml")!
       .get("Http.Server::main");
     expect(indexEntry).toBeDefined();
+  });
+});
+
+describe("setApplicationTargets", () => {
+  function appWorkspace(targetsLine = ""): Workspace {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      ...(targetsLine ? [targetsLine] : []),
+      "---",
+      "kind: Run.Job",
+      "metadata:",
+      "  name: worker",
+      "",
+    ].join("\n");
+    const manifest = makeManifest("/ws/app/telo.yaml", [{ kind: "Run.Job", name: "worker" }]);
+    let workspace = makeWorkspace([{ path: "/ws/app/telo.yaml", text }], [manifest]);
+    return rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+  }
+
+  it("writes targets as !ref sentinels onto an Application with none", () => {
+    let workspace = appWorkspace();
+    workspace = setApplicationTargets(workspace, "/ws/app/telo.yaml", ["worker"]);
+
+    // Re-derived targets carry the !ref sentinel shape (engine "ref").
+    const manifest = workspace.modules.get("/ws/app/telo.yaml")!;
+    expect(manifest.kind).toBe("Application");
+    const targets = (manifest as { targets: unknown[] }).targets;
+    expect(targets.map((t) => (t as { source: string }).source)).toEqual(["worker"]);
+
+    // …and serialize back to `!ref worker`, not a plain string.
+    const text = workspace.documents.get("/ws/app/telo.yaml")!.loaded.documents[0].toString();
+    expect(text).toContain("!ref worker");
+  });
+
+  it("removes a target by rewriting the list to empty", () => {
+    let workspace = appWorkspace("targets: [worker]");
+    workspace = setApplicationTargets(workspace, "/ws/app/telo.yaml", []);
+    const manifest = workspace.modules.get("/ws/app/telo.yaml")!;
+    expect((manifest as { targets: string[] }).targets).toEqual([]);
+  });
+
+  it("is a no-op for a non-Application module", () => {
+    const text = ["kind: Telo.Library", "metadata:", "  name: lib", ""].join("\n");
+    const lib: ParsedManifest = {
+      filePath: "/ws/lib/telo.yaml",
+      kind: "Library",
+      metadata: { name: "lib" },
+      imports: [],
+      resources: [],
+    };
+    let workspace = makeWorkspace([{ path: "/ws/lib/telo.yaml", text }], [lib]);
+    const result = setApplicationTargets(workspace, "/ws/lib/telo.yaml", ["x"]);
+    expect(result).toBe(workspace);
   });
 });
