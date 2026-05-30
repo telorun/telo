@@ -1,5 +1,57 @@
 # @telorun/analyzer
 
+## 0.13.0
+
+### Minor Changes
+
+- bfe4967: Add a `ports` declaration to `Telo.Application`. `ports` is a name-keyed map
+  (sibling of `variables` / `secrets`) where each entry binds a host env var to
+  an inbound port the app listens on: `{ env, protocol?, default? }`, implicitly
+  typed as an integer in the 1–65535 range. Values resolve at `kernel.load()` —
+  mirroring the variables env-resolution path, with the same
+  `ERR_MANIFEST_VALIDATION_FAILED` aggregation — and surface in a new
+  `ports.<name>` CEL scope, so a binding resource reads `${{ ports.http }}` from
+  a single declared source. A runner or the editor can read the exposed ports
+  (and the env var that configures each) before the app starts. Application-only;
+  `Telo.Library` does not declare ports.
+
+  Also adds `x-telo-type`, a general analyzer-only value-brand annotation. A
+  port's transport brands its value (`tcp → TcpPort`, `udp → UdpPort`) as a
+  nominal CEL type, and a resource field can declare which brand it accepts
+  (`http-server`'s `port` is branded `TcpPort`). Wiring a `UdpPort` into a
+  `TcpPort`-branded field is a static analyzer error. Brands are analyzer-only —
+  the value flows as a plain integer at runtime, so there is no runtime cost.
+
+  Adds an `UNUSED_DECLARATION` warning: a declared `variables` / `secrets` /
+  `ports` entry that no CEL expression references is flagged (a generic,
+  table-driven pass across the three namespaces). Application-only — a
+  `Telo.Library`'s `variables` / `secrets` are a controller-consumed public
+  contract and are not flagged.
+
+- 1c37ee1: Add `visitManifest` — one shared manifest visitor that emits the annotation
+  sites (`RefSite`, `ScopeBoundary`, `SchemaFromSite`, `CelSite`, plus resource
+  enter/exit bookends) the analyzer's passes previously each rediscovered with
+  duplicated scaffolding. `validate-references`, `dependency-graph`, and the CEL
+  context walk now consume it; behaviour is unchanged (full analyzer + integration
+  suites pass).
+
+  Path-driven sites (ref / scope / schema-from) come from the per-kind field map;
+  CEL sites are found by scanning the value tree, with the field map supplying the
+  matched `x-telo-context`. Scope is per-resource: `ScopeBoundary` carries both the
+  source-enclosure prefixes (for ref candidate scoping) and the enclosed-resource
+  name set (for dropping boot edges to scoped targets), so no cross-resource
+  ordering or global state is needed.
+
+  Exposes `AnalysisRegistry.visitManifest` as the public host seam, and adds the
+  editor `buildOverviewGraph` adapter that projects `RefSite` events into
+  capability-classified edges (Service/Invocable/Runnable/Mount) and "uses" chips
+  (Provider/Type).
+
+### Patch Changes
+
+- Updated dependencies [bfe4967]
+  - @telorun/templating@0.3.1
+
 ## 0.12.1
 
 ### Patch Changes
