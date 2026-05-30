@@ -1,6 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
-import { defaultRegistry, isTaggedSentinel, walkCelExpressions } from "@telorun/templating";
+import { defaultRegistry, isTaggedSentinel } from "@telorun/templating";
 import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
@@ -12,6 +12,7 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
 import { computeSuggestKind } from "./kind-suggest.js";
+import { visitManifest } from "./manifest-visitor.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
@@ -25,6 +26,7 @@ import {
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
+  extractContextsFromSchema,
   getManifestItem,
   pathMatchesScope,
   resolveContextAnnotations,
@@ -186,56 +188,6 @@ function manifestRootForResolver(
     schema: buildSelfSchema(m),
     ...(inputs ? { inputType: inputs } : {}),
   };
-}
-
-/**
- * Walk a JSON Schema tree and collect all `x-telo-context` annotations,
- * returning them as `{ scope, schema }` pairs using JSONPath-style scopes —
- * the same format the analyzer uses for CEL context validation.
- *
- * Result is sorted by scope specificity (longer scope first) so that the
- * per-expression resolver's first-match-wins logic picks the most-specific
- * context. Without this, a broader ancestor scope (e.g. `$.resources[*]`)
- * could shadow a narrower descendant scope whose activation differs.
- */
-function extractContextsFromSchema(
-  schema: Record<string, any>,
-  path = "$",
-): Array<{ scope: string; schema: Record<string, any> }> {
-  const all = collectContexts(schema, path);
-  return all.sort((a, b) => b.scope.length - a.scope.length);
-}
-
-function collectContexts(
-  schema: Record<string, any>,
-  path: string,
-): Array<{ scope: string; schema: Record<string, any> }> {
-  if (!schema || typeof schema !== "object") return [];
-  const results: Array<{ scope: string; schema: Record<string, any> }> = [];
-
-  if (schema["x-telo-context"]) {
-    results.push({ scope: path, schema: schema["x-telo-context"] });
-  }
-
-  if (schema.properties) {
-    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      results.push(...collectContexts(value, `${path}.${key}`));
-    }
-  }
-
-  if (schema.items && typeof schema.items === "object") {
-    results.push(...collectContexts(schema.items, `${path}[*]`));
-  }
-
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
-      for (const subschema of schema[key]) {
-        results.push(...collectContexts(subschema, path));
-      }
-    }
-  }
-
-  return results;
 }
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
@@ -990,125 +942,127 @@ export class StaticAnalyzer {
       }
     }
 
-    // Validate CEL syntax and context variable access in all manifests
-    for (const m of allManifests) {
-      const resource = { kind: m.kind, name: m.metadata?.name as string };
-      const filePath = (m.metadata as { source?: string } | undefined)?.source;
+    // Validate CEL syntax and context variable access in all manifests. The
+    // walker discovers every compiled CEL node by scanning the value tree and
+    // hands back the `x-telo-context` schema matched at the enclosing path; the
+    // per-path resolution (step context, kernel-globals merge, x-telo-context-*
+    // annotation resolution) stays here because it depends on analyzer-internal
+    // state (definitions, aliases, the typed CEL env).
+    // Per-resource state computed at enter and read by that resource's CEL
+    // sites. The manifest / resource / filePath come straight off each CelSite's
+    // `source` (no need to capture them); only the derived step / invocation
+    // context — which require analyzer state to build — are stashed here.
+    let celStepContextSchema: Record<string, any> | undefined;
+    let celInvocationContext: Record<string, any> | undefined;
 
-      const resolvedKind = aliases.resolveKind(m.kind);
-      const mDefinition =
-        defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
+    visitManifest(
+      allManifests,
+      defs,
+      {
+        onResourceEnter: (e) => {
+          const m = e.source;
+          celInvocationContext = (m.metadata as any)?.xTeloInvocationContext as
+            | Record<string, any>
+            | undefined;
+          celStepContextSchema = e.definition?.schema
+            ? buildStepContextSchema(
+                m as Record<string, any>,
+                e.definition.schema as Record<string, any>,
+                allManifests as Record<string, any>[],
+                defs,
+                aliases,
+              )
+            : undefined;
+        },
+        onCel: (e) => {
+          const m = e.source;
+          const resource = { kind: m.kind, name: m.metadata?.name as string };
+          const filePath = (m.metadata as { source?: string } | undefined)?.source;
+          const { expr, path, engineName, matchedScope } = e;
 
-      // Pre-compute step context for manifests with x-telo-step-context
-      const stepContextSchema = mDefinition?.schema
-        ? buildStepContextSchema(
-            m as Record<string, any>,
-            mDefinition.schema as Record<string, any>,
-            allManifests as Record<string, any>[],
-            defs,
-            aliases,
-          )
-        : undefined;
+          let matchedContext: Record<string, any> | undefined =
+            e.contextSchema ?? celInvocationContext;
 
-      walkCelExpressions(m, "", (expr, path, engineName) => {
-        // Resolve the effective context for this expression's path. The
-        // engine receives a single closed schema and validates member-access
-        // chains against it; per-path resolution (step context, x-telo-context,
-        // kernel-globals merge) stays on the analyzer side because it depends
-        // on analyzer-internal state (definitions, aliases).
-        const contexts = mDefinition?.schema ? extractContextsFromSchema(mDefinition.schema) : [];
-        const invocationContext = (m.metadata as any)?.xTeloInvocationContext as
-          | Record<string, any>
-          | undefined;
-
-        let matchedContext: Record<string, any> | undefined;
-        let matchedScope: string | undefined;
-        for (const ctx of contexts) {
-          if (pathMatchesScope(path, ctx.scope)) {
-            matchedContext = ctx.schema;
-            matchedScope = ctx.scope;
-            break;
+          if (celStepContextSchema) {
+            const base =
+              matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
+            matchedContext = {
+              ...base,
+              properties: {
+                ...(base.properties ?? {}),
+                steps: celStepContextSchema,
+              },
+            };
           }
-        }
-        if (!matchedContext) matchedContext = invocationContext;
 
-        if (stepContextSchema) {
-          const base = matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
-          matchedContext = {
-            ...base,
-            properties: {
-              ...(base.properties ?? {}),
-              steps: stepContextSchema,
-            },
-          };
-        }
-
-        let effectiveContext: Record<string, any> | null = null;
-        if (matchedContext) {
-          const manifestItem = matchedScope
-            ? getManifestItem(path, matchedScope, m as Record<string, any>)
-            : (m as Record<string, any>);
-          const rootForResolver = manifestRootForResolver(
-            m as Record<string, any>,
-            defs,
-            aliases,
-            allManifests as Record<string, any>[],
-          );
-          const resolvedContext = resolveContextAnnotations(matchedContext, manifestItem, {
-            manifestRoot: rootForResolver,
-            defs,
-            aliases,
-            allManifests: allManifests as Record<string, any>[],
-          });
-          effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
-        }
-
-        const engine = defaultRegistry().get(engineName);
-        if (!engine) {
-          // No registered engine owns this tag — the expression would go
-          // entirely unanalyzed. Surface it rather than skipping silently.
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "UNKNOWN_ENGINE",
-            source: SOURCE,
-            message: `${m.kind}/${resource.name}: no templating engine registered for '!${engineName}' at '${path}'.`,
-            data: { resource, filePath, path },
-          });
-          return;
-        }
-        const findings = engine.analyze(expr, { celEnv: this.celEnv, contextSchema: effectiveContext });
-        for (const f of findings) {
-          if (f.code === "CEL_SYNTAX_ERROR") {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "CEL_SYNTAX_ERROR",
-              source: SOURCE,
-              message: `CEL syntax error at ${path}: ${f.message}`,
-              data: { resource, filePath, path },
+          let effectiveContext: Record<string, any> | null = null;
+          if (matchedContext) {
+            const manifestItem = matchedScope
+              ? getManifestItem(path, matchedScope, m as Record<string, any>)
+              : (m as Record<string, any>);
+            const rootForResolver = manifestRootForResolver(
+              m as Record<string, any>,
+              defs,
+              aliases,
+              allManifests as Record<string, any>[],
+            );
+            const resolvedContext = resolveContextAnnotations(matchedContext, manifestItem, {
+              manifestRoot: rootForResolver,
+              defs,
+              aliases,
+              allManifests: allManifests as Record<string, any>[],
             });
-          } else if (f.code === "CEL_UNKNOWN_FIELD") {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "CEL_UNKNOWN_FIELD",
-              source: SOURCE,
-              message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
-              data: { resource, filePath, path },
-            });
-          } else {
-            // Unknown code from a future engine — pass the message through,
-            // tagged with a generic ENGINE_DIAGNOSTIC code so downstream
-            // filters can still bucket it.
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: f.code ?? "ENGINE_DIAGNOSTIC",
-              source: SOURCE,
-              message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
-              data: { resource, filePath, path },
-            });
+            effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
           }
-        }
-      });
-    }
+
+          const engine = defaultRegistry().get(engineName);
+          if (!engine) {
+            // No registered engine owns this tag — the expression would go
+            // entirely unanalyzed. Surface it rather than skipping silently.
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "UNKNOWN_ENGINE",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: no templating engine registered for '!${engineName}' at '${path}'.`,
+              data: { resource, filePath, path },
+            });
+            return;
+          }
+          const findings = engine.analyze(expr, { celEnv: this.celEnv, contextSchema: effectiveContext });
+          for (const f of findings) {
+            if (f.code === "CEL_SYNTAX_ERROR") {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_SYNTAX_ERROR",
+                source: SOURCE,
+                message: `CEL syntax error at ${path}: ${f.message}`,
+                data: { resource, filePath, path },
+              });
+            } else if (f.code === "CEL_UNKNOWN_FIELD") {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_UNKNOWN_FIELD",
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
+                data: { resource, filePath, path },
+              });
+            } else {
+              // Unknown code from a future engine — pass the message through,
+              // tagged with a generic ENGINE_DIAGNOSTIC code so downstream
+              // filters can still bucket it.
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: f.code ?? "ENGINE_DIAGNOSTIC",
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
+                data: { resource, filePath, path },
+              });
+            }
+          }
+        },
+      },
+      { aliases },
+    );
 
     // Validate resource references (Phase 3)
     diagnostics.push(

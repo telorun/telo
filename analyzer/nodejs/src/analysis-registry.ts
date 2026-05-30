@@ -3,6 +3,7 @@ import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
+import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import type { AnalysisContext } from "./types.js";
 
@@ -60,6 +61,25 @@ export class AnalysisRegistry {
         onRef(fieldPath);
       }
     }
+  }
+
+  /**
+   * Walks a manifest's annotation sites (refs, scopes, schema-from, CEL) via
+   * the shared manifest visitor, bound to this registry's definitions and
+   * aliases. The public seam for hosts (editor overview graph, tooling) that
+   * need the same site discovery the analyzer's own passes use, without
+   * reaching into the internal DefinitionRegistry.
+   */
+  visitManifest(
+    resources: ResourceManifest[],
+    visitor: ManifestVisitor,
+    opts?: { skipKinds?: ReadonlySet<string>; expand?: boolean },
+  ): void {
+    runVisitManifest(resources, this.defs, visitor, {
+      aliases: this.aliases,
+      aliasesByModule: this.aliasesByModule,
+      ...opts,
+    });
   }
 
   /**

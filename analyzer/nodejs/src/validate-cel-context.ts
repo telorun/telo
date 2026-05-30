@@ -266,3 +266,53 @@ function navigatePath(obj: unknown, segments: string[]): unknown {
   }
   return cur;
 }
+
+/**
+ * Walk a JSON Schema tree and collect all `x-telo-context` annotations,
+ * returning them as `{ scope, schema }` pairs using JSONPath-style scopes —
+ * the same format the analyzer uses for CEL context validation.
+ *
+ * Result is sorted by scope specificity (longer scope first) so that the
+ * per-expression resolver's first-match-wins logic picks the most-specific
+ * context. Without this, a broader ancestor scope (e.g. `$.resources[*]`)
+ * could shadow a narrower descendant scope whose activation differs.
+ */
+export function extractContextsFromSchema(
+  schema: Record<string, any>,
+  path = "$",
+): Array<{ scope: string; schema: Record<string, any> }> {
+  const all = collectContexts(schema, path);
+  return all.sort((a, b) => b.scope.length - a.scope.length);
+}
+
+function collectContexts(
+  schema: Record<string, any>,
+  path: string,
+): Array<{ scope: string; schema: Record<string, any> }> {
+  if (!schema || typeof schema !== "object") return [];
+  const results: Array<{ scope: string; schema: Record<string, any> }> = [];
+
+  if (schema["x-telo-context"]) {
+    results.push({ scope: path, schema: schema["x-telo-context"] });
+  }
+
+  if (schema.properties) {
+    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
+      results.push(...collectContexts(value, `${path}.${key}`));
+    }
+  }
+
+  if (schema.items && typeof schema.items === "object") {
+    results.push(...collectContexts(schema.items, `${path}[*]`));
+  }
+
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const subschema of schema[key]) {
+        results.push(...collectContexts(subschema, path));
+      }
+    }
+  }
+
+  return results;
+}
