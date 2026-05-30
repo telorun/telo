@@ -17,10 +17,14 @@ sidebar_label: Structured Errors
 
 Inside a `catch:` block, the CEL context gains:
 
-- `error.code` — the thrown `InvokeError.code`, or `null` for plain `Error` throws
+- `error.code` — the thrown `InvokeError.code`, or `INTERNAL_ERROR` for plain `Error` throws. Always a non-empty string, so `throw: { code: "${{ error.code }}" }` can safely rethrow it.
 - `error.message` — the thrown message
 - `error.data` — the `InvokeError.data`, or `undefined` for plain errors
 - `error.step` — the name of the step that threw
+
+These four fields are statically type-checked: a typo like `${{ error.cdoe }}` inside a `catch` (or `finally`) is reported as `CEL_UNKNOWN_FIELD`, at any nesting depth.
+
+Inside a `finally` block, `error` is **nullable** — it is `null` when the `try` (and any `catch`) succeeded, and the caught failure only when a failure propagates. Accessing a field without a null-guard is a static error (`CEL_NULLABLE_ACCESS`); guard first: `${{ error == null ? 'OK' : error.code }}` or `${{ error != null && error.code == 'X' }}`.
 
 ```yaml
 kind: Run.Sequence
@@ -64,6 +68,8 @@ A `throw:` step takes `{ code, message?, data? }` and throws the matching `Invok
 | `code: "UNAUTHORIZED"`                | `{ UNAUTHORIZED }`                     |
 | `code: "${{ 'FOO' }}"`                | `{ FOO }`                              |
 | `code: "${{ error.code }}"` inside a `catch` | the enclosing `try`'s propagated union |
+
+The enclosing `try`'s propagated union includes `INTERNAL_ERROR` whenever the `try` block contains an `invoke:` step, since any invoked resource can throw a plain `Error` that the catch surfaces as `error.code === 'INTERNAL_ERROR'`. A surrounding `catches:` list must therefore cover `INTERNAL_ERROR` (or include a catch-all) for such a rethrow.
 
 Any other CEL expression is an analyzer error — the throw union would be unbounded and any surrounding `catches:` list would have no way to cover it.
 

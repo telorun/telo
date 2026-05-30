@@ -74,9 +74,15 @@ interface RunSequenceManifest {
   steps: Step[];
 }
 
+/** Code assigned to any caught failure that is not a structured `InvokeError`.
+ *  Guarantees `error.code` is always a non-empty string inside a `catch`, so a
+ *  `throw: { code: "${{ error.code }}" }` rethrow can never resolve to null.
+ *  The analyzer's throws resolver mirrors this constant. */
+const PLAIN_ERROR_CODE = "INTERNAL_ERROR";
+
 interface SequenceError {
   message: string;
-  code: string | null;
+  code: string;
   data?: unknown;
   step: string;
 }
@@ -390,10 +396,14 @@ function pascalCase(s: string): string {
 
 function toSequenceError(err: unknown, stepName: string): SequenceError {
   if (isInvokeError(err)) {
-    return { message: err.message, code: err.code, data: err.data, step: stepName };
+    // InvokeError.code is not validated non-empty at construction, so fall back
+    // to PLAIN_ERROR_CODE; message then falls back to the resolved code. Keeps
+    // both fields non-empty (see PLAIN_ERROR_CODE).
+    const code = err.code || PLAIN_ERROR_CODE;
+    return { message: err.message || code, code, data: err.data, step: stepName };
   }
-  const message = err instanceof Error ? err.message : String(err);
-  return { message, code: null, data: undefined, step: stepName };
+  const message = (err instanceof Error ? err.message : String(err)) || "Unknown error";
+  return { message, code: PLAIN_ERROR_CODE, data: undefined, step: stepName };
 }
 
 export function register(): void {}

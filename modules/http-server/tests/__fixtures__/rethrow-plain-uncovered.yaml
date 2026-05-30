@@ -1,0 +1,64 @@
+kind: Telo.Library
+metadata:
+  name: RethrowPlainUncoveredFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Http
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../../run
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+# try invokes a resource (can throw a plain Error → INTERNAL_ERROR in the catch);
+# catch rethrows error.code. The handler's resolved union is {INTERNAL_ERROR}.
+kind: Run.Sequence
+metadata:
+  name: InvokeThenRethrow
+steps:
+  - name: outer
+    try:
+      - name: work
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { throw new Error("boom") }
+    catch:
+      - name: rethrow
+        throw:
+          code: "${{ error.code }}"
+          message: "${{ error.message }}"
+---
+# Route covers INTERNAL_ERROR explicitly. This is only valid because the resolver
+# folds INTERNAL_ERROR into the rethrow union for an invoke-bearing try block —
+# without the fold-in the union is empty and this `when:` would be flagged
+# UNDECLARED_THROW_CODE.
+kind: Http.Api
+metadata:
+  name: RethrowPlainApi
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler:
+      kind: Run.Sequence
+      name: InvokeThenRethrow
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches:
+      - when: "${{ error.code == 'INTERNAL_ERROR' }}"
+        status: 500
+        content:
+          application/json:
+            body: { error: "${{ error.message }}" }

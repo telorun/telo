@@ -37,6 +37,7 @@ steps:
         inputs:
           msg: "${{ error.message }}"
           step: "${{ error.step }}"
+          code: "${{ error.code }}"
         invoke:
           kind: Assert.Schema
           schema:
@@ -46,6 +47,10 @@ steps:
                 type: string
               step:
                 type: string
+              # A plain Error (not an InvokeError) gets the INTERNAL_ERROR code,
+              # so error.code is never null inside a catch.
+              code:
+                const: "INTERNAL_ERROR"
 
   # Error was swallowed — sequence continues here.
   - name: AfterCatch
@@ -192,3 +197,34 @@ steps:
         properties:
           result:
             const: true
+
+  # --- rethrow of a plain error's code: must propagate INTERNAL_ERROR, not
+  # fail with INVALID_THROW_STEP (the bug this guards against). ---
+  - name: RethrowPlain
+    try:
+      - name: InnerRethrow
+        try:
+          - name: PlainFail
+            invoke:
+              kind: JavaScript.Script
+              code: |
+                function main() { throw new Error("deep") }
+        catch:
+          - name: Reraise
+            throw:
+              code: "${{ error.code }}"
+              message: "${{ error.message }}"
+    catch:
+      - name: CaughtReraised
+        inputs:
+          code: "${{ error.code }}"
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code:
+                const: "INTERNAL_ERROR"
+              msg:
+                const: "deep"

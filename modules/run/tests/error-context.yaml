@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: ErrorContextTests
+  version: 1.0.0
+targets:
+  - TestErrorTypo
+  - TestErrorValid
+  - TestNullableAccess
+  - TestNullableAccessNested
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# A typo on the `error` object inside a catch is caught at any nesting depth.
+kind: Assert.Manifest
+metadata:
+  name: TestErrorTypo
+source: ./__fixtures__/error-context-typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "error.cdoe"
+    - code: CEL_UNKNOWN_FIELD
+      message: "error.borked"
+---
+# Valid error fields (code/message/step/data) inside a catch produce no errors.
+kind: Assert.Manifest
+metadata:
+  name: TestErrorValid
+source: ./__fixtures__/error-context-valid.yaml
+expect:
+  errors: []
+---
+# Unguarded access on the nullable `error` inside finally is rejected.
+kind: Assert.Manifest
+metadata:
+  name: TestNullableAccess
+source: ./__fixtures__/nullable-access.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "error' may be null"
+---
+# A finally nested inside a catch: the innermost branch's nullability governs.
+kind: Assert.Manifest
+metadata:
+  name: TestNullableAccessNested
+source: ./__fixtures__/nullable-access-nested.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "error' may be null"

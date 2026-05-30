@@ -379,6 +379,78 @@ function buildStepContextSchema(
   return undefined;
 }
 
+/**
+ * Collect every field annotated with `x-telo-error-context` anywhere in a
+ * definition schema (resolving local `$ref`s into `$defs`, cycle-safe), mapping
+ * the annotated field name to its declared error-shape schema. The field name
+ * is matched against CEL paths so the context applies at any nesting depth under
+ * that field — e.g. `error` inside a `catch:` nested inside another `try:`. No
+ * specific field name (or `Run.Sequence`) is hardcoded; any composer that tags
+ * its error-bearing branch fields opts in the same way.
+ */
+function collectErrorContextScopes(
+  defSchema: Record<string, any> | undefined,
+): Map<string, Record<string, any>> {
+  const out = new Map<string, Record<string, any>>();
+  if (!defSchema || typeof defSchema !== "object") return out;
+  const seen = new Set<Record<string, any>>();
+
+  const walk = (schema: Record<string, any> | undefined): void => {
+    if (!schema || typeof schema !== "object" || seen.has(schema)) return;
+    seen.add(schema);
+
+    const props = schema.properties as Record<string, any> | undefined;
+    if (props) {
+      for (const [fieldName, fieldSchema] of Object.entries(props)) {
+        if (fieldSchema && typeof fieldSchema === "object") {
+          const errCtx = (fieldSchema as Record<string, any>)["x-telo-error-context"];
+          if (errCtx && typeof errCtx === "object" && !out.has(fieldName)) {
+            out.set(fieldName, errCtx as Record<string, any>);
+          }
+        }
+        walk(resolveLocalRef(fieldSchema as Record<string, any>, defSchema));
+      }
+    }
+    if (schema.items) walk(resolveLocalRef(schema.items as Record<string, any>, defSchema));
+    for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+      const arr = schema[key];
+      if (Array.isArray(arr)) for (const sub of arr) walk(resolveLocalRef(sub, defSchema));
+    }
+    if (schema.$defs && typeof schema.$defs === "object") {
+      for (const sub of Object.values(schema.$defs as Record<string, any>)) {
+        walk(sub as Record<string, any>);
+      }
+    }
+  };
+
+  walk(defSchema);
+  return out;
+}
+
+/**
+ * Return the error-context schema for a CEL `path` when the path lies within
+ * (any depth under) one of the error-bearing fields, else undefined. A path is
+ * "within" field `f` when it contains a segment `f[<index>]`. When multiple
+ * error-bearing fields match (e.g. a `finally` nested inside a `catch`), the
+ * deepest — the one whose segment appears latest in the path — wins, so the
+ * innermost branch's schema governs.
+ */
+function errorContextForPath(
+  path: string,
+  scopes: Map<string, Record<string, any>>,
+): Record<string, any> | undefined {
+  let best: { index: number; schema: Record<string, any> } | undefined;
+  for (const [fieldName, schema] of scopes) {
+    const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    for (const match of path.matchAll(new RegExp(`(^|\\.)${escaped}\\[\\d+\\]`, "g"))) {
+      if (best === undefined || match.index > best.index) {
+        best = { index: match.index, schema };
+      }
+    }
+  }
+  return best?.schema;
+}
+
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
 
@@ -954,6 +1026,7 @@ export class StaticAnalyzer {
     // context — which require analyzer state to build — are stashed here.
     let celStepContextSchema: Record<string, any> | undefined;
     let celInvocationContext: Record<string, any> | undefined;
+    let celErrorScopes: Map<string, Record<string, any>> = new Map();
 
     visitManifest(
       allManifests,
@@ -973,6 +1046,9 @@ export class StaticAnalyzer {
                 aliases,
               )
             : undefined;
+          celErrorScopes = collectErrorContextScopes(
+            e.definition?.schema as Record<string, any> | undefined,
+          );
         },
         onCel: (e) => {
           const m = e.source;
@@ -991,6 +1067,22 @@ export class StaticAnalyzer {
               properties: {
                 ...(base.properties ?? {}),
                 steps: celStepContextSchema,
+              },
+            };
+          }
+
+          // `error` is only in scope inside an error-bearing branch (e.g. a
+          // `catch:` / `finally:`), so it's merged per-path, not resource-wide.
+          const errorSchema =
+            celErrorScopes.size > 0 ? errorContextForPath(path, celErrorScopes) : undefined;
+          if (errorSchema) {
+            const base =
+              matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
+            matchedContext = {
+              ...base,
+              properties: {
+                ...(base.properties ?? {}),
+                error: errorSchema,
               },
             };
           }
@@ -1042,6 +1134,14 @@ export class StaticAnalyzer {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: "CEL_UNKNOWN_FIELD",
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
+                data: { resource, filePath, path },
+              });
+            } else if (f.code === "CEL_NULLABLE_ACCESS") {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_NULLABLE_ACCESS",
                 source: SOURCE,
                 message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
                 data: { resource, filePath, path },

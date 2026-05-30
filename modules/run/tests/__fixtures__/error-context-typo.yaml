@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: ErrorContextTypoFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+# `error.cdoe` is a typo for `error.code`. The error context typing inside a
+# catch must flag it → CEL_UNKNOWN_FIELD.
+kind: Run.Sequence
+metadata:
+  name: TypoSeq
+steps:
+  - name: outer
+    try:
+      - name: work
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { return 1 }
+    catch:
+      - name: rethrow
+        throw:
+          code: "${{ error.cdoe }}"
+          message: "${{ error.message }}"
+    finally:
+      # error is nullable in finally, but a typo is still caught.
+      - name: cleanup
+        throw:
+          code: "${{ error.borked }}"
+          message: "done"
