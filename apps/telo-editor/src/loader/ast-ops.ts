@@ -1,5 +1,6 @@
 import { isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import type { ModuleDocument, ParsedManifest, Workspace } from "../model";
 import {
   addResourceDocument,
@@ -8,6 +9,7 @@ import {
   findDocForResource,
   type EditOp,
 } from "../yaml-document";
+import { APPLICATION_KIND_ID } from "../application-adapter";
 import { normalizePath } from "./paths";
 import { buildParsedManifest } from "./parse";
 
@@ -186,6 +188,44 @@ export function setResourceFields(
   if (ops.length === 0) return workspace;
 
   const updated = applyOpsToDocument(workspace, indexEntry.filePath, indexEntry.docIndex, ops);
+  return rebuildManifestFromDocuments(updated, modulePath);
+}
+
+/** Rewrites the Application root's `targets` array in the AST and re-derives
+ *  the ParsedManifest. Distinct from `setResourceFields` because the
+ *  Application root lives on the module's document root, not in
+ *  `manifest.resources` / `resourceDocIndex`.
+ *
+ *  `targets` are passed as bare resource names and written as `!ref <name>`
+ *  sentinels — the canonical reference form (the `defaultCustomTags` serializer
+ *  round-trips the sentinel back to `!ref <name>`). An empty list writes
+ *  `targets: []` (semantically equivalent to a no-targets app). Returns the
+ *  original workspace when the module isn't an Application or has no parsable
+ *  Application doc. */
+export function setApplicationTargets(
+  workspace: Workspace,
+  modulePath: string,
+  targets: string[],
+): Workspace {
+  const manifest = workspace.modules.get(modulePath);
+  if (manifest?.kind !== "Application") return workspace;
+
+  const modDoc = workspace.documents.get(normalizePath(modulePath));
+  if (!modDoc) return workspace;
+
+  const docIndex = findDocForResource(
+    modDoc.loaded.documents,
+    APPLICATION_KIND_ID,
+    manifest.metadata.name,
+  );
+  if (docIndex === undefined) return workspace;
+
+  const op: EditOp = {
+    op: "set",
+    pointer: "/targets",
+    value: targets.map((name) => makeTaggedSentinel("ref", name)),
+  };
+  const updated = applyOpsToDocument(workspace, modulePath, docIndex, [op]);
   return rebuildManifestFromDocuments(updated, modulePath);
 }
 

@@ -5,6 +5,8 @@ import { isRecord } from "../lib/utils";
 import type { CelEvalMode } from "./resource-schema-form/cel-utils";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
+import { isModuleRootKind } from "../application-adapter";
+import { ModuleRootDetailBody } from "./ModuleRootDetailBody";
 import { Button } from "./ui/button";
 import type { ResolvedResourceOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
@@ -250,7 +252,9 @@ export function DetailPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {selectionContext ? (
+        {isModuleRootKind(resource.kind) ? (
+          <ModuleRootDetailBody fields={resource.fields} />
+        ) : selectionContext ? (
           <div className="p-3">
             <ResourceSchemaForm
               schema={selectionContext.schema}

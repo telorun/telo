@@ -1,5 +1,15 @@
 # Resource Graph Canvas — Implementation Plan
 
+> **Status: implemented.** The Application overview graph ships as the
+> `topology: "Application"` canvas
+> ([ApplicationTopologyCanvas.tsx](../src/components/views/topology/ApplicationTopologyCanvas.tsx)),
+> fed by the synthesized-kind adapter
+> ([application-adapter.ts](../src/application-adapter.ts)) and the
+> [application-canvas-model.ts](../src/components/views/topology/application-canvas-model.ts)
+> projection over the analyzer's `buildOverviewGraph`. Drag-to-wire target
+> editing writes through `setApplicationTargets` (a manifest-root AST op). This
+> document describes the design as built.
+
 ## Problem
 
 The Topology tab is per-resource: pick a resource in the sidebar and you see its
@@ -109,9 +119,12 @@ target drag-to-wire handler), a small adapter that synthesizes the `Telo.Applica
 entry and a resource-shaped view of the manifest root, a new manifest-root targets AST op
 in `loader/ast-ops.ts` with an `onUpdateApplicationTargets` callback through `Editor.tsx`,
 and new Application body content in DetailPanel (read-only targets list / read-only
-vars / read-only secrets, all with edit-in-Source for vars and secrets). The Sidebar
-gains an Application entry at the top of the resource list, default-selected on module
-load. `@xyflow/react` and `@dagrejs/dagre` are added to the editor's `package.json` with
+vars / read-only secrets, all with edit-in-Source for vars and secrets). Opening an
+Application default-selects its overview graph (via `graphContext`). The graph now
+replaces the sidebar's resource list entirely — the Sidebar's `ResourcesSection` is
+removed and the create-resource action moves onto the canvas (an `onCreateResource`
+panel button); the sidebar keeps only the workspace tree, imports, and definitions.
+`@xyflow/react` and `@dagrejs/dagre` are added to the editor's `package.json` with
 an accompanying editor changeset. The analyzer-side work (walker primitive and its consumer
 refactors) lives in the prerequisite walker plan and ships separately.
 
@@ -124,7 +137,7 @@ refactors) lives in the prerequisite walker plan and ships separately.
 - **Application↔target edges editor-side; targets edited via drag-to-wire on the graph** — the Application root is not a `ResourceManifest`, so it doesn't fit the visitor's iteration surface naturally; the overview reads `manifest.targets` directly. Drag-to-wire from the Application node to a Service/Runnable adds a target; edge deletion removes one. Endpoint validity is enforced at the canvas layer against the kernel rule (targets must be `Telo.Runnable` or `Telo.Service`). Writes go through a new manifest-root AST op and `onUpdateApplicationTargets` callback — distinct from the resource AST op path because targets live on the document root, not in `manifest.resources`. Rejected alternative: targets editable in the right pane via a synthesized resource shape — the synthetic-view is a read adapter and routing writes through it would silently never reach YAML.
 - **Deterministic auto-layout, no persisted positions** — `@dagrejs/dagre` over draggable+localStorage; YAML is the source of truth and view-only x/y has no home there. Rejected elkjs as heavier/worker-based for no benefit at this graph size.
 - **Synthetic kind entry + resource view for `Telo.Application`** — a small adapter exposes the kernel built-in to the editor's existing kind/resource pipelines: an `AvailableKind` for `Telo.Application` with `topology: "Application"` and a schema over metadata/targets/variables/secrets, plus a `ParsedResource`-shaped view of the manifest root keyed by the module name. Selection, lookup, and PickCanvas dispatch route through one path. Rejected alternative: scattering "is it the application?" checks across selection/lookup sites — produces a permanent special case at every selection boundary instead of one localized adapter.
-- **Libraries out of scope for v1** — `Telo.Library` has no `targets` and isn't an Application-shaped canvas, so `topology: "Application"` doesn't trivially apply. Future extension: the same renderer dispatched via a `Telo.Library`-side topology with no targets section in the panel.
+- **Libraries reuse the same canvas** — a `Telo.Library` root is synthesized exactly like an Application (shared `module-root` adapter, shared `MODULE_OVERVIEW_TOPOLOGY` dispatch, shared renderer/model). The only differences are kind-data: a Library has no `targets`, so it gets no target edges and no drag-to-wire (`onTargetsChange` is withheld), and the detail body omits the Targets section. Resource nodes / strip / ref edges / create button are identical.
 - **Read-only v1 except for target wiring** — navigation, selection, and *one* edit interaction: drag-to-wire on Application↔Runnable/Service edges. Other refs are not editable from the graph in v1 because `x-telo-ref` bindings already have wiring surfaces (bindings canvas / form pickers), so the graph duplicating them adds risk without new capability. Targets are the carve-out because they have *no* existing wiring surface — they aren't `x-telo-ref` bindings — so deferring them would leave v1 unable to edit targets at all. Rejected alternative: defer target wiring too and edit targets in Source — coherent but ships a graph that shows targets you can't manipulate, which reads as broken.
 - **Application pane is fully read-only in v1** — targets shown as a read-only list (they're already visible and editable as edges); variables and secrets are JSON-Schema declarations edited in Source. Rejected alternative: editable targets in the pane — would need a write-back path through the synthetic resource view, which is purely a read adapter; editable-without-write-back is worse than read-only.
 - **Active module only** — imported modules' resources are out of scope for v1; the graph shows one module's own resources.

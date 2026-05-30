@@ -60,6 +60,17 @@ descent, because they fundamentally differ:
   path-driven. The field map's only role for CEL is to supply the matched
   `x-telo-context` schema at the enclosing path (via `extractContextsFromSchema`
   + `pathMatchesScope`); it does not enumerate CEL locations. Emits `CelSite`.
+- **Value-tree-driven nested refs** (opt-in via `discoverNestedRefs`): a scan for
+  `!ref` sentinels and `{kind, name}` reference objects, surfacing refs the field
+  map can't reach because they sit behind a `$ref` it doesn't descend (notably
+  `Run.Sequence` `steps[].invoke`). Emitted as `RefSite`s with `nested: true`,
+  deduped against the field-map sites by concrete path. The scan stops at every
+  `{kind, …}` resource boundary (emitting a named ref but not descending into a
+  nested resource's own config), so an inline sub-resource's refs belong to that
+  resource, not the enclosing one. Opt-in because these refs are runtime-resolved,
+  not boot dependencies — the validators and dependency graph leave it off; only
+  consumers that want the full reference picture (the editor overview graph)
+  enable it.
 
 Handlers are optional (Babel-style): the walker computes and emits only what the
 visitor subscribes to, and skips the work behind absent handlers. Each consumer

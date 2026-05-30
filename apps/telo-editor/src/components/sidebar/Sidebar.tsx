@@ -1,13 +1,6 @@
-import type {
-  ModuleKind,
-  ModuleViewData,
-  ParsedManifest,
-  RegistryServer,
-  Workspace,
-} from "../../model";
+import type { ModuleKind, ParsedManifest, RegistryServer, Workspace } from "../../model";
 import { DefinitionsSection } from "./DefinitionsSection";
 import { ImportsSection } from "./ImportsSection";
-import { ResourcesSection } from "./ResourcesSection";
 import { SectionDivider } from "./primitives";
 import { WorkspaceTree } from "./WorkspaceTree";
 
@@ -16,11 +9,8 @@ interface SidebarProps {
   activeManifest: ParsedManifest | null;
   activeModulePath: string | null;
   selectedResource: { kind: string; name: string } | null;
-  graphContext: { kind: string; name: string } | null;
   registryServers: RegistryServer[];
-  viewData: ModuleViewData | null;
   onSelectResource: (kind: string, name: string) => void;
-  onNavigateResource: (kind: string, name: string) => void;
   onOpenModule: (filePath: string) => void;
   onCreateModule: (kind: ModuleKind, relativePath: string, name: string) => Promise<void>;
   onDeleteModule: (filePath: string) => Promise<void>;
@@ -28,7 +18,6 @@ interface SidebarProps {
   onAddImport: (source: string, alias: string) => Promise<void>;
   onRemoveImport: (name: string) => void;
   onUpgradeImport: (name: string, newSource: string) => Promise<void>;
-  onCreateResource: () => void;
 }
 
 export function Sidebar({
@@ -36,11 +25,8 @@ export function Sidebar({
   activeManifest,
   activeModulePath,
   selectedResource,
-  graphContext,
   registryServers,
-  viewData,
   onSelectResource,
-  onNavigateResource,
   onOpenModule,
   onCreateModule,
   onDeleteModule,
@@ -48,7 +34,6 @@ export function Sidebar({
   onAddImport,
   onRemoveImport,
   onUpgradeImport,
-  onCreateResource,
 }: SidebarProps) {
   return (
     <div className="flex h-full w-56 flex-col overflow-y-auto border-r border-zinc-200 bg-white text-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -71,15 +56,6 @@ export function Sidebar({
         onAddImport={onAddImport}
         onRemoveImport={onRemoveImport}
         onUpgradeImport={onUpgradeImport}
-      />
-      <SectionDivider />
-      <ResourcesSection
-        activeManifest={activeManifest}
-        viewData={viewData}
-        selectedResource={selectedResource}
-        graphContext={graphContext}
-        onNavigateResource={onNavigateResource}
-        onCreateResource={onCreateResource}
       />
       <SectionDivider />
       <DefinitionsSection

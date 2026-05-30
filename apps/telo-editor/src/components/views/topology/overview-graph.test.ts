@@ -43,8 +43,8 @@ describe("buildOverviewGraph", () => {
 
     const graph = buildOverviewGraph(resources, registry());
 
-    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next" }]);
-    expect(graph.chips).toEqual([{ on: "w", target: "c", label: "uses" }]);
+    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
+    expect(graph.chips).toEqual([{ on: "w", target: "c", label: "uses", fromPath: "uses" }]);
   });
 
   it("resolves a bare-name ref to its declared kind's capability", async () => {
@@ -56,7 +56,27 @@ describe("buildOverviewGraph", () => {
 
     const graph = buildOverviewGraph(resources, registry());
 
-    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next" }]);
+    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
     expect(graph.chips).toEqual([]);
+  });
+
+  it("discovers a ref nested in a non-schema field (Run.Sequence-style invoke)", async () => {
+    const { buildOverviewGraph } = await import("./overview-graph");
+    const resources: ResourceManifest[] = [
+      {
+        kind: "demo.Worker",
+        metadata: { name: "w" },
+        // `steps` is not a field-map ref slot — stands in for a ref behind a
+        // `$ref` the field map doesn't descend.
+        steps: [{ name: "s", invoke: { kind: "demo.Worker", name: "w2" } }],
+      },
+      { kind: "demo.Worker", metadata: { name: "w2" } },
+    ] as unknown as ResourceManifest[];
+
+    const graph = buildOverviewGraph(resources, registry());
+
+    expect(graph.edges).toEqual([
+      { from: "w", to: "w2", label: "invoke", fromPath: "steps[0].invoke", nested: true },
+    ]);
   });
 });

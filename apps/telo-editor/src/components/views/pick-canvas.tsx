@@ -1,6 +1,9 @@
+import { MODULE_OVERVIEW_TOPOLOGY } from "../../application-adapter";
 import type { ParsedResource, Selection } from "../../model";
 import type { ResolvedResourceOption } from "../resource-schema-form/types";
 import { ResourceCanvas } from "./resource-canvas/ResourceCanvas";
+import { ApplicationTopologyCanvas } from "./topology/ApplicationTopologyCanvas";
+import type { AppCanvasModel } from "./topology/application-canvas-model";
 import { RouterTopologyCanvas } from "./topology/RouterTopologyCanvas";
 import { SequenceTopologyCanvas } from "./topology/SequenceTopologyCanvas";
 
@@ -13,6 +16,13 @@ interface PickCanvasProps {
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
   onBackgroundClick: () => void;
+  /** Module-wide overview model — supplied by `TopologyView` only when
+   *  `topology === "Application"`. Other canvases ignore it. */
+  applicationModel?: AppCanvasModel | null;
+  /** Rewrites the Application's `targets` (drag-to-wire). Read-only when absent. */
+  onUpdateApplicationTargets?: (targets: string[]) => void;
+  /** Opens the create-resource flow (Application canvas action). */
+  onCreateResource?: () => void;
   /** Forwarded to `ResourceCanvas` only. Specialized canvases (Router,
    *  Sequence) render their own headers. */
   hideHeader?: boolean;
@@ -30,8 +40,30 @@ export function PickCanvas({
   onSelectResource,
   onSelect,
   onBackgroundClick,
+  applicationModel,
+  onUpdateApplicationTargets,
+  onCreateResource,
   hideHeader,
 }: PickCanvasProps) {
+  if (topology === MODULE_OVERVIEW_TOPOLOGY) {
+    if (!applicationModel) {
+      return (
+        <div className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900">
+          <span className="text-sm text-zinc-400 dark:text-zinc-600">Analyzing module…</span>
+        </div>
+      );
+    }
+    return (
+      <ApplicationTopologyCanvas
+        model={applicationModel}
+        onSelectResource={onSelectResource}
+        onTargetsChange={onUpdateApplicationTargets}
+        onCreateResource={onCreateResource}
+        onBackgroundClick={onBackgroundClick}
+      />
+    );
+  }
+
   if (topology === "Router") {
     return (
       <RouterTopologyCanvas
