@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
-import { isRefEntry, isScopeEntry, isSchemaFromEntry, isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
+import { visitManifest } from "./manifest-visitor.js";
+import { isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
@@ -155,66 +156,20 @@ export function validateReferences(
   const byName = new Map<string, ResourceManifest>();
   for (const [name, list] of byNameAll) byName.set(name, list[0]);
 
-  for (const r of resources) {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
-
-    // Use the expanded map so refs nested behind x-telo-schema-from get the
-    // same kind-check / unresolved-name validation as locally-declared refs.
-    // Falls back to the base map when aliasesByModule isn't supplied.
-    const fieldMap = aliasesByModule
-      ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
-      : registry.getFieldMapForKind(r.kind, aliases);
-    if (!fieldMap) continue;
-
-    const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
-    const resourceData = { kind: r.kind, name: r.metadata.name as string };
-    const filePath = (r.metadata as { source?: string } | undefined)?.source;
-
-    // Collect scope visibility prefixes (JSON Pointer → dot prefix) and their manifests.
-    // scope field path → flat array of ResourceManifest declared in that scope.
-    const scopeManifestsByPointer = new Map<string, ResourceManifest[]>();
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isScopeEntry(entry)) continue;
-      const raw = resolveFieldValues(r, fieldPath)
-        .flatMap((v) => (Array.isArray(v) ? v : [v]))
-        .filter((v): v is ResourceManifest => !!v && typeof v === "object");
-      const pointers = Array.isArray(entry.scope) ? entry.scope : [entry.scope];
-      for (const pointer of pointers) {
-        scopeManifestsByPointer.set(pointer, raw);
-      }
-    }
-
-    const scopePrefixes = Array.from(scopeManifestsByPointer.keys()).map((p) =>
-      p.replace(/^\//, "").replace(/\//g, "."),
-    );
-
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isRefEntry(entry)) continue;
-
-      const inScope = scopePrefixes.some(
-        (prefix) =>
-          fieldPath === prefix ||
-          fieldPath.startsWith(prefix + ".") ||
-          fieldPath.startsWith(prefix + "["),
-      );
-
-      // Scope manifests visible to this ref path.
-      const visibleScopeManifests: ResourceManifest[] = [];
-      if (inScope) {
-        for (const [pointer, manifests] of scopeManifestsByPointer) {
-          const prefix = pointer.replace(/^\//, "").replace(/\//g, ".");
-          if (
-            fieldPath === prefix ||
-            fieldPath.startsWith(prefix + ".") ||
-            fieldPath.startsWith(prefix + "[")
-          ) {
-            visibleScopeManifests.push(...manifests);
-          }
-        }
-      }
-
-      for (const { value: val, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
-        if (!val) continue;
+  // Phase 3 — per-ref validation. The walker supplies each ref site already
+  // resolved against the schema-from-expanded field map, with its source
+  // enclosure (`inScope`) and the scope manifests visible to it — so this
+  // handler only validates, it does not re-walk.
+  visitManifest(
+    resources,
+    registry,
+    {
+      onRef: (e) => {
+        const r = e.source;
+        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+        const filePath = (r.metadata as { source?: string } | undefined)?.source;
+        const { value: val, concretePath, entry, visibleScopeManifests } = e;
 
         // `!ref <name>` sentinel — bare resource name marked at parse time as a
         // reference. Look it up against the slot's x-telo-ref constraint exactly
@@ -233,7 +188,7 @@ export function validateReferences(
               message: `${resourceLabel}: reference at '${concretePath}' → resource '${refName}' not found`,
               data: { resource: resourceData, filePath, path: concretePath },
             });
-            continue;
+            return;
           }
           const kindErrors = checkKind(target.kind as string, entry, registry, aliases);
           if (kindErrors.length > 0) {
@@ -245,7 +200,7 @@ export function validateReferences(
               data: { resource: resourceData, filePath, path: concretePath },
             });
           }
-          continue;
+          return;
         }
 
         // Name-only reference (plain string) — look up by name to validate.
@@ -263,7 +218,7 @@ export function validateReferences(
             // Multi-dot prefixes like "Alias.Kind.Name" are local resources with qualified
             // kinds — those must be validated.
             if (refKindPrefix && !refKindPrefix.includes(".") && aliases.hasAlias(refKindPrefix)) {
-              continue;
+              return;
             }
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
@@ -272,7 +227,7 @@ export function validateReferences(
               message: `${resourceLabel}: reference at '${concretePath}' → resource '${val}' not found`,
               data: { resource: resourceData, filePath, path: concretePath },
             });
-            continue;
+            return;
           }
           const kindErrors = checkKind(target.kind as string, entry, registry, aliases);
           if (kindErrors.length > 0) {
@@ -284,14 +239,14 @@ export function validateReferences(
               data: { resource: resourceData, filePath, path: concretePath },
             });
           }
-          continue;
+          return;
         }
 
-        if (typeof val !== "object") continue;
+        if (typeof val !== "object") return;
         const refVal = val as Record<string, unknown>;
 
         // Skip inline resources — Phase 2 normalization hasn't run yet.
-        if (isInlineResource(refVal)) continue;
+        if (isInlineResource(refVal)) return;
 
         // 1. Structural check
         if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {
@@ -302,7 +257,7 @@ export function validateReferences(
             message: `${resourceLabel}: reference at '${concretePath}' must have string 'kind' and 'name' fields`,
             data: { resource: resourceData, filePath, path: concretePath },
           });
-          continue;
+          return;
         }
 
         // 2. Kind check
@@ -330,177 +285,179 @@ export function validateReferences(
             data: { resource: resourceData, filePath, path: concretePath },
           });
         }
-      }
-    }
-  }
+      },
+    },
+    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: true },
+  );
 
   // Phase 3b — x-telo-schema-from validation.
   // For each field with a schemaFrom path expression, resolve the anchor ref to get the
   // concrete kind, navigate the JSON Pointer into that kind's definition schema, and
-  // validate the field value against the resulting sub-schema.
-  for (const r of resources) {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+  // validate the field value against the resulting sub-schema. Driven off the base map
+  // (un-expanded) so each schema-from slot is seen as its own site.
+  visitManifest(
+    resources,
+    registry,
+    {
+      onSchemaFrom: (e) => {
+        const r = e.source;
+        const fieldPath = e.fieldPath;
+        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+        const filePath = (r.metadata as { source?: string } | undefined)?.source;
 
-    const fieldMap = registry.getFieldMapForKind(r.kind, aliases);
-    if (!fieldMap) continue;
-
-    const resourceLabel = `${r.kind}/${r.metadata.name as string}`;
-    const resourceData = { kind: r.kind, name: r.metadata.name as string };
-    const filePath = (r.metadata as { source?: string } | undefined)?.source;
-
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isSchemaFromEntry(entry)) continue;
-
-      const { schemaFrom } = entry;
-      const isAbsolute = schemaFrom.startsWith("/");
-      const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
-      const slashIdx = expr.indexOf("/");
-      if (slashIdx === -1) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "INVALID_SCHEMA_FROM",
-          source: SOURCE,
-          message: `${resourceLabel}: x-telo-schema-from "${schemaFrom}" must contain at least one "/" to separate anchor from JSON Pointer`,
-          data: { resource: resourceData, filePath, path: fieldPath },
-        });
-        continue;
-      }
-
-      const anchorName = expr.slice(0, slashIdx);
-      const jsonPointer = "/" + expr.slice(slashIdx + 1);
-
-      // Aliased absolute kind path — first segment carries a dot, e.g.
-      // "HttpDispatch.Outcomes/$defs/Returns". Resolves the alias through the
-      // *kind owner's* scope (not the consumer's), navigates the JSON Pointer
-      // into the resolved definition's schema, and validates each field value.
-      //
-      // Relative anchors are property names that cannot contain a dot
-      // (CEL-style identifiers), so a dot in anchorName is unambiguous.
-      if (!isAbsolute && anchorName.includes(".")) {
-        const resolvedResourceKind = aliases.resolveKind(r.kind) ?? r.kind;
-        const resourceDef =
-          registry.resolve(r.kind) ?? registry.resolve(resolvedResourceKind);
-        const owningModule = (resourceDef?.metadata as { module?: string } | undefined)?.module;
-        const ownerScope =
-          (owningModule ? aliasesByModule?.get(owningModule) : undefined) ?? aliases;
-
-        const targetKind = ownerScope.resolveKind(anchorName);
-        if (!targetKind) {
+        const { schemaFrom } = e.entry;
+        const isAbsolute = schemaFrom.startsWith("/");
+        const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
+        const slashIdx = expr.indexOf("/");
+        if (slashIdx === -1) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_FROM_MISSING_PATH",
+            code: "INVALID_SCHEMA_FROM",
             source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias '${anchorName}'`,
+            message: `${resourceLabel}: x-telo-schema-from "${schemaFrom}" must contain at least one "/" to separate anchor from JSON Pointer`,
             data: { resource: resourceData, filePath, path: fieldPath },
           });
-          continue;
+          return;
         }
 
-        const targetDef = registry.resolve(targetKind);
-        if (!targetDef?.schema) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_FROM_MISSING_PATH",
-            source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema`,
-            data: { resource: resourceData, filePath, path: fieldPath },
-          });
-          continue;
+        const anchorName = expr.slice(0, slashIdx);
+        const jsonPointer = "/" + expr.slice(slashIdx + 1);
+
+        // Aliased absolute kind path — first segment carries a dot, e.g.
+        // "HttpDispatch.Outcomes/$defs/Returns". Resolves the alias through the
+        // *kind owner's* scope (not the consumer's), navigates the JSON Pointer
+        // into the resolved definition's schema, and validates each field value.
+        //
+        // Relative anchors are property names that cannot contain a dot
+        // (CEL-style identifiers), so a dot in anchorName is unambiguous.
+        if (!isAbsolute && anchorName.includes(".")) {
+          const resolvedResourceKind = aliases.resolveKind(r.kind) ?? r.kind;
+          const resourceDef =
+            registry.resolve(r.kind) ?? registry.resolve(resolvedResourceKind);
+          const owningModule = (resourceDef?.metadata as { module?: string } | undefined)?.module;
+          const ownerScope =
+            (owningModule ? aliasesByModule?.get(owningModule) : undefined) ?? aliases;
+
+          const targetKind = ownerScope.resolveKind(anchorName);
+          if (!targetKind) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_FROM_MISSING_PATH",
+              source: SOURCE,
+              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias '${anchorName}'`,
+              data: { resource: resourceData, filePath, path: fieldPath },
+            });
+            return;
+          }
+
+          const targetDef = registry.resolve(targetKind);
+          if (!targetDef?.schema) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_FROM_MISSING_PATH",
+              source: SOURCE,
+              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema`,
+              data: { resource: resourceData, filePath, path: fieldPath },
+            });
+            return;
+          }
+
+          const subSchema = navigateJsonPointer(targetDef.schema, jsonPointer);
+          if (subSchema === undefined) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_FROM_MISSING_PATH",
+              source: SOURCE,
+              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema path '${jsonPointer}'`,
+              data: { resource: resourceData, filePath, path: fieldPath },
+            });
+            return;
+          }
+
+          for (const { value: fieldValue, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
+            if (fieldValue == null) continue;
+            const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
+            for (const issue of issues) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "DEPENDENT_SCHEMA_MISMATCH",
+                source: SOURCE,
+                message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
+                data: { resource: resourceData, filePath, path: concretePath },
+              });
+            }
+          }
+          return;
         }
 
-        const subSchema = navigateJsonPointer(targetDef.schema, jsonPointer);
-        if (subSchema === undefined) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_FROM_MISSING_PATH",
-            source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema path '${jsonPointer}'`,
-            data: { resource: resourceData, filePath, path: fieldPath },
-          });
-          continue;
+        // Derive the anchor path in the resource config.
+        let anchorPath: string;
+        if (isAbsolute) {
+          anchorPath = anchorName;
+        } else {
+          // Relative: replace the last dot-segment of fieldPath with anchorName.
+          // e.g. "nodes[].options" → "nodes[].backend"
+          const lastDot = fieldPath.lastIndexOf(".");
+          anchorPath = lastDot === -1 ? anchorName : fieldPath.slice(0, lastDot + 1) + anchorName;
         }
 
-        for (const { value: fieldValue, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
+        const anchorValues = resolveFieldValues(r, anchorPath);
+        if (anchorValues.length === 0) return; // anchor field not set — nothing to validate
+
+        const fieldEntries = resolveFieldEntries(r, fieldPath);
+
+        for (let i = 0; i < fieldEntries.length; i++) {
+          const { value: fieldValue, path: concretePath } = fieldEntries[i];
           if (fieldValue == null) continue;
+
+          // For absolute paths, the single anchor applies to all field values.
+          const anchorVal = isAbsolute ? anchorValues[0] : anchorValues[i];
+          if (!anchorVal || typeof anchorVal !== "object") continue;
+
+          const refVal = anchorVal as Record<string, unknown>;
+          if (typeof refVal.kind !== "string") continue;
+
+          const refResolvedKind = aliases.resolveKind(refVal.kind) ?? refVal.kind;
+          const refDef = registry.resolve(refVal.kind) ?? registry.resolve(refResolvedKind);
+          if (!refDef?.schema) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_FROM_MISSING_PATH",
+              source: SOURCE,
+              message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema`,
+              data: { resource: resourceData, filePath, path: concretePath },
+            });
+            continue;
+          }
+
+          const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
+          if (subSchema === undefined) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_FROM_MISSING_PATH",
+              source: SOURCE,
+              message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
+              data: { resource: resourceData, filePath, path: concretePath },
+            });
+            continue;
+          }
+
           const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
           for (const issue of issues) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "DEPENDENT_SCHEMA_MISMATCH",
               source: SOURCE,
-              message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
+              message: `${resourceLabel}: '${concretePath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
               data: { resource: resourceData, filePath, path: concretePath },
             });
           }
         }
-        continue;
-      }
-
-      // Derive the anchor path in the resource config.
-      let anchorPath: string;
-      if (isAbsolute) {
-        anchorPath = anchorName;
-      } else {
-        // Relative: replace the last dot-segment of fieldPath with anchorName.
-        // e.g. "nodes[].options" → "nodes[].backend"
-        const lastDot = fieldPath.lastIndexOf(".");
-        anchorPath = lastDot === -1 ? anchorName : fieldPath.slice(0, lastDot + 1) + anchorName;
-      }
-
-      const anchorValues = resolveFieldValues(r, anchorPath);
-      if (anchorValues.length === 0) continue; // anchor field not set — nothing to validate
-
-      const fieldEntries = resolveFieldEntries(r, fieldPath);
-
-      for (let i = 0; i < fieldEntries.length; i++) {
-        const { value: fieldValue, path: concretePath } = fieldEntries[i];
-        if (fieldValue == null) continue;
-
-        // For absolute paths, the single anchor applies to all field values.
-        const anchorVal = isAbsolute ? anchorValues[0] : anchorValues[i];
-        if (!anchorVal || typeof anchorVal !== "object") continue;
-
-        const refVal = anchorVal as Record<string, unknown>;
-        if (typeof refVal.kind !== "string") continue;
-
-        const refResolvedKind = aliases.resolveKind(refVal.kind) ?? refVal.kind;
-        const refDef = registry.resolve(refVal.kind) ?? registry.resolve(refResolvedKind);
-        if (!refDef?.schema) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_FROM_MISSING_PATH",
-            source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          });
-          continue;
-        }
-
-        const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
-        if (subSchema === undefined) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_FROM_MISSING_PATH",
-            source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          });
-          continue;
-        }
-
-        const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
-        for (const issue of issues) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "DEPENDENT_SCHEMA_MISMATCH",
-            source: SOURCE,
-            message: `${resourceLabel}: '${concretePath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          });
-        }
-      }
-    }
-  }
+      },
+    },
+    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: false },
+  );
 
   return diagnostics;
 }

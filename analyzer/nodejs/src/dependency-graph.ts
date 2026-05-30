@@ -2,7 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { isRefEntry, isScopeEntry, resolveFieldValues } from "./reference-field-map.js";
+import { visitManifest } from "./manifest-visitor.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 export interface ResourceNode {
@@ -57,64 +57,49 @@ export function buildDependencyGraph(
   const deps = new Map<string, Set<string>>();
   for (const key of nodes.keys()) deps.set(key, new Set());
 
-  for (const r of resources) {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+  // Names of resources declared inside the *current* resource's scope fields —
+  // initialized on-demand at runtime, not at boot, so edges pointing to them
+  // are excluded. Scoping is per-source-resource: an edge A → B is dropped only
+  // when B is declared inside A's own scope (the visitor's ScopeBoundary fires
+  // before that resource's RefSites, so this is set before any edge is added).
+  let scopedNames = new Set<string>();
 
-    const sourceKey = nodeKey(r.kind, r.metadata.name as string);
-    // Use the expanded map so refs nested behind x-telo-schema-from contribute
-    // edges to the DAG. Without these, a parent (e.g. Http.Server) can init
-    // before its extracted encoder and Phase 5 injection fires against a
-    // not-yet-created dependency.
-    const fieldMap =
-      aliases && aliasesByModule
-        ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
-        : registry.getFieldMapForKind(r.kind, aliases);
-    if (!fieldMap) continue;
+  // Expanded map so refs nested behind x-telo-schema-from contribute edges to
+  // the DAG. Without these, a parent (e.g. Http.Server) can init before its
+  // extracted encoder and Phase 5 injection fires against a not-yet-created
+  // dependency.
+  visitManifest(
+    resources,
+    registry,
+    {
+      onScope: (e) => {
+        scopedNames = e.enclosedNames;
+      },
+      onRef: (e) => {
+        const sourceKey = nodeKey(e.source.kind, e.source.metadata!.name as string);
+        const val = e.value;
 
-    // Collect names of resources declared inside scope fields — these are initialized
-    // on-demand at runtime, not at boot, so edges pointing to them are excluded from the DAG.
-    const scopedNames = new Set<string>();
-    for (const [scopeFieldPath, entry] of fieldMap) {
-      if (!isScopeEntry(entry)) continue;
-      const scopeVal = (r as Record<string, unknown>)[scopeFieldPath];
-      if (!Array.isArray(scopeVal)) continue;
-      for (const item of scopeVal) {
-        const name = (item as any)?.metadata?.name;
-        if (typeof name === "string") scopedNames.add(name);
-      }
-    }
-
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isRefEntry(entry)) continue;
-
-      for (const val of resolveFieldValues(r, fieldPath)) {
-        if (!val) continue;
-
-        // `!ref <name>` sentinel — look up the target's kind from the
-        // name (resources are unique by name) so the edge carries the
-        // concrete kind, matching the {kind, name} edge shape below.
+        // `!ref <name>` sentinel — look up the target's kind from the name
+        // (resources are unique by name) so the edge carries the concrete kind,
+        // matching the {kind, name} edge shape below.
         if (isRefSentinel(val)) {
           const refName = val.source;
-          if (scopedNames.has(refName)) continue;
+          if (scopedNames.has(refName)) return;
           const node = nodesByName.get(refName);
-          if (node) {
-            deps.get(sourceKey)!.add(nodeKey(node.kind, node.name));
-          }
-          continue;
+          if (node) deps.get(sourceKey)!.add(nodeKey(node.kind, node.name));
+          return;
         }
 
-        if (typeof val !== "object") continue;
+        if (typeof val !== "object") return;
         const ref = val as Record<string, unknown>;
-        if (!ref.kind || !ref.name) continue;
-        // Edges to scoped resources are runtime deps, not boot-time deps — exclude from DAG
-        if (scopedNames.has(ref.name as string)) continue;
+        if (!ref.kind || !ref.name) return;
+        if (scopedNames.has(ref.name as string)) return;
         const targetKey = nodeKey(ref.kind as string, ref.name as string);
-        if (nodes.has(targetKey)) {
-          deps.get(sourceKey)!.add(targetKey);
-        }
-      }
-    }
-  }
+        if (nodes.has(targetKey)) deps.get(sourceKey)!.add(targetKey);
+      },
+    },
+    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: true },
+  );
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])

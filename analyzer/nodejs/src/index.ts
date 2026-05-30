@@ -9,6 +9,17 @@ export type {
     ParseError,
 } from "./loaded-types.js";
 export { flattenForAnalyzer, flattenLoadedModule } from "./flatten-for-analyzer.js";
+export { visitManifest } from "./manifest-visitor.js";
+export type {
+    CelSiteEvent,
+    ManifestVisitor,
+    RefSiteEvent,
+    ResourceEnterEvent,
+    ResourceExitEvent,
+    ScopeBoundaryEvent,
+    SchemaFromSiteEvent,
+    VisitOptions,
+} from "./manifest-visitor.js";
 export { Loader } from "./manifest-loader.js";
 export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
