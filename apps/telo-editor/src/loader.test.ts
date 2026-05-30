@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createResourceViaAst,
   rebuildManifestFromDocuments,
+  removeResourceViaAst,
   saveModuleFromDocuments,
   setApplicationTargets,
   setResourceFields,
@@ -168,6 +169,40 @@ describe("saveModuleFromDocuments", () => {
 
     await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", adapter);
     expect(adapter.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("writes an emptied partial after its last resource is deleted", async () => {
+    const ownerText = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "include:",
+      "  - ./routes.yaml",
+      "",
+    ].join("\n");
+    const partialText = ["kind: Http.Route", "metadata:", "  name: home", "path: /", ""].join("\n");
+    let workspace = makeWorkspace(
+      [
+        { path: "/ws/app/telo.yaml", text: ownerText },
+        { path: "/ws/app/routes.yaml", text: partialText },
+      ],
+      [
+        makeManifest("/ws/app/telo.yaml", [
+          { kind: "Http.Route", name: "home", sourceFile: "/ws/app/routes.yaml" },
+        ]),
+      ],
+    );
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+
+    // Deleting the partial's only resource drops it from manifest.resources, so
+    // the file is no longer discoverable via sourceFile — it must still persist.
+    workspace = removeResourceViaAst(workspace, "/ws/app/telo.yaml", "Http.Route", "home");
+
+    const adapter = stubAdapter();
+    await saveModuleFromDocuments(workspace, "/ws/app/telo.yaml", adapter);
+
+    const written = adapter.writeFile.mock.calls.map((c) => c[0]);
+    expect(written).toContain("/ws/app/routes.yaml");
   });
 });
 
@@ -518,6 +553,57 @@ describe("rebuildManifestFromDocuments", () => {
       .get("/ws/app/telo.yaml")!
       .get("Http.Server::main");
     expect(indexEntry).toBeDefined();
+  });
+
+  it("removeResourceViaAst drops the resource from the re-derived manifest", () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "---",
+      "kind: Http.Server",
+      "metadata:",
+      "  name: main",
+      "port: 8080",
+      "---",
+      "kind: Http.Server",
+      "metadata:",
+      "  name: other",
+      "port: 9090",
+      "",
+    ].join("\n");
+    let workspace = makeWorkspace(
+      [{ path: "/ws/app/telo.yaml", text }],
+      [
+        makeManifest("/ws/app/telo.yaml", [
+          { kind: "Http.Server", name: "main", fields: { port: 8080 } },
+          { kind: "Http.Server", name: "other", fields: { port: 9090 } },
+        ]),
+      ],
+    );
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+
+    workspace = removeResourceViaAst(workspace, "/ws/app/telo.yaml", "Http.Server", "main");
+
+    const manifest = workspace.modules.get("/ws/app/telo.yaml")!;
+    expect(manifest.resources.find((r) => r.name === "main")).toBeUndefined();
+    // Siblings survive and the index drops only the removed resource.
+    expect(manifest.resources.find((r) => r.name === "other")).toBeDefined();
+    const index = workspace.resourceDocIndex.get("/ws/app/telo.yaml")!;
+    expect(index.get("Http.Server::main")).toBeUndefined();
+    expect(index.get("Http.Server::other")).toBeDefined();
+  });
+
+  it("removeResourceViaAst is a no-op for an unknown resource", () => {
+    const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
+    let workspace = makeWorkspace(
+      [{ path: "/ws/app/telo.yaml", text }],
+      [makeManifest("/ws/app/telo.yaml")],
+    );
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+    expect(removeResourceViaAst(workspace, "/ws/app/telo.yaml", "Http.Server", "ghost")).toBe(
+      workspace,
+    );
   });
 });
 

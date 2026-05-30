@@ -21,13 +21,14 @@ import {
   rebuildManifestFromDocuments,
   reconcileImports,
   removeImportViaAst,
+  removeResourceViaAst,
   reopenWorkspaceAt,
   setApplicationTargets,
   setResourceFields,
   upgradeImportViaAst,
 } from "../loader";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
-import type { ModuleDocument, ParsedManifest } from "../model";
+import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
   ModuleKind,
@@ -68,6 +69,7 @@ import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
 import { TopBar } from "./TopBar";
 import { ViewContainer } from "./views/ViewContainer";
+import { refTargetName } from "./views/topology/overview-graph";
 import type { Range } from "@telorun/analyzer";
 
 const INITIAL_STATE: EditorState = {
@@ -84,6 +86,7 @@ const INITIAL_STATE: EditorState = {
   },
   sourceRevealRequest: null,
   deploymentsByApp: {},
+  viewportByModule: {},
 };
 
 /** Shallow, order-sensitive equality for `include:` lists. Used to detect
@@ -633,6 +636,14 @@ export function Editor() {
     setState((s) => ({ ...s, selectedResource: null, panelStack: [] }));
   }
 
+  function handleCanvasViewportChange(viewport: CanvasViewport) {
+    setState((s) =>
+      s.activeModulePath
+        ? { ...s, viewportByModule: { ...s.viewportByModule, [s.activeModulePath]: viewport } }
+        : s,
+    );
+  }
+
   function handleNavigateResource(kind: string, name: string) {
     runContext.closeRunView();
     setSelection(null);
@@ -726,6 +737,41 @@ export function Editor() {
     );
     const persisted = await persistModule(updated, state.activeModulePath);
     setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  async function handleDeleteResource(kind: string, name: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    let updated = removeResourceViaAst(state.workspace, state.activeModulePath, kind, name);
+    if (updated === state.workspace) return;
+
+    // This canvas owns the Application's `targets`, so a delete must also prune
+    // the now-dangling target ref — otherwise the manifest keeps `!ref <deleted>`
+    // and the canvas silently hides the broken edge.
+    const manifest = updated.modules.get(state.activeModulePath);
+    if (manifest?.kind === "Application") {
+      const names = (manifest.targets ?? [])
+        .map(refTargetName)
+        .filter((t): t is string => !!t);
+      if (names.includes(name)) {
+        updated = setApplicationTargets(
+          updated,
+          state.activeModulePath,
+          names.filter((t) => t !== name),
+        );
+      }
+    }
+
+    const persisted = await persistModule(updated, state.activeModulePath);
+    const matches = (r: { kind: string; name: string } | null) =>
+      r?.kind === kind && r?.name === name;
+    if (matches(selection?.resource ?? null)) setSelection(null);
+    setState((s) => ({
+      ...s,
+      workspace: persisted,
+      selectedResource: matches(s.selectedResource) ? null : s.selectedResource,
+      panelStack: matches(s.selectedResource) ? [] : s.panelStack,
+      graphContext: matches(s.graphContext) ? null : s.graphContext,
+    }));
   }
 
   async function handleUpdateApplicationTargets(targets: string[]) {
@@ -1006,6 +1052,7 @@ export function Editor() {
                   onSelectResource: handleSelectResource,
                   onNavigateResource: handleNavigateResource,
                   onUpdateResource: handleUpdateResource,
+                  onDeleteResource: handleDeleteResource,
                   onUpdateApplicationTargets: handleUpdateApplicationTargets,
                   onCreateResource: () => setCreateResourceOpen(true),
                   onSelect: handleSelect,
@@ -1020,6 +1067,10 @@ export function Editor() {
                     onSetPorts: handleSetDeploymentPorts,
                   },
                   revealRequest: state.sourceRevealRequest,
+                  canvasViewport: state.activeModulePath
+                    ? (state.viewportByModule[state.activeModulePath] ?? null)
+                    : null,
+                  onCanvasViewportChange: handleCanvasViewportChange,
                 }}
               />
             ) : (

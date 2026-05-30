@@ -31,9 +31,13 @@ function registry(): AnalysisRegistry {
   return reg;
 }
 
-function kind(fullKind: string, capability: string): AvailableKind {
+function kind(
+  fullKind: string,
+  capability: string,
+  schema: Record<string, unknown> = {},
+): AvailableKind {
   const [alias, kindName] = fullKind.split(".");
-  return { fullKind, alias, kindName, capability, schema: {} };
+  return { fullKind, alias, kindName, capability, schema };
 }
 
 function appManifest(): ApplicationManifest {
@@ -120,6 +124,175 @@ describe("buildApplicationCanvasModel", () => {
     ]);
     expect(model.targets).toEqual(["w"]);
     expect(model.edges).toContainEqual({ from: "app", to: "w", label: "target" });
+  });
+
+  it("renders sequence steps as node sub-rows and anchors edges per step", () => {
+    const SEQ_SCHEMA: Record<string, unknown> = {
+      type: "object",
+      properties: {
+        steps: {
+          "x-telo-topology-role": "steps",
+          type: "array",
+          items: {
+            oneOf: [
+              {
+                title: "Invoke",
+                type: "object",
+                required: ["name", "invoke"],
+                properties: {
+                  name: { type: "string" },
+                  invoke: { "x-telo-topology-role": "invoke" },
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const reg = new AnalysisRegistry();
+    reg.registerDefinition(definition("Seq", "Telo.Runnable"));
+    reg.registerDefinition(definition("Act", "Telo.Invocable"));
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["seq"],
+      resources: [
+        moduleRootResource(root),
+        {
+          kind: "demo.Seq",
+          name: "seq",
+          fields: {
+            steps: [
+              { name: "first", invoke: { kind: "demo.Act", name: "a" } },
+              { name: "second", invoke: { kind: "demo.Act", name: "b" } },
+            ],
+          },
+        },
+        { kind: "demo.Act", name: "a", fields: {} },
+        { kind: "demo.Act", name: "b", fields: {} },
+      ],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Seq", kind("demo.Seq", "Telo.Runnable", SEQ_SCHEMA)],
+      ["demo.Act", kind("demo.Act", "Telo.Invocable")],
+    ]);
+
+    const model = buildApplicationCanvasModel(
+      { manifest, kinds, sourceFiles: [] },
+      reg,
+      ["seq"],
+    );
+
+    const seq = model.nodes.find((n) => n.name === "seq");
+    expect(seq?.steps).toEqual([
+      { path: "steps[0]", name: "first", detail: "a", depth: 0 },
+      { path: "steps[1]", name: "second", detail: "b", depth: 0 },
+    ]);
+
+    // Each invoke edge anchors to the step it came from, not the outer handle.
+    const refEdges = model.edges.filter((e) => e.label === "invoke");
+    expect(refEdges).toEqual([
+      expect.objectContaining({ from: "seq", to: "a", fromStepPath: "steps[0]" }),
+      expect.objectContaining({ from: "seq", to: "b", fromStepPath: "steps[1]" }),
+    ]);
+  });
+
+  it("descends into loop bodies and anchors edges to the nested invoke step", () => {
+    // while/do variant whose body holds the real invokes — mirrors chat-console.
+    const SEQ_SCHEMA: Record<string, unknown> = {
+      type: "object",
+      $defs: {
+        step: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          oneOf: [
+            {
+              title: "invoke",
+              required: ["invoke"],
+              properties: { invoke: { "x-telo-topology-role": "invoke" } },
+            },
+            {
+              title: "while/do",
+              required: ["while", "do"],
+              properties: {
+                while: { "x-telo-topology-role": "predicate", type: "boolean" },
+                do: {
+                  "x-telo-topology-role": "branch",
+                  type: "array",
+                  items: { $ref: "#/$defs/step" },
+                },
+              },
+            },
+          ],
+        },
+      },
+      properties: {
+        steps: {
+          "x-telo-topology-role": "steps",
+          type: "array",
+          items: { $ref: "#/$defs/step" },
+        },
+      },
+    };
+
+    const reg = new AnalysisRegistry();
+    reg.registerDefinition(definition("Seq", "Telo.Runnable"));
+    reg.registerDefinition(definition("Act", "Telo.Invocable"));
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["seq"],
+      resources: [
+        moduleRootResource(root),
+        {
+          kind: "demo.Seq",
+          name: "seq",
+          fields: {
+            steps: [
+              {
+                name: "Loop",
+                while: "true",
+                do: [
+                  { name: "Stream", invoke: { kind: "demo.Act", name: "a" } },
+                  { name: "Print", invoke: { kind: "demo.Act", name: "b" } },
+                ],
+              },
+            ],
+          },
+        },
+        { kind: "demo.Act", name: "a", fields: {} },
+        { kind: "demo.Act", name: "b", fields: {} },
+      ],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Seq", kind("demo.Seq", "Telo.Runnable", SEQ_SCHEMA)],
+      ["demo.Act", kind("demo.Act", "Telo.Invocable")],
+    ]);
+
+    const model = buildApplicationCanvasModel(
+      { manifest, kinds, sourceFiles: [] },
+      reg,
+      ["seq"],
+    );
+
+    // The loop step plus its two nested invokes, indented a level deeper.
+    expect(model.nodes.find((n) => n.name === "seq")?.steps).toEqual([
+      { path: "steps[0]", name: "Loop", detail: "while", depth: 0 },
+      { path: "steps[0].do[0]", name: "Stream", detail: "a", depth: 1 },
+      { path: "steps[0].do[1]", name: "Print", detail: "b", depth: 1 },
+    ]);
+
+    // Edges anchor to the deepest (nested) step, not the enclosing loop.
+    const refEdges = model.edges.filter((e) => e.label === "invoke");
+    expect(refEdges).toEqual([
+      expect.objectContaining({ from: "seq", to: "a", fromStepPath: "steps[0].do[0]" }),
+      expect.objectContaining({ from: "seq", to: "b", fromStepPath: "steps[0].do[1]" }),
+    ]);
   });
 
   it("builds the same canvas for a Library, with no target edges", () => {

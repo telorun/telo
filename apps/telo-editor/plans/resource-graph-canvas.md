@@ -44,6 +44,48 @@ node peeks at its targets / variables / secrets in DetailPanel, which gains new 
 content for those fields. Providers and Types render in a **collapsible side strip** on
 the canvas, not as nodes.
 
+**Sequence-like nodes render their internal step topology.** A node whose kind schema
+declares an `x-telo-topology-role: steps` field (e.g. `Run.Sequence`) shows its steps as
+sub-rows inside the node, each with its own source handle. Discovery recurses through every
+branch (`do` / `then` / `else`), case map, and branch list (`elseif`), flattening the tree
+into an ordered, depth-indented row list — so the real invokes inside a `while/do` loop are
+shown individually rather than collapsed onto the loop. Each row keeps its full concrete
+path (`steps[1].do[3]`); an edge anchors to the **deepest** step its ref `fromPath` falls
+under, so every `steps[].invoke` gets its own edge endpoint instead of bundling onto the
+node's outer handle. Step discovery is annotation-driven via the same `schema-utils` variant
+helpers the per-resource Sequence canvas uses (`getVariants` / `matchVariant` /
+`invokeField` / branch roles), so no kind name is hardcoded; the model emits a pure `steps`
+list (`{ path, name, detail, depth }`) per node and the renderer owns the xyflow handles
+(with selector-safe handle ids). This is a single-list view: nested steps are indented
+rather than drawn as recursive boxes. Since `@dagrejs/dagre` has no per-handle/port
+ordering, a post-layout pass pulls each node's vertical center toward the handle it is
+wired from — a step row for a per-step invoke edge, otherwise the source node's center —
+averaging when several edges feed one node and keeping dagre's y when none do. Ranks are
+swept left-to-right so a downstream node follows its source's *already-aligned* y (keeping,
+e.g., a model referenced by a stream step's target beside the node that links it); per rank
+the nodes are ordered on that desired y, pushed apart with a min gap, then re-centered on
+the desired centroid — so edges run roughly horizontal instead of crossing.
+
+**Viewport is per-module.** The overview canvas's pan/zoom is keyed by module `filePath` in
+`Editor` state (`viewportByModule`), captured on `onMoveEnd` via `onCanvasViewportChange` and
+threaded back as `canvasViewport`. The `<ReactFlow>` is keyed by the module `filePath` so it
+re-initializes per app/lib — restoring the saved viewport (`defaultViewport`, `fitView`
+disabled) when one exists, fitting on first view otherwise; editing within a module keeps the
+key stable so the viewport doesn't jump. The store is in-memory only (not persisted across
+reloads), but lives in reducer state so it can be persisted later alongside
+`activeModulePath` / `activeView`.
+
+**Selected node highlight + delete.** The node matching the active `selectedResource`
+(the same selection the DetailPanel peek uses) renders with a highlight ring — driven from
+app state rather than React Flow's internal selection, since the canvas passes `nodes`
+without an `onNodesChange` handler. Pressing Delete / Backspace while a non-root node is
+selected removes that resource via a new `removeResourceViaAst` op (locates the declaring
+file through `resourceDocIndex`, drops the doc, re-derives the manifest) wired through an
+`onDeleteResource` callback; the key handler is scoped to the canvas and ignores presses
+while a text input is focused. The Application/Library root is never deletable. Dangling
+references left by a delete surface as normal analyzer diagnostics rather than being
+auto-cleaned.
+
 Because `Telo.Application` is a kernel built-in rather than a `Telo.Definition`, it has
 no entry in `viewData.kinds` today and the manifest root isn't in `manifest.resources`.
 A small adapter layer synthesizes both: an `AvailableKind` entry for `Telo.Application`

@@ -1,5 +1,6 @@
 import type { AnalysisRegistry } from "@telorun/analyzer";
 import type {
+  CanvasViewport,
   DeploymentEnvironment,
   ModuleDocument,
   ModuleViewData,
@@ -21,6 +22,8 @@ export interface ViewProps {
   onSelectResource: (kind: string, name: string) => void;
   onNavigateResource: (kind: string, name: string) => void;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
+  /** Removes a resource from the active module (overview-canvas Delete key). */
+  onDeleteResource: (kind: string, name: string) => void;
   /** Rewrites the active Application's `targets`. Used by the overview graph's
    *  drag-to-wire — the only field the Application root edits visually. */
   onUpdateApplicationTargets: (targets: string[]) => void;
@@ -47,4 +50,9 @@ export interface ViewProps {
    *  nonce lets repeated clicks on the same diagnostic re-fire the reveal
    *  effect; SourceView tracks the last-consumed nonce internally. */
   revealRequest: SourceRevealRequest | null;
+  /** Saved overview-canvas viewport for the active module, or null to fit on
+   *  first view. */
+  canvasViewport: CanvasViewport | null;
+  /** Persists the active module's overview-canvas viewport after pan/zoom. */
+  onCanvasViewportChange: (viewport: CanvasViewport) => void;
 }

@@ -7,6 +7,7 @@ import {
   applyEdit,
   diffFields,
   findDocForResource,
+  removeResourceDocument,
   type EditOp,
 } from "../yaml-document";
 import { APPLICATION_KIND_ID } from "../application-adapter";
@@ -246,6 +247,30 @@ export function createResourceViaAst(
 
   const docs = addResourceDocument(modDoc.loaded.documents, kind, name, fields);
   const updated = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
+  return rebuildManifestFromDocuments(updated, modulePath);
+}
+
+/** Removes a resource's document from whichever file declares it (owner or a
+ *  partial — resolved via `resourceDocIndex`) and re-derives the ParsedManifest.
+ *  Returns the original workspace when the resource has no AST entry. */
+export function removeResourceViaAst(
+  workspace: Workspace,
+  modulePath: string,
+  kind: string,
+  name: string,
+): Workspace {
+  const indexEntry = workspace.resourceDocIndex
+    .get(normalizePath(modulePath))
+    ?.get(`${kind}::${name}`);
+  if (!indexEntry) return workspace;
+
+  const modDoc = workspace.documents.get(normalizePath(indexEntry.filePath));
+  if (!modDoc) return workspace;
+
+  const docs = removeResourceDocument(modDoc.loaded.documents, kind, name);
+  if (docs === modDoc.loaded.documents) return workspace;
+
+  const updated = withModuleDocument(workspace, indexEntry.filePath, withDocs(modDoc, docs));
   return rebuildManifestFromDocuments(updated, modulePath);
 }
 

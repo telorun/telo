@@ -28,8 +28,31 @@ Edges and chips are derived from the analyzer's `buildOverviewGraph` /
 `visitManifest`, so no resource kind is hardcoded in the editor. Refs nested
 inside step bodies (e.g. `Run.Sequence` `steps[].invoke`) are surfaced via the
 visitor's `discoverNestedRefs` value-tree scan, so resources used only from
-inside a sequence no longer render detached. Each edge carries the ref's source
-path (`fromPath`) for a future per-node topology to anchor to the exact location.
+inside a sequence no longer render detached.
+
+Sequence-like nodes render their internal topology: a node whose kind schema
+declares an `x-telo-topology-role: steps` field shows its steps as sub-rows, each
+with its own source handle. Discovery recurses through branch / case / loop
+bodies and flattens them into a depth-indented row list, so the invokes inside a
+`while/do` loop appear individually instead of collapsed onto the loop. Each edge
+anchors to the deepest step its ref `fromPath` falls under — so a multi-step
+`Run.Sequence` shows one edge per `steps[].invoke` instead of bundling onto the
+node's outer handle. Step discovery is annotation-driven (shared with the
+Sequence canvas's variant helpers), so no kind name is hardcoded. A post-layout
+pass aligns each node's vertical center with the handle it is wired from — a step
+row for a per-step invoke edge, otherwise the source node — sweeping ranks
+left-to-right so a downstream ref target follows its already-aligned source
+(dagre has no per-handle ordering). Edges run roughly horizontal instead of
+crossing.
+
+The overview canvas's pan/zoom is remembered per module: the viewport is keyed by
+module filePath in editor state and restored when navigating back to an app/lib
+(fitting only on first view), instead of being shared across all modules.
+
+The selected node is highlighted on the overview canvas, and pressing Delete /
+Backspace on a selected non-root node removes that resource (new
+`removeResourceViaAst` AST op). The module root is never deletable, and the key
+handler is ignored while a text input is focused.
 
 Targets are editable directly on the graph: dragging an edge from the
 Application node to a Runnable / Service adds a target, deleting a target edge

@@ -98,6 +98,15 @@ export async function saveModuleFromDocuments(
   for (const r of manifest.resources) {
     if (r.sourceFile) fileKeys.add(normalizePath(r.sourceFile));
   }
+  // Also include dirty module documents that no longer host any resource — e.g.
+  // a partial whose last resource was just deleted. Such a file drops out of
+  // `manifest.resources`, so without this its emptied-out content never reaches
+  // disk and the resource reappears on reload. Module files are colocated under
+  // the owner directory (same convention as `deleteModule`).
+  const dirPrefix = normalizePath(pathDirname(modulePath)) + "/";
+  for (const [key, doc] of workspace.documents) {
+    if (doc.dirty && key.startsWith(dirPrefix)) fileKeys.add(key);
+  }
 
   const documents = new Map(workspace.documents);
   let anyWritten = false;

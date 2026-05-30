@@ -19,6 +19,10 @@ export interface LabeledEdge {
    *  field map doesn't descend, e.g. a Run.Sequence step invoke) — i.e. a
    *  runtime/on-demand ref rather than a top-level boot wiring slot. */
   nested?: boolean;
+  /** When the source node renders an internal step topology, the step element
+   *  path (`steps[0]`) this edge anchors to — the xyflow source handle id.
+   *  Populated by the canvas model from `fromPath`, not the overview builder. */
+  fromStepPath?: string;
 }
 
 /** An x-telo-ref whose target is an ambient value / schema source (Provider /
