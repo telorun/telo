@@ -14,7 +14,10 @@ async function checkOne(
   const loader = new Loader([new LocalFileSource()]);
 
   try {
-    const graph = await loader.loadGraph(entryPath);
+    // `desugarImports` so inline `imports:` maps expand into synthetic
+    // Telo.Import manifests before analysis — `telo check` is a static
+    // resolution consumer and must see inline imports exactly as the kernel does.
+    const graph = await loader.loadGraph(entryPath, { desugarImports: true });
     if (graph.errors.length > 0) {
       const first = graph.errors[0];
       throw first.error;

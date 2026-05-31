@@ -91,6 +91,10 @@ export interface ParsedImport {
   resolvedPath?: string;
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
+  /** True when this import lives in the module doc's inline `imports:` map
+   *  rather than its own `Telo.Import` document. Determines where AST
+   *  write-back (add/remove/upgrade) edits — the map entry vs. a separate doc. */
+  inline?: boolean;
 }
 
 export interface ParsedResource {

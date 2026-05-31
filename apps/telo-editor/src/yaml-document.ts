@@ -1,6 +1,6 @@
 import { parseLoadedFile, type LoadedFile } from "@telorun/analyzer";
 import { isTaggedSentinel } from "@telorun/templating";
-import { Document, isDocument, isNode, isScalar } from "yaml";
+import { Document, isDocument, isMap, isNode, isScalar } from "yaml";
 import type { ModuleDocument } from "./model";
 
 /** Parses file text into a ModuleDocument. Wraps the analyzer's
@@ -418,6 +418,57 @@ export function removeImportDocument(docs: Document[], name: string): Document[]
   const idx = findDocForResource(docs, "Telo.Import", name);
   if (idx === undefined) return docs;
   return [...docs.slice(0, idx), ...docs.slice(idx + 1)];
+}
+
+/** Index of the owner module doc (Telo.Application / Telo.Library), or -1. */
+function findModuleDocIndex(docs: Document[]): number {
+  for (let i = 0; i < docs.length; i++) {
+    const kind = (docs[i].toJSON() as { kind?: unknown } | null)?.kind;
+    if (kind === "Telo.Application" || kind === "Telo.Library") return i;
+  }
+  return -1;
+}
+
+/** Removes an inline `imports:` map entry (alias key) on the owner module doc,
+ *  mutating its AST in place. Drops a now-empty `imports:` map. Returns the same
+ *  array reference on no-op (no module doc / no such inline entry) so callers can
+ *  detect a no-op by identity, mirroring `removeImportDocument`. */
+export function removeInlineImport(docs: Document[], name: string): Document[] {
+  const idx = findModuleDocIndex(docs);
+  if (idx === -1) return docs;
+  const doc = docs[idx];
+  if (!doc.hasIn(["imports", name])) return docs;
+  doc.deleteIn(["imports", name]);
+  const imports = doc.getIn(["imports"], true);
+  if (imports && isMap(imports) && imports.items.length === 0) {
+    doc.deleteIn(["imports"]);
+  }
+  return [...docs];
+}
+
+/** Rewrites the `source` of an inline `imports:` map entry in place, handling
+ *  both the scalar shorthand (`Alias: source`) and the object form
+ *  (`Alias: { source, ... }`) — the object form keeps its `variables` /
+ *  `secrets` / `runtime`. Returns the same array reference on no-op. */
+export function setInlineImportSource(
+  docs: Document[],
+  name: string,
+  newSource: string,
+): Document[] {
+  const idx = findModuleDocIndex(docs);
+  if (idx === -1) return docs;
+  const doc = docs[idx];
+  if (!doc.hasIn(["imports", name])) return docs;
+  const entry = doc.getIn(["imports", name], true);
+  if (entry && isMap(entry)) {
+    doc.setIn(["imports", name, "source"], newSource);
+  } else if (entry && isScalar(entry)) {
+    // Preserve the scalar node (and any comment) — only swap its value.
+    entry.value = newSource;
+  } else {
+    doc.setIn(["imports", name], newSource);
+  }
+  return [...docs];
 }
 
 // ---------------------------------------------------------------------------

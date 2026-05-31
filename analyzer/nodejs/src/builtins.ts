@@ -301,6 +301,37 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
+        // Inline imports — name-keyed map sugar for separate `Telo.Import`
+        // documents. The key is the PascalCase alias (the import's
+        // `metadata.name`). Each value is either a bare source string
+        // (shorthand for `{ source }`) or the full object form. The loader
+        // desugars each entry into a synthetic `Telo.Import` before discovery;
+        // authored `Telo.Import` docs keep working alongside this. See
+        // analyzer/nodejs/src/inline-imports.ts.
+        imports: {
+          type: "object",
+          additionalProperties: {
+            oneOf: [
+              { type: "string" },
+              {
+                type: "object",
+                required: ["source"],
+                properties: {
+                  source: { type: "string" },
+                  variables: { type: "object" },
+                  secrets: { type: "object" },
+                  runtime: {
+                    oneOf: [
+                      { type: "string" },
+                      { type: "array", items: { type: "string" } },
+                    ],
+                  },
+                },
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
         // Application-level environment contract. Each entry layers `env:`
         // (required, names the source env var) and `default:` (optional, used
         // when the env var is unset) on top of an open JSON Schema property
@@ -393,6 +424,33 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         include: {
           type: "array",
           items: { type: "string" },
+        },
+        // Inline imports — same name-keyed map sugar as Telo.Application; the
+        // loader desugars each entry into a synthetic Telo.Import. See the
+        // Application schema above and analyzer/nodejs/src/inline-imports.ts.
+        imports: {
+          type: "object",
+          additionalProperties: {
+            oneOf: [
+              { type: "string" },
+              {
+                type: "object",
+                required: ["source"],
+                properties: {
+                  source: { type: "string" },
+                  variables: { type: "object" },
+                  secrets: { type: "object" },
+                  runtime: {
+                    oneOf: [
+                      { type: "string" },
+                      { type: "array", items: { type: "string" } },
+                    ],
+                  },
+                },
+                additionalProperties: false,
+              },
+            ],
+          },
         },
         exports: {
           type: "object",

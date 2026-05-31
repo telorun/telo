@@ -84,7 +84,13 @@ export async function create(
       const resolvedUrl = new URL(manifest.source, ctx.moduleContext.source).toString();
       let manifests;
       try {
-        const graph = await loader.loadGraph(resolvedUrl);
+        // `desugarImports` mirrors how the kernel loads: inline `imports:` maps
+        // are expanded into synthetic Telo.Import manifests before analysis, so
+        // a manifest using inline imports analyzes (alias resolution, !ref) the
+        // same way it runs. Without it, `!ref Alias.x` against an inline import
+        // would surface a false UNRESOLVED_REFERENCE here, and a duplicate alias
+        // across the two forms would go undetected.
+        const graph = await loader.loadGraph(resolvedUrl, { desugarImports: true });
         if (graph.errors.length > 0) throw graph.errors[0].error;
         manifests = flattenForAnalyzer(graph);
       } catch (err) {

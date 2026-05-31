@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: InlineImportsSmoke
+  version: 1.0.0
+  description: |
+    Verifies inline `imports:` end-to-end through the real kernel: the app
+    declares its dependency as an `imports:` map entry on the Application doc
+    instead of a separate `Telo.Import` document, then uses the imported kind
+    exactly as an authored import would (`kind: Console.WriteLine`). Exercises
+    the scalar shorthand (`Console: ../`, sugar for `{ source: ../ }`). Because
+    this runs via `kernel.load` (which desugars inline imports into Telo.Import
+    manifests on both the analysis and runtime loads), a green run proves inline
+    imports are not just analyzable but actually materialize and execute —
+    `Console.WriteLine` runs and the boot sequence reaches its final assertion.
+imports:
+  Console: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - PrintAndCheck
+---
+kind: Console.WriteLine
+metadata: { name: Greet }
+---
+kind: Run.Sequence
+metadata: { name: PrintAndCheck }
+steps:
+  - name: Print
+    invoke: { kind: Console.WriteLine, name: Greet }
+    inputs:
+      output: "inline imports work"
+  - name: Check
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: true, expected: true }
