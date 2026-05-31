@@ -1,5 +1,7 @@
 import type { ManifestSource } from "@telorun/analyzer";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isModuleRootKind, moduleRootResource } from "../application-adapter";
 import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
 import { LocalStorageHistoryStore } from "../history/store";
@@ -23,7 +25,6 @@ import {
   removeImportViaAst,
   removeResourceViaAst,
   reopenWorkspaceAt,
-  setApplicationTargets,
   setResourceFields,
   upgradeImportViaAst,
 } from "../loader";
@@ -725,7 +726,12 @@ export function Editor() {
   async function handleUpdateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
     const manifest = state.workspace.modules.get(state.activeModulePath);
-    const prev = manifest?.resources.find((r) => r.kind === kind && r.name === name);
+    if (!manifest) return;
+    // The module root isn't in `manifest.resources`; project its prior fields
+    // from the manifest so the generic writer can diff against them.
+    const prev =
+      manifest.resources.find((r) => r.kind === kind && r.name === name) ??
+      (isModuleRootKind(kind) ? moduleRootResource(manifest) : undefined);
     if (!prev) return;
     const updated = setResourceFields(
       state.workspace,
@@ -753,7 +759,7 @@ export function Editor() {
         .map(refTargetName)
         .filter((t): t is string => !!t);
       if (names.includes(name)) {
-        updated = setApplicationTargets(
+        updated = writeApplicationTargets(
           updated,
           state.activeModulePath,
           names.filter((t) => t !== name),
@@ -774,9 +780,28 @@ export function Editor() {
     }));
   }
 
+  // Rewrites an Application's `targets` via the generic field writer. Targets
+  // are `!ref` sentinels; the canvas hands us bare resource names, so we wrap
+  // each one. `diffFields` treats the sentinels as opaque leaves, so reorder /
+  // add / remove round-trip without corrupting the `!ref` tags.
+  function writeApplicationTargets(
+    ws: Workspace,
+    modulePath: string,
+    names: string[],
+  ): Workspace {
+    const manifest = ws.modules.get(modulePath);
+    if (manifest?.kind !== "Application") return ws;
+    const root = moduleRootResource(manifest);
+    const nextFields = {
+      ...root.fields,
+      targets: names.map((name) => makeTaggedSentinel("ref", name)),
+    };
+    return setResourceFields(ws, modulePath, root.kind, root.name, root.fields, nextFields);
+  }
+
   async function handleUpdateApplicationTargets(targets: string[]) {
     if (!state.workspace || !state.activeModulePath) return;
-    const updated = setApplicationTargets(state.workspace, state.activeModulePath, targets);
+    const updated = writeApplicationTargets(state.workspace, state.activeModulePath, targets);
     const persisted = await persistModule(updated, state.activeModulePath);
     setState((s) => ({ ...s, workspace: persisted }));
   }

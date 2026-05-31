@@ -50,6 +50,12 @@ interface BaseParsedManifest {
   imports: ParsedImport[];
   resources: ParsedResource[];
   include?: string[];
+  /** Env-bound `variables` / `secrets` blocks (flat, as they appear at the top
+   *  level of the YAML doc). Shared by both module variants: Applications bind
+   *  them from the host environment, Libraries declare them as the public
+   *  contract importers must satisfy. */
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
   /** Populated only when the module could not be parsed. The editor still
    *  lists the module so the user can open its source and fix the issue;
    *  `rawYaml` is the unparsed text read from disk. */
@@ -63,8 +69,6 @@ interface BaseParsedManifest {
 export interface ApplicationManifest extends BaseParsedManifest {
   kind: "Application";
   targets: string[];
-  variables?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
   /** Declared inbound ports (`name → { env, protocol?, default? }`). */
   ports?: Record<string, unknown>;
 }

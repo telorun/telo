@@ -1,10 +1,11 @@
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it, vi } from "vitest";
+import { moduleRootResource } from "./application-adapter";
 import {
   createResourceViaAst,
   rebuildManifestFromDocuments,
   removeResourceViaAst,
   saveModuleFromDocuments,
-  setApplicationTargets,
   setResourceFields,
 } from "./loader";
 import type {
@@ -15,6 +16,23 @@ import type {
   WorkspaceAdapter,
 } from "./model";
 import { parseModuleDocument } from "./yaml-document";
+
+/** Mirrors `Editor.writeApplicationTargets`: routes target edits through the
+ *  generic field writer. Targets are `!ref` sentinels wrapped from bare names. */
+function setApplicationTargets(
+  workspace: Workspace,
+  modulePath: string,
+  names: string[],
+): Workspace {
+  const manifest = workspace.modules.get(modulePath);
+  if (manifest?.kind !== "Application") return workspace;
+  const root = moduleRootResource(manifest);
+  const nextFields = {
+    ...root.fields,
+    targets: names.map((name) => makeTaggedSentinel("ref", name)),
+  };
+  return setResourceFields(workspace, modulePath, root.kind, root.name, root.fields, nextFields);
+}
 
 function stubAdapter(): WorkspaceAdapter & { writeFile: ReturnType<typeof vi.fn> } {
   return {
@@ -659,5 +677,98 @@ describe("setApplicationTargets", () => {
     let workspace = makeWorkspace([{ path: "/ws/lib/telo.yaml", text }], [lib]);
     const result = setApplicationTargets(workspace, "/ws/lib/telo.yaml", ["x"]);
     expect(result).toBe(workspace);
+  });
+});
+
+describe("module root variables/secrets writer", () => {
+  // Mirrors DetailPanel: the variables/secrets form edits the whole module-root
+  // fields object and commits via the generic setResourceFields against the
+  // synthesized root (which has no resourceDocIndex entry, exercising the
+  // owner-doc fallback).
+  function writeRootFields(
+    workspace: Workspace,
+    modulePath: string,
+    next: Record<string, unknown>,
+  ): Workspace {
+    const manifest = workspace.modules.get(modulePath)!;
+    const root = moduleRootResource(manifest);
+    return setResourceFields(workspace, modulePath, root.kind, root.name, root.fields, {
+      ...root.fields,
+      ...next,
+    });
+  }
+
+  it("adds then removes a variable on an Application root, preserving kind/metadata", () => {
+    const text = ["kind: Telo.Application", "metadata:", "  name: app", ""].join("\n");
+    let workspace = makeWorkspace(
+      [{ path: "/ws/app/telo.yaml", text }],
+      [makeManifest("/ws/app/telo.yaml")],
+    );
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/app/telo.yaml");
+
+    // Add two variables.
+    workspace = writeRootFields(workspace, "/ws/app/telo.yaml", {
+      variables: {
+        port: { env: "PORT", type: "integer" },
+        host: { env: "HOST", type: "string" },
+      },
+    });
+    let manifest = workspace.modules.get("/ws/app/telo.yaml")!;
+    expect(manifest.variables).toEqual({
+      port: { env: "PORT", type: "integer" },
+      host: { env: "HOST", type: "string" },
+    });
+
+    // Remove one entry — the dropped key disappears, the sibling survives.
+    workspace = writeRootFields(workspace, "/ws/app/telo.yaml", {
+      variables: { host: { env: "HOST", type: "string" } },
+    });
+    manifest = workspace.modules.get("/ws/app/telo.yaml")!;
+    expect(manifest.variables).toEqual({ host: { env: "HOST", type: "string" } });
+
+    // Unrelated root fields are untouched.
+    expect(manifest.kind).toBe("Application");
+    expect(manifest.metadata.name).toBe("app");
+    const serialized = workspace.documents
+      .get("/ws/app/telo.yaml")!
+      .loaded.documents[0].toString();
+    expect(serialized).not.toContain("PORT");
+    expect(serialized).toContain("name: app");
+  });
+
+  it("adds then removes a secret on a Library root, preserving kind/metadata", () => {
+    const text = ["kind: Telo.Library", "metadata:", "  name: lib", ""].join("\n");
+    const lib: ParsedManifest = {
+      filePath: "/ws/lib/telo.yaml",
+      kind: "Library",
+      metadata: { name: "lib" },
+      imports: [],
+      resources: [],
+    };
+    let workspace = makeWorkspace([{ path: "/ws/lib/telo.yaml", text }], [lib]);
+    workspace = rebuildManifestFromDocuments(workspace, "/ws/lib/telo.yaml");
+
+    // Library secrets are plain JSON-Schema declarations (no env).
+    workspace = writeRootFields(workspace, "/ws/lib/telo.yaml", {
+      secrets: {
+        apiKey: { type: "string", description: "API key" },
+        token: { type: "string" },
+      },
+    });
+    let manifest = workspace.modules.get("/ws/lib/telo.yaml")!;
+    expect(manifest.secrets).toEqual({
+      apiKey: { type: "string", description: "API key" },
+      token: { type: "string" },
+    });
+
+    // Remove one entry.
+    workspace = writeRootFields(workspace, "/ws/lib/telo.yaml", {
+      secrets: { token: { type: "string" } },
+    });
+    manifest = workspace.modules.get("/ws/lib/telo.yaml")!;
+    expect(manifest.secrets).toEqual({ token: { type: "string" } });
+
+    expect(manifest.kind).toBe("Library");
+    expect(manifest.metadata.name).toBe("lib");
   });
 });

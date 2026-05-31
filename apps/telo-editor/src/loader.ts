@@ -44,7 +44,6 @@ export {
   hasUnresolvedImports,
   rebuildManifestFromDocuments,
   removeResourceViaAst,
-  setApplicationTargets,
   setResourceFields,
 } from "./loader/ast-ops";
 export {
