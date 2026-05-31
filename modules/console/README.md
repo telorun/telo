@@ -18,6 +18,30 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 | `Console.WriteStream` | Drain a `Stream<string \| Uint8Array>` to stdout. |
 | `Console.StreamWait` | Animate a one-cell spinner while waiting for the first item of an input stream, then forward the stream verbatim. |
 
+## Exported instances
+
+`WriteLine` and `ReadLine` are config-free, so the library also ships ready-made singletons via `exports.resources`. Reference them directly with `!ref Console.<name>` instead of declaring your own instance — no boilerplate, one shared console per import:
+
+| Export | Kind | Use |
+| --- | --- | --- |
+| `Console.writeLine` | `Console.WriteLine` | shared stdout line writer |
+| `Console.readLine` | `Console.ReadLine` | shared stdin line reader |
+
+```yaml
+kind: Telo.Application
+metadata: { name: Hello, version: 1.0.0 }
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: "Hello!"
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: std/console@0.7.0
+```
+
+Reach for the `Console.WriteLine` / `Console.ReadLine` **kinds** directly only when you want a distinctly-named instance of your own; for the common case the exported singleton is all you need.
+
 ## Example
 
 ```yaml

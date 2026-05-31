@@ -1,10 +1,10 @@
-import { LAMBDA_LIB_PATH } from "./prepare-fixture.js";
+import { MODULE_SOURCES } from "./prepare-fixture.js";
 
 /** Minimal Telo.Application fixtures, one per handler kind. Each imports the
- *  Lambda module from `${LAMBDA_LIB_PATH}` (a public registry ref `telo
- *  install` resolves before the AWS Lambda container starts) and a small JS
- *  handler so the E2E test exercises Function → handler-kind → user
- *  invocable → outcome rendering end to end. */
+ *  Lambda / JS / Type modules by relative path from the LIVE workspace copy
+ *  `prepare-fixture` lays down in the fixture (no published-version pins to
+ *  maintain) plus a small JS handler so the E2E test exercises Function →
+ *  handler-kind → user invocable → outcome rendering end to end. */
 
 export const directManifest = `\
 kind: Telo.Application
@@ -15,15 +15,15 @@ targets: [Main]
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: ${LAMBDA_LIB_PATH}
+source: ${MODULE_SOURCES.lambda}
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@0.3.0
+source: ${MODULE_SOURCES.javascript}
 ---
 kind: Telo.Import
 metadata: { name: Type }
-source: std/type@1.0.5
+source: ${MODULE_SOURCES.type}
 ---
 kind: JS.Script
 metadata: { name: Echo }
@@ -63,15 +63,15 @@ targets: [Main]
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: ${LAMBDA_LIB_PATH}
+source: ${MODULE_SOURCES.lambda}
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@0.3.0
+source: ${MODULE_SOURCES.javascript}
 ---
 kind: Telo.Import
 metadata: { name: Type }
-source: std/type@1.0.5
+source: ${MODULE_SOURCES.type}
 ---
 kind: JS.Script
 metadata: { name: GreetById }
@@ -126,15 +126,15 @@ targets: [Main]
 ---
 kind: Telo.Import
 metadata: { name: Lambda }
-source: ${LAMBDA_LIB_PATH}
+source: ${MODULE_SOURCES.lambda}
 ---
 kind: Telo.Import
 metadata: { name: JS }
-source: std/javascript@0.3.0
+source: ${MODULE_SOURCES.javascript}
 ---
 kind: Telo.Import
 metadata: { name: Type }
-source: std/type@1.0.5
+source: ${MODULE_SOURCES.type}
 ---
 kind: JS.Script
 metadata: { name: ProcessRecords }

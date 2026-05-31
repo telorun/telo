@@ -97,8 +97,24 @@ jobs:
         run: |
           set -euo pipefail
           URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world.yaml"
+          # raw.githubusercontent.com's CDN lags behind the pushed commit, so
+          # the SHA-pinned URL 404s for a short while. Poll until it serves.
+          for attempt in $(seq 1 30); do
+            if curl -fsSL "$URL" >/dev/null 2>&1; then
+              break
+            fi
+            echo "URL not available yet (attempt $attempt), sleeping 10s..."
+            sleep 10
+          done
+          set +e
           output=$(pnpm run telo "$URL" 2>&1)
+          status=$?
+          set -e
           echo "$output"
+          if [ "$status" -ne 0 ]; then
+            echo "telo exited with status $status"
+            exit "$status"
+          fi
           echo "$output" | grep -q "Hello from Telo!"
 
       - name: Build docker image

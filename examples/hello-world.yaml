@@ -17,7 +17,7 @@ targets:
 kind: Telo.Import
 metadata:
   name: Console
-source: std/console@0.6.0
+source: std/console@0.7.0
 ---
 kind: Console.WriteLine
 metadata:

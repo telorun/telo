@@ -3,6 +3,10 @@ metadata:
   name: console
   namespace: std
   version: 0.7.0
+exports:
+  resources:
+    - writeLine
+    - readLine
 ---
 kind: Telo.Definition
 metadata:
@@ -140,3 +144,15 @@ schema:
       minimum: 16
       default: 80
   additionalProperties: false
+---
+# Ready-made singleton instances exported via `exports.resources`. Consumers reference
+# them directly (`!ref Console.writeLine`) instead of declaring their own — `WriteLine`
+# and `ReadLine` are config-free, so a single shared instance per import is all that's
+# needed. Declared with `Self.<Kind>` (the library's own module alias).
+kind: Self.WriteLine
+metadata:
+  name: writeLine
+---
+kind: Self.ReadLine
+metadata:
+  name: readLine

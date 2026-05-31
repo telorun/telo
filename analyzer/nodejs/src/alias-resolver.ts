@@ -11,6 +11,15 @@ export class AliasResolver {
     }
   }
 
+  /** Real module name an alias points at (e.g. "Console" → "console"), or undefined.
+   *  Used to resolve an alias-qualified instance reference "Console.writeLine" to the
+   *  forwarded resource declared in that module. The `exports.resources` gate is enforced
+   *  upstream by `flattenForAnalyzer` (only exported instances are forwarded), so a name
+   *  that isn't exported simply won't be found. */
+  moduleForAlias(alias: string): string | undefined {
+    return this.importAliases.get(alias);
+  }
+
   /** Resolves "Http.Api" → "http-server.Api". Returns undefined if alias is unknown. */
   resolveKind(kind: string): string | undefined {
     if (!kind) {

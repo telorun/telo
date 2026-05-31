@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleExportInstanceSmoke
+  version: 1.0.0
+  description: |
+    Verifies the cross-module exported-instance feature: `std/console` exports
+    a ready-made `writeLine` singleton via `exports.resources`, and a consumer
+    references it directly with `!ref Console.writeLine` — no locally declared
+    `Console.WriteLine` instance. Exercises the full path: alias-qualified ref
+    resolution, the kernel registering `Self` in the import's child context so
+    the library can declare its own instance, cross-context injection, and the
+    boot-target invoke. The assertion itself uses `std/assert`'s exported
+    `equals` singleton (`!ref Assert.equals`) — so this whole application
+    declares NO local resources, referencing only cross-module exports.
+    `steps.Print.result` (the writeLine return value) confirms the invoke ran.
+targets:
+  - name: Print
+    invoke: !ref Console.writeLine
+    inputs:
+      output: "exported singleton works"
+  - name: Check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: ${{ steps.Print.result }}
+      expected: "exported singleton works"
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../../assert

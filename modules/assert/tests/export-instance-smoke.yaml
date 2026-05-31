@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: AssertExportInstanceSmoke
+  version: 1.0.0
+  description: |
+    Verifies `std/assert` exports the config-free assertions (`equals`,
+    `matches`, `contains`) as ready-made singletons, referenced with
+    `!ref Assert.<name>` — no locally declared instance. Crucially this
+    exercises the cross-module ref inside a `Run.Sequence` step, whose
+    `steps` are an `x-telo-scope`: resolution goes through the scope handle
+    at runtime (not Phase 5 injection), so it confirms the scope path routes
+    a non-`Self` alias into the import's exported instances. A failing
+    assertion would throw and fail the test.
+targets:
+  - Check
+---
+kind: Telo.Import
+metadata: { name: Assert }
+source: ../
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../run
+---
+kind: Run.Sequence
+metadata: { name: Check }
+steps:
+  - name: Equals
+    invoke: !ref Assert.equals
+    inputs:
+      actual: "hello"
+      expected: "hello"
+  - name: Matches
+    invoke: !ref Assert.matches
+    inputs:
+      actual: "hello world"
+      pattern: "^hello"
+  - name: Contains
+    invoke: !ref Assert.contains
+    inputs:
+      actual: [1, 2, 3]
+      value: 2

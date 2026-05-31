@@ -381,7 +381,14 @@ export class Kernel implements IKernel {
     // into first-class named manifests and replace them in-place with {kind, name} references.
     // Update staticManifests so Phase 3 (validateReferences) and Phase 4 (DAG) see
     // the same normalized structure.
-    const normalizedManifests = this.analyzer.normalize(allManifests, this.registry);
+    // Pass the analyzer-flattened set (entry + forwarded library exports) as cross-module
+    // resolution targets so `!ref Alias.name` in the entry-only runtime manifests resolves
+    // to imported libraries' exported instances.
+    const normalizedManifests = this.analyzer.normalize(
+      allManifests,
+      this.registry,
+      staticManifests,
+    );
     this.staticManifests = normalizedManifests;
 
     let rootApplicationManifest: ResourceManifest | undefined;
@@ -855,7 +862,7 @@ export class Kernel implements IKernel {
    */
   private _injectDependencies(
     resource: ResourceManifest,
-    getInstance: (name: string) => ResourceInstance | undefined,
+    getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
   ): void {
     this.registry.iterateFieldEntries(
       resource,
@@ -1039,9 +1046,27 @@ function collectEvalPathsNode(
 function injectAtPath(
   resource: ResourceManifest,
   fieldPath: string,
-  getInstance: (name: string) => ResourceInstance | undefined,
+  getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
 ): void {
   const parts = fieldPath.split(".");
+
+  // Resolve a {kind, name, alias?} reference to its live instance. A non-`Self` alias is a
+  // cross-module reference into an import's published exports; if that import hasn't
+  // finished init() yet the instance is absent, so we throw to defer this resource to a
+  // later pass of the multi-pass init loop (which catches and retries) rather than leaving
+  // the ref unresolved. Local refs (no alias) that miss are left for topo ordering / later
+  // diagnostics, matching prior behaviour.
+  function resolveInto(ref: Record<string, unknown>): ResourceInstance | undefined {
+    const alias = typeof ref.alias === "string" ? ref.alias : undefined;
+    const instance = getInstance(ref.name as string, alias);
+    if (!instance && alias && alias !== "Self") {
+      throw new RuntimeError(
+        "ERR_CROSS_MODULE_REF_PENDING",
+        `Cross-module reference '${alias}.${String(ref.name)}' is not available yet (import not initialized)`,
+      );
+    }
+    return instance;
+  }
 
   function traverse(obj: unknown, partsLeft: string[]): void {
     if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
@@ -1057,7 +1082,7 @@ function injectAtPath(
         if (rest.length === 0) {
           const ref = elem as Record<string, unknown>;
           if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = getInstance(ref.name);
+            const instance = resolveInto(ref);
             if (instance) container[mapKey] = instance;
           }
         } else {
@@ -1081,7 +1106,7 @@ function injectAtPath(
         if (rest.length === 0) {
           const ref = elem as Record<string, unknown>;
           if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = getInstance(ref.name);
+            const instance = resolveInto(ref);
             if (instance) val[i] = instance;
           }
         } else {
@@ -1093,7 +1118,7 @@ function injectAtPath(
         if (val && typeof val === "object" && !Array.isArray(val)) {
           const ref = val as Record<string, unknown>;
           if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = getInstance(ref.name);
+            const instance = resolveInto(ref);
             if (instance) container[key] = instance;
           }
         }

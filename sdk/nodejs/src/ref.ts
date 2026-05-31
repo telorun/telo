@@ -2,10 +2,16 @@ import type { ResourceInstance } from "./resource-instance.js";
 
 /** Marker type for x-telo-ref fields. Carries the live instance type at the TypeScript level;
  *  at runtime this field holds `{ kind, name }` until Phase 5 injection replaces it.
- *  T is a phantom type — any capability interface (Invocable, Runnable, …) or ResourceInstance. */
+ *  T is a phantom type — any capability interface (Invocable, Runnable, …) or ResourceInstance.
+ *
+ *  `alias` is set only for cross-module references resolved from `!ref Alias.name` against an
+ *  imported library's `exports.resources`. It names the import alias whose child context owns
+ *  the target instance, so Phase 5 injection can resolve into that context rather than the
+ *  referencing resource's own. Absent (or `"Self"`) means a local reference. */
 export interface KindRef<T = ResourceInstance> {
   readonly kind: string;
   readonly name: string;
+  readonly alias?: string;
   readonly __type?: T;
 }
 
@@ -17,11 +23,13 @@ export interface ScopeRef {
 
 /** Gives a controller access to the resources initialized within a scope. */
 export interface ScopeContext {
-  /** Returns the initialized instance for the given name.
+  /** Returns the initialized instance for the given name. With a non-`Self` `alias`,
+   *  resolves a cross-module exported instance (`!ref Alias.name`) into the owning
+   *  import's child context instead of the scope-local / outer resources.
    *  Throws synchronously if the name was not declared in the scope —
    *  this is always a programming error; all scope members are statically
    *  validated in Phase 3 before the kernel ever reaches runtime. */
-  getInstance(name: string): ResourceInstance;
+  getInstance(name: string, alias?: string): ResourceInstance;
 }
 
 /** Returned by Phase 5 injection in place of an x-telo-scope manifest array.

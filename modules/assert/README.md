@@ -21,6 +21,29 @@ Inline assertions for Telo manifests — pluggable matchers that compare actual 
 | `Assert.Events` | Assert on emitted kernel events. |
 | `Assert.ModuleContext` | Capture the module-level context for assertions. |
 
+## Exported instances
+
+`Equals`, `Matches`, and `Contains` are config-free — the comparison args arrive at invoke time — so the library ships them as ready-made singletons via `exports.resources`. Reference them with `!ref Assert.<name>` (including inside a `Run.Sequence` step) instead of declaring an instance:
+
+| Export | Kind |
+| --- | --- |
+| `Assert.equals` | `Assert.Equals` |
+| `Assert.matches` | `Assert.Matches` |
+| `Assert.contains` | `Assert.Contains` |
+
+```yaml
+kind: Run.Sequence
+metadata: { name: Check }
+steps:
+  - name: Total
+    invoke: !ref Assert.equals
+    inputs:
+      actual: ${{ steps.Add.result }}
+      expected: 42
+```
+
+The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry per-instance state, so they stay instance-per-use and are not exported as singletons.
+
 ## Example
 
 ```yaml

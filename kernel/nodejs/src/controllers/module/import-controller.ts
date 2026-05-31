@@ -82,17 +82,21 @@ export async function create(
 
   // Create child context with the imported variables/secrets baked in, so that
   // ${{ variables.x }} / ${{ secrets.y }} templates resolve correctly at runtime.
-  const child = ctx.moduleContext.spawnChild(
-    new ModuleContext(
-      ctx.moduleContext.source,
-      (resource.variables as Record<string, unknown>) ?? {},
-      (resource.secrets as Record<string, unknown>) ?? {},
-      {},
-      [],
-      ctx.moduleContext.createInstance,
-      ctx.moduleContext.emit,
-    ),
+  const childCtx = new ModuleContext(
+    ctx.moduleContext.source,
+    (resource.variables as Record<string, unknown>) ?? {},
+    (resource.secrets as Record<string, unknown>) ?? {},
+    {},
+    [],
+    ctx.moduleContext.createInstance,
+    ctx.moduleContext.emit,
   );
+  const child = ctx.moduleContext.spawnChild(childCtx);
+
+  // A library references its own kinds via `Self.<Kind>` (e.g. when it declares an
+  // instance to export). Register `Self` → the library's own module in the child context
+  // so those resolve at runtime — ungated, since this is internal use, not an importer.
+  childCtx.registerImport("Self", targetModule, []);
 
   // Stamp the resolved controller policy on the child only when the import
   // specifies a `runtime:` field that resolves to something other than the
@@ -126,15 +130,60 @@ export async function create(
   // const evaluatedExports: any = child.expand(moduleManifest.exports ?? {});
 
   const exportedKinds: string[] = moduleManifest.exports?.kinds ?? [];
+  const exportedResourceNames: string[] = moduleManifest.exports?.resources ?? [];
+  for (const name of exportedResourceNames) {
+    if (name === "variables" || name === "secrets") {
+      throw new RuntimeError(
+        "ERR_INVALID_EXPORT",
+        `Library exports.resources may not include the reserved name '${name}' — it would overwrite the import's '${name}' value-flow surface under resources.${alias}.`,
+      );
+    }
+  }
   ctx.registerModuleImport(alias, targetModule, exportedKinds);
-  // Return a ResourceInstance whose snapshot() surfaces the exported values.
-  // The kernel's generic setResource() call stores them under resources.<alias>
-  // in the declaring module's evaluation context — no separate imports namespace needed.
+
+  // Publish the child's exported instances to the parent so cross-module `!ref Alias.name`
+  // (Phase 5 injection / boot targets) and `${{ resources.Alias.name }}` (CEL value-flow)
+  // resolve. The gate is `exports.resources`; the lookup is lazy — instances exist after
+  // this import's init() has run child.initializeResources().
+  (ctx.moduleContext as ModuleContext).registerImportedScope(
+    alias,
+    exportedResourceNames,
+    (name) => {
+      const entry = childCtx.resourceInstances.get(name);
+      if (!entry) return undefined;
+      // Canonicalize the authored kind to `<module>.<Kind>` so the cross-module ref shape and
+      // event naming are scope-independent. Exported instances are authored `Self.<Kind>` —
+      // the only case the std modules use, and the only one canonicalized here; it maps to the
+      // owning module directly, matching the analyzer's rule in resolve-ref-sentinels.ts. A
+      // re-exported foreign kind (authored via another import alias) is a future case with no
+      // current consumer and is left verbatim.
+      const rawKind = entry.resource.kind as string;
+      const kind = rawKind.startsWith("Self.")
+        ? `${targetModule}.${rawKind.slice("Self.".length)}`
+        : rawKind;
+      return { kind, instance: entry.instance };
+    },
+  );
+
+  // Return a ResourceInstance whose snapshot() surfaces the exported values under
+  // resources.<alias>: the import's variables/secrets plus each exported instance's own
+  // snapshot keyed by name (the CEL value-flow surface for Provider-style exports).
+  // The kernel's generic setResource() stores the result under resources.<alias>.
   return {
-    snapshot: () => ({
-      variables: ctx.expandValue(resource.variables, {}) ?? {},
-      secrets: ctx.expandValue(resource.secrets, {}) ?? {},
-    }),
+    snapshot: async () => {
+      const exported: Record<string, unknown> = {};
+      for (const name of exportedResourceNames) {
+        const inst = childCtx.resourceInstances.get(name)?.instance;
+        if (inst && typeof inst.snapshot === "function") {
+          exported[name] = await Promise.resolve(inst.snapshot());
+        }
+      }
+      return {
+        variables: ctx.expandValue(resource.variables, {}) ?? {},
+        secrets: ctx.expandValue(resource.secrets, {}) ?? {},
+        ...exported,
+      };
+    },
     init: async () => {
       await child.initializeResources();
     },

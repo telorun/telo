@@ -203,6 +203,16 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
+   * Resolve a cross-module exported instance (`!ref Alias.name`) to its live instance.
+   * Overridable hook: the base context has no imports, so it returns undefined; ModuleContext
+   * overrides it to route into the named import's child context. Declared here so the
+   * injection / scope closures in this base class can call it without downcasting.
+   */
+  resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
+    return undefined;
+  }
+
+  /**
    * Interleaved create/init loop.
    *
    * Each pass has two sub-phases run back-to-back:
@@ -259,7 +269,11 @@ export class EvaluationContext implements IEvaluationContext {
         if (this.resourceInstances.has(name)) continue;
         try {
           if (this.preInitHook) {
-            this.preInitHook(resource, (n) => this.resourceInstances.get(n)?.instance);
+            this.preInitHook(resource, (n, alias) =>
+              alias && alias !== "Self"
+                ? this.resolveImportedInstance(alias, n)
+                : this.resourceInstances.get(n)?.instance,
+            );
           }
           if (instance.init) await instance.init(ctx);
           if (instance.snapshot) {
@@ -370,9 +384,10 @@ export class EvaluationContext implements IEvaluationContext {
         if (parent.preInitHook) {
           const parentHook = parent.preInitHook;
           child.preInitHook = (resource, childGetInstance) => {
-            parentHook(
-              resource,
-              (name) => childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
+            parentHook(resource, (name, alias) =>
+              alias && alias !== "Self"
+                ? parent.resolveImportedInstance(alias, name)
+                : childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
             );
           };
         }
@@ -383,7 +398,17 @@ export class EvaluationContext implements IEvaluationContext {
           }
           await child.initializeResources();
           const scope: ScopeContext = {
-            getInstance(name: string): ResourceInstance {
+            getInstance(name: string, alias?: string): ResourceInstance {
+              // Cross-module exported instance (`!ref Alias.name` inside the scope) —
+              // route into the owning import's child context, not scope-local resources.
+              if (alias && alias !== "Self") {
+                const imported = parent.resolveImportedInstance(alias, name);
+                if (imported) return imported;
+                throw new RuntimeError(
+                  "ERR_SCOPE_RESOURCE_NOT_FOUND",
+                  `Cross-module reference '${alias}.${name}' did not resolve to an exported instance.`,
+                );
+              }
               const childEntry = child.resourceInstances.get(name);
               if (childEntry) return childEntry.instance;
               const parentEntry = parent.resourceInstances.get(name);

@@ -13,6 +13,14 @@ exports:
     - Equals
     - Matches
     - Contains
+  # Ready-made singletons for the config-free assertions, so tests reference
+  # `!ref Assert.equals` etc. instead of declaring their own instance. The
+  # config-bearing kinds (ModuleContext/Schema/Events/Manifest) stay
+  # instance-per-use and are not exported as resources.
+  resources:
+    - equals
+    - matches
+    - contains
 ---
 kind: Telo.Definition
 metadata:
@@ -233,3 +241,19 @@ inputType:
 schema:
   type: object
   additionalProperties: false
+---
+# Ready-made singleton instances exported via `exports.resources`. The config-free
+# assertions carry no per-instance state — the comparison args arrive at invoke time —
+# so a single shared instance per import is all a consumer needs. Reference them as
+# `!ref Assert.equals` / `Assert.matches` / `Assert.contains`.
+kind: Self.Equals
+metadata:
+  name: equals
+---
+kind: Self.Matches
+metadata:
+  name: matches
+---
+kind: Self.Contains
+metadata:
+  name: contains

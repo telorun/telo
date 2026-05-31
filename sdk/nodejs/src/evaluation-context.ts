@@ -32,12 +32,14 @@ export type InstanceFactory = (
  * fields of the resource config before the controller sees them in init().
  *
  * @param resource  The resource manifest whose config fields may be mutated in-place.
- * @param getInstance  Looks up an already-initialized instance by resource name.
+ * @param getInstance  Looks up an already-initialized instance by resource name. With a
+ *                     non-`Self` `alias`, resolves a cross-module reference into that
+ *                     import's published exported instances instead of the local context.
  *                     Returns undefined when the named resource is not yet initialized.
  */
 export type PreInitHook = (
   resource: ResourceManifest,
-  getInstance: (name: string) => ResourceInstance | undefined,
+  getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
 ) => void;
 
 /** Canonical key for a resource instance: "<module>.<kind>.<name>" */
