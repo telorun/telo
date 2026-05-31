@@ -1,6 +1,6 @@
 # @telorun/run
 
-## 1.0.0
+## 0.4.0
 
 ### Minor Changes
 
@@ -66,7 +66,7 @@ error.code }}" }` rethrow can therefore never resolve to `null` — previously s
   for the new target forms are follow-ups.
 
 - Updated dependencies [ae0bf77]
-  - @telorun/sdk@1.0.0
+  - @telorun/sdk@0.13.0
 
 ## 0.3.0
 

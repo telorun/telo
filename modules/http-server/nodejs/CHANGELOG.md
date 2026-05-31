@@ -1,12 +1,12 @@
 # @telorun/http-server
 
-## 1.0.0
+## 0.6.0
 
 ### Patch Changes
 
 - Updated dependencies [ae0bf77]
-  - @telorun/sdk@1.0.0
-  - @telorun/http-dispatch@1.0.0
+  - @telorun/sdk@0.13.0
+  - @telorun/http-dispatch@0.4.0
 
 ## 0.5.1
 

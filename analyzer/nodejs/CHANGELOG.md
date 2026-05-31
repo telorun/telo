@@ -1,6 +1,6 @@
 # @telorun/analyzer
 
-## 1.0.0
+## 0.14.0
 
 ### Minor Changes
 
@@ -67,8 +67,8 @@ error.code }}" }` rethrow can therefore never resolve to `null` — previously s
 
 - Updated dependencies [ae0bf77]
 - Updated dependencies [222b3d6]
-  - @telorun/sdk@1.0.0
-  - @telorun/templating@1.0.0
+  - @telorun/sdk@0.13.0
+  - @telorun/templating@0.4.0
 
 ## 0.13.0
 
