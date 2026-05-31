@@ -409,7 +409,7 @@ export class Kernel implements IKernel {
             (!!t &&
               typeof t === "object" &&
               (typeof (t as { name?: unknown }).name === "string" ||
-                typeof (t as { ref?: unknown }).ref === "string" ||
+                (t as { ref?: unknown }).ref != null ||
                 (t as { invoke?: unknown }).invoke !== undefined));
           if (!ok) {
             throw new RuntimeError(
