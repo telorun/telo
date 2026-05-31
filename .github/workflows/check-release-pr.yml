@@ -1,0 +1,25 @@
+name: Check release PR
+
+# Guards the changesets Version PR (`changeset-release/main`) against the
+# 0.x → 1.0.0 peer-dep cascade bug that's bitten the repo twice. See
+# scripts/check-no-major-bump.mjs for the rationale.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  no-major-bump:
+    if: github.head_ref == 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Validate no >=1.0.0 bump
+        run: node scripts/check-no-major-bump.mjs
