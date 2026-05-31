@@ -1,6 +1,6 @@
 {
   "name": "@telorun/mcp-client",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "Telo MCP Client module — Model Context Protocol client resource kinds for Telo manifests.",
   "keywords": [
     "telo",

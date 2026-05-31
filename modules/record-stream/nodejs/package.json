@@ -1,6 +1,6 @@
 {
   "name": "@telorun/record-stream",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "Stream operations on structured records — generic, format-neutral transformers.",
   "keywords": [
     "telo",
