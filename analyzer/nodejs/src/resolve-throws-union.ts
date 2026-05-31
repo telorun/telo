@@ -1,10 +1,16 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 export interface ThrowsCodeMeta {
   data?: Record<string, any>;
 }
+
+/** Code a non-`InvokeError` failure surfaces as inside a `catch` block. Mirrors
+ *  `PLAIN_ERROR_CODE` in `@telorun/run`'s `toSequenceError`: any invoke can throw
+ *  a plain error, which the catch sees as `error.code === "INTERNAL_ERROR"`. */
+export const PLAIN_ERROR_CODE = "INTERNAL_ERROR";
 
 export interface ThrowsUnion {
   /** Code → per-code metadata (data schema, etc). Keys are the declared codes. */
@@ -14,6 +20,12 @@ export interface ThrowsUnion {
    *  an unknown kind was encountered, or a cycle short-circuited resolution.
    *  Callers must treat unbounded unions as requiring a catch-all entry. */
   unbounded: boolean;
+  /** True when the block can fail with a non-`InvokeError` (any `invoke:` step).
+   *  Such a failure surfaces inside an enclosing `catch` as `PLAIN_ERROR_CODE`,
+   *  so a `throw: { code: "${{ error.code }}" }` rethrow can propagate it. Not
+   *  injected into `codes` — only seeds `enclosingTryCodes` at a try/catch site,
+   *  leaving non-rethrow unions untouched. */
+  canThrowPlain?: boolean;
 }
 
 export interface ResolveCtx {
@@ -47,6 +59,7 @@ function unionInto(target: ThrowsUnion, src: ThrowsUnion): void {
     if (!target.codes.has(code)) target.codes.set(code, meta);
   }
   if (src.unbounded) target.unbounded = true;
+  if (src.canThrowPlain) target.canThrowPlain = true;
 }
 
 function definitionFor(
@@ -173,7 +186,11 @@ function collectStepThrows(
   ctx: ResolveCtx,
 ): ThrowsUnion {
   if (step[invokeField]) {
-    return resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx);
+    // Any invoked resource can throw a non-InvokeError at runtime, which an
+    // enclosing catch surfaces as PLAIN_ERROR_CODE — record that possibility.
+    const u = cloneUnion(resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx));
+    u.canThrowPlain = true;
+    return u;
   }
 
   if (step.throw && typeof step.throw === "object") {
@@ -188,6 +205,10 @@ function collectStepThrows(
       // out instead. Sequence-specific subtraction — the plan explicitly
       // anchors this to Run.Sequence's try/catch schema shape.
       const tryCodes = new Set(tryUnion.codes.keys());
+      // A plain (non-InvokeError) failure in the try block reaches the catch as
+      // `error.code === PLAIN_ERROR_CODE`, so a `throw: { code: error.code }`
+      // rethrow can propagate it — seed the set the catch resolves against.
+      if (tryUnion.canThrowPlain) tryCodes.add(PLAIN_ERROR_CODE);
       propagated = collectStepArrayThrows(step.catch, invokeField, tryCodes, ctx);
       // Unbounded in the try block still signals the caller to expect
       // arbitrary codes to flow through the catch (e.g. via passthrough).
@@ -247,6 +268,7 @@ function cloneUnion(u: ThrowsUnion): ThrowsUnion {
   const out = emptyUnion();
   for (const [c, m] of u.codes) out.codes.set(c, m);
   out.unbounded = u.unbounded;
+  if (u.canThrowPlain) out.canThrowPlain = true;
   return out;
 }
 
@@ -316,16 +338,22 @@ function resolveCodeExpression(
   codeInput: unknown,
   enclosingTryCodes: Set<string> | undefined,
 ): ThrowsUnion {
-  if (typeof codeInput !== "string" || codeInput.length === 0) {
+  // A `!cel`-tagged sentinel and a `${{ … }}` string must resolve identically —
+  // normalize both to the inner CEL expression (or a bare literal code).
+  let expr: string;
+  if (isTaggedSentinel(codeInput)) {
+    if (codeInput.engine !== "cel") return { codes: new Map(), unbounded: true };
+    expr = codeInput.source.trim();
+  } else if (typeof codeInput === "string" && codeInput.length > 0) {
+    const match = codeInput.match(/^\s*\$\{\{\s*([\s\S]+?)\s*\}\}\s*$/);
+    if (!match) {
+      return { codes: new Map([[codeInput, {}]]), unbounded: false };
+    }
+    expr = match[1].trim();
+  } else {
     return { codes: new Map(), unbounded: true };
   }
 
-  const match = codeInput.match(/^\s*\$\{\{\s*([\s\S]+?)\s*\}\}\s*$/);
-  if (!match) {
-    return { codes: new Map([[codeInput, {}]]), unbounded: false };
-  }
-
-  const expr = match[1].trim();
   const litMatch = expr.match(/^'([^']+)'$|^"([^"]+)"$/);
   if (litMatch) {
     const code = litMatch[1] ?? litMatch[2]!;

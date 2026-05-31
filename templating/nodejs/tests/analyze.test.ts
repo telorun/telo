@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractAccessChains, validateChainAgainstSchema } from "../src/cel/analyze.js";
+import {
+  extractAccessChains,
+  findNullableAccessIssues,
+  validateChainAgainstSchema,
+} from "../src/cel/analyze.js";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 
 const env = buildCelEnvironment();
@@ -98,5 +102,63 @@ describe("validateChainAgainstSchema", () => {
     expect(
       validateChainAgainstSchema(["result", "output", "text"], streamSchema),
     ).toContain("yields a stream");
+  });
+});
+
+describe("findNullableAccessIssues", () => {
+  // `error` admits null; `value` is a plain object.
+  const schema = {
+    type: "object",
+    properties: {
+      error: {
+        type: ["object", "null"],
+        properties: { code: { type: "string" } },
+        additionalProperties: false,
+      },
+      value: {
+        type: "object",
+        properties: { code: { type: "string" } },
+      },
+    },
+  };
+  const issues = (expr: string) => findNullableAccessIssues(env.parse(expr).ast, schema);
+
+  it("flags an unguarded member access on a nullable value", () => {
+    expect(issues("error.code")).toEqual([{ path: "error", member: "code" }]);
+  });
+
+  it("flags unguarded index access on a nullable value", () => {
+    expect(issues("error[0]")).toEqual([{ path: "error", member: "[index]" }]);
+  });
+
+  it("descends into an index expression to catch a nullable used as the index", () => {
+    expect(issues("value[error.code]")).toEqual([{ path: "error", member: "code" }]);
+  });
+
+  it("does not flag access on a non-nullable value", () => {
+    expect(issues("value.code")).toEqual([]);
+  });
+
+  it("recognises a `!= null` guard in a ternary true branch", () => {
+    expect(issues("error != null ? error.code : 'x'")).toEqual([]);
+  });
+
+  it("recognises an `== null` guard in a ternary false branch", () => {
+    expect(issues("error == null ? 'x' : error.code")).toEqual([]);
+  });
+
+  it("recognises an `&&` short-circuit guard", () => {
+    expect(issues("error != null && error.code == 'X'")).toEqual([]);
+  });
+
+  it("recognises an `||` short-circuit guard", () => {
+    expect(issues("error == null || error.code == 'X'")).toEqual([]);
+  });
+
+  it("still flags an access outside the guarded branch", () => {
+    // The guard narrows only the false branch; the then-branch access is unsafe.
+    expect(issues("error == null ? error.code : 'x'")).toEqual([
+      { path: "error", member: "code" },
+    ]);
   });
 });

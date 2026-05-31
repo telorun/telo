@@ -176,6 +176,22 @@ schema:
               title: Catch
               description: Steps executed when try fails; receives error context.
               x-telo-topology-role: branch
+              x-telo-error-context:
+                type: object
+                description: The caught failure (always present inside catch).
+                properties: &errorContextProps
+                  code:
+                    description: Structured error code; INTERNAL_ERROR for plain errors.
+                    type: string
+                  message:
+                    description: Human-readable error message.
+                    type: string
+                  step:
+                    description: Name of the step that threw.
+                    type: string
+                  data:
+                    description: Structured payload from an InvokeError, else undefined.
+                additionalProperties: false
               type: array
               items:
                 $ref: "#/$defs/step"
@@ -183,6 +199,14 @@ schema:
               title: Finally
               description: Steps always executed after try/catch regardless of outcome.
               x-telo-topology-role: branch
+              # error is null on the success path and the caught failure when a
+              # try/catch failure propagates (see executeTryStep). Typed nullable
+              # so the analyzer flags unguarded field access (CEL_NULLABLE_ACCESS).
+              x-telo-error-context:
+                type: ["object", "null"]
+                description: The caught failure, or null when try (and catch) succeeded.
+                properties: *errorContextProps
+                additionalProperties: false
               type: array
               items:
                 $ref: "#/$defs/step"

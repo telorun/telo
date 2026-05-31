@@ -5,7 +5,12 @@ export {
   TEMPLATE_REGEX,
   EXACT_TEMPLATE_REGEX,
 } from "./cel/compile.js";
-export { extractAccessChains, INDEX_SEGMENT, validateChainAgainstSchema } from "./cel/analyze.js";
+export {
+  extractAccessChains,
+  findNullableAccessIssues,
+  INDEX_SEGMENT,
+  validateChainAgainstSchema,
+} from "./cel/analyze.js";
 export { walkCelExpressions } from "./cel/walk.js";
 
 export { celEngine } from "./engines/cel.js";

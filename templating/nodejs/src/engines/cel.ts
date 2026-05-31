@@ -1,4 +1,8 @@
-import { extractAccessChains, validateChainAgainstSchema } from "../cel/analyze.js";
+import {
+  extractAccessChains,
+  findNullableAccessIssues,
+  validateChainAgainstSchema,
+} from "../cel/analyze.js";
 import { compileExpression } from "../cel/compile.js";
 import type { EngineDiagnostic, TemplatingEngine } from "../engine.js";
 
@@ -34,6 +38,19 @@ export const celEngine: TemplatingEngine = {
     for (const chain of chains) {
       const err = validateChainAgainstSchema(chain, env.contextSchema as Record<string, any>);
       if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
+    }
+
+    for (const issue of findNullableAccessIssues(
+      parsed.ast,
+      env.contextSchema as Record<string, any>,
+    )) {
+      // Index access (member "[index]") attaches without a dot; a named field
+      // attaches with one — so the suggested CEL stays valid either way.
+      const access = issue.member === "[index]" ? issue.member : `.${issue.member}`;
+      out.push({
+        code: "CEL_NULLABLE_ACCESS",
+        message: `'${issue.path}' may be null — guard it (e.g. '${issue.path} != null && …' or '${issue.path} == null ? … : ${issue.path}${access}') before accessing '${access}'`,
+      });
     }
     return out;
   },

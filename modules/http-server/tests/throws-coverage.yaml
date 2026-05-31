@@ -8,6 +8,7 @@ targets:
   - TestCatchAllNotLast
   - TestPassthroughInsideCatch
   - TestInheritCycle
+  - TestRethrowPlain
 ---
 kind: Telo.Import
 metadata:
@@ -61,5 +62,16 @@ kind: Assert.Manifest
 metadata:
   name: TestInheritCycle
 source: ./__fixtures__/inherit-cycle.yaml
+expect:
+  errors: []
+---
+# A try block invoking a resource can throw a plain Error, which the catch
+# surfaces as INTERNAL_ERROR; the catch rethrows error.code. The resolver folds
+# INTERNAL_ERROR into the union, so a route covering it is valid (without the
+# fold-in the union would be empty and the when: would be UNDECLARED_THROW_CODE).
+kind: Assert.Manifest
+metadata:
+  name: TestRethrowPlain
+source: ./__fixtures__/rethrow-plain-uncovered.yaml
 expect:
   errors: []

@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: ErrorContextValidFixture
+  version: 1.0.0
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../..
+---
+kind: Telo.Import
+metadata:
+  name: JavaScript
+source: ../../../javascript
+---
+# Every error field accessed inside the catch is valid → zero analyzer errors.
+kind: Run.Sequence
+metadata:
+  name: ValidSeq
+steps:
+  - name: outer
+    try:
+      - name: work
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main() { return 1 }
+    catch:
+      - name: rethrow
+        throw:
+          code: "${{ error.code }}"
+          message: "${{ error.message }} at ${{ error.step }}"
+          data: "${{ error.data }}"
+    finally:
+      # error is nullable here — a null-guarded access is valid.
+      - name: cleanup
+        throw:
+          code: "${{ error == null ? 'DONE' : error.code }}"
+          message: "cleanup"
