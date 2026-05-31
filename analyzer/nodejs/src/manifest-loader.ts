@@ -10,6 +10,7 @@ import type {
   LoadedGraph,
   LoadedModule,
 } from "./loaded-types.js";
+import { desugarLoadedFile } from "./inline-imports.js";
 import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
 import {
@@ -25,6 +26,14 @@ const SYSTEM_KINDS = new Set([
   "Telo.Import",
   "Telo.Definition",
 ]);
+
+/** File cache variant tags: compile (c/r) × desugarImports (d/n). A desugared
+ *  and a raw load of the same file are distinct entries so neither sees the
+ *  wrong manifest tree. */
+const CACHE_VARIANTS = ["rn", "rd", "cn", "cd"] as const;
+function variantKey(options?: LoadOptions): string {
+  return `${options?.compile ? "c" : "r"}${options?.desugarImports ? "d" : "n"}`;
+}
 
 export class Loader {
   /** LoadedFile cache keyed by `${compile ? "compiled" : "raw"}:${source}`.
@@ -100,29 +109,25 @@ export class Loader {
    *  private mutable copy must call `parseLoadedFile` directly with the
    *  LoadedFile's `text`. */
   async loadFile(url: string, options?: LoadOptions): Promise<LoadedFile> {
-    const compileKey = options?.compile ? "compiled" : "raw";
+    const variant = variantKey(options);
     const knownSource = this.urlToSource.get(url);
     if (knownSource) {
-      const cached = this.fileCache.get(`${compileKey}:${knownSource}`);
+      const cached = this.fileCache.get(`${variant}:${knownSource}`);
       if (cached) return cached;
-      // The other compile-mode entry is cached — reparse from its text
+      // Another variant of this source is cached — reparse from its text
       // instead of re-reading the source.
       //
       // NOTE for watch-mode reactivation (cli/nodejs/src/commands/run.ts
       // currently has `setupWatchMode` commented out): this branch
       // assumes file contents don't change underneath a single Loader.
       // Reviving watch mode will need a public `invalidate(url)` (or
-      // similar) that drops both `urlToSource[url]` and the cached
-      // entries for its canonical source before the loader serves the
-      // file again.
-      const altKey = `${compileKey === "compiled" ? "raw" : "compiled"}:${knownSource}`;
-      const alt = this.fileCache.get(altKey);
-      if (alt) {
-        const reparsed = parseLoadedFile(knownSource, url, alt.text, {
-          compile: options?.compile,
-          celEnv: this.celEnv,
-        });
-        this.fileCache.set(`${compileKey}:${knownSource}`, reparsed);
+      // similar) that drops both `urlToSource[url]` and every cached
+      // variant entry for its canonical source before the loader serves
+      // the file again.
+      const altText = this.findCachedText(knownSource);
+      if (altText !== undefined) {
+        const reparsed = this.parseAndMaybeDesugar(knownSource, url, altText, options);
+        this.fileCache.set(`${variant}:${knownSource}`, reparsed);
         return reparsed;
       }
     }
@@ -135,16 +140,41 @@ export class Loader {
     // for that exact URL — hit the urlToSource fast path instead of
     // falling through to a redundant `pick(url).read(url)`.
     this.urlToSource.set(source, source);
-    const cacheKey = `${compileKey}:${source}`;
+    const cacheKey = `${variant}:${source}`;
     const cached = this.fileCache.get(cacheKey);
     if (cached && cached.text === text) return cached;
 
-    const loaded = parseLoadedFile(source, url, text, {
+    const loaded = this.parseAndMaybeDesugar(source, url, text, options);
+    this.fileCache.set(cacheKey, loaded);
+    return loaded;
+  }
+
+  /** Parse `text` into a LoadedFile, then desugar inline `imports:` when the
+   *  caller opted in. Desugaring lives here, not in the pure `parseLoadedFile`,
+   *  so round-trip consumers (the editor) keep a raw manifest/AST/position
+   *  triple they can pair by index; only resolved consumers that pass
+   *  `desugarImports` see synthetic Telo.Import manifests. */
+  private parseAndMaybeDesugar(
+    source: string,
+    requestedUrl: string,
+    text: string,
+    options?: LoadOptions,
+  ): LoadedFile {
+    const loaded = parseLoadedFile(source, requestedUrl, text, {
       compile: options?.compile,
       celEnv: this.celEnv,
     });
-    this.fileCache.set(cacheKey, loaded);
-    return loaded;
+    return options?.desugarImports ? desugarLoadedFile(loaded) : loaded;
+  }
+
+  /** Raw text of any already-cached variant for `source`, so a cache miss on
+   *  one (compile, desugar) variant reparses without a second source read. */
+  private findCachedText(source: string): string | undefined {
+    for (const v of CACHE_VARIANTS) {
+      const cached = this.fileCache.get(`${v}:${source}`);
+      if (cached) return cached.text;
+    }
+    return undefined;
   }
 
   /** Load an owner file plus every partial reachable through its `include:`

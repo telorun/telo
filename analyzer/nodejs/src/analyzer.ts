@@ -621,6 +621,11 @@ export class StaticAnalyzer {
       }
     }
     const aliasesByModule = ctx?.aliasesByModule ?? new Map<string, AliasResolver>();
+    // Per-module-scope seen aliases for DUPLICATE_IMPORT_ALIAS. Authored
+    // Telo.Import docs and synthetic-from-inline-`imports:` share one alias
+    // namespace per module, so a repeat — across either form — is an error
+    // rather than the silent last-writer-wins the resolver would otherwise do.
+    const seenAliasByScope = new Map<string, Set<string>>();
     for (const m of manifests) {
       if (isModuleKind(m.kind)) {
         const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
@@ -656,6 +661,32 @@ export class StaticAnalyzer {
           | null
           | undefined;
         const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+        if (alias) {
+          const scopeKey = ownModule ?? "";
+          let seen = seenAliasByScope.get(scopeKey);
+          if (!seen) {
+            seen = new Set<string>();
+            seenAliasByScope.set(scopeKey, seen);
+          }
+          if (seen.has(alias)) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "DUPLICATE_IMPORT_ALIAS",
+              source: SOURCE,
+              message:
+                `Duplicate import alias '${alias}'. An alias may be declared once per module — ` +
+                `across both inline 'imports:' entries and 'Telo.Import' documents. ` +
+                `Rename or remove the duplicate.`,
+              data: {
+                resource: { kind: "Telo.Import", name: alias },
+                filePath: (m.metadata as { source?: string } | undefined)?.source,
+                path: "metadata.name",
+              },
+            });
+          } else {
+            seen.add(alias);
+          }
+        }
         if (alias && source) {
           const targetModule =
             resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;

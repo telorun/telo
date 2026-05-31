@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: InlineImportDuplicateAlias
+  version: 1.0.0
+  description: |
+    Fixture: the alias `Console` is declared twice — once as an inline
+    `imports:` entry and once as an authored `Telo.Import` document. Both forms
+    share one per-module alias namespace, so the analyzer must reject this with
+    DUPLICATE_IMPORT_ALIAS rather than silently shadowing one with the other.
+    Loaded by tests/inline-import-duplicate-alias.yaml via Assert.Manifest.
+imports:
+  Console: ../../modules/console
+---
+kind: Telo.Import
+metadata:
+  name: Console
+source: ../../modules/console

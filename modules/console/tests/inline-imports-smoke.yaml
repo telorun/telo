@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: InlineImportsSmoke
+  version: 1.0.0
+  description: |
+    Verifies inline `imports:` end-to-end through the real kernel: the app
+    declares its dependencies as an `imports:` map on the Application doc
+    instead of separate `Telo.Import` documents, then references them with the
+    same `!ref Alias.name` grammar. Exercises both entry forms — the scalar
+    shorthand (`Console: ../`, sugar for `{ source: ../ }`) and the object form
+    (`Assert: { source: ... }`). Because this runs via `kernel.load` (which
+    desugars inline imports into Telo.Import manifests on both the analysis and
+    runtime loads), a green run proves inline imports are not just analyzable
+    but actually materialize and execute — `Console.writeLine` runs and
+    `steps.Print.result` carries its return value.
+imports:
+  Console: ../
+  Assert:
+    source: ../../assert
+targets:
+  - name: Print
+    invoke: !ref Console.writeLine
+    inputs:
+      output: "inline imports work"
+  - name: Check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: ${{ steps.Print.result }}
+      expected: "inline imports work"

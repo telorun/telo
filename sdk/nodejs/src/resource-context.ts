@@ -10,6 +10,11 @@ export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
    *  so they can be evaluated at runtime. Leave unset for static analysis. */
   compile?: boolean;
+  /** When true, each module document's inline `imports:` map is desugared into
+   *  synthetic `Telo.Import` manifests before the manifests are returned, so
+   *  inline imports resolve and execute identically to authored `Telo.Import`
+   *  documents. Mirrors the analyzer loader's option of the same name. */
+  desugarImports?: boolean;
 }
 
 export interface DataValidator {

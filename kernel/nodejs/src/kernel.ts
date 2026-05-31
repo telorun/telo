@@ -183,7 +183,7 @@ export class Kernel implements IKernel {
   }
 
   async loadManifests(url: string): Promise<ResourceManifest[]> {
-    const graph = await this.loader.loadGraph(url);
+    const graph = await this.loader.loadGraph(url, { desugarImports: true });
     if (graph.errors.length > 0) throw graph.errors[0].error;
     return flattenForAnalyzer(graph);
   }
@@ -300,7 +300,10 @@ export class Kernel implements IKernel {
 
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
-    const analysisGraph = await this.loader.loadGraph(sourceUrl);
+    // `desugarImports` expands each module's inline `imports:` map into synthetic
+    // Telo.Import manifests before discovery walks the graph, so inline imports
+    // resolve identically to authored Telo.Import docs.
+    const analysisGraph = await this.loader.loadGraph(sourceUrl, { desugarImports: true });
     if (analysisGraph.errors.length > 0) {
       throw analysisGraph.errors[0].error;
     }
@@ -374,7 +377,12 @@ export class Kernel implements IKernel {
     // Load runtime configuration — root module gets access to host env.
     // Imports are loaded separately via the import-controller; this load is
     // entry-only with compile-time CEL.
-    const lm = await this.loader.loadModule(sourceUrl, { compile: true });
+    // `desugarImports` so inline `imports:` entries become real Telo.Import
+    // manifests in the runtime manifest list — `registerManifest` below then
+    // routes them to the import-controller, which actually loads and runs them.
+    // Without it (analysis-only desugar) inline imports would pass validation
+    // and then never execute.
+    const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true });
     const allManifests = flattenLoadedModule(lm);
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots

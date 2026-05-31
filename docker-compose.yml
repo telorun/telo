@@ -78,6 +78,7 @@ services:
     image: node:24
     command: 'sh -c "corepack enable && rm -rf /telo/pages/.docusaurus /telo/pages/node_modules/.cache && exec pnpm --filter @telorun/pages exec docusaurus start --host 0.0.0.0 --port 3000 --poll 1000"'
     init: true
+    user: ${UID:-1000}:${GID:-1000}
     volumes:
       - .:/telo
     working_dir: /telo

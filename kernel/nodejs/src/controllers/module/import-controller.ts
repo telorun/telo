@@ -59,8 +59,13 @@ export async function create(
   // Load target module manifests for runtime. Inject variables/secrets as compile context so
   // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
   // No env — child modules are isolated from host environment.
+  // `desugarImports` so a child library that itself uses inline `imports:` has
+  // those expanded into Telo.Import manifests and registered in its child
+  // context — without it, a transitively-imported library's inline imports
+  // would load but never execute (the execute-gap, one level down).
   const manifests = await ctx.loadModule(resolvedUrl, {
     compile: true,
+    desugarImports: true,
   });
   // Import targets must be Telo.Library — Applications are run directly, not imported.
   const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library");
