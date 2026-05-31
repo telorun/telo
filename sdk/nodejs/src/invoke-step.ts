@@ -57,6 +57,10 @@ export interface InvokeStepContext {
     instance: ResourceInstance,
     inputs: TInputs,
   ): Promise<any>;
+  /** Resolve a cross-module exported instance (`!ref Alias.name`) to its live instance.
+   *  Optional — providers that pre-resolve cross-module refs before reaching the leaf
+   *  (e.g. the boot-target runner) may omit it. */
+  resolveImportedInstance?(alias: string, name: string): ResourceInstance | undefined;
 }
 
 /**
@@ -93,7 +97,18 @@ export async function executeInvokeStep(
     result = await (raw as Invocable).invoke(inputs);
   } else {
     const ref = raw as KindRef<Invocable>;
-    if (state.scope) {
+    if (ref.alias && ref.alias !== "Self") {
+      // Cross-module exported instance: resolve into the owning import's context and invoke
+      // the live instance directly — works whether or not the step runs inside a `with:`
+      // scope (a plain `steps` list has no scope, so name lookup in the local context fails).
+      const instance = ctx.resolveImportedInstance?.(ref.alias, ref.name);
+      if (!instance) {
+        throw new Error(
+          `Cross-module reference '${ref.alias}.${ref.name}' did not resolve to an exported instance.`,
+        );
+      }
+      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
+    } else if (state.scope) {
       const instance = state.scope.getInstance(ref.name) as unknown as ResourceInstance;
       result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
     } else {

@@ -44,6 +44,10 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
       if (!targetModule) continue;
 
       const stamped = collectModuleManifests(targetModule);
+      const libDoc = stamped.find((m) => isModuleKind(m.kind));
+      const exportedResources = new Set<string>(
+        (libDoc as { exports?: { resources?: string[] } } | undefined)?.exports?.resources ?? [],
+      );
       for (const m of stamped) {
         if (
           m.kind === "Telo.Definition" ||
@@ -51,6 +55,22 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
           m.kind === "Telo.Import"
         ) {
           result.push(m);
+        } else if (
+          !isModuleKind(m.kind) &&
+          typeof m.metadata?.name === "string" &&
+          exportedResources.has(m.metadata.name as string)
+        ) {
+          // Forward instances listed in the library's `exports.resources` so the
+          // consumer's analyzer can resolve, gate, kind-check, and draw topology edges
+          // for cross-module `!ref Alias.name`. The gate IS this forwarding — only
+          // exported names cross the boundary. `metadata.forwardedExport` marks them as
+          // cross-module resolution targets only (keyed by `metadata.module`), so ref
+          // resolution / validation treats them as targets, never as local sources to
+          // re-validate or walk.
+          result.push({
+            ...m,
+            metadata: { ...m.metadata, forwardedExport: true } as ResourceManifest["metadata"],
+          });
         }
       }
     }

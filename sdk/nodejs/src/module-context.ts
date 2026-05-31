@@ -2,6 +2,7 @@ import type { Invocable } from "./capabilities/invokable.js";
 import type { ControllerPolicy } from "./controller-policy.js";
 import type { EvaluationContext } from "./evaluation-context.js";
 import type { BootTarget } from "./invoke-step.js";
+import type { ResourceInstance } from "./resource-instance.js";
 
 /**
  * Public contract for a persistent, module-scoped context.
@@ -29,6 +30,12 @@ export interface ModuleContext extends EvaluationContext {
   getControllerPolicy(): ControllerPolicy | undefined;
 
   registerImport(alias: string, targetModule: string, kinds: string[]): void;
+  /** Resolve a cross-module exported-instance reference `Alias.name` to its `{kind, name}`
+   *  ref (canonical kind), gated by the import's `exports.resources`. Returns undefined when
+   *  the alias is unknown, the name isn't exported, or the import hasn't initialized yet. */
+  resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined;
+  /** Resolve a cross-module exported-instance reference `Alias.name` to its live instance. */
+  resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined;
   getInstance(name: string): unknown;
   getInvocable<TInput = Record<string, any>, TOutput = any>(
     name: string,

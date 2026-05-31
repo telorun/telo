@@ -107,10 +107,46 @@ export function validateReferences(
   // source, different sourceLine) keep separate fingerprints and still
   // trip the diagnostic. `analyze()` enforces that every non-system
   // manifest carries both positional fields — no defensive guard needed.
+  // Forwarded foreign exports (an imported library's exported instances, carrying a
+  // metadata.module that isn't a root module) are resolution TARGETS only: excluded from
+  // duplicate detection and local name resolution, and never walked as ref sources.
+  const moduleOf = (r: ResourceManifest): string | undefined =>
+    (r.metadata as { module?: string } | undefined)?.module;
+  // Forwarded exports are flagged by flattenForAnalyzer (`metadata.forwardedExport`); they're
+  // cross-module resolution targets only — excluded from duplicate detection and local name
+  // resolution, and never walked as ref sources.
+  const isForeign = (r: ResourceManifest): boolean =>
+    (r.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true;
+  // Forwarded exported instances keyed `${module}\0${name}` — the lookup that resolves
+  // whether a cross-module `!ref Alias.name` names a real exported instance.
+  const byModuleName = new Map<string, ResourceManifest>();
+  /** Modules whose import subtree was actually loaded in this analysis. A resolved
+   *  `Telo.Import` carries `resolvedModuleName` (stamped only once the edge — and thus the
+   *  imported module — resolved); forwarded exports carry `metadata.module`. Either marks
+   *  the module loaded independent of how many instances it exports, so a loaded library
+   *  that exports nothing still reports invalid cross-module refs, while partial single-file
+   *  analysis (neither present) is skipped to avoid false `UNRESOLVED_REFERENCE`. */
+  const loadedModules = new Set<string>();
+  for (const r of resources) {
+    if (r.kind === "Telo.Import") {
+      const m = (r.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
+      if (typeof m === "string") loadedModules.add(m);
+      continue;
+    }
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForeign(r)) continue;
+    const m = moduleOf(r);
+    if (!m) continue;
+    byModuleName.set(`${m}\0${r.metadata.name as string}`, r);
+    loadedModules.add(m);
+  }
+  const moduleLoaded = (module: string): boolean => loadedModules.has(module);
+  const localResources = resources.filter((r) => !isForeign(r));
+
   const byNameAll = new Map<string, ResourceManifest[]>();
   const seen = new Set<string>();
   for (const r of resources) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || r.kind === "Telo.Import") continue;
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || r.kind === "Telo.Import" || isForeign(r))
+      continue;
     const name = r.metadata.name as string;
     // `analyze()` guarantees both fields are present on non-system manifests.
     const meta = r.metadata as unknown as { source: string; sourceLine: number };
@@ -148,6 +184,33 @@ export function validateReferences(
       });
     }
   }
+  // A resource name must contain no dot. The `!ref` resolver splits the tag's source on
+  // the first dot to separate an import alias from the resource name, so a dotted name
+  // would mis-resolve into a cross-module lookup. This is the load-bearing invariant of
+  // the reference grammar, so it is enforced here rather than left to the (unenforced)
+  // casing convention.
+  for (const [name, list] of byNameAll) {
+    if (!name.includes(".")) continue;
+    for (const r of list) {
+      const m = r.metadata as { source?: string; sourceLine?: number } | undefined;
+      const range =
+        typeof m?.sourceLine === "number"
+          ? {
+              start: { line: m.sourceLine, character: 0 },
+              end: { line: m.sourceLine, character: Number.MAX_SAFE_INTEGER },
+            }
+          : undefined;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "INVALID_RESOURCE_NAME",
+        source: SOURCE,
+        message: `${r.kind}/${name}: resource name must not contain '.' — in a '!ref' the '.' separates an import alias from the resource name`,
+        ...(range ? { range } : {}),
+        data: { resource: { kind: r.kind, name }, filePath: m?.source, path: "metadata.name" },
+      });
+    }
+  }
+
   // Single-resource map for the resolution / scope lookups below — when a
   // collision exists, falling back to the first occurrence keeps the rest
   // of the pass behaving the same as before the duplicate diagnostic was
@@ -161,7 +224,7 @@ export function validateReferences(
   // enclosure (`inScope`) and the scope manifests visible to it — so this
   // handler only validates, it does not re-walk.
   visitManifest(
-    resources,
+    localResources,
     registry,
     {
       onRef: (e) => {
@@ -178,14 +241,37 @@ export function validateReferences(
         // string/inline ambiguity at the source.
         if (isRefSentinel(val)) {
           const refName = val.source;
+          const dot = refName.indexOf(".");
+          const aliasPrefix = dot > 0 ? refName.slice(0, dot) : undefined;
+
+          // Cross-module sentinel left unresolved by Phase 2.5 — it qualifies an import
+          // alias. If that module's exports are loaded in this analysis, the miss is real
+          // (name not in exports.resources, or a typo); if not (partial single-file
+          // analysis), skip rather than emit a false UNRESOLVED_REFERENCE.
+          if (aliasPrefix && aliasPrefix !== "Self" && aliases.hasAlias(aliasPrefix)) {
+            const module = aliases.moduleForAlias(aliasPrefix);
+            if (module && !moduleLoaded(module)) return;
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "UNRESOLVED_REFERENCE",
+              source: SOURCE,
+              message: `${resourceLabel}: reference at '${concretePath}' → '${refName}' is not exported by module '${module ?? aliasPrefix}' (add it to exports.resources)`,
+              data: { resource: resourceData, filePath, path: concretePath },
+            });
+            return;
+          }
+
+          // Local reference (bare name or explicit `Self.`-qualified).
+          const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
           const target =
-            byName.get(refName) ?? visibleScopeManifests.find((m) => m.metadata?.name === refName);
+            byName.get(localName) ??
+            visibleScopeManifests.find((m) => m.metadata?.name === localName);
           if (!target) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",
               source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → resource '${refName}' not found`,
+              message: `${resourceLabel}: reference at '${concretePath}' → resource '${localName}' not found`,
               data: { resource: resourceData, filePath, path: concretePath },
             });
             return;
@@ -280,9 +366,18 @@ export function validateReferences(
         }
 
         // 3. Resolution check — resource with this name must exist.
-        const exists =
-          byName.has(refVal.name) ||
-          visibleScopeManifests.some((m) => m.metadata?.name === refVal.name);
+        let exists: boolean;
+        if (typeof refVal.alias === "string" && refVal.alias !== "Self") {
+          // Cross-module ref resolved by Phase 2.5. Validate against the forwarded
+          // exports when loaded; in partial context (module not loaded) assume resolvable.
+          const module = aliases.moduleForAlias(refVal.alias);
+          exists =
+            !module || !moduleLoaded(module) || byModuleName.has(`${module}\0${refVal.name}`);
+        } else {
+          exists =
+            byName.has(refVal.name) ||
+            visibleScopeManifests.some((m) => m.metadata?.name === refVal.name);
+        }
         if (!exists) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -303,7 +398,7 @@ export function validateReferences(
   // validate the field value against the resulting sub-schema. Driven off the base map
   // (un-expanded) so each schema-from slot is seen as its own site.
   visitManifest(
-    resources,
+    localResources,
     registry,
     {
       onSchemaFrom: (e) => {

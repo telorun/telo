@@ -6,6 +6,7 @@ import type {
   InvokeStep,
   InvokeStepContext,
   ModuleContext as IModuleContext,
+  ResourceInstance,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -71,6 +72,18 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   /** Maps import alias → allowed kind names. Absent entry = unrestricted (e.g. Kernel). */
   private readonly importedKinds = new Map<string, Set<string>>();
+
+  /** Maps import alias → its child context's exported instances. Registered by the
+   *  Telo.Import controller; read when resolving a cross-module `!ref Alias.name`
+   *  reference (Phase 5 injection and boot targets). `names` is the import's
+   *  `exports.resources` gate — only listed instances are reachable. */
+  private readonly importedScopes = new Map<
+    string,
+    {
+      names: Set<string>;
+      get: (name: string) => { kind: string; instance: ResourceInstance } | undefined;
+    }
+  >();
 
   /**
    * Resolved controller-selection policy for this module's `Telo.Definition`s.
@@ -159,6 +172,37 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     if (kinds.length > 0) {
       this.importedKinds.set(alias, new Set(kinds));
     }
+  }
+
+  /** Register an import alias's exported instances for cross-module reference resolution.
+   *  `names` is the gate (the import's `exports.resources`); `get` reads the child context's
+   *  live instance + its canonical kind lazily — they exist only after the import's `init()`
+   *  runs. */
+  registerImportedScope(
+    alias: string,
+    names: string[],
+    get: (name: string) => { kind: string; instance: ResourceInstance } | undefined,
+  ): void {
+    this.importedScopes.set(alias, { names: new Set(names), get });
+  }
+
+  /** Resolve `Alias.name` to a live exported instance, gated by `exports.resources`.
+   *  Returns undefined when the alias is unknown, the name isn't exported, or the import
+   *  hasn't initialized its instances yet (the injection path defers and retries). */
+  override resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
+    const scope = this.importedScopes.get(alias);
+    if (!scope || !scope.names.has(name)) return undefined;
+    return scope.get(name)?.instance;
+  }
+
+  /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)
+   *  for controllers that resolve step/handler invokes to refs rather than live instances
+   *  (e.g. Run.Sequence via `resolveChildren`). The alias is reattached by the caller. */
+  resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined {
+    const scope = this.importedScopes.get(alias);
+    if (!scope || !scope.names.has(name)) return undefined;
+    const entry = scope.get(name);
+    return entry ? { kind: entry.kind, name } : undefined;
   }
 
   hasImport(alias: string): boolean {
@@ -266,6 +310,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       invoke: (kind, name, inputs) => this.invoke(kind, name, inputs),
       invokeResolved: (kind, name, instance, inputs) =>
         this.invokeResolved(kind, name, instance, inputs),
+      resolveImportedInstance: (alias, name) => this.resolveImportedInstance(alias, name),
     };
     for (let i = 0; i < this.targets.length; i++) {
       const target = this.targets[i]!;
@@ -277,6 +322,9 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         const step: InvokeStep = {
           name: target.name ?? `Target${i}`,
           when: target.when,
+          // A cross-module `!ref Alias.name` stays a `{kind, name, alias}` ref; the leaf's
+          // alias branch resolves it via `resolveImportedInstance` and dispatches through
+          // `invokeResolved` so invocation events and error wrapping still fire.
           invoke: target.invoke,
           inputs: target.inputs,
         };
@@ -284,9 +332,21 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         continue;
       }
       if ("ref" in target && target.ref != null) {
-        const refName = typeof target.ref === "string" ? target.ref : target.ref.name;
         if (target.when === undefined || this.expandWith(target.when, { steps })) {
-          await this.run(refName);
+          const ref = target.ref as unknown;
+          const r =
+            ref && typeof ref === "object" ? (ref as { name: string; alias?: string }) : undefined;
+          if (r && typeof r.alias === "string" && r.alias !== "Self") {
+            const inst = this.resolveImportedInstance(r.alias, r.name);
+            if (!inst || typeof inst.run !== "function") {
+              throw new Error(
+                `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
+              );
+            }
+            await inst.run();
+          } else {
+            await this.run(typeof ref === "string" ? ref : r!.name);
+          }
         }
         continue;
       }

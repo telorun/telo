@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { cp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -9,10 +17,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..", "..", "..", "..");
 
 /** Workspace packages packed + npm-installed into the fixture's `node_modules`
- *  so the bootstrap's `import { Kernel } from "@telorun/kernel"` resolves.
- *  Controllers (lambda, javascript, type, ...) are pulled in by `telo install`
- *  against the public registry — they don't need to live in the bootstrap's
- *  resolution path. */
+ *  so the bootstrap's `import { Kernel } from "@telorun/kernel"` resolves. The
+ *  copied module controllers (below) resolve their `@telorun/sdk` peer from
+ *  here via Node's upward `node_modules` walk. */
 const WORKSPACE_PACKAGES = [
   { name: "@telorun/kernel", dir: "kernel/nodejs" },
   { name: "@telorun/sdk", dir: "sdk/nodejs" },
@@ -20,9 +27,30 @@ const WORKSPACE_PACKAGES = [
   { name: "@telorun/templating", dir: "templating/nodejs" },
 ];
 
-/** Registry id used by fixture manifests' `Telo.Import` of the Lambda module.
- *  Resolved by `telo install` from the public Telo registry. */
-export const LAMBDA_LIB_PATH = "aws/lambda@0.2.1";
+/** Telo modules copied verbatim into the fixture (telo.yaml + built `nodejs/`)
+ *  so fixtures import them by relative path and `local_path` controllers route
+ *  to this LIVE workspace code instead of a published registry version — no
+ *  version strings to maintain, and the e2e exercises what's about to ship.
+ *  `package.json` is the package name (used to rewrite sibling `workspace:*`
+ *  deps), `dir` the workspace source, `module` the fixture-relative folder. */
+const FIXTURE_MODULES = [
+  { package: "@telorun/lambda", dir: "modules/lambda", module: "lambda" },
+  {
+    package: "@telorun/http-dispatch",
+    dir: "modules/http-dispatch",
+    module: "http-dispatch",
+  },
+  { package: "@telorun/javascript", dir: "modules/javascript", module: "javascript" },
+  { package: "@telorun/type", dir: "modules/type", module: "type" },
+];
+
+/** Fixture-root-relative `source:` for each module's `Telo.Import`. Consumed by
+ *  the manifest helpers so import paths and the copied tree stay in lockstep. */
+export const MODULE_SOURCES = {
+  lambda: "./modules/lambda",
+  javascript: "./modules/javascript",
+  type: "./modules/type",
+} as const;
 
 /** Cached across all fixtures in a vitest run — packing + npm-installing is
  *  the slowest part (~30-60s). Each fixture clones this tree before layering
@@ -36,10 +64,21 @@ interface PackedTarballs {
   packDir: string;
 }
 
+/** Everything packed into the fixture-root `node_modules`: the workspace
+ *  runtime packages plus the modules' `nodejs/` controllers. Packing the
+ *  modules here (not just copying their trees) materialises their transitive
+ *  deps (`@telorun/http-dispatch`, typebox, cel-js, …) at the fixture root, so
+ *  a `local_path` controller loaded from the copied tree resolves them via
+ *  Node's upward `node_modules` walk. */
+const PACKED_PACKAGES = [
+  ...WORKSPACE_PACKAGES,
+  ...FIXTURE_MODULES.map((m) => ({ name: m.package, dir: `${m.dir}/nodejs` })),
+];
+
 async function pnpmPackAll(): Promise<PackedTarballs> {
   const packDir = mkdtempSync(join(tmpdir(), "telo-lambda-e2e-pack-"));
   const tarballs = new Map<string, string>();
-  for (const pkg of WORKSPACE_PACKAGES) {
+  for (const pkg of PACKED_PACKAGES) {
     const pkgDir = join(REPO_ROOT, pkg.dir);
     // `--config.ignore-scripts=true` skips the workspace-internal
     // prepack-bake-overrides hook, which expects pnpm to rewrite workspace:
@@ -96,7 +135,50 @@ async function buildPreparedRoot(): Promise<string> {
     stdio: ["ignore", "ignore", "inherit"],
   });
 
+  await copyModuleManifests(root);
+  await stageControllers(root);
+
   return root;
+}
+
+/** Copies each module's telo.yaml into `<root>/modules/<name>/` so fixtures
+ *  import it by relative path, stripping the `?local_path=` qualifier off every
+ *  controller PURL. Without `local_path` the kernel resolves the controller as
+ *  a `kind: "registry"` spec — whose fast path matches by installed *version*
+ *  (`stageControllers` pre-places the right one) rather than by a `file:` path.
+ *  That's what survives the host→container bind-mount: the registry fast path
+ *  needs no boot-time `npm install`, so the offline AWS Lambda container never
+ *  reaches for the network. */
+async function copyModuleManifests(root: string): Promise<void> {
+  for (const mod of FIXTURE_MODULES) {
+    const srcDir = join(REPO_ROOT, mod.dir);
+    const manifest = readFileSync(join(srcDir, "telo.yaml"), "utf-8").replaceAll(
+      /\?local_path=[^#"\s]+/g,
+      "",
+    );
+    const destDir = join(root, "modules", mod.module);
+    mkdirSync(destDir, { recursive: true });
+    writeFileSync(join(destDir, "telo.yaml"), manifest);
+  }
+}
+
+/** Pre-places real copies of the module controllers (packed + installed into
+ *  the fixture-root `node_modules` above) under `.telo/npm/node_modules/` so the
+ *  kernel's registry fast path finds the LIVE-version package already on disk
+ *  and skips installing. `@telorun/sdk` is left to the kernel's realm-collapse
+ *  bootstrap, which resolves it offline from the fixture-root `node_modules`. */
+async function stageControllers(root: string): Promise<void> {
+  const stageRoot = join(root, ".telo", "npm", "node_modules");
+  for (const mod of FIXTURE_MODULES) {
+    const installed = join(root, "node_modules", mod.package);
+    const version = JSON.parse(
+      readFileSync(join(installed, "package.json"), "utf-8"),
+    ).version;
+    if (!version) {
+      throw new Error(`Packed module ${mod.package} is missing from ${installed}.`);
+    }
+    await cp(installed, join(stageRoot, ...mod.package.split("/")), { recursive: true });
+  }
 }
 
 /** Returns the prepared root path. Builds it on first call; subsequent calls
@@ -124,9 +206,11 @@ export interface Fixture {
   cleanup: () => void;
 }
 
-/** Materialises a per-test fixture: clones the prepared root, writes the
- *  fixture's telo.yaml, runs `telo install` to pre-populate `.telo/npm/`,
- *  and copies the right bootstrap into place. */
+/** Materialises a per-test fixture: clones the prepared root (which already
+ *  carries the copied module manifests and the staged `.telo/npm/` controllers),
+ *  writes the fixture's telo.yaml, and copies the right bootstrap into place.
+ *  No `telo install` is needed — every controller is pre-staged at its LIVE
+ *  version, so the offline AWS Lambda container resolves them without a network. */
 export async function buildFixture(spec: FixtureSpec): Promise<Fixture> {
   const root = await getPreparedRoot();
   const dir = mkdtempSync(join(tmpdir(), `telo-lambda-e2e-${spec.name}-`));
@@ -137,15 +221,6 @@ export async function buildFixture(spec: FixtureSpec): Promise<Fixture> {
   }
 
   writeFileSync(join(dir, "telo.yaml"), spec.telo);
-
-  // Pre-populate `.telo/npm/` from the public registry on the host — the
-  // AWS Lambda container can then take the kernel's fast path at boot
-  // instead of running its own `npm install` in an offline environment.
-  const teloBin = resolve(REPO_ROOT, "cli/nodejs/bin/telo.mjs");
-  execFileSync("node", [teloBin, "install", "./telo.yaml"], {
-    cwd: dir,
-    stdio: ["ignore", "ignore", "inherit"],
-  });
 
   const lambdaBootstraps = resolve(REPO_ROOT, "modules/lambda/nodejs");
   if (spec.mode === "managed") {

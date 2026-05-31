@@ -633,16 +633,19 @@ export class StaticAnalyzer {
         // through the same alias machinery as user-declared Telo.Imports —
         // honours the library's `exports.kinds` list, no special cases.
         if (moduleName) {
-          const exportedKinds: string[] = ((m as any).exports?.kinds as string[] | undefined) ?? [];
+          // `Self` resolves the library's own kinds UNGATED — a library may reference
+          // its own kinds regardless of `exports.kinds`, which gates importers, not
+          // internal use. This is what lets a library declare an instance of a kind it
+          // does not export (e.g. console's `writeLine`) to enforce a singleton.
           if (rootModules.has(moduleName)) {
-            aliases.registerImport("Self", moduleName, exportedKinds);
+            aliases.registerImport("Self", moduleName, []);
           } else {
             let libResolver = aliasesByModule.get(moduleName);
             if (!libResolver) {
               libResolver = new AliasResolver();
               aliasesByModule.set(moduleName, libResolver);
             }
-            libResolver.registerImport("Self", moduleName, exportedKinds);
+            libResolver.registerImport("Self", moduleName, []);
           }
         }
       }
@@ -822,6 +825,15 @@ export class StaticAnalyzer {
       // walked: their template bodies (`resources` / `invoke` / `run` / `provide`)
       // contain CEL that must be checked against `self` / `inputs` / `result`.
       if (m.kind === "Telo.Abstract") {
+        continue;
+      }
+
+      // Forwarded exports (flagged by flattenForAnalyzer) are an imported library's exported
+      // instances, already validated in their own module's standalone analysis; their
+      // `kind`/CEL are authored in that module's scope (e.g. `Self.X` → that module, not the
+      // consumer). Re-validating against the consumer's scope yields false UNDEFINED_KIND /
+      // scope-mismatch errors, so skip — they participate here only as resolution targets.
+      if ((m.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true) {
         continue;
       }
 
@@ -1196,7 +1208,14 @@ export class StaticAnalyzer {
     );
   }
 
-  normalize(manifests: ResourceManifest[], registry: AnalysisRegistry): ResourceManifest[] {
+  normalize(
+    manifests: ResourceManifest[],
+    registry: AnalysisRegistry,
+    // Forwarded foreign exports used only as cross-module resolution targets (see
+    // resolveRefSentinels). The kernel passes its analyzer-flattened set so the
+    // entry-only runtime pass can still resolve `!ref Alias.name`.
+    crossModuleTargets?: ResourceManifest[],
+  ): ResourceManifest[] {
     const ctx = registry._context();
     const normalized = normalizeInlineResources(
       manifests,
@@ -1207,7 +1226,13 @@ export class StaticAnalyzer {
     // Resolve !ref sentinels after normalize so both the original and
     // inline-extracted manifests get their refs canonicalized to
     // {kind, name} for the kernel that consumes this output.
-    resolveRefSentinels(normalized, ctx.definitions!, ctx.aliases, ctx.aliasesByModule);
+    resolveRefSentinels(
+      normalized,
+      ctx.definitions!,
+      ctx.aliases,
+      ctx.aliasesByModule,
+      crossModuleTargets ?? [],
+    );
     return normalized;
   }
 

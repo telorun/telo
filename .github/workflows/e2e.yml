@@ -66,14 +66,21 @@ jobs:
       - name: Bring up registry stack
         run: |
           mkdir -p apps/registry/.telo
-          docker compose up -d --build --wait --wait-timeout 120 db storage registry proxy
+          # `--wait` aborts the moment a container exits non-zero without ever
+          # printing that container's logs, so dump them ourselves on failure.
+          docker compose up -d --build --wait --wait-timeout 120 db storage registry proxy \
+            || { echo "::group::registry stack failed to come up"; \
+                 docker compose ps -a; docker compose logs --no-color; \
+                 echo "::endgroup::"; exit 1; }
 
       - name: Run registry e2e suite
         run: pnpm run test:e2e
 
-      - name: Dump registry logs on failure
+      - name: Dump stack logs on failure
         if: failure()
-        run: docker compose logs registry
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
 
       - name: Stop registry stack
         if: always()

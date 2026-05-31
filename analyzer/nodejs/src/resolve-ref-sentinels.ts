@@ -5,43 +5,100 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefEntry } from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
+/** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
+ *  cross-module references (resolved into an imported library's exported instance). */
+type ResolvedRef = { kind: string; name: string; alias?: string };
+
 /**
  * Walks every `x-telo-ref` slot in every non-system resource and rewrites
- * `!ref <name>` sentinels in-place to `{kind: <resolved-kind>, name}`.
+ * `!ref <name>` sentinels in-place to `{kind, name}` (local) or
+ * `{kind, name, alias}` (cross-module).
  *
- * The downstream pipeline (inline normalization, dependency graph, kernel
- * controllers) expects every ref-slot value to be either a `{kind, name}`
- * object, an inline-definition object, or a legacy bare string — resolving
- * sentinels here keeps that contract intact so each consumer doesn't need
- * its own sentinel branch.
+ * Reference grammar — the tag's source string is split on the FIRST dot:
+ *   - `!ref writeLine`          → local resource `writeLine`
+ *   - `!ref Self.writeLine`     → local resource `writeLine` (explicit self-qualifier)
+ *   - `!ref Console.writeLine`  → instance `writeLine` exported by the import aliased
+ *                                 `Console`, resolved against the forwarded foreign set
  *
- * The walker assigns `kind` by name lookup (resource names are unique
- * within a manifest scope). When the name doesn't resolve in the local
- * `byName` map, the sentinel is left in place so `validateReferences`
- * can emit the `UNRESOLVED_REFERENCE` diagnostic with full context.
+ * Aliases are PascalCase identifiers without dots and resource names carry no dots
+ * (enforced as a hard diagnostic), so the first-dot split is unambiguous. When the
+ * name doesn't resolve, the sentinel is left in place so `validateReferences` emits the
+ * `UNRESOLVED_REFERENCE` diagnostic with full context.
  *
- * Mutation strategy: the field-path walker descends the resource tree
- * directly and replaces the sentinel on its parent container. Re-parsing
- * a string-encoded concrete path (the earlier shape) coupled the writer
- * to the path-encoding rules of `resolveFieldEntries` — any new path
- * marker would silently break this writer. Descending directly avoids
- * that coupling.
+ * Forwarded foreign resources (an imported library's exported instances, carrying a
+ * `metadata.module` that isn't a root module) are resolution TARGETS only — they are not
+ * re-walked as sources here, since their own ref slots belong to their own module scope.
  */
 export function resolveRefSentinels(
   resources: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
+  // Extra foreign resources used only as cross-module resolution TARGETS (not mutated, not
+  // walked as sources). The kernel passes the analyzer-flattened set here so the runtime
+  // pass — which loads the entry module only — can still resolve `!ref Alias.name` against
+  // imported libraries' exported instances.
+  crossModuleTargets: ResourceManifest[] = [],
 ): void {
+  const moduleOf = (r: ResourceManifest): string | undefined =>
+    (r.metadata as { module?: string } | undefined)?.module;
+  // Forwarded exports are flagged by flattenForAnalyzer (`metadata.forwardedExport`); they're
+  // cross-module resolution targets only — never walked as local ref sources here.
+  const isForeign = (r: ResourceManifest): boolean =>
+    (r.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true;
+
+  // Local resources resolve a bare / `Self.`-qualified name; forwarded foreign exports
+  // resolve an `Alias.`-qualified name keyed by (module, name).
   const byName = new Map<string, ResourceManifest>();
+  const byModuleName = new Map<string, ResourceManifest>();
   for (const r of resources) {
-    if (r.metadata?.name && !SYSTEM_KINDS.has(r.kind)) {
-      byName.set(r.metadata.name as string, r);
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind)) continue;
+    const name = r.metadata.name as string;
+    if (isForeign(r)) {
+      byModuleName.set(`${moduleOf(r)}\0${name}`, r);
+    } else {
+      byName.set(name, r);
     }
   }
+  for (const r of crossModuleTargets) {
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForeign(r)) continue;
+    byModuleName.set(`${moduleOf(r)}\0${r.metadata.name as string}`, r);
+  }
+
+  const resolveTarget = (source: string): ResolvedRef | undefined => {
+    const dot = source.indexOf(".");
+    if (dot === -1) {
+      const t = byName.get(source);
+      return t ? { kind: t.kind as string, name: source } : undefined;
+    }
+    const alias = source.slice(0, dot);
+    const name = source.slice(dot + 1);
+    if (alias === "Self") {
+      const t = byName.get(name);
+      return t ? { kind: t.kind as string, name } : undefined;
+    }
+    const module = aliases?.moduleForAlias(alias);
+    if (module) {
+      const t = byModuleName.get(`${module}\0${name}`);
+      if (t) {
+        // The foreign instance's `kind` is authored in ITS module's scope (e.g.
+        // `Self.WriteLine`); canonicalize to a scope-independent `<module>.<Kind>` for the
+        // consumer's kind check. `Self.` maps to the owning module directly — the forwarded
+        // library's Library doc (hence its `Self` alias) isn't in the consumer's manifest
+        // set — while other alias prefixes resolve via that module's forwarded import scope.
+        const rawKind = t.kind as string;
+        const foreignKind = rawKind.startsWith("Self.")
+          ? `${module}.${rawKind.slice("Self.".length)}`
+          : aliasesByModule?.get(module)?.resolveKind(rawKind) ?? rawKind;
+        return { kind: foreignKind, name, alias };
+      }
+    }
+    return undefined;
+  };
 
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+    if (isForeign(r)) continue;
 
     const fieldMap =
       aliases && aliasesByModule
@@ -51,45 +108,33 @@ export function resolveRefSentinels(
 
     for (const [fieldPath, entry] of fieldMap) {
       if (!isRefEntry(entry)) continue;
-      replaceSentinelsAtPath(r as Record<string, unknown>, fieldPath, byName);
+      descend(r as Record<string, unknown>, fieldPath.split("."), resolveTarget);
     }
   }
 }
 
-/** Walks `obj` along `fieldPath` (dot notation with `[]` for arrays and
- *  `{}` for additionalProperties-typed maps) and replaces any `!ref`
- *  sentinel value at the terminal slot with `{kind, name}` looked up
- *  via `byName`. Mutates the parent container in place; no string-path
- *  round-trip. */
-function replaceSentinelsAtPath(
-  obj: Record<string, unknown>,
-  fieldPath: string,
-  byName: Map<string, ResourceManifest>,
-): void {
-  const parts = fieldPath.split(".");
-  descend(obj, parts, byName);
-}
-
+/** Walks `obj` along `fieldPath` parts (dot notation with `[]` for arrays and `{}` for
+ *  additionalProperties-typed maps) and replaces any `!ref` sentinel at the terminal slot
+ *  with its resolved `{kind, name, alias?}`. Mutates the parent container in place. */
 function descend(
   obj: unknown,
   parts: string[],
-  byName: Map<string, ResourceManifest>,
+  resolve: (source: string) => ResolvedRef | undefined,
 ): void {
   if (obj == null || typeof obj !== "object" || parts.length === 0) return;
   const [head, ...rest] = parts;
 
-  // Map iteration: descend into every value of the current object.
   if (head === "{}") {
     const container = obj as Record<string, unknown>;
     for (const key of Object.keys(container)) {
       const child = container[key];
       if (rest.length === 0) {
         if (isRefSentinel(child)) {
-          const target = byName.get(child.source);
-          if (target) container[key] = { kind: target.kind as string, name: child.source };
+          const target = resolve(child.source);
+          if (target) container[key] = target;
         }
       } else {
-        descend(child, rest, byName);
+        descend(child, rest, resolve);
       }
     }
     return;
@@ -107,21 +152,21 @@ function descend(
       if (rest.length === 0) {
         const elem = val[i];
         if (isRefSentinel(elem)) {
-          const target = byName.get(elem.source);
-          if (target) val[i] = { kind: target.kind as string, name: elem.source };
+          const target = resolve(elem.source);
+          if (target) val[i] = target;
         }
       } else {
-        descend(val[i], rest, byName);
+        descend(val[i], rest, resolve);
       }
     }
   } else {
     if (rest.length === 0) {
       if (isRefSentinel(val)) {
-        const target = byName.get(val.source);
-        if (target) container[key] = { kind: target.kind as string, name: val.source };
+        const target = resolve(val.source);
+        if (target) container[key] = target;
       }
     } else {
-      descend(val, rest, byName);
+      descend(val, rest, resolve);
     }
   }
 }

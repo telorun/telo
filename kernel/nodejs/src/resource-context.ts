@@ -161,6 +161,10 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.invokeResolved(kind, name, instance, inputs);
   }
 
+  resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
+    return this.moduleContext.resolveImportedInstance(alias, name);
+  }
+
   async run(name: string) {
     await this.moduleContext.run(name);
   }
@@ -195,7 +199,10 @@ export class ResourceContextImpl implements ResourceContext {
    * @returns Normalized {kind, name} reference
    * @throws RuntimeError if 'kind' is missing
    */
-  resolveChildren(resource: any, resourceName?: string): { kind: string; name: string } {
+  resolveChildren(
+    resource: any,
+    resourceName?: string,
+  ): { kind: string; name: string; alias?: string } {
     if (!resource || typeof resource !== "object") {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
@@ -217,7 +224,25 @@ export class ResourceContextImpl implements ResourceContext {
     // this rescue — schemas exercising those hidden slots must use the
     // legacy string or `{kind, name}` forms for now.
     if (isRefSentinel(resource)) {
-      const refName = resource.source;
+      const source = resource.source;
+      const dot = source.indexOf(".");
+      const alias = dot > 0 ? source.slice(0, dot) : undefined;
+      // Cross-module exported instance (`!ref Alias.name`) — resolve the {kind, name} ref
+      // from the import's exported scope and reattach the alias so downstream scope
+      // resolution (executeInvokeStep → ScopeContext.getInstance) routes into the import's
+      // child context rather than scope-local resources.
+      if (alias && alias !== "Self") {
+        const name = source.slice(dot + 1);
+        const ref = this.moduleContext.resolveImportedRef(alias, name);
+        if (!ref) {
+          throw new RuntimeError(
+            "ERR_RESOURCE_NOT_FOUND",
+            `[${this.metadata.name}] !ref '${source}' is not an exported instance of import '${alias}'.`,
+          );
+        }
+        return { kind: ref.kind, name: ref.name, alias };
+      }
+      const refName = alias === "Self" ? source.slice(dot + 1) : source;
       const entry = this.moduleContext.resourceInstances.get(refName);
       if (!entry) {
         throw new RuntimeError(
