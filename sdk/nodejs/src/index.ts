@@ -1,6 +1,7 @@
 export * from "./compiled-value.js";
 export * from "./capabilities/invokable.js";
 export * from "./ref.js";
+export * from "./invoke-step.js";
 export * from "./capabilities/provider.js";
 export * from "./capabilities/runnable.js";
 export * from "./context-provider.js";

@@ -213,6 +213,20 @@ function traverseNode(
     const entry: RefFieldEntry = { refs, isArray: path.includes("[]") };
     if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
     map.set(path, entry);
+    // A node can mix item-level ref branches (a bare string / `{kind, name}`)
+    // with object branches that carry their OWN nested refs — e.g. Application
+    // `targets`: a bare ref vs inline `{ invoke }` vs gated `{ ref }`. Descend
+    // into the variant objects so those nested slots register too (and their
+    // `!ref` sentinels resolve). Pure x-telo-ref branches have no properties
+    // and contribute nothing here.
+    for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
+      const variants = node[variantKey];
+      if (!Array.isArray(variants)) continue;
+      for (const variant of variants) {
+        if (!variant || typeof variant !== "object") continue;
+        traverseVariant(variant as Record<string, any>, path, map, root, visitedRefs);
+      }
+    }
     return;
   }
 

@@ -3,45 +3,37 @@ metadata:
   name: ConsoleInputExample
   version: 1.0.0
   description: |
-    Reads two lines from stdin (username, password) and echoes them back
-    via Console.WriteLine. Demonstrates Console.ReadLine inside a
-    Run.Sequence and how each step's result.value is wired into the next
-    step's inputs via a steps.<step>.result.value CEL expression.
+    Reads two lines from stdin (username, password) and echoes them back via
+    Console.WriteLine, driven entirely from flat `targets` — no `std/run`
+    import. Each step's result.value is wired into a later step's inputs via a
+    steps.<name>.result.value CEL expression. Designed for interactive use.
 targets:
-  - ConsoleInputFlow
+  - name: ReadUsername
+    invoke: !ref UsernameReader
+    inputs:
+      prompt: "Username: "
+  - name: ReadPassword
+    invoke: !ref PasswordReader
+    inputs:
+      prompt: "Password: "
+  - name: WriteResult
+    invoke: !ref ResultWriter
+    inputs:
+      output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"
 ---
 kind: Telo.Import
 metadata:
   name: Console
 source: ../modules/console
 ---
-kind: Telo.Import
+kind: Console.ReadLine
 metadata:
-  name: Run
-source: ../modules/run
+  name: UsernameReader
 ---
-kind: Run.Sequence
+kind: Console.ReadLine
 metadata:
-  name: ConsoleInputFlow
-steps:
-  - name: ReadUsername
-    invoke:
-      kind: Console.ReadLine
-      metadata:
-        name: ReadUsername
-    inputs:
-      prompt: "Username: "
-  - name: ReadPassword
-    invoke:
-      kind: Console.ReadLine
-      metadata:
-        name: ReadPassword
-    inputs:
-      prompt: "Password: "
-  - name: WriteResult
-    invoke:
-      kind: Console.WriteLine
-      metadata:
-        name: Result
-    inputs:
-      output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"
+  name: PasswordReader
+---
+kind: Console.WriteLine
+metadata:
+  name: ResultWriter

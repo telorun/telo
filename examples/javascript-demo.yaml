@@ -2,19 +2,23 @@ kind: Telo.Application
 metadata:
   name: JavaScriptDemo
   version: 1.0.0
-  description: A demo module showcasing JavaScript scripts
+  description: A demo showcasing a JavaScript script run from flat `targets`.
 targets:
-  - RunScript
+  - name: Step1
+    invoke: !ref MultiplyBy2
+    inputs:
+      value: 42
+  - name: PrintResult
+    invoke: !ref Print
+    inputs:
+      output: |
+        Evaluated JavaScript code.
+        Result is: ${{ steps.Step1.result.result }}
 ---
 kind: Telo.Import
 metadata:
   name: Type
 source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
 ---
 kind: Telo.Import
 metadata:
@@ -46,19 +50,6 @@ outputType:
     properties:
       result: { type: number }
 ---
-kind: Run.Sequence
+kind: Console.WriteLine
 metadata:
-  name: RunScript
-steps:
-  - name: Step1
-    inputs:
-      value: 42
-    invoke:
-      kind: JavaScript.Script
-      name: MultiplyBy2
-  - name: PrintResult
-    invoke: { kind: Console.WriteLine }
-    inputs:
-      output: |
-        Evaluated JavaScript code.
-        Result is: ${{ steps.Step1.result.result }}
+  name: Print

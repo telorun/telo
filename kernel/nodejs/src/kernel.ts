@@ -19,6 +19,7 @@ import {
   ResourceManifest,
   RuntimeError,
   RuntimeEvent,
+  type BootTarget,
   type EvaluationContext as IEvaluationContext,
   type ModuleContext as IModuleContext,
   type LoadOptions,
@@ -392,25 +393,32 @@ export class Kernel implements IKernel {
         // `process.env` after the manifest loop so imports can read
         // `${{ variables.X }}` during their own init.
         //
-        // Targets normalize down to bare names regardless of source surface.
-        // The analyzer's `resolveRefSentinels` pass already substituted any
-        // `!ref <name>` to `{kind, name}`; bare-string forms pass through.
-        // Anything else (e.g. an unresolved sentinel because the analyzer
-        // couldn't see it, or a malformed manifest) is a hard error —
-        // silently dropping the entry would leave the user staring at a
-        // "no targets ran" outcome with no signal where it went wrong.
+        // Targets are preserved as their full shape so the boot runner can
+        // evaluate `when` guards and inline invoke steps. The analyzer's
+        // `resolveRefSentinels` pass already substituted any `!ref <name>` to
+        // `{kind, name}` (including inside an inline target's `invoke`).
+        // Recognized shapes: bare string ref, resolved `{kind, name}`, gated
+        // `{ ref, when? }`, and inline `{ name?, invoke, inputs?, when?, retry? }`.
+        // Anything else (e.g. an unresolved sentinel, or a malformed manifest)
+        // is a hard error — silently dropping the entry would leave the user
+        // staring at a "no targets ran" outcome with no signal.
         const rawTargets = (manifest.targets ?? []) as unknown[];
-        const targetNames = rawTargets.map((t, index) => {
-          if (typeof t === "string") return t;
-          if (t && typeof t === "object" && typeof (t as { name?: unknown }).name === "string") {
-            return (t as { name: string }).name;
+        rawTargets.forEach((t, index) => {
+          const ok =
+            typeof t === "string" ||
+            (!!t &&
+              typeof t === "object" &&
+              (typeof (t as { name?: unknown }).name === "string" ||
+                typeof (t as { ref?: unknown }).ref === "string" ||
+                (t as { invoke?: unknown }).invoke !== undefined));
+          if (!ok) {
+            throw new RuntimeError(
+              "ERR_INVALID_VALUE",
+              `Telo.Application '${(manifest.metadata as { name?: string } | undefined)?.name ?? "(unnamed)"}' targets[${index}] is not a recognized target shape. Got: ${JSON.stringify(t)}`,
+            );
           }
-          throw new RuntimeError(
-            "ERR_INVALID_VALUE",
-            `Telo.Application '${(manifest.metadata as { name?: string } | undefined)?.name ?? "(unnamed)"}' targets[${index}] could not be normalized to a resource name. Got: ${JSON.stringify(t)}`,
-          );
         });
-        this.rootContext.setTargets(targetNames);
+        this.rootContext.setTargets(rawTargets as BootTarget[]);
         if (manifest.kind === "Telo.Application") {
           rootApplicationManifest = manifest;
         }

@@ -1,26 +1,14 @@
 import {
+  executeInvokeStep,
   InvokeError,
   isInvokeError,
   type Invocable,
+  type InvokeStep,
   type KindRef,
   type ResourceContext,
-  type ResourceInstance,
   type ScopeContext,
   type ScopeHandle,
 } from "@telorun/sdk";
-
-interface RetryPolicy {
-  attempts?: number;
-  delay?: string;
-}
-
-interface InvokeStep {
-  name: string;
-  when?: string;
-  invoke: KindRef<Invocable>;
-  inputs?: Record<string, unknown>;
-  retry?: RetryPolicy;
-}
 
 interface IfStep {
   name: string;
@@ -221,41 +209,13 @@ class RunSequence {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
   ): Promise<void> {
-    if (isInvokeStep(step)) await this.executeInvokeStep(step, steps, scope, extraCtx);
+    if (isInvokeStep(step)) await executeInvokeStep(step, this.ctx, { steps, scope, cel: extraCtx });
     else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx);
     else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx);
     else if (isSwitchStep(step)) await this.executeSwitchStep(step, steps, scope, extraCtx);
     else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
-  }
-
-  private async executeInvokeStep(
-    step: InvokeStep,
-    steps: Record<string, unknown>,
-    scope: ScopeContext | undefined,
-    extraCtx: Record<string, unknown>,
-  ): Promise<void> {
-    const cel = { steps, ...extraCtx };
-    if (step.when !== undefined && !this.ctx.expandValue(step.when, cel)) return;
-
-    const inputs = this.ctx.expandValue(step.inputs ?? {}, cel) as Record<string, unknown>;
-    const raw = step.invoke as unknown;
-    let result: unknown;
-
-    if (raw && typeof (raw as Invocable).invoke === "function") {
-      result = await (raw as Invocable).invoke(inputs);
-    } else {
-      const ref = raw as KindRef<Invocable>;
-      if (scope) {
-        const instance = scope.getInstance(ref.name) as unknown as ResourceInstance;
-        result = await this.ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
-      } else {
-        result = await this.ctx.invoke(ref.kind, ref.name, inputs, { retry: step.retry });
-      }
-    }
-
-    steps[step.name] = { result };
   }
 
   private async executeIfStep(

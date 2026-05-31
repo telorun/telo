@@ -1,6 +1,10 @@
+import { executeInvokeStep } from "@telorun/sdk";
 import type {
+  BootTarget,
   ControllerPolicy,
   Invocable,
+  InvokeStep,
+  InvokeStepContext,
   ModuleContext as IModuleContext,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
@@ -82,7 +86,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     variables: Record<string, unknown> = {},
     secrets: Record<string, unknown> = {},
     resources: Record<string, unknown> = {},
-    private targets: string[] = [],
+    private targets: BootTarget[] = [],
     createInstance: InstanceFactory = async () => null,
     emit: EmitEvent,
     private readonly _hostEnv?: Record<string, string | undefined>,
@@ -120,7 +124,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this._rebuildContext();
   }
 
-  setTargets(vars: string[]): void {
+  setTargets(vars: BootTarget[]): void {
     this.targets = vars;
   }
 
@@ -256,8 +260,41 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   async runTargets() {
-    for (const target of this.targets) {
-      await this.run(target);
+    const steps: Record<string, unknown> = {};
+    const stepCtx: InvokeStepContext = {
+      expandValue: (value, context) => this.expandWith(value, context),
+      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs),
+      invokeResolved: (kind, name, instance, inputs) =>
+        this.invokeResolved(kind, name, instance, inputs),
+    };
+    for (let i = 0; i < this.targets.length; i++) {
+      const target = this.targets[i]!;
+      if (typeof target === "string") {
+        await this.run(target);
+        continue;
+      }
+      if ("invoke" in target && target.invoke !== undefined) {
+        const step: InvokeStep = {
+          name: target.name ?? `Target${i}`,
+          when: target.when,
+          invoke: target.invoke,
+          inputs: target.inputs,
+          retry: target.retry,
+        };
+        await executeInvokeStep(step, stepCtx, { steps });
+        continue;
+      }
+      if ("ref" in target && typeof target.ref === "string") {
+        if (target.when === undefined || this.expandWith(target.when, { steps })) {
+          await this.run(target.ref);
+        }
+        continue;
+      }
+      if ("name" in target && typeof target.name === "string") {
+        await this.run(target.name);
+        continue;
+      }
+      throw new Error(`Unrecognized target shape at index ${i}: ${JSON.stringify(target)}`);
     }
   }
 }

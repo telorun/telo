@@ -1,6 +1,7 @@
 import type { Invocable } from "./capabilities/invokable.js";
 import type { ControllerPolicy } from "./controller-policy.js";
 import type { EvaluationContext } from "./evaluation-context.js";
+import type { BootTarget } from "./invoke-step.js";
 
 /**
  * Public contract for a persistent, module-scoped context.
@@ -21,7 +22,7 @@ export interface ModuleContext extends EvaluationContext {
   hasImport(alias: string): boolean;
 
   setVariables(vars: Record<string, unknown>): void;
-  setTargets(vars: string[]): void;
+  setTargets(vars: BootTarget[]): void;
   setSecrets(secrets: Record<string, unknown>): void;
   setResource(name: string, props: Record<string, unknown>): void;
   setControllerPolicy(policy: ControllerPolicy | undefined): void;
