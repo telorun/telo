@@ -1,5 +1,12 @@
 # @telorun/codec
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [ae0bf77]
+  - @telorun/sdk@1.0.0
+
 ## 0.3.0
 
 ### Minor Changes
@@ -66,6 +73,7 @@
 
 - Updated dependencies [849f57a]
 - Updated dependencies [be79957]
+
   - @telorun/sdk@0.12.0
 
 - Updated dependencies [b62e535]
