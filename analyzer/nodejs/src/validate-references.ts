@@ -248,6 +248,13 @@ export function validateReferences(
         // Skip inline resources — Phase 2 normalization hasn't run yet.
         if (isInlineResource(refVal)) return;
 
+        // Polymorphic ref slots (Application `targets`) accept object forms
+        // whose references live in nested slots rather than being a `{kind,
+        // name}` ref themselves — inline `{ invoke }` and gated `{ ref }`.
+        // Those nested refs are validated via their own field-map entries, so
+        // skip the item-level structural check here.
+        if (typeof refVal.kind !== "string" && ("invoke" in refVal || "ref" in refVal)) return;
+
         // 1. Structural check
         if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {
           diagnostics.push({
