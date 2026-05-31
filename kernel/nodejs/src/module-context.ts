@@ -279,14 +279,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           when: target.when,
           invoke: target.invoke,
           inputs: target.inputs,
-          retry: target.retry,
         };
         await executeInvokeStep(step, stepCtx, { steps });
         continue;
       }
-      if ("ref" in target && typeof target.ref === "string") {
+      if ("ref" in target && target.ref != null) {
+        const refName = typeof target.ref === "string" ? target.ref : target.ref.name;
         if (target.when === undefined || this.expandWith(target.when, { steps })) {
-          await this.run(target.ref);
+          await this.run(refName);
         }
         continue;
       }

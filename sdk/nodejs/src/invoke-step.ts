@@ -23,23 +23,24 @@ export interface InvokeStep {
 
 /** An inline flat invoke step on an Application's `targets`. Same as an
  *  `InvokeStep` but `name` is optional (only needed for `steps.<name>.result`
- *  plumbing); the boot runner synthesizes one when omitted. */
+ *  plumbing; the boot runner synthesizes one when omitted) and `retry` is not
+ *  supported — the boot invoke path takes no retry options, so it is omitted
+ *  from the surface rather than silently ignored. */
 export interface InlineInvokeTarget {
   name?: string;
   when?: string;
   invoke: KindRef<Invocable> | Invocable;
   inputs?: Record<string, unknown>;
-  retry?: InvokeStepRetry;
 }
 
 /** A single Application `targets` entry. The kernel boot runner dispatches by
  *  shape: a bare string or resolved `{ kind, name }` runs a Runnable/Service;
- *  `{ ref, when? }` is a guarded run; `{ invoke, ... }` is an inline invoke
- *  step executed via `executeInvokeStep`. */
+ *  `{ ref, when? }` is a guarded run (ref a bare name or a resolved `!ref`);
+ *  `{ invoke, ... }` is an inline invoke step executed via `executeInvokeStep`. */
 export type BootTarget =
   | string
   | { kind: string; name: string }
-  | { ref: string; when?: string }
+  | { ref: string | { kind: string; name: string }; when?: string }
   | InlineInvokeTarget;
 
 /**

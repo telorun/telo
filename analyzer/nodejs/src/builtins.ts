@@ -235,7 +235,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 additionalProperties: true,
               },
               // Gated reference: run() a Runnable/Service only when the
-              // `when` CEL guard holds. Discriminated by the `ref` key.
+              // `when` CEL guard holds. Discriminated by the `ref` key. `ref`
+              // is a bare name or a resolved `!ref` (`{ kind, name }`).
               {
                 type: "object",
                 required: ["ref"],
@@ -244,18 +245,31 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                     anyOf: [
                       { type: "string", "x-telo-ref": "telo#Runnable" },
                       { type: "string", "x-telo-ref": "telo#Service" },
+                      {
+                        type: "object",
+                        required: ["kind", "name"],
+                        properties: {
+                          kind: { type: "string" },
+                          name: { type: "string" },
+                        },
+                        additionalProperties: true,
+                      },
                     ],
                   },
                   when: { type: "string" },
                 },
                 additionalProperties: false,
               },
-              // Inline flat invoke step: call an Invocable on boot with an
-              // optional `name` (for steps.<name>.result plumbing), `when`
-              // guard, `inputs`, and `retry`. Discriminated by the `invoke`
-              // key. Control flow (if/while/switch/try) is not available
-              // here — reach for Run.Sequence. The `invoke` ref resolves via
-              // the same generic x-telo-ref machinery as Run.Sequence steps.
+              // Inline flat invoke step: invoke an Invocable / Runnable on boot
+              // with an optional `name` (for steps.<name>.result plumbing),
+              // `when` guard, and `inputs`. Discriminated by the `invoke` key.
+              // Control flow (if/while/switch/try) is not available here —
+              // reach for Run.Sequence. `invoke` is ref-only and must resolve
+              // to a `{ kind, name }` reference (a `!ref` / `{kind,name}`):
+              // requiring `name` rejects an inline `{ kind }` definition (no
+              // name) at analysis instead of failing at boot with an undefined
+              // resource name. The Invocable/Runnable kind set mirrors
+              // Run.Sequence invoke steps.
               {
                 type: "object",
                 required: ["invoke"],
@@ -263,6 +277,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   name: { type: "string" },
                   invoke: {
                     "x-telo-topology-role": "invoke",
+                    type: "object",
+                    required: ["kind", "name"],
+                    properties: {
+                      kind: { type: "string" },
+                      name: { type: "string" },
+                    },
+                    additionalProperties: true,
                     anyOf: [
                       { "x-telo-ref": "telo#Invocable" },
                       { "x-telo-ref": "telo#Runnable" },
@@ -270,13 +291,6 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   },
                   inputs: { type: "object", additionalProperties: true },
                   when: { type: "string" },
-                  retry: {
-                    type: "object",
-                    properties: {
-                      attempts: { type: "integer" },
-                      delay: { type: "string" },
-                    },
-                  },
                 },
                 additionalProperties: false,
               },

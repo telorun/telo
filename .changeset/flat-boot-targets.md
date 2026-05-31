@@ -12,7 +12,7 @@ Alongside the existing bare reference, a `targets` entry now accepts:
 
 - a gated reference `{ ref: <Runnable/Service>, when?: <CEL> }` — `run()` only when
   the guard holds;
-- an inline invoke step `{ name?, invoke: <Invocable ref>, inputs?, when?, retry? }`
+- an inline invoke step `{ name?, invoke: <Invocable/Runnable ref>, inputs?, when? }`
   — call an Invocable on boot, with `steps.<name>.result` plumbed into later
   targets and an optional `when` guard.
 
