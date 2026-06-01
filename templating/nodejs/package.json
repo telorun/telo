@@ -1,6 +1,6 @@
 {
   "name": "@telorun/templating",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Telo Templating - Engine registry and shared CEL core for Telo manifests.",
   "keywords": [
     "telo",

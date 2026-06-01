@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: console
   namespace: std
-  version: 0.7.0
+  version: 0.8.0
 exports:
   resources:
     - writeLine
@@ -13,7 +13,7 @@ metadata:
   name: WriteLine
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.7.0?local_path=./nodejs#writeline
+  - pkg:npm/@telorun/console@0.8.0?local_path=./nodejs#writeline
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -36,7 +36,7 @@ metadata:
   name: ReadLine
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.7.0?local_path=./nodejs#readline
+  - pkg:npm/@telorun/console@0.8.0?local_path=./nodejs#readline
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -64,7 +64,7 @@ metadata:
   name: WriteStream
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.7.0?local_path=./nodejs#writestream
+  - pkg:npm/@telorun/console@0.8.0?local_path=./nodejs#writestream
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -88,7 +88,7 @@ metadata:
   name: StreamWait
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.7.0?local_path=./nodejs#streamwait
+  - pkg:npm/@telorun/console@0.8.0?local_path=./nodejs#streamwait
 inputType:
   kind: Type.JsonSchema
   schema:
