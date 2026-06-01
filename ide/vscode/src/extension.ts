@@ -108,7 +108,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     let result: Awaited<ReturnType<typeof loader.loadGraphForFile>>;
     try {
-      result = await loader.loadGraphForFile(filePath);
+      // `desugarImports` so inline `imports:` maps resolve like authored docs in
+      // VS Code diagnostics — without it the editor would flag false
+      // UNRESOLVED_REFERENCE for `!ref Alias.x` against an inline import.
+      result = await loader.loadGraphForFile(filePath, { desugarImports: true });
     } catch (err) {
       collection.set(document.uri, [
         {
@@ -129,7 +132,7 @@ export function activate(context: vscode.ExtensionContext): void {
       // Fall through to standalone analysis: treat the file as its own owner.
       let standaloneGraph: LoadedGraph;
       try {
-        standaloneGraph = await loader.loadGraph(filePath);
+        standaloneGraph = await loader.loadGraph(filePath, { desugarImports: true });
       } catch (err) {
         collection.set(document.uri, [
           {

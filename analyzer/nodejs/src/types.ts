@@ -63,6 +63,15 @@ export interface LoadOptions {
    *  so the kernel can evaluate them at runtime. Leave unset (false) for static analysis —
    *  the analyzer works on raw strings and does not need compiled values. */
   compile?: boolean;
+  /** When true, each module document's inline `imports:` map is desugared into
+   *  synthetic `Telo.Import` manifests appended to the file's `manifests` /
+   *  `positions` (the AST `documents` array is left raw). On for every resolved
+   *  consumer — the kernel's analysis and runtime loads, and the analyzer — so
+   *  inline imports participate in discovery, alias resolution, and execution.
+   *  Off for the editor's round-trip view, which reads the raw `imports:` map and
+   *  pairs manifests to YAML nodes by index. Folded into the file cache key so a
+   *  desugared and a raw load of the same file never collide. */
+  desugarImports?: boolean;
 }
 
 export interface LoaderInitOptions {

@@ -11,6 +11,8 @@ import {
   addImportDocument,
   moduleDocumentFromLoaded,
   removeImportDocument,
+  removeInlineImport,
+  setInlineImportSource,
 } from "../yaml-document";
 import { normalizePath } from "./paths";
 import { isRegistryImportSource } from "./registry";
@@ -225,9 +227,17 @@ export async function addImportViaAst(
   return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
 }
 
-/** Removes a `Telo.Import` document from the owner module's AST and
- *  reconciles the import graph (pruning reverse edges for the dropped
- *  target). */
+/** True when the named import in `modulePath` lives in the inline `imports:`
+ *  map (vs. a standalone `Telo.Import` document). Determines which AST
+ *  write-back path edits it. */
+function isInlineImport(workspace: Workspace, modulePath: string, name: string): boolean {
+  const imp = workspace.modules.get(modulePath)?.imports.find((i) => i.name === name);
+  return imp?.inline === true;
+}
+
+/** Removes an import from the owner module's AST and reconciles the import
+ *  graph. Edits the import in whatever form it lives — an inline `imports:`
+ *  map entry or a standalone `Telo.Import` document — so removal works for both. */
 export async function removeImportViaAst(
   workspace: Workspace,
   modulePath: string,
@@ -239,7 +249,9 @@ export async function removeImportViaAst(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  const docs = removeImportDocument(modDoc.loaded.documents, name);
+  const docs = isInlineImport(workspace, modulePath, name)
+    ? removeInlineImport(modDoc.loaded.documents, name)
+    : removeImportDocument(modDoc.loaded.documents, name);
   if (docs === modDoc.loaded.documents) return workspace;
 
   const astOnly = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
@@ -247,9 +259,11 @@ export async function removeImportViaAst(
   return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
 }
 
-/** Removes the old import and inserts a new one with the same alias but a
- *  different source. Resolves the new target's sub-graph via
- *  `addImportViaAst`'s reconcile step. */
+/** Points an import at a new source. An inline `imports:` entry is rewritten in
+ *  place in the map (preserving its `variables` / `secrets` / `runtime`); a
+ *  standalone `Telo.Import` document is removed and re-added. The two paths are
+ *  distinct: rewriting an inline import via remove+add would drop the map entry
+ *  and add an authored doc with the same alias — a `DUPLICATE_IMPORT_ALIAS`. */
 export async function upgradeImportViaAst(
   workspace: Workspace,
   modulePath: string,
@@ -258,6 +272,17 @@ export async function upgradeImportViaAst(
   manifestAdapter: ManifestSource,
   extraAdapters: ManifestSource[] = [],
 ): Promise<Workspace> {
+  if (isInlineImport(workspace, modulePath, name)) {
+    const key = normalizePath(modulePath);
+    const modDoc = workspace.documents.get(key);
+    if (!modDoc) return workspace;
+    const docs = setInlineImportSource(modDoc.loaded.documents, name, newSource);
+    if (docs === modDoc.loaded.documents) return workspace;
+    const astOnly = withModuleDocument(workspace, modulePath, withDocs(modDoc, docs));
+    const rebuilt = rebuildManifestFromDocuments(astOnly, modulePath);
+    return reconcileImports(rebuilt, modulePath, manifestAdapter, extraAdapters);
+  }
+
   const after = await removeImportViaAst(
     workspace,
     modulePath,

@@ -25,6 +25,8 @@ export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
 export { parseLoadedFile } from "./parse-loaded-file.js";
 export type { ParseOptions } from "./parse-loaded-file.js";
+export { desugarLoadedFile, inlineImportManifests } from "./inline-imports.js";
+export type { SyntheticImport } from "./inline-imports.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
 export {
     buildDocumentPositions,

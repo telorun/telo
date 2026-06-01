@@ -18,6 +18,36 @@ export function classifyImport(source: string): ImportKind {
   return "local";
 }
 
+/** Project a module doc's inline `imports:` map into `ParsedImport[]`. Accepts
+ *  both the scalar shorthand (`Alias: source`) and the object form. Mirrors the
+ *  kernel/analyzer desugar in `@telorun/analyzer`'s `inlineImportManifests`, but
+ *  produces the editor's `ParsedImport` shape (with `inline: true`) rather than
+ *  synthetic manifests — the editor round-trips the raw map, never synthetics. */
+function parseInlineImports(moduleDoc: Record<string, unknown> | undefined): ParsedImport[] {
+  const raw = moduleDoc?.imports;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const out: ParsedImport[] = [];
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+    const entry =
+      typeof value === "string"
+        ? { source: value }
+        : value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : undefined;
+    const source = entry?.source;
+    if (typeof source !== "string") continue;
+    out.push({
+      name,
+      source,
+      importKind: classifyImport(source),
+      variables: entry!.variables as Record<string, unknown> | undefined,
+      secrets: entry!.secrets as Record<string, unknown> | undefined,
+      inline: true,
+    });
+  }
+  return out;
+}
+
 /** Builds a placeholder manifest for a module whose YAML couldn't be parsed.
  *  Keeps the module visible in the workspace tree so the user can open Source
  *  view and fix the issue. Best-effort name extraction from the raw text; if
@@ -59,11 +89,10 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
   const moduleDoc = docs.find((r) => isModuleKind(r.kind));
   const moduleKind: ModuleKind = moduleDoc?.kind === "Telo.Library" ? "Library" : "Application";
 
-  const imports: ParsedImport[] = docs
-    // Require string name + source so transient source-view typing
-    // (user hasn't finished typing `name:` or `source:` yet) doesn't
-    // surface as null-identified ParsedImport entries that downstream
-    // views would crash on.
+  // Authored `Telo.Import` documents. Require string name + source so transient
+  // source-view typing (user hasn't finished typing `name:` or `source:` yet)
+  // doesn't surface as null-identified ParsedImport entries downstream views crash on.
+  const docImports: ParsedImport[] = docs
     .filter((r) => {
       if (r.kind !== "Telo.Import") return false;
       const name = (r.metadata as { name?: unknown } | undefined)?.name;
@@ -77,6 +106,13 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
       variables: (r as Record<string, unknown>).variables as Record<string, unknown> | undefined,
       secrets: (r as Record<string, unknown>).secrets as Record<string, unknown> | undefined,
     }));
+
+  // Inline `imports:` map on the module doc. Each value is either a bare source
+  // string (shorthand) or the object form. Marked `inline: true` so write-back
+  // edits the map entry rather than a separate document.
+  const inlineImports = parseInlineImports(moduleDoc as Record<string, unknown> | undefined);
+
+  const imports: ParsedImport[] = [...docImports, ...inlineImports];
 
   const resources: ParsedResource[] = docs
     // Require a string `kind` and a string `metadata.name` before projecting

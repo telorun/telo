@@ -2,6 +2,8 @@ import {
   AnalysisRegistry,
   StaticAnalyzer,
   buildDocumentPositions,
+  inlineImportManifests,
+  isModuleKind,
   type DocumentPosition,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
@@ -119,6 +121,30 @@ function emitDocsFor(
     const projectedKind = (projected as { kind?: string }).kind;
     if (typeof meta.name === "string" && meta.name && typeof projectedKind === "string") {
       positionsOut.set(`${filePath}::${projectedKind}::${meta.name}`, positionList[i]);
+    }
+
+    // Desugar the module doc's inline `imports:` map into synthetic Telo.Import
+    // manifests so the analyzer resolves inline imports exactly like authored
+    // docs. The editor's round-trip view never sees these — they exist only in
+    // this analysis projection. Mirrors the kernel/analyzer Loader's
+    // `desugarImports`, which the editor's document-based path bypasses.
+    if (isModuleKind(projectedKind)) {
+      for (const synth of inlineImportManifests(stamped, positionList[i])) {
+        const synthName = synth.manifest.metadata.name as string;
+        out.push({
+          ...synth.manifest,
+          // `module` scopes alias resolution and the DUPLICATE_IMPORT_ALIAS check
+          // to the declaring module — without it a library's inline imports would
+          // look like root-scope imports (the kernel path gets this from stampFile).
+          metadata: {
+            ...synth.manifest.metadata,
+            source: filePath,
+            sourceLine: synth.position.sourceLine,
+            ...(ownerModuleName ? { module: ownerModuleName } : {}),
+          },
+        } as ResourceManifest);
+        positionsOut.set(`${filePath}::Telo.Import::${synthName}`, synth.position);
+      }
     }
   }
 }
