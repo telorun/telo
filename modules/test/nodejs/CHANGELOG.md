@@ -1,5 +1,12 @@
 # @telorun/test
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [acb8996]
+  - @telorun/kernel@0.16.1
+
 ## 0.4.1
 
 ### Patch Changes
