@@ -1,5 +1,13 @@
 # @telorun/starlark
 
+## 0.4.1
+
+### Patch Changes
+
+- adc248b: Loosen the `@telorun/sdk` peer dependency range from an exact pin to `*`.
+
+  The sdk is a host-provided peer (the kernel supplies the single shared instance, so `Stream` and other sdk class identities stay intact for CEL's runtime type-checker). Pinning it via `workspace:*` published as an exact version, which made every sdk release fall out of range and forced a spurious major bump of all peer-dependents. Declaring the peer range as `*` (with a `workspace:*` devDependency to preserve local linking) keeps the single-instance guarantee while preventing the false major-bump cascade.
+
 ## 0.4.0
 
 ### Patch Changes

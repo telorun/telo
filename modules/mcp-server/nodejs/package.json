@@ -1,6 +1,6 @@
 {
   "name": "@telorun/mcp-server",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Telo MCP Server module — Model Context Protocol server resource kinds for Telo manifests.",
   "keywords": [
     "telo",

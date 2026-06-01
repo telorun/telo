@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: workflow-temporal
   namespace: std
-  version: 0.2.0
+  version: 0.2.1
   description: Temporal backend provider for Workflow.Graph
 exports:
   kinds:
@@ -22,7 +22,7 @@ metadata:
 capability: Telo.Provider
 extends: Workflow.Backend
 controllers:
-  - pkg:npm/@telorun/workflow-temporal@0.2.0?local_path=./nodejs#backend
+  - pkg:npm/@telorun/workflow-temporal@0.2.1?local_path=./nodejs#backend
 schema:
   type: object
   properties:
