@@ -23,6 +23,24 @@ const requireFromHere = createRequire(import.meta.url);
 const PACKAGE_MANAGER = process.env.TELO_PKG_MANAGER ?? "npm";
 
 /**
+ * Make the installer ignore controllers' declared `peerDependencies` ranges.
+ * A pinned controller tarball is immutable: it carries whatever `@telorun/sdk`
+ * peer range was current when it was published. The install root provides the
+ * kernel's own (newer) sdk as a `file:` dep (the realm-collapse mechanism), so
+ * npm 7+'s strict peer resolver `ERESOLVE`-aborts when that version falls
+ * outside the old range — even though the sdk surface is backward compatible
+ * and the controller would run fine. Telling the package manager to disregard
+ * declared peers restores npm ≤6 behavior: it uses the provided sdk and never
+ * fails on the range. Safe as long as the sdk stays backward compatible.
+ */
+const PEER_INSTALL_FLAGS: ReadonlyArray<string> =
+  PACKAGE_MANAGER === "npm"
+    ? ["--legacy-peer-deps"]
+    : PACKAGE_MANAGER === "pnpm"
+      ? ["--no-strict-peer-dependencies"]
+      : [];
+
+/**
  * Maximum age before a held lock is considered abandoned. `npm install` on a
  * cold cache for a tree with one or two controllers is comfortably under a
  * minute on modern hardware; tuning higher would let zombie locks persist.
@@ -251,7 +269,13 @@ export class NpmControllerLoader {
       }
 
       await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
-      await runPackageManager(installRoot, ["install", "--no-audit", "--no-fund", "--silent"]);
+      await runPackageManager(installRoot, [
+        "install",
+        "--no-audit",
+        "--no-fund",
+        "--silent",
+        ...PEER_INSTALL_FLAGS,
+      ]);
       await fs.writeFile(stateFile, JSON.stringify({ rootHash: newHash }, null, 2) + "\n");
     });
 
@@ -367,6 +391,7 @@ export class NpmControllerLoader {
           "--no-audit",
           "--no-fund",
           "--silent",
+          ...PEER_INSTALL_FLAGS,
           "--save",
           spec,
         ]);
