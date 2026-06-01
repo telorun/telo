@@ -1,0 +1,59 @@
+{
+  "name": "@telorun/ai-mcp",
+  "version": "0.3.1",
+  "description": "Telo AiMcp.ToolProvider — bridges an MCP server to the Ai.ToolProvider contract so its tools are discoverable by an Ai.Agent.",
+  "keywords": [
+    "telo",
+    "ai",
+    "mcp",
+    "agent",
+    "tools"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/ai-mcp/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/mcp-tool-provider-controller.js",
+  "module": "./dist/mcp-tool-provider-controller.js",
+  "types": "./dist/mcp-tool-provider-controller.d.ts",
+  "exports": {
+    "./tool-provider": {
+      "types": "./dist/mcp-tool-provider-controller.d.ts",
+      "bun": "./src/mcp-tool-provider-controller.ts",
+      "import": "./dist/mcp-tool-provider-controller.js"
+    },
+    "./stub-mcp-client": {
+      "types": "./dist/stub-mcp-client-controller.d.ts",
+      "bun": "./src/stub-mcp-client-controller.ts",
+      "import": "./dist/stub-mcp-client-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@telorun/ai": "workspace:*"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

@@ -316,7 +316,17 @@ jobs:
 
   runner:
     name: Build telorun/telo-runner
-    if: github.event_name == 'push'
+    # `pnpm deploy --prod` resolves the workspace's `@telorun/sdk` peer from npm.
+    # On the "chore(release): version packages" commit the workspace is already
+    # bumped to a version that `publish.yml` is still publishing concurrently, so
+    # a direct-push build here races the publish and 404s. Skip that commit on
+    # the push path and build the runner on the post-publish release path
+    # (`workflow_call`, gated by `needs: release` in publish.yml) instead, where
+    # the bumped versions are guaranteed live.
+    if: |
+      github.event_name == 'workflow_call' ||
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'chore(release): version packages'))
     needs: context
     runs-on: ubuntu-latest
     steps:

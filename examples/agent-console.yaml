@@ -1,0 +1,186 @@
+kind: Telo.Application
+metadata:
+  name: AgentConsole
+  description: |
+    Interactive REPL backed by an Ai.Agent with tools. Each turn, the agent may
+    call tools before answering:
+      - a regular HTTP tool (`get_weather`) that fetches current weather from the
+        open-meteo API via Http.Request, and
+      - every tool exposed by the Telo registry MCP server at
+        https://registry.telo.run/mcp, discovered at runtime via AiMcp.ToolProvider.
+    The conversation is persisted in sqlite so each turn sees prior history and the
+    chat survives restart. Type `/exit` (or send EOF) to leave.
+
+    Run with the OpenAI key in a sibling `.env.local` file:
+        OPENAI_API_KEY=sk-...
+  version: 1.0.0
+targets:
+  - InitSchema
+  - ChatLoop
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+---
+kind: Telo.Import
+metadata: { name: AiOpenai }
+source: ../modules/ai-openai
+---
+kind: Telo.Import
+metadata: { name: Ai }
+source: ../modules/ai
+---
+kind: Telo.Import
+metadata: { name: AiMcp }
+source: ../modules/ai-mcp
+---
+kind: Telo.Import
+metadata: { name: Mcp }
+source: ../modules/mcp-client
+---
+kind: Telo.Import
+metadata: { name: Http }
+source: ../modules/http-client
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../modules/console
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../modules/run
+---
+kind: Telo.Import
+metadata: { name: Sql }
+source: ../modules/sql
+---
+# --- Persistence -----------------------------------------------------------
+kind: Sql.Connection
+metadata: { name: ChatDb }
+connectionString: sqlite:./tmp/agent-history.sqlite
+---
+kind: Sql.Migration
+metadata: { name: CreateMessagesTable }
+version: "20260601_create_messages"
+sql: |
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+---
+kind: Sql.Migrations
+metadata: { name: InitSchema }
+connection: { kind: Sql.Connection, name: ChatDb }
+---
+# --- AI provider -----------------------------------------------------------
+kind: AiOpenai.OpenaiModel
+metadata: { name: Gpt4oMini }
+model: gpt-4o-mini
+apiKey: "${{ secrets.openaiApiKey }}"
+---
+# --- Tool: MCP server (runtime discovery) ----------------------------------
+# Streamable-HTTP MCP client pointed at the Telo registry server. AiMcp.ToolProvider
+# turns it into an Ai.ToolProvider; the agent never learns it is MCP.
+kind: Mcp.HttpClient
+metadata: { name: RegistryMcp }
+url: https://registry.telo.run/mcp
+clientInfo: { name: agent-console, version: 1.0.0 }
+---
+kind: AiMcp.ToolProvider
+metadata: { name: RegistryTools }
+client: { kind: Mcp.HttpClient, name: RegistryMcp }
+---
+# --- Tool: a regular invocable (HTTP weather lookup) -----------------------
+kind: Http.Client
+metadata: { name: OpenMeteo }
+baseUrl: https://api.open-meteo.com
+---
+# Static request config; the latitude/longitude/query are supplied per call by the
+# Ai.Tools `inputs:` mapping below.
+kind: Http.Request
+metadata: { name: GetWeather }
+client: OpenMeteo
+throwOnHttpError: true
+---
+# Wrap the HTTP request as a tool. The model produces { latitude, longitude }; the
+# `inputs:` mapping shapes them into the open-meteo request.
+kind: Ai.Tools
+metadata: { name: WeatherTools }
+tools:
+  - tool: { kind: Http.Request, name: GetWeather }
+    name: get_weather
+    description: Get the current weather at a latitude/longitude (open-meteo).
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude]
+      properties:
+        latitude: { type: number, description: "Latitude in decimal degrees." }
+        longitude: { type: number, description: "Longitude in decimal degrees." }
+    inputs:
+      url: /v1/forecast
+      method: GET
+      query:
+        latitude: "${{ arguments.latitude }}"
+        longitude: "${{ arguments.longitude }}"
+        current_weather: "true"
+    result: "${{ result.body }}"
+---
+# --- Agent -----------------------------------------------------------------
+kind: Ai.Agent
+metadata: { name: Assistant }
+model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+system: |
+  You are a helpful CLI assistant. Use the available tools when they help answer;
+  don't guess at facts you can look up. Keep replies brief.
+maxSteps: 6
+toolProviders:
+  - provider: { kind: Ai.Tools, name: WeatherTools }
+  - provider: { kind: AiMcp.ToolProvider, name: RegistryTools }
+    prefix: "registry_"
+---
+# --- REPL ------------------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: ChatLoop }
+steps:
+  - name: Read
+    invoke: { kind: Console.ReadLine }
+    inputs:
+      prompt: "{cyan.bold you} › "
+  - name: Loop
+    while: "${{ steps.Read.result.value != '/exit' }}"
+    do:
+      - name: InsertUser
+        inputs:
+          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+          bindings: ["user", "${{ steps.Read.result.value }}"]
+        invoke:
+          kind: Sql.Exec
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: ReadHistory
+        inputs:
+          sql: "SELECT role, content FROM messages ORDER BY id ASC"
+        invoke:
+          kind: Sql.Query
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: Ask
+        invoke: { kind: Ai.Agent, name: Assistant }
+        inputs:
+          messages: "${{ steps.ReadHistory.result.rows }}"
+      - name: Print
+        invoke: { kind: Console.WriteLine }
+        inputs:
+          output: "{magenta.bold ai}  › ${{ steps.Ask.result.text }}"
+      - name: InsertAssistant
+        inputs:
+          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+          bindings: ["assistant", "${{ steps.Ask.result.text }}"]
+        invoke:
+          kind: Sql.Exec
+          connection: { kind: Sql.Connection, name: ChatDb }
+      - name: Read
+        invoke: { kind: Console.ReadLine }
+        inputs:
+          prompt: "{cyan.bold you} › "

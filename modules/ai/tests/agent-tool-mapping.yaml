@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: AgentToolMappingTest
+  version: 1.0.0
+targets:
+  - TestMapping
+---
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../
+---
+kind: Telo.Import
+metadata:
+  name: AiEcho
+source: ./__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata:
+  name: Js
+source: ../../javascript
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+emitToolCall:
+  name: greet
+  arguments: { who: "world" }
+---
+# Greeter's input shape ({ target }) diverges from the model-facing parameters
+# ({ who }); the tool entry's `inputs:`/`result:` mappings bridge the gap.
+kind: Js.Script
+metadata:
+  name: Greeter
+code: |
+  function main({ target }) { return { greeting: "Hello, " + target + "!" }; }
+---
+kind: Ai.Tools
+metadata:
+  name: GreetTools
+tools:
+  - tool: { kind: Js.Script, name: Greeter }
+    name: greet
+    description: Greet someone by name.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [who]
+      properties:
+        who: { type: string }
+    inputs:
+      target: "${{ arguments.who }}"
+    result: "${{ result.greeting }}"
+---
+kind: Ai.Agent
+metadata:
+  name: GreetAgent
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+toolProviders:
+  - provider: { kind: Ai.Tools, name: GreetTools }
+---
+kind: Run.Sequence
+metadata:
+  name: TestMapping
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "greet the world"
+    invoke:
+      kind: Ai.Agent
+      name: GreetAgent
+  # arguments.who="world" → inputs maps to {target:"world"} → Greeter →
+  # {greeting:"Hello, world!"} → result maps to the bare string → fed back → echoed.
+  - name: AssertText
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            type: string
+            const: "Hello, world!"
+        required: [text]

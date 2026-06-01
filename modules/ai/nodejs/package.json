@@ -51,6 +51,16 @@
       "bun": "./src/stream-collector-controller.ts",
       "import": "./dist/stream-collector-controller.js"
     },
+    "./tools": {
+      "types": "./dist/ai-tools-controller.d.ts",
+      "bun": "./src/ai-tools-controller.ts",
+      "import": "./dist/ai-tools-controller.js"
+    },
+    "./agent": {
+      "types": "./dist/ai-agent-controller.d.ts",
+      "bun": "./src/ai-agent-controller.ts",
+      "import": "./dist/ai-agent-controller.js"
+    },
     "./redact": {
       "types": "./dist/redact.d.ts",
       "bun": "./src/redact.ts",

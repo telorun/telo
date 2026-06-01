@@ -76,6 +76,7 @@ Structure:
 1. **Problem** — what we're solving and why it matters.
 2. **Solution** — the chosen approach in prose, with module/file references.
 3. **Decisions** — bullet list of the non-obvious choices made, each with a one-line rationale (and rejected alternative where relevant).
+4. **Complete example after the change** (if relevant) — show how a user would use the new feature (eg. YAML manifest), to clarify the intended behavior.
 
 After writing, report the path and stop. Do not start implementing.
 

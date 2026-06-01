@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpDiscoveryTest
+  version: 1.0.0
+targets:
+  - TestMcpAgent
+---
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../../ai
+---
+kind: Telo.Import
+metadata:
+  name: AiMcp
+source: ../
+---
+kind: Telo.Import
+metadata:
+  name: AiEcho
+source: ../../ai/tests/__fixtures__/ai-echo.yaml
+---
+kind: Telo.Import
+metadata:
+  name: Stub
+source: ./__fixtures__/stub-mcp.yaml
+---
+kind: Telo.Import
+metadata:
+  name: Run
+source: ../../run
+---
+kind: Telo.Import
+metadata:
+  name: Assert
+source: ../../assert
+---
+# A stub MCP server advertising one tool (echo_text).
+kind: Stub.StubClient
+metadata:
+  name: McpServer
+---
+# The bridge: turns the Mcp.Client into an Ai.ToolProvider the agent can discover.
+kind: AiMcp.ToolProvider
+metadata:
+  name: ServerTools
+client:
+  kind: Stub.StubClient
+  name: McpServer
+---
+# Echo discovers the tool (echo_text) and requests it on the first turn.
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+emitToolCall:
+  name: echo_text
+  arguments: { text: "hi" }
+---
+kind: Ai.Agent
+metadata:
+  name: Assistant
+model:
+  kind: AiEcho.EchoModel
+  name: Echo
+toolProviders:
+  - provider: { kind: AiMcp.ToolProvider, name: ServerTools }
+---
+kind: Run.Sequence
+metadata:
+  name: TestMcpAgent
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "echo hi please"
+    invoke:
+      kind: Ai.Agent
+      name: Assistant
+  # Discovery → tools/list → echo_text. Echo calls it → tools/call → content echoed
+  # back. The agent JSON-stringifies the MCP content array as the tool result.
+  - name: AssertText
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            type: string
+            const: '[{"type":"text","text":"echoed: hi"}]'
+          toolName:
+            type: string
+            const: echo_text
+        required: [text, toolName]

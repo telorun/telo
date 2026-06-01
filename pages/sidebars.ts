@@ -151,6 +151,8 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "modules/ai/docs/ai-model", label: "Ai.Model" },
                 { type: "doc", id: "modules/ai/docs/ai-text", label: "Ai.Text" },
                 { type: "doc", id: "modules/ai/docs/ai-text-stream", label: "Ai.TextStream" },
+                { type: "doc", id: "modules/ai/docs/ai-tool-provider", label: "Ai.ToolProvider" },
+                { type: "doc", id: "modules/ai/docs/ai-agent", label: "Ai.Agent" },
                 {
                   type: "category",
                   label: "Providers",
@@ -159,6 +161,18 @@ const sidebars: SidebarsConfig = {
                       type: "doc",
                       id: "modules/ai-openai/docs/ai-openai-model",
                       label: "Ai.OpenaiModel",
+                    },
+                  ],
+                },
+                {
+                  type: "category",
+                  label: "Tools (MCP)",
+                  items: [
+                    { type: "doc", id: "modules/ai-mcp/README", label: "Overview" },
+                    {
+                      type: "doc",
+                      id: "modules/ai-mcp/docs/ai-mcp-tool-provider",
+                      label: "AiMcp.ToolProvider",
                     },
                   ],
                 },

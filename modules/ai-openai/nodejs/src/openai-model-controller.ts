@@ -7,10 +7,12 @@ import type {
   Message,
   ModelInvokeInput,
   StreamPart,
+  ToolCall,
+  ToolDefinition,
   Usage,
 } from "@telorun/ai/types";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { generateText, streamText } from "ai";
+import { generateText, jsonSchema, type ModelMessage, streamText, tool } from "ai";
 
 // Silence the Vercel AI SDK's `AI SDK Warning: …` console output. The SDK
 // emits these for things like `temperature` being ignored on reasoning
@@ -41,7 +43,7 @@ const VERCEL_FINISH_TO_AI: Record<string, FinishReason> = {
   stop: "stop",
   length: "length",
   "content-filter": "content-filter",
-  "tool-calls": "other",
+  "tool-calls": "tool-calls",
   error: "error",
   other: "other",
   unknown: "other",
@@ -68,12 +70,62 @@ function mapUsage(
   };
 }
 
-function translateMessages(messages: Message[]): Array<{
-  role: "system" | "user" | "assistant";
-  content: string;
-}> {
-  // OpenAI (via Vercel AI SDK) accepts system messages inline — pass through.
-  return messages.map((m) => ({ role: m.role, content: m.content }));
+function translateMessages(messages: Message[]): ModelMessage[] {
+  // Our `tool` messages carry only { toolCallId, content }; the Vercel tool-result part
+  // also needs the toolName, so recover it from the assistant tool-call turns.
+  const toolNameById = new Map<string, string>();
+  for (const m of messages) {
+    if (m.role === "assistant" && m.toolCalls) {
+      for (const c of m.toolCalls) toolNameById.set(c.id, c.name);
+    }
+  }
+  return messages.map((m): ModelMessage => {
+    if (m.role === "tool") {
+      const toolCallId = m.toolCallId ?? "";
+      return {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId,
+            toolName: toolNameById.get(toolCallId) ?? "",
+            output: { type: "text", value: m.content },
+          },
+        ],
+      };
+    }
+    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      return {
+        role: "assistant",
+        content: [
+          ...(m.content ? [{ type: "text" as const, text: m.content }] : []),
+          ...m.toolCalls.map((c) => ({
+            type: "tool-call" as const,
+            toolCallId: c.id,
+            toolName: c.name,
+            input: c.arguments,
+          })),
+        ],
+      };
+    }
+    // system / user / plain assistant — pass through (OpenAI accepts system inline).
+    return { role: m.role, content: m.content } as ModelMessage;
+  });
+}
+
+/** Build the Vercel tool set from our model-facing tool definitions. We deliberately
+ *  omit `execute` — the Ai.Agent loop runs tools itself, so generateText returns the
+ *  requested `toolCalls` (finishReason "tool-calls") without invoking anything. */
+function buildTools(defs: ToolDefinition[] | undefined): Record<string, ReturnType<typeof tool>> | undefined {
+  if (!defs || defs.length === 0) return undefined;
+  const tools: Record<string, ReturnType<typeof tool>> = {};
+  for (const d of defs) {
+    tools[d.name] = tool({
+      description: d.description,
+      inputSchema: jsonSchema(d.parameters as Parameters<typeof jsonSchema>[0]),
+    });
+  }
+  return tools;
 }
 
 class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
@@ -86,18 +138,27 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
     });
   }
 
-  async invoke({ messages, options }: ModelInvokeInput): Promise<CompletionResult> {
+  async invoke({ messages, options, tools }: ModelInvokeInput): Promise<CompletionResult> {
     const merged = mergeOptions(this.resource.options, options);
+    const toolSet = buildTools(tools);
     const result = await generateText({
       model: this.client(this.resource.model),
       messages: translateMessages(messages),
+      ...(toolSet ? { tools: toolSet } : {}),
       ...merged,
     } as Parameters<typeof generateText>[0]);
+
+    const toolCalls: ToolCall[] = (result.toolCalls ?? []).map((tc) => ({
+      id: tc.toolCallId,
+      name: tc.toolName,
+      arguments: (tc.input ?? {}) as Record<string, unknown>,
+    }));
 
     return {
       text: result.text,
       usage: mapUsage(result.usage as any),
       finishReason: mapFinishReason(result.finishReason as any),
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 

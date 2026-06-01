@@ -46,6 +46,18 @@ schema:
         reason: { type: string }
       required: [message, code, reason]
       additionalProperties: false
+    emitToolCall:
+      title: Emit tool call
+      description: |
+        Test-only marker: when `tools` are present and the conversation has no tool
+        result yet, invoke() emits this tool call (finishReason "tool-calls") instead
+        of echoing. Lets Ai.Agent loop tests run without a live model.
+      type: object
+      properties:
+        name: { type: string }
+        arguments: { type: object, additionalProperties: true }
+      required: [name]
+      additionalProperties: false
   additionalProperties: false
 ---
 # Test-support Invocable: takes an Ai.Model reference, calls model.stream(...),
