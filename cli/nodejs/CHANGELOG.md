@@ -1,5 +1,12 @@
 # @telorun/cli
 
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [acb8996]
+  - @telorun/kernel@0.16.1
+
 ## 0.16.0
 
 ### Patch Changes
