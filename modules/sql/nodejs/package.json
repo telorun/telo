@@ -70,6 +70,7 @@
     "kysely": "^0.28.15"
   },
   "devDependencies": {
+    "@telorun/sdk": "workspace:*",
     "@types/better-sqlite3": "^7.0.0",
     "@types/bun": "^1.3.10",
     "@types/node": "^20.0.0",
@@ -77,6 +78,6 @@
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
-    "@telorun/sdk": "workspace:*"
+    "@telorun/sdk": "*"
   }
 }

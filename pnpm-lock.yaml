@@ -20,9 +20,6 @@ importers:
       '@marcbachmann/cel-js':
         specifier: ^7.5.3
         version: 7.5.3
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../sdk/nodejs
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs
@@ -39,6 +36,9 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -369,9 +369,6 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../analyzer/nodejs
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../sdk/nodejs
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs
@@ -391,6 +388,9 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -409,13 +409,13 @@ importers:
       '@telorun/ai':
         specifier: workspace:*
         version: link:../../ai/nodejs
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
       ai:
         specifier: ^5.0.0
         version: 5.0.179(zod@4.3.6)
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -424,11 +424,10 @@ importers:
         version: 5.9.3
 
   modules/ai/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -444,10 +443,10 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../../analyzer/nodejs
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -460,10 +459,10 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -472,11 +471,10 @@ importers:
         version: 5.9.3
 
   modules/codec/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -485,11 +483,10 @@ importers:
         version: 5.9.3
 
   modules/config/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -498,11 +495,10 @@ importers:
         version: 5.9.3
 
   modules/console/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -511,11 +507,10 @@ importers:
         version: 5.9.3
 
   modules/http-client/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -528,10 +523,10 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -559,9 +554,6 @@ importers:
       '@telorun/http-dispatch':
         specifier: workspace:*
         version: link:../../http-dispatch/nodejs
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -572,6 +564,9 @@ importers:
         specifier: ^5.7.2
         version: 5.7.2
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -583,11 +578,10 @@ importers:
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/javascript/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -603,13 +597,13 @@ importers:
       '@telorun/http-dispatch':
         specifier: workspace:*
         version: link:../../http-dispatch/nodejs
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
     devDependencies:
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../../kernel/nodejs
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -628,10 +622,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -647,10 +641,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -662,11 +656,10 @@ importers:
         version: 5.9.3
 
   modules/ndjson-codec/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -675,11 +668,10 @@ importers:
         version: 5.9.3
 
   modules/octet-codec/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -688,11 +680,10 @@ importers:
         version: 5.9.3
 
   modules/plain-text-codec/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -701,11 +692,10 @@ importers:
         version: 5.9.3
 
   modules/record-stream/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -714,11 +704,10 @@ importers:
         version: 5.9.3
 
   modules/run/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -734,10 +723,10 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -747,9 +736,6 @@ importers:
 
   modules/sql/nodejs:
     dependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
       better-sqlite3:
         specifier: ^12.8.0
         version: 12.8.0
@@ -760,6 +746,9 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/better-sqlite3':
         specifier: ^7.0.0
         version: 7.6.13
@@ -777,11 +766,10 @@ importers:
         version: 5.9.3
 
   modules/sse-codec/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -791,9 +779,6 @@ importers:
 
   modules/starlark/nodejs:
     dependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -801,6 +786,9 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -816,10 +804,10 @@ importers:
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../../kernel/nodejs
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -835,10 +823,10 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -847,11 +835,10 @@ importers:
         version: 5.9.3
 
   modules/workflow-temporal/nodejs:
-    dependencies:
+    devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
-    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -861,13 +848,13 @@ importers:
 
   modules/yaml/nodejs:
     dependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
@@ -939,13 +926,13 @@ importers:
       '@marcbachmann/cel-js':
         specifier: ^7.5.3
         version: 7.5.3
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../sdk/nodejs
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
     devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
