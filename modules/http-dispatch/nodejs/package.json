@@ -52,7 +52,7 @@
     "@sinclair/typebox": "^0.34.48"
   },
   "peerDependencies": {
-    "@telorun/sdk": "workspace:*",
+    "@telorun/sdk": "*",
     "vitest": "^2.1.8 || ^3.0.0"
   },
   "peerDependenciesMeta": {
@@ -61,6 +61,7 @@
     }
   },
   "devDependencies": {
+    "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"

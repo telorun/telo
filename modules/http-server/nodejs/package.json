@@ -53,11 +53,12 @@
     "fastify": "^5.7.2"
   },
   "devDependencies": {
+    "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
-    "@telorun/sdk": "workspace:*"
+    "@telorun/sdk": "*"
   }
 }
