@@ -37,3 +37,155 @@
   background-color: #72a1ed;
   color: #ffffff;
 }
+
+/* Clickable feature cards on the home page */
+.cardLink {
+  display: block;
+  height: 100%;
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cardLink:hover {
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: var(--ifm-global-shadow-md);
+}
+
+/* Feature cards promoted into the hero */
+.heroCards {
+  max-width: 920px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.heroCard {
+  height: 100%;
+  background-color: var(--ifm-card-background-color);
+  box-shadow: var(--ifm-global-shadow-md);
+}
+
+.heroCard .card__body {
+  text-align: center;
+}
+
+.heroCard:hover {
+  box-shadow: var(--ifm-global-shadow-tl);
+}
+
+@media (max-width: 996px) {
+  .heroButtons {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Stacked buttons need their own spacing; drop the inline right margin. */
+  .heroButtons .button {
+    display: block;
+    margin-right: 0 !important;
+  }
+
+  .heroButtons .button + .button {
+    margin-top: 0.75rem;
+  }
+
+  .heroCards {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .heroCards > .col {
+    margin-bottom: 1rem;
+  }
+
+  .heroCards > .col:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* Feature page hero with prev/next carousel arrows */
+.featureHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.featureHero > .text--center {
+  flex: 1;
+}
+
+.featureHeroNav {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  color: inherit;
+}
+
+.featureHeroNav:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+.featureHero > .featureHeroNav:first-child {
+  align-items: flex-start;
+}
+
+.featureHero > .featureHeroNav:last-child {
+  align-items: flex-end;
+}
+
+.featureHeroArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: rgba(127, 127, 127, 0.12);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.featureHeroNav:hover .featureHeroArrow {
+  background-color: rgba(127, 127, 127, 0.24);
+  transform: scale(1.08);
+}
+
+.featureHeroNavLabel {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.featureHeroNav:hover .featureHeroNavLabel {
+  opacity: 1;
+}
+
+/* "Planned" badge on roadmap-only feature cards */
+.featurePlannedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 768px) {
+  .featureHero {
+    flex-wrap: wrap;
+    gap: 1.5rem 0;
+  }
+
+  /* Title takes the full first row; the two arrows wrap below it. */
+  .featureHero > .text--center {
+    order: -1;
+    flex-basis: 100%;
+  }
+}
