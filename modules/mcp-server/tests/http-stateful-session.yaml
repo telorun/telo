@@ -1,30 +1,13 @@
 kind: Telo.Application
 metadata: { name: McpHttpStatefulSessionTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../../http-server
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  Mcp: ../
+  Http: ../../http-server
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 # Drives the stateful flow end-to-end so the session-id contract can be
 # asserted: initialize must return an `Mcp-Session-Id` header, that header must
@@ -37,7 +20,7 @@ inputType:
     type: object
     properties:
       url: { type: string }
-    required: [url]
+    required: [ url ]
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -48,7 +31,7 @@ outputType:
       validCallToolCount: { type: integer }
       bogusCallStatus: { type: integer }
       bogusErrorCode: { type: integer }
-    required: [sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode]
+    required: [ sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode ]
 code: |
   async function main({ url }) {
     const initResp = await fetch(url, {
@@ -109,7 +92,7 @@ outputType:
     type: object
     properties:
       pong: { type: boolean }
-    required: [pong]
+    required: [ pong ]
 code: |
   function main() { return { pong: true }; }
 ---
@@ -130,7 +113,7 @@ kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-stateful, version: 1.0.0 }
 stateful: true
-tools: [PingTools]
+tools: [ PingTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -143,7 +126,7 @@ with:
     logger: false
     mounts:
       - { path: /mcp, type: McpHttpStatefulSessionTest.McpHttp }
-targets: [Server]
+targets: [ Server ]
 steps:
   - name: Probe
     inputs:
@@ -166,4 +149,4 @@ steps:
           validCallToolCount: { const: 1 }
           bogusCallStatus: { const: 404 }
           bogusErrorCode: { const: -32001 }
-        required: [sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode]
+        required: [ sessionIdPresent, validCallStatus, validCallToolCount, bogusCallStatus, bogusErrorCode ]

@@ -6,26 +6,15 @@ metadata:
     Smoke tests for RecordStream.Tee. Verifies sequential drain (consumer A
     finishes first, then B), that both outputs receive every item, and that
     a source error propagates to both branches.
+imports:
+  RecordStream: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestSequentialDrain
   - TestErrorPropagation
   - TestEarlyCancellation
----
-kind: Telo.Import
-metadata: { name: RecordStream }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: JS.Script
 metadata: { name: NumberSource }
@@ -103,7 +92,7 @@ steps:
       schema:
         type: object
         properties: { count: { const: 3 } }
-        required: [count]
+        required: [ count ]
   - name: SeqAssertB
     inputs:
       count: "${{ steps.SeqDrainB.result.count }}"
@@ -112,7 +101,7 @@ steps:
       schema:
         type: object
         properties: { count: { const: 3 } }
-        required: [count]
+        required: [ count ]
 ---
 # Source throws after the first item. Consumer A drains the buffered first
 # item then sees the error. (Consumer B's behaviour after A's error is also
@@ -142,7 +131,7 @@ steps:
           schema:
             type: object
             properties: { message: { type: string, pattern: "boom" } }
-            required: [message]
+            required: [ message ]
 ---
 # Side A breaks after 2 items; side B must still drain all 5. Confirms the
 # early-cancellation path doesn't starve the running consumer or deadlock.
@@ -171,7 +160,7 @@ steps:
       schema:
         type: object
         properties: { count: { const: 2 } }
-        required: [count]
+        required: [ count ]
   - name: AssertEarlyB
     inputs:
       count: "${{ steps.EarlyDrainAll.result.count }}"
@@ -180,4 +169,4 @@ steps:
       schema:
         type: object
         properties: { count: { const: 5 } }
-        required: [count]
+        required: [ count ]

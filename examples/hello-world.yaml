@@ -9,15 +9,12 @@ metadata:
     smoke test and as a starting skeleton for larger script-style manifests.
     Reach for `Run.Sequence` when a boot entry needs control flow, scopes, or
     a return value.
+imports:
+  Console: std/console@0.7.0
 targets:
   - invoke: !ref SayHello
     inputs:
       output: "Hello from Telo!"
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: std/console@0.7.0
 ---
 kind: Console.WriteLine
 metadata:

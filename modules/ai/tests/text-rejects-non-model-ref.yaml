@@ -2,12 +2,10 @@ kind: Telo.Application
 metadata:
   name: TextRejectsNonModelRefTest
   version: 1.0.0
+imports:
+  Assert: ../../assert
 targets:
   - TestAnalyzerRejectsNonModelRef
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # The analyzer must reject an Ai.Text whose `model` field references a resource
 # whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Text.model

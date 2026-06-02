@@ -127,14 +127,14 @@ A declared `variables` / `secrets` / `ports` entry that no CEL expression refere
 
 ## Library variables — no env binding
 
-`Telo.Library` `variables:` / `secrets:` entries are pure JSON Schema property maps. Libraries receive values from their importer (the parent Application's `Telo.Import` block), never from host env directly. An `env:` key on a Library entry is rejected at load time:
+`Telo.Library` `variables:` / `secrets:` entries are pure JSON Schema property maps. Libraries receive values from their importer (the parent Application's `imports:` entry), never from host env directly. An `env:` key on a Library entry is rejected at load time:
 
 ```txt
 Telo.Library variables/<name>: 'env:' is only permitted on Telo.Application entries.
 Libraries must receive values from importers via the parent manifest's variables / secrets block.
 ```
 
-If a Library needs an env-derived value, the importing Application declares the env binding and passes the resolved value through its `Telo.Import.variables:` block.
+If a Library needs an env-derived value, the importing Application declares the env binding and passes the resolved value through its `imports:` entry's `variables:` block.
 
 ---
 

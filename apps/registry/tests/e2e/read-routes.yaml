@@ -17,6 +17,10 @@ metadata:
     explicit names make the `Assert.Schema.<name>: assertion passed` lines in
     the suite output self-describing per test, instead of all sharing an
     auto-generated prefix.
+imports:
+  HttpClient: ../../../../modules/http-client
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
 targets:
   - HealthLiveness
   - HealthReadiness
@@ -27,18 +31,6 @@ targets:
   - GetMissingTeloYaml_Returns404
   - PublishMissingAuth_Returns401
   - PublishBadBearer_Returns401
----
-kind: Telo.Import
-metadata: { name: HttpClient }
-source: ../../../../modules/http-client
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../../../modules/run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../../../modules/assert
 ---
 kind: Run.Sequence
 metadata: { name: HealthLiveness }
@@ -64,8 +56,8 @@ steps:
             type: object
             properties:
               status: { const: ok }
-            required: [status]
-        required: [status, body]
+            required: [ status ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: HealthReadiness }
@@ -91,8 +83,8 @@ steps:
             type: object
             properties:
               status: { const: ok }
-            required: [status]
-        required: [status, body]
+            required: [ status ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: SearchEmpty }
@@ -119,8 +111,8 @@ steps:
             properties:
               results: { type: array }
               count: { type: integer }
-            required: [results, count]
-        required: [status, body]
+            required: [ results, count ]
+        required: [ status, body ]
 ---
 # Regression test for the bug we just fixed: GET /{namespace}/{name} on a
 # module that doesn't exist must return 404, not 500. Pre-fix, this path
@@ -150,8 +142,8 @@ steps:
             type: object
             properties:
               error: { const: Module not found }
-            required: [error]
-        required: [status, body]
+            required: [ error ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: GetMissingVersions_Returns404 }
@@ -177,8 +169,8 @@ steps:
             type: object
             properties:
               error: { const: Module not found }
-            required: [error]
-        required: [status, body]
+            required: [ error ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: GetMissingVersion_Returns404 }
@@ -204,8 +196,8 @@ steps:
             type: object
             properties:
               error: { const: Module not found }
-            required: [error]
-        required: [status, body]
+            required: [ error ]
+        required: [ status, body ]
 ---
 # The telo.yaml fetch route surfaces the S3 not-found as a structured error
 # body (catches: ERR_NOT_FOUND → 404), distinct from the generic
@@ -238,9 +230,9 @@ steps:
                 properties:
                   code: { const: ERR_NOT_FOUND }
                   message: { type: string }
-                required: [code, message]
-            required: [error]
-        required: [status, body]
+                required: [ code, message ]
+            required: [ error ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: PublishMissingAuth_Returns401 }
@@ -276,9 +268,9 @@ steps:
                 type: object
                 properties:
                   code: { const: UNAUTHORIZED }
-                required: [code]
-            required: [error]
-        required: [status, body]
+                required: [ code ]
+            required: [ error ]
+        required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: PublishBadBearer_Returns401 }
@@ -315,6 +307,6 @@ steps:
                 type: object
                 properties:
                   code: { const: UNAUTHORIZED }
-                required: [code]
-            required: [error]
-        required: [status, body]
+                required: [ code ]
+            required: [ error ]
+        required: [ status, body ]

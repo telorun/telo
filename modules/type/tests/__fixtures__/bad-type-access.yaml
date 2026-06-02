@@ -2,30 +2,19 @@ kind: Telo.Application
 metadata:
   name: BadTypeAccess
   version: 1.0.0
+imports:
+  Type: ../..
+  Run: ../../../run
+  JavaScript: ../../../javascript
 targets:
   - TestBadAccess
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
 ---
 kind: Type.JsonSchema
 metadata:
   name: SumOutput
 schema:
   type: object
-  required: [sum]
+  required: [ sum ]
   properties:
     sum: { type: number }
   additionalProperties: false

@@ -7,6 +7,10 @@ metadata:
     Each successful target proves the kind handles its happy path; failure
     paths are exercised inside try/catch blocks that assert the resulting
     InvokeError carries `code: ERR_ASSERTION_FAILED`.
+imports:
+  Assert: ../
+  Run: ../../run
+  JS: ../../javascript
 targets:
   - TestEqualsHappy
   - TestEqualsFails
@@ -16,18 +20,6 @@ targets:
   - TestContainsString
   - TestContainsArray
   - TestContainsFails
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
 ---
 # --- Assert.Equals ---------------------------------------------------------
 kind: Run.Sequence
@@ -45,13 +37,13 @@ steps:
   - name: ObjEq
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: { a: 1, b: [2, 3], c: { d: 4 } }
-      expected: { a: 1, b: [2, 3], c: { d: 4 } }
+      actual: { a: 1, b: [ 2, 3 ], c: { d: 4 } }
+      expected: { a: 1, b: [ 2, 3 ], c: { d: 4 } }
   - name: ArrEq
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: [1, 2, 3]
-      expected: [1, 2, 3]
+      actual: [ 1, 2, 3 ]
+      expected: [ 1, 2, 3 ]
 ---
 kind: Run.Sequence
 metadata: { name: TestEqualsFails }
@@ -176,11 +168,11 @@ metadata: { name: TestContainsArray }
 steps:
   - name: PrimitiveElement
     invoke: { kind: Assert.Contains }
-    inputs: { actual: [1, 2, 3], value: 2 }
+    inputs: { actual: [ 1, 2, 3 ], value: 2 }
   - name: ObjectElement
     invoke: { kind: Assert.Contains }
     inputs:
-      actual: [{ id: 1 }, { id: 2 }, { id: 3 }]
+      actual: [ { id: 1 }, { id: 2 }, { id: 3 } ]
       value: { id: 2 }
 ---
 kind: Run.Sequence
@@ -201,7 +193,7 @@ steps:
     try:
       - name: ShouldFail
         invoke: { kind: Assert.Contains }
-        inputs: { actual: [1, 2, 3], value: 99 }
+        inputs: { actual: [ 1, 2, 3 ], value: 99 }
     catch:
       - name: AssertCaught
         invoke: { kind: Assert.Equals }

@@ -2,36 +2,13 @@ kind: Telo.Application
 metadata:
   name: PipelineWithServer
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: HttpClient
-source: ../modules/http-client
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
+imports:
+  Type: ../modules/type
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  JavaScript: ../modules/javascript
+  Run: ../modules/run
+  Assert: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:
@@ -71,7 +48,7 @@ with:
               properties:
                 name:
                   type: string
-              required: ["name"]
+              required: [ "name" ]
         handler:
           kind: JavaScript.Script
           name: GreetingHandler
@@ -85,7 +62,7 @@ with:
                   type: object
                   properties:
                     message: { type: string }
-                  required: [message]
+                  required: [ message ]
                 body:
                   message: "${{ result.greeting }}"
   - kind: Http.Server

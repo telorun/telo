@@ -2,6 +2,7 @@ import type { ResourceDefinition } from "@telorun/sdk";
 import { AnalysisRegistry } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { buildCompletions } from "../src/completions/build.js";
+import type { IdeEnvironmentAdapter } from "../src/types.js";
 
 /** End-to-end completion tests: feed a Run.Sequence-style schema with an
  *  Invocable ref slot through `buildCompletions`. Proves the editor-facing
@@ -437,5 +438,91 @@ describe("buildCompletions — deeply nested list-item paths", () => {
     // and stays filtered as `existingKeys`.
     expect(labels).toContain("handler");
     expect(labels).not.toContain("method"); // method is INSIDE request, not a sibling here
+  });
+});
+
+describe("buildCompletions — inline import sources", () => {
+  function adapter(): IdeEnvironmentAdapter {
+    return {
+      listDirectories: async () => [],
+      hasManifest: async () => false,
+      searchRegistry: async () => [
+        { namespace: "std", name: "console", version: "1.2.3", description: "Console module" },
+      ],
+      listRegistryVersions: async () => ["1.2.3"],
+    };
+  }
+
+  it("completes the scalar shorthand value against the registry", async () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "imports:",
+      "  Console: con",
+    ].join("\n");
+    const line = 4;
+    const character = "  Console: con".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results.map((r) => r.label)).toContain("std/console@1.2.3");
+  });
+
+  it("completes the object-form `source:` value against the registry", async () => {
+    const text = [
+      "kind: Telo.Library",
+      "metadata:",
+      "  name: lib",
+      "imports:",
+      "  Http:",
+      "    source: con",
+    ].join("\n");
+    const line = 5;
+    const character = "    source: con".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results.map((r) => r.label)).toContain("std/console@1.2.3");
+  });
+
+  it("seeds ./ and ../ for an empty import value", async () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "imports:",
+      "  Console: ",
+    ].join("\n");
+    const line = 4;
+    const character = "  Console: ".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results.map((r) => r.label)).toEqual(expect.arrayContaining(["./", "../"]));
+  });
+
+  it("does NOT offer source completion on a bare object-form alias header", async () => {
+    // `  Tiny:` (cursor right after the colon, no value yet) is a header about
+    // to carry a nested `source:` — not an import-source value position.
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "imports:",
+      "  Tiny:",
+    ].join("\n");
+    const line = 4;
+    const character = "  Tiny:".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results).toHaveLength(0);
+  });
+
+  it("does NOT treat a `source:` outside the imports map as an import source", async () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "somefield:",
+      "  source: con",
+    ].join("\n");
+    const line = 4;
+    const character = "  source: con".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results.map((r) => r.label)).not.toContain("std/console@1.2.3");
   });
 });

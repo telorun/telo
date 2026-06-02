@@ -2,26 +2,11 @@ kind: Telo.Application
 metadata:
   name: XTeloEvalCompile
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: HttpClient
-source: ../modules/http-client
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
 ---
 # Http.Server declares x-telo-eval: compile on port, host, baseUrl, etc.
 # Using a CEL expression for port verifies compile expansion runs before the

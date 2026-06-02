@@ -7,24 +7,13 @@ metadata:
     Ndjson.Encoder and asserts the byte-exact wire output (one JSON record per
     line). Byte→string conversion happens in a JS.Script Drain — keeps the test
     self-contained, no cross-module decoder dependency.
+imports:
+  Ndjson: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestEncode
----
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: JS.Script
 metadata: { name: Source }
@@ -78,4 +67,4 @@ steps:
               {"type":"text-delta","delta":"h"}
               {"type":"text-delta","delta":"i"}
               {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
-        required: [text]
+        required: [ text ]

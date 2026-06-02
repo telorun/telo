@@ -18,9 +18,10 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Run }
-source: std/run@latest
+kind: Telo.Application
+metadata: { name: pipeline, version: 1.0.0 }
+imports:
+  Run: std/run@latest
 ---
 kind: Run.Sequence
 metadata: { name: Pipeline }

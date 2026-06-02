@@ -97,14 +97,11 @@ metadata:
   namespace: aws
   name: lambda
   version: 0.1.0
+imports:
+  # Shared HTTP outcome schema for HTTP-shaped handler kinds.
+  HttpDispatch: std/http-dispatch@0.3.0
 exports:
-  kinds: [Function, HttpApi, Sqs, Direct]
----
-# Shared HTTP outcome schema for HTTP-shaped handler kinds.
-kind: Telo.Import
-metadata:
-  name: HttpDispatch
-source: std/http-dispatch@0.3.0
+  kinds: [ Function, HttpApi, Sqs, Direct ]
 ---
 # Abstract dispatch contract. Concrete handler kinds extend this; a
 # Lambda.Handler (see below) dispatches incoming AWS events to whichever
@@ -117,9 +114,9 @@ inputType:
   schema:
     type: object
     properties:
-      event:   { type: object }
+      event: { type: object }
       context: { type: object }
-    required: [event, context]
+    required: [ event, context ]
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -141,14 +138,14 @@ inputType:
       event:
         type: object
         properties:
-          version:        { type: string, const: "2.0" }
+          version: { type: string, const: "2.0" }
           requestContext: { type: object }
-          headers:        { type: object, additionalProperties: true }
-          body:           {}
+          headers: { type: object, additionalProperties: true }
+          body: {}
           isBase64Encoded: { type: boolean }
-        required: [version, requestContext]
+        required: [ version, requestContext ]
       context: { type: object }
-    required: [event, context]
+    required: [ event, context ]
 schema:
   type: object
   properties:
@@ -156,11 +153,11 @@ schema:
       type: object
       additionalProperties: false
       properties:
-        origin:         { oneOf: [{ type: string }, { type: array, items: { type: string } }] }
-        methods:        { type: array, items: { type: string } }
+        origin: { oneOf: [ { type: string }, { type: array, items: { type: string } } ] }
+        methods: { type: array, items: { type: string } }
         allowedHeaders: { type: array, items: { type: string } }
-        credentials:    { type: boolean }
-        maxAge:         { type: integer }
+        credentials: { type: boolean }
+        maxAge: { type: integer }
     routes:
       type: array
       x-telo-scope: /routes/*
@@ -201,12 +198,12 @@ schema:
                   x-telo-context-from: "request/schema"
                   type: object
                   properties:
-                    method:  { type: string }
-                    path:    { type: string }
-                    query:   { type: object, additionalProperties: true }
-                    body:    { type: object, additionalProperties: true }
+                    method: { type: string }
+                    path: { type: string }
+                    query: { type: object, additionalProperties: true }
+                    body: { type: object, additionalProperties: true }
                     headers: { type: object, additionalProperties: true }
-                    params:  { type: object, additionalProperties: true }
+                    params: { type: object, additionalProperties: true }
           returns:
             type: array
             x-telo-outcome-list: returns
@@ -220,7 +217,7 @@ schema:
                   type: object
                   properties:
                     method: { type: string }
-                    path:   { type: string }
+                    path: { type: string }
                 result:
                   x-telo-context-ref-from: "handler/outputType"
                   type: object
@@ -239,16 +236,16 @@ schema:
                   type: object
                   properties:
                     method: { type: string }
-                    path:   { type: string }
+                    path: { type: string }
                 error:
                   type: object
                   additionalProperties: false
                   properties:
-                    code:    { type: string }
+                    code: { type: string }
                     message: { type: string }
-                    data:    { type: object, additionalProperties: true }
-        required: [request, handler]
-  required: [routes]
+                    data: { type: object, additionalProperties: true }
+        required: [ request, handler ]
+  required: [ routes ]
 ---
 # SQS queue trigger. Single queue, single handler — no routes array (one Lambda
 # per queue is the standard AWS pattern; multi-queue triggers split into multiple
@@ -272,15 +269,15 @@ inputType:
             items:
               type: object
               properties:
-                messageId:          { type: string }
-                body:               { type: string }
-                attributes:         { type: object, additionalProperties: true }
-                messageAttributes:  { type: object, additionalProperties: true }
-                eventSourceARN:     { type: string }
-              required: [messageId, body, eventSourceARN]
-        required: [Records]
+                messageId: { type: string }
+                body: { type: string }
+                attributes: { type: object, additionalProperties: true }
+                messageAttributes: { type: object, additionalProperties: true }
+                eventSourceARN: { type: string }
+              required: [ messageId, body, eventSourceARN ]
+        required: [ Records ]
       context: { type: object }
-    required: [event, context]
+    required: [ event, context ]
 schema:
   type: object
   properties:
@@ -289,7 +286,7 @@ schema:
       additionalProperties: false
       properties:
         queueName: { type: string }
-        queueArn:  { type: string }
+        queueArn: { type: string }
     batchSize:
       type: integer
       minimum: 1
@@ -314,8 +311,8 @@ schema:
             type: object
             properties:
               itemIdentifier: { type: string }
-            required: [itemIdentifier]
-  required: [handler]
+            required: [ itemIdentifier ]
+  required: [ handler ]
 ---
 # Direct (synchronous SDK invoke / Step Functions / internal callers). No fixed
 # matcher — payload is whatever the caller sent. Use for admin tooling, internal
@@ -332,9 +329,9 @@ inputType:
   schema:
     type: object
     properties:
-      event:   { type: object }
+      event: { type: object }
       context: { type: object }
-    required: [event, context]
+    required: [ event, context ]
 schema:
   type: object
   properties:
@@ -362,7 +359,8 @@ schema:
           code: { type: string }
           when: { type: boolean }
           body: {}
-  required: [handler]
+  required: [ handler ]
+
 # … similar definitions for RestApi, FunctionUrl, EventBridge, S3, Schedule
 ---
 # Function: AWS-facing transport. Represents the AWS Lambda function (one ARN).
@@ -380,9 +378,9 @@ inputType:
   schema:
     type: object
     properties:
-      event:   { type: object }
+      event: { type: object }
       context: { type: object }
-    required: [event, context]
+    required: [ event, context ]
 schema:
   type: object
   properties:
@@ -393,7 +391,7 @@ schema:
         # x-telo-ref against the Lambda.Handler abstract; any concrete kind
         # extending it satisfies the ref structurally and by kind-check.
         x-telo-ref: "aws/lambda#Handler"
-  required: [handlers]
+  required: [ handlers ]
 ```
 
 User manifest, HTTP-only Lambda (single-handler Function):
@@ -401,11 +399,9 @@ User manifest, HTTP-only Lambda (single-handler Function):
 ```yaml
 kind: Telo.Application
 metadata: { name: webhook-handler, version: 1.0.0 }
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: aws/lambda@0.1.0
+imports:
+  Lambda: aws/lambda@0.1.0
+targets: [ Main ]
 ---
 kind: Lambda.HttpApi
 metadata: { name: Webhook }
@@ -438,15 +434,13 @@ User manifest, mixed-source Lambda (HTTP + SQS on one ARN — the case where the
 ```yaml
 kind: Telo.Application
 metadata: { name: backend, version: 1.0.0 }
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: aws/lambda@0.1.0
+imports:
+  Lambda: aws/lambda@0.1.0
+targets: [ Main ]
 ---
 kind: Lambda.HttpApi
 metadata: { name: WebApi }
-routes: [...]
+routes: [ ... ]
 ---
 kind: Lambda.Sqs
 metadata: { name: OrderProcessor }

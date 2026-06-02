@@ -2,33 +2,14 @@ kind: Telo.Application
 metadata:
   name: AgentToolErrorTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Js: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestToolError
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Js
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # Echo requests a tool that doesn't exist. With the default onToolError "feedback",
 # the agent records the error and feeds it back to the model rather than aborting.
@@ -55,7 +36,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      required: [a, b]
+      required: [ a, b ]
       properties:
         a: { type: number }
         b: { type: number }
@@ -96,4 +77,4 @@ steps:
           hadError:
             type: boolean
             const: true
-        required: [text, hadError]
+        required: [ text, hadError ]

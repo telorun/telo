@@ -2,9 +2,6 @@ kind: Telo.Application
 metadata:
   name: ImportsANonLibrary
   version: 1.0.0
+imports:
+  NonLibrary: ./non-library-import-target.yaml
 targets: []
----
-kind: Telo.Import
-metadata:
-  name: NonLibrary
-source: ./non-library-import-target.yaml

@@ -188,13 +188,10 @@ kind: Telo.Application
 metadata:
   name: InMemoryApp
   version: 1.0.0
+imports:
+  MyLib: memory://lib
 targets:
   - Check
----
-kind: Telo.Import
-metadata:
-  name: MyLib
-source: memory://lib
 ---
 kind: MyLib.Validate
 metadata:

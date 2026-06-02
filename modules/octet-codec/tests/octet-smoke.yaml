@@ -7,24 +7,13 @@ metadata:
     through Octet.Encoder (pass-through) → Octet.Decoder (collect) and asserts
     the final concatenated bytes via a JS.Script that decodes them as UTF-8 for
     inspection. Self-contained: depends only on this codec module + JS/Run/Assert.
+imports:
+  Octet: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestRoundtrip
----
-kind: Telo.Import
-metadata: { name: Octet }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: JS.Script
 metadata: { name: Source }
@@ -80,4 +69,4 @@ steps:
         properties:
           text: { const: "hi!" }
           length: { const: 3 }
-        required: [text, length]
+        required: [ text, length ]

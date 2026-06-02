@@ -78,14 +78,17 @@ CEL expressions and direct lookups can be freely mixed. Snapshot exposes `resour
 ## Passing values into imports
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Application
 metadata:
-  name: Config
-source: ./config
-variables:
-  logLevel: "${{ resources.AppConfig.logLevel }}"
-  dbUrl: "${{ resources.AppSecrets.dbUrl }}"
-  stripeKey: "${{ resources.AppSecrets.stripeKey }}"
+  name: my-app
+  version: 1.0.0
+imports:
+  Config:
+    source: ./config
+    variables:
+      logLevel: "${{ resources.AppConfig.logLevel }}"
+      dbUrl: "${{ resources.AppSecrets.dbUrl }}"
+      stripeKey: "${{ resources.AppSecrets.stripeKey }}"
 ```
 
 ## Config.Env shortcut

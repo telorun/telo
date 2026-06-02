@@ -42,18 +42,11 @@ kind: Telo.Application
 metadata:
   name: HelloConsole
   version: 1.0.0
+imports:
+  Run: std/run@0.3.0
+  Console: std/console@0.6.0
 targets:
   - Main
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: std/run@0.3.0
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: std/console@0.6.0
 ---
 kind: Run.Sequence
 metadata:
@@ -69,7 +62,7 @@ steps:
 This declares:
 
 - A **`Telo.Application`** — the runnable root, with `Main` as its target.
-- Two **`Telo.Import`s** — pulling in the `Run` and `Console` modules
+- Two **`imports:` entries** — pulling in the `Run` and `Console` modules
   from the standard library.
 - A **`Run.Sequence`** named `Main` with a single step that invokes
   `Console.WriteLine`.
@@ -90,7 +83,7 @@ Hello from Telo!
 
 When you ran `telo ./hello.yaml`, the kernel:
 
-1. **Loaded** the YAML, resolved each `Telo.Import`, and compiled any
+1. **Loaded** the YAML, resolved each import, and compiled any
    `${{ … }}` CEL expressions into an in-memory registry.
 2. **Resolved** the resource dependency graph — `Main` references
    `Console.WriteLine`, which lives in the imported `Console` module.

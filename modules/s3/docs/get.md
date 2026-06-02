@@ -5,7 +5,7 @@ sidebar_label: S3.Get
 
 # S3.Get
 
-> Examples below assume this module is imported with `Telo.Import` alias `S3`. Kind references (`S3.Get`, `S3.Bucket`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `S3`. Kind references (`S3.Get`, `S3.Bucket`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
 Streams an object's bytes from a bucket declared as `S3.Bucket`. Invocable — emits `output` as an async iterable of `Uint8Array` chunks, so downstream consumers stay byte-streaming end-to-end.
 

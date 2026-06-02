@@ -2,25 +2,14 @@ kind: Telo.Application
 metadata:
   name: TextSystemManifestAndRuntimeTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestManifestSystemPrepends
   - TestRuntimeSystemOverridesManifest
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # Echo with a ":::" suffix so we can observe the full message trail when the echoed
 # content is the last message's content (verifying prepend order).
@@ -57,7 +46,7 @@ steps:
         type: object
         properties:
           text: { const: "user-content" }
-        required: [text]
+        required: [ text ]
 ---
 # Case 2: runtime `inputs.system` wins over manifest `system`. Same echo behaviour
 # on the last message. This test just asserts the call succeeds with the override;
@@ -82,4 +71,4 @@ steps:
         type: object
         properties:
           text: { const: "u" }
-        required: [text]
+        required: [ text ]

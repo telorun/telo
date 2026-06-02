@@ -23,13 +23,13 @@ Every module file begins with exactly one `Telo.Application` or `Telo.Library` d
 
 - **`targets`**: Optional. Resources to run once initialization completes. Applications whose work is carried entirely by auto-start Services (e.g. an HTTP server) may declare no targets.
 - **`lifecycle`** / **`keepAlive`**: Runtime lifecycle hints.
-- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of a `Telo.Import`.
+- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of an `imports:` entry.
 
 **Library-only:**
 
 - **`exports.kinds`**: Which resource kinds this library exposes to importers.
 - `targets`, `lifecycle`, and `keepAlive` are forbidden — libraries are not lifecycle participants.
-- Never runnable via `loadFromConfig`; loaded only through `Telo.Import`.
+- Never runnable via `loadFromConfig`; loaded only through an importer's `imports:` entry.
 
 ---
 
@@ -164,7 +164,7 @@ The root of every running instance is a `Telo.Application`. It is the only modul
 
 The `env` object represents the host process's environment variables and is **exclusively available** in the root Application. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: The root `Telo.Application` and any `Telo.Import` declared in its files.
+- **Available in**: The root `Telo.Application` and any `imports:` entry declared in its files.
 - **Unavailable in**: Any imported `Telo.Library`, regardless of nesting depth.
 - **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root Application.
 
@@ -182,43 +182,36 @@ kind: Telo.Application
 metadata:
   name: backend-root
   version: 1.0.0
-
----
-# The root module imports the payment gateway and injects host environment
-# variables into the child module's explicit contract.
-kind: Telo.Import
-metadata:
-  name: PaymentGateway
-source: acme/payment-gateway@1.2.0
-variables:
-  upstreamProviderUrl: "https://api.stripe.com"
-  retryTimeoutMs: 5000
-secrets:
-  # The 'env' capability is available here because this is the root module.
-  # It securely maps host environment variables to the child's secret contract.
-  providerApiKey: "${{ env.STRIPE_SECRET_KEY }}"
-  webhookSignature: "${{ env.STRIPE_WEBHOOK_SECRET }}"
-
----
-kind: Telo.Import
-metadata:
-  name: UserService
-source: acme/user-service@1.0.0
-variables:
-  dbConnectionString: "${{ env.DATABASE_URL }}"
+imports:
+  # The root module imports the payment gateway and injects host environment
+  # variables into the child module's explicit contract.
+  PaymentGateway:
+    source: acme/payment-gateway@1.2.0
+    variables:
+      upstreamProviderUrl: "https://api.stripe.com"
+      retryTimeoutMs: 5000
+    secrets:
+      # The 'env' capability is available here because this is the root module.
+      # It securely maps host environment variables to the child's secret contract.
+      providerApiKey: "${{ env.STRIPE_SECRET_KEY }}"
+      webhookSignature: "${{ env.STRIPE_WEBHOOK_SECRET }}"
+  UserService:
+    source: acme/user-service@1.0.0
+    variables:
+      dbConnectionString: "${{ env.DATABASE_URL }}"
 ```
 
 The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or reference `env`. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
 
 ---
 
-## 6. Import and Usage (`kind: Telo.Import`)
+## 6. Import and Usage (the `imports:` map)
 
-To utilize an external package, a project declares a dependency using `kind: Telo.Import`. The import acts as a local proxy.
+To utilize an external package, a module declares a dependency as an entry in its `imports:` map — a name-keyed map placed on the `Telo.Application` / `Telo.Library` document directly after `metadata:`. Each key is the PascalCase alias the dependency is referenced by; each value is either a bare **source string** or an object carrying `source` plus optional `variables` / `secrets` / `runtime`.
 
-- **Instantiation**: The `Import` resource provides the required `variables` and `secrets`.
-- **Referencing**: Once imported, the module's snapshot is stored under `resources.<ImportName>` alongside local resources. Access exported properties directly.
-- **Syntax**: `${{ resources.<ImportName>.<exportProperty> }}`.
+- **Instantiation**: The entry provides the required `variables` and `secrets`.
+- **Referencing**: Once imported, the module's snapshot is stored under `resources.<Alias>` alongside local resources. Access exported properties directly.
+- **Syntax**: `${{ resources.<Alias>.<exportProperty> }}`.
 
 ### 6.1 Source Resolution
 
@@ -230,7 +223,7 @@ The `source` field accepts three forms:
 | Relative path      | `./payment/telo.yaml`                   | Resolved relative to the importing manifest's URL |
 | Absolute URL       | `https://cdn.example.com/lib/telo.yaml` | Fetched directly                                  |
 
-Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that contains the `Telo.Import`, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
+Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that declares the `imports:` entry, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 
 ### 6.2 Registry Namespaces
 
@@ -262,21 +255,30 @@ The library's own `metadata.namespace` field must match the namespace segment of
 ### Import Declaration
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Application
 metadata:
-  name: UserService
-  # Implicitly module: default
-source: acme/user-service@1.0.0
-variables:
-  dbConnectionString: "postgresql://app_user:pass@db.internal:5432/users"
-  enableDebug: true
-secrets:
-  paymentProviderKey: "sk_live_12345"
+  name: backend-root
+  version: 1.0.0
+imports:
+  UserService:
+    source: acme/user-service@1.0.0
+    variables:
+      dbConnectionString: "postgresql://app_user:pass@db.internal:5432/users"
+      enableDebug: true
+    secrets:
+      paymentProviderKey: "sk_live_12345"
+```
+
+A dependency that needs no `variables` / `secrets` / `runtime` can use the bare source-string shorthand:
+
+```yaml
+imports:
+  Console: std/console@1.2.3
 ```
 
 ## 7. Manifest Cache
 
-`telo install` walks the full `Telo.Import` graph from a manifest, fetches every transitively-imported `Telo.Library`, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls to the module registry — the cache is the single trust boundary that pins which manifests the runtime will see.
+`telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library`, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls to the module registry — the cache is the single trust boundary that pins which manifests the runtime will see.
 
 ### Layout
 

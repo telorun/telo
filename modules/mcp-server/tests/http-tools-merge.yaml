@@ -1,30 +1,13 @@
 kind: Telo.Application
 metadata: { name: McpHttpToolsMergeTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../../http-server
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  Mcp: ../
+  Http: ../../http-server
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 kind: JS.Script
 metadata: { name: McpFetch }
@@ -33,20 +16,20 @@ inputType:
   schema:
     type: object
     properties:
-      url:    { type: string }
+      url: { type: string }
       method: { type: string }
       params: { type: object, additionalProperties: true }
-    required: [url, method]
+    required: [ url, method ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
-      status:    { type: integer }
-      result:    { type: object, additionalProperties: true }
-      error:     { type: object, additionalProperties: true }
-      hasError:  { type: boolean }
-    required: [status, hasError]
+      status: { type: integer }
+      result: { type: object, additionalProperties: true }
+      error: { type: object, additionalProperties: true }
+      hasError: { type: boolean }
+    required: [ status, hasError ]
 code: |
   async function main({ url, method, params }) {
     const initResp = await fetch(url, {
@@ -97,14 +80,14 @@ inputType:
     type: object
     properties:
       city: { type: string }
-    required: [city]
+    required: [ city ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
       summary: { type: string }
-    required: [summary]
+    required: [ summary ]
 code: |
   function main({ city }) { return { summary: `Sunny in ${city}` }; }
 ---
@@ -116,14 +99,14 @@ inputType:
     type: object
     properties:
       table: { type: string }
-    required: [table]
+    required: [ table ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
       rows: { type: integer }
-    required: [rows]
+    required: [ rows ]
 code: |
   function main({ table }) { return { rows: table.length }; }
 ---
@@ -135,7 +118,7 @@ entries:
     argumentsSchema:
       type: object
       properties: { city: { type: string } }
-      required: [city]
+      required: [ city ]
     handler: { kind: JS.Script, name: WeatherImpl }
     inputs: { city: "${{ request.arguments.city }}" }
     result:
@@ -151,7 +134,7 @@ entries:
     argumentsSchema:
       type: object
       properties: { table: { type: string } }
-      required: [table]
+      required: [ table ]
     handler: { kind: JS.Script, name: DbImpl }
     inputs: { table: "${{ request.arguments.table }}" }
     result:
@@ -162,7 +145,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-merge, version: 1.0.0 }
-tools: [WeatherTools, DatabaseTools]
+tools: [ WeatherTools, DatabaseTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -175,7 +158,7 @@ with:
     logger: false
     mounts:
       - { path: /mcp, type: McpHttpToolsMergeTest.McpHttp }
-targets: [Server]
+targets: [ Server ]
 steps:
   - name: ListTools
     inputs:
@@ -195,7 +178,7 @@ steps:
           hasError: { const: false }
           firstName: { const: "get_weather" }
           secondName: { const: "count_rows" }
-        required: [hasError, firstName, secondName]
+        required: [ hasError, firstName, secondName ]
 
   - name: CallWeather
     inputs:
@@ -212,7 +195,7 @@ steps:
         type: object
         properties:
           contentText: { const: "Sunny in Mars" }
-        required: [contentText]
+        required: [ contentText ]
 
   - name: CallDb
     inputs:
@@ -229,4 +212,4 @@ steps:
         type: object
         properties:
           contentText: { const: "rows=5" }
-        required: [contentText]
+        required: [ contentText ]

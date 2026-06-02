@@ -2,23 +2,12 @@ kind: Telo.Application
 metadata:
   name: RunSequenceSwitch
   version: 1.0.0
+imports:
+  Run: ../
+  JavaScript: ../../javascript
+  Assert: ../../assert
 targets:
   - TestSwitch
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: Run.Sequence
 metadata:

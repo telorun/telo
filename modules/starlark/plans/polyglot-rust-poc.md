@@ -121,12 +121,10 @@ Example manifest:
 ```yaml
 kind: Telo.Application
 metadata: { name: my-app }
----
-kind: Telo.Import
-metadata:
-  name: Starlark
-source: ../modules/starlark
-runtime: rust          # strict — fail if the rust controller is unavailable
+imports:
+  Starlark:
+    source: ../modules/starlark
+    runtime: rust # strict — fail if the rust controller is unavailable
 ```
 
 #### Plumbing — where the runtime selection actually flows

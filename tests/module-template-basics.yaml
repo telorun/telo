@@ -1,23 +1,17 @@
 kind: Telo.Application
 metadata:
   name: Test
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: TemplatingBasics
-source: ../examples/templated-api.yaml
-variables:
-  port: 4444
-  title: "Templating Basics"
-  version: "1.0.0"
-  mount:
-    - path: /status
-      type: Http.Api.StatusApi
+imports:
+  Http: ../modules/http-server
+  TemplatingBasics:
+    source: ../examples/templated-api.yaml
+    variables:
+      port: 4444
+      title: "Templating Basics"
+      version: "1.0.0"
+      mount:
+        - path: /status
+          type: Http.Api.StatusApi
 ---
 kind: Http.Api
 metadata:

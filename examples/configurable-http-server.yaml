@@ -13,6 +13,9 @@ metadata:
         STRIPE_SECRET_KEY=sk_test_demo_value
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
+imports:
+  Http: ../modules/http-server
+  JavaScript: ../modules/javascript
 targets:
   - PaymentServer
 variables:
@@ -23,16 +26,6 @@ secrets:
   stripeSecretKey:
     env: STRIPE_SECRET_KEY
     type: string
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
 ---
 kind: Http.Api
 metadata:

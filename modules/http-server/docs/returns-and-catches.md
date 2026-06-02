@@ -5,7 +5,7 @@ sidebar_label: returns & catches
 
 # `returns:` and `catches:`
 
-> Examples below assume the `http-server` module is imported with `Telo.Import` alias `Http`. Kind references (`Http.Api`, `Http.Server`, …) follow that alias.
+> Examples below assume the `http-server` module is imported with an `imports:` entry under alias `Http`. Kind references (`Http.Api`, `Http.Server`, …) follow that alias.
 
 Every route in an `Http.Api` defines two outcome lists:
 

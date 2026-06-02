@@ -2,16 +2,13 @@ kind: Telo.Application
 metadata:
   name: ErrorContextTests
   version: 1.0.0
+imports:
+  Assert: ../../assert
 targets:
   - TestErrorTypo
   - TestErrorValid
   - TestNullableAccess
   - TestNullableAccessNested
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # A typo on the `error` object inside a catch is caught at any nesting depth.
 kind: Assert.Manifest

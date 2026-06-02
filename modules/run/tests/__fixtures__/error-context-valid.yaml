@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: ErrorContextValidFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
+imports:
+  Run: ../..
+  JavaScript: ../../../javascript
 ---
 # Every error field accessed inside the catch is valid → zero analyzer errors.
 kind: Run.Sequence

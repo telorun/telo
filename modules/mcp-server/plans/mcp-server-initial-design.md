@@ -252,22 +252,18 @@ but that's an internal authoring detail — not part of the public schema.
 ```yaml
 kind: Telo.Application
 metadata: { name: my-stdio-mcp }
-targets: [Server]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../modules/mcp-server
----
-kind: Telo.Import
-metadata: { name: JavaScript }
-source: ../modules/javascript
+imports:
+  Mcp: ../modules/mcp-server
+  JavaScript: ../modules/javascript
+targets: [ Server ]
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }
 serverInfo:
   name: my-stdio-mcp
   version: 1.0.0
-tools: [WeatherTools]                   # array of refs to Mcp.Tools bundles
+tools: [ WeatherTools ] # array of refs to Mcp.Tools bundles
+
 # resources: [...]                      # v2: refs to Mcp.Resources
 # prompts:   [...]                      # v2: refs to Mcp.Prompts
 ---
@@ -276,21 +272,25 @@ metadata: { name: WeatherTools }
 entries:
   - name: get_weather
     description: Get current weather for a city.
-    argumentsSchema:                    # advertised to clients via tools/list
+    argumentsSchema:
+      # advertised to clients via tools/list
       type: object
       properties:
         city: { type: string }
-      required: [city]
-    handler:                            # any Telo.Invocable; oblivious to MCP
+      required: [ city ]
+    handler:
+      # any Telo.Invocable; oblivious to MCP
       kind: JavaScript.Script
       name: GetWeatherImpl
-    inputs:                             # MCP arguments → handler input
+    inputs:
+      # MCP arguments → handler input
       city: "${{ request.arguments.city }}"
-    result:                             # handler output → full MCP CallToolResult envelope
+    result:
+      # handler output → full MCP CallToolResult envelope
       content:
         - type: text
           text: "${{ result.summary }}"
-      isError: "${{ result.upstreamFailed }}"   # optional: soft-error signal (see §2.1)
+      isError: "${{ result.upstreamFailed }}" # optional: soft-error signal (see §2.1)
     catches:
       - code: not_found
         error:
@@ -305,15 +305,15 @@ inputType:
     type: object
     properties:
       city: { type: string }
-    required: [city]
+    required: [ city ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
-      summary:        { type: string }
+      summary: { type: string }
       upstreamFailed: { type: boolean }
-    required: [summary, upstreamFailed]
+    required: [ summary, upstreamFailed ]
 code: |
   function main({ city }) {
     if (city === "Atlantis") {
@@ -335,15 +335,10 @@ and the handler's domain types. Same pattern for `Mcp.Resources` (with `uri:`
 ```yaml
 kind: Telo.Application
 metadata: { name: my-http-mcp }
-targets: [Web]
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../modules/mcp-server
+imports:
+  Http: ../modules/http-server
+  Mcp: ../modules/mcp-server
+targets: [ Web ]
 ---
 kind: Http.Server
 metadata: { name: Web }
@@ -351,9 +346,9 @@ port: 8080
 mounts:
   - type: Http.Api
     path: /v1
-    name: Rest                          # your existing REST surface
+    name: Rest # your existing REST surface
   - type: Mcp.HttpEndpoint
-    path: /mcp                          # MCP available at http://host:8080/mcp
+    path: /mcp # MCP available at http://host:8080/mcp
     name: McpHttp
 ---
 kind: Mcp.HttpEndpoint
@@ -361,11 +356,11 @@ metadata: { name: McpHttp }
 serverInfo:
   name: my-http-mcp
   version: 1.0.0
-tools: [WeatherTools]
+tools: [ WeatherTools ]
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }
-entries: [ … ]                          # same shape as 4.1
+entries: [ … ] # same shape as 4.1
 ```
 
 Same bundle-and-ref shape as `Mcp.StdioServer`. The difference is wiring:
@@ -397,20 +392,15 @@ bundles → init throws (§2.1.1), with both bundle locations reported.
 ```yaml
 kind: Telo.Application
 metadata: { name: my-mcp }
-targets: [Stdio, Web]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../modules/mcp-server
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../modules/http-server
+imports:
+  Mcp: ../modules/mcp-server
+  Http: ../modules/http-server
+targets: [ Stdio, Web ]
 ---
 kind: Mcp.StdioServer
 metadata: { name: Stdio }
 serverInfo: { name: my-mcp, version: 1.0.0 }
-tools: [Api]                            # ← same ref
+tools: [ Api ] # ← same ref
 ---
 kind: Http.Server
 metadata: { name: Web }
@@ -421,11 +411,11 @@ mounts:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: my-mcp, version: 1.0.0 }
-tools: [Api]                            # ← same ref
+tools: [ Api ] # ← same ref
 ---
 kind: Mcp.Tools
 metadata: { name: Api }
-entries: [ … ]                          # declared once
+entries: [ … ] # declared once
 ```
 
 Both transports register the same set of tools by referencing one `Mcp.Tools`

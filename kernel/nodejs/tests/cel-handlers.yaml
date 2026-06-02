@@ -3,6 +3,11 @@ metadata:
   name: KernelCelHandlersTest
   version: 1.0.0
   description: Smoke test for the kernel's CEL stdlib handlers (currently exercises json()).
+imports:
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+  Type: ../../../modules/type
+  JS: ../../../modules/javascript
 targets:
   - JsonString
   - JsonNumber
@@ -12,22 +17,6 @@ targets:
   - JsonStructured
   - JsonInterpolated
   - JsonLargeInt
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../../modules/assert
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../../modules/run
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../../modules/type
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../../modules/javascript
 ---
 kind: Run.Sequence
 metadata: { name: JsonString }
@@ -95,7 +84,7 @@ outputType:
           type: object
           additionalProperties: true
       count: { type: integer }
-    required: [results, count]
+    required: [ results, count ]
     additionalProperties: false
 code: |
   function main() {

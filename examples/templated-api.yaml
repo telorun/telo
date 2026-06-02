@@ -8,24 +8,13 @@ metadata:
     under their chosen alias and can mount it on any `Http.Server`. Paired
     with `templated-api-usage.yaml`, which mounts the same library twice
     under `/v1` and `/v2` to show import + mount reuse.
+imports:
+  Type: ../modules/type
+  Http: ../modules/http-server
+  JavaScript: ../modules/javascript
 exports:
   kinds:
     - HelloApi
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
 ---
 kind: Http.Api
 metadata:
@@ -40,7 +29,7 @@ routes:
           properties:
             name:
               type: string
-          required: ["name"]
+          required: [ "name" ]
     handler:
       kind: JavaScript.Script
       name: SayHello
@@ -55,7 +44,7 @@ routes:
               properties:
                 greeting: { type: string }
                 nice: { type: string }
-              required: [greeting, nice]
+              required: [ greeting, nice ]
               additionalProperties: false
             body:
               greeting: "${{ result.message }}!"

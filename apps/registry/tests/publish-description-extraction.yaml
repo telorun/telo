@@ -12,24 +12,16 @@ metadata:
     flow (S3 + postgres) is tested via the docker-compose stack — this test
     isolates the CEL chain so future changes can't silently break the
     description-indexing path.
+imports:
+  Yaml: ../../../modules/yaml
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
 targets:
   - WithDescription
   - WithoutDescription
   - WithoutMetadata
   - EmptyDocs
   - NonStringDescription
----
-kind: Telo.Import
-metadata: { name: Yaml }
-source: ../../../modules/yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../../modules/run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../../modules/assert
 ---
 kind: Run.Sequence
 metadata: { name: WithDescription }

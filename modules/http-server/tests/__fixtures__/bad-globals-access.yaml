@@ -2,24 +2,13 @@ kind: Telo.Library
 metadata:
   name: BadGlobalsAccess
   version: 1.0.0
+imports:
+  Http: ../..
+  JavaScript: ../../../javascript
+  Type: ../../../type
 variables:
   apiKey:
     type: string
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../../../type
 ---
 kind: JavaScript.Script
 metadata:

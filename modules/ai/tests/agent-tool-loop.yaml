@@ -2,33 +2,14 @@ kind: Telo.Application
 metadata:
   name: AgentToolLoopTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Js: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestAgentLoop
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Js
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # Echo emits one deterministic tool call (multiply 6×7) on the first turn when tools
 # are present, then echoes the tool result on the second turn — driving a full agent
@@ -56,7 +37,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      required: [a, b]
+      required: [ a, b ]
       properties:
         a: { type: number }
         b: { type: number }
@@ -99,7 +80,7 @@ steps:
           finishReason:
             type: string
             const: stop
-        required: [text, finishReason]
+        required: [ text, finishReason ]
   - name: AssertTrace
     inputs:
       toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
@@ -115,4 +96,4 @@ steps:
           toolResult:
             type: string
             const: '{"product":42}'
-        required: [toolName, toolResult]
+        required: [ toolName, toolResult ]

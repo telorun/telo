@@ -9,32 +9,15 @@ metadata:
     bytes via PlainText.Decoder. Replaces the controller's internal wire-format
     logic that lived inline before format-codec packages shipped — encoding is
     now the consumer's job.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Ndjson: ../../ndjson-codec
+  PlainText: ../../plain-text-codec
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestNdjson
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: ../../ndjson-codec
----
-kind: Telo.Import
-metadata: { name: PlainText }
-source: ../../plain-text-codec
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -77,4 +60,4 @@ steps:
               {"type":"text-delta","delta":"h"}
               {"type":"text-delta","delta":"i"}
               {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
-        required: [text]
+        required: [ text ]

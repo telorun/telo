@@ -21,9 +21,10 @@ Read and write objects in an S3-compatible bucket from a Telo manifest. Targets 
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: S3 }
-source: std/s3@latest
+kind: Telo.Application
+metadata: { name: s3-app, version: 1.0.0 }
+imports:
+  S3: std/s3@latest
 ---
 kind: S3.Bucket
 metadata: { name: Uploads }

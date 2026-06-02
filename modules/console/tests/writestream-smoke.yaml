@@ -5,26 +5,15 @@ metadata:
   description: |
     Smoke tests for Console.WriteStream. Verifies it accepts string streams,
     Uint8Array streams, and rejects invalid item shapes.
+imports:
+  Console: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestStringStream
   - TestBytesStream
   - TestInvalidInput
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: JS.Script
 metadata: { name: StringSource }
@@ -74,7 +63,7 @@ steps:
       schema:
         type: object
         properties: { reached: { const: true } }
-        required: [reached]
+        required: [ reached ]
 ---
 kind: Run.Sequence
 metadata: { name: TestBytesStream }
@@ -93,7 +82,7 @@ steps:
       schema:
         type: object
         properties: { reached: { const: true } }
-        required: [reached]
+        required: [ reached ]
 ---
 kind: Run.Sequence
 metadata: { name: TestInvalidInput }
@@ -115,4 +104,4 @@ steps:
           schema:
             type: object
             properties: { code: { const: "ERR_INVALID_INPUT" } }
-            required: [code]
+            required: [ code ]

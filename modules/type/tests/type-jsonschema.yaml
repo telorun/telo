@@ -2,6 +2,11 @@ kind: Telo.Application
 metadata:
   name: TypeJsonSchemaTest
   version: 1.0.0
+imports:
+  Type: ..
+  Run: ../../run
+  JavaScript: ../../javascript
+  Assert: ../../assert
 targets:
   - TestTypeValidation
   - TestTypeRejection
@@ -10,27 +15,6 @@ targets:
   - TestOutputTypeRejection
   - TestMultipleRules
   - TestMultipleExtends
-
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -39,7 +23,7 @@ metadata:
   name: AdditionInput
 schema:
   type: object
-  required: [a, b]
+  required: [ a, b ]
   properties:
     a: { type: number }
     b: { type: number }
@@ -49,7 +33,7 @@ metadata:
   name: AdditionOutput
 schema:
   type: object
-  required: [sum]
+  required: [ sum ]
   properties:
     sum: { type: number }
 ---
@@ -58,7 +42,7 @@ metadata:
   name: Entity
 schema:
   type: object
-  required: [id]
+  required: [ id ]
   properties:
     id: { type: string }
 ---
@@ -68,7 +52,7 @@ metadata:
 extends: Entity
 schema:
   type: object
-  required: [name]
+  required: [ name ]
   properties:
     name: { type: string }
 ---
@@ -98,7 +82,7 @@ metadata:
   name: PositiveAmount
 schema:
   type: object
-  required: [amount]
+  required: [ amount ]
   properties:
     amount: { type: number }
 rules:
@@ -270,7 +254,7 @@ metadata:
   name: NonNegativeAmount
 schema:
   type: object
-  required: [amount]
+  required: [ amount ]
   properties:
     amount: { type: number }
 rules:
@@ -295,7 +279,7 @@ metadata:
   name: Timestamped
 schema:
   type: object
-  required: [updatedAt]
+  required: [ updatedAt ]
   properties:
     updatedAt: { type: string }
 ---
@@ -307,7 +291,7 @@ extends:
   - Timestamped
 schema:
   type: object
-  required: [label]
+  required: [ label ]
   properties:
     label: { type: string }
 ---

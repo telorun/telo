@@ -20,18 +20,13 @@ OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`, backed by the Ve
 ```yaml
 kind: Telo.Application
 metadata: { name: example, version: 1.0.0 }
+imports:
+  Ai: pkg:npm/@telorun/ai@^1.0.0
+  AiOpenai: pkg:npm/@telorun/ai-openai@^1.0.0
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
     type: string
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: pkg:npm/@telorun/ai@^1.0.0
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: pkg:npm/@telorun/ai-openai@^1.0.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4oMini }

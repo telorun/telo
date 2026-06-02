@@ -7,14 +7,12 @@ metadata:
     Raw-bytes codec — Uint8Array stream ↔ Uint8Array. Encoder passes byte
     chunks through unchanged. Decoder collects every chunk into a single
     `Uint8Array`. Pair with Content-Type `application/octet-stream`.
+imports:
+  Codec: ../codec
 exports:
   kinds:
     - Encoder
     - Decoder
----
-kind: Telo.Import
-metadata: { name: Codec }
-source: ../codec
 ---
 # Encoder: byte stream → byte stream (identity).
 kind: Telo.Definition
@@ -44,7 +42,7 @@ outputType:
       bytes:
         type: object
         description: Single Uint8Array formed by concatenating every chunk in `input`.
-    required: [bytes]
+    required: [ bytes ]
     additionalProperties: false
 schema:
   type: object

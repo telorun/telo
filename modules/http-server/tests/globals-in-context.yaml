@@ -2,14 +2,11 @@ kind: Telo.Application
 metadata:
   name: HttpGlobalsInContextTest
   version: 1.0.0
+imports:
+  Assert: ../../assert
 targets:
   - TestValidGlobalsAccess
   - TestBadGlobalsAccess
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # Kernel globals (variables, secrets, resources, imports, env) must be
 # available inside x-telo-context scopes without being re-declared.

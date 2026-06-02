@@ -1,34 +1,14 @@
 kind: Telo.Application
 metadata: { name: McpHttpToolCallTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: ../../mcp-client
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../../http-server
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  Mcp: ../
+  McpClient: ../../mcp-client
+  Http: ../../http-server
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 kind: JS.Script
 metadata: { name: GetWeatherImpl }
@@ -38,14 +18,14 @@ inputType:
     type: object
     properties:
       city: { type: string }
-    required: [city]
+    required: [ city ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
       summary: { type: string }
-    required: [summary]
+    required: [ summary ]
 code: |
   function main({ city }) {
     return { summary: `Sunny in ${city}` };
@@ -60,7 +40,7 @@ entries:
       type: object
       properties:
         city: { type: string }
-      required: [city]
+      required: [ city ]
     handler: { kind: JS.Script, name: GetWeatherImpl }
     inputs:
       city: "${{ request.arguments.city }}"
@@ -72,7 +52,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
-tools: [WeatherTools]
+tools: [ WeatherTools ]
 ---
 # Client-side: the new typed Mcp.HttpClient + Mcp.ToolsCall replace the
 # hand-rolled JS.Script McpFetch. With no sessionProvider declared, the client
@@ -98,7 +78,7 @@ with:
     logger: false
     mounts:
       - { path: /mcp, type: McpHttpToolCallTest.McpHttp }
-targets: [Server]
+targets: [ Server ]
 steps:
   - name: CallGetWeather
     inputs:
@@ -114,4 +94,4 @@ steps:
         type: object
         properties:
           contentText: { const: "Sunny in Atlantis" }
-        required: [contentText]
+        required: [ contentText ]

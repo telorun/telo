@@ -5,14 +5,15 @@ sidebar_label: Ai.OpenaiModel
 
 # `Ai.OpenaiModel`
 
-> Examples below assume this module is imported with `Telo.Import` alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
 OpenAI provider for the `Ai.Model` abstract. Implements the full `AiModelInstance` runtime contract via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
 
 ```yaml
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: std/ai-openai@0.2.0
+kind: Telo.Application
+metadata: { name: summarizer, version: 1.0.0 }
+imports:
+  AiOpenai: std/ai-openai@0.2.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }

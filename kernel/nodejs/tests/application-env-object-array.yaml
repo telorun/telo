@@ -2,6 +2,9 @@ kind: Telo.Application
 metadata:
   name: ApplicationEnvObjectArrayTest
   version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
 variables:
   tls:
     env: APP_TLS
@@ -11,7 +14,7 @@ variables:
         type: string
       key:
         type: string
-    required: [cert, key]
+    required: [ cert, key ]
   origins:
     env: APP_ORIGINS
     type: array
@@ -20,16 +23,6 @@ variables:
     minItems: 1
 targets:
   - TestApplicationEnvObjectArray
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../../modules/assert
 ---
 kind: Run.Sequence
 metadata:
@@ -50,7 +43,7 @@ steps:
           key:
             type: string
             const: def
-        required: [cert, key]
+        required: [ cert, key ]
   - name: AssertOrigins
     inputs:
       first: !cel "variables.origins[0]"
@@ -66,4 +59,4 @@ steps:
           second:
             type: string
             const: b
-        required: [first, second]
+        required: [ first, second ]

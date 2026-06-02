@@ -108,15 +108,10 @@ function buildManifest(imports: Array<{ name: string; source: string }>): string
     "metadata:",
     "  name: test-app",
     "  version: 0.0.1",
+    "imports:",
   ];
   for (const imp of imports) {
-    lines.push(
-      "---",
-      "kind: Telo.Import",
-      "metadata:",
-      `  name: ${imp.name}`,
-      `source: ${imp.source}`,
-    );
+    lines.push(`  ${imp.name}: ${imp.source}`);
   }
   return lines.join("\n") + "\n";
 }
@@ -175,8 +170,8 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(result.upgrades).toEqual([
       { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
     ]);
-    expect(content).toContain("source: std/run@0.2.7");
-    expect(content).not.toContain("source: std/run@0.2.4");
+    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).not.toContain("Run: std/run@0.2.4");
   });
 
   it("repairs a broken low pin (current not in published list) upward", async () => {
@@ -193,7 +188,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(result.upgrades).toEqual([
       { packagePath: "std/run", from: "0.0.1", to: "0.2.7" },
     ]);
-    expect(content).toContain("source: std/run@0.2.7");
+    expect(content).toContain("Run: std/run@0.2.7");
   });
 
   it("repairs a broken high pin downward — only direction where downgrade is allowed", async () => {
@@ -210,7 +205,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(result.upgrades).toEqual([
       { packagePath: "std/run", from: "9.9.9", to: "0.2.7" },
     ]);
-    expect(content).toContain("source: std/run@0.2.7");
+    expect(content).toContain("Run: std/run@0.2.7");
   });
 
   it("treats a registry 404 as skipped, not an error", async () => {
@@ -297,10 +292,10 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(prereleased.result.upgrades).toEqual([
       { packagePath: "std/run", from: "1.0.0", to: "2.0.0-rc.1" },
     ]);
-    expect(prereleased.content).toContain("source: std/run@2.0.0-rc.1");
+    expect(prereleased.content).toContain("Run: std/run@2.0.0-rc.1");
   });
 
-  it("multi-doc rewrite produces single `---` separators (regression guard)", async () => {
+  it("rewrites multiple inline imports in one map", async () => {
     const input = buildManifest([
       { name: "Run", source: "std/run@0.2.4" },
       { name: "Type", source: "std/type@1.0.0" },
@@ -315,10 +310,38 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       log,
     });
 
-    // No `---\n---` runs (would indicate the duplicated-separator bug).
-    expect(content).not.toMatch(/---\s*\n\s*---/);
+    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).toContain("Type: std/type@1.0.5");
+  });
+
+  it("rewrites the object form (`Alias: { source: … }`) source", async () => {
+    const input = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: test-app",
+      "  version: 0.0.1",
+      "imports:",
+      "  Run:",
+      "    source: std/run@0.2.4",
+      "    variables:",
+      "      flag: true",
+      "",
+    ].join("\n");
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      registryUrl: REGISTRY,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([
+      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+    ]);
     expect(content).toContain("source: std/run@0.2.7");
-    expect(content).toContain("source: std/type@1.0.5");
+    // The sibling `variables:` block under the same entry is untouched.
+    expect(content).toContain("      flag: true");
   });
 
   it("preserves a folded block scalar (`>-`) in an unrelated doc byte-for-byte", async () => {
@@ -352,7 +375,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     });
 
     expect(result.upgrades).toHaveLength(1);
-    expect(content).toContain("source: std/run@0.2.7");
+    expect(content).toContain("Run: std/run@0.2.7");
     // The folded-block source lines must survive verbatim — no collapse onto a
     // single line.
     expect(content).toContain(sqlBlock);
@@ -368,13 +391,13 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       includePrerelease: false,
       log,
     });
-    expect(plain.content).toContain("source: std/run@0.2.7");
-    expect(plain.content).not.toContain('source: "std/run@0.2.7"');
+    expect(plain.content).toContain("Run: std/run@0.2.7");
+    expect(plain.content).not.toContain('Run: "std/run@0.2.7"');
 
     // Double-quoted scalar — quotes kept.
     const dqInput = plainInput.replace(
-      "source: std/run@0.2.4",
-      'source: "std/run@0.2.4"',
+      "Run: std/run@0.2.4",
+      'Run: "std/run@0.2.4"',
     );
     mockVersions("std", "run", ["0.2.4", "0.2.7"]);
     const dq = await upgradeManifest({
@@ -383,13 +406,13 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       includePrerelease: false,
       log,
     });
-    expect(dq.content).toContain('source: "std/run@0.2.7"');
-    expect(dq.content).not.toContain("source: std/run@0.2.7\n");
+    expect(dq.content).toContain('Run: "std/run@0.2.7"');
+    expect(dq.content).not.toContain("Run: std/run@0.2.7\n");
 
     // Single-quoted scalar — quotes kept.
     const sqInput = plainInput.replace(
-      "source: std/run@0.2.4",
-      "source: 'std/run@0.2.4'",
+      "Run: std/run@0.2.4",
+      "Run: 'std/run@0.2.4'",
     );
     mockVersions("std", "run", ["0.2.4", "0.2.7"]);
     const sq = await upgradeManifest({
@@ -398,7 +421,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       includePrerelease: false,
       log,
     });
-    expect(sq.content).toContain("source: 'std/run@0.2.7'");
+    expect(sq.content).toContain("Run: 'std/run@0.2.7'");
   });
 
   it("everything outside the rewritten source value is byte-identical to the input", async () => {
@@ -411,11 +434,8 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       "metadata:",
       "  name: probe",
       "  version: 0.0.1",
-      "---",
-      "kind: Telo.Import",
-      "metadata:",
-      "  name: Run",
-      "source: std/run@0.2.4   # trailing comment",
+      "imports:",
+      "  Run: std/run@0.2.4   # trailing comment",
       "---",
       "# Comment between docs.",
       "kind: Other.Resource",
@@ -467,7 +487,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
 
     expect(result.upgrades).toHaveLength(1);
     // Source was rewritten as expected …
-    expect(content).toContain("source: std/run@0.2.7");
+    expect(content).toContain("Run: std/run@0.2.7");
     // … but the long scalar in the unrelated doc must survive verbatim — no
     // line wrap, no backslash continuations.
     expect(content).toContain(`expr: "${longCel}"`);
@@ -520,7 +540,7 @@ describe("upgradeOne — filesystem wrapper", () => {
     const result = await upgradeOne(workdir, REGISTRY, false, false, log);
 
     expect(result.upgrades).toHaveLength(1);
-    expect(fs.readFileSync(manifestPath, "utf-8")).toContain("source: std/run@0.2.7");
+    expect(fs.readFileSync(manifestPath, "utf-8")).toContain("Run: std/run@0.2.7");
   });
 
   it("dry-run hits the registry but never writes the file", async () => {

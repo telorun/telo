@@ -2,24 +2,13 @@ kind: Telo.Application
 metadata:
   name: TextOptionsMergeTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestOptionsMergeReachesModel
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # Echo doesn't surface options in its output — the smoke test is just that a call
 # with per-call, per-completion, AND per-model options survives the merge and
@@ -63,4 +52,4 @@ steps:
         properties:
           text: { const: "merge" }
           finishReason: { const: stop }
-        required: [text, finishReason]
+        required: [ text, finishReason ]

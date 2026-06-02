@@ -5,6 +5,7 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
+import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
@@ -157,11 +158,11 @@ export async function upgradeManifest(args: {
   }
   const edits: SourceEdit[] = [];
 
-  for (const doc of docs) {
-    const json = doc.toJSON();
-    if (!json || json.kind !== "Telo.Import") continue;
-    const source = json.source;
-    if (typeof source !== "string") continue;
+  const moduleDoc = findModuleDoc(docs);
+  const importRefs = moduleDoc ? importSourceRefs(moduleDoc) : [];
+
+  for (const importRef of importRefs) {
+    const source = importRef.source;
 
     const ref = parseModuleRef(source);
     if (!ref) {
@@ -231,7 +232,7 @@ export async function upgradeManifest(args: {
       continue;
     }
 
-    const edit = buildSourceEdit(doc, content, `${ref.namespace}/${ref.name}@${best}`);
+    const edit = buildSourceEdit(importRef.node, content, `${ref.namespace}/${ref.name}@${best}`);
     if (!edit) {
       // No range info — extremely unlikely for a freshly parsed doc, but bail
       // out loudly rather than silently dropping the rewrite.
@@ -269,22 +270,21 @@ export async function upgradeManifest(args: {
 }
 
 /**
- * Build a byte-level edit for a `Telo.Import` doc's `source:` scalar.
+ * Build a byte-level edit for an import entry's source scalar node.
  * Returns `null` when the parser didn't attach a range to the node — this
  * shouldn't happen for plain `parseAllDocuments` output but we don't want to
  * crash on weird inputs.
  *
  * Quote style is preserved: if the original scalar was written as
- * `source: "std/run@0.2.4"` we re-emit `"std/run@0.2.7"`; plain stays plain.
+ * `Run: "std/run@0.2.4"` we re-emit `"std/run@0.2.7"`; plain stays plain.
  */
 function buildSourceEdit(
-  // `Document` from yaml v2 — typed as unknown here to avoid leaking the
+  // A yaml v2 Scalar node — typed as unknown here to avoid leaking the
   // import into the public signature of this helper.
-  doc: { get(key: string, keepScalar: boolean): unknown },
+  node: unknown,
   content: string,
   newPin: string,
 ): { start: number; end: number; newText: string } | null {
-  const node = doc.get("source", true);
   if (!node || typeof node !== "object") return null;
   const range = (node as { range?: unknown }).range;
   if (!Array.isArray(range) || range.length < 2) return null;
@@ -407,7 +407,7 @@ export async function upgrade(argv: {
 export function upgradeCommand(yargs: Argv): Argv {
   return yargs.command(
     "upgrade <paths..>",
-    "Bump Telo.Import sources to the latest published version in the registry",
+    "Bump import sources to the latest published version in the registry",
     (y) =>
       y
         .positional("paths", {

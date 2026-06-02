@@ -8,13 +8,10 @@ metadata:
     compose stack must be up before running this suite. Kept separate from the
     in-process suite (`test-suite.yaml` at the repo root), which has no
     Postgres or S3 backend and therefore can't exercise these routes.
+imports:
+  Test: ../../modules/test
 targets:
   - RunAll
----
-kind: Telo.Import
-metadata:
-  name: Test
-source: ../../modules/test
 ---
 kind: Test.Suite
 metadata:

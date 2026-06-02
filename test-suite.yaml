@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: TestSuite
   version: 1.0.0
+imports:
+  Test: ./modules/test
 targets:
   - RunAll
----
-kind: Telo.Import
-metadata:
-  name: Test
-source: ./modules/test
 ---
 kind: Test.Suite
 metadata:

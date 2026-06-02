@@ -4,15 +4,12 @@ metadata:
   namespace: std
   version: 1.0.0
   description: Canonical concrete implementation of AbstractLib.Greeter.
+imports:
+  # Pull in the abstract via alias. Any `extends` below resolves through this alias.
+  AbstractLib: ./abstract-lib.yaml
 exports:
   kinds:
     - Shouter
----
-# Pull in the abstract via alias. Any `extends` below resolves through this alias.
-kind: Telo.Import
-metadata:
-  name: AbstractLib
-source: ./abstract-lib.yaml
 ---
 # Canonical implementation: explicit lifecycle `capability` + `extends` to the abstract.
 kind: Telo.Definition

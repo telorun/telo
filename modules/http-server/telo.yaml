@@ -3,18 +3,15 @@ metadata:
   name: "http-server"
   namespace: std
   version: "0.6.1"
+imports:
+  # Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
+  # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
+  # shape, MIME negotiation rules, and buffer/stream oneOf live in exactly one place.
+  HttpDispatch: ../http-dispatch
 exports:
   kinds:
     - Server
     - Api
----
-# Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
-# and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
-# shape, MIME negotiation rules, and buffer/stream oneOf live in exactly one place.
-kind: Telo.Import
-metadata:
-  name: HttpDispatch
-source: ../http-dispatch
 ---
 kind: "Telo.Definition"
 metadata:
@@ -68,8 +65,8 @@ schema:
               title: Version
               description: API version shown in OpenAPI documentation.
               type: "string"
-          required: ["title", "version"]
-      required: ["info"]
+          required: [ "title", "version" ]
+      required: [ "info" ]
     mounts:
       title: Mounts
       description: Mount points attached to the HTTP server.
@@ -125,9 +122,9 @@ schema:
                     title: Kind
                     description: Kind of the parser resource.
                     type: "string"
-                required: ["kind"]
+                required: [ "kind" ]
                 additionalProperties: true
-        required: ["contentType"]
+        required: [ "contentType" ]
     cors:
       title: CORS
       description: Cross-origin resource sharing configuration.
@@ -234,7 +231,7 @@ schema:
                   title: Kind
                   description: Kind of resource used for fallback invocation.
                   type: "string"
-              required: ["kind"]
+              required: [ "kind" ]
               additionalProperties: true
         inputs:
           title: Inputs
@@ -262,7 +259,7 @@ schema:
           x-telo-outcome-list: catches
           x-telo-catches-for: invoke
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
-  required: ["port", "mounts"]
+  required: [ "port", "mounts" ]
 ---
 kind: "Telo.Definition"
 metadata:
@@ -382,7 +379,7 @@ schema:
                 mode:
                   title: Mode
                   type: "string"
-                  enum: ["buffer", "stream"]
+                  enum: [ "buffer", "stream" ]
                   description: "buffer (default): CEL body expansion + schema validation per matched MIME. stream: pipe handler.result.output through content[mime].encoder, then bytes to the response."
                 headers:
                   title: Headers
@@ -417,7 +414,7 @@ schema:
                             properties:
                               kind: { title: Kind, type: "string" }
                               name: { title: Name, type: "string" }
-                            required: ["kind"]
+                            required: [ "kind" ]
                             additionalProperties: true
                       headers:
                         title: Headers
@@ -425,12 +422,12 @@ schema:
                         type: "object"
                         additionalProperties:
                           type: "string"
-              required: ["status"]
+              required: [ "status" ]
               oneOf:
                 - title: Buffer mode
                   description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
                   anyOf:
-                    - not: { required: ["mode"] }
+                    - not: { required: [ "mode" ] }
                     - properties:
                         mode: { const: "buffer" }
                   properties:
@@ -438,7 +435,7 @@ schema:
                       type: "object"
                       additionalProperties:
                         type: "object"
-                        not: { required: ["encoder"] }
+                        not: { required: [ "encoder" ] }
                 - title: Stream mode
                   description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
                   properties:
@@ -448,9 +445,9 @@ schema:
                       minProperties: 1
                       additionalProperties:
                         type: "object"
-                        required: ["encoder"]
-                        not: { required: ["body"] }
-                  required: ["mode", "content"]
+                        required: [ "encoder" ]
+                        not: { required: [ "body" ] }
+                  required: [ "mode", "content" ]
           catches:
             title: Catches
             description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
@@ -517,6 +514,6 @@ schema:
                         type: "object"
                         additionalProperties:
                           type: "string"
-              required: ["status"]
-        required: ["request", "returns"]
-  required: ["routes"]
+              required: [ "status" ]
+        required: [ "request", "returns" ]
+  required: [ "routes" ]

@@ -4,16 +4,13 @@ metadata:
   namespace: std
   version: 0.3.1
   description: Test-only Mcp.Client stub for ai-mcp discovery/dispatch tests.
+imports:
+  # Resolves to @telorun/mcp-client so `extends: Mcp.Client` has the alias in scope.
+  # From this fixture file: ../../../mcp-client = modules/mcp-client.
+  Mcp: ../../../mcp-client
 exports:
   kinds:
     - StubClient
----
-# Resolves to @telorun/mcp-client so `extends: Mcp.Client` has the alias in scope.
-# From this fixture file: ../../../mcp-client = modules/mcp-client.
-kind: Telo.Import
-metadata:
-  name: Mcp
-source: ../../../mcp-client
 ---
 kind: Telo.Definition
 metadata:

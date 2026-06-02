@@ -2,23 +2,12 @@ kind: Telo.Application
 metadata:
   name: CanInsertAndSelect
   version: 1.0.0
+imports:
+  Sql: ../
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestInsertAndSelect
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: Sql.Connection
 metadata:

@@ -2,10 +2,8 @@ kind: Telo.Library
 metadata:
   name: provider-template-raw-lib
   version: 1.0.0
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../../../../../modules/javascript
+imports:
+  JS: ../../../../../../modules/javascript
 ---
 kind: Telo.Definition
 metadata:
@@ -13,7 +11,7 @@ metadata:
 capability: Telo.Provider
 schema:
   type: object
-  required: [value]
+  required: [ value ]
   additionalProperties: true
   properties:
     value: { type: string }

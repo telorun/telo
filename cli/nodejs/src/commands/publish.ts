@@ -11,6 +11,7 @@ import type { Argv } from "yargs";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
+import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
 
 // ---------------------------------------------------------------------------
 // PURL parsing
@@ -168,11 +169,12 @@ export function expandAndInlineIncludes(content: string, manifestDir: string): s
 }
 
 // ---------------------------------------------------------------------------
-// Relative import canonicalization — turn `source: ../sibling` into
-// `source: <namespace>/<name>@<version>` so the published manifest is
-// self-contained. A relative path is only meaningful on the publisher's disk;
-// once the artifact is in the registry, `..` collapses the version segment of
-// the registry URL and breaks resolution for downstream consumers.
+// Relative import canonicalization — turn an `imports:` entry's relative
+// `../sibling` source into `<namespace>/<name>@<version>` so the published
+// manifest is self-contained. A relative path is only meaningful on the
+// publisher's disk; once the artifact is in the registry, `..` collapses the
+// version segment of the registry URL and breaks resolution for downstream
+// consumers.
 // ---------------------------------------------------------------------------
 
 export async function canonicalizeRelativeImports(
@@ -183,13 +185,12 @@ export async function canonicalizeRelativeImports(
 ): Promise<string> {
   const baseUrl = pathToFileURL(manifestPath).href;
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const moduleDoc = findModuleDoc(docs);
+  if (!moduleDoc) return content;
   let changed = false;
 
-  for (const doc of docs) {
-    const json = doc.toJSON();
-    if (!json || json.kind !== "Telo.Import") continue;
-    const source = json.source;
-    if (typeof source !== "string") continue;
+  for (const importRef of importSourceRefs(moduleDoc)) {
+    const source = importRef.source;
     if (!source.startsWith(".") && !source.startsWith("/")) continue;
 
     const targetUrl = localFileSource.resolveRelative(baseUrl, source);
@@ -197,7 +198,7 @@ export async function canonicalizeRelativeImports(
     const lib = targetLoaded.owner.manifests.find((m) => m?.kind === "Telo.Library");
     if (!lib) {
       throw new Error(
-        `Telo.Import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
+        `import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
       );
     }
     const { namespace, name, version } = (lib.metadata ?? {}) as {
@@ -207,11 +208,11 @@ export async function canonicalizeRelativeImports(
     };
     if (!namespace || !name || !version) {
       throw new Error(
-        `Telo.Import source '${source}' (resolved: '${targetUrl}') is missing metadata.namespace/name/version, required for canonicalization.`,
+        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.namespace/name/version, required for canonicalization.`,
       );
     }
 
-    doc.setIn(["source"], `${namespace}/${name}@${version}`);
+    moduleDoc.setIn(importRef.path, `${namespace}/${name}@${version}`);
     changed = true;
   }
 
@@ -473,7 +474,9 @@ async function publishOne(
   const analysisLoader = new Loader([localFileSource]);
   let analysisGraph;
   try {
-    analysisGraph = await analysisLoader.loadGraph(filePath);
+    // `desugarImports` so inline `imports:` maps expand into synthetic
+    // Telo.Import manifests and the imported kinds resolve during analysis.
+    analysisGraph = await analysisLoader.loadGraph(filePath, { desugarImports: true });
     if (analysisGraph.errors.length > 0) throw analysisGraph.errors[0].error;
   } catch (err) {
     console.error(
@@ -490,7 +493,7 @@ async function publishOne(
   }
   stepOk(log, "check", "static analysis passed");
 
-  // Canonicalize relative Telo.Import.source values to `<namespace>/<name>@<version>`
+  // Canonicalize relative `imports:` sources to `<namespace>/<name>@<version>`
   // so the registry artifact is portable. Done after analysis so the dev's on-disk
   // manifest (with relative paths) is what gets validated. Reuses the analysis
   // loader so sibling-library reads are cache hits.

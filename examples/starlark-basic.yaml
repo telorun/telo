@@ -3,6 +3,10 @@ metadata:
   name: StarlarkDemo
   version: 1.0.0
   description: A demo showcasing a Starlark script run from flat `targets`.
+imports:
+  Type: ../modules/type
+  Starlark: ../modules/starlark
+  Console: ../modules/console
 targets:
   - name: Step1
     invoke: !ref ExampleStarlarkScript
@@ -14,21 +18,6 @@ targets:
       output: |
         Evaluated starlark code.
         Result is: ${{ steps.Step1.result.result }}
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Starlark
-source: ../modules/starlark
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: ../modules/console
 ---
 kind: Starlark.Script
 metadata:
@@ -43,14 +32,14 @@ inputType:
     type: object
     properties:
       value: { type: number }
-    required: [value]
+    required: [ value ]
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
       result: { type: number }
-    required: [result]
+    required: [ result ]
 ---
 kind: Console.WriteLine
 metadata:

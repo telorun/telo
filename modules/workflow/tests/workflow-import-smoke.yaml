@@ -2,14 +2,11 @@ kind: Telo.Application
 metadata:
   name: WorkflowImportSmokeTest
   version: 1.0.0
+imports:
+  Assert: ../../assert
 targets:
   - TestWorkflowImport
   - TestWorkflowGraphXRef
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # The workflow + workflow-temporal pair is the canonical cross-package abstract example:
 # `Workflow.Backend` is a Telo.Abstract in std/workflow, `Temporal.Backend` is a concrete

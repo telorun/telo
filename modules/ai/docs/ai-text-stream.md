@@ -5,20 +5,18 @@ sidebar_label: Ai.TextStream
 
 # `Ai.TextStream`
 
-> Examples below assume this module is imported with `Telo.Import` alias `Ai`. Kind references (`Ai.TextStream`, `Ai.Model`, …) follow that alias.
+> Examples below assume this module is imported with an `imports:` entry under alias `Ai`. Kind references (`Ai.TextStream`, `Ai.Model`, …) follow that alias.
 
 `Ai.TextStream` is a `Telo.Invocable` that drives `Ai.Model.stream(...)` and exposes the resulting `StreamPart` sequence on `result.output` as a `Stream<StreamPart>`. It is the streaming counterpart of [Ai.Text](./ai-text.md): same `model` reference, same `system`/`options` semantics, different output shape.
 
 `Ai.TextStream` is a thin configured wrapper — it validates inputs, prepends a system prompt, merges options, and forwards the model's iterable. Encoding (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility: pipe `result.output` through a format-codec encoder kind (`Ndjson.Encoder`, `Sse.Encoder`, `PlainText.Encoder`, `Octet.Encoder`) to turn `StreamPart` records into bytes, or iterate the stream directly in a `JS.Script` step.
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Ai }
-source: std/ai@0.2.0
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: std/ai-openai@0.2.0
+kind: Telo.Application
+metadata: { name: chat, version: 1.0.0 }
+imports:
+  Ai: std/ai@0.2.0
+  AiOpenai: std/ai-openai@0.2.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
@@ -69,9 +67,10 @@ Pipe `result.output` through a format-codec encoder. Each encoder produces `{ ou
 ### NDJSON
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: std/ndjson-codec@0.3.0
+kind: Telo.Application
+metadata: { name: chat, version: 1.0.0 }
+imports:
+  Ndjson: std/ndjson-codec@0.3.0
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }

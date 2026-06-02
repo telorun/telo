@@ -11,16 +11,9 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: Templated
-source: ./templated-api.yaml
+imports:
+  Http: ../modules/http-server
+  Templated: ./templated-api.yaml
 ---
 kind: Http.Server
 metadata:

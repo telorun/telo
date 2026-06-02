@@ -3,6 +3,10 @@ metadata:
   name: JavaScriptDemo
   version: 1.0.0
   description: A demo showcasing a JavaScript script run from flat `targets`.
+imports:
+  Type: ../modules/type
+  JavaScript: ../modules/javascript
+  Console: ../modules/console
 targets:
   - name: Step1
     invoke: !ref MultiplyBy2
@@ -14,21 +18,6 @@ targets:
       output: |
         Evaluated JavaScript code.
         Result is: ${{ steps.Step1.result.result }}
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: ../modules/console
 ---
 kind: JavaScript.Script
 metadata:

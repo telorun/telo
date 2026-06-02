@@ -5,24 +5,13 @@ metadata:
   description: |
     A complete feedback collection REST API — no code, pure YAML.
     Persists entries to SQLite and serves them over HTTP.
+imports:
+  Http: ../../modules/http-server
+  Sql: ../../modules/sql
+  Run: ../../modules/run
 targets:
   - SetupDb
   - Server
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: ../../modules/sql
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../modules/run
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection
@@ -86,7 +75,7 @@ routes:
               minLength: 1
             source:
               type: string
-          required: [text]
+          required: [ text ]
     handler:
       kind: Sql.Exec
       connection:
@@ -133,7 +122,7 @@ routes:
           properties:
             id:
               type: integer
-          required: [id]
+          required: [ id ]
     handler:
       kind: Sql.Query
       connection:

@@ -8,10 +8,12 @@ description: "Inheritance via extends: abstract interface declaration (Telo.Abst
 
 ```yaml
 # modules/workflow-temporal/telo.yaml
-kind: Telo.Import
+kind: Telo.Library
 metadata:
-  name: Workflow
-source: ../workflow
+  name: workflow-temporal
+  version: 1.0.0
+imports:
+  Workflow: ../workflow
 ---
 kind: Telo.Definition
 metadata:
@@ -22,7 +24,7 @@ extends: Workflow.Backend
 
 `extends` is distinct from `capability`. `capability` assigns a **lifecycle role** (`Telo.Invocable`, `Telo.Provider`, `Telo.Service`, `Telo.Runnable`, `Telo.Mount`, `Telo.Type`). `extends` declares **which abstract interface** this definition implements. The two are orthogonal and usually combined.
 
-`extends` takes an **alias-form** string `"<Alias>.<AbstractName>"` — the same shape as kind prefixes (`kind: Http.Api`, `kind: Workflow.Graph`). The alias is resolved against the declaring file's own `Telo.Import` declarations, so the target's module version is pinned through the import source. Identity-form strings (`"std/workflow#Backend"`) are intentionally rejected: they don't carry version information and they duplicate resolution paths.
+`extends` takes an **alias-form** string `"<Alias>.<AbstractName>"` — the same shape as kind prefixes (`kind: Http.Api`, `kind: Workflow.Graph`). The alias is resolved against the declaring file's own `imports:` map, so the target's module version is pinned through the import source. Identity-form strings (`"std/workflow#Backend"`) are intentionally rejected: they don't carry version information and they duplicate resolution paths.
 
 ---
 
@@ -44,13 +46,15 @@ capability: Telo.Provider
 
 ## Providing an Implementation
 
-A definition extends an abstract interface by (a) importing the abstract's library and (b) setting `extends` to `<Alias>.<AbstractName>`:
+A definition extends an abstract interface by (a) importing the abstract's library via the module doc's `imports:` map and (b) setting `extends` to `<Alias>.<AbstractName>`:
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Library
 metadata:
-  name: Workflow
-source: ../workflow
+  name: workflow-temporal
+  version: 1.0.0
+imports:
+  Workflow: ../workflow
 ---
 kind: Telo.Definition
 metadata:
@@ -109,5 +113,5 @@ The analyzer resolves this to the canonical `workflow.Backend` kind and accepts 
 | Field           | Purpose                                               | Scope                                                 |
 | --------------- | ----------------------------------------------------- | ----------------------------------------------------- |
 | `capability`    | Assigns a lifecycle role                              | Any definition                                        |
-| `extends`       | Declares which abstract interface the kind implements | Any definition; alias-form via file's `Telo.Import`   |
+| `extends`       | Declares which abstract interface the kind implements | Any definition; alias-form via file's `imports:` map  |
 | `Telo.Abstract` | Declares a pluggable abstract interface               | Any library                                           |

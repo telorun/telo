@@ -17,9 +17,10 @@ NDJSON codec — JSON-record stream ↔ byte iterables. The encoder produces one
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: std/ndjson-codec@latest
+kind: Telo.Application
+metadata: { name: ndjson-stream, version: 1.0.0 }
+imports:
+  Ndjson: std/ndjson-codec@latest
 ---
 kind: Http.Server
 metadata: { name: Stream }

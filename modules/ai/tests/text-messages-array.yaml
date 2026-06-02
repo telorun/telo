@@ -2,24 +2,13 @@ kind: Telo.Application
 metadata:
   name: TextMessagesArrayTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestMessagesArray
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -57,4 +46,4 @@ steps:
         type: object
         properties:
           text: { type: string, const: "second" }
-        required: [text]
+        required: [ text ]

@@ -8,48 +8,19 @@ metadata:
     byte-exact wire output for NDJSON, SSE, and plain text. A fourth route
     declares all three formats under one `content:` map and is hit with three
     different `Accept` headers to verify the negotiation algorithm.
+imports:
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Http: ../
+  Ndjson: ../../ndjson-codec
+  Sse: ../../sse-codec
+  PlainText: ../../plain-text-codec
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestAllFormats
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../../ai
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ../../ai/tests/__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: ../../ndjson-codec
----
-kind: Telo.Import
-metadata: { name: Sse }
-source: ../../sse-codec
----
-kind: Telo.Import
-metadata: { name: PlainText }
-source: ../../plain-text-codec
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -96,7 +67,7 @@ inputType:
       url: { type: string }
       prompt: { type: string }
       accept: { type: string }
-    required: [url, prompt]
+    required: [ url, prompt ]
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -105,7 +76,7 @@ outputType:
       status: { type: integer }
       contentType: { type: string }
       body: { type: string }
-    required: [status, contentType, body]
+    required: [ status, contentType, body ]
 ---
 kind: Http.Api
 metadata: { name: Api }
@@ -119,7 +90,7 @@ routes:
           type: object
           properties:
             prompt: { type: string }
-          required: [prompt]
+          required: [ prompt ]
     handler: { kind: Ai.TextStream, name: ChatStream }
     inputs:
       prompt: "${{ request.body.prompt }}"
@@ -137,7 +108,7 @@ routes:
           type: object
           properties:
             prompt: { type: string }
-          required: [prompt]
+          required: [ prompt ]
     handler: { kind: Ai.TextStream, name: ChatStream }
     inputs:
       prompt: "${{ request.body.prompt }}"
@@ -155,7 +126,7 @@ routes:
           type: object
           properties:
             prompt: { type: string }
-          required: [prompt]
+          required: [ prompt ]
     handler: { kind: Ai.TextStream, name: ChatStream }
     inputs:
       prompt: "${{ request.body.prompt }}"
@@ -175,7 +146,7 @@ routes:
           type: object
           properties:
             prompt: { type: string }
-          required: [prompt]
+          required: [ prompt ]
     handler: { kind: Ai.TextStream, name: ChatStream }
     inputs:
       prompt: "${{ request.body.prompt }}"
@@ -231,7 +202,7 @@ steps:
               {"type":"text-delta","delta":"h"}
               {"type":"text-delta","delta":"i"}
               {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0},"finishReason":"stop"}
-        required: [status, contentType, body]
+        required: [ status, contentType, body ]
 
   - name: HitSse
     inputs:
@@ -252,7 +223,7 @@ steps:
           contentType: { const: "text/event-stream" }
           body:
             const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
-        required: [status, contentType, body]
+        required: [ status, contentType, body ]
 
   - name: HitPlain
     inputs:
@@ -272,7 +243,7 @@ steps:
           status: { const: 200 }
           contentType: { const: "text/plain; charset=utf-8" }
           body: { const: "hi" }
-        required: [status, contentType, body]
+        required: [ status, contentType, body ]
 
   # Negotiation — Accept: application/x-ndjson picks NDJSON.
   - name: NegotiateNdjson
@@ -290,7 +261,7 @@ steps:
         type: object
         properties:
           contentType: { const: "application/x-ndjson" }
-        required: [contentType]
+        required: [ contentType ]
 
   # Accept: text/event-stream picks SSE.
   - name: NegotiateSse
@@ -308,7 +279,7 @@ steps:
         type: object
         properties:
           contentType: { const: "text/event-stream" }
-        required: [contentType]
+        required: [ contentType ]
 
   # No Accept (or */*) — first declared key wins (NDJSON, by declaration order).
   - name: NegotiateDefault
@@ -326,7 +297,7 @@ steps:
         type: object
         properties:
           contentType: { const: "application/x-ndjson" }
-        required: [contentType]
+        required: [ contentType ]
 
   # No matching Accept → 406.
   - name: NotAcceptable
@@ -344,4 +315,4 @@ steps:
         type: object
         properties:
           status: { const: 406 }
-        required: [status]
+        required: [ status ]

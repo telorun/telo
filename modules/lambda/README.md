@@ -25,15 +25,10 @@ Run your Telo manifest as an AWS Lambda function. One manifest equals one Lambda
 ```yaml
 kind: Telo.Application
 metadata: { name: my-lambda, version: 1.0.0 }
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: aws/lambda@1.0.1
----
-kind: Telo.Import
-metadata: { name: JS }
-source: std/javascript@0.3.2
+imports:
+  Lambda: aws/lambda@1.0.1
+  JS: std/javascript@0.3.2
+targets: [ Main ]
 ---
 kind: JS.Script
 metadata: { name: Worker }

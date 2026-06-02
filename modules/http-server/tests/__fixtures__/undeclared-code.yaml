@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: UndeclaredCodeFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
+imports:
+  Http: ../..
+  Run: ../../../run
 ---
 # Handler's resolved throw union is {FOO} (via `throw:` step literal code). A
 # catches: entry referencing 'BOGUS' is not in that union → UNDECLARED_THROW_CODE.

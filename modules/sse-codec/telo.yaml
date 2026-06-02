@@ -8,13 +8,11 @@ metadata:
     produces one SSE frame per item: `event: <type>\ndata: <json>\n\n`. Decoder
     (frame-buffered, stream-out) is planned but not in this initial release.
     Pair with Content-Type `text/event-stream`.
+imports:
+  Codec: ../codec
 exports:
   kinds:
     - Encoder
----
-kind: Telo.Import
-metadata: { name: Codec }
-source: ../codec
 ---
 # Encoder: `{type, ...rest}` records → SSE frame bytes. Bare strings frame as
 # `message` events. Mid-stream upstream errors emit a final

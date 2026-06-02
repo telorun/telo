@@ -2,43 +2,16 @@ kind: Telo.Application
 metadata:
   name: AiMcpMixedToolsTest
   version: 1.0.0
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Js: ../../javascript
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestMixed
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../../ai
----
-kind: Telo.Import
-metadata:
-  name: AiMcp
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ../../ai/tests/__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Js
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Stub
-source: ./__fixtures__/stub-mcp.yaml
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # Mixed providers in one agent: a static Ai.Tools list AND an MCP server. This is the
 # headline scenario from the example, and it guards the analyzer fix — referencing
@@ -71,7 +44,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      required: [a, b]
+      required: [ a, b ]
       properties:
         a: { type: number }
         b: { type: number }
@@ -116,4 +89,4 @@ steps:
         properties:
           text: { type: string, const: '{"product":42}' }
           toolName: { type: string, const: multiply }
-        required: [text, toolName]
+        required: [ text, toolName ]

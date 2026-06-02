@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: ExtendsUnknownTargetTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestExtendsUnknownTarget
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Asserts the analyzer emits EXTENDS_UNKNOWN_TARGET when the identity resolves but
 # no registered definition with that name exists.

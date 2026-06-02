@@ -2,25 +2,14 @@ kind: Telo.Application
 metadata:
   name: TextInputExclusivityTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestBothPromptAndMessagesRejected
   - TestNeitherPromptNorMessagesRejected
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -50,7 +39,7 @@ steps:
         inputs: { note: "should not get here" }
         invoke:
           kind: Assert.Schema
-          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [note] }
+          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [ note ] }
     catch:
       - name: AssertCaught
         inputs:
@@ -61,7 +50,7 @@ steps:
             type: object
             properties:
               code: { const: ERR_INVALID_INPUT }
-            required: [code]
+            required: [ code ]
 ---
 # Neither prompt NOR messages → throws.
 kind: Run.Sequence
@@ -79,7 +68,7 @@ steps:
         inputs: { note: "should not get here" }
         invoke:
           kind: Assert.Schema
-          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [note] }
+          schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [ note ] }
     catch:
       - name: AssertCaught
         inputs:
@@ -90,4 +79,4 @@ steps:
             type: object
             properties:
               code: { const: ERR_INVALID_INPUT }
-            required: [code]
+            required: [ code ]

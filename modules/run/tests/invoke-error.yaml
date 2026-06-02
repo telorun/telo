@@ -2,18 +2,11 @@ kind: Telo.Application
 metadata:
   name: InvokeErrorTests
   version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
 targets:
   - TestCaught
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # A `throw:` step throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
 # The enclosing try/catch binds it to `error` — we verify every field is
@@ -37,7 +30,7 @@ steps:
           schema:
             type: object
             additionalProperties: false
-            required: [code, message, step, reason]
+            required: [ code, message, step, reason ]
             properties:
               code: { type: string, const: "UNAUTHORIZED" }
               message: { type: string, const: "bad token" }

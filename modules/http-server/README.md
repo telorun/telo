@@ -23,15 +23,10 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 ```yaml
 kind: Telo.Application
 metadata: { name: hello-http, version: 1.0.0 }
+imports:
+  Http: pkg:npm/@telorun/http-server@^1.0.0
+  JS: pkg:npm/@telorun/javascript@^1.0.0
 targets: [Server]
----
-kind: Telo.Import
-metadata: { name: Http }
-source: pkg:npm/@telorun/http-server@^1.0.0
----
-kind: Telo.Import
-metadata: { name: JS }
-source: pkg:npm/@telorun/javascript@^1.0.0
 ---
 kind: Http.Server
 metadata: { name: Server }

@@ -1,23 +1,12 @@
 kind: Telo.Application
 metadata:
   name: ConfigEnvTest
+imports:
+  Config: ../../config
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestConfigEnv
----
-kind: Telo.Import
-metadata:
-  name: Config
-source: ../../config
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: Config.Env
 metadata:
@@ -31,7 +20,7 @@ variables:
     env: LOG_LEVEL
     type: string
     default: info
-    enum: [debug, info, warn, error]
+    enum: [ debug, info, warn, error ]
 secrets:
   apiKey:
     env: API_KEY
@@ -53,7 +42,7 @@ steps:
           port:
             type: integer
             const: 1234
-        required: [port]
+        required: [ port ]
 
   - name: AssertLogLevel
     inputs:
@@ -66,7 +55,7 @@ steps:
           logLevel:
             type: string
             const: info
-        required: [logLevel]
+        required: [ logLevel ]
 
   - name: AssertApiKey
     inputs:
@@ -79,4 +68,4 @@ steps:
           apiKey:
             type: string
             const: test-key
-        required: [apiKey]
+        required: [ apiKey ]

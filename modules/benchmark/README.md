@@ -19,15 +19,13 @@ Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one 
 ## Example
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Application
 metadata:
-  name: Benchmark
-source: std/benchmark@0.3.0
----
-kind: Telo.Import
-metadata:
-  name: HttpClient
-source: std/http-client@0.3.0
+  name: api-load
+  version: 1.0.0
+imports:
+  Benchmark: std/benchmark@0.3.0
+  HttpClient: std/http-client@0.3.0
 ---
 kind: HttpClient.Client
 metadata:

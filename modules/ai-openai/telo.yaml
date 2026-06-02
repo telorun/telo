@@ -4,14 +4,11 @@ metadata:
   namespace: std
   version: 0.4.0
   description: OpenAI provider for Ai.Model (implements invoke and stream via Vercel AI SDK).
+imports:
+  Ai: ../ai
 exports:
   kinds:
     - OpenaiModel
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../ai
 ---
 kind: Telo.Definition
 metadata:
@@ -42,5 +39,5 @@ schema:
       description: Model-level defaults (temperature, maxTokens, topP, …). Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
       type: object
       additionalProperties: true
-  required: [model, apiKey]
+  required: [ model, apiKey ]
   additionalProperties: false

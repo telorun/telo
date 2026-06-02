@@ -2,11 +2,8 @@ kind: Telo.Application
 metadata:
   name: TinyApplication
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: ../../modules/console
+imports:
+  Console: ../../modules/console
 ---
 kind: Console.WriteLine
 metadata:

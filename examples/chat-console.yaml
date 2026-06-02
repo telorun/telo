@@ -10,6 +10,14 @@ metadata:
     Run with the OpenAI key in a sibling `.env.local` file:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
+imports:
+  AiOpenai: ../modules/ai-openai
+  Ai: ../modules/ai
+  RecordStream: ../modules/record-stream
+  PlainText: ../modules/plain-text-codec
+  Console: ../modules/console
+  Run: ../modules/run
+  Sql: ../modules/sql
 targets:
   - InitSchema
   - ChatLoop
@@ -17,34 +25,6 @@ secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
     type: string
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: ../modules/ai-openai
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../modules/ai
----
-kind: Telo.Import
-metadata: { name: RecordStream }
-source: ../modules/record-stream
----
-kind: Telo.Import
-metadata: { name: PlainText }
-source: ../modules/plain-text-codec
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../modules/console
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../modules/run
----
-kind: Telo.Import
-metadata: { name: Sql }
-source: ../modules/sql
 ---
 # --- Persistence -----------------------------------------------------------
 kind: Sql.Connection
@@ -129,7 +109,7 @@ steps:
       - name: InsertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["user", "${{ steps.Read.result.value }}"]
+          bindings: [ "user", "${{ steps.Read.result.value }}" ]
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }
@@ -166,7 +146,7 @@ steps:
       - name: InsertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["assistant", "${{ steps.Collect.result.text }}"]
+          bindings: [ "assistant", "${{ steps.Collect.result.text }}" ]
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }

@@ -2,23 +2,12 @@ kind: Telo.Application
 metadata:
   name: TemplatingEnginesTagged
   version: 1.0.0
+imports:
+  Run: ../modules/run
+  JavaScript: ../modules/javascript
+  Assert: ../modules/assert
 targets:
   - TestTagged
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Mixed templating engines on the same field type. Each step exercises one
 # delivery mode and asserts the value the JavaScript controller actually
@@ -51,7 +40,7 @@ steps:
           value:
             type: number
             const: 43
-        required: [value]
+        required: [ value ]
 
   # !literal — the controller must receive the raw string, including the
   # literal `${{ }}` braces. No interpolation, no compile.
@@ -75,7 +64,7 @@ steps:
           passthrough:
             type: string
             const: !literal "Hello ${{ this is not interpolated }}"
-        required: [passthrough]
+        required: [ passthrough ]
 
   # Mixing tagged + untagged on the same field. Untagged ${{ }} still
   # interpolates; tagged !cel still evaluates as a single expression.
@@ -104,4 +93,4 @@ steps:
           celField:
             type: number
             const: 42
-        required: [interpolated, celField]
+        required: [ interpolated, celField ]

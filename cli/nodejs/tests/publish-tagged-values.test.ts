@@ -113,7 +113,7 @@ describe("expandAndInlineIncludes — tagged values", () => {
 });
 
 describe("canonicalizeRelativeImports — tagged values", () => {
-  it("preserves tagged values in non-import documents while rewriting Telo.Import.source", async () => {
+  it("preserves tagged values in non-import documents while rewriting the imports source", async () => {
     // Set up two sibling modules so canonicalizeRelativeImports can resolve
     // the relative import to a Library and rewrite the source.
     const consumerDir = path.join(workdir, "consumer");
@@ -141,11 +141,8 @@ describe("canonicalizeRelativeImports — tagged values", () => {
         "metadata:",
         "  name: app",
         "  version: 1.0.0",
-        "---",
-        "kind: Telo.Import",
-        "metadata:",
-        "  name: SomeLib",
-        "source: ../lib",
+        "imports:",
+        "  SomeLib: ../lib",
         "---",
         "kind: Some.Resource",
         "metadata:",
@@ -167,15 +164,17 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     );
 
     // Re-parse and verify:
-    //   1. Tagged values in `Some.Resource` survived the doc.setIn(["source"]) mutation.
-    //   2. Telo.Import.source was canonicalized to `<namespace>/<name>@<version>`.
+    //   1. Tagged values in `Some.Resource` survived the setIn mutation.
+    //   2. The `imports:` source was canonicalized to `<namespace>/<name>@<version>`.
     const docs = parseAllDocuments(out, { customTags: defaultCustomTags() });
     const json = docs
       .map((d) => d.toJSON() as Record<string, unknown> | null)
       .filter((d): d is Record<string, unknown> => d !== null);
 
-    const importDoc = json.find((d) => d.kind === "Telo.Import") as { source?: string };
-    expect(importDoc.source).toBe("test/somelib@2.5.1");
+    const appDoc = json.find((d) => d.kind === "Telo.Application") as {
+      imports?: Record<string, unknown>;
+    };
+    expect(appDoc.imports?.SomeLib).toBe("test/somelib@2.5.1");
 
     const resource = json.find((d) => d.kind === "Some.Resource") as Record<string, unknown>;
     expect(resource.computed).toEqual({

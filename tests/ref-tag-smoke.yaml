@@ -2,25 +2,14 @@ kind: Telo.Application
 metadata:
   name: RefTagSmoke
   version: 1.0.0
+imports:
+  Run: ../modules/run
+  JavaScript: ../modules/javascript
+  Assert: ../modules/assert
 targets:
   # `!ref` works in `Telo.Application.targets` (which is itself an
   # `x-telo-ref: telo#Runnable` slot) just as in any other ref slot.
   - !ref TestRefTag
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../modules/javascript
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # JavaScript.Script declared at the top level under a stable name. The
 # Run.Sequence step below references it with the `!ref` YAML tag — the
@@ -54,4 +43,4 @@ steps:
           value:
             type: number
             const: 12
-        required: [value]
+        required: [ value ]

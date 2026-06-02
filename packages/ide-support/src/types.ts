@@ -48,7 +48,7 @@ export interface IdeEnvironmentAdapter {
    *  Never throws — hosts swallow ENOENT and similar. */
   listDirectories(relPath: string): Promise<string[]>;
   /** True iff `<relPath>/telo.yaml` exists relative to the manifest dir.
-   *  Used to mark directories that are valid `Telo.Import` targets. */
+   *  Used to mark directories that are valid import targets. */
   hasManifest(relPath: string): Promise<boolean>;
   /** Free-text search against the configured module registry. Matches against
    *  name, namespace, and description. Empty `query` should return the full
