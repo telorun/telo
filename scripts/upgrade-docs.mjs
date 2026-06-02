@@ -5,7 +5,8 @@
 //   - std/<name>@<v>       → Telo registry latest (GET /<TELO_REGISTRY>/std/<name>)
 //   - @telorun/<name>@<v>  → npm latest          (GET registry.npmjs.org/.../latest)
 //
-// Skips CHANGELOG.md (historical refs are intentional) and the usual cache
+// Skips CHANGELOG.md (historical refs are intentional), plans/ directories
+// (implementation notes pin versions intentionally), and the usual cache
 // directories. Manifests (*.yaml, including telo.yaml) are explicitly out of
 // scope — use `telo upgrade` for those.
 //
@@ -38,6 +39,7 @@ const SKIP_DIRS = new Set([
   "tmp",
   ".changeset",
   ".github",
+  "plans",
 ]);
 
 const VERSION = String.raw`\d+\.\d+\.\d+(?:[-+][\w.-]*)?`;

@@ -99,7 +99,7 @@ metadata:
   version: 0.1.0
 imports:
   # Shared HTTP outcome schema for HTTP-shaped handler kinds.
-  HttpDispatch: std/http-dispatch@0.3.0
+  HttpDispatch: std/http-dispatch@0.4.1
 exports:
   kinds: [ Function, HttpApi, Sqs, Direct ]
 ---
@@ -129,7 +129,7 @@ metadata: { name: HttpApi }
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.3.0?local_path=./nodejs#http-api
+  - pkg:npm/@telorun/lambda@0.4.1?local_path=./nodejs#http-api
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -255,7 +255,7 @@ metadata: { name: Sqs }
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.3.0?local_path=./nodejs#sqs
+  - pkg:npm/@telorun/lambda@0.4.1?local_path=./nodejs#sqs
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -323,7 +323,7 @@ metadata: { name: Direct }
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.3.0?local_path=./nodejs#direct
+  - pkg:npm/@telorun/lambda@0.4.1?local_path=./nodejs#direct
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -372,7 +372,7 @@ kind: Telo.Definition
 metadata: { name: Function }
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/lambda@0.3.0?local_path=./nodejs#function
+  - pkg:npm/@telorun/lambda@0.4.1?local_path=./nodejs#function
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -693,7 +693,7 @@ The deliberate decision is: Telo ships the *runtime* (kinds, controllers, shippe
 ## Changeset
 
 - **New package `@telorun/lambda`** — initial publish (0.1.0). Controllers for `Lambda.Function`, `Lambda.HttpApi`, `Lambda.Sqs`, `Lambda.Direct` (v1). Shared infrastructure under `src/common/`. Two static bootstrap files at the package root: `managed.mjs` and `custom.mjs`, exported as package paths so users `cp node_modules/@telorun/lambda/managed.mjs ./index.mjs`. Adds `@telorun/http-dispatch` as a new workspace dependency at the runtime level for HTTP-shaped kinds (`import { dispatchReturns, dispatchCatches } from "@telorun/http-dispatch"`). No dependency on `@telorun/http-server`. No new dependency on `@telorun/sdk` beyond the existing one.
-- **New module manifest `aws/lambda@0.1.0`** published to the Telo registry. Declares the `Lambda.Handler` abstract (`capability: Telo.Invocable`, typed `inputType` / `outputType`) plus concrete handler kinds (`HttpApi`, `Sqs`, `Direct` in v1) plus `Lambda.Function` (`capability: Telo.Service`). HTTP-shaped handler kinds anchor `$defs/Returns` / `$defs/Catches` at `HttpDispatch.Outcomes` via aliased `x-telo-schema-from`; non-HTTP kinds inline bespoke shapes. Adds a `Telo.Import` of `std/http-dispatch@0.3.0`.
+- **New module manifest `aws/lambda@0.1.0`** published to the Telo registry. Declares the `Lambda.Handler` abstract (`capability: Telo.Invocable`, typed `inputType` / `outputType`) plus concrete handler kinds (`HttpApi`, `Sqs`, `Direct` in v1) plus `Lambda.Function` (`capability: Telo.Service`). HTTP-shaped handler kinds anchor `$defs/Returns` / `$defs/Catches` at `HttpDispatch.Outcomes` via aliased `x-telo-schema-from`; non-HTTP kinds inline bespoke shapes. Adds a `Telo.Import` of `std/http-dispatch@0.4.1`.
 - **New base Docker images** `telorun/lambda-managed:0.1.0` (FROM `public.ecr.aws/lambda/nodejs:20`) and `telorun/lambda-custom:0.1.0` (FROM `public.ecr.aws/lambda/provided:al2023`). Each pre-installs `@telorun/kernel`, `@telorun/sdk`, `@telorun/lambda` into `${LAMBDA_TASK_ROOT}/node_modules/` and bakes the right `CMD`. Users' Dockerfiles become 4 `COPY` lines. Separate release workflow (container registries: Docker Hub + AWS ECR Public), versions tracked with `@telorun/lambda`. No npm changeset entry — out-of-band release.
 - **Prereq plan changesets** track upstream work: the `@telorun/http-dispatch` initial publish, its `telo.yaml` Library publishing `Outcomes` **and `Request`** (the matcher carrier shared between `http-server.Api.routes[].request` and `Lambda.HttpApi.routes[].request`), the analyzer's aliased-`x-telo-schema-from` extension plus the schema-from-aware context-from resolution that makes `x-telo-context-from: "request/schema"` follow the anchor, and the `@telorun/http-server` patch bump (which picks up `@telorun/http-dispatch` as a workspace dep at both layers and migrates `Api.routes[].request` / `.returns` / `.catches` to the carriers). `@telorun/sdk` does not change.
 - **Kernel changes**: none for this plan. The Function uses standard `Telo.Service.init()` + the existing `acquireHold()` machinery; handlers are dispatched via the existing `ctx.invoke(kind, name, inputs)`. No new public kernel API, no new analyzer rule. The bootstrap dispatches to the conventionally-named `Lambda.Function` resource (`"Main"`) via `kernel.invoke("aws/lambda#Function", "Main", payload)`. Multiple `Lambda.Function` resources in one manifest aren't enforced against by the analyzer but aren't part of v1's design (see [Out of scope](#scope)); if a user declares two, the bootstrap will invoke only `Main` and any other Function instances will sit idle (their `init()` runs but `run()` only fires for those in `targets:`).

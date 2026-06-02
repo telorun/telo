@@ -273,7 +273,7 @@ A dependency that needs no `variables` / `secrets` / `runtime` can use the bare 
 
 ```yaml
 imports:
-  Console: std/console@1.2.3
+  Console: std/console@0.8.0
 ```
 
 ## 7. Manifest Cache

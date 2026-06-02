@@ -96,7 +96,7 @@ steps:
   # do-while via shared step name `Read`: pre-loop initializes; the in-body
   # `Read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
   - name: Read
-    invoke: { kind: Console.ReadLine }
+    invoke: !ref Console.readLine
     inputs:
       prompt: "{cyan.bold you} › "
   - name: Loop
@@ -156,10 +156,10 @@ steps:
       # current line — without this newline, the model's text gets wiped
       # the moment we ask for the next user input).
       - name: Newline
-        invoke: { kind: Console.WriteLine }
+        invoke: !ref Console.writeLine
         inputs:
           output: ""
       - name: Read
-        invoke: { kind: Console.ReadLine }
+        invoke: !ref Console.readLine
         inputs:
           prompt: "{cyan.bold you} › "

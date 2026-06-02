@@ -4,33 +4,21 @@ metadata:
   version: 1.0.0
   description: |
     Reads two lines from stdin (username, password) and echoes them back via
-    Console.WriteLine, driven entirely from flat `targets` — no `std/run`
+    Console.writeLine, driven entirely from flat `targets` — no `std/run`
     import. Each step's result.value is wired into a later step's inputs via a
     steps.<name>.result.value CEL expression. Designed for interactive use.
 imports:
   Console: ../modules/console
 targets:
   - name: ReadUsername
-    invoke: !ref UsernameReader
+    invoke: !ref Console.readLine
     inputs:
       prompt: "Username: "
   - name: ReadPassword
-    invoke: !ref PasswordReader
+    invoke: !ref Console.readLine
     inputs:
       prompt: "Password: "
   - name: WriteResult
-    invoke: !ref ResultWriter
+    invoke: !ref Console.writeLine
     inputs:
       output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"
----
-kind: Console.ReadLine
-metadata:
-  name: UsernameReader
----
-kind: Console.ReadLine
-metadata:
-  name: PasswordReader
----
-kind: Console.WriteLine
-metadata:
-  name: ResultWriter

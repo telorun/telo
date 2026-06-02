@@ -10,12 +10,8 @@ metadata:
     Reach for `Run.Sequence` when a boot entry needs control flow, scopes, or
     a return value.
 imports:
-  Console: std/console@0.7.0
+  Console: std/console@0.8.0
 targets:
-  - invoke: !ref SayHello
+  - invoke: !ref Console.writeLine
     inputs:
       output: "Hello from Telo!"
----
-kind: Console.WriteLine
-metadata:
-  name: SayHello

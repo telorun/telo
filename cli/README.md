@@ -60,22 +60,6 @@ telo publish ./modules/my-module/telo.yaml --skip-controllers
   TELO_REGISTRY_TOKEN=<token> telo publish ./modules/my-module/telo.yaml
   ```
 
-**Example output:**
-
-```
-Publishing modules/run/telo.yaml
-
-  @telorun/run
-    bump     0.2.7 → 0.3.0
-    build    ✓
-    publish  ✓  @telorun/run@0.3.0
-    purl     @0.2.7 → @0.3.0
-
-  manifest
-    version  0.2.7 → 0.3.0
-    push     ✓  std/run@0.3.0 → https://registry.telo.run/std/run/0.3.0
-```
-
 ---
 
 ### `telo check <paths..>`
@@ -139,8 +123,8 @@ Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` t
 
 ```
 Installing 20 controllers for apps/my-app/telo.yaml
-  ✓  pkg:npm/@telorun/http-server@0.5.0?local_path=./nodejs#http-server
-  ✓  pkg:npm/@telorun/http-client@0.3.0?local_path=./nodejs#http-client
+  ✓  pkg:npm/@telorun/http-server@0.6.1?local_path=./nodejs#http-server
+  ✓  pkg:npm/@telorun/http-client@0.4.1?local_path=./nodejs#http-client
   ...
 
 ✓  20 installed in 3.2s
@@ -250,8 +234,8 @@ kind: Telo.Application
 metadata:
   name: Example
 imports:
-  HttpServer: std/http-server@0.5.0
-  JavaScript: std/javascript@0.3.2
+  HttpServer: std/http-server@0.6.1
+  JavaScript: std/javascript@0.4.1
 targets:
   - Server
 ---

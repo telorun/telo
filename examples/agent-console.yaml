@@ -123,7 +123,7 @@ kind: Run.Sequence
 metadata: { name: ChatLoop }
 steps:
   - name: Read
-    invoke: { kind: Console.ReadLine }
+    invoke: !ref Console.readLine
     inputs:
       prompt: "{cyan.bold you} › "
   - name: Loop
@@ -147,7 +147,7 @@ steps:
         inputs:
           messages: "${{ steps.ReadHistory.result.rows }}"
       - name: Print
-        invoke: { kind: Console.WriteLine }
+        invoke: !ref Console.writeLine
         inputs:
           output: "{magenta.bold ai}  › ${{ steps.Ask.result.text }}"
       - name: InsertAssistant
@@ -158,6 +158,6 @@ steps:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }
       - name: Read
-        invoke: { kind: Console.ReadLine }
+        invoke: !ref Console.readLine
         inputs:
           prompt: "{cyan.bold you} › "

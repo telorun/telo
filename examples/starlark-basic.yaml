@@ -13,7 +13,7 @@ targets:
     inputs:
       value: 42
   - name: Step2
-    invoke: !ref Print
+    invoke: !ref Console.writeLine
     inputs:
       output: |
         Evaluated starlark code.
@@ -40,7 +40,3 @@ outputType:
     properties:
       result: { type: number }
     required: [ result ]
----
-kind: Console.WriteLine
-metadata:
-  name: Print

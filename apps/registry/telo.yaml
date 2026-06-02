@@ -5,20 +5,20 @@ metadata:
   name: telo-registry
   version: 1.0.0
 imports:
-  Type: std/type@0.2.0
-  Http: std/http-server@0.6.0
-  HttpClient: std/http-client@0.4.0
+  Type: std/type@0.2.1
+  Http: std/http-server@0.6.1
+  HttpClient: std/http-client@0.4.1
   S3:
-    source: std/s3@0.2.0
+    source: std/s3@0.2.1
     secrets:
       accessKeyId: "${{ secrets.accessKeyId }}"
       secretAccessKey: "${{ secrets.secretAccessKey }}"
-  Sql: std/sql@0.5.0
-  Run: std/run@0.4.0
-  Octet: std/octet-codec@0.4.0
-  PlainText: std/plain-text-codec@0.4.0
-  Yaml: std/yaml@0.4.0
-  Mcp: std/mcp-server@0.6.0
+  Sql: std/sql@0.5.1
+  Run: std/run@0.4.1
+  Octet: std/octet-codec@0.4.1
+  PlainText: std/plain-text-codec@0.4.1
+  Yaml: std/yaml@0.4.1
+  Mcp: std/mcp-server@0.6.1
 variables:
   port:
     env: PORT
