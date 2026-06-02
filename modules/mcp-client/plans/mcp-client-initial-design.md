@@ -853,7 +853,7 @@ in a third PR. The in-scope `Http.Request.outputType` tightening (§5)
 ships as part of that third PR — it's tiny and has no ordering dependency
 on either prereq.
 
-**Version pinning.** `@telorun/mcp-client@0.2.0`'s `package.json`
+**Version pinning.** `@telorun/mcp-client@0.3.1`'s `package.json`
 declares the following peer dependencies, populated with the actual semver
 each prereq publishes (the gates are named here so the changeset that
 ships mcp-client cannot land before the prereqs do):
@@ -873,7 +873,7 @@ ships mcp-client cannot land before the prereqs do):
 - `@telorun/sdk` — pinned to the matching minor (provider-provide-template
   widens the `ProviderInstance` type).
 
-The CHANGELOG and changeset description for `@telorun/mcp-client@0.2.0`
+The CHANGELOG and changeset description for `@telorun/mcp-client@0.3.1`
 restate both prereq versions explicitly, so a future bisect lands on
 known-good {kernel, analyzer} pairs. `@telorun/http-client`'s patch bump
 ships in the same release train; no peer pin is needed because the

@@ -48,7 +48,7 @@ Fix: add a minimal meta-controller in the same shape as the `Telo.Definition` co
 
 Implement the axis the docs already describe. A `Telo.Definition` gains an optional `extends` field whose value is an **alias-form string** `"<Alias>.<AbstractName>"` (e.g. `Ai.Model`, `Workflow.Backend`). The alias is resolved against the declaring file's own `Telo.Import` declarations — the same mechanism that resolves kind prefixes like `kind: Http.Api`. The analyzer pre-resolves via `AliasResolver.resolveKind` before registration; `extendedBy` is keyed by the canonical kind (e.g. `ai.Model`).
 
-Why alias form rather than the identity form `"<ns>/<mod>#<Name>"`? Because aliases pin the target's module version through the `Telo.Import` source (`source: pkg:npm/@telorun/ai@0.2.0`, a file path, a registry ref), and the alias already names a live binding in the file. Identity strings duplicate resolution paths and lose the version edge the import provides. Same-library `extends` is not supported — implementations and abstracts live in different libraries, matching the workflow + workflow-temporal split pattern.
+Why alias form rather than the identity form `"<ns>/<mod>#<Name>"`? Because aliases pin the target's module version through the `Telo.Import` source (`source: pkg:npm/@telorun/ai@0.4.0`, a file path, a registry ref), and the alias already names a live binding in the file. Identity strings duplicate resolution paths and lose the version edge the import provides. Same-library `extends` is not supported — implementations and abstracts live in different libraries, matching the workflow + workflow-temporal split pattern.
 
 Diagnostics:
 
@@ -220,7 +220,7 @@ metadata:
   name: Completion
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.2.0?local_path=./nodejs#completion
+  - pkg:npm/@telorun/ai@0.4.0?local_path=./nodejs#completion
 schema:
   type: object
   properties:
@@ -264,7 +264,7 @@ metadata:
 capability: Telo.Invocable
 extends: Ai.Model # ← alias-form, resolved via Telo.Import Ai above
 controllers:
-  - pkg:npm/@telorun/ai@0.2.0?local_path=./nodejs#echo-model
+  - pkg:npm/@telorun/ai@0.4.0?local_path=./nodejs#echo-model
 schema:
   type: object
   properties:
@@ -425,7 +425,7 @@ metadata:
 capability: Telo.Invocable
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai-openai@0.2.0?local_path=./nodejs#openai-model
+  - pkg:npm/@telorun/ai-openai@0.4.0?local_path=./nodejs#openai-model
 schema:
   type: object
   properties:

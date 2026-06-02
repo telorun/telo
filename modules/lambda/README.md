@@ -27,7 +27,7 @@ kind: Telo.Application
 metadata: { name: my-lambda, version: 1.0.0 }
 imports:
   Lambda: aws/lambda@1.0.1
-  JS: std/javascript@0.3.2
+  JS: std/javascript@0.4.1
 targets: [ Main ]
 ---
 kind: JS.Script

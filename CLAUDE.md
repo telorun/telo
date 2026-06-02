@@ -85,7 +85,7 @@ When designing a new module or capability, ask: which of the above does this res
 - `module-context-registry.ts` — per-module store for variables, secrets, resources, imports
 - `controller-registry.ts` — maps resource kinds to controller implementations
 - `controllers/module/module-controller.ts` — handles `kind: Telo.Application` / `kind: Telo.Library` (includes, module scope)
-- `controllers/module/import-controller.ts` — handles `kind: Telo.Import` (external modules, export CEL eval)
+- `controllers/module/import-controller.ts` — handles module imports (external modules, export CEL eval)
 - `controllers/resource-definition/` — handles `kind: Telo.Definition` and parameterized templates
 - `capabilities/` — base interfaces: runnable, invokable, listener, provider, template, mount
 - `manifest-schemas.ts` — JSON Schema for YAML validation
@@ -96,14 +96,14 @@ Every module file must start with exactly one `Telo.Application` OR `Telo.Librar
 
 ### `kind: Telo.Application`
 
-A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** the target of a `Telo.Import` — importing an Application is rejected at load time.
+A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** imported — importing an Application is rejected at load time.
 
 - `metadata.name` — kebab-case; becomes the kind prefix (e.g. `MyModule.*`)
 - `metadata.namespace` — optional grouping prefix for `x-telo-ref` resolution
 - `lifecycle` — `"shared"` (default) | `"isolated"`
 - `keepAlive` — prevent kernel exit when idle
 - `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Telo.Application`, `Telo.Library`, `Telo.Import`, or `Telo.Definition`
-- `imports` — optional name-keyed map; additive sugar for separate `Telo.Import` documents (both forms coexist). Each key is the PascalCase alias (replacing the import's `metadata.name`); each value is either a bare **source string** (`Console: std/console@1.2.3`, shorthand for `{ source }`) or the object form `{ source, variables?, secrets?, runtime? }`. The shared loader desugars each entry into a synthetic `Telo.Import` (gated by the `desugarImports` `LoadOptions` flag — on for the kernel's analysis + runtime loads, the import-controller's child load, the analyzer, and `telo check`; off for the editor's round-trip view, which reads the raw map). An alias declared twice in one module scope — across either form — is a hard `DUPLICATE_IMPORT_ALIAS` diagnostic, not a silent shadow.
+- `imports` — name-keyed map declaring the module's dependencies. Each key is the PascalCase alias; each value is either a bare **source string** (`Console: std/console@0.8.0`, shorthand for `{ source }`) or the object form `{ source, variables?, secrets?, runtime? }`. The shared loader expands each entry into an internal import before resolution (gated by the `desugarImports` `LoadOptions` flag — on for the kernel's analysis + runtime loads, the import-controller's child load, the analyzer, and `telo check`; off for the editor's round-trip view, which reads the raw map). An alias declared twice in one module scope is a hard `DUPLICATE_IMPORT_ALIAS` diagnostic, not a silent shadow.
 - `targets` — optional; run after all resources init. A flat boot sequence: each entry is a bare reference / `!ref` to a `Telo.Runnable` or `Telo.Service` (`run()`), a gated reference `{ ref, when? }`, or an inline invoke step `{ name?, invoke: <Invocable/Runnable ref>, inputs?, when? }`. Inline steps invoke the referenced resource via the shared `executeInvokeStep` leaf (SDK), with `steps.<name>.result` plumbed into later targets and `when`/`inputs` evaluated against the root scope. Ref-only — `invoke`/`ref` must resolve to a `{ kind, name }` reference (inline `{ kind }` definitions and `retry` are not supported here); control flow (`if`/`while`/`switch`/`try`), `with:` scopes, callable `inputs`/`outputs`, and `retry` stay in `Run.Sequence`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
 - Receives `env: process.env` when it is the root loaded manifest — raw `process.env` map for keys the manifest hasn't pre-declared.
 - `variables` / `secrets` — each entry binds a name to a host environment variable via an `env:` key, plus `type:` (`string | integer | number | boolean | object | array`), optional `default:`, and any further JSON Schema keywords. Values resolve at `kernel.load()` into the root `variables.X` / `secrets.X` CEL scope (object / array values are JSON-decoded from the env var; missing required vars or coercion / schema failures aggregate into `ERR_MANIFEST_VALIDATION_FAILED` before any controller init).
@@ -112,27 +112,27 @@ A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the 
 
 ### `kind: Telo.Library`
 
-An importable unit of kinds/definitions. Loaded **only** as the target of a `Telo.Import`. Cannot be run directly; `loadFromConfig` on a Library manifest is a hard error.
+An importable unit of kinds/definitions. Loaded **only** as an imported dependency (via an `imports:` entry). Cannot be run directly; `loadFromConfig` on a Library manifest is a hard error.
 
 - `metadata.name` / `metadata.namespace` — as Application.
 - `variables` / `secrets` — JSON Schema property map; public contract for importers.
 - `include` — same semantics as Application.
-- `imports` — same inline-imports map as Application (a library may declare its own dependencies inline or as `Telo.Import` docs).
+- `imports` — same imports map as Application (a library may declare its own dependencies).
 - `exports.kinds` — which kinds importers may reference.
 - `exports.resources` — names of declared resource **instances** the library exports as ready-made singletons. Importers reference them across the boundary as `!ref <Alias>.<name>` (injected into ref slots / boot targets) and, for value-flow exports, read them in CEL as `${{ resources.<Alias>.<name> }}`. The gate is the list itself: only named instances are reachable. A library declares the instance internally with `kind: Self.<Kind>` (see `Self` under `Telo.Definition`), so it can export a singleton of a kind it does **not** export (omit the kind from `exports.kinds` to forbid importers constructing their own — singleton enforcement). Independent of `exports.kinds`: export a kind, an instance, or both.
 - **Resource names must contain no dot** (hard diagnostic `INVALID_RESOURCE_NAME`): a `!ref` value is split on its first dot to separate the import alias from the resource name (`Console.writeLine` → alias `Console`, name `writeLine`), so a dotted `metadata.name` would mis-resolve. This is the load-bearing invariant of the reference grammar — enforced, not just convention.
 - `targets` is **forbidden**. `lifecycle` / `keepAlive` are also forbidden — libraries are not lifecycle participants.
 - No `env` access.
 
-### `kind: Telo.Import`
+### `imports`
 
-Loads a `Telo.Library` into the current scope under a PascalCase alias. Equivalent to an `imports:` map entry on the app/lib doc (above) — the inline map is the idiomatic form; a standalone `Telo.Import` doc is still fully supported and is what the CLI `install`/`upgrade`/`publish` commands currently manage.
+Loads `Telo.Library` modules into the current scope under PascalCase aliases, declared as the `imports:` map on the `Telo.Application` / `Telo.Library` doc (see above). Each entry value is a bare source string or the object form `{ source, variables?, secrets?, runtime? }`. The CLI `install` / `upgrade` / `publish` commands read and rewrite this map.
 
 - `source` — relative path / registry ref / URL; resolved to `telo.yaml` automatically.
 - `variables` / `secrets` — values passed into the child library.
-- Creates an isolated child `EvaluationContext`; child resources not visible to root scope.
+- Each import creates an isolated child `EvaluationContext`; child resources are not visible to root scope.
 - Importing a `Telo.Application` is a hard error — applications are run directly, not imported.
-- Only root module gets `env: process.env`; child modules are isolated from the host environment.
+- Only the root module gets `env: process.env`; child modules are isolated from the host environment.
 
 ### `kind: Telo.Definition`
 
@@ -140,7 +140,7 @@ Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
 - `metadata.name` — kind suffix; full kind = `<module-name>.<Name>`
 - `capability` — one of the kernel capabilities (see below). Names the lifecycle role only; never a user-declared abstract kind.
-- `extends` — alias-form reference to a `Telo.Abstract` this definition implements (e.g. `Ai.Model`, `Self.Encoder`). The prefix must be a `Telo.Import` declared in the same file. **`Self`** is auto-registered as an alias pointing at the declaring library's own module name — use `Self.<Kind>` when the kind lives in the same `Telo.Library` as the definition (no Telo.Import to alias against, since a self-import would loop the loader). `Self` resolves the library's own kinds **ungated** — independent of `exports.kinds`, which gates importers, not internal use. This is what lets a library declare an instance of a kind it does not export (`kind: Self.WriteLine`) so it can export the instance instead (see `exports.resources`). The kernel registers `Self` in each import's child context so `Self.<Kind>` resolves at runtime, not just in the analyzer.
+- `extends` — alias-form reference to a `Telo.Abstract` this definition implements (e.g. `Ai.Model`, `Self.Encoder`). The prefix must be an import alias declared in the same file (an `imports:` entry). **`Self`** is auto-registered as an alias pointing at the declaring library's own module name — use `Self.<Kind>` when the kind lives in the same `Telo.Library` as the definition (no import to alias against, since a self-import would loop the loader). `Self` resolves the library's own kinds **ungated** — independent of `exports.kinds`, which gates importers, not internal use. This is what lets a library declare an instance of a kind it does not export (`kind: Self.WriteLine`) so it can export the instance instead (see `exports.resources`). The kernel registers `Self` in each import's child context so `Self.<Kind>` resolves at runtime, not just in the analyzer.
 - `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development
 - `schema` — JSON Schema with `x-telo-*` annotations
 - `resources` / `invoke` / `run` / `provide` — template-internal bodies. `invoke:` / `provide:` / `run:` describe the dispatch target only; `inputs:` (values passed to the target) and `result:` (post-call mapping applied to the target's output, works with `invoke:` or `provide:`) live as **top-level siblings** on the definition, matching how Run.Sequence steps factor `{ name, inputs, invoke }`. CEL expressions inside these fields are statically validated against `self` (always — typed from this definition's `schema:`). The `inputs` CEL variable (typed from `inputType:`, falling back to the `extends:`-declared abstract's `inputType:`) is available inside `resources[].*` and the top-level `inputs:` sibling **only for invocable / runnable definitions** — provider definitions take no caller args (`provide()` is parameterless), so no `inputs` variable is exposed inside their bodies. Inside top-level `result:` the `result` variable is typed from the dispatch target's `outputType:`. The produced top-level `result` value is AJV-checked against the abstract this definition `extends` (`outputType`); top-level `inputs` is AJV-checked against the dispatch target's `inputType` when declared.

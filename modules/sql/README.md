@@ -28,7 +28,7 @@ SQL database access for PostgreSQL and SQLite — connections, raw queries, a de
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
-  Sql: std/sql@0.3.0
+  Sql: std/sql@0.5.1
 targets: [ Migrate ]
 secrets:
   DATABASE_URL: { type: string }

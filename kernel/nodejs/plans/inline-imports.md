@@ -11,7 +11,7 @@ targets:
 ---
 kind: Telo.Import
 metadata: { name: Console }
-source: std/console@0.6.0
+source: std/console@0.8.0
 ```
 
 An import is **module wiring**, not a runtime resource: it has no capability, never appears in `resources.<name>` as a node, and is already excluded from the dependency graph ([system-kinds.ts](../../../analyzer/nodejs/src/system-kinds.ts) `DEPENDENCY_GRAPH_SKIP_KINDS`). Yet it is the only piece of wiring expressed as a separate document — `variables`, `secrets`, `ports`, `include`, `targets`, `exports` are all inline properties of the module doc. Imports belong in that family.
@@ -20,7 +20,7 @@ An import is **module wiring**, not a runtime resource: it has no capability, ne
 
 Add an optional `imports:` map to `Telo.Application` / `Telo.Library` — additive: authored `Telo.Import` documents keep loading unchanged, both forms may coexist, and inline becomes the idiomatic form once the CLI follow-up (below) can manage it.
 
-**Shape.** A name-keyed map whose key is the PascalCase alias (replacing today's `metadata.name`), each entry carrying the same fields the `Telo.Import` doc carries minus the name: `imports: { Console: { source, variables, secrets, runtime } }`. This matches how `variables` / `secrets` / `ports` are already keyed. An entry value may also be a bare **source string** as shorthand for `{ source: <string> }` — `imports: { Console: std/console@1.2.3 }` — for the common case of a dependency with no `variables` / `secrets` / `runtime`. The same scalar-or-object union the `targets` field already accepts.
+**Shape.** A name-keyed map whose key is the PascalCase alias (replacing today's `metadata.name`), each entry carrying the same fields the `Telo.Import` doc carries minus the name: `imports: { Console: { source, variables, secrets, runtime } }`. This matches how `variables` / `secrets` / `ports` are already keyed. An entry value may also be a bare **source string** as shorthand for `{ source: <string> }` — `imports: { Console: std/console@0.8.0 }` — for the common case of a dependency with no `variables` / `secrets` / `runtime`. The same scalar-or-object union the `targets` field already accepts.
 
 **Desugaring is the load-bearing mechanism — an opt-in load option, on for every *resolved* consumer, off for the editor's raw view.** The expansion is a single pure transform that first normalizes any scalar entry to `{ source: <string> }`, then turns each app/lib `imports:` entry into a synthetic `Telo.Import` manifest appended to that file's manifest list. It is gated by a new `LoadOptions` flag (alongside the existing `compile`) honored where a file's parsed manifests are assembled in the [manifest-loader.ts](../../../analyzer/nodejs/src/manifest-loader.ts) `Loader`, so it propagates uniformly through `loadFile` → `loadModule` → `loadGraph` and is folded into the `fileCache` key next to `compile` (a desugared and a raw load of the same file never collide).
 

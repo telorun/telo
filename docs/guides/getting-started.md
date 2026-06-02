@@ -43,8 +43,8 @@ metadata:
   name: HelloConsole
   version: 1.0.0
 imports:
-  Run: std/run@0.3.0
-  Console: std/console@0.6.0
+  Run: std/run@0.4.1
+  Console: std/console@0.8.0
 targets:
   - Main
 ---
@@ -53,8 +53,7 @@ metadata:
   name: Main
 steps:
   - name: SayHello
-    invoke:
-      kind: Console.WriteLine
+    invoke: !ref Console.writeLine
     inputs:
       output: "Hello from Telo!"
 ```
@@ -65,7 +64,7 @@ This declares:
 - Two **`imports:` entries** — pulling in the `Run` and `Console` modules
   from the standard library.
 - A **`Run.Sequence`** named `Main` with a single step that invokes
-  `Console.WriteLine`.
+  the exported `Console.writeLine` singleton.
 
 ## Run it
 
@@ -86,7 +85,7 @@ When you ran `telo ./hello.yaml`, the kernel:
 1. **Loaded** the YAML, resolved each import, and compiled any
    `${{ … }}` CEL expressions into an in-memory registry.
 2. **Resolved** the resource dependency graph — `Main` references
-   `Console.WriteLine`, which lives in the imported `Console` module.
+   `Console.writeLine`, the singleton exported by the imported `Console` module.
 3. **Initialized** each resource in dependency order, calling its
    controller's lifecycle hook.
 4. **Dispatched** the `targets` declared on the Application — here,

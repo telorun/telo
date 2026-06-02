@@ -13,7 +13,7 @@ targets:
     inputs:
       value: 42
   - name: PrintResult
-    invoke: !ref Print
+    invoke: !ref Console.writeLine
     inputs:
       output: |
         Evaluated JavaScript code.
@@ -38,7 +38,3 @@ outputType:
     type: object
     properties:
       result: { type: number }
----
-kind: Console.WriteLine
-metadata:
-  name: Print
