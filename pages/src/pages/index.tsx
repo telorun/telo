@@ -17,13 +17,55 @@ export default function Home() {
           />
           <h1 className="hero__title">Telo</h1>
           <p className="hero__subtitle">Runtime for declarative backends.</p>
-          <div>
+          <div className="heroButtons">
             <Link className="button button--primary button--lg margin-right--md" to="/learn/getting-started">
               Get started
             </Link>
-            <Link className="button button--outline button--primary button--lg" to="/reference/kernel">
-              Read the kernel reference
+            <Link className="button button--outline button--primary button--lg" to="/examples">
+              See examples
             </Link>
+          </div>
+
+          <div className="row heroCards margin-top--xl">
+            <div className="col col--4">
+              <Link className="card cardLink heroCard" to="/developer-first">
+                <div className="card__header text--center">
+                  <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                    🛠
+                  </div>
+                  <h3 className="margin-top--sm margin-bottom--none">Developer first</h3>
+                </div>
+                <div className="card__body">
+                  Errors caught early, surfaced clearly, and traced to the line that needs fixing.
+                </div>
+              </Link>
+            </div>
+            <div className="col col--4">
+              <Link className="card cardLink heroCard" to="/business-first">
+                <div className="card__header text--center">
+                  <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                    🤝
+                  </div>
+                  <h3 className="margin-top--sm margin-bottom--none">Business first</h3>
+                </div>
+                <div className="card__body">
+                  One artifact for product and engineering - no spec-to-code translation layer.
+                </div>
+              </Link>
+            </div>
+            <div className="col col--4">
+              <Link className="card cardLink heroCard" to="/ai-first">
+                <div className="card__header text--center">
+                  <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                    ✨
+                  </div>
+                  <h3 className="margin-top--sm margin-bottom--none">AI first</h3>
+                </div>
+                <div className="card__body">
+                  Agents can generate, review, and transform entire backends without losing intent.
+                </div>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -36,52 +78,6 @@ export default function Home() {
           manifests and runs them.
         </p>
 
-        <h2 className="text--center margin-top--xl margin-bottom--lg">Designed to be</h2>
-        <div className="row">
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header text--center">
-                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
-                  ✨
-                </div>
-                <h3 className="margin-top--sm">AI first</h3>
-              </div>
-              <div className="card__body">
-                YAML is explicit, structured, and easy for tools and agents to generate, review,
-                and transform without losing intent.
-              </div>
-            </div>
-          </div>
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header text--center">
-                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
-                  🛠
-                </div>
-                <h3 className="margin-top--sm">Developer first</h3>
-              </div>
-              <div className="card__body">
-                Errors are surfaced clearly with actionable messages, CEL is statically
-                type-checked, and IDE diagnostics catch problems before runtime.
-              </div>
-            </div>
-          </div>
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header text--center">
-                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
-                  🤝
-                </div>
-                <h3 className="margin-top--sm">Business first</h3>
-              </div>
-              <div className="card__body">
-                Product and engineering own the same artifact: backends are visually editable in
-                the Telo editor, with no spec-to-code translation layer.
-              </div>
-            </div>
-          </div>
-        </div>
-
         <h2 className="text--center margin-top--xl margin-bottom--lg">Why Telo?</h2>
         <div className="row">
           <div className="col col--6 margin-bottom--md">
@@ -93,7 +89,7 @@ export default function Home() {
                 <h3 className="margin-top--sm">Open standards</h3>
               </div>
               <div className="card__body">
-                Built on YAML, JSON Schema, and CEL — no proprietary DSL.
+                Built on YAML, JSON Schema, and CEL - no proprietary DSL.
               </div>
             </div>
           </div>
