@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ide-support",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "description": "Editor-host-agnostic IDE support (completions, diagnostic normalization) for Telo manifests.",
   "keywords": [
     "telo",
