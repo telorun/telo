@@ -8,7 +8,11 @@ export type {
     LoadedModule,
     ParseError,
 } from "./loaded-types.js";
-export { flattenForAnalyzer, flattenLoadedModule } from "./flatten-for-analyzer.js";
+export {
+    flattenForAnalyzer,
+    flattenLoadedModule,
+    selectModuleManifestsForAnalysis,
+} from "./flatten-for-analyzer.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

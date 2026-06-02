@@ -11,9 +11,9 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Type: ../modules/type
-  Http: ../modules/http-server
-  JS: ../modules/javascript
+  Type: std/type@0.2.1
+  Http: std/http-server@0.6.1
+  JS: std/javascript@0.4.1
 targets:
   - ExampleServer
 ports:

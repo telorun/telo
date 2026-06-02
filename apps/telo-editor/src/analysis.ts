@@ -4,6 +4,7 @@ import {
   buildDocumentPositions,
   inlineImportManifests,
   isModuleKind,
+  selectModuleManifestsForAnalysis,
   type DocumentPosition,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
@@ -44,6 +45,7 @@ type PositionMap = Map<string, DocumentPosition>;
  */
 function toAnalysisManifests(
   app: Workspace,
+  root: string,
   includeOwners?: Set<string>,
 ): { manifests: ResourceManifest[]; positions: PositionMap } {
   const result: ResourceManifest[] = [];
@@ -65,12 +67,21 @@ function toAnalysisManifests(
       }
     }
 
-    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, result, positions);
+    // Emit each module's docs into its own batch, then apply the import-boundary
+    // rule shared with the CLI's `flattenForAnalyzer`: the closure root stays
+    // fully local; every imported module forwards only its definitions/abstracts/
+    // imports plus `exports.resources` instances (flagged `forwardedExport`).
+    // Positions are recorded for every emitted doc — dropped manifests simply
+    // leave unused lookup entries.
+    const moduleManifests: ResourceManifest[] = [];
+    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, moduleManifests, positions);
     for (const partialKey of partialKeys) {
       const partialDoc = app.documents.get(partialKey);
       if (!partialDoc) continue;
-      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, result, positions);
+      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, moduleManifests, positions);
     }
+
+    result.push(...selectModuleManifestsForAnalysis(moduleManifests, ownerPath === root));
   }
 
   return { manifests: result, positions };
@@ -205,47 +216,53 @@ function computeClosure(root: string, importGraph: Map<string, Set<string>>): Se
 }
 
 /** The set of modules that anchor an independent analysis context: every
- *  Application, plus any workspace-local module not reachable from one (orphan
- *  libraries being edited on their own). Sorted for deterministic closure
- *  ordering — the first closure to contain a file owns its diagnostics. */
+ *  workspace-local module — every Application AND every Library, regardless of
+ *  whether an Application imports it. Each anchors a closure in which it is the
+ *  local root (its internals fully validated) and its imports are forwarded
+ *  foreign — exactly the local/foreign split `telo check <module>` produces per
+ *  file. A library imported by an app is therefore validated in its OWN closure,
+ *  never against the consumer's scope (where `Self.` would mis-resolve).
+ *
+ *  External (registry/remote) modules are never roots — like the CLI, they are
+ *  only ever forwarded as cross-module targets, never re-validated. Sorted for
+ *  deterministic ordering. */
 function computeClosureRoots(app: Workspace): string[] {
-  const roots: string[] = [];
-  const covered = new Set<string>();
-
-  const appPaths = [...app.modules.keys()]
-    .filter((p) => app.modules.get(p)!.kind === "Application")
-    .sort();
-  for (const p of appPaths) {
-    roots.push(p);
-    for (const f of computeClosure(p, app.importGraph)) covered.add(f);
-  }
-
-  const localPaths = [...app.modules.keys()].filter((p) => isWorkspaceModule(app, p)).sort();
-  for (const p of localPaths) {
-    if (covered.has(p)) continue;
-    roots.push(p);
-    for (const f of computeClosure(p, app.importGraph)) covered.add(f);
-  }
-
-  return roots;
+  return [...app.modules.keys()].filter((p) => isWorkspaceModule(app, p)).sort();
 }
 
 interface MergeAccumulators {
   byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
   byFile: Map<string, NormalizedDiagnostic[]>;
   registryByFile: Map<string, AnalysisRegistry>;
-  /** Files whose diagnostics were already emitted by an earlier closure.
-   *  Shared libraries appear in multiple closures with identical diagnostics;
-   *  first-closure-wins keeps a single copy and a single owning registry. */
-  coveredFiles: Set<string>;
   /** Dedup key set for diagnostics that route to no file at all. */
   unknownSeen: Set<string>;
+  /** External (registry/remote) files already claimed by an earlier closure.
+   *  Such files never anchor their own closure, so the first closure that
+   *  surfaces them owns their diagnostics (first-closure-wins). */
+  externalFilesClaimed: Set<string>;
 }
 
-/** Analyzes a single closure with its own registry and merges the results
- *  into the shared accumulators. */
-function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAccumulators): void {
-  const { manifests, positions } = toAnalysisManifests(app, closurePaths);
+/** Analyzes a single closure — rooted at `root` — with its own registry and
+ *  merges the results into the shared accumulators.
+ *
+ *  Diagnostics for a WORKSPACE file are emitted only by the closure where that
+ *  file is the root (its owner + `include:` partials), never by a consumer
+ *  closure where the same file appears as a forwarded foreign dependency — its
+ *  own closure already validates the full module. Every workspace file is the
+ *  local root of exactly one closure, so this needs no cross-closure dedup.
+ *
+ *  EXTERNAL (registry/remote) files never anchor a closure, yet `telo check`
+ *  validates and reports forwarded imported definitions against their source
+ *  file. To match that — and to avoid silently swallowing those errors — an
+ *  external file's diagnostics are emitted by the first closure that surfaces
+ *  them (`externalFilesClaimed` enforces first-closure-wins). */
+function analyzeClosure(
+  app: Workspace,
+  root: string,
+  closurePaths: Set<string>,
+  acc: MergeAccumulators,
+): void {
+  const { manifests, positions } = toAnalysisManifests(app, root, closurePaths);
 
   // Enrich Telo.Import metadata with resolved module identity from the
   // cross-module projection (workspace.modules).
@@ -268,6 +285,23 @@ function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAcc
   const registry = new AnalysisRegistry();
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
+  // Files local to this closure's root (owner + partials), keyed by the same
+  // `metadata.source` values `toAnalysisManifests` stamps (owner → root path,
+  // partial → its document filePath).
+  const rootLocalFiles = new Set<string>();
+  const rootManifest = app.modules.get(root);
+  if (rootManifest) {
+    rootLocalFiles.add(root);
+    const rootKey = normalizePath(root);
+    for (const r of rootManifest.resources) {
+      if (!r.sourceFile) continue;
+      const key = normalizePath(r.sourceFile);
+      if (key === rootKey) continue;
+      const partialDoc = app.documents.get(key);
+      if (partialDoc) rootLocalFiles.add(partialDoc.filePath);
+    }
+  }
+
   const sourceByManifest = new Map<string, string>();
   const closureFiles = new Set<string>();
   for (const m of manifests) {
@@ -285,6 +319,16 @@ function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAcc
       acc.byFile.set(filePath, bucket);
     }
     bucket.push(diag);
+  };
+
+  // Whether this closure is the one that emits diagnostics for `file`. A
+  // workspace file is owned by the closure where it is the root (its own
+  // module); an external (registry/remote) file — which never anchors a
+  // closure — is owned by the first closure that surfaces it.
+  const claimsFile = (file: string): boolean => {
+    if (rootLocalFiles.has(file)) return true;
+    if (isWorkspaceModule(app, file)) return false;
+    return !acc.externalFilesClaimed.has(file);
   };
 
   for (const diag of diagnostics) {
@@ -316,7 +360,7 @@ function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAcc
     });
 
     if (filePath) {
-      if (acc.coveredFiles.has(filePath)) continue;
+      if (!claimsFile(filePath)) continue;
       let moduleMap = acc.byResource.get(filePath);
       if (!moduleMap) {
         moduleMap = new Map();
@@ -331,11 +375,11 @@ function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAcc
       continue;
     }
 
-    // Fall through: no resource identity — route by data.filePath if the
-    // analyzer provided it, otherwise the unknown-file bucket (deduped
-    // across closures).
+    // Fall through: no resource identity — route by data.filePath when this
+    // closure claims it, otherwise the unknown-file bucket (deduped across
+    // closures). A filePath this closure does not claim belongs to another.
     if (stampedFilePath) {
-      if (acc.coveredFiles.has(stampedFilePath)) continue;
+      if (!claimsFile(stampedFilePath)) continue;
       appendByFile(stampedFilePath, normalized);
       continue;
     }
@@ -345,9 +389,17 @@ function analyzeClosure(app: Workspace, closurePaths: Set<string>, acc: MergeAcc
     appendByFile(UNKNOWN_FILE_KEY, normalized);
   }
 
+  // Registry routing: a root-local file resolves completions against THIS
+  // closure's registry (its own definitions + forwarded imports) — authoritative,
+  // so it wins regardless of closure order. Other closure files (forwarded
+  // foreign deps, including read-only external modules that never anchor a
+  // closure) take the first registry that references them as a fallback.
+  for (const f of rootLocalFiles) acc.registryByFile.set(f, registry);
   for (const f of closureFiles) {
+    // External files surfaced here are now owned by this closure; later
+    // closures importing the same dependency defer to it (first-closure-wins).
+    if (!rootLocalFiles.has(f) && !isWorkspaceModule(app, f)) acc.externalFilesClaimed.add(f);
     if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
-    acc.coveredFiles.add(f);
   }
 }
 
@@ -356,12 +408,12 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     byResource: new Map(),
     byFile: new Map(),
     registryByFile: new Map(),
-    coveredFiles: new Set(),
     unknownSeen: new Set(),
+    externalFilesClaimed: new Set(),
   };
 
   for (const root of computeClosureRoots(app)) {
-    analyzeClosure(app, computeClosure(root, app.importGraph), acc);
+    analyzeClosure(app, root, computeClosure(root, app.importGraph), acc);
   }
 
   return {
