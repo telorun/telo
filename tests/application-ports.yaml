@@ -2,6 +2,11 @@ kind: Telo.Application
 metadata:
   name: ApplicationPorts
   version: 1.0.0
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
 # Declared inbound port. `PORT` is unset under the test runner, so the
 # `default` applies. `${{ ports.http }}` must resolve to this integer at
 # runtime and feed the HTTP server.
@@ -10,26 +15,6 @@ ports:
     env: PORT
     protocol: tcp
     default: 8858
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: HttpClient
-source: ../modules/http-client
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 kind: Run.Sequence
 metadata:

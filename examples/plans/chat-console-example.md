@@ -15,35 +15,15 @@ Ship `examples/chat-console.yaml` — an interactive REPL that:
 ```yaml
 kind: Telo.Application
 metadata: { name: ChatConsole }
-targets: [InitSchema, ChatLoop]
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: ../modules/ai-openai
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../modules/ai
----
-kind: Telo.Import
-metadata: { name: RecordStream }
-source: ../modules/record-stream     # new package — see P1
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../modules/console
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../modules/javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../modules/run
----
-kind: Telo.Import
-metadata: { name: Sql }
-source: ../modules/sql
+imports:
+  AiOpenai: ../modules/ai-openai
+  Ai: ../modules/ai
+  RecordStream: ../modules/record-stream
+  Console: ../modules/console
+  JS: ../modules/javascript
+  Run: ../modules/run
+  Sql: ../modules/sql
+targets: [ InitSchema, ChatLoop ]
 ---
 kind: Sql.Connection
 metadata: { name: ChatDb }
@@ -84,24 +64,24 @@ metadata: { name: ChatStream }
 model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
 system: "You are a helpful CLI assistant. Keep replies brief."
 ---
-kind: RecordStream.ExtractText       # new — see P1
+kind: RecordStream.ExtractText # new — see P1
 metadata: { name: Deltas }
 discriminator: type
 records:
-  text-delta: { do: emit,  field: delta }
-  finish:     { do: drop }
-  error:      { do: throw, field: error }
+  text-delta: { do: emit, field: delta }
+  finish: { do: drop }
+  error: { do: throw, field: error }
 ---
-kind: Console.WriteStream            # new — see P2
+kind: Console.WriteStream # new — see P2
 metadata: { name: Stdout }
 ---
-kind: RecordStream.Tee               # new — see P3
+kind: RecordStream.Tee # new — see P3
 metadata: { name: TeeStream }
 ---
-kind: JS.Script                      # builds messages: [...history, {role:'user', content: userText}]
+kind: JS.Script # builds messages: [...history, {role:'user', content: userText}]
 metadata: { name: ComposeMessages }
 ---
-kind: JS.Script                      # drains a Stream<StreamPart>, returns the concatenated assistant text
+kind: JS.Script # drains a Stream<StreamPart>, returns the concatenated assistant text
 metadata: { name: CaptureText }
 ---
 kind: Run.Sequence
@@ -122,7 +102,7 @@ steps:
         invoke: { kind: Sql.Exec, name: AppendMessage }
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["user", "${{ steps.Read.result.value }}"]
+          bindings: [ "user", "${{ steps.Read.result.value }}" ]
       - name: ComposeMessages
         invoke: { kind: JS.Script, name: ComposeMessages }
         inputs:
@@ -153,8 +133,8 @@ steps:
         invoke: { kind: Sql.Exec, name: AppendMessage }
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["assistant", "${{ steps.Capture.result.assistantText }}"]
-      - name: Read   # overwrites pre-loop Read so next iteration's predicate sees fresh input
+          bindings: [ "assistant", "${{ steps.Capture.result.assistantText }}" ]
+      - name: Read # overwrites pre-loop Read so next iteration's predicate sees fresh input
         invoke: { kind: Console.ReadLine }
         inputs: { prompt: "you" }
 ```

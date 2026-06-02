@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: AbstractForwardCompatibleFieldsTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestAbstractAcceptsSchemaAndForwardFields
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Telo.Abstract is an extension point — it must accept `schema` as well as
 # forward-compatible fields like `inputType`/`outputType` from the typed-abstracts

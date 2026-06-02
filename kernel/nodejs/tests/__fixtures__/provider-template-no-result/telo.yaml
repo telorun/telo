@@ -2,14 +2,9 @@ kind: Telo.Application
 metadata:
   name: ProviderTemplateRawApp
   version: 1.0.0
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../../../../modules/javascript
----
-kind: Telo.Import
-metadata: { name: Lib }
-source: ./lib
+imports:
+  JS: ../../../../../modules/javascript
+  Lib: ./lib
 ---
 kind: Lib.RawProvider
 metadata:

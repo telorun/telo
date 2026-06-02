@@ -1,34 +1,14 @@
 kind: Telo.Application
 metadata: { name: McpClientToolErrorTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../../mcp-server
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../../http-server
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  Mcp: ../../mcp-server
+  McpClient: ../
+  Http: ../../http-server
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 # Handler renders an isError: true envelope so the server returns a successful
 # JSON-RPC response carrying the soft tool-failure shape. Mcp.Tools.Call must
@@ -38,10 +18,10 @@ kind: JS.Script
 metadata: { name: WeatherImpl }
 inputType:
   kind: Type.JsonSchema
-  schema: { type: object, properties: { city: { type: string } }, required: [city] }
+  schema: { type: object, properties: { city: { type: string } }, required: [ city ] }
 outputType:
   kind: Type.JsonSchema
-  schema: { type: object, properties: { summary: { type: string } }, required: [summary] }
+  schema: { type: object, properties: { summary: { type: string } }, required: [ summary ] }
 code: |
   function main({ city }) { return { summary: `unreachable ${city}` }; }
 ---
@@ -53,7 +33,7 @@ entries:
     argumentsSchema:
       type: object
       properties: { city: { type: string } }
-      required: [city]
+      required: [ city ]
     handler: { kind: JS.Script, name: WeatherImpl }
     inputs:
       city: "${{ request.arguments.city }}"
@@ -66,7 +46,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-broken, version: 1.0.0 }
-tools: [BrokenTools]
+tools: [ BrokenTools ]
 ---
 kind: McpClient.HttpClient
 metadata: { name: ClientUnderTest }
@@ -88,7 +68,7 @@ with:
     logger: false
     mounts:
       - { path: /mcp, type: McpClientToolErrorTest.McpHttp }
-targets: [Server]
+targets: [ Server ]
 steps:
   - name: Wrap
     try:
@@ -107,4 +87,4 @@ steps:
             type: object
             properties:
               code: { const: ERR_MCP_TOOL_ERROR }
-            required: [code]
+            required: [ code ]

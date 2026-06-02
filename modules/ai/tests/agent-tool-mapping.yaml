@@ -2,33 +2,14 @@ kind: Telo.Application
 metadata:
   name: AgentToolMappingTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Js: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestMapping
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Js
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata:
@@ -55,7 +36,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      required: [who]
+      required: [ who ]
       properties:
         who: { type: string }
     inputs:
@@ -94,4 +75,4 @@ steps:
           text:
             type: string
             const: "Hello, world!"
-        required: [text]
+        required: [ text ]

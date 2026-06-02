@@ -3,13 +3,6 @@ metadata:
   name: s3
   namespace: std
   version: 0.2.1
-secrets:
-  accessKeyId:
-    type: string
-    description: S3 access key ID
-  secretAccessKey:
-    type: string
-    description: S3 secret access key
 exports:
   kinds:
     - Bucket

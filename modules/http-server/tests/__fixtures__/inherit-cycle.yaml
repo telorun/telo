@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: InheritCycleFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
+imports:
+  Http: ../..
+  Run: ../../../run
 ---
 # Two sequences invoke each other transitively. The resolver must detect this
 # without infinite recursion and still produce a clean diagnostic set.

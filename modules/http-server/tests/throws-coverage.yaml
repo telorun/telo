@@ -2,6 +2,8 @@ kind: Telo.Application
 metadata:
   name: ThrowsCoverageTests
   version: 1.0.0
+imports:
+  Assert: ../../assert
 targets:
   - TestUndeclaredCode
   - TestUncoveredCode
@@ -9,11 +11,6 @@ targets:
   - TestPassthroughInsideCatch
   - TestInheritCycle
   - TestRethrowPlain
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # A catches: entry references a code not in the handler's declared / resolved
 # throw union → UNDECLARED_THROW_CODE.

@@ -9,36 +9,16 @@ metadata:
     a .env.local in this directory; CI: secret on the workflow). NDJSON is
     the only format exercised live; format encoding is covered hermetically
     in the Layer 1 streaming-contract test.
+imports:
+  Ai: ../../ai
+  AiOpenai: ../
+  Ndjson: ../../ndjson-codec
+  PlainText: ../../plain-text-codec
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - LiveTextStream
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../../ai
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: ../../ndjson-codec
----
-kind: Telo.Import
-metadata: { name: PlainText }
-source: ../../plain-text-codec
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
 # unset. Vercel SDK is lazy — no API call until streamText is invoked, and the
@@ -126,6 +106,6 @@ steps:
               lineCount: { type: integer, minimum: 2 }
               deltaCount: { type: integer, minimum: 1 }
               text: { type: string, minLength: 1 }
-              finishReason: { type: string, enum: [stop, length, content-filter, error, other] }
+              finishReason: { type: string, enum: [ stop, length, content-filter, error, other ] }
               totalTokens: { type: integer, minimum: 1 }
-            required: [lineCount, deltaCount, text, finishReason, totalTokens]
+            required: [ lineCount, deltaCount, text, finishReason, totalTokens ]

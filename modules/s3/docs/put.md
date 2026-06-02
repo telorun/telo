@@ -5,7 +5,7 @@ sidebar_label: S3.Put
 
 # S3.Put
 
-> Examples below assume this module is imported with `Telo.Import` alias `S3`. Kind references (`S3.Put`, `S3.Bucket`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `S3`. Kind references (`S3.Put`, `S3.Bucket`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
 Uploads an object to a bucket declared as `S3.Bucket`. Invocable — invoke per request or inside a `Run.Sequence` step.
 

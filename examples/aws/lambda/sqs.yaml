@@ -16,20 +16,12 @@ metadata:
     `batchItemFailures` shape, so AWS only retries the ones that actually
     failed. See `examples/aws/lambda/README.md` for the full packaging +
     deploy walkthrough.
+imports:
+  Lambda: aws/lambda@0.3.0
+  JS: std/javascript@0.3.2
+  Type: std/type@0.1.0
 targets:
   - Main
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: aws/lambda@0.3.0
----
-kind: Telo.Import
-metadata: { name: JS }
-source: std/javascript@0.3.2
----
-kind: Telo.Import
-metadata: { name: Type }
-source: std/type@0.1.0
 ---
 # User handler: receives the full batch and reports per-message failures
 # via the batchItemFailures shape AWS expects.
@@ -39,7 +31,7 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
-    required: [records]
+    required: [ records ]
     properties:
       records:
         type: array
@@ -47,7 +39,7 @@ inputType:
           type: object
           properties:
             messageId: { type: string }
-            body:      { type: string }
+            body: { type: string }
 outputType:
   kind: Type.JsonSchema
   schema:

@@ -2,24 +2,13 @@ kind: Telo.Application
 metadata:
   name: TextErrorPropagationTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestProviderErrorSurfacesUnchanged
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # Echo configured to throw a provider-side InvokeError when it sees the marker
 # message. This is the actual provider error used by the test below.
@@ -62,4 +51,4 @@ steps:
             properties:
               code: { const: ERR_PROVIDER_RATE_LIMITED }
               message: { const: simulated provider rate-limit from echo fixture }
-            required: [code, message]
+            required: [ code, message ]

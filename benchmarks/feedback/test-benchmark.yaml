@@ -2,18 +2,11 @@ kind: Telo.Application
 metadata:
   name: FeedbackTestBenchmark
   version: 1.0.0
+imports:
+  Bench: ../../modules/benchmark
+  Http: ../../modules/http-client
 targets:
   - FeedbackSmoke
----
-kind: Telo.Import
-metadata:
-  name: Bench
-source: ../../modules/benchmark
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../../modules/http-client
 ---
 kind: Bench.Suite
 metadata:

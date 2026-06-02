@@ -4,6 +4,21 @@ kind: Telo.Application
 metadata:
   name: telo-registry
   version: 1.0.0
+imports:
+  Type: std/type@0.2.0
+  Http: std/http-server@0.6.0
+  HttpClient: std/http-client@0.4.0
+  S3:
+    source: std/s3@0.2.0
+    secrets:
+      accessKeyId: "${{ secrets.accessKeyId }}"
+      secretAccessKey: "${{ secrets.secretAccessKey }}"
+  Sql: std/sql@0.5.0
+  Run: std/run@0.4.0
+  Octet: std/octet-codec@0.4.0
+  PlainText: std/plain-text-codec@0.4.0
+  Yaml: std/yaml@0.4.0
+  Mcp: std/mcp-server@0.6.0
 variables:
   port:
     env: PORT
@@ -36,62 +51,6 @@ targets:
   - Migrations
   - SeedRootPublishToken
   - RegistryServer
----
-# ── Imports ──────────────────────────────────────────────────────────────────
-
-kind: Telo.Import
-metadata:
-  name: Type
-source: std/type@0.2.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: std/http-server@0.6.0
----
-kind: Telo.Import
-metadata:
-  name: HttpClient
-source: std/http-client@0.4.0
-
----
-kind: Telo.Import
-metadata:
-  name: S3
-source: std/s3@0.2.0
-secrets:
-  accessKeyId: "${{ secrets.accessKeyId }}"
-  secretAccessKey: "${{ secrets.secretAccessKey }}"
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: std/sql@0.5.0
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: std/run@0.4.0
----
-kind: Telo.Import
-metadata:
-  name: Octet
-source: std/octet-codec@0.4.0
----
-kind: Telo.Import
-metadata:
-  name: PlainText
-source: std/plain-text-codec@0.4.0
----
-kind: Telo.Import
-metadata:
-  name: Yaml
-source: std/yaml@0.4.0
----
-kind: Telo.Import
-metadata:
-  name: Mcp
-source: std/mcp-server@0.6.0
 ---
 # ── Storage ───────────────────────────────────────────────────────────────────
 
@@ -201,12 +160,9 @@ steps:
         name: Db
     inputs:
       sql: >-
-        INSERT INTO tokens (user_id, token_hash, label)
-        SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root'
-        ON CONFLICT (user_id, label) DO UPDATE SET token_hash = EXCLUDED.token_hash
+        INSERT INTO tokens (user_id, token_hash, label) SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root' ON CONFLICT (user_id, label) DO UPDATE SET token_hash = EXCLUDED.token_hash
       bindings:
         - "${{ sha256(secrets.publishToken) }}"
-
 ---
 kind: Http.Server
 metadata:
@@ -227,7 +183,7 @@ openapi:
     version: 1.0.0
     description: |
       Resolve and browse Telo Kernel modules.
-      Compatible with the Telo CLI and kind: Telo.Import source resolution.
+      Compatible with the Telo CLI and module import source resolution.
 mounts:
   - path: /mcp
     type: Mcp.HttpEndpoint.McpHttp
@@ -251,7 +207,6 @@ notFoundHandler:
       content:
         application/octet-stream:
           encoder: { kind: Octet.Encoder }
-
 ---
 kind: Sql.Select
 metadata:
@@ -260,7 +215,7 @@ connection:
   kind: Sql.Connection
   name: Db
 from: modules
-distinctOn: [namespace, name]
+distinctOn: [ namespace, name ]
 columns:
   - namespace
   - name
@@ -276,7 +231,7 @@ where:
       - { column: description, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
   - when: "${{ inputs.id != '' }}"
     sql: "(namespace || '/' || name || '@' || version) ILIKE $1"
-    bindings: ["${{ '%' + inputs.id + '%' }}"]
+    bindings: [ "${{ '%' + inputs.id + '%' }}" ]
 orderBy:
   - { column: namespace }
   - { column: name }
@@ -299,7 +254,6 @@ outputType:
     properties:
       rows: { type: array }
       rowCount: { type: integer }
-
 ---
 # Publish handler — extracted as a top-level Run.Sequence so its CEL context is
 # not constrained by the route's handler:-field x-telo-context (which would hide
@@ -338,8 +292,7 @@ steps:
         ), touched AS (
           UPDATE tokens SET last_used_at = NOW()
           WHERE id IN (SELECT token_id FROM matched)
-        )
-        SELECT user_id, username FROM matched
+        ) SELECT user_id, username FROM matched
       bindings:
         - "${{ sha256(inputs.authorization.substring(7)) }}"
         - "${{ inputs.namespace }}"
@@ -413,9 +366,7 @@ steps:
           # supply a non-string description (e.g. a YAML mapping) — those bind
           # as NULL rather than corrupting the row with a JSON-stringified blob.
           sql: >-
-            INSERT INTO modules (namespace, name, version, file_key, description)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (namespace, name, version) DO UPDATE
+            INSERT INTO modules (namespace, name, version, file_key, description) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (namespace, name, version) DO UPDATE
               SET file_key = EXCLUDED.file_key,
                   description = EXCLUDED.description
           bindings:
@@ -512,7 +463,7 @@ routes:
           properties:
             namespace: { type: string }
             name: { type: string }
-          required: ["namespace", "name"]
+          required: [ "namespace", "name" ]
     handler:
       kind: Sql.Query
       connection:
@@ -520,9 +471,7 @@ routes:
         name: Db
     inputs:
       sql: >-
-        SELECT version, published_at FROM modules
-        WHERE namespace = $1 AND name = $2
-        ORDER BY published_at ASC
+        SELECT version, published_at FROM modules WHERE namespace = $1 AND name = $2 ORDER BY published_at ASC
       bindings:
         - "${{ request.params.namespace }}"
         - "${{ request.params.name }}"
@@ -550,7 +499,7 @@ routes:
           properties:
             namespace: { type: string }
             name: { type: string }
-          required: ["namespace", "name"]
+          required: [ "namespace", "name" ]
     handler:
       kind: Sql.Query
       connection:
@@ -558,9 +507,7 @@ routes:
         name: Db
     inputs:
       sql: >-
-        SELECT version, published_at as publishedAt FROM modules
-        WHERE namespace = $1 AND name = $2
-        ORDER BY published_at DESC
+        SELECT version, published_at as publishedAt FROM modules WHERE namespace = $1 AND name = $2 ORDER BY published_at DESC
       bindings:
         - "${{ request.params.namespace }}"
         - "${{ request.params.name }}"
@@ -587,7 +534,7 @@ routes:
             namespace: { type: string }
             name: { type: string }
             version: { type: string }
-          required: ["namespace", "name", "version"]
+          required: [ "namespace", "name", "version" ]
     handler:
       kind: Sql.Query
       connection:
@@ -595,8 +542,7 @@ routes:
         name: Db
     inputs:
       sql: >-
-        SELECT namespace, name, version, description, published_at FROM modules
-        WHERE namespace = $1 AND name = $2 AND version = $3
+        SELECT namespace, name, version, description, published_at FROM modules WHERE namespace = $1 AND name = $2 AND version = $3
       bindings:
         - "${{ request.params.namespace }}"
         - "${{ request.params.name }}"
@@ -629,7 +575,7 @@ routes:
             namespace: { type: string, default: "std" }
             name: { type: string, default: "http-server" }
             version: { type: string, default: "1.1.0" }
-          required: ["namespace", "name", "version"]
+          required: [ "namespace", "name", "version" ]
     handler:
       kind: S3.Get
       bucketRef:
@@ -670,7 +616,7 @@ routes:
             namespace: { type: string }
             name: { type: string }
             version: { type: string }
-          required: ["namespace", "name", "version"]
+          required: [ "namespace", "name", "version" ]
         body:
           type: string
     handler:
@@ -788,7 +734,7 @@ entries:
         namespace: { type: string }
         name: { type: string }
         version: { type: string }
-      required: [namespace, name, version]
+      required: [ namespace, name, version ]
       additionalProperties: false
     handler:
       kind: Run.Sequence
@@ -949,6 +895,10 @@ instructions: !literal |
   metadata:
     name: notes-app
     version: 1.0.0
+  imports:
+    Http: std/http-server@0.4.0
+    Sql: std/sql@0.2.1
+    Type: std/type@1.0.5
   variables:
     port:
       env: PORT
@@ -966,19 +916,6 @@ instructions: !literal |
     - Migrations   # run schema migrations before the server starts
     - Server
   ---
-  kind: Telo.Import
-  metadata: { name: Http }
-  source: std/http-server@0.4.0
-  ---
-  kind: Telo.Import
-  metadata: { name: Sql }
-  source: std/sql@0.2.1
-  ---
-  kind: Telo.Import
-  metadata: { name: Type }
-  source: std/type@1.0.5
-  ---
-
   # ── Shared resource: one Sql.Connection referenced by name from everywhere.
   kind: Sql.Connection
   metadata: { name: Db }
@@ -1096,4 +1033,4 @@ instructions: !literal |
   3. Write a `Telo.Application` with the modules you need declared as
      `Telo.Import` docs, then instantiate resources of the form
      `kind: <Alias>.<KindName>` using the schemas you read.
-tools: [RegistryTools]
+tools: [ RegistryTools ]

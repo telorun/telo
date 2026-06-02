@@ -15,15 +15,13 @@ Working examples to start from: [`examples/aws/lambda/`](https://github.com/telo
 ```yaml
 kind: Telo.Application
 metadata: { name: my-lambda, version: 1.0.0 }
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: aws/lambda@0.2.1
+imports:
+  Lambda: aws/lambda@0.2.1
+targets: [ Main ]
 ---
 kind: Lambda.HttpApi
 metadata: { name: Web }
-routes: [...]
+routes: [ ... ]
 ---
 kind: Lambda.Function
 metadata: { name: Main }
@@ -97,10 +95,10 @@ project/
 │   └── order-processor/
 │       └── telo.yaml
 └── shared/
-    └── biz-logic/         # imported via Telo.Import from both apps
+    └── biz-logic/         # imported via an imports: entry from both apps
 ```
 
-Run the five-step flow above per app. Shared code goes through `Telo.Import` (in the manifest) or a Lambda Layer (on the AWS side).
+Run the five-step flow above per app. Shared code goes through an `imports:` entry (in the manifest) or a Lambda Layer (on the AWS side).
 
 ## SAM example (managed mode)
 

@@ -23,7 +23,7 @@ interface ControllerJob {
 }
 
 /**
- * Walks the manifest graph (following Telo.Import), collects every
+ * Walks the manifest graph (following imports), collects every
  * Telo.Definition with a `controllers` array, and dedupes by the exact PURL
  * list so the ControllerLoader cache is hit only once per unique package.
  */
@@ -76,7 +76,10 @@ async function installOne(
   let manifests: ResourceManifest[];
   let graph: Awaited<ReturnType<typeof loader.loadGraph>>;
   try {
-    graph = await loader.loadGraph(entryPath);
+    // `desugarImports` so inline `imports:` maps expand into synthetic
+    // Telo.Import manifests and the graph walk follows them, so every
+    // transitive import is discovered, cached, and analyzed.
+    graph = await loader.loadGraph(entryPath, { desugarImports: true });
     if (graph.errors.length > 0) throw graph.errors[0].error;
     manifests = flattenForAnalyzer(graph);
   } catch (err) {
@@ -88,7 +91,7 @@ async function installOne(
   }
 
   // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
-  // boot path (`telo run`) can resolve every Telo.Import from disk and skip
+  // boot path (`telo run`) can resolve every import from disk and skip
   // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
   // line then carries this whole tree into the production image.
   if (entryDir) {

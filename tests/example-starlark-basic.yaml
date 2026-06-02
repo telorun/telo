@@ -3,34 +3,15 @@ metadata:
   name: TestStarlarkBasic
   version: 1.0.0
   description: Test for starlark-basic example
+imports:
+  Type: ../modules/type
+  Run: ../modules/run
+  Starlark: ../modules/starlark
+  Console: ../modules/console
+  Assert: ../modules/assert
 targets:
   - RunScriptOnEvent
   - VerifyStarlarkBasicEvents
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Starlark
-source: ../modules/starlark
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: ../modules/console
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 kind: Type.JsonSchema
 metadata:
@@ -40,7 +21,7 @@ schema:
   properties:
     value:
       type: number
-  required: [value]
+  required: [ value ]
 ---
 kind: Type.JsonSchema
 metadata:
@@ -50,7 +31,7 @@ schema:
   properties:
     result:
       type: number
-  required: [result]
+  required: [ result ]
 ---
 kind: Starlark.Script
 metadata:

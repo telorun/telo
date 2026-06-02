@@ -17,9 +17,10 @@ Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Sse }
-source: std/sse-codec@latest
+kind: Telo.Application
+metadata: { name: sse-stream, version: 1.0.0 }
+imports:
+  Sse: std/sse-codec@latest
 ---
 kind: Http.Server
 metadata: { name: Stream }

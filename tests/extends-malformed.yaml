@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: ExtendsMalformedTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestExtendsMalformed
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Asserts the analyzer emits EXTENDS_MALFORMED when `extends` is not in identity form.
 kind: Assert.Manifest

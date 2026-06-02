@@ -5,7 +5,7 @@ sidebar_label: Ai.Model
 
 # `Ai.Model` — the provider contract
 
-> Examples below assume this module is imported with `Telo.Import` alias `Ai`. Kind references (`Ai.Model`, `Ai.Text`, `Ai.TextStream`, …) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `Ai`. Kind references (`Ai.Model`, `Ai.Text`, `Ai.TextStream`, …) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
 `Ai.Model` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.Model`** and ship as a drop-in provider for both `Ai.Text` (buffered) and `Ai.TextStream` (streaming).
 
@@ -101,15 +101,12 @@ metadata:
   name: ai-<provider>
   namespace: std
   version: 1.0.0
+imports:
+  # Pull in the abstract so `Ai` is an alias for `extends:` below.
+  Ai: std/ai@0.2.0
 exports:
   kinds:
     - <Provider>Model
----
-# Pull in the abstract so `Ai` is an alias for `extends:` below.
-kind: Telo.Import
-metadata:
-  name: Ai
-source: std/ai@0.2.0
 ---
 kind: Telo.Definition
 metadata:
@@ -121,11 +118,11 @@ controllers:
 schema:
   type: object
   properties:
-    model:    { type: string }
-    apiKey:   { type: string, x-telo-eval: compile }
-    baseUrl:  { type: string, x-telo-eval: compile }
-    options:  { type: object, additionalProperties: true }
-  required: [model, apiKey]
+    model: { type: string }
+    apiKey: { type: string, x-telo-eval: compile }
+    baseUrl: { type: string, x-telo-eval: compile }
+    options: { type: object, additionalProperties: true }
+  required: [ model, apiKey ]
   additionalProperties: false
 ```
 

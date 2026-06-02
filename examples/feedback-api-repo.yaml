@@ -4,29 +4,14 @@ metadata:
   version: 1.0.0
   description: |
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
+imports:
+  Http: ../modules/http-server
+  Sql: ../modules/sql
+  SqlRepository: ../modules/sql-repository
+  Run: ../modules/run
 targets:
   - SetupDb
   - Server
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: ../modules/sql
----
-kind: Telo.Import
-metadata:
-  name: SqlRepository
-source: ../modules/sql-repository
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../modules/run
 ---
 kind: Sql.Connection
 metadata:
@@ -108,7 +93,7 @@ routes:
               minLength: 1
             source:
               type: string
-          required: [text]
+          required: [ text ]
     handler:
       kind: SqlRepository.Create
       name: InsertFeedback
@@ -150,7 +135,7 @@ routes:
           properties:
             id:
               type: integer
-          required: [id]
+          required: [ id ]
     handler:
       kind: SqlRepository.Read
       name: GetFeedback

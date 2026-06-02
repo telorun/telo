@@ -8,26 +8,15 @@ metadata:
     / error) and asserts the projected string stream is collected correctly. The
     finish part must be silently dropped; the text-delta parts must be emitted
     in order; an error part is exercised in the dedicated error sub-target.
+imports:
+  RecordStream: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestEmitAndDrop
   - TestThrow
   - TestUnknownRecord
----
-kind: Telo.Import
-metadata: { name: RecordStream }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # Source: emits two text-delta parts then a finish part. ExtractText should
 # drop the finish part and yield the two delta strings.
@@ -89,7 +78,7 @@ steps:
         properties:
           text: { const: "hello" }
           count: { const: 2 }
-        required: [text, count]
+        required: [ text, count ]
 ---
 # Source emits an error part. ExtractText should throw with the error's
 # message; Run.Sequence's try/catch surfaces the failure as a structured error.
@@ -129,7 +118,7 @@ steps:
             type: object
             properties:
               message: { type: string, pattern: "boom" }
-            required: [message]
+            required: [ message ]
 ---
 # Source emits a record whose discriminator value isn't listed in `records`.
 # ExtractText must throw ERR_UNKNOWN_RECORD.
@@ -168,4 +157,4 @@ steps:
             type: object
             properties:
               code: { const: "ERR_UNKNOWN_RECORD" }
-            required: [code]
+            required: [ code ]

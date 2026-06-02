@@ -2,18 +2,11 @@ kind: Telo.Application
 metadata:
   name: BadCelOverload
   version: 1.0.0
+imports:
+  Run: ../../../run
+  JavaScript: ../../../javascript
 targets:
   - TestBadOverload
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
 ---
 # `.slice(int)` is not a CEL string method — the overload is `string.substring(int)`.
 # The analyzer's env.check() must catch this as a type error and surface a

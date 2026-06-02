@@ -10,7 +10,9 @@ const REGISTRY_LIMIT = 50;
 const PATH_PROBE_LIMIT = 50;
 
 /**
- * Completions for the `source:` field of a `Telo.Import`.
+ * Completions for an import source — an `imports:` map entry on a module doc
+ * (either the scalar shorthand `Alias: <src>` or the `source:` under the
+ * object form).
  *
  * Branches by prefix shape:
  *   ""                         → relative dirs under the manifest dir, plus `./` / `../` seeds.
@@ -59,7 +61,7 @@ async function relativePathCompletions(
 ): Promise<CompletionResult[]> {
   // Empty prefix → seed `./` and `../` so the user gets traction; otherwise
   // we'd return an unfiltered dump of the manifest directory which is rarely
-  // what the user wants for a `Telo.Import`.
+  // what the user wants for an import source.
   if (prefix === "") {
     return [
       {

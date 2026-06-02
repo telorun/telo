@@ -7,6 +7,8 @@ metadata:
     Console.WriteLine, driven entirely from flat `targets` — no `std/run`
     import. Each step's result.value is wired into a later step's inputs via a
     steps.<name>.result.value CEL expression. Designed for interactive use.
+imports:
+  Console: ../modules/console
 targets:
   - name: ReadUsername
     invoke: !ref UsernameReader
@@ -20,11 +22,6 @@ targets:
     invoke: !ref ResultWriter
     inputs:
       output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"
----
-kind: Telo.Import
-metadata:
-  name: Console
-source: ../modules/console
 ---
 kind: Console.ReadLine
 metadata:

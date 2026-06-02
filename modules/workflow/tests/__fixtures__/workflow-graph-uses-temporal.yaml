@@ -2,21 +2,10 @@ kind: Telo.Application
 metadata:
   name: WorkflowGraphUsesTemporal
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Workflow
-source: ../../../workflow
----
-kind: Telo.Import
-metadata:
-  name: Temporal
-source: ../../../workflow-temporal
----
-kind: Telo.Import
-metadata:
-  name: JS
-source: ../../../javascript
+imports:
+  Workflow: ../../../workflow
+  Temporal: ../../../workflow-temporal
+  JS: ../../../javascript
 ---
 kind: JS.Script
 metadata:

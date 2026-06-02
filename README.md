@@ -54,19 +54,12 @@ metadata:
   description: |
     A complete feedback collection REST API — no code, pure YAML.
     Persists entries to SQLite and serves them over HTTP.
+imports:
+  Http: std/http-server@0.5.0
+  Sql: std/sql@0.3.0
 targets:
   - Migrations
   - Server
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: std/http-server@0.5.0
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: std/sql@0.3.0
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection
@@ -127,7 +120,7 @@ routes:
               minLength: 1
             source:
               type: string
-          required: [text]
+          required: [ text ]
     handler:
       kind: Sql.Exec
       connection:
@@ -157,7 +150,7 @@ routes:
         kind: Sql.Connection
         name: Db
       from: feedback
-      columns: [id, text, source, score, created_at]
+      columns: [ id, text, source, score, created_at ]
       orderBy:
         - { column: created_at, direction: desc }
     response:
@@ -176,14 +169,14 @@ routes:
           properties:
             id:
               type: integer
-          required: [id]
+          required: [ id ]
     handler:
       kind: Sql.Select
       connection:
         kind: Sql.Connection
         name: Db
       from: feedback
-      columns: [id, text, source, score, created_at]
+      columns: [ id, text, source, score, created_at ]
       where:
         - { column: id, op: "=", value: "${{ request.params.id }}" }
     response:

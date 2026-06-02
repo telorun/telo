@@ -14,6 +14,15 @@ metadata:
     Run with the OpenAI key in a sibling `.env.local` file:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
+imports:
+  AiOpenai: ../modules/ai-openai
+  Ai: ../modules/ai
+  AiMcp: ../modules/ai-mcp
+  Mcp: ../modules/mcp-client
+  Http: ../modules/http-client
+  Console: ../modules/console
+  Run: ../modules/run
+  Sql: ../modules/sql
 targets:
   - InitSchema
   - ChatLoop
@@ -21,38 +30,6 @@ secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
     type: string
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: ../modules/ai-openai
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../modules/ai
----
-kind: Telo.Import
-metadata: { name: AiMcp }
-source: ../modules/ai-mcp
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../modules/mcp-client
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../modules/http-client
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../modules/console
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../modules/run
----
-kind: Telo.Import
-metadata: { name: Sql }
-source: ../modules/sql
 ---
 # --- Persistence -----------------------------------------------------------
 kind: Sql.Connection
@@ -115,7 +92,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      required: [latitude, longitude]
+      required: [ latitude, longitude ]
       properties:
         latitude: { type: number, description: "Latitude in decimal degrees." }
         longitude: { type: number, description: "Longitude in decimal degrees." }
@@ -155,7 +132,7 @@ steps:
       - name: InsertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["user", "${{ steps.Read.result.value }}"]
+          bindings: [ "user", "${{ steps.Read.result.value }}" ]
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }
@@ -176,7 +153,7 @@ steps:
       - name: InsertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: ["assistant", "${{ steps.Ask.result.text }}"]
+          bindings: [ "assistant", "${{ steps.Ask.result.text }}" ]
         invoke:
           kind: Sql.Exec
           connection: { kind: Sql.Connection, name: ChatDb }

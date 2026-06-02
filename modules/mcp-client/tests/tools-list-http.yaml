@@ -1,34 +1,14 @@
 kind: Telo.Application
 metadata: { name: McpClientToolsListHttpTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: ../../mcp-server
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../../http-server
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  Mcp: ../../mcp-server
+  McpClient: ../
+  Http: ../../http-server
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 kind: JS.Script
 metadata: { name: PingImpl }
@@ -37,7 +17,7 @@ inputType:
   schema: { type: object, properties: {}, additionalProperties: true }
 outputType:
   kind: Type.JsonSchema
-  schema: { type: object, properties: { pong: { type: boolean } }, required: [pong] }
+  schema: { type: object, properties: { pong: { type: boolean } }, required: [ pong ] }
 code: |
   function main() { return { pong: true }; }
 ---
@@ -60,7 +40,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-list, version: 1.0.0 }
-tools: [ListedTools]
+tools: [ ListedTools ]
 ---
 kind: McpClient.HttpClient
 metadata: { name: ClientUnderTest }
@@ -82,7 +62,7 @@ with:
     logger: false
     mounts:
       - { path: /mcp, type: McpClientToolsListHttpTest.McpHttp }
-targets: [Server]
+targets: [ Server ]
 steps:
   - name: List
     inputs: {}
@@ -98,4 +78,4 @@ steps:
         properties:
           toolName: { const: ping }
           toolDescription: { const: "Synthetic ping." }
-        required: [toolName, toolDescription]
+        required: [ toolName, toolDescription ]

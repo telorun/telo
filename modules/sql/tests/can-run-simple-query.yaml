@@ -2,23 +2,12 @@ kind: Telo.Application
 metadata:
   name: CanRunSimpleQuery
   version: 1.0.0
+imports:
+  Sql: ../
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestSimpleQuery
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: Sql.Connection
 metadata:

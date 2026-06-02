@@ -23,10 +23,8 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 ```yaml
 kind: Telo.Application
 metadata: { name: fetcher, version: 1.0.0 }
----
-kind: Telo.Import
-metadata: { name: Http }
-source: pkg:npm/@telorun/http-client@^1.0.0
+imports:
+  Http: pkg:npm/@telorun/http-client@^1.0.0
 ---
 kind: Http.Client
 metadata: { name: GitHub }

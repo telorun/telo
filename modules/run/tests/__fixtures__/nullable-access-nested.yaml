@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: NullableAccessNestedFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
+imports:
+  Run: ../..
+  JavaScript: ../../../javascript
 ---
 # A finally nested inside a catch: the innermost branch governs, so error is
 # nullable there — unguarded error.code must still be flagged even though the

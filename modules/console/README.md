@@ -30,14 +30,12 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 ```yaml
 kind: Telo.Application
 metadata: { name: Hello, version: 1.0.0 }
+imports:
+  Console: std/console@0.7.0
 targets:
   - invoke: !ref Console.writeLine
     inputs:
       output: "Hello!"
----
-kind: Telo.Import
-metadata: { name: Console }
-source: std/console@0.7.0
 ```
 
 Reach for the `Console.WriteLine` / `Console.ReadLine` **kinds** directly only when you want a distinctly-named instance of your own; for the common case the exported singleton is all you need.

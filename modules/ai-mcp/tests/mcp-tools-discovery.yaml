@@ -2,38 +2,15 @@ kind: Telo.Application
 metadata:
   name: AiMcpDiscoveryTest
   version: 1.0.0
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestMcpAgent
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../../ai
----
-kind: Telo.Import
-metadata:
-  name: AiMcp
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ../../ai/tests/__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Stub
-source: ./__fixtures__/stub-mcp.yaml
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 # A stub MCP server advertising one tool (echo_text).
 kind: Stub.StubClient
@@ -92,4 +69,4 @@ steps:
           toolName:
             type: string
             const: echo_text
-        required: [text, toolName]
+        required: [ text, toolName ]

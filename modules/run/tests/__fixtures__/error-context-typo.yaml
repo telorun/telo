@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: ErrorContextTypoFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
+imports:
+  Run: ../..
+  JavaScript: ../../../javascript
 ---
 # `error.cdoe` is a typo for `error.code`. The error context typing inside a
 # catch must flag it → CEL_UNKNOWN_FIELD.

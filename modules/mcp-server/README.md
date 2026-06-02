@@ -25,20 +25,15 @@ Model Context Protocol (MCP) server resource kinds for Telo: stdio and Streamabl
 ```yaml
 kind: Telo.Application
 metadata: { name: my-stdio-mcp, version: 1.0.0 }
-targets: [Server]
----
-kind: Telo.Import
-metadata: { name: Mcp }
-source: std/mcp-server@0.5.0
----
-kind: Telo.Import
-metadata: { name: JS }
-source: std/javascript@0.3.2
+imports:
+  Mcp: std/mcp-server@0.5.0
+  JS: std/javascript@0.3.2
+targets: [ Server ]
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }
 serverInfo: { name: my-stdio-mcp, version: 1.0.0 }
-tools: [WeatherTools]
+tools: [ WeatherTools ]
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }
@@ -49,7 +44,7 @@ entries:
       type: object
       properties:
         city: { type: string }
-      required: [city]
+      required: [ city ]
     handler:
       kind: JS.Script
       name: GetWeatherImpl

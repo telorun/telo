@@ -252,14 +252,11 @@ metadata:
   namespace: std
   version: 1.0.0
   description: Internal Ai.Model test fixture. Echoes the last message back.
+imports:
+  Ai: ../..
 exports:
   kinds:
     - EchoModel
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../.. # resolves to @telorun/ai's telo.yaml (same package)
 ---
 kind: Telo.Definition
 metadata:
@@ -415,15 +412,12 @@ metadata:
   namespace: std
   version: 1.0.0
   description: OpenAI provider for Ai.Model
+imports:
+  # Import @telorun/ai so the `Ai` alias is available for `extends` below.
+  Ai: pkg:npm/@telorun/ai@^1.0.0
 exports:
   kinds:
     - OpenaiModel
----
-# Import @telorun/ai so the `Ai` alias is available for `extends` below.
-kind: Telo.Import
-metadata:
-  name: Ai
-source: "pkg:npm/@telorun/ai@^1.0.0"
 ---
 kind: Telo.Definition
 metadata:
@@ -454,7 +448,7 @@ schema:
       description: Model-level defaults (temperature, maxTokens, topP, ...). Merged under completion- and invocation-level overrides.
       type: object
       additionalProperties: true
-  required: [model, apiKey]
+  required: [ model, apiKey ]
   additionalProperties: false
 ```
 

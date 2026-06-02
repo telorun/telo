@@ -11,16 +11,11 @@ metadata:
     at runtime (not Phase 5 injection), so it confirms the scope path routes
     a non-`Self` alias into the import's exported instances. A failing
     assertion would throw and fail the test.
+imports:
+  Assert: ../
+  Run: ../../run
 targets:
   - Check
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
 ---
 kind: Run.Sequence
 metadata: { name: Check }
@@ -38,5 +33,5 @@ steps:
   - name: Contains
     invoke: !ref Assert.contains
     inputs:
-      actual: [1, 2, 3]
+      actual: [ 1, 2, 3 ]
       value: 2

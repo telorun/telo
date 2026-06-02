@@ -2,28 +2,13 @@ kind: Telo.Application
 metadata:
   name: TextPromptShorthandTest
   version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestPromptShorthand
----
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: AiEcho
-source: ./__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: AiEcho.EchoModel
 metadata:
@@ -59,7 +44,7 @@ steps:
           text:
             type: string
             const: "hello world"
-        required: [text]
+        required: [ text ]
   - name: AssertUsage
     inputs:
       usage: "${{ steps.Invoke.result.usage }}"
@@ -75,8 +60,8 @@ steps:
               promptTokens: { type: integer, const: 0 }
               completionTokens: { type: integer, const: 0 }
               totalTokens: { type: integer, const: 0 }
-            required: [promptTokens, completionTokens, totalTokens]
+            required: [ promptTokens, completionTokens, totalTokens ]
           finishReason:
             type: string
             const: stop
-        required: [usage, finishReason]
+        required: [ usage, finishReason ]

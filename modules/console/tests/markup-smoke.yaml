@@ -25,26 +25,15 @@ metadata:
 
     Visual ANSI rendering on a real TTY is not automated either; verify
     by running examples/chat-console.yaml interactively.
+imports:
+  Console: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestWriteLine
   - TestWriteStream
   - TestUnknownStyleFallback
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: Run.Sequence
 metadata: { name: TestWriteLine }

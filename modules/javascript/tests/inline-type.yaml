@@ -2,30 +2,13 @@ kind: Telo.Application
 metadata:
   name: JavaScriptInlineTypeTest
   version: 1.0.0
+imports:
+  JavaScript: ..
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestInlineInputOutputType
-
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ..
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../../type
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
-
 ---
 # Inline {kind, schema} for both inputType and outputType — the analyzer
 # normalizes these into synthesized Type.JsonSchema resources. The kernel
@@ -38,21 +21,20 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
-    required: [name]
+    required: [ name ]
     properties:
       name: { type: string }
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
-    required: [message]
+    required: [ message ]
     properties:
       message: { type: string }
 code: |
   function main({ name }) {
     return { message: `Hello ${name}!` }
   }
-
 ---
 kind: Run.Sequence
 metadata:

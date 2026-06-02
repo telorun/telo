@@ -4,20 +4,17 @@ metadata:
   namespace: std
   version: 1.0.0
   description: Internal Ai.Model test fixture. Echoes the last message back, optionally with a suffix.
+imports:
+  # Importing the parent @telorun/ai so `Ai` is an alias in scope for `extends: Ai.Model`
+  # below. This mirrors exactly how external provider packages (ai-openai, ai-anthropic,
+  # ai-ollama) import @telorun/ai — the echo fixture exercises the same code path.
+  # Path resolves relative to THIS file (ai-echo.yaml), which lives at
+  # modules/ai/tests/__fixtures__/. Two levels up = modules/ai/, the @telorun/ai library.
+  Ai: ../../
 exports:
   kinds:
     - EchoModel
     - StreamCollector
----
-# Importing the parent @telorun/ai so `Ai` is an alias in scope for `extends: Ai.Model`
-# below. This mirrors exactly how external provider packages (ai-openai, ai-anthropic,
-# ai-ollama) import @telorun/ai — the echo fixture exercises the same code path.
-# Path resolves relative to THIS file (ai-echo.yaml), which lives at
-# modules/ai/tests/__fixtures__/. Two levels up = modules/ai/, the @telorun/ai library.
-kind: Telo.Import
-metadata:
-  name: Ai
-source: ../../
 ---
 kind: Telo.Definition
 metadata:
@@ -44,7 +41,7 @@ schema:
         message: { type: string }
         code: { type: string }
         reason: { type: string }
-      required: [message, code, reason]
+      required: [ message, code, reason ]
       additionalProperties: false
     emitToolCall:
       title: Emit tool call
@@ -56,7 +53,7 @@ schema:
       properties:
         name: { type: string }
         arguments: { type: object, additionalProperties: true }
-      required: [name]
+      required: [ name ]
       additionalProperties: false
   additionalProperties: false
 ---
@@ -76,5 +73,5 @@ schema:
       title: Model
       description: Reference to any Ai.Model implementation whose stream() will be collected.
       x-telo-ref: "std/ai#Model"
-  required: [model]
+  required: [ model ]
   additionalProperties: false

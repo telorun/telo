@@ -2,21 +2,13 @@ kind: Telo.Application
 metadata:
   name: TextWrongModelKind
   version: 1.0.0
----
-kind: Telo.Import
-metadata: { name: Ai }
-source: ../../
----
-# Imported so the Ai.Model abstract has at least one registered implementation;
-# otherwise validate-references falls into the "partial context — skip" branch
-# and the analyzer can't tell JS.Script doesn't qualify.
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ./ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../../javascript
+imports:
+  Ai: ../../
+  # Imported so the Ai.Model abstract has at least one registered implementation;
+  # otherwise validate-references falls into the "partial context — skip" branch
+  # and the analyzer can't tell JS.Script doesn't qualify.
+  AiEcho: ./ai-echo.yaml
+  JS: ../../../javascript
 ---
 # JavaScript.Script is Telo.Invocable but does NOT extend Ai.Model.
 # Referencing it from Ai.Text.model is a REFERENCE_KIND_MISMATCH.

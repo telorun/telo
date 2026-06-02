@@ -18,9 +18,10 @@ Raw-bytes codec — `Uint8Array` stream ↔ `Uint8Array`. The encoder passes byt
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Octet }
-source: std/octet-codec@latest
+kind: Telo.Application
+metadata: { name: octet-uploads, version: 1.0.0 }
+imports:
+  Octet: std/octet-codec@latest
 ---
 kind: Http.Server
 metadata: { name: Uploads }

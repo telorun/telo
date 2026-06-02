@@ -22,16 +22,11 @@ Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connect
 ```yaml
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
+imports:
+  Sql: std/sql@0.3.0
+  SqlRepository: std/sql-repository@0.1.0
 secrets:
   DATABASE_URL: { type: string }
----
-kind: Telo.Import
-metadata: { name: Sql }
-source: std/sql@0.3.0
----
-kind: Telo.Import
-metadata: { name: SqlRepository }
-source: std/sql-repository@0.1.0
 ---
 kind: Sql.Connection
 metadata: { name: Db }

@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: ImportRejectsApplicationTargetTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestImportApplicationRejected
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 kind: Assert.Manifest
 metadata:

@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: PassthroughInsideCatchFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
+imports:
+  Http: ../..
+  Run: ../../../run
 ---
 # try block throws A or B; catch re-raises via `throw: {code: "${{ error.code }}"}`.
 # Resolver must see that the sequence's propagated union equals the try block's {A, B}.

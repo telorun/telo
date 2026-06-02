@@ -3,24 +3,16 @@ metadata:
   name: YamlParseTest
   version: 1.0.0
   description: Coverage for Yaml.Parse — single-doc, multi-doc, empty, malformed.
+imports:
+  Yaml: ../
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - SingleDoc
   - MultiDoc
   - EmptyInput
   - WhitespaceOnly
   - MalformedInput
----
-kind: Telo.Import
-metadata: { name: Yaml }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: Run.Sequence
 metadata: { name: SingleDoc }

@@ -6,24 +6,13 @@ metadata:
     Live OpenAI streaming integration test. Skips silently when OPENAI_API_KEY
     is unset (locally: drop a .env.local in this directory; CI: secret on the
     workflow).
+imports:
+  AiOpenai: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - LiveStream
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: ../
----
-kind: Telo.Import
-metadata: { name: AiEcho }
-source: ../../ai/tests/__fixtures__/ai-echo.yaml
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
 # unset. The model is constructed (Vercel SDK is lazy — no API call until
@@ -72,7 +61,7 @@ steps:
             properties:
               deltas: { type: string, minLength: 1 }
               deltaCount: { type: integer, minimum: 1 }
-              finishReason: { type: string, enum: [stop, length, content-filter, error, other] }
+              finishReason: { type: string, enum: [ stop, length, content-filter, error, other ] }
               promptTokens: { type: integer, minimum: 1 }
               completionTokens: { type: integer, minimum: 1 }
-            required: [deltas, deltaCount, finishReason, promptTokens, completionTokens]
+            required: [ deltas, deltaCount, finishReason, promptTokens, completionTokens ]

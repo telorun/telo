@@ -6,24 +6,13 @@ metadata:
     Smoke test for plain-text-codec. Roundtrips a small AsyncIterable of delta
     records through PlainText.Encoder → PlainText.Decoder and asserts the final
     UTF-8 string. Self-contained: depends only on this codec module + JS/Run/Assert.
+imports:
+  PlainText: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestRoundtrip
----
-kind: Telo.Import
-metadata: { name: PlainText }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: JS.Script
 metadata: { name: Source }
@@ -64,4 +53,4 @@ steps:
         type: object
         properties:
           text: { const: "hi" }
-        required: [text]
+        required: [ text ]

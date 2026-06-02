@@ -270,9 +270,10 @@ The route's `encoder:` field accepts two forms (matches existing `handler:` and 
 ### Inline form (single-format route)
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: pkg:npm/@telorun/ndjson-codec
+kind: Telo.Application
+metadata: { name: chat, version: 1.0.0 }
+imports:
+  Ndjson: pkg:npm/@telorun/ndjson-codec
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }

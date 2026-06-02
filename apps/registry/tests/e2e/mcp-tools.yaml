@@ -14,28 +14,14 @@ metadata:
     happens to be in the local catalog so the test runs reliably in CI.
     Requires `TELO_REGISTRY_TOKEN` in the environment matching the registry's
     `TELO_PUBLISH_TOKEN`.
+imports:
+  HttpClient: ../../../../modules/http-client
+  McpClient: ../../../../modules/mcp-client
+  Config: ../../../../modules/config
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
 targets:
   - GetModuleManifest_ReturnsYaml
----
-kind: Telo.Import
-metadata: { name: HttpClient }
-source: ../../../../modules/http-client
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: ../../../../modules/mcp-client
----
-kind: Telo.Import
-metadata: { name: Config }
-source: ../../../../modules/config
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../../../modules/run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../../../modules/assert
 ---
 # Reads the publish bearer from the test runner's environment so the test can
 # seed a fixture before reading it back. CI exports the same token the
@@ -94,7 +80,7 @@ steps:
         type: object
         properties:
           status: { const: 201 }
-        required: [status]
+        required: [ status ]
   - name: call
     inputs:
       name: get_module_manifest
@@ -116,4 +102,4 @@ steps:
             # The S3 round-trip preserves bytes exactly; we just assert the
             # decoded body still contains the description we just published.
             pattern: "e2e test fixture for MCP get_module_manifest"
-        required: [contentType, contentText]
+        required: [ contentType, contentText ]

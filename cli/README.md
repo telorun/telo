@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `Telo.Import` pins with `telo upgrade`, and publishes module manifests to the Telo registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, and publishes module manifests to the Telo registry with `telo publish`.
 
 ## Installation
 
@@ -109,7 +109,7 @@ On success:
 
 ### `telo install <paths..>`
 
-Pre-downloads every controller declared by a manifest and its transitive `Telo.Import`s into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every `Telo.Import` from disk — boot does zero network I/O.
+Pre-downloads every controller declared by a manifest and its transitive imports into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every import from disk — boot does zero network I/O.
 
 Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
 
@@ -176,7 +176,7 @@ The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.te
 
 ### `telo upgrade <paths..>`
 
-Scans one or more manifests for `Telo.Import` declarations whose `source` is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version of each, and rewrites the `source` field in place when a newer version is available. The rewrite operates at the byte level: only the version characters of changed `source:` values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the `source:` value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
+Scans one or more manifests for `imports:` entries whose source is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version of each, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
 
 Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. The command never follows imports recursively — only the imports declared in the files you pass on the command line are inspected.
 
@@ -249,18 +249,11 @@ Create a file `server.yaml`:
 kind: Telo.Application
 metadata:
   name: Example
+imports:
+  HttpServer: std/http-server@0.5.0
+  JavaScript: std/javascript@0.3.2
 targets:
   - Server
----
-kind: Telo.Import
-metadata:
-  name: HttpServer
-source: std/http-server@0.5.0
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: std/javascript@0.3.2
 ---
 kind: Http.Server
 metadata:

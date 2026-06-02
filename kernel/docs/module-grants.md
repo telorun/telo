@@ -8,7 +8,7 @@ description: "v1.0 spec: default-deny sandbox with explicit grants for net, file
 
 The Telo micro-kernel operates on a **Default-Deny (Zero-Trust)** architecture. By default, user modules and third-party imports run in a perfectly isolated sandbox with zero access to the host operating system, network, or filesystem.
 
-The `grants` block within an `Import` resource provides an explicit, user-authorized escape hatch. It allows a module to request strictly scoped capabilities (e.g., to accommodate legacy SDKs or native database drivers).
+The `grants` block within an `imports:` entry provides an explicit, user-authorized escape hatch. It allows a module to request strictly scoped capabilities (e.g., to accommodate legacy SDKs or native database drivers).
 
 ### 1.1 The Pre-Execution Bundling Mandate
 
@@ -20,7 +20,7 @@ To achieve both high performance (e.g., shared memory, zero IPC serialization) a
 
 ## 2. The `grants` Object Schema
 
-The `grants` property is defined on the `Import` kind. Keys represent the capability namespace, and values define the allowed scope (typically an array of strings representing allowed targets, or a boolean).
+The `grants` property is defined on an `imports:` entry. Keys represent the capability namespace, and values define the allowed scope (typically an array of strings representing allowed targets, or a boolean).
 
 ### 2.1 Network Capabilities (`net.*`)
 
@@ -64,7 +64,7 @@ To be certified as a compliant Telo runtime, the engine must adhere to the follo
 
 ### Rule 1: Isolation by Default
 
-If a module is loaded and no `grants` block is present in its `Import` definition, the runtime must ensure all system calls (network, fs, env, child_process) fail immediately.
+If a module is loaded and no `grants` block is present in its `imports:` entry, the runtime must ensure all system calls (network, fs, env, child_process) fail immediately.
 
 ### Rule 2: Strict Scope Evaluation
 
@@ -78,7 +78,7 @@ When a module attempts an action outside of its grants, the runtime must not fai
 
 ### Rule 4: Transitive Deny (No Grant Inheritance)
 
-Grants are strictly bound to the specific `Import` instance. If Module A imports Module B, Module B does _not_ inherit Module A's grants. Every module must explicitly declare what it needs, and the Root Manifest must authorize it for that specific module namespace.
+Grants are strictly bound to the specific `imports:` entry. If Module A imports Module B, Module B does _not_ inherit Module A's grants. Every module must explicitly declare what it needs, and the Root Manifest must authorize it for that specific module namespace.
 
 ### Rule 5: Capability Shimming via Bundling
 
@@ -93,21 +93,24 @@ The execution sandbox (e.g., `vm.Context`, V8 Isolate, or Wasm Guest) must not h
 ## 4. Manifest Example
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Application
 metadata:
-  name: LegacyPostgresModule
-source: acme/postgres-driver@2.0.0
-variables:
-  poolSize: 10
-secrets:
-  connectionString: "${{ resources.HostEnv.values.DATABASE_URL }}"
+  name: backend-root
+  version: 1.0.0
+imports:
+  LegacyPostgresModule:
+    source: acme/postgres-driver@2.0.0
+    variables:
+      poolSize: 10
+    secrets:
+      connectionString: "${{ resources.HostEnv.values.DATABASE_URL }}"
 
-# Explicit runtime capability authorizations
-grants:
-  net.outbound:
-    - "db.internal.acme.com"
-  env:
-    - "PG_TELEMETRY_OPTOUT"
-  fs.read:
-    - "/etc/ssl/certs/ca-certificates.crt"
+    # Explicit runtime capability authorizations
+    grants:
+      net.outbound:
+        - "db.internal.acme.com"
+      env:
+        - "PG_TELEMETRY_OPTOUT"
+      fs.read:
+        - "/etc/ssl/certs/ca-certificates.crt"
 ```

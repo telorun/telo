@@ -2,21 +2,10 @@ kind: Telo.Library
 metadata:
   name: RethrowPlainUncoveredFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
+imports:
+  Http: ../..
+  Run: ../../../run
+  JavaScript: ../../../javascript
 ---
 # try invokes a resource (can throw a plain Error → INTERNAL_ERROR in the catch);
 # catch rethrows error.code. The handler's resolved union is {INTERNAL_ERROR}.

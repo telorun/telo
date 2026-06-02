@@ -4,7 +4,7 @@ Telo tests are themselves Telo manifests: a `Run.Sequence` (or top-level `Assert
 
 ## Where tests live
 
-- **Cross-cutting kernel/analyzer tests** — `tests/`. Exercise the module system (`include`, `Telo.Import`), `Telo.Definition` semantics (`extends`, `capability`), and topology rules.
+- **Cross-cutting kernel/analyzer tests** — `tests/`. Exercise the module system (`include`, `imports:`), `Telo.Definition` semantics (`extends`, `capability`), and topology rules.
 - **Module-specific tests** — `modules/<name>/tests/`. Per `CLAUDE.md`, every test should live next to the module it exercises.
 - **Fixtures** — any `__fixtures__/` subdirectory. Excluded from discovery; reference them from a test via `source: ./__fixtures__/foo.yaml` or `include: [./__fixtures__/foo.yaml]`.
 
@@ -19,27 +19,19 @@ pnpm run telo ./modules/run/tests/run-sequence-if.yaml   # run one manifest dire
 
 ## Anatomy of a test manifest
 
-Every test starts with a `Telo.Application`, declares `Telo.Import` aliases for each stdlib it uses, and defines the resource named in `targets:`:
+Every test starts with a `Telo.Application`, declares `imports:` aliases for each stdlib it uses, and defines the resource named in `targets:`:
 
 ```yaml
 kind: Telo.Application
 metadata:
   name: AddTwoNumbers
   version: 1.0.0
+imports:
+  Run: ../../run
+  JavaScript: ../../javascript
+  Assert: ../../assert
 targets:
   - TestAdd
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: JavaScript }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
 ---
 kind: Run.Sequence
 metadata:
@@ -196,7 +188,7 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
 
 ## Assertion kinds
 
-All exported by the `assert` stdlib (`Telo.Import name: Assert`, `source: ../../assert` from a module test, `../modules/assert` from the root `tests/`).
+All exported by the `assert` stdlib (an `imports:` entry `Assert: ../../assert` from a module test, `Assert: ../modules/assert` from the root `tests/`).
 
 | Kind | Use for | Where it goes |
 |---|---|---|

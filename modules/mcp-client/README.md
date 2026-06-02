@@ -26,17 +26,12 @@ Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP and
 ```yaml
 kind: Telo.Application
 metadata: { name: my-mcp-app, version: 1.0.0 }
-targets: [GetWeather]
+imports:
+  McpClient: std/mcp-client@0.2.0
+  Run: std/run@0.3.0
+targets: [ GetWeather ]
 secrets:
   MCP_TOKEN: { type: string }
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: std/mcp-client@0.2.0
----
-kind: Telo.Import
-metadata: { name: Run }
-source: std/run@0.3.0
 ---
 kind: McpClient.HttpClient
 metadata: { name: RemoteMcp }

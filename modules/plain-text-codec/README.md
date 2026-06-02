@@ -18,9 +18,10 @@ Plain-text codec — UTF-8 string ↔ byte iterables. The encoder accepts `{delt
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: PlainText }
-source: std/plain-text-codec@latest
+kind: Telo.Application
+metadata: { name: plain-text-stream, version: 1.0.0 }
+imports:
+  PlainText: std/plain-text-codec@latest
 ---
 kind: Http.Server
 metadata: { name: Stream }

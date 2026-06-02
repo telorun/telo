@@ -13,6 +13,9 @@ metadata:
     `equals` singleton (`!ref Assert.equals`) — so this whole application
     declares NO local resources, referencing only cross-module exports.
     `steps.Print.result` (the writeLine return value) confirms the invoke ran.
+imports:
+  Console: ../
+  Assert: ../../assert
 targets:
   - name: Print
     invoke: !ref Console.writeLine
@@ -23,11 +26,3 @@ targets:
     inputs:
       actual: ${{ steps.Print.result }}
       expected: "exported singleton works"
----
-kind: Telo.Import
-metadata: { name: Console }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert

@@ -22,13 +22,11 @@ These are abstracts, not runnable resources — concrete codec modules implement
 A consumer reads `Codec.Encoder` polymorphically:
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Codec }
-source: std/codec@latest
----
-kind: Telo.Import
-metadata: { name: Ndjson }
-source: std/ndjson-codec@latest
+kind: Telo.Application
+metadata: { name: codec-stream, version: 1.0.0 }
+imports:
+  Codec: std/codec@latest
+  Ndjson: std/ndjson-codec@latest
 ---
 kind: Http.Server
 metadata: { name: Stream }

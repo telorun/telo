@@ -5,7 +5,7 @@ sidebar_label: S3.Bucket
 
 # S3.Bucket
 
-> Examples below assume this module is imported with `Telo.Import` alias `S3`. Kind references (`S3.Bucket`, `S3.Put`, `S3.List`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `S3`. Kind references (`S3.Bucket`, `S3.Put`, `S3.List`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
 Declares an S3-compatible bucket. Constructs and owns the S3 client used by `S3.Put`, `S3.List`, and any other resource that references it via `bucketRef`. Works against AWS S3, Cloudflare R2, MinIO, RustFS, or any other S3-compatible endpoint.
 
@@ -16,13 +16,10 @@ Declares an S3-compatible bucket. Constructs and owns the S3 client used by `S3.
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata:
-  name: S3
-source: std/s3@0.1.0
-secrets:
-  accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
-  secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
+kind: Telo.Application
+metadata: { name: storage, version: 1.0.0 }
+imports:
+  S3: std/s3@0.1.0
 ---
 kind: S3.Bucket
 metadata:
@@ -43,8 +40,8 @@ createIfMissing: true
 |-------|------|----------|-------------|
 | `bucketName` | string | yes | Name of the bucket. |
 | `endpoint` | string | yes | S3 endpoint URL. Examples: `https://s3.amazonaws.com`, `https://<accountId>.r2.cloudflarestorage.com`, `http://storage:9000`. |
-| `accessKeyId` | string | yes | Access key. Typically wired from the module's `accessKeyId` secret. |
-| `secretAccessKey` | string | yes | Secret key. Typically wired from the module's `secretAccessKey` secret. |
+| `accessKeyId` | string | yes | Access key. Wire from a secret in the importing module. |
+| `secretAccessKey` | string | yes | Secret key. Wire from a secret in the importing module. |
 | `forcePathStyle` | boolean | no | Use path-style URLs (`endpoint/bucket/key`) instead of virtual-host style. Required for MinIO, RustFS, and most self-hosted S3. Defaults to `false`. |
 | `createIfMissing` | boolean | no | When `true`, the controller issues `CreateBucket` during init and silently tolerates `BucketAlreadyOwnedByYou` / `BucketAlreadyExists`. Intended for self-hosted/dev backends. Leave `false` on managed clouds where the app may lack `CreateBucket` permission. Defaults to `false`. |
 | `publicRead` | boolean | no | When `true`, the controller applies a bucket policy during init that grants anonymous `s3:GetObject` on all keys. Defaults to `false`. See [`publicRead`](#publicread). |
@@ -53,14 +50,14 @@ createIfMissing: true
 
 ## Credentials
 
-The module declares `accessKeyId` and `secretAccessKey` as module-level `secrets`. Importers supply them once in the `Telo.Import` block; individual `S3.Bucket` resources then forward them via CEL:
+`S3.Bucket` takes `accessKeyId` and `secretAccessKey` as its own fields — credentials are per-bucket, not configured on the import. Because `S3.Bucket` is a `Telo.Provider`, those fields are evaluated at load time, so wire them from a secret source in the importing module:
 
 ```yaml
 accessKeyId: "${{ resources.AppConfig.accessKeyId }}"
 secretAccessKey: "${{ resources.AppConfig.secretAccessKey }}"
 ```
 
-Wire them from a `Config.Env` provider (or any secret source) in the importing module.
+Wire them from a `Config.Env` provider, the application's `secrets:` block, or any other secret source in the importing module.
 
 ---
 

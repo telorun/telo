@@ -52,10 +52,12 @@ Because Telo does not wrap payloads in runtime envelopes, the CEL `condition` ev
 **Syntax (`consumer-telo.yaml`):**
 
 ```yaml
-kind: Telo.Import
+kind: Telo.Application
 metadata:
-  name: Users
-source: example/users@1.0.0
+  name: consumer
+  version: 1.0.0
+imports:
+  Users: example/users@1.0.0
 
 ---
 kind: Worker.Listener

@@ -2,6 +2,9 @@ kind: Telo.Application
 metadata:
   name: ApplicationEnvVariablesTest
   version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
 variables:
   port:
     env: APP_PORT
@@ -11,23 +14,13 @@ variables:
     env: APP_LOG_LEVEL
     type: string
     default: info
-    enum: [debug, info, warn, error]
+    enum: [ debug, info, warn, error ]
 secrets:
   databaseUrl:
     env: APP_DATABASE_URL
     type: string
 targets:
   - TestApplicationEnv
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../modules/run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../../modules/assert
 ---
 kind: Run.Sequence
 metadata:
@@ -44,7 +37,7 @@ steps:
           port:
             type: integer
             const: 1234
-        required: [port]
+        required: [ port ]
   - name: AssertLogLevel
     inputs:
       logLevel: !cel "variables.logLevel"
@@ -56,7 +49,7 @@ steps:
           logLevel:
             type: string
             const: info
-        required: [logLevel]
+        required: [ logLevel ]
   - name: AssertDatabaseUrl
     inputs:
       url: !cel "secrets.databaseUrl"
@@ -68,4 +61,4 @@ steps:
           url:
             type: string
             const: postgres://test
-        required: [url]
+        required: [ url ]

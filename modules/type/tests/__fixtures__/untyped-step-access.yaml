@@ -2,18 +2,11 @@ kind: Telo.Application
 metadata:
   name: UntypedStepAccess
   version: 1.0.0
+imports:
+  Run: ../../../run
+  JavaScript: ../../../javascript
 targets:
   - TestUntypedAccess
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../../run
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
 ---
 # Script with no outputType — result should be untyped (any access allowed)
 kind: JavaScript.Script

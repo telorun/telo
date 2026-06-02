@@ -7,33 +7,14 @@ kind: Telo.Application
 metadata:
   name: LambdaHttpApiDispatchTest
   version: 1.0.0
+imports:
+  Lambda: ..
+  JavaScript: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestHttpApiDispatch
----
-kind: Telo.Import
-metadata:
-  name: Lambda
-source: ..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../javascript
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../../type
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: JavaScript.Script
 metadata:
@@ -42,14 +23,14 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
-    required: [id]
+    required: [ id ]
     properties:
       id: { type: string }
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
-    required: [message]
+    required: [ message ]
     properties:
       message: { type: string }
 code: |

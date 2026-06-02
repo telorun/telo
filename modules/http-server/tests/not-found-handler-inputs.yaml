@@ -8,32 +8,15 @@ metadata:
     Without this, a manifest migrated from the legacy nested `invoke.inputs`
     shape to the canonical sibling form would break (the handler would see
     only request.* and not the manifest-computed inputs).
+imports:
+  Http: ../
+  JS: ../../javascript
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+  Type: ../../type
 targets:
   - Test
----
-kind: Telo.Import
-metadata: { name: Http }
-source: ../
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ../../javascript
----
-kind: Telo.Import
-metadata: { name: HttpClient }
-source: ../../http-client
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ../../type
 ---
 # The "echo path" invocable used as the not-found target. It reads `inputs.path`
 # (the value the sibling `inputs:` block produces) and returns it verbatim, so
@@ -51,7 +34,7 @@ inputType:
     properties:
       path: { type: string }
       method: { type: string }
-    required: [path]
+    required: [ path ]
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -59,7 +42,7 @@ outputType:
     properties:
       path: { type: string }
       method: { type: string }
-    required: [path]
+    required: [ path ]
 ---
 kind: HttpClient.Client
 metadata: { name: SelfClient }
@@ -80,7 +63,7 @@ inputType:
     type: object
     properties:
       url: { type: string }
-    required: [url]
+    required: [ url ]
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -88,7 +71,7 @@ outputType:
     properties:
       status: { type: integer }
       body: { type: object, additionalProperties: true }
-    required: [status, body]
+    required: [ status, body ]
 ---
 kind: Run.Sequence
 metadata: { name: Test }
@@ -134,4 +117,4 @@ steps:
           status: { const: 404 }
           receivedPath: { const: "/no-such-route" }
           receivedMethod: { const: "GET" }
-        required: [status, receivedPath, receivedMethod]
+        required: [ status, receivedPath, receivedMethod ]

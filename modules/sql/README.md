@@ -27,13 +27,11 @@ SQL database access for PostgreSQL and SQLite — connections, raw queries, a de
 ```yaml
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
-targets: [Migrate]
+imports:
+  Sql: std/sql@0.3.0
+targets: [ Migrate ]
 secrets:
   DATABASE_URL: { type: string }
----
-kind: Telo.Import
-metadata: { name: Sql }
-source: std/sql@0.3.0
 ---
 kind: Sql.Connection
 metadata: { name: Db }
@@ -58,7 +56,7 @@ kind: Sql.Select
 metadata: { name: ActiveUsers }
 connection: { kind: Sql.Connection, name: Db }
 from: users
-columns: [id, email]
+columns: [ id, email ]
 where:
   - { column: deleted_at, op: is_null }
 orderBy:

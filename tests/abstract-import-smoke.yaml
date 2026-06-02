@@ -2,14 +2,11 @@ kind: Telo.Application
 metadata:
   name: AbstractImportSmokeTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestAbstractImportClean
   - TestAbstractXRefResolution
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Asserts that a library declaring a Telo.Abstract plus a canonical `capability +
 # extends` implementation analyzes with zero diagnostics. This is the baseline

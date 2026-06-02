@@ -2,28 +2,13 @@ kind: Telo.Application
 metadata:
   name: CanUseCrud
   version: 1.0.0
+imports:
+  Sql: ../../sql
+  SqlRepository: ../
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - TestCrud
----
-kind: Telo.Import
-metadata:
-  name: Sql
-source: ../../sql
----
-kind: Telo.Import
-metadata:
-  name: SqlRepository
-source: ../
----
-kind: Telo.Import
-metadata:
-  name: Run
-source: ../../run
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../../assert
 ---
 kind: Sql.Connection
 metadata:

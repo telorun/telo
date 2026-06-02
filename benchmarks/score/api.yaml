@@ -3,18 +3,11 @@ metadata:
   name: ScoreApi
   version: 1.0.0
   description: Lead scoring API — designed to exercise as much CEL as possible per request.
+imports:
+  Http: ../../modules/http-server
+  JavaScript: ../../modules/javascript
 targets:
   - Server
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../../modules/http-server
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../modules/javascript
 ---
 # Pure passthrough — keeps the handler trivial so per-request time is dominated
 # by CEL evaluation in the route-level inputs and returns blocks.
@@ -54,7 +47,7 @@ routes:
       schema:
         body:
           type: object
-          required: [lead]
+          required: [ lead ]
           properties:
             lead:
               type: object

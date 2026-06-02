@@ -14,28 +14,13 @@ metadata:
           temporalio/auto-setup:latest
     Then run this manifest. The Temporal Web UI is available at
     http://localhost:8233 to inspect the workflow execution.
+imports:
+  Type: ../modules/type
+  Workflow: ../modules/workflow
+  Temporal: ../modules/workflow-temporal
+  JS: ../modules/javascript
 targets:
   - DataSyncWorkflow
----
-kind: Telo.Import
-metadata:
-  name: Type
-source: ../modules/type
----
-kind: Telo.Import
-metadata:
-  name: Workflow
-source: ../modules/workflow
----
-kind: Telo.Import
-metadata:
-  name: Temporal
-source: ../modules/workflow-temporal
----
-kind: Telo.Import
-metadata:
-  name: JS
-source: ../modules/javascript
 ---
 kind: Temporal.Backend
 metadata:

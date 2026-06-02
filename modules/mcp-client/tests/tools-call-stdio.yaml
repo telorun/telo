@@ -1,18 +1,10 @@
 kind: Telo.Application
 metadata: { name: McpClientStdioToolCallTest, version: 1.0.0 }
-targets: [TestRun]
----
-kind: Telo.Import
-metadata: { name: McpClient }
-source: ../
----
-kind: Telo.Import
-metadata: { name: Run }
-source: ../../run
----
-kind: Telo.Import
-metadata: { name: Assert }
-source: ../../assert
+imports:
+  McpClient: ../
+  Run: ../../run
+  Assert: ../../assert
+targets: [ TestRun ]
 ---
 # Stdio MCP server child process: spawned at boot, handshake completes before
 # init() returns, terminated on teardown. The fixture lives under __fixtures__
@@ -48,4 +40,4 @@ steps:
         properties:
           contentType: { const: text }
           contentText: { const: "hello stdio" }
-        required: [contentType, contentText]
+        required: [ contentType, contentText ]

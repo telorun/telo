@@ -138,7 +138,7 @@ function kindCompletions(
   } else if (registry) {
     kinds = registry.validUserFacingKinds();
   } else {
-    kinds = ["Telo.Application", "Telo.Library", "Telo.Import", "Telo.Definition"];
+    kinds = ["Telo.Application", "Telo.Library", "Telo.Definition"];
   }
   const seen = new Set<string>();
   const results: CompletionResult[] = [];
@@ -192,7 +192,7 @@ export async function buildCompletions(
     );
   }
   if (ctx.type === "field-value") {
-    if (ctx.docKind === "Telo.Import" && ctx.field === "source") {
+    if (ctx.field === "import-source") {
       return importSourceCompletions(ctx.prefix, ctx.valueStartColumn, adapter);
     }
     return [];

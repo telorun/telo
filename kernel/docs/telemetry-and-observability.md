@@ -24,6 +24,11 @@ The Telo engine detects the `Telemetry` trait of this Provider and automatically
 kind: Telo.Application
 metadata:
   name: main-application
+  version: 1.0.0
+imports:
+  # Resources inside here will implicitly log to GlobalTracer
+  Users:
+    source: users-module
 
 targets:
   - "${{ resources.MainApi }}"
@@ -36,13 +41,6 @@ metadata:
 config:
   endpoint: "http://otel-collector:4317"
   protocol: grpc
-
----
-kind: Telo.Import
-metadata:
-  name: Users
-source:
-  module: users-module # Resources inside here will implicitly log to GlobalTracer
 ```
 
 ## 3. Dual-Layer Instrumentation Architecture

@@ -9,14 +9,12 @@ metadata:
     pass-through; emits UTF-8 bytes. Decoder collects a `Stream<Uint8Array>`
     into a single UTF-8 string. Pair with Content-Type `text/plain;
     charset=utf-8`.
+imports:
+  Codec: ../codec
 exports:
   kinds:
     - Encoder
     - Decoder
----
-kind: Telo.Import
-metadata: { name: Codec }
-source: ../codec
 ---
 # Encoder: records → UTF-8 bytes. Accepts `{delta: string}`, bare strings,
 # and Uint8Array pass-through. Other shapes throw.
@@ -48,7 +46,7 @@ outputType:
       text:
         type: string
         description: UTF-8 string formed by concatenating every chunk in `input`.
-    required: [text]
+    required: [ text ]
     additionalProperties: false
 schema:
   type: object

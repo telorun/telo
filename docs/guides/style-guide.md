@@ -59,36 +59,31 @@ When naming a module that will be published to the registry, use standard URL-fr
 Here is a perfect example of a Telo manifest utilizing the recommended style guide:
 
 ```yaml
-# 1. Module Name: kebab-case
+# Module name: kebab-case
 kind: Telo.Application
 metadata:
   name: my-awesome-app
-
-# 2. Variables & Secrets: camelCase
+imports:
+  # Import alias (instance): PascalCase
+  ProdApi:
+    source: telo/secure-api-template@v1.0.0
+    # Variables & secrets: camelCase
+    variables:
+      listenPort: 8080
+    secrets:
+      dbPassword: "${{ secrets.prodDbPassword }}"
 secrets:
-  - prodDbPassword
-
+  prodDbPassword:
+    env: DB_PASSWORD
+    type: string
 ---
-# 3. Resource Kind: PascalCase
-kind: Telo.Import
-metadata:
-  # 4. Instance Name (Alias): camelCase
-  name: prodApi
-  # Module reference: kebab-case
-  module: my-awesome-app
-# Source: kebab-case
-source: telo/secure-api-template@v1.0.0
-variables:
-  listenPort: 8080
-secrets:
-  dbPassword: "${{ secrets.prodDbPassword }}"
-
----
+# Resource kind: PascalCase
 kind: Logger.Stdout
 metadata:
-  name: appLogger
+  # Instance name: PascalCase
+  name: AppLogger
   module: my-awesome-app
 # Notice how clean the CEL expression reads:
-# object.property.subProperty -> resources.prodApi.apiUrl
-message: "Production API is running at: ${{ resources.prodApi.apiUrl }}"
+# resources.Instance.property -> resources.ProdApi.apiUrl
+message: "Production API is running at: ${{ resources.ProdApi.apiUrl }}"
 ```

@@ -2,16 +2,9 @@ kind: Telo.Library
 metadata:
   name: CatchAllNotLastFixture
   version: 1.0.0
----
-kind: Telo.Import
-metadata:
-  name: Http
-source: ../..
----
-kind: Telo.Import
-metadata:
-  name: JavaScript
-source: ../../../javascript
+imports:
+  Http: ../..
+  JavaScript: ../../../javascript
 ---
 kind: JavaScript.Script
 metadata:

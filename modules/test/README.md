@@ -18,9 +18,10 @@ Run Telo manifests as test suites. `Test.Suite` discovers `tests/*.yaml` cases, 
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Test }
-source: std/test@latest
+kind: Telo.Application
+metadata: { name: tests, version: 1.0.0 }
+imports:
+  Test: std/test@latest
 ---
 kind: Test.Suite
 metadata: { name: All }

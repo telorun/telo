@@ -2,13 +2,10 @@ kind: Telo.Application
 metadata:
   name: CapabilityShadowsExtendsTest
   version: 1.0.0
+imports:
+  Assert: ../modules/assert
 targets:
   - TestCapabilityShadowsExtends
----
-kind: Telo.Import
-metadata:
-  name: Assert
-source: ../modules/assert
 ---
 # Asserts that `capability: <UserAbstract>` emits CAPABILITY_SHADOWS_EXTENDS (warning).
 # Builtin lifecycle capabilities (Telo.Invocable, etc.) must NOT trigger this — verified

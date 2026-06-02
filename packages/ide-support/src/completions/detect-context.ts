@@ -387,16 +387,31 @@ export function detectContext(
 
   if (!docKind) return undefined;
 
-  // Field-value completion: `source: <prefix>` on a top-level Telo.Import field.
-  // The prefix runs from after `source:`+whitespace up to the cursor — that's
-  // what consumers complete against (filesystem paths or registry ids).
-  if (docKind === "Telo.Import") {
-    const sourceMatch = currentLine.match(/^(source:\s*)(\S*)$/);
-    if (sourceMatch) {
-      const valueStartColumn = sourceMatch[1].length;
+  // Import-source value completion: entries in the `imports:` map on a module
+  // doc. Two shapes are completed against filesystem paths / registry ids:
+  //   scalar shorthand  `  Alias: <src>`     → the entry value IS the source
+  //   object form       `    source: <src>`  → the `source:` under `imports.<Alias>`
+  // Gated on the enclosing path resolving to the `imports:` map so unrelated
+  // `source:` fields (e.g. `Assert.Manifest.source`) never trigger it.
+  if (docKind === "Telo.Application" || docKind === "Telo.Library") {
+    // Require a space after the colon (`key: …`) so a bare object-form header —
+    // `  Tiny:` about to carry a nested `source:`/`variables:` — is treated as a
+    // key position, not an import-source value. A flow-map (`Alias: { … }`) never
+    // matches: `\S*` can't span the spaces inside the braces.
+    const entryMatch = currentLine.match(/^(\s+)([A-Za-z_][\w-]*):(\s+)(\S*)$/);
+    if (entryMatch) {
+      const indent = entryMatch[1].length;
+      const key = entryMatch[2];
+      const valueStartColumn = indent + key.length + 1 + entryMatch[3].length;
       if (character >= valueStartColumn) {
-        const prefix = currentLine.slice(valueStartColumn, character);
-        return { type: "field-value", docKind, field: "source", prefix, valueStartColumn };
+        const parentPath = buildYamlPath(lines, line, start, indent);
+        const isScalarEntry = parentPath.length === 1 && parentPath[0] === "imports";
+        const isObjectSource =
+          key === "source" && parentPath.length === 2 && parentPath[0] === "imports";
+        if (isScalarEntry || isObjectSource) {
+          const prefix = currentLine.slice(valueStartColumn, character);
+          return { type: "field-value", docKind, field: "import-source", prefix, valueStartColumn };
+        }
       }
     }
   }

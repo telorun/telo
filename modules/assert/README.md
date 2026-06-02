@@ -47,9 +47,10 @@ The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry
 ## Example
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Assert }
-source: std/assert@latest
+kind: Telo.Application
+metadata: { name: assert-app, version: 1.0.0 }
+imports:
+  Assert: std/assert@latest
 ---
 kind: Assert.Equals
 metadata: { name: CheckTotal }

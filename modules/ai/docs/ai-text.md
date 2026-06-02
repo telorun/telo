@@ -5,18 +5,16 @@ sidebar_label: Ai.Text
 
 # `Ai.Text`
 
-> Examples below assume this module is imported with `Telo.Import` alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Text`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Text`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
 `Ai.Text` is a `Telo.Invocable` that delegates a single-turn, buffered LLM call to any `Ai.Model` implementation. It owns message-building, system-prompt handling, and option-merging; the model handles the HTTP call. For chunked output, see [Ai.TextStream](./ai-text-stream.md).
 
 ```yaml
-kind: Telo.Import
-metadata: { name: Ai }
-source: std/ai@0.2.0
----
-kind: Telo.Import
-metadata: { name: AiOpenai }
-source: std/ai-openai@0.2.0
+kind: Telo.Application
+metadata: { name: summarizer, version: 1.0.0 }
+imports:
+  Ai: std/ai@0.2.0
+  AiOpenai: std/ai-openai@0.2.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
