@@ -3,17 +3,24 @@ metadata:
   name: ai
   namespace: std
   version: 0.3.1
-  description: LLM completion primitives with pluggable provider models
+  description: LLM completion primitives with pluggable provider models, plus a tool-use agent
 exports:
   kinds:
     - Model
     - Text
     - TextStream
+    - ToolProvider
+    - Tools
+    - Agent
 ---
 # The abstract contract every LLM provider implements. Carries the input/output
 # schemas so the typed-abstracts plan (see kernel/nodejs/plans/typed-abstracts.md)
 # can enforce them once it ships — meanwhile Ai.Text validates output shape at
 # runtime, and Ai.TextStream enforces the StreamPart contract on the wire.
+#
+# Tool support (`tools` in, `toolCalls` out, the `tool` message role, the
+# `tool-calls` finishReason) is additive — only Ai.Agent passes `tools`; Ai.Text
+# and Ai.TextStream never do, so they are unaffected.
 kind: Telo.Abstract
 metadata:
   name: Model
@@ -31,14 +38,36 @@ inputType:
           properties:
             role:
               type: string
-              enum: [system, user, assistant]
+              enum: [system, user, assistant, tool]
             content:
+              type: string
+            toolCalls:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  arguments: { type: object, additionalProperties: true }
+                required: [id, name, arguments]
+                additionalProperties: false
+            toolCallId:
               type: string
           required: [role, content]
           additionalProperties: false
       options:
         type: object
         additionalProperties: true
+      tools:
+        type: array
+        items:
+          type: object
+          properties:
+            name: { type: string }
+            description: { type: string }
+            parameters: { type: object, additionalProperties: true }
+          required: [name, parameters]
+          additionalProperties: false
     required: [messages]
     additionalProperties: false
 outputType:
@@ -58,7 +87,17 @@ outputType:
         additionalProperties: false
       finishReason:
         type: string
-        enum: [stop, length, content-filter, error, other]
+        enum: [stop, length, content-filter, error, tool-calls, other]
+      toolCalls:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            arguments: { type: object, additionalProperties: true }
+          required: [id, name, arguments]
+          additionalProperties: false
     required: [text, usage, finishReason]
     additionalProperties: false
 ---
@@ -130,5 +169,199 @@ schema:
       description: Per-resource option overrides. Shallow-merged with the model's options and runtime inputs.options; downstream wins.
       type: object
       additionalProperties: true
+  required: [model]
+  additionalProperties: false
+---
+# Ai.ToolProvider — abstract source of callable tools, mounted into an Ai.Agent the
+# same way an Http.Api mounts into an Http.Server. Implementations expose a runtime
+# instance with two methods (documented convention, like Ai.Model's invoke/stream):
+#   listTools(): ToolDescriptor[]   — what to advertise to the model
+#   callTool(name, arguments): any  — dispatch a model-requested call
+# `Ai.Tools` (static list, here) and `AiMcp.ToolProvider` (MCP discovery, in
+# @telorun/ai-mcp) both implement it; the agent never learns which.
+kind: Telo.Abstract
+metadata:
+  name: ToolProvider
+capability: Telo.Mount
+---
+# Ai.Tools — a static list of tools, each wrapping any Telo.Invocable. The built-in
+# Ai.ToolProvider implementation.
+kind: Telo.Definition
+metadata:
+  name: Tools
+capability: Telo.Mount
+extends: Self.ToolProvider
+controllers:
+  - pkg:npm/@telorun/ai@0.3.1?local_path=./nodejs#tools
+schema:
+  type: object
+  properties:
+    tools:
+      title: Tools
+      description: The tools this provider exposes.
+      type: array
+      items:
+        type: object
+        properties:
+          tool:
+            title: Tool
+            description: Reference to any Telo.Invocable to expose as a tool.
+            x-telo-ref: "telo#Invocable"
+          name:
+            title: Name
+            description: Tool name the model sees. Defaults to the referenced resource name.
+            type: string
+          description:
+            title: Description
+            description: Human/model-facing description of what the tool does.
+            type: string
+          parameters:
+            title: Parameters
+            description: JSON Schema for the arguments the model must produce. Required.
+            type: object
+            additionalProperties: true
+          inputs:
+            title: Inputs mapping
+            description: |
+              Optional CEL mapping from the model's `arguments` into the invocable's
+              input. Omit to forward `arguments` verbatim.
+            type: object
+            additionalProperties: true
+            x-telo-context:
+              type: object
+              properties:
+                arguments:
+                  x-telo-context-from: "parameters/properties"
+          result:
+            title: Result mapping
+            description: |
+              Optional CEL expression shaping the invocable's `result` into the string
+              fed back to the model. Omit to JSON-stringify the output.
+            type: string
+            x-telo-context:
+              type: object
+              properties:
+                result:
+                  x-telo-context-ref-from: "tool/outputType"
+        required: [tool, parameters]
+        additionalProperties: false
+  required: [tools]
+  additionalProperties: false
+---
+# Ai.Agent — a tool-use loop. Invoked like Ai.Text (prompt xor messages, plus
+# system/options); calls the model with the merged tool set, executes any requested
+# tools via their providers, replays results, and loops until the model finishes or
+# maxSteps is hit. Buffered only (no streaming agent in v1).
+kind: Telo.Definition
+metadata:
+  name: Agent
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/ai@0.3.1?local_path=./nodejs#agent
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      prompt: { type: string }
+      messages:
+        type: array
+        items:
+          type: object
+          properties:
+            role: { type: string, enum: [system, user, assistant, tool] }
+            content: { type: string }
+          required: [role, content]
+          additionalProperties: false
+      system: { type: string }
+      options: { type: object, additionalProperties: true }
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+      usage:
+        type: object
+        properties:
+          promptTokens: { type: integer, minimum: 0 }
+          completionTokens: { type: integer, minimum: 0 }
+          totalTokens: { type: integer, minimum: 0 }
+        required: [promptTokens, completionTokens, totalTokens]
+        additionalProperties: false
+      finishReason:
+        type: string
+        enum: [stop, length, content-filter, error, tool-calls, other]
+      steps:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+    required: [text, usage, finishReason, steps]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    model:
+      title: Model
+      description: Reference to any Ai.Model implementation.
+      x-telo-ref: "std/ai#Model"
+    system:
+      title: System prompt
+      description: Default system message. Runtime inputs.system takes precedence when set.
+      type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+    options:
+      title: Options
+      description: Completion-level option overrides passed to the model each turn.
+      type: object
+      additionalProperties: true
+    maxSteps:
+      title: Max steps
+      description: Maximum model turns before the loop is bounded.
+      type: integer
+      minimum: 1
+      default: 8
+    onMaxSteps:
+      title: On max steps
+      description: throw → raise ERR_AGENT_MAX_STEPS; return → hand back the last turn's text.
+      type: string
+      enum: [throw, return]
+      default: throw
+    onToolError:
+      title: On tool error
+      description: feedback → record the error and return it to the model; throw → abort the invoke.
+      type: string
+      enum: [feedback, throw]
+      default: feedback
+    toolProviders:
+      title: Tool providers
+      description: Tool sources mounted into the agent — static lists (Ai.Tools) or runtime discovery (e.g. AiMcp.ToolProvider).
+      type: array
+      items:
+        type: object
+        properties:
+          provider:
+            title: Provider
+            description: Reference to any Ai.ToolProvider implementation.
+            x-telo-ref: "std/ai#ToolProvider"
+          prefix:
+            title: Prefix
+            description: Namespaces this provider's tool names to avoid collisions.
+            type: string
+          include:
+            title: Include
+            description: Optional allowlist matched against the provider's bare tool names (before any prefix is applied).
+            type: array
+            items: { type: string }
+          exclude:
+            title: Exclude
+            description: Optional denylist matched against the provider's bare tool names (before any prefix is applied).
+            type: array
+            items: { type: string }
+        required: [provider]
+        additionalProperties: false
   required: [model]
   additionalProperties: false

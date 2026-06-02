@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: stub-mcp
+  namespace: std
+  version: 0.3.1
+  description: Test-only Mcp.Client stub for ai-mcp discovery/dispatch tests.
+exports:
+  kinds:
+    - StubClient
+---
+# Resolves to @telorun/mcp-client so `extends: Mcp.Client` has the alias in scope.
+# From this fixture file: ../../../mcp-client = modules/mcp-client.
+kind: Telo.Import
+metadata:
+  name: Mcp
+source: ../../../mcp-client
+---
+kind: Telo.Definition
+metadata:
+  name: StubClient
+capability: Telo.Invocable
+extends: Mcp.Client
+controllers:
+  - pkg:npm/@telorun/ai-mcp@0.3.1?local_path=../../nodejs#stub-mcp-client
+schema:
+  type: object
+  additionalProperties: false

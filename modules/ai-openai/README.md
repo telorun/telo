@@ -21,7 +21,9 @@ OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`, backed by the Ve
 kind: Telo.Application
 metadata: { name: example, version: 1.0.0 }
 secrets:
-  OPENAI_API_KEY: { type: string }
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
 ---
 kind: Telo.Import
 metadata: { name: Ai }
@@ -34,7 +36,7 @@ source: pkg:npm/@telorun/ai-openai@^1.0.0
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4oMini }
 model: gpt-4o-mini
-apiKey: "${{ secrets.OPENAI_API_KEY }}"
+apiKey: "${{ secrets.openaiApiKey }}"
 options:
   temperature: 0.2
   maxOutputTokens: 800

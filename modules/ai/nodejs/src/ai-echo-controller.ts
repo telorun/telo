@@ -24,13 +24,26 @@ interface EchoResource {
   metadata: { name: string; module?: string };
   suffix?: string;
   failOn?: EchoFailRule;
+  /** Test-only: when `tools` are present and no tool result is in the conversation yet,
+   *  emit this tool call instead of echoing — lets agent-loop tests run hermetically. */
+  emitToolCall?: { name: string; arguments?: Record<string, unknown> };
 }
 
 class AiEchoModel implements ResourceInstance, AiModelInstance {
   constructor(private readonly resource: EchoResource) {}
 
-  async invoke({ messages }: ModelInvokeInput): Promise<CompletionResult> {
+  async invoke({ messages, tools }: ModelInvokeInput): Promise<CompletionResult> {
     this.maybeThrow(messages);
+    const plan = this.resource.emitToolCall;
+    const alreadyCalled = messages.some((m) => m.role === "tool");
+    if (plan && tools && tools.length > 0 && !alreadyCalled) {
+      return {
+        text: "",
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        finishReason: "tool-calls",
+        toolCalls: [{ id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} }],
+      };
+    }
     const text = this.buildEchoText(messages);
     return {
       text,

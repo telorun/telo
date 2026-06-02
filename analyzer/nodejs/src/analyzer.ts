@@ -716,6 +716,28 @@ export class StaticAnalyzer {
       }
     }
 
+    // Seed `Self` for every module that contributes definitions but whose own
+    // Telo.Library doc isn't in this manifest set. `flattenForAnalyzer` forwards an
+    // imported library's definitions/abstracts/imports but NOT its module doc, so the
+    // module-doc loop above can't register `Self` for imported modules. Without this, a
+    // definition's `extends: Self.X` (a kind defined in the same library as the abstract)
+    // can't resolve and its `extendedBy` edge mis-keys under the literal "Self.X" — which
+    // stays invisible until another module also implements that abstract and flips the
+    // reference check from lenient to strict. `Self` always maps a module to its own name.
+    for (const m of manifests) {
+      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      if (!ownModule || rootModules.has(ownModule)) continue;
+      let libResolver = aliasesByModule.get(ownModule);
+      if (!libResolver) {
+        libResolver = new AliasResolver();
+        aliasesByModule.set(ownModule, libResolver);
+      }
+      if (!libResolver.hasAlias("Self")) {
+        libResolver.registerImport("Self", ownModule, []);
+      }
+    }
+
     // Register definitions from Telo.Definition AND Telo.Abstract resources.
     // Abstracts declare contracts that implementations target via `extends` (canonical)
     // or `capability: <AbstractKind>` (legacy). Until they're registered, validateReferences

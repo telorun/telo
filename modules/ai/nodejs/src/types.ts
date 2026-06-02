@@ -4,19 +4,48 @@
  * for chunked output) plus the usual ResourceInstance hooks.
  *
  * Providers import these types to type their controller returns; callers
- * (`Ai.Text` for buffered, `Ai.TextStream` for streaming) import them to type
- * the injected `resource.model`.
+ * (`Ai.Text` for buffered, `Ai.TextStream` for streaming, `Ai.Agent` for the
+ * tool-use loop) import them to type the injected `resource.model`.
  */
 
-/** Message roles supported by the core contract. Multimodal / tool roles are out of scope
- *  for v1 — widening the union later (to include `"tool"` etc.) is non-breaking. */
-export type Role = "system" | "user" | "assistant";
+/** Message roles supported by the core contract. `tool` carries a tool-call result
+ *  back to the model (paired with `toolCallId`). Multimodal content is out of scope
+ *  for v1 — widening `content` to `string | ContentPart[]` later is non-breaking. */
+export type Role = "system" | "user" | "assistant" | "tool";
+
+/** A tool call requested by the model (on output) or replayed to it (on an assistant
+ *  message). `arguments` is the model-produced argument object, validated against the
+ *  tool's advertised `parameters` schema. `id` correlates a `tool`-role result message
+ *  (via its `toolCallId`) back to the call that produced it. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
 
 /** One turn in the conversation. `content` is a string today; widening to a
- *  `string | ContentPart[]` union for multimodal support is non-breaking. */
+ *  `string | ContentPart[]` union for multimodal support is non-breaking.
+ *
+ *  - assistant turns may carry `toolCalls` (the model asked to invoke tools);
+ *    `content` may be empty in that case.
+ *  - `tool` turns carry `toolCallId` (which call this answers) and put the
+ *    stringified tool result in `content`. */
 export interface Message {
   role: Role;
   content: string;
+  /** Present on assistant turns that requested tool calls. */
+  toolCalls?: ToolCall[];
+  /** Present on `tool` turns — the id of the call this message answers. */
+  toolCallId?: string;
+}
+
+/** A tool advertised to the model: name, optional description, and the JSON Schema
+ *  the model must produce arguments against. The model never sees Telo refs — only
+ *  this shape. */
+export interface ToolDefinition {
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
 }
 
 /** Token usage counts returned by every invocation. */
@@ -27,20 +56,27 @@ export interface Usage {
 }
 
 /** Normalized completion termination reason. Provider-specific reasons are mapped
- *  into this enum; unknown reasons map to "other". */
-export type FinishReason = "stop" | "length" | "content-filter" | "error" | "other";
+ *  into this enum; unknown reasons map to "other". `tool-calls` means the model
+ *  finished a turn by requesting one or more tools. */
+export type FinishReason = "stop" | "length" | "content-filter" | "error" | "tool-calls" | "other";
 
-/** Result of a buffered (non-streaming) completion. */
+/** Result of a buffered (non-streaming) completion. `toolCalls` is present when the
+ *  model requested tools (`finishReason === "tool-calls"`); the consumer (Ai.Agent)
+ *  executes them and replays the results. */
 export interface CompletionResult {
   text: string;
   usage: Usage;
   finishReason: FinishReason;
+  toolCalls?: ToolCall[];
 }
 
-/** Input passed to both `invoke` and `stream` on an `AiModelInstance`. */
+/** Input passed to both `invoke` and `stream` on an `AiModelInstance`. `tools`, when
+ *  present, advertises the callable tools to the model; only `Ai.Agent` passes it
+ *  (`Ai.Text`/`Ai.TextStream` never do). */
 export interface ModelInvokeInput {
   messages: Message[];
   options?: Record<string, unknown>;
+  tools?: ToolDefinition[];
 }
 
 /** Tagged part emitted by a streaming invocation. Consumers iterate until the stream
@@ -59,7 +95,7 @@ export type StreamPart =
 /**
  * Runtime contract every Ai.Model implementation exposes.
  *
- * - `invoke` — buffered path used by Ai.Text.
+ * - `invoke` — buffered path used by Ai.Text and Ai.Agent.
  * - `stream` — chunked path used by Ai.TextStream. Returns an `AsyncIterable<StreamPart>`
  *   — one handle the caller iterates until the terminator (a `finish` part, an `error`
  *   part, or a thrown error from the iterator itself).
@@ -68,6 +104,31 @@ export type StreamPart =
 export interface AiModelInstance {
   invoke(input: ModelInvokeInput): Promise<CompletionResult>;
   stream(input: ModelInvokeInput): AsyncIterable<StreamPart>;
+  snapshot?(): Record<string, unknown>;
+  init?(): Promise<void> | void;
+  teardown?(): Promise<void> | void;
+}
+
+/** A tool the model can call, as surfaced by an Ai.ToolProvider: the advertised
+ *  schema plus an opaque-to-the-model name. The agent merges descriptors from every
+ *  provider into the `tools` it passes the model. */
+export interface ToolDescriptor {
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * Runtime contract every Ai.ToolProvider implementation exposes. A tool provider is a
+ * `Telo.Mount` mounted into an Ai.Agent: the agent calls `listTools()` to learn what to
+ * advertise to the model and `callTool()` to dispatch a model-requested call.
+ *
+ * `Ai.Tools` (static list, in @telorun/ai) and `AiMcp.ToolProvider` (MCP discovery, in
+ * @telorun/ai-mcp) both implement it; the agent never knows which.
+ */
+export interface AiToolProviderInstance {
+  listTools(): Promise<ToolDescriptor[]> | ToolDescriptor[];
+  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
   teardown?(): Promise<void> | void;

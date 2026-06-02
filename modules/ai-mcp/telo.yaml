@@ -1,0 +1,43 @@
+kind: Telo.Library
+metadata:
+  name: ai-mcp
+  namespace: std
+  version: 0.3.1
+  description: MCP bridge for Ai.ToolProvider — exposes an MCP server's tools to an Ai.Agent.
+exports:
+  kinds:
+    - ToolProvider
+---
+# Import @telorun/ai for the Ai.ToolProvider abstract this definition implements.
+kind: Telo.Import
+metadata:
+  name: Ai
+source: ../ai
+---
+# Import @telorun/mcp-client for the Mcp.Client transport this definition wraps.
+# These two imports are the entire reason ai-mcp exists as a separate package: it is
+# the only module coupling the agnostic `ai` contract to the MCP transport.
+kind: Telo.Import
+metadata:
+  name: Mcp
+source: ../mcp-client
+---
+# AiMcp.ToolProvider — wraps any Mcp.Client as an Ai.ToolProvider. listTools() maps to
+# `tools/list`, callTool() to `tools/call`. The discovered tool set and schemas are
+# known only at run time (statically opaque), validated at the MCP server boundary.
+kind: Telo.Definition
+metadata:
+  name: ToolProvider
+capability: Telo.Mount
+extends: Ai.ToolProvider
+controllers:
+  - pkg:npm/@telorun/ai-mcp@0.3.1?local_path=./nodejs#tool-provider
+schema:
+  type: object
+  properties:
+    client:
+      title: Client
+      description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
+      x-telo-ref: "std/mcp-client#Client"
+  required: [client]
+  additionalProperties: false
