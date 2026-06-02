@@ -2,10 +2,60 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedFile, LoadedGraph, LoadedModule } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 
+/** The import-boundary forwarding rule, shared by `flattenForAnalyzer` (the
+ *  CLI / kernel loader path) and the telo-editor's workspace projection so the
+ *  two cannot drift. Given one module's stamped manifests and whether that
+ *  module is the analysis entry (root), returns the manifests that cross into
+ *  the consumer's flat analysis list:
+ *
+ *  - **Root module** — every manifest is local; returned unchanged. The root's
+ *    internals (CEL / schema / refs) are validated in full.
+ *  - **Imported module** — only `Telo.Definition` / `Telo.Abstract` /
+ *    `Telo.Import` docs cross unconditionally, plus the instances named in the
+ *    module's `exports.resources` (stamped `metadata.forwardedExport: true`).
+ *    The module doc and internal (unexported) instances are dropped — they
+ *    belong to that module's own analysis pass.
+ *
+ *  `forwardedExport` marks an instance as a cross-module resolution TARGET only
+ *  (keyed by `metadata.module`), so `resolveRefSentinels` files it under
+ *  `byModuleName` and `!ref Alias.name` resolves, while `validate-references` /
+ *  the per-resource validation loop never re-walk or re-validate it against the
+ *  consumer's scope. A consumer that instead emits every module doc as a peer
+ *  local manifest silently breaks both. */
+export function selectModuleManifestsForAnalysis(
+  moduleManifests: ResourceManifest[],
+  isRoot: boolean,
+): ResourceManifest[] {
+  if (isRoot) return moduleManifests;
+
+  const libDoc = moduleManifests.find((m) => isModuleKind(m.kind));
+  const exportedResources = new Set<string>(
+    (libDoc as { exports?: { resources?: string[] } } | undefined)?.exports?.resources ?? [],
+  );
+
+  const out: ResourceManifest[] = [];
+  for (const m of moduleManifests) {
+    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
+      out.push(m);
+    } else if (
+      !isModuleKind(m.kind) &&
+      typeof m.metadata?.name === "string" &&
+      exportedResources.has(m.metadata.name as string)
+    ) {
+      out.push({
+        ...m,
+        metadata: { ...m.metadata, forwardedExport: true } as ResourceManifest["metadata"],
+      });
+    }
+  }
+  return out;
+}
+
 /** Produce the flat manifest list `analyze()` consumes today.
  *
  *  Combines the entry module's manifests with `Telo.Definition`,
- *  `Telo.Abstract`, and `Telo.Import` docs forwarded from imported libraries.
+ *  `Telo.Abstract`, and `Telo.Import` docs forwarded from imported libraries
+ *  (plus their `exports.resources` instances) via `selectModuleManifestsForAnalysis`.
  *  Stamps three flavours of metadata along the way:
  *
  *  - `metadata.source` and `metadata.sourceLine` — already on each manifest
@@ -24,8 +74,7 @@ import { isModuleKind } from "./module-kinds.js";
 export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
   const result: ResourceManifest[] = [];
 
-  const stampedEntry = collectModuleManifests(graph.entry);
-  result.push(...stampedEntry);
+  result.push(...selectModuleManifestsForAnalysis(collectModuleManifests(graph.entry), true));
 
   const seen = new Set<string>([graph.rootSource]);
   const queue: string[] = [graph.rootSource];
@@ -43,36 +92,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
       const targetModule = graph.modules.get(edge.targetSource);
       if (!targetModule) continue;
 
-      const stamped = collectModuleManifests(targetModule);
-      const libDoc = stamped.find((m) => isModuleKind(m.kind));
-      const exportedResources = new Set<string>(
-        (libDoc as { exports?: { resources?: string[] } } | undefined)?.exports?.resources ?? [],
-      );
-      for (const m of stamped) {
-        if (
-          m.kind === "Telo.Definition" ||
-          m.kind === "Telo.Abstract" ||
-          m.kind === "Telo.Import"
-        ) {
-          result.push(m);
-        } else if (
-          !isModuleKind(m.kind) &&
-          typeof m.metadata?.name === "string" &&
-          exportedResources.has(m.metadata.name as string)
-        ) {
-          // Forward instances listed in the library's `exports.resources` so the
-          // consumer's analyzer can resolve, gate, kind-check, and draw topology edges
-          // for cross-module `!ref Alias.name`. The gate IS this forwarding — only
-          // exported names cross the boundary. `metadata.forwardedExport` marks them as
-          // cross-module resolution targets only (keyed by `metadata.module`), so ref
-          // resolution / validation treats them as targets, never as local sources to
-          // re-validate or walk.
-          result.push({
-            ...m,
-            metadata: { ...m.metadata, forwardedExport: true } as ResourceManifest["metadata"],
-          });
-        }
-      }
+      result.push(...selectModuleManifestsForAnalysis(collectModuleManifests(targetModule), false));
     }
   }
 

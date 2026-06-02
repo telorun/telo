@@ -174,6 +174,90 @@ describe("analyzeWorkspace — imported library kinds", () => {
     ).toHaveLength(0);
   });
 
+  it("resolves a cross-module `!ref Alias.export` in a flat targets invoke step", async () => {
+    // Reproduces the editor/CLI divergence: an Application imports a workspace
+    // library and drives one of its exported instances from a flat `targets`
+    // invoke step (`invoke: !ref Console.writeLine`). The CLI resolves this
+    // because `flattenForAnalyzer` forwards the library's `exports.resources`
+    // instance flagged `forwardedExport`, so `!ref Console.writeLine` resolves
+    // to `{kind, name}` before AJV runs. The editor must do the same via
+    // `selectModuleManifestsForAnalysis`; otherwise the raw `!ref` sentinel
+    // reaches the `targets` schema and every anyOf branch fails (the reported
+    // SCHEMA_VIOLATION storm).
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "imports:",
+        "  Console: ../console",
+        "targets:",
+        "  - invoke: !ref Console.writeLine",
+        "    inputs:",
+        "      output: Hello from Telo!",
+        "",
+      ].join("\n"),
+      "/ws/console/telo.yaml": [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: console",
+        "  version: 1.0.0",
+        "exports:",
+        "  resources:",
+        "    - writeLine",
+        "---",
+        "kind: Telo.Definition",
+        "metadata:",
+        "  name: WriteLine",
+        "capability: Telo.Invocable",
+        "controllers:",
+        "  pkg:npm: '@telorun/console'",
+        "inputType:",
+        "  type: object",
+        "  properties:",
+        "    output: { type: string }",
+        "schema:",
+        "  type: object",
+        "---",
+        "kind: Self.WriteLine",
+        "metadata:",
+        "  name: writeLine",
+        "",
+      ].join("\n"),
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
+
+    const appManifest = workspace.modules.get("/ws/app/telo.yaml");
+    expect(appManifest, "app manifest should be loaded").toBeTruthy();
+    const consoleImport = appManifest!.imports.find((i) => i.name === "Console");
+    expect(consoleImport?.resolvedPath, "inline import should resolve").toBe(
+      "/ws/console/telo.yaml",
+    );
+
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values()) {
+      for (const list of fileMap.values()) {
+        for (const d of list) all.push({ code: d.code, message: d.message });
+      }
+    }
+    for (const list of diagnostics.byFile.values()) {
+      for (const d of list) all.push({ code: d.code, message: d.message });
+    }
+
+    const offending = all.filter(
+      (d) => d.code === "SCHEMA_VIOLATION" || d.code === "UNRESOLVED_REFERENCE",
+    );
+    expect(
+      offending,
+      `targets invoke step should resolve cleanly; got: ${JSON.stringify(offending, null, 2)}`,
+    ).toHaveLength(0);
+  });
+
   it("resolves Telo.Definition kinds from a registry-style Telo.Library import", async () => {
     const files: Record<string, string> = {
       "/ws/app/telo.yaml": [
@@ -250,6 +334,330 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(
       undefinedKind,
       `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
+    ).toHaveLength(0);
+  });
+
+  it("surfaces diagnostics on a registry module's forwarded definition (not silently dropped)", async () => {
+    // External (registry/remote) modules never anchor their own analysis closure,
+    // yet `telo check <app>` validates forwarded imported definitions and reports
+    // errors against their source file. The editor must do the same — emitting
+    // such diagnostics from the first consumer closure — rather than swallowing
+    // them behind the workspace-only root-local filter.
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "---",
+        "kind: Telo.Import",
+        "metadata:",
+        "  name: Bad",
+        "source: std/bad@1.0.0",
+        "",
+      ].join("\n"),
+    };
+
+    const registryFiles: Record<string, Record<string, string>> = {
+      "std/bad@1.0.0": {
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata:",
+          "  name: bad",
+          "  version: 1.0.0",
+          "exports:",
+          "  kinds:",
+          "    - Thing",
+          "---",
+          "kind: Telo.Definition",
+          "metadata:",
+          "  name: Thing",
+          "capability: Telo.Invocable",
+          "controllers:",
+          "  pkg:npm: '@telorun/bad'",
+          "schema:",
+          "  type: object",
+          "  properties:",
+          "    name: { type: string }",
+          "invoke:",
+          "  kind: bad.Thing",
+          "  name: x",
+          // `self.bogus` is not in this definition's schema → CEL_UNKNOWN_FIELD,
+          // attributed to the registry file.
+          "inputs:",
+          "  name: '${{ self.bogus }}'",
+          "",
+        ].join("\n"),
+      },
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const registry = inMemoryRegistry(registryFiles);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
+
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const regFile = "registry://std/bad@1.0.0/telo.yaml";
+    const onRegistryFile: Array<{ code?: string; message: string }> = [];
+    for (const list of diagnostics.byResource.get(regFile)?.values() ?? []) {
+      for (const d of list) onRegistryFile.push({ code: d.code, message: d.message });
+    }
+    for (const d of diagnostics.byFile.get(regFile) ?? []) {
+      onRegistryFile.push({ code: d.code, message: d.message });
+    }
+
+    expect(
+      onRegistryFile.some((d) => d.code === "CEL_UNKNOWN_FIELD"),
+      `registry definition error should surface on ${regFile}; got: ${JSON.stringify(onRegistryFile, null, 2)}`,
+    ).toBe(true);
+  });
+
+  it("resolves a cross-module abstract implementation forwarded from an imported library", async () => {
+    // `ai-mcp.ToolProvider` (in lib ai-mcp, which imports ai as `Ai`) declares
+    // `extends: Ai.ToolProvider`. An app importing both ai and ai-mcp drives an
+    // Ai.Agent whose `toolProviders[].provider` ref targets the abstract
+    // `std/ai#ToolProvider`. The analyzer must know `ai-mcp.ToolProvider`
+    // implements `ai.ToolProvider` — which requires resolving the forwarded
+    // definition's `extends` in ai-mcp's OWN alias scope. The CLI does this;
+    // the editor must too, else a spurious REFERENCE_KIND_MISMATCH fires.
+    const files: Record<string, string> = {
+      "/ws/ai/telo.yaml": [
+        "kind: Telo.Library",
+        "metadata: { name: ai, namespace: std, version: 1.0.0 }",
+        "exports:",
+        "  kinds: [ ToolProvider, Tools, Agent ]",
+        "---",
+        "kind: Telo.Abstract",
+        "metadata: { name: ToolProvider }",
+        "---",
+        "kind: Telo.Definition",
+        "metadata: { name: Tools }",
+        "capability: Telo.Provider",
+        "extends: Self.ToolProvider",
+        "controllers: { pkg:npm: '@telorun/ai' }",
+        "schema: { type: object, additionalProperties: true }",
+        "---",
+        "kind: Telo.Definition",
+        "metadata: { name: Agent }",
+        "capability: Telo.Invocable",
+        "controllers: { pkg:npm: '@telorun/ai' }",
+        "schema:",
+        "  type: object",
+        "  properties:",
+        "    toolProviders:",
+        "      type: array",
+        "      items:",
+        "        type: object",
+        "        required: [ provider ]",
+        "        properties:",
+        "          provider:",
+        "            type: object",
+        '            x-telo-ref: "std/ai#ToolProvider"',
+        "",
+      ].join("\n"),
+      "/ws/ai-mcp/telo.yaml": [
+        "kind: Telo.Library",
+        "metadata: { name: ai-mcp, namespace: std, version: 1.0.0 }",
+        "imports:",
+        "  Ai: ../ai",
+        "exports:",
+        "  kinds: [ ToolProvider ]",
+        "---",
+        "kind: Telo.Definition",
+        "metadata: { name: ToolProvider }",
+        "capability: Telo.Provider",
+        "extends: Ai.ToolProvider",
+        "controllers: { pkg:npm: '@telorun/ai-mcp' }",
+        "schema: { type: object, additionalProperties: true }",
+        "",
+      ].join("\n"),
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata: { name: app, version: 1.0.0 }",
+        "imports:",
+        "  Ai: ../ai",
+        "  AiMcp: ../ai-mcp",
+        "---",
+        "kind: AiMcp.ToolProvider",
+        "metadata: { name: RegistryTools }",
+        "---",
+        "kind: Ai.Agent",
+        "metadata: { name: Assistant }",
+        "toolProviders:",
+        "  - provider: { kind: AiMcp.ToolProvider, name: RegistryTools }",
+        "",
+      ].join("\n"),
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values()) {
+      for (const list of fileMap.values()) {
+        for (const d of list) all.push({ code: d.code, message: d.message });
+      }
+    }
+    for (const list of diagnostics.byFile.values()) {
+      for (const d of list) all.push({ code: d.code, message: d.message });
+    }
+
+    const mismatch = all.filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
+    expect(
+      mismatch,
+      `AiMcp.ToolProvider should be a known implementation of ai.ToolProvider; got: ${JSON.stringify(mismatch, null, 2)}`,
+    ).toHaveLength(0);
+  });
+
+  it("resolves a cross-module abstract implementation across REGISTRY imports", async () => {
+    // Same as above, but ai / ai-mcp are registry modules and ai-mcp imports ai
+    // via a registry ref (`std/ai@0.4.0`) using separate Telo.Import docs — the
+    // published shape of std/ai-mcp@0.4.0 (examples/agent-console.yaml). Guards
+    // that a forwarded definition's `extends` still resolves in the imported
+    // library's own alias scope when that library was reached through the
+    // registry, so the Ai.Agent toolProviders ref doesn't false-positive.
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata: { name: app, version: 1.0.0 }",
+        "imports:",
+        "  Ai: std/ai@0.4.0",
+        "  AiMcp: std/ai-mcp@0.4.0",
+        "  Mcp: std/mcp-client@0.3.1",
+        "---",
+        "kind: Mcp.HttpClient",
+        "metadata: { name: RegistryMcp }",
+        "url: https://example.test/mcp",
+        "---",
+        "kind: AiMcp.ToolProvider",
+        "metadata: { name: RegistryTools }",
+        "client: { kind: Mcp.HttpClient, name: RegistryMcp }",
+        "---",
+        "kind: Ai.Agent",
+        "metadata: { name: Assistant }",
+        "toolProviders:",
+        "  - provider: { kind: AiMcp.ToolProvider, name: RegistryTools }",
+        "",
+      ].join("\n"),
+    };
+
+    const registryFiles: Record<string, Record<string, string>> = {
+      "std/mcp-client@0.3.1": {
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata: { name: mcp-client, namespace: std, version: 0.3.1 }",
+          "exports:",
+          "  kinds: [ Client, HttpClient ]",
+          "---",
+          "kind: Telo.Abstract",
+          "metadata: { name: Client }",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: HttpClient }",
+          "capability: Telo.Service",
+          "extends: Self.Client",
+          "controllers: { pkg:npm: '@telorun/mcp-client' }",
+          "schema:",
+          "  type: object",
+          "  properties: { url: { type: string } }",
+          "  required: [ url ]",
+          "",
+        ].join("\n"),
+      },
+      "std/ai@0.4.0": {
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata: { name: ai, namespace: std, version: 1.0.0 }",
+          "exports:",
+          "  kinds: [ ToolProvider, Tools, Agent ]",
+          "---",
+          "kind: Telo.Abstract",
+          "metadata: { name: ToolProvider }",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: Tools }",
+          "capability: Telo.Provider",
+          "extends: Self.ToolProvider",
+          "controllers: { pkg:npm: '@telorun/ai' }",
+          "schema: { type: object, additionalProperties: true }",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: Agent }",
+          "capability: Telo.Invocable",
+          "controllers: { pkg:npm: '@telorun/ai' }",
+          "schema:",
+          "  type: object",
+          "  properties:",
+          "    toolProviders:",
+          "      type: array",
+          "      items:",
+          "        type: object",
+          "        required: [ provider ]",
+          "        properties:",
+          "          provider:",
+          "            type: object",
+          '            x-telo-ref: "std/ai#ToolProvider"',
+          "",
+        ].join("\n"),
+      },
+      "std/ai-mcp@0.4.0": {
+        // Mirrors the PUBLISHED shape exactly: separate Telo.Import docs (not an
+        // inline `imports:` map), with the `---\n---` double separators the
+        // publish desugaring emits (empty docs between real ones).
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata: { name: ai-mcp, namespace: std, version: 0.4.0 }",
+          "exports:",
+          "  kinds: [ ToolProvider ]",
+          "---",
+          "---",
+          "kind: Telo.Import",
+          "metadata: { name: Ai }",
+          "source: std/ai@0.4.0",
+          "---",
+          "---",
+          "kind: Telo.Import",
+          "metadata: { name: Mcp }",
+          "source: std/mcp-client@0.3.1",
+          "---",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: ToolProvider }",
+          "capability: Telo.Mount",
+          "extends: Ai.ToolProvider",
+          "controllers: { pkg:npm: '@telorun/ai-mcp' }",
+          "schema:",
+          "  type: object",
+          "  properties:",
+          "    client:",
+          '      x-telo-ref: "std/mcp-client#Client"',
+          "  required: [ client ]",
+          "  additionalProperties: false",
+          "",
+        ].join("\n"),
+      },
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const registry = inMemoryRegistry(registryFiles);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
+    const diagnostics = analyzeWorkspace(workspace);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values()) {
+      for (const list of fileMap.values()) {
+        for (const d of list) all.push({ code: d.code, message: d.message });
+      }
+    }
+    for (const list of diagnostics.byFile.values()) {
+      for (const d of list) all.push({ code: d.code, message: d.message });
+    }
+
+    const mismatch = all.filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
+    expect(
+      mismatch,
+      `AiMcp.ToolProvider should be a known implementation of ai.ToolProvider; got: ${JSON.stringify(mismatch, null, 2)}`,
     ).toHaveLength(0);
   });
 
