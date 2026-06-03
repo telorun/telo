@@ -1,5 +1,18 @@
 # telo-editor
 
+## 0.6.0
+
+### Minor Changes
+
+- 10868cd: Add "Open in Telo Editor" support: launching the editor with a `?open=<url>` query parameter fetches a single manifest over HTTP (e.g. a GitHub raw URL), copies it into an in-browser virtual workspace under `/workspace/apps/<slug>/telo.yaml`, and opens it for local editing. If a module with the same slug already exists, the user is prompted to confirm an overwrite via an alert dialog. A toast confirms a successful load.
+
+### Patch Changes
+
+- 69a0a8d: Align the telo-editor's static-analysis projection with the CLI's import boundary. Extract `flattenForAnalyzer`'s local/foreign forwarding rule into a shared `selectModuleManifestsForAnalysis` helper so the editor and the CLI cannot drift, and have the editor apply it per closure: the closure root stays fully local while imported modules forward only their definitions/abstracts/imports plus `exports.resources` instances (flagged `forwardedExport`). The editor now also anchors a closure at every workspace-local module (not just Applications), so a library imported by an app is validated in its own scope instead of the consumer's. Fixes cross-module `!ref Alias.export` (e.g. a flat `targets` invoke step) reporting spurious `SCHEMA_VIOLATION` / `UNDEFINED_KIND` in the editor while passing `telo check`.
+- Updated dependencies [69a0a8d]
+  - @telorun/analyzer@0.17.0
+  - @telorun/ide-support@0.4.16
+
 ## 0.5.4
 
 ### Patch Changes
