@@ -77,6 +77,22 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
     }
   }
 
+  async rename(from: string, to: string): Promise<void> {
+    const fromKey = this.storageKey(from);
+    const toKey = this.storageKey(to);
+    // Directories are implicit (key prefixes); rewrite every key whose path is
+    // the source file or lives under the source directory.
+    for (const key of this.allKeys()) {
+      if (key === fromKey || key.startsWith(fromKey + "/")) {
+        const value = window.localStorage.getItem(key);
+        if (value === null) continue;
+        const nextKey = toKey + key.slice(fromKey.length);
+        window.localStorage.setItem(nextKey, value);
+        window.localStorage.removeItem(key);
+      }
+    }
+  }
+
   resolveRelative(base: string, relative: string): string {
     const resolved = pathResolve(base, relative);
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;

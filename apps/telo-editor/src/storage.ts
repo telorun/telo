@@ -1,4 +1,4 @@
-import type { AppSettings, EditorState, ViewId } from "./model";
+import type { AppSettings, EditorState, EditorTab, ViewId } from "./model";
 
 const KEY = "telo-editor-v2";
 const SETTINGS_KEY = "telo-editor-settings-v1";
@@ -6,7 +6,10 @@ const LEGACY_KEYS = ["telo-editor-v1"];
 
 const VALID_VIEWS: Set<string> = new Set<ViewId>([
   "topology",
-  "inventory",
+  "imports",
+  "definitions",
+  "resources",
+  "kinds",
   "source",
   "deployment",
 ]);
@@ -17,6 +20,18 @@ interface PersistedState {
   rootDir: string | null;
   activeModulePath: string | null;
   activeView?: string;
+  openTabs?: EditorTab[];
+  activeTabId?: string | null;
+  expandedDirs?: string[];
+}
+
+/** Runtime guard for a persisted tab — localStorage may hold corrupted or
+ *  hand-edited data that violates the type, so validate element shape before
+ *  trusting it. */
+function isValidTab(t: unknown): t is EditorTab {
+  if (typeof t !== "object" || t === null) return false;
+  const tab = t as { type?: unknown; path?: unknown };
+  return (tab.type === "module" || tab.type === "file") && typeof tab.path === "string";
 }
 
 export function saveState(state: EditorState): void {
@@ -37,6 +52,9 @@ export function saveState(state: EditorState): void {
       rootDir: state.workspace?.rootDir ?? prev?.rootDir ?? null,
       activeModulePath: state.activeModulePath,
       activeView: state.activeView,
+      openTabs: state.openTabs,
+      activeTabId: state.activeTabId,
+      expandedDirs: state.expandedDirs,
     };
     localStorage.setItem(KEY, JSON.stringify(persisted));
   } catch {
@@ -55,6 +73,11 @@ export function loadPersistedState(): PersistedState | null {
       activeModulePath: data?.activeModulePath ?? null,
       activeView:
         data?.activeView && VALID_VIEWS.has(data.activeView) ? data.activeView : "topology",
+      openTabs: Array.isArray(data?.openTabs) ? data.openTabs.filter(isValidTab) : [],
+      activeTabId: typeof data?.activeTabId === "string" ? data.activeTabId : null,
+      expandedDirs: Array.isArray(data?.expandedDirs)
+        ? data.expandedDirs.filter((d): d is string => typeof d === "string")
+        : [],
     };
   } catch {
     return null;

@@ -1,6 +1,9 @@
 import type { ModuleKind, ViewId } from "../../model";
+import { DefinitionsView } from "./definitions/DefinitionsView";
 import { DeploymentView } from "./deployment/DeploymentView";
-import { InventoryView } from "./inventory/InventoryView";
+import { ImportsView } from "./imports/ImportsView";
+import { KindsView } from "./kinds/KindsView";
+import { ResourcesView } from "./resources/ResourcesView";
 import { SourceView } from "./source/SourceView";
 import { TopologyView } from "./topology/TopologyView";
 import type { ViewProps } from "./types";
@@ -20,7 +23,10 @@ interface TabEntry {
 
 const VIEW_TABS: TabEntry[] = [
   { id: "topology", label: "Topology" },
-  { id: "inventory", label: "Inventory" },
+  { id: "imports", label: "Imports" },
+  { id: "definitions", label: "Definitions" },
+  { id: "resources", label: "Resources" },
+  { id: "kinds", label: "Kinds" },
   { id: "deployment", label: "Deployment", applicationOnly: true },
   { id: "source", label: "Source" },
 ];
@@ -58,7 +64,10 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
 
       <div className="flex flex-1 overflow-hidden">
         {renderedView === "topology" && <TopologyView {...viewProps} />}
-        {renderedView === "inventory" && <InventoryView {...viewProps} />}
+        {renderedView === "imports" && <ImportsView {...viewProps} />}
+        {renderedView === "definitions" && <DefinitionsView {...viewProps} />}
+        {renderedView === "resources" && <ResourcesView {...viewProps} />}
+        {renderedView === "kinds" && <KindsView {...viewProps} />}
         {renderedView === "source" && <SourceView {...viewProps} />}
         {renderedView === "deployment" && (
           <DeploymentView

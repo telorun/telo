@@ -14,17 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-function formatSubPath(workspace: Workspace | null, manifest: ParsedManifest | null): string {
-  if (!workspace) return "";
-  if (!manifest) return workspace.rootDir;
-  const root = workspace.rootDir.endsWith("/") ? workspace.rootDir : workspace.rootDir + "/";
-  if (manifest.filePath.startsWith(root)) {
-    return manifest.filePath.slice(root.length);
-  }
-  // Non-workspace module (e.g. transitively-loaded import) — show the raw path.
-  return manifest.filePath;
-}
-
 function formatRunTime(startedAt: number): string {
   return new Date(startedAt).toLocaleTimeString();
 }
@@ -64,7 +53,6 @@ export function TopBar({
   canRedo,
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
-  const subPath = formatSubPath(workspace, activeManifest);
   const diagState = useDiagnosticsState();
   const topBarSummary = activeManifest
     ? summarizeFiles(diagState, getModuleFiles(activeManifest))
@@ -84,9 +72,6 @@ export function TopBar({
           <>
             <span className="truncate text-zinc-700 dark:text-zinc-300">{label}</span>
             <DiagnosticBadge summary={topBarSummary} size="sm" stopPropagation={false} />
-            {subPath && (
-              <span className="truncate text-xs text-zinc-400 dark:text-zinc-600">{subPath}</span>
-            )}
           </>
         )}
       </div>

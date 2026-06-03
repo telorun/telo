@@ -91,6 +91,44 @@ export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
     await parent.removeEntry(parts[parts.length - 1], { recursive: true });
   }
 
+  // FSA has no native move, so copy the subtree (binary-safe via Blob) then
+  // delete the source.
+  async rename(from: string, to: string): Promise<void> {
+    const fromParts = this.toRelParts(from);
+    const toParts = this.toRelParts(to);
+    if (fromParts.length === 0) throw new Error(`Refusing to move workspace root`);
+    const parent = await this.resolveDir(fromParts.slice(0, -1));
+    const name = fromParts[fromParts.length - 1];
+    let isDir = false;
+    try {
+      await parent.getDirectoryHandle(name);
+      isDir = true;
+    } catch {
+      isDir = false;
+    }
+    await this.copyEntry(fromParts, toParts, isDir);
+    await this.delete(from);
+  }
+
+  private async copyEntry(fromParts: string[], toParts: string[], isDir: boolean): Promise<void> {
+    if (!isDir) {
+      const srcDir = await this.resolveDir(fromParts.slice(0, -1));
+      const srcHandle = await srcDir.getFileHandle(fromParts[fromParts.length - 1]);
+      const blob = await srcHandle.getFile();
+      const destDir = await this.resolveDir(toParts.slice(0, -1), { create: true });
+      const destHandle = await destDir.getFileHandle(toParts[toParts.length - 1], { create: true });
+      const writable = await destHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }
+    const srcDir = await this.resolveDir(fromParts);
+    await this.resolveDir(toParts, { create: true });
+    for await (const [name, handle] of srcDir.entries()) {
+      await this.copyEntry([...fromParts, name], [...toParts, name], handle.kind === "directory");
+    }
+  }
+
   resolveRelative(base: string, relative: string): string {
     const resolved = pathResolve(base, relative);
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;

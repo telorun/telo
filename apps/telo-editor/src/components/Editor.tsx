@@ -1,6 +1,7 @@
 import type { ManifestSource } from "@telorun/analyzer";
 import { makeTaggedSentinel } from "@telorun/templating";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { File as FileIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isModuleRootKind, moduleRootResource } from "../application-adapter";
 import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
@@ -8,6 +9,7 @@ import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
   addImportViaAst,
+  buildFileTree,
   buildRemoteImportPlan,
   classifyImport,
   clearManifestUrlParam,
@@ -34,11 +36,13 @@ import {
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
-import type { RemoteImportPlan } from "../loader";
+import type { FileNode, RemoteImportPlan } from "../loader";
+import { pathBasename, pathDirname, pathJoin } from "../loader/paths";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
 import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
+  EditorTab,
   ModuleKind,
   PortMapping,
   Selection,
@@ -46,6 +50,7 @@ import type {
   Workspace,
   WorkspaceAdapter,
 } from "../model";
+import { closeTab, findTab, neighborTab, upsertTab } from "../tabs";
 import { DEFAULT_SETTINGS } from "../model";
 import {
   readActiveEnvironment,
@@ -84,6 +89,9 @@ import {
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
+import { EditorTabs } from "./EditorTabs";
+import type { TabItem } from "./EditorTabs";
+import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
 import {
   setActiveRegistry,
@@ -101,6 +109,9 @@ import type { Range } from "@telorun/analyzer";
 const INITIAL_STATE: EditorState = {
   workspace: null,
   activeModulePath: null,
+  openTabs: [],
+  activeTabId: null,
+  expandedDirs: [],
   activeView: "topology",
   graphContext: null,
   selectedResource: null,
@@ -150,6 +161,84 @@ function defaultGraphContext(
   return { kind, name: module.metadata.name };
 }
 
+/** Activates a module: ensures a module tab exists, makes it the active tab,
+ *  and points the module context at it. Resets module-scoped canvas state only
+ *  when the active module actually changes, so re-activating an already-open
+ *  tab keeps the user's canvas focus. */
+function activateModuleState(s: EditorState, filePath: string): EditorState {
+  const moduleChanged = s.activeModulePath !== filePath;
+  const nextModule = s.workspace?.modules.get(filePath);
+  const activeView: ViewId =
+    s.activeView === "deployment" && nextModule?.kind !== "Application"
+      ? "topology"
+      : s.activeView;
+  return {
+    ...s,
+    activeModulePath: filePath,
+    activeView,
+    openTabs: upsertTab(s.openTabs, { type: "module", path: filePath }),
+    activeTabId: filePath,
+    graphContext: moduleChanged ? defaultGraphContext(s.workspace, filePath) : s.graphContext,
+    selectedResource: moduleChanged ? null : s.selectedResource,
+    panelStack: moduleChanged ? [] : s.panelStack,
+  };
+}
+
+/** Restores persisted tabs against a freshly-loaded workspace: drops module
+ *  tabs whose module no longer exists (file tabs are kept — the FileEditor
+ *  surfaces a missing file itself), ensures the active module has a tab, and
+ *  picks a valid active tab. */
+function restoreTabs(
+  workspace: Workspace,
+  persisted: { openTabs: EditorTab[]; activeTabId: string | null },
+  activeModulePath: string | null,
+): { openTabs: EditorTab[]; activeTabId: string | null } {
+  let openTabs = persisted.openTabs.filter(
+    (t) => t.type === "file" || workspace.modules.has(t.path),
+  );
+  if (activeModulePath && !openTabs.some((t) => t.type === "module" && t.path === activeModulePath)) {
+    openTabs = [...openTabs, { type: "module", path: activeModulePath }];
+  }
+  const activeTabId =
+    persisted.activeTabId && openTabs.some((t) => t.path === persisted.activeTabId)
+      ? persisted.activeTabId
+      : (activeModulePath ?? openTabs[0]?.path ?? null);
+  return { openTabs, activeTabId };
+}
+
+/** Whether a created / renamed / moved / deleted path could change module
+ *  discovery or parsing — a `telo.yaml` (any location), or a path that is (or
+ *  contains) a file currently tracked as part of a module. Used to decide
+ *  whether a file op needs a full workspace reload or just a tree refresh. */
+function affectsModuleStructure(workspace: Workspace, p: string): boolean {
+  const base = pathBasename(p);
+  if (base === "telo.yaml" || base === "telo.yml") return true;
+  const key = normalizePath(p);
+  for (const manifest of workspace.modules.values()) {
+    for (const f of getModuleFiles(manifest)) {
+      if (f === key || f.startsWith(key + "/")) return true;
+    }
+  }
+  return false;
+}
+
+/** Reconciles open tabs against a freshly-reloaded workspace: drops module
+ *  tabs whose module no longer exists, keeps file tabs, and repairs the active
+ *  tab / module pointers. Used after a structural file op reloads the
+ *  workspace. */
+function reconcileWorkspaceTabs(s: EditorState, reloaded: Workspace): EditorState {
+  const openTabs = s.openTabs.filter((t) => t.type === "file" || reloaded.modules.has(t.path));
+  let activeTabId = s.activeTabId;
+  if (activeTabId && !openTabs.some((t) => t.path === activeTabId)) {
+    activeTabId = openTabs[0]?.path ?? null;
+  }
+  const activeTab = openTabs.find((t) => t.path === activeTabId) ?? null;
+  let activeModulePath = s.activeModulePath;
+  if (activeTab?.type === "module") activeModulePath = activeTab.path;
+  else if (activeModulePath && !reloaded.modules.has(activeModulePath)) activeModulePath = null;
+  return { ...s, workspace: reloaded, openTabs, activeTabId, activeModulePath };
+}
+
 export function Editor() {
   const { state, setState, settings, setSettings, persistedHint } = useEditorPersistence(
     INITIAL_STATE,
@@ -168,6 +257,7 @@ export function Editor() {
     plan: RemoteImportPlan;
   } | null>(null);
   const [toast, setToast] = useState<{ title: string; description?: string } | null>(null);
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
 
   const manifestAdapterRef = useRef<ManifestSource | null>(null);
   const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
@@ -245,6 +335,8 @@ export function Editor() {
       ...INITIAL_STATE,
       workspace,
       activeModulePath: plan.rootDestPath,
+      openTabs: [{ type: "module", path: plan.rootDestPath }],
+      activeTabId: plan.rootDestPath,
       graphContext: defaultGraphContext(workspace, plan.rootDestPath),
       deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
     });
@@ -289,11 +381,19 @@ export function Editor() {
       persistedView === "deployment" && nextActiveModule?.kind !== "Application"
         ? "topology"
         : (persistedView ?? "topology");
+    const { openTabs, activeTabId } = restoreTabs(
+      workspace,
+      { openTabs: persistedHint.openTabs, activeTabId: persistedHint.activeTabId },
+      nextActiveModulePath,
+    );
     setState((s) => ({
       ...s,
       workspace,
       activeModulePath: nextActiveModulePath,
       activeView: nextActiveView,
+      openTabs,
+      activeTabId,
+      expandedDirs: persistedHint.expandedDirs,
       graphContext: defaultGraphContext(workspace, nextActiveModulePath),
       deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
     }));
@@ -348,6 +448,38 @@ export function Editor() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistedHint, state.workspace, settings, setState]);
+
+  // Rebuild the raw file tree when the workspace root changes (open / restore /
+  // remote-import). Keyed on rootDir, not the workspace object, so the common
+  // case of an in-place edit producing a new workspace object doesn't trigger a
+  // full disk re-walk on every keystroke. Structural file ops refresh the tree
+  // explicitly via `refreshFileTree`.
+  useEffect(() => {
+    const ws = state.workspace;
+    const adapter = workspaceAdapterRef.current;
+    if (!ws || !adapter) {
+      setFileTree([]);
+      return;
+    }
+    let cancelled = false;
+    buildFileTree(ws.rootDir, adapter)
+      .then((tree) => {
+        if (cancelled) return;
+        setFileTree(tree);
+        // Expand the top-level directories by default — but only when nothing is
+        // already expanded, so a restored (or user-collapsed) tree is preserved.
+        setState((s) => {
+          if (s.expandedDirs.length > 0) return s;
+          const topDirs = tree.filter((n) => n.isDirectory).map((n) => n.path);
+          return topDirs.length ? { ...s, expandedDirs: topDirs } : s;
+        });
+      })
+      .catch((err) => console.error("Failed to build file tree:", err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.workspace?.rootDir]);
 
   // Debounced analysis: re-analyze whenever the workspace changes
   useEffect(() => {
@@ -430,6 +562,8 @@ export function Editor() {
         ...INITIAL_STATE,
         workspace,
         activeModulePath: initialActivePath,
+        openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
+        activeTabId: initialActivePath,
         graphContext: defaultGraphContext(workspace, initialActivePath),
         deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
@@ -482,10 +616,13 @@ export function Editor() {
       ...s,
       workspace: updated,
       activeModulePath: newFilePath,
+      openTabs: upsertTab(s.openTabs, { type: "module", path: newFilePath }),
+      activeTabId: newFilePath,
       graphContext: null,
       selectedResource: null,
       panelStack: [],
     }));
+    void refreshFileTree(updated);
   }
 
   async function handleDeleteModule(filePath: string) {
@@ -494,19 +631,35 @@ export function Editor() {
     if (!workspace || !adapter) return;
     const updated = await deleteModule(workspace, filePath, adapter);
     setState((s) => {
+      const openTabs = closeTab(s.openTabs, filePath);
+      const wasActiveTab = s.activeTabId === filePath;
       const nextActive =
         s.activeModulePath === filePath
           ? pickInitialActiveModule(updated)
           : s.activeModulePath;
+      const moduleChanged = nextActive !== s.activeModulePath;
+      let finalTabs = openTabs;
+      let activeTabId = s.activeTabId;
+      if (wasActiveTab) {
+        if (nextActive) {
+          finalTabs = upsertTab(openTabs, { type: "module", path: nextActive });
+          activeTabId = nextActive;
+        } else {
+          activeTabId = openTabs[0]?.path ?? null;
+        }
+      }
       return {
         ...s,
         workspace: updated,
         activeModulePath: nextActive,
-        graphContext: nextActive === s.activeModulePath ? s.graphContext : null,
-        selectedResource: nextActive === s.activeModulePath ? s.selectedResource : null,
-        panelStack: nextActive === s.activeModulePath ? s.panelStack : [],
+        openTabs: finalTabs,
+        activeTabId,
+        graphContext: moduleChanged ? null : s.graphContext,
+        selectedResource: moduleChanged ? null : s.selectedResource,
+        panelStack: moduleChanged ? [] : s.panelStack,
       };
     });
+    void refreshFileTree(updated);
   }
 
   async function handleRunModule(filePath: string) {
@@ -733,21 +886,245 @@ export function Editor() {
   function handleOpenModule(filePath: string) {
     runContext.closeRunView();
     setSelection(null);
+    setState((s) => activateModuleState(s, filePath));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab + file navigation
+  // ---------------------------------------------------------------------------
+
+  /** Opens any workspace file. A module owner opens (or re-activates) its module
+   *  tab; a partial of a module opens the owner module's source view revealing
+   *  that file; any other file opens a raw Monaco file tab. */
+  function handleOpenFile(filePath: string) {
+    const workspace = state.workspace;
+    if (!workspace) return;
+    const key = normalizePath(filePath);
+
+    if (workspace.modules.has(key)) {
+      handleOpenModule(key);
+      return;
+    }
+
+    for (const [modulePath, manifest] of workspace.modules) {
+      if (getModuleFiles(manifest).includes(key)) {
+        runContext.closeRunView();
+        setSelection(null);
+        revealNonceRef.current += 1;
+        setState((s) => ({
+          ...activateModuleState(s, modulePath),
+          activeView: "source" as ViewId,
+          sourceRevealRequest: { filePath: key, nonce: revealNonceRef.current },
+        }));
+        return;
+      }
+    }
+
+    runContext.closeRunView();
+    setState((s) => ({
+      ...s,
+      openTabs: upsertTab(s.openTabs, { type: "file", path: key }),
+      activeTabId: key,
+    }));
+  }
+
+  function handleActivateTab(path: string) {
+    const tab = findTab(state.openTabs, path);
+    if (!tab) return;
+    if (tab.type === "module") {
+      handleOpenModule(path);
+      return;
+    }
+    runContext.closeRunView();
+    setState((s) => ({ ...s, activeTabId: path }));
+  }
+
+  function handleCloseTab(path: string) {
     setState((s) => {
-      const nextModule = s.workspace?.modules.get(filePath);
-      // Leaving the Deployment view behind when switching to a Library —
-      // the tab is hidden there so we pre-select a view that exists.
-      const activeView: ViewId =
-        s.activeView === "deployment" && nextModule?.kind !== "Application"
-          ? "topology"
-          : s.activeView;
+      const openTabs = closeTab(s.openTabs, path);
+      if (s.activeTabId !== path) return { ...s, openTabs };
+      const neighbor = neighborTab(s.openTabs, path);
+      if (neighbor?.type === "module") {
+        return { ...activateModuleState({ ...s, openTabs }, neighbor.path) };
+      }
+      return { ...s, openTabs, activeTabId: neighbor?.path ?? null };
+    });
+  }
+
+  function handleToggleDir(path: string) {
+    setState((s) => ({
+      ...s,
+      expandedDirs: s.expandedDirs.includes(path)
+        ? s.expandedDirs.filter((d) => d !== path)
+        : [...s.expandedDirs, path],
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Raw file operations (explorer)
+  // ---------------------------------------------------------------------------
+
+  const readFileCb = useCallback(
+    (p: string) => workspaceAdapterRef.current!.readFile(p),
+    [],
+  );
+  const saveFileCb = useCallback(
+    (p: string, text: string) => workspaceAdapterRef.current!.writeFile(p, text),
+    [],
+  );
+
+  /** Rebuilds the explorer tree from disk. Called after file ops (which mutate
+   *  disk without necessarily changing the workspace object). */
+  async function refreshFileTree(ws?: Workspace | null) {
+    const workspace = ws ?? state.workspace;
+    const adapter = workspaceAdapterRef.current;
+    if (!workspace || !adapter) return;
+    try {
+      setFileTree(await buildFileTree(workspace.rootDir, adapter));
+    } catch (err) {
+      console.error("Failed to build file tree:", err);
+    }
+  }
+
+  /** Re-scans + re-parses the workspace from disk. Run after a file op that can
+   *  change telo structure (a telo.yaml or included partial created / deleted /
+   *  renamed) so the Applications/Libraries view stays in sync. */
+  async function reloadWorkspace(): Promise<Workspace | null> {
+    const ws = state.workspace;
+    const adapter = workspaceAdapterRef.current;
+    const manifestAdapter = manifestAdapterRef.current;
+    if (!ws || !adapter || !manifestAdapter) return null;
+    return loadWorkspace(ws.rootDir, manifestAdapter, adapter, createRegistryAdapters(settings));
+  }
+
+  // After a file op: reload + re-parse the workspace only when one of the
+  // `affected` paths could change module structure (a telo.yaml, or a tracked
+  // module file); otherwise just rebuild the explorer tree. Avoids a full
+  // scanWorkspace on every non-telo create/rename/delete.
+  async function afterFileMutation(affected: string[]) {
+    const ws = state.workspace;
+    const structural = !!ws && affected.some((p) => affectsModuleStructure(ws, p));
+    try {
+      if (structural) {
+        const reloaded = await reloadWorkspace();
+        if (reloaded) setState((s) => reconcileWorkspaceTabs(s, reloaded));
+        await refreshFileTree(reloaded);
+      } else {
+        await refreshFileTree();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCreateFile(parentDir: string, name: string) {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    const path = pathJoin(parentDir, name);
+    try {
+      await adapter.writeFile(path, "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    await afterFileMutation([path]);
+    handleOpenFile(path);
+  }
+
+  async function handleCreateFolder(parentDir: string, name: string) {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    const path = pathJoin(parentDir, name);
+    try {
+      await adapter.createDir(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    setState((s) => ({
+      ...s,
+      expandedDirs: s.expandedDirs.includes(path) ? s.expandedDirs : [...s.expandedDirs, path],
+    }));
+    await afterFileMutation([path]);
+  }
+
+  async function handleRenamePath(path: string, newName: string) {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    const dest = pathJoin(pathDirname(path), newName);
+    if (dest === path) return;
+    try {
+      await adapter.rename(path, dest);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    remapPaths(path, dest);
+    await afterFileMutation([path, dest]);
+  }
+
+  async function handleMovePath(from: string, toDir: string) {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    if (toDir === pathDirname(from)) return;
+    // Refuse to move a directory into itself or a descendant.
+    if (toDir === from || toDir.startsWith(from + "/")) return;
+    const dest = pathJoin(toDir, pathBasename(from));
+    try {
+      await adapter.rename(from, dest);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    remapPaths(from, dest);
+    await afterFileMutation([from, dest]);
+  }
+
+  async function handleDeletePath(path: string) {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    if (!window.confirm(`Delete ${pathBasename(path)}? This cannot be undone.`)) return;
+    try {
+      await adapter.delete(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    closePathsUnder(path);
+    await afterFileMutation([path]);
+  }
+
+  // Rewrites open tabs / active path / expanded dirs after a file or directory
+  // moves from `from` to `dest` (covers the moved node and everything under it).
+  function remapPaths(from: string, dest: string) {
+    const remap = (p: string): string =>
+      p === from ? dest : p.startsWith(from + "/") ? dest + p.slice(from.length) : p;
+    setState((s) => ({
+      ...s,
+      openTabs: s.openTabs.map((t) => ({ ...t, path: remap(t.path) })),
+      activeTabId: s.activeTabId ? remap(s.activeTabId) : s.activeTabId,
+      activeModulePath: s.activeModulePath ? remap(s.activeModulePath) : s.activeModulePath,
+      expandedDirs: s.expandedDirs.map(remap),
+    }));
+  }
+
+  // Closes any tab whose file is `path` or lives under it (directory delete).
+  function closePathsUnder(path: string) {
+    const under = (p: string) => p === path || p.startsWith(path + "/");
+    setState((s) => {
+      const openTabs = s.openTabs.filter((t) => !under(t.path));
+      const activeTabId =
+        s.activeTabId && under(s.activeTabId)
+          ? (openTabs[0]?.path ?? null)
+          : s.activeTabId;
+      const activeModulePath =
+        s.activeModulePath && under(s.activeModulePath) ? null : s.activeModulePath;
       return {
         ...s,
-        activeModulePath: filePath,
-        activeView,
-        graphContext: defaultGraphContext(s.workspace, filePath),
-        selectedResource: null,
-        panelStack: [],
+        openTabs,
+        activeTabId,
+        activeModulePath,
+        expandedDirs: s.expandedDirs.filter((d) => !under(d)),
       };
     });
   }
@@ -809,12 +1186,15 @@ export function Editor() {
     }
     if (!ownerPath) ownerPath = state.activeModulePath;
     revealNonceRef.current += 1;
-    setState((s) => ({
-      ...s,
-      activeModulePath: ownerPath,
-      activeView: "source" as ViewId,
-      sourceRevealRequest: { filePath: normalized, range, nonce: revealNonceRef.current },
-    }));
+    const owner = ownerPath;
+    setState((s) => {
+      const base = owner ? activateModuleState(s, owner) : s;
+      return {
+        ...base,
+        activeView: "source" as ViewId,
+        sourceRevealRequest: { filePath: normalized, range, nonce: revealNonceRef.current },
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1121,6 +1501,27 @@ export function Editor() {
   // Render
   // ---------------------------------------------------------------------------
 
+  const activeTab = findTab(state.openTabs, state.activeTabId);
+  const expandedDirsSet = useMemo(() => new Set(state.expandedDirs), [state.expandedDirs]);
+  const tabItems: TabItem[] = state.openTabs.map((t) => {
+    const active = t.path === state.activeTabId;
+    if (t.type === "module") {
+      const m = state.workspace?.modules.get(t.path);
+      return {
+        path: t.path,
+        label: m?.metadata.name ?? pathBasename(t.path),
+        icon: <span className="text-zinc-400">{m?.kind === "Library" ? "□" : "▷"}</span>,
+        active,
+      };
+    }
+    return {
+      path: t.path,
+      label: pathBasename(t.path),
+      icon: <FileIcon className="size-3.5" />,
+      active,
+    };
+  });
+
   return (
     <DiagnosticsProvider
       navigate={navigateToDiagnostic}
@@ -1167,87 +1568,104 @@ export function Editor() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           workspace={state.workspace}
-          activeManifest={activeManifest}
           activeModulePath={state.activeModulePath}
-          selectedResource={state.selectedResource}
-          registryServers={settings.registryServers}
-          onSelectResource={handleSelectResource}
+          activeTabId={state.activeTabId}
+          fileTree={fileTree}
+          expandedDirs={expandedDirsSet}
+          onToggleDir={handleToggleDir}
+          onOpenFile={handleOpenFile}
+          onCreateFile={handleCreateFile}
+          onCreateFolder={handleCreateFolder}
+          onRenamePath={handleRenamePath}
+          onDeletePath={handleDeletePath}
+          onMovePath={handleMovePath}
           onOpenModule={handleOpenModule}
           onCreateModule={handleCreateModule}
           onDeleteModule={handleDeleteModule}
           onRunModule={handleRunModule}
-          onAddImport={handleAddImport}
-          onRemoveImport={handleRemoveImport}
-          onUpgradeImport={handleUpgradeImport}
         />
         {runContext.isRunViewOpen ? (
           <RunView />
+        ) : !state.workspace ? (
+          <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
         ) : (
-          <>
-            {!state.workspace ? (
-              <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
-            ) : state.workspace.modules.size === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
-                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  This workspace is empty
-                </p>
-                <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
-                  Add your first module using the <strong>+</strong> next to Applications or
-                  Libraries in the sidebar.
-                </p>
-              </div>
-            ) : viewData ? (
-              <ViewContainer
-                activeView={state.activeView}
-                onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
-                viewProps={{
-                  viewData,
-                  registry:
-                    (state.activeModulePath
-                      ? state.diagnostics.registryByFile.get(state.activeModulePath)
-                      : undefined) ?? null,
-                  selectedResource: state.selectedResource,
-                  graphContext: state.graphContext,
-                  onSelectResource: handleSelectResource,
-                  onNavigateResource: handleNavigateResource,
-                  onUpdateResource: handleUpdateResource,
-                  onDeleteResource: handleDeleteResource,
-                  onUpdateApplicationTargets: handleUpdateApplicationTargets,
-                  onCreateResource: () => setCreateResourceOpen(true),
-                  onSelect: handleSelect,
-                  onClearSelection: handleClearSelection,
-                  onSourceEdit: handleSourceEdit,
-                  deployment: {
-                    activeEnvironment: readActiveEnvironment(
-                      state.deploymentsByApp,
-                      state.activeModulePath,
-                    ),
-                    onSetEnvVars: handleSetDeploymentEnvVars,
-                    onSetPorts: handleSetDeploymentPorts,
-                  },
-                  revealRequest: state.sourceRevealRequest,
-                  canvasViewport: state.activeModulePath
-                    ? (state.viewportByModule[state.activeModulePath] ?? null)
-                    : null,
-                  onCanvasViewportChange: handleCanvasViewportChange,
-                }}
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
-                Select a module from the workspace tree.
-              </div>
-            )}
-            <DetailPanel
-              selectedResource={state.selectedResource}
-              graphContext={state.graphContext}
-              selection={selection}
-              viewData={viewData}
-              onUpdateResource={handleUpdateResource}
-              onSelectResource={handleSelectResource}
-              onSelect={handleSelect}
-              onNavigateResource={handleNavigateResource}
-            />
-          </>
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <EditorTabs items={tabItems} onActivate={handleActivateTab} onClose={handleCloseTab} />
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              {activeTab?.type === "file" ? (
+                <FileEditor
+                  key={activeTab.path}
+                  filePath={activeTab.path}
+                  readFile={readFileCb}
+                  saveFile={saveFileCb}
+                />
+              ) : activeTab?.type === "module" && viewData ? (
+                <>
+                  <ViewContainer
+                    activeView={state.activeView}
+                    onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
+                    viewProps={{
+                      viewData,
+                      registry:
+                        (state.activeModulePath
+                          ? state.diagnostics.registryByFile.get(state.activeModulePath)
+                          : undefined) ?? null,
+                      selectedResource: state.selectedResource,
+                      graphContext: state.graphContext,
+                      onSelectResource: handleSelectResource,
+                      onNavigateResource: handleNavigateResource,
+                      onUpdateResource: handleUpdateResource,
+                      onDeleteResource: handleDeleteResource,
+                      onUpdateApplicationTargets: handleUpdateApplicationTargets,
+                      onCreateResource: () => setCreateResourceOpen(true),
+                      registryServers: settings.registryServers,
+                      onAddImport: handleAddImport,
+                      onRemoveImport: handleRemoveImport,
+                      onUpgradeImport: handleUpgradeImport,
+                      onSelect: handleSelect,
+                      onClearSelection: handleClearSelection,
+                      onSourceEdit: handleSourceEdit,
+                      deployment: {
+                        activeEnvironment: readActiveEnvironment(
+                          state.deploymentsByApp,
+                          state.activeModulePath,
+                        ),
+                        onSetEnvVars: handleSetDeploymentEnvVars,
+                        onSetPorts: handleSetDeploymentPorts,
+                      },
+                      revealRequest: state.sourceRevealRequest,
+                      canvasViewport: state.activeModulePath
+                        ? (state.viewportByModule[state.activeModulePath] ?? null)
+                        : null,
+                      onCanvasViewportChange: handleCanvasViewportChange,
+                    }}
+                  />
+                  <DetailPanel
+                    selectedResource={state.selectedResource}
+                    graphContext={state.graphContext}
+                    selection={selection}
+                    viewData={viewData}
+                    onUpdateResource={handleUpdateResource}
+                    onSelectResource={handleSelectResource}
+                    onSelect={handleSelect}
+                    onNavigateResource={handleNavigateResource}
+                  />
+                </>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {state.workspace.modules.size === 0
+                      ? "This workspace has no modules yet"
+                      : "Nothing open"}
+                  </p>
+                  <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
+                    Open a file from the Explorer, or pick an Application or Library from the
+                    sidebar.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
       <SettingsModal

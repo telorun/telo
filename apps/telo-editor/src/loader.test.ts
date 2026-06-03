@@ -41,6 +41,7 @@ function stubAdapter(): WorkspaceAdapter & { writeFile: ReturnType<typeof vi.fn>
     listDir: vi.fn(async () => []),
     createDir: vi.fn(async () => {}),
     delete: vi.fn(async () => {}),
+    rename: vi.fn(async () => {}),
   };
 }
 

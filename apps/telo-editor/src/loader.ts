@@ -86,6 +86,8 @@ export {
   hasApplicationImporter,
   isWorkspaceModule,
 } from "./loader/queries";
+export { buildFileTree } from "./loader/file-tree";
+export type { FileNode } from "./loader/file-tree";
 
 // ---------------------------------------------------------------------------
 // Workspace scan

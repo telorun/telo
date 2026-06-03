@@ -48,6 +48,15 @@ function inMemoryAdapter(files: Record<string, string>) {
         if (k === path || k.startsWith(prefix)) map.delete(k);
       }
     },
+    async rename(from: string, to: string) {
+      const prefix = from + "/";
+      for (const k of [...map.keys()]) {
+        if (k === from || k.startsWith(prefix)) {
+          map.set(to + k.slice(from.length), map.get(k)!);
+          map.delete(k);
+        }
+      }
+    },
     resolveRelative(base: string, relative: string): string {
       if (relative.startsWith("/")) return relative;
       const baseDir = base.slice(0, base.lastIndexOf("/") + 1);
