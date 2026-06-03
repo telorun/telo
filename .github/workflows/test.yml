@@ -68,6 +68,20 @@ jobs:
           done
           exit $failed
 
+      - name: Disallow major version bumps in changie fragments
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-no-major-module-bump.mjs
+
+      - name: Check changie config is in sync with modules
+        run: |
+          node scripts/gen-changie-config.mjs
+          if [ -n "$(git status --porcelain .changie.yaml .changes)" ]; then
+            echo "::error::.changie.yaml / .changes is out of date. Run 'node scripts/gen-changie-config.mjs' and commit the result."
+            git status --porcelain .changie.yaml .changes
+            git --no-pager diff -- .changie.yaml
+            exit 1
+          fi
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml
 
