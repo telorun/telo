@@ -8,6 +8,7 @@ import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
   addImportViaAst,
+  buildRemoteImportPlan,
   classifyImport,
   clearManifestUrlParam,
   createModule,
@@ -15,11 +16,9 @@ import {
   createResourceViaAst,
   createVirtualWorkspaceAdapter,
   deleteModule,
-  fetchRemoteManifest,
   hasUnresolvedImports,
   isWorkspaceModule,
   loadWorkspace,
-  manifestExists,
   noopAdapter,
   normalizePath,
   openWorkspaceDirectory,
@@ -33,9 +32,9 @@ import {
   setResourceFields,
   upgradeImportViaAst,
   VIRTUAL_WORKSPACE_ROOT,
-  writeRemoteManifest,
+  writeRemoteImportPlan,
 } from "../loader";
-import type { RemoteManifest } from "../loader";
+import type { RemoteImportPlan } from "../loader";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
 import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
 import type {
@@ -162,11 +161,11 @@ export function Editor() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
-  // A remote manifest fetched from `?open=` whose destination already
-  // exists locally — held until the user confirms or cancels the overwrite.
+  // A resolved remote-open plan (root + same-origin relative cascade), held
+  // until the user confirms or cancels importing it into the workspace.
   const [pendingImport, setPendingImport] = useState<{
     adapter: ManifestSource & WorkspaceAdapter;
-    remote: RemoteManifest;
+    plan: RemoteImportPlan;
   } | null>(null);
   const [toast, setToast] = useState<{ title: string; description?: string } | null>(null);
 
@@ -226,14 +225,14 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Copies a fetched remote manifest into the virtual workspace, loads it, and
-  // makes it the active module. Shared by the initial import and the
-  // overwrite-confirm path. Does not manage the `loading` flag — callers do.
+  // Persists a resolved remote-open plan into the virtual workspace, loads it,
+  // and makes the root the active module. Does not manage the `loading` flag —
+  // callers do.
   async function finishRemoteImport(
     adapter: ManifestSource & WorkspaceAdapter,
-    remote: RemoteManifest,
+    plan: RemoteImportPlan,
   ) {
-    await writeRemoteManifest(adapter, remote);
+    await writeRemoteImportPlan(adapter, plan);
     manifestAdapterRef.current = adapter;
     workspaceAdapterRef.current = adapter;
     const workspace = await loadWorkspace(
@@ -245,13 +244,17 @@ export function Editor() {
     setState({
       ...INITIAL_STATE,
       workspace,
-      activeModulePath: remote.destPath,
-      graphContext: defaultGraphContext(workspace, remote.destPath),
+      activeModulePath: plan.rootDestPath,
+      graphContext: defaultGraphContext(workspace, plan.rootDestPath),
       deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
     });
+    const depCount = plan.files.length - 1;
     setToast({
-      title: "Manifest loaded",
-      description: `${remote.metadataName} is now editable locally.`,
+      title: "Imported into workspace",
+      description:
+        depCount > 0
+          ? `${plan.name} and ${depCount} dependenc${depCount === 1 ? "y" : "ies"} added.`
+          : `${plan.name} is now editable locally.`,
     });
   }
 
@@ -296,10 +299,10 @@ export function Editor() {
     }));
   }
 
-  // "Open in Telo Editor": when launched with `?open=<url>`, fetch the
-  // manifest and copy it into the virtual workspace. Takes precedence over the
-  // silent auto-restore below. If the destination already exists, defer to an
-  // overwrite confirmation. Runs once per mount.
+  // "Open in Telo Editor": when launched with `?open=<url>`, resolve the
+  // manifest and its same-origin relative cascade into an import plan and
+  // always surface it for confirmation before persisting. Takes precedence
+  // over the silent auto-restore below. Runs once per mount.
   useEffect(() => {
     if (remoteImportRef.current) return;
     const url = readManifestUrlParam(window.location.search);
@@ -313,13 +316,8 @@ export function Editor() {
     (async () => {
       try {
         const adapter = createVirtualWorkspaceAdapter();
-        const remote = await fetchRemoteManifest(url);
-        if (cancelled) return;
-        if (await manifestExists(adapter, remote.destPath)) {
-          if (!cancelled) setPendingImport({ adapter, remote });
-          return;
-        }
-        if (!cancelled) await finishRemoteImport(adapter, remote);
+        const plan = await buildRemoteImportPlan(url, adapter, createRegistryAdapters(settings));
+        if (!cancelled) setPendingImport({ adapter, plan });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -442,7 +440,7 @@ export function Editor() {
     }
   }
 
-  async function handleConfirmOverwrite() {
+  async function handleConfirmImport() {
     const pending = pendingImport;
     if (!pending) return;
     confirmingRef.current = true;
@@ -450,7 +448,7 @@ export function Editor() {
     setError(null);
     setLoading(true);
     try {
-      await finishRemoteImport(pending.adapter, pending.remote);
+      await finishRemoteImport(pending.adapter, pending.plan);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -458,7 +456,7 @@ export function Editor() {
     }
   }
 
-  // User declined the overwrite (Cancel / Escape). Abort the import and fall
+  // User declined the import (Cancel / Escape). Abort and fall
   // back to the last workspace the remote-import flow suppressed, so the editor
   // isn't left empty when one was restorable.
   function cancelRemoteImport() {
@@ -1276,22 +1274,80 @@ export function Editor() {
           cancelRemoteImport();
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Module already exists</AlertDialogTitle>
+            <AlertDialogTitle>Open in Telo Editor</AlertDialogTitle>
             <AlertDialogDescription>
-              A module named <strong>{pendingImport?.remote.slug}</strong> already exists in this
-              workspace. Overwrite it with the manifest fetched from{" "}
-              <span className="break-all">{pendingImport?.remote.url}</span>?
+              You are about to import this {pendingImport?.plan.kind === "Library" ? "library" : "application"} into your workspace:
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingImport && (
+            <div className="max-h-[50vh] space-y-3 overflow-auto text-sm">
+              <div>
+                <div className="font-medium">{pendingImport.plan.name}</div>
+                {pendingImport.plan.description && (
+                  <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                    {pendingImport.plan.description.trim()}
+                  </p>
+                )}
+              </div>
+              {pendingImport.plan.imports.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Imports
+                  </div>
+                  <ul className="mt-1 space-y-0.5">
+                    {pendingImport.plan.imports.map((imp) => (
+                      <li key={imp.name} className="break-all">
+                        <code>{imp.name}</code>: {imp.source}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Files to create
+                </div>
+                <ul className="mt-1 space-y-0.5">
+                  {pendingImport.plan.files.map((f) => (
+                    <li key={f.destPath} className="break-all">
+                      <code>
+                        {f.destPath.startsWith(`${VIRTUAL_WORKSPACE_ROOT}/`)
+                          ? f.destPath.slice(VIRTUAL_WORKSPACE_ROOT.length + 1)
+                          : f.destPath}
+                      </code>
+                      {f.exists && <span className="text-amber-600 dark:text-amber-400"> (overwrite)</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {pendingImport.plan.errors.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-destructive">
+                    Could not load
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-destructive">
+                    {pendingImport.plan.errors.map((e) => (
+                      <li key={e.url} className="break-all">
+                        <code>{e.url}</code> — {e.message}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    These dependencies will be missing from the imported workspace.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
-              onClick={() => void handleConfirmOverwrite()}
+              variant={pendingImport?.plan.files.some((f) => f.exists) ? "destructive" : "default"}
+              onClick={() => void handleConfirmImport()}
             >
-              Overwrite
+              {pendingImport?.plan.files.some((f) => f.exists) ? "Overwrite & import" : "Import"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

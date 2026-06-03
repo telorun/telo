@@ -4,7 +4,7 @@ metadata:
 imports:
   Http: ../modules/http-server
   TemplatingBasics:
-    source: ../examples/templated-api.yaml
+    source: ./__fixtures__/templated-api.yaml
     variables:
       port: 4444
       title: "Templating Basics"

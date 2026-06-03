@@ -68,17 +68,19 @@ export {
 } from "./loader/open";
 export type { OpenedWorkspace } from "./loader/open";
 export {
+  buildRemoteImportPlan,
   createVirtualWorkspaceAdapter,
   clearManifestUrlParam,
   fetchRemoteManifest,
   manifestExists,
   readManifestUrlParam,
   slugifyModuleName,
-  writeRemoteManifest,
+  workspacePathFor,
+  writeRemoteImportPlan,
   OPEN_PARAM,
   VIRTUAL_WORKSPACE_ROOT,
 } from "./loader/remote";
-export type { RemoteManifest } from "./loader/remote";
+export type { RemoteImportPlan, PlanFile, RemoteManifest } from "./loader/remote";
 export {
   getAvailableKinds,
   hasApplicationImporter,
@@ -185,7 +187,11 @@ export async function loadWorkspace(
   const canonicalByRawInput = new Map<string, string>();
   for (const parsed of modules.values()) {
     for (const imp of parsed.imports) {
-      if (imp.importKind === "local") continue;
+      // `local` imports normally point at a scanned `telo.yaml` module (already
+      // in `modules`, skipped by the has-check below). A local import that
+      // isn't scanned — e.g. a flat sibling file copied in by a remote-open
+      // cascade — is loaded here just like an external one, reading the file
+      // through the local adapter.
       const depPath = resolveDepPath(manifestAdapter, parsed.filePath, imp.source);
       if (modules.has(depPath)) continue;
       try {

@@ -3,6 +3,8 @@ import path from "node:path";
 import { parseAllDocuments } from "yaml";
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples";
+const GITHUB_BLOB_BASE = "https://github.com/telorun/telo/blob/main/examples";
+const EDITOR_BASE = "https://editor.telo.run";
 
 interface EnvBinding {
   envKey: string;
@@ -131,6 +133,8 @@ function scanDirectory(dir: string): ExampleEntry[] {
 function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
   const rel = path.relative(examplesRoot, entry.file).replace(/\\/g, "/");
   const sourceUrl = `${GITHUB_RAW_BASE}/${rel}`;
+  const blobUrl = `${GITHUB_BLOB_BASE}/${rel}`;
+  const editorUrl = `${EDITOR_BASE}/?open=${encodeURIComponent(sourceUrl)}`;
   const lines = [`### ${entry.name}`, ""];
   if (entry.description) {
     lines.push(entry.description, "");
@@ -138,7 +142,10 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
   lines.push(`\`\`\`sh title="${rel}"`);
   lines.push(`${formatEnvPrefix(entry.envBindings)}telo ${sourceUrl}`);
   lines.push(`\`\`\``);
-  lines.push("", `[View \`${rel}\` on GitHub →](${sourceUrl})`);
+  lines.push(
+    "",
+    `[Open in Telo Editor →](${editorUrl}) · [View \`${rel}\` on GitHub →](${blobUrl})`,
+  );
   return lines.join("\n");
 }
 

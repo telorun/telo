@@ -4,8 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Smallest possible runnable Telo application: imports `std/console` and
-    prints a single line via a flat `targets` invoke step — no `std/run`
-    import or `Run.Sequence` wrapper needed. Useful as a "does my setup work?"
+    prints a single line via a flat `targets` invoke step. Useful as a "does my setup work?"
     smoke test and as a starting skeleton for larger script-style manifests.
     Reach for `Run.Sequence` when a boot entry needs control flow, scopes, or
     a return value.

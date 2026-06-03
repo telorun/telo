@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 imports:
-  Http: ../modules/http-server
+  Http: std/http-server@0.6.1
   Templated: ./templated-api.yaml
 ---
 kind: Http.Server

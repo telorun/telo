@@ -4,9 +4,9 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a JavaScript script run from flat `targets`.
 imports:
-  Type: ../modules/type
-  JavaScript: ../modules/javascript
-  Console: ../modules/console
+  Type: std/type@0.2.1
+  JavaScript: std/javascript@0.4.1
+  Console: std/console@0.8.0
 targets:
   - name: Step1
     invoke: !ref MultiplyBy2
