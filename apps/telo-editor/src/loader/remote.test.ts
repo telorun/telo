@@ -26,6 +26,7 @@ function listDirAdapter(entriesByDir: Record<string, DirEntry[]>): WorkspaceAdap
     listDir: vi.fn(async (dir: string) => entriesByDir[dir] ?? []),
     createDir: vi.fn(async () => {}),
     delete: vi.fn(async () => {}),
+    rename: vi.fn(async () => {}),
   };
 }
 

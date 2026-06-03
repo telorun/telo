@@ -15,6 +15,7 @@ function stubAdapter(): WorkspaceAdapter {
     listDir: vi.fn(async () => []),
     createDir: vi.fn(async () => {}),
     delete: vi.fn(async () => {}),
+    rename: vi.fn(async () => {}),
   };
 }
 

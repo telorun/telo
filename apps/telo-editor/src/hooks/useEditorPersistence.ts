@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { AppSettings, EditorState, ViewId } from "../model";
+import type { AppSettings, EditorState, EditorTab, ViewId } from "../model";
 import { loadPersistedState, loadSettings, saveSettings, saveState } from "../storage";
 
 export interface PersistedEditorState {
   rootDir: string | null;
   activeModulePath: string | null;
   activeView: ViewId;
+  openTabs: EditorTab[];
+  activeTabId: string | null;
+  expandedDirs: string[];
 }
 
 interface UseEditorPersistenceResult {
@@ -44,6 +47,9 @@ export function useEditorPersistence(
         rootDir: saved.rootDir,
         activeModulePath: saved.activeModulePath,
         activeView: (saved.activeView ?? "topology") as ViewId,
+        openTabs: saved.openTabs ?? [],
+        activeTabId: saved.activeTabId ?? null,
+        expandedDirs: saved.expandedDirs ?? [],
       });
     }
 

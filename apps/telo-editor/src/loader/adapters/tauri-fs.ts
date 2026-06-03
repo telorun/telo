@@ -58,6 +58,15 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
     await remove(path, { recursive: true });
   }
 
+  async rename(from: string, to: string): Promise<void> {
+    const { rename, mkdir, exists } = await import("@tauri-apps/plugin-fs");
+    const dir = pathDirname(to);
+    if (dir && !(await exists(dir))) {
+      await mkdir(dir, { recursive: true });
+    }
+    await rename(from, to);
+  }
+
   resolveRelative(base: string, relative: string): string {
     const resolved = pathResolve(base, relative);
     if (!pathExtname(resolved)) return resolved + "/" + DEFAULT_MANIFEST_FILENAME;

@@ -167,6 +167,10 @@ export interface WorkspaceAdapter {
   createDir(path: string): Promise<void>;
   /** Delete a file or directory (recursive for directories). */
   delete(path: string): Promise<void>;
+  /** Move/rename a file or directory. Creates the destination's parent
+   *  directories if needed. Implemented natively per backend so directories
+   *  and binary files move losslessly. */
+  rename(from: string, to: string): Promise<void>;
 }
 
 export interface DirEntry {
@@ -174,7 +178,24 @@ export interface DirEntry {
   isDirectory: boolean;
 }
 
-export type ViewId = "topology" | "inventory" | "source" | "deployment";
+export type ViewId =
+  | "topology"
+  | "imports"
+  | "definitions"
+  | "resources"
+  | "kinds"
+  | "source"
+  | "deployment";
+
+/** An entry in the unified open-editors tab strip. A `module` tab hosts the
+ *  structured `ViewContainer` (topology/inventory/source/deployment) for a
+ *  module owner file; a `file` tab hosts a raw Monaco editor for any other
+ *  workspace file. `path` is the canonical file path and the tab's identity —
+ *  a telo.yaml always opens as a module tab, never a file tab, so the path is
+ *  an unambiguous key across both kinds. */
+export type EditorTab =
+  | { type: "module"; path: string }
+  | { type: "file"; path: string };
 
 /** Per-Application deployment configuration. Holds one or more named
  *  environments; v1 auto-creates a single `local` environment. Future work
@@ -221,7 +242,18 @@ export interface ModuleViewData {
 
 export interface EditorState {
   workspace: Workspace | null;
+  /** The module whose structured views and module-scoped sidebar sections
+   *  (Imports/Definitions) are active. Tracks the active tab when it is a
+   *  module tab; stays put (last module) while a file tab is focused. */
   activeModulePath: string | null;
+  /** Open-editors tab strip. The single selection surface for the center pane:
+   *  module tabs render `ViewContainer`, file tabs render the raw Monaco editor. */
+  openTabs: EditorTab[];
+  /** `path` of the active tab, or null when nothing is open. */
+  activeTabId: string | null;
+  /** Paths of expanded directories in the raw file explorer. Persisted so the
+   *  tree restores its open/closed shape across reloads. */
+  expandedDirs: string[];
   activeView: ViewId;
   /** The "canvas focus" resource in the active module — last resource the
    *  user navigated to in a topology/inventory view. Cleared when the active

@@ -351,16 +351,13 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
     const errorToShow = state?.parseError ?? file.parseError ?? null;
     return (
       <div className="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
-        <div className="flex h-8 shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
-          <span className="truncate text-xs text-zinc-500 dark:text-zinc-400" title={file.filePath}>
-            {file.filePath}
-          </span>
-          {errorToShow && (
+        {errorToShow && (
+          <div className="flex h-8 shrink-0 items-center justify-end border-b border-zinc-200 px-3 dark:border-zinc-800">
             <span className="truncate text-xs text-red-500 dark:text-red-400" title={errorToShow}>
               Parse error
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           <Editor
             key={file.filePath}

@@ -5,6 +5,7 @@ import type {
   ModuleDocument,
   ModuleViewData,
   PortMapping,
+  RegistryServer,
   Selection,
   SourceRevealRequest,
 } from "../../model";
@@ -29,6 +30,15 @@ export interface ViewProps {
   onUpdateApplicationTargets: (targets: string[]) => void;
   /** Opens the create-resource flow. Surfaced as a canvas action. */
   onCreateResource: () => void;
+  /** Registry servers — supplies the Imports view's add-import search and the
+   *  upgrade dropdown's version lookups. */
+  registryServers: RegistryServer[];
+  /** Adds an import to the active module (Imports view). */
+  onAddImport: (source: string, alias: string) => Promise<void>;
+  /** Removes an import from the active module (Imports view). */
+  onRemoveImport: (name: string) => void;
+  /** Re-points an import at a new source/version (Imports view upgrade). */
+  onUpgradeImport: (name: string, newSource: string) => Promise<void>;
   onSelect: (selection: Selection) => void;
   onClearSelection: () => void;
   /** Commit a source-view edit for one specific file in the active module.
