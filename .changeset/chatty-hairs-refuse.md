@@ -1,4 +1,0 @@
----
----
-
-Documentation and example changes

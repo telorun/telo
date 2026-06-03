@@ -1,4 +1,0 @@
-project: sql-repository
-kind: Added
-body: Initial publish of the SqlRepository CRUD handler library.
-time: 2026-06-03T14:55:53.180876127Z
