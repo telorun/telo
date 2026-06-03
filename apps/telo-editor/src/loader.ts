@@ -68,6 +68,18 @@ export {
 } from "./loader/open";
 export type { OpenedWorkspace } from "./loader/open";
 export {
+  createVirtualWorkspaceAdapter,
+  clearManifestUrlParam,
+  fetchRemoteManifest,
+  manifestExists,
+  readManifestUrlParam,
+  slugifyModuleName,
+  writeRemoteManifest,
+  OPEN_PARAM,
+  VIRTUAL_WORKSPACE_ROOT,
+} from "./loader/remote";
+export type { RemoteManifest } from "./loader/remote";
+export {
   getAvailableKinds,
   hasApplicationImporter,
   isWorkspaceModule,

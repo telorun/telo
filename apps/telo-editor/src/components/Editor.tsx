@@ -9,17 +9,22 @@ import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import {
   addImportViaAst,
   classifyImport,
+  clearManifestUrlParam,
   createModule,
   createRegistryAdapters,
   createResourceViaAst,
+  createVirtualWorkspaceAdapter,
   deleteModule,
+  fetchRemoteManifest,
   hasUnresolvedImports,
   isWorkspaceModule,
   loadWorkspace,
+  manifestExists,
   noopAdapter,
   normalizePath,
   openWorkspaceDirectory,
   persistWorkspaceModule,
+  readManifestUrlParam,
   rebuildManifestFromDocuments,
   reconcileImports,
   removeImportViaAst,
@@ -27,7 +32,10 @@ import {
   reopenWorkspaceAt,
   setResourceFields,
   upgradeImportViaAst,
+  VIRTUAL_WORKSPACE_ROOT,
+  writeRemoteManifest,
 } from "../loader";
+import type { RemoteManifest } from "../loader";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
 import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
 import type {
@@ -56,6 +64,24 @@ import {
   saveDeploymentsForWorkspace,
 } from "../storage-deployments";
 import { buildModuleViewData } from "../view-data";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "./ui/toast";
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { DetailPanel } from "./DetailPanel";
@@ -136,11 +162,22 @@ export function Editor() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
+  // A remote manifest fetched from `?open=` whose destination already
+  // exists locally — held until the user confirms or cancels the overwrite.
+  const [pendingImport, setPendingImport] = useState<{
+    adapter: ManifestSource & WorkspaceAdapter;
+    remote: RemoteManifest;
+  } | null>(null);
+  const [toast, setToast] = useState<{ title: string; description?: string } | null>(null);
 
   const manifestAdapterRef = useRef<ManifestSource | null>(null);
   const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestoredRef = useRef(false);
+  const remoteImportRef = useRef(false);
+  // Set while the overwrite dialog is closing because the user confirmed, so
+  // the close handler can skip the cancel fallback.
+  const confirmingRef = useRef(false);
   // History manager lives in state so (a) construction runs in an effect, not
   // during render, and (b) swapping when rootDir changes triggers a re-render.
   // `historyVersion` bumps on every recordEdit/undo/redo; `canUndo`/`canRedo`
@@ -189,6 +226,113 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Copies a fetched remote manifest into the virtual workspace, loads it, and
+  // makes it the active module. Shared by the initial import and the
+  // overwrite-confirm path. Does not manage the `loading` flag — callers do.
+  async function finishRemoteImport(
+    adapter: ManifestSource & WorkspaceAdapter,
+    remote: RemoteManifest,
+  ) {
+    await writeRemoteManifest(adapter, remote);
+    manifestAdapterRef.current = adapter;
+    workspaceAdapterRef.current = adapter;
+    const workspace = await loadWorkspace(
+      VIRTUAL_WORKSPACE_ROOT,
+      adapter,
+      adapter,
+      createRegistryAdapters(settings),
+    );
+    setState({
+      ...INITIAL_STATE,
+      workspace,
+      activeModulePath: remote.destPath,
+      graphContext: defaultGraphContext(workspace, remote.destPath),
+      deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
+    });
+    setToast({
+      title: "Manifest loaded",
+      description: `${remote.metadataName} is now editable locally.`,
+    });
+  }
+
+  // Re-attaches the last workspace from the persisted hint (Tauri filesystem /
+  // browser localStorage). Shared by the mount-time auto-restore and the
+  // overwrite-cancel fallback. `shouldAbort` lets the mount effect bail if it
+  // unmounts mid-load.
+  async function restoreLastWorkspace(shouldAbort?: () => boolean) {
+    if (!persistedHint?.rootDir) return;
+    const reopened = reopenWorkspaceAt(persistedHint.rootDir);
+    if (!reopened) return;
+    manifestAdapterRef.current = reopened.manifestAdapter;
+    workspaceAdapterRef.current = reopened.workspaceAdapter;
+    const workspace = await loadWorkspace(
+      reopened.rootDir,
+      reopened.manifestAdapter,
+      reopened.workspaceAdapter,
+      createRegistryAdapters(settings),
+    );
+    if (shouldAbort?.()) return;
+    const nextActiveModulePath =
+      persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
+        ? persistedHint.activeModulePath
+        : pickInitialActiveModule(workspace);
+    const nextActiveModule = nextActiveModulePath
+      ? workspace.modules.get(nextActiveModulePath)
+      : null;
+    // Deployment view only makes sense for Applications; if the persisted view
+    // is "deployment" and the active module is a Library, fall back to topology.
+    const persistedView = persistedHint.activeView;
+    const nextActiveView: ViewId =
+      persistedView === "deployment" && nextActiveModule?.kind !== "Application"
+        ? "topology"
+        : (persistedView ?? "topology");
+    setState((s) => ({
+      ...s,
+      workspace,
+      activeModulePath: nextActiveModulePath,
+      activeView: nextActiveView,
+      graphContext: defaultGraphContext(workspace, nextActiveModulePath),
+      deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
+    }));
+  }
+
+  // "Open in Telo Editor": when launched with `?open=<url>`, fetch the
+  // manifest and copy it into the virtual workspace. Takes precedence over the
+  // silent auto-restore below. If the destination already exists, defer to an
+  // overwrite confirmation. Runs once per mount.
+  useEffect(() => {
+    if (remoteImportRef.current) return;
+    const url = readManifestUrlParam(window.location.search);
+    if (!url) return;
+    remoteImportRef.current = true;
+    autoRestoredRef.current = true;
+    clearManifestUrlParam();
+    setError(null);
+    setLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const adapter = createVirtualWorkspaceAdapter();
+        const remote = await fetchRemoteManifest(url);
+        if (cancelled) return;
+        if (await manifestExists(adapter, remote.destPath)) {
+          if (!cancelled) setPendingImport({ adapter, remote });
+          return;
+        }
+        if (!cancelled) await finishRemoteImport(adapter, remote);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Runs once on mount; the guard ref prevents re-import on settings changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-restore the last workspace on mount, when the environment allows
   // re-attaching without a user gesture (Tauri filesystem, browser localStorage).
   // FSA can't silently re-attach — user sees the recent rootDir hint instead.
@@ -197,50 +341,14 @@ export function Editor() {
     if (!persistedHint?.rootDir) return;
     if (state.workspace) return;
     autoRestoredRef.current = true;
-    const reopened = reopenWorkspaceAt(persistedHint.rootDir);
-    if (!reopened) return;
     let cancelled = false;
-    (async () => {
-      try {
-        manifestAdapterRef.current = reopened.manifestAdapter;
-        workspaceAdapterRef.current = reopened.workspaceAdapter;
-        const workspace = await loadWorkspace(
-          reopened.rootDir,
-          reopened.manifestAdapter,
-          reopened.workspaceAdapter,
-          createRegistryAdapters(settings),
-        );
-        if (cancelled) return;
-        const nextActiveModulePath =
-          persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
-            ? persistedHint.activeModulePath
-            : pickInitialActiveModule(workspace);
-        const nextActiveModule = nextActiveModulePath
-          ? workspace.modules.get(nextActiveModulePath)
-          : null;
-        // Deployment view only makes sense for Applications; if the persisted
-        // view is "deployment" and the active module is a Library, fall back
-        // to topology — same pattern storage.ts already uses for unknown views.
-        const persistedView = persistedHint.activeView;
-        const nextActiveView: ViewId =
-          persistedView === "deployment" && nextActiveModule?.kind !== "Application"
-            ? "topology"
-            : (persistedView ?? "topology");
-        setState((s) => ({
-          ...s,
-          workspace,
-          activeModulePath: nextActiveModulePath,
-          activeView: nextActiveView,
-          graphContext: defaultGraphContext(workspace, nextActiveModulePath),
-          deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
-        }));
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
+    restoreLastWorkspace(() => cancelled).catch((err) => {
+      if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+    });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistedHint, state.workspace, settings, setState]);
 
   // Debounced analysis: re-analyze whenever the workspace changes
@@ -332,6 +440,34 @@ export function Editor() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleConfirmOverwrite() {
+    const pending = pendingImport;
+    if (!pending) return;
+    confirmingRef.current = true;
+    setPendingImport(null);
+    setError(null);
+    setLoading(true);
+    try {
+      await finishRemoteImport(pending.adapter, pending.remote);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // User declined the overwrite (Cancel / Escape). Abort the import and fall
+  // back to the last workspace the remote-import flow suppressed, so the editor
+  // isn't left empty when one was restorable.
+  function cancelRemoteImport() {
+    setPendingImport(null);
+    if (state.workspace) return;
+    setLoading(true);
+    restoreLastWorkspace()
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false));
   }
 
   // ---------------------------------------------------------------------------
@@ -1128,6 +1264,54 @@ export function Editor() {
         kinds={availableKinds}
         onCreate={handleCreateResource}
       />
+      <AlertDialog
+        open={pendingImport !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (confirmingRef.current) {
+            confirmingRef.current = false;
+            setPendingImport(null);
+            return;
+          }
+          cancelRemoteImport();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Module already exists</AlertDialogTitle>
+            <AlertDialogDescription>
+              A module named <strong>{pendingImport?.remote.slug}</strong> already exists in this
+              workspace. Overwrite it with the manifest fetched from{" "}
+              <span className="break-all">{pendingImport?.remote.url}</span>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void handleConfirmOverwrite()}
+            >
+              Overwrite
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <ToastProvider>
+        <Toast
+          open={toast !== null}
+          onOpenChange={(open) => {
+            if (!open) setToast(null);
+          }}
+          duration={6000}
+        >
+          <div className="grid gap-0.5">
+            <ToastTitle>{toast?.title}</ToastTitle>
+            {toast?.description && <ToastDescription>{toast.description}</ToastDescription>}
+          </div>
+          <ToastClose />
+        </Toast>
+        <ToastViewport />
+      </ToastProvider>
     </div>
     </DiagnosticsProvider>
   );
