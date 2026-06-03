@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Run by `changesets/action` as the `publish` script after the Version PR merges.
 // 1. `changeset publish` — publishes npm packages whose versions moved and pushes git tags.
-// 2. For each modules/<name>/telo.yaml that changed vs HEAD^, push it to the Telo registry
-//    via `telo publish --skip-controllers` (controllers were already built/published and
-//    PURLs synced by version-packages.mjs; this step only runs static analysis and PUTs the
-//    manifest to the registry).
+// 2. For each modules/<name>/telo.yaml whose own metadata.version moved vs HEAD^, push it to
+//    the Telo registry via `telo publish --skip-controllers` (controllers were already
+//    built/published and PURLs synced by version-packages.mjs; this step only runs static
+//    analysis and PUTs the manifest to the registry). The gate is the manifest's own
+//    metadata.version and nothing else — manifest-only modules (no controllers, no
+//    nodejs/package.json) publish on exactly the same footing as controller modules.
 //
 // Usage: node scripts/publish-packages.mjs
 // Env: TELO_REGISTRY (default: https://registry.telo.run)
@@ -26,21 +28,31 @@ function runLive(cmd) {
   execSync(cmd, { stdio: "inherit", cwd: ROOT });
 }
 
-function packageVersionAt(ref, pkgPath) {
+// metadata.version of the first YAML document, read from the file's content at a git ref.
+// Scoped to everything before the first `---` and to the `metadata:` block so a nested
+// Telo.Definition field named `version` can't match. Returns null when the file is absent at
+// that ref (newly added module) or declares no metadata.version.
+function manifestVersionAt(ref, yamlPath) {
+  let content;
   try {
-    const text = run(`git show ${ref}:${pkgPath}`);
-    return JSON.parse(text).version ?? null;
+    content = run(`git show ${ref}:${yamlPath}`);
   } catch {
     return null;
   }
+  const docEnd = content.search(/^---\s*$/m);
+  const firstDoc = docEnd === -1 ? content : content.slice(0, docEnd);
+  const metaMatch = firstDoc.match(/^metadata:\s*\n((?:[ \t]+.*\n?)+)/m);
+  if (!metaMatch) return null;
+  const versionMatch = metaMatch[1].match(/^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+)["']?[ \t]*$/m);
+  return versionMatch ? versionMatch[1] : null;
 }
 
 runLive("pnpm changeset publish");
 
-// Only push manifests whose matching @telorun/<name> package.json version actually moved
-// in HEAD^..HEAD. This gates registry pushes to real release commits — a non-release main
-// push that happens to touch a telo.yaml (typo fix, schema edit) won't trigger a republish
-// of an unchanged version.
+// Only push manifests whose own metadata.version actually moved in HEAD^..HEAD. This gates
+// registry pushes to real release commits — a non-release main push that happens to touch a
+// telo.yaml (typo fix, schema edit) won't trigger a republish of an unchanged version. A
+// newly added module (absent at HEAD^) publishes on its first commit.
 let diff;
 try {
   diff = run("git diff --name-only HEAD^ HEAD");
@@ -55,12 +67,14 @@ const changedYamls = diff
 
 const manifests = [];
 for (const f of changedYamls) {
-  const name = f.split("/")[1];
-  const pkgPath = `modules/${name}/nodejs/package.json`;
-  const before = packageVersionAt("HEAD^", pkgPath);
-  const after = packageVersionAt("HEAD", pkgPath);
-  if (!before || !after || before === after) {
-    console.log(`  skip ${f}: @telorun/${name} version unchanged (${before ?? "n/a"})`);
+  const before = manifestVersionAt("HEAD^", f);
+  const after = manifestVersionAt("HEAD", f);
+  if (!after) {
+    console.log(`  skip ${f}: no metadata.version`);
+    continue;
+  }
+  if (before === after) {
+    console.log(`  skip ${f}: metadata.version unchanged (${after})`);
     continue;
   }
   const abs = join(ROOT, f);

@@ -41,6 +41,14 @@ jobs:
       - name: Build workspace
         run: pnpm -r --if-present build
 
+      - name: Install changie
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSL https://github.com/miniscruff/changie/releases/download/v1.24.0/changie_1.24.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/bin" changie
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/changie" --version
+
       - name: Create Release PR or publish
         id: changesets
         uses: changesets/action@v1
@@ -54,6 +62,66 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_REGISTRY: ${{ vars.TELO_REGISTRY }}
           TELO_REGISTRY_TOKEN: ${{ secrets.TELO_REGISTRY_TOKEN }}
+
+  # Fallback for releases that touch zero npm packages (manifest-only / Rust-only modules):
+  # changesets/action never opens a Version PR for them, so module changie fragments have no
+  # changesets PR to ride. This job batches those fragments into a dedicated Module Release PR.
+  # Releases that DO include an npm changeset are handled entirely by `release` above, whose
+  # version step runs changie inline — so this job no-ops whenever npm changesets are pending.
+  module-release:
+    name: Module Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Decide whether to run
+        id: gate
+        run: |
+          changesets=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l)
+          fragments=$(find .changes/unreleased -maxdepth 1 \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | wc -l)
+          if [ "$fragments" -gt 0 ] && [ "$changesets" -eq 0 ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to do (fragments=$fragments, npm changesets=$changesets)."
+          fi
+
+      - name: Install changie
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSL https://github.com/miniscruff/changie/releases/download/v1.24.0/changie_1.24.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/bin" changie
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Batch module fragments
+        if: steps.gate.outputs.proceed == 'true'
+        run: node scripts/changie-release.mjs
+
+      - name: Open Module Release PR
+        if: steps.gate.outputs.proceed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: module-release/main
+          base: main
+          title: "chore(release): version modules"
+          commit-message: "chore(release): version modules"
+          body: |
+            Module manifest versions bumped from pending changie fragments
+            (`metadata.version` + per-module CHANGELOG). Merging publishes the
+            changed manifests to the Telo registry.
 
   docker:
     name: Publish release Docker images
