@@ -11,13 +11,13 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: ../modules/ai-openai
-  Ai: ../modules/ai
-  RecordStream: ../modules/record-stream
-  PlainText: ../modules/plain-text-codec
-  Console: ../modules/console
-  Run: ../modules/run
-  Sql: ../modules/sql
+  AiOpenai: std/ai-openai@0.4.0
+  Ai: std/ai@0.4.0
+  RecordStream: std/record-stream@0.5.1
+  PlainText: std/plain-text-codec@0.4.1
+  Console: std/console@0.8.0
+  Run: std/run@0.4.1
+  Sql: std/sql@0.5.1
 targets:
   - InitSchema
   - ChatLoop

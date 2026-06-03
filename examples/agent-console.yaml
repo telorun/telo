@@ -15,14 +15,14 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  AiOpenai: ../modules/ai-openai
-  Ai: ../modules/ai
-  AiMcp: ../modules/ai-mcp
-  Mcp: ../modules/mcp-client
-  Http: ../modules/http-client
-  Console: ../modules/console
-  Run: ../modules/run
-  Sql: ../modules/sql
+  AiOpenai: std/ai-openai@0.4.0
+  Ai: std/ai@0.4.0
+  AiMcp: std/ai-mcp@0.4.0
+  Mcp: std/mcp-client@0.3.1
+  Http: std/http-client@0.4.1
+  Console: std/console@0.8.0
+  Run: std/run@0.4.1
+  Sql: std/sql@0.5.1
 targets:
   - InitSchema
   - ChatLoop

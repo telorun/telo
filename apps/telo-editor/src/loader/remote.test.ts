@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DirEntry, WorkspaceAdapter } from "../model";
 import {
+  collectPlanFiles,
   fetchRemoteManifest,
   manifestExists,
   readManifestUrlParam,
   slugifyModuleName,
+  workspacePathFor,
 } from "./remote";
+
+function mod(source: string, text: string, partials: { source: string; text: string }[] = []) {
+  return [source, { owner: { source, text }, partials }] as const;
+}
 
 const APP_YAML = `kind: Telo.Application
 metadata:
@@ -135,5 +141,77 @@ describe("fetchRemoteManifest", () => {
   it("throws when metadata.name is missing", async () => {
     stubFetch(() => ({ text: async () => "kind: Telo.Application\nmetadata:\n  version: 1.0.0\n" }));
     await expect(fetchRemoteManifest("https://raw/x/a.yaml")).rejects.toThrow(/missing metadata.name/);
+  });
+});
+
+describe("workspacePathFor", () => {
+  const root = "https://h/a/b/root.yaml";
+  const dest = "/workspace/apps/slug/telo.yaml";
+
+  it("maps a sibling next to the root", () => {
+    expect(workspacePathFor(root, dest, "https://h/a/b/dep.yaml")).toBe(
+      "/workspace/apps/slug/dep.yaml",
+    );
+  });
+
+  it("maps a subdirectory module", () => {
+    expect(workspacePathFor(root, dest, "https://h/a/b/lib/telo.yaml")).toBe(
+      "/workspace/apps/slug/lib/telo.yaml",
+    );
+  });
+
+  it("maps a parent-directory dependency that stays inside the workspace", () => {
+    expect(workspacePathFor(root, dest, "https://h/a/shared.yaml")).toBe(
+      "/workspace/apps/shared.yaml",
+    );
+  });
+
+  it("throws when a dependency would escape the workspace", () => {
+    expect(() =>
+      workspacePathFor("https://h/a/b/c/d/root.yaml", dest, "https://h/x.yaml"),
+    ).toThrow(/outside the workspace/);
+  });
+});
+
+describe("collectPlanFiles", () => {
+  const root = "https://h/a/b/root.yaml";
+  const dest = "/workspace/apps/slug/telo.yaml";
+
+  it("maps the root and same-origin deps, root first", () => {
+    const files = collectPlanFiles(root, dest, [
+      mod("https://h/a/b/dep.yaml", "DEP"),
+      mod(root, "ROOT"),
+    ]);
+    expect(files[0]).toMatchObject({ isRoot: true, destPath: dest });
+    expect(files.map((f) => f.destPath)).toEqual([dest, "/workspace/apps/slug/dep.yaml"]);
+  });
+
+  it("skips cross-origin modules", () => {
+    const files = collectPlanFiles(root, dest, [
+      mod(root, "ROOT"),
+      mod("https://other/x.yaml", "X"),
+    ]);
+    expect(files.map((f) => f.url)).not.toContain("https://other/x.yaml");
+    expect(files).toHaveLength(1);
+  });
+
+  it("skips a cross-origin include partial of a same-origin module", () => {
+    const files = collectPlanFiles(root, dest, [
+      mod(root, "ROOT"),
+      mod("https://h/a/b/m.yaml", "M", [{ source: "https://evil/p.yaml", text: "P" }]),
+    ]);
+    const urls = files.map((f) => f.url);
+    expect(urls).toContain("https://h/a/b/m.yaml");
+    expect(urls).not.toContain("https://evil/p.yaml");
+  });
+
+  it("throws when two distinct sources map to the same workspace path", () => {
+    expect(() =>
+      collectPlanFiles(root, dest, [
+        mod(root, "ROOT"),
+        mod("https://h/a/b/dep.yaml?v=1", "A"),
+        mod("https://h/a/b/dep.yaml?v=2", "B"),
+      ]),
+    ).toThrow(/cannot import safely/);
   });
 });

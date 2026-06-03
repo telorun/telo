@@ -4,9 +4,9 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a Starlark script run from flat `targets`.
 imports:
-  Type: ../modules/type
-  Starlark: ../modules/starlark
-  Console: ../modules/console
+  Type: std/type@0.2.1
+  Starlark: std/starlark@0.4.1
+  Console: std/console@0.8.0
 targets:
   - name: Step1
     invoke: !ref ExampleStarlarkScript
