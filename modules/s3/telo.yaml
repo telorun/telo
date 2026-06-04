@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: s3
   namespace: std
-  version: 0.2.2
+  version: 0.3.0
 exports:
   kinds:
     - Bucket
@@ -16,7 +16,7 @@ metadata:
   name: Bucket
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-bucket
+  - pkg:npm/@telorun/s3@0.3.0?local_path=./nodejs#s3-bucket
 schema:
   type: object
   properties:
@@ -49,7 +49,7 @@ metadata:
   name: List
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-list
+  - pkg:npm/@telorun/s3@0.3.0?local_path=./nodejs#s3-list
 schema:
   type: object
   properties:
@@ -72,7 +72,7 @@ metadata:
   name: Put
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-put
+  - pkg:npm/@telorun/s3@0.3.0?local_path=./nodejs#s3-put
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -131,7 +131,7 @@ metadata:
   name: Get
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-get
+  - pkg:npm/@telorun/s3@0.3.0?local_path=./nodejs#s3-get
 throws:
   codes:
     ERR_NOT_FOUND:
@@ -193,7 +193,7 @@ metadata:
   name: Delete
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-delete
+  - pkg:npm/@telorun/s3@0.3.0?local_path=./nodejs#s3-delete
 throws:
   codes:
     ERR_INVALID_REFERENCE:

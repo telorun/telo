@@ -1,5 +1,11 @@
 # @telorun/s3
 
+## 0.3.0
+
+### Minor Changes
+
+- 030bfdd: Add `S3.Delete` (idempotent object delete by key), rounding the module out to a complete object-CRUD set. Widen `S3.Put`'s `body` to accept buffered binary (`Uint8Array`, e.g. the `bytes` from `Octet.Decoder`) in addition to a UTF-8 string.
+
 ## 0.2.2
 
 ### Patch Changes

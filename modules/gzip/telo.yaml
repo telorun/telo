@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: gzip
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Gzip codec — Uint8Array stream ↔ Uint8Array stream. Encoder wraps Node
     `zlib.createGzip()` (compress); Decoder wraps `zlib.createGunzip()`
@@ -21,7 +21,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:npm/@telorun/gzip@0.1.0?local_path=./nodejs#encoder
+  - pkg:npm/@telorun/gzip@0.2.0?local_path=./nodejs#encoder
 schema:
   type: object
   additionalProperties: false
@@ -37,7 +37,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:
-  - pkg:npm/@telorun/gzip@0.1.0?local_path=./nodejs#decoder
+  - pkg:npm/@telorun/gzip@0.2.0?local_path=./nodejs#decoder
 outputType:
   kind: Type.JsonSchema
   schema:
