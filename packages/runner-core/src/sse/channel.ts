@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { isTerminal, SessionEvictedError, type SessionRegistry } from "../session/registry.js";
+import { isTerminal } from "../contract.js";
+import { SessionEvictedError, type SessionRegistry } from "../session/registry.js";
 import type { BufferedEvent } from "../session/ring-buffer.js";
 
 const HEARTBEAT_MS = 20_000;

@@ -1,4 +1,4 @@
-import type { AvailabilityReport, ProbeConfig } from "../types.js";
+import type { AvailabilityReport, ProbeConfig } from "@telorun/runner-core";
 
 export interface ProbeDockerClient {
   ping(): Promise<unknown>;

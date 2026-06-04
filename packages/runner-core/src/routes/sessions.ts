@@ -2,23 +2,19 @@ import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
 
-import type { RunnerConfig } from "../config.js";
-import { spawnSession, stopContainer, type SessionDockerClient } from "../docker/run-session.js";
-import { BundleWorkdir, BundleWorkdirError, normalizeBundlePath } from "../session/bundle-workdir.js";
-import {
-  SessionLimitError,
-  type SessionRegistry,
-} from "../session/registry.js";
+import type { RunnerBackend } from "../backend.js";
+import { SessionStartError, type StartSessionRequest } from "../contract.js";
+import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
+import { SessionLimitError, type SessionRegistry } from "../session/registry.js";
 import { streamSessionEvents } from "../sse/channel.js";
-import { SessionStartError, type StartSessionRequest } from "../types.js";
 
 export interface SessionsRouteDeps {
-  docker: SessionDockerClient;
+  backend: RunnerBackend;
   registry: SessionRegistry;
-  runnerConfig: Pick<
-    RunnerConfig,
-    "bundleRoot" | "bundleVolume" | "childNetwork" | "corsOrigins"
-  >;
+  corsOrigins: string[] | "*";
+  /** The runner's own default registry URL, surfaced to the workload as
+   *  TELO_REGISTRY_URL when the request doesn't override it. */
+  defaultRegistryUrl?: string;
 }
 
 const startBodySchema = {
@@ -99,11 +95,11 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
         return;
       }
       entry.userStopped = true;
-      if (entry.container) {
+      if (entry.session) {
         try {
-          await stopContainer(entry.container);
+          await entry.session.stop();
         } catch (err) {
-          app.log.error({ err, sessionId: entry.sessionId }, "failed to stop container");
+          app.log.error({ err, sessionId: entry.sessionId }, "failed to stop session");
           reply.code(500).send({ error: "stop_failed", message: (err as Error).message });
           return;
         }
@@ -119,7 +115,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
           req,
           reply,
           sessionId: req.params.id,
-          corsOrigins: deps.runnerConfig.corsOrigins,
+          corsOrigins: deps.corsOrigins,
         }),
     );
   };
@@ -132,99 +128,69 @@ async function startSession(
   reply: FastifyReply,
 ): Promise<void> {
   const sessionId = randomUUID();
-  const containerName = `telo-run-${sessionId}`;
-  const workingDir = `/srv/${sessionId}`;
-
-  let bundleWorkdir: BundleWorkdir | null = null;
-  let entry: ReturnType<SessionRegistry["register"]> | null = null;
 
   let entryRelative: string;
   try {
-    // Same traversal guard as files[].relativePath — an entryRelativePath of
-    // `../foo` would make the spawned container execute a path outside its
-    // own session dir (still within the shared bundle volume, but readable
-    // peer-session files).
+    // Traversal guard for the entry path and every bundle file — a `../foo`
+    // would let the workload read or execute paths outside its session dir.
+    // Validated here (backend-neutral) so a bad path is a 400, not a backend
+    // 500, regardless of how the backend ultimately delivers the bundle.
     entryRelative = normalizeBundlePath(body.bundle.entryRelativePath);
+    for (const file of body.bundle.files) normalizeBundlePath(file.relativePath);
   } catch (err) {
-    if (err instanceof BundleWorkdirError) {
+    if (err instanceof BundlePathError) {
       reply.code(400).send({ error: "invalid_bundle", message: err.message });
       return;
     }
     throw err;
   }
 
+  let entry: ReturnType<SessionRegistry["register"]> | null = null;
   try {
     try {
-      bundleWorkdir = await BundleWorkdir.create(
-        deps.runnerConfig.bundleRoot,
-        sessionId,
-        body.bundle,
-      );
-    } catch (err) {
-      if (err instanceof BundleWorkdirError) {
-        reply.code(400).send({ error: "invalid_bundle", message: err.message });
-        return;
-      }
-      throw err;
-    }
-
-    try {
-      entry = deps.registry.register({ sessionId, containerName, bundleWorkdir });
+      entry = deps.registry.register({ sessionId });
     } catch (err) {
       if (err instanceof SessionLimitError) {
-        await bundleWorkdir.cleanup();
         reply.code(409).send({ error: "too_many_sessions", message: err.message });
         return;
       }
       throw err;
     }
 
-    // Surface a TELO_REGISTRY_URL to the spawned container so the telo CLI
-    // inside picks it up. Precedence: body.env explicit value > body.config.registryUrl
-    // (per-request override from the client) > runner's own TELO_REGISTRY_URL
-    // (compose-level default, e.g. pointing at an internal registry service).
-    // Trim client-supplied URLs so a stray whitespace/newline from an editor input
-    // doesn't flow into the container.
+    // Surface a TELO_REGISTRY_URL to the workload so the telo CLI inside picks
+    // it up. Precedence: body.env explicit value > body.config.registryUrl
+    // (per-request override) > runner's own default. Trim client-supplied URLs
+    // so stray whitespace from an editor input doesn't flow into the workload.
     const configRegistryUrl = body.config.registryUrl?.trim() || undefined;
-    const registryUrl = configRegistryUrl ?? process.env.TELO_REGISTRY_URL;
+    const registryUrl = configRegistryUrl ?? deps.defaultRegistryUrl;
     const sessionEnv =
       registryUrl && !("TELO_REGISTRY_URL" in body.env)
         ? { ...body.env, TELO_REGISTRY_URL: registryUrl }
         : body.env;
 
-    const { container, ptyInput } = await spawnSession({
-      docker: deps.docker,
+    const session = await deps.backend.start({
       sessionId,
-      containerName,
-      image: body.config.image,
-      pullPolicy: body.config.pullPolicy,
-      entryRelativePath: `./${entryRelative}`,
-      workingDir,
+      bundle: body.bundle,
+      entryRelativePath: entryRelative,
       env: sessionEnv,
       ports: body.ports ?? [],
-      bundleVolume: deps.runnerConfig.bundleVolume,
-      childNetwork: deps.runnerConfig.childNetwork,
-      onEvent: (event) => deps.registry.emit(sessionId, event),
-      onByteChunk: (chunk) => deps.registry.pushBytes(sessionId, chunk),
-      onPtyClosed: () => deps.registry.clearPtyInput(sessionId),
+      config: body.config,
+      onStatus: (status) => deps.registry.emit(sessionId, { type: "status", status }),
+      onOutput: (chunk) => deps.registry.pushBytes(sessionId, chunk),
       isUserStopped: () => entry?.userStopped ?? false,
     });
 
-    entry.container = container;
-    entry.ptyInput = ptyInput;
+    entry.session = session;
 
-    // Pre-start DELETE race: a DELETE received during spawnSession (e.g. while
-    // docker.pull was running) can't call container.kill() because the
-    // container didn't exist yet — it sets userStopped and returns 204. Now
-    // that spawn is done and the container is live, honor the earlier DELETE.
+    // Pre-start DELETE race: a DELETE received during backend.start (e.g. while
+    // an image pull was running) can't stop a workload that didn't exist yet —
+    // it sets userStopped and returns 204. Now that start is done and the
+    // workload is live, honor the earlier DELETE.
     if (entry.userStopped) {
       try {
-        await stopContainer(container);
+        await session.stop();
       } catch (err) {
-        app.log.warn(
-          { err, sessionId },
-          "failed to kill container after race with pre-start DELETE",
-        );
+        app.log.warn({ err, sessionId }, "failed to stop after race with pre-start DELETE");
       }
     }
 
@@ -235,13 +201,6 @@ async function startSession(
     });
   } catch (err) {
     if (entry) deps.registry.remove(entry.sessionId);
-    if (bundleWorkdir) {
-      try {
-        await bundleWorkdir.cleanup();
-      } catch (cleanupErr) {
-        app.log.error({ err: cleanupErr, sessionId }, "failed to clean up bundle workdir");
-      }
-    }
 
     if (err instanceof SessionStartError) {
       const statusCode = err.kind === "pull_failed" ? 502 : 503;

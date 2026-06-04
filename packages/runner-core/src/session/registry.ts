@@ -1,26 +1,22 @@
 import { EventEmitter } from "node:events";
 
-import type { BundleWorkdir } from "./bundle-workdir.js";
+import type { BackendSession } from "../backend.js";
+import { isTerminal, type RunEvent, type RunStatus } from "../contract.js";
 import { ByteRingBuffer, type BufferedBytes } from "./byte-ring-buffer.js";
 import { EventRingBuffer, type BufferedEvent } from "./ring-buffer.js";
-import type { SessionDockerContainer } from "../docker/run-session.js";
-import type { RunEvent, RunStatus } from "../types.js";
 
 export interface SessionEntry {
   readonly sessionId: string;
-  readonly containerName: string;
-  readonly bundleWorkdir: BundleWorkdir;
   readonly createdAt: Date;
   readonly buffer: EventRingBuffer;
   readonly byteBuffer: ByteRingBuffer;
   readonly emitter: EventEmitter;
   readonly byteEmitter: EventEmitter;
 
-  container: SessionDockerContainer | null;
-  /** Writable side of the hijacked attach duplex; bytes the client sends
-   *  over the WS land here. Null until `spawnSession` wires it up; goes back
-   *  to null only on container exit. */
-  ptyInput: NodeJS.WritableStream | null;
+  /** The live backend workload. Null until `start` resolves; the route writes
+   *  stdin / resize / stop through it. A backend's `writeStdin` is a no-op once
+   *  the workload has terminated, so callers need not null it on exit. */
+  session: BackendSession | null;
   status: RunStatus;
   exitedAt: Date | null;
   userStopped: boolean;
@@ -36,7 +32,7 @@ export interface RegistryDeps {
 const EVENT_EMITTED = "event";
 const BYTES_EMITTED = "chunk";
 
-/** Cap on a single buffered byte chunk. Without this, one huge container
+/** Cap on a single buffered byte chunk. Without this, one huge workload
  *  burst (`cat largefile`) could be admitted as one entry; the ring
  *  buffer's "retain at least one" invariant would then keep that one
  *  oversized entry resident regardless of `replayBufferBytes`. Splitting
@@ -72,11 +68,7 @@ export class SessionRegistry {
    * Creates a fresh registry entry. Callers are responsible for guarding against
    * duplicate insertion. Throws SessionLimitError if we're at capacity.
    */
-  register(args: {
-    sessionId: string;
-    containerName: string;
-    bundleWorkdir: BundleWorkdir;
-  }): SessionEntry {
+  register(args: { sessionId: string }): SessionEntry {
     if (this.sessions.size >= this.deps.maxSessions) {
       throw new SessionLimitError(
         `runner is at its configured max of ${this.deps.maxSessions} concurrent sessions`,
@@ -84,15 +76,12 @@ export class SessionRegistry {
     }
     const entry: SessionEntry = {
       sessionId: args.sessionId,
-      containerName: args.containerName,
-      bundleWorkdir: args.bundleWorkdir,
       createdAt: new Date(),
       buffer: new EventRingBuffer(this.deps.replayBufferBytes),
       byteBuffer: new ByteRingBuffer(this.deps.replayBufferBytes),
       emitter: new EventEmitter(),
       byteEmitter: new EventEmitter(),
-      container: null,
-      ptyInput: null,
+      session: null,
       status: { kind: "starting" },
       exitedAt: null,
       userStopped: false,
@@ -106,15 +95,6 @@ export class SessionRegistry {
     entry.byteEmitter.setMaxListeners(256);
     this.sessions.set(args.sessionId, entry);
     return entry;
-  }
-
-  /** Drops the ptyInput handle on a session entry. Called from the spawn
-   *  exit task once the container is gone — without this, the WS handler's
-   *  `if (!entry.ptyInput) return` short-circuit never fires and every user
-   *  keystroke takes the catch-fallthrough path. */
-  clearPtyInput(sessionId: string): void {
-    const entry = this.sessions.get(sessionId);
-    if (entry) entry.ptyInput = null;
   }
 
   pushBytes(sessionId: string, bytes: Buffer): BufferedBytes | undefined {
@@ -188,8 +168,4 @@ export class SessionRegistry {
     this.sessions.delete(sessionId);
     return true;
   }
-}
-
-export function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
 }

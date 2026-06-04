@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
 import { buildServer } from "../server.js";
-import type { SessionRegistry } from "../session/registry.js";
+import type { SessionRegistry } from "@telorun/runner-core";
 import type { FakeDocker } from "../test-helpers.js";
 import { makeFakeDocker, makeRunnerConfig } from "../test-helpers.js";
 
@@ -294,21 +294,20 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     ws.close();
   });
 
-  it("forwards binary frames into the session ptyInput stream", async () => {
+  it("forwards binary frames into the session stdin", async () => {
     h = await buildIoHarness();
-    // Wire a fake ptyInput on the session entry directly so we can observe writes.
+    // Wire a fake BackendSession on the entry directly so we can observe writes.
     const writes: Buffer[] = [];
     const entry = h.registry.get(h.sessionId);
     expect(entry).toBeDefined();
-    entry!.ptyInput = {
-      write(chunk: Buffer | string) {
-        writes.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        return true;
+    entry!.session = {
+      writeStdin(bytes: Uint8Array) {
+        writes.push(Buffer.from(bytes));
       },
-      end() {},
-      destroy() {},
-      // Stub minimal Writable surface area used by the WS handler.
-    } as unknown as NodeJS.WritableStream;
+      resize() {},
+      done: Promise.resolve(),
+      async stop() {},
+    };
 
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io`, {
       headers: wsHeaders(),
@@ -379,58 +378,44 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     expect(frames.map((f) => f.payload.toString())).toEqual(["you › "]);
   });
 
-  it("forwards resize control frames to container.resize after debounce", async () => {
+  it("forwards resize control frames to session.resize after debounce", async () => {
     h = await buildIoHarness();
     const entry = h.registry.get(h.sessionId);
     expect(entry).toBeDefined();
-    let called: { h: number; w: number } | null = null;
-    entry!.container = {
-      id: "fake",
-      async attach() {
-        throw new Error("not used in this test");
+    let called: { cols: number; rows: number } | null = null;
+    entry!.session = {
+      writeStdin() {},
+      resize(cols, rows) {
+        called = { cols, rows };
       },
-      async start() {},
-      async kill() {},
-      async wait() {
-        return { StatusCode: 0 } as { StatusCode: number };
-      },
-      async remove() {},
-      async resize(opts) {
-        called = opts;
-      },
+      done: Promise.resolve(),
+      async stop() {},
     };
 
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io`, {
       headers: wsHeaders(),
     });
     await waitForOpen(ws);
-    // Send several resize frames in quick succession; only the last should reach docker.
+    // Send several resize frames in quick succession; only the last should reach the backend.
     ws.send(JSON.stringify({ type: "resize", cols: 80, rows: 24 }));
     ws.send(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
     ws.send(JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
     await new Promise((r) => setTimeout(r, 120));
-    expect(called).toEqual({ h: 40, w: 120 });
+    expect(called).toEqual({ cols: 120, rows: 40 });
     ws.close();
   });
 
   it("clamps absurd resize values and rejects NaN", async () => {
     h = await buildIoHarness();
     const entry = h.registry.get(h.sessionId);
-    let called: { h: number; w: number } | null = null;
-    entry!.container = {
-      id: "fake",
-      async attach() {
-        throw new Error("not used");
+    let called: { cols: number; rows: number } | null = null;
+    entry!.session = {
+      writeStdin() {},
+      resize(cols, rows) {
+        called = { cols, rows };
       },
-      async start() {},
-      async kill() {},
-      async wait() {
-        return { StatusCode: 0 } as { StatusCode: number };
-      },
-      async remove() {},
-      async resize(opts) {
-        called = opts;
-      },
+      done: Promise.resolve(),
+      async stop() {},
     };
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io`, {
       headers: wsHeaders(),
@@ -445,7 +430,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     // Absurd values clamped to the upper bound (10_000).
     ws.send(JSON.stringify({ type: "resize", cols: Number.MAX_SAFE_INTEGER, rows: 99_999 }));
     await new Promise((r) => setTimeout(r, 80));
-    expect(called).toEqual({ h: 10_000, w: 10_000 });
+    expect(called).toEqual({ cols: 10_000, rows: 10_000 });
     ws.close();
   });
 });

@@ -1,0 +1,63 @@
+import type { BackendSession, BackendStartSpec, RunnerBackend } from "@telorun/runner-core";
+
+import { BundleWorkdir } from "./bundle-workdir.js";
+import { runProbe, type ProbeDockerClient } from "./probe.js";
+import { spawnDockerSession, type SessionDockerClient } from "./run-session.js";
+
+export interface DockerBackendDeps {
+  docker: SessionDockerClient & ProbeDockerClient;
+  bundleRoot: string;
+  bundleVolume: string;
+  childNetwork: string;
+}
+
+/**
+ * The docker `RunnerBackend`: delivers the bundle to a per-session directory on
+ * the shared volume, then spawns a sibling container and adapts its hijacked
+ * attach duplex onto `BackendSession`. Orphan cleanup is handled at boot by
+ * `sweepOrphanBundles` (containers are `--rm`'d by the daemon), so no
+ * `reapOrphans` here.
+ */
+export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
+  return {
+    async probe(config) {
+      return runProbe(
+        deps.docker,
+        { bundleVolume: deps.bundleVolume, childNetwork: deps.childNetwork },
+        config,
+      );
+    },
+
+    async start(spec: BackendStartSpec): Promise<BackendSession> {
+      const containerName = `telo-run-${spec.sessionId}`;
+      const workingDir = `/srv/${spec.sessionId}`;
+
+      let workdir: BundleWorkdir | null = null;
+      try {
+        workdir = await BundleWorkdir.create(deps.bundleRoot, spec.sessionId, spec.bundle);
+        return await spawnDockerSession({
+          docker: deps.docker,
+          containerName,
+          image: spec.config.image,
+          pullPolicy: spec.config.pullPolicy,
+          entryRelativePath: `./${spec.entryRelativePath}`,
+          workingDir,
+          env: spec.env,
+          ports: spec.ports,
+          bundleVolume: deps.bundleVolume,
+          childNetwork: deps.childNetwork,
+          onStatus: spec.onStatus,
+          onOutput: spec.onOutput,
+          isUserStopped: spec.isUserStopped,
+        });
+      } catch (err) {
+        if (workdir) {
+          await workdir.cleanup().catch(() => {
+            /* best-effort cleanup on start failure */
+          });
+        }
+        throw err;
+      }
+    },
+  };
+}

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BundleWorkdir, BundleWorkdirError } from "./bundle-workdir.js";
+import { BundlePathError } from "@telorun/runner-core";
+import { BundleWorkdir } from "./bundle-workdir.js";
 
 describe("BundleWorkdir", () => {
   let bundleRoot: string;
@@ -55,19 +56,10 @@ describe("BundleWorkdir", () => {
         entryRelativePath: "telo.yaml",
         files: [{ relativePath: "../escape.yaml", contents: "x" }],
       }),
-    ).rejects.toBeInstanceOf(BundleWorkdirError);
+    ).rejects.toBeInstanceOf(BundlePathError);
   });
 
-  it("rejects absolute bundle paths", async () => {
-    await expect(
-      BundleWorkdir.create(bundleRoot, "abc123", {
-        entryRelativePath: "telo.yaml",
-        files: [{ relativePath: "/etc/shadow", contents: "x" }],
-      }),
-    ).resolves.toBeInstanceOf(BundleWorkdir);
-    // leading slash is stripped by normalize; the file lands under sessionDir/etc/shadow,
-    // which is what we want — no escape, no privilege issues because we're still
-    // scoped to the sessionDir. Confirm it didn't escape.
+  it("strips leading slash and stays scoped to sessionDir", async () => {
     const wd = await BundleWorkdir.create(bundleRoot, "abc124", {
       entryRelativePath: "telo.yaml",
       files: [{ relativePath: "/inner/x.yaml", contents: "ok" }],
@@ -82,6 +74,6 @@ describe("BundleWorkdir", () => {
         entryRelativePath: "telo.yaml",
         files: [],
       }),
-    ).rejects.toBeInstanceOf(BundleWorkdirError);
+    ).rejects.toBeInstanceOf(BundlePathError);
   });
 });

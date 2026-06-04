@@ -1,4 +1,4 @@
-import type { RunEvent } from "../types.js";
+import type { RunEvent } from "../contract.js";
 
 export interface BufferedEvent {
   id: number;

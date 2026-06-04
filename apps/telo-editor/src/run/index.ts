@@ -28,6 +28,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { registry } from "./registry";
 import { tauriDockerAdapter } from "./adapters/tauri-docker/adapter";
 import { dockerApiAdapter } from "./adapters/docker-api/adapter";
+import { k8sAdapter } from "./adapters/k8s/adapter";
 
 /** Registers all built-in adapters with the registry exactly once.
  *  Called from the editor entry point; idempotent so re-mounting the
@@ -47,5 +48,10 @@ export function setupAdapters(): void {
   }
   if (!registry.get(dockerApiAdapter.id)) {
     registry.register(dockerApiAdapter);
+  }
+  // The k8s adapter is an HTTP client too — works in both Tauri and plain
+  // browser. It targets a k8s-runner or a Telo Cloud control plane.
+  if (!registry.get(k8sAdapter.id)) {
+    registry.register(k8sAdapter);
   }
 }

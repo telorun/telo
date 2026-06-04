@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 
 import { buildServer } from "../server.js";
-import { SessionRegistry } from "../session/registry.js";
+import { SessionRegistry } from "@telorun/runner-core";
 import {
   makeFakeDocker,
   makeRunnerConfig,
