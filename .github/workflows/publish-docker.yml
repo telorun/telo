@@ -4,7 +4,7 @@ name: Publish Docker Images
 #  * push:main        → dev images. The kernel image publishes sha-tagged
 #                       slim variants only (amd64-only) and does NOT mutate
 #                       `:latest`. Application artifacts (registry,
-#                       telo-runner) are not npm-gated, so they publish
+#                       docker-runner) are not npm-gated, so they publish
 #                       both `:latest` and `:sha-<short>` on every push.
 #  * workflow_call    → release images (semver-tagged, all variants, multi-arch).
 #                       Caller passes `published-packages` (the
@@ -16,6 +16,8 @@ on:
     branches: [main]
     paths:
       - "apps/docker-runner/**"
+      - "apps/k8s-runner/**"
+      - "packages/runner-core/**"
       - "apps/registry/**"
       - "modules/**"
       - "cli/**"
@@ -315,7 +317,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=registry
 
   runner:
-    name: Build telorun/telo-runner
+    name: Build telorun/docker-runner
     # `pnpm deploy --prod` resolves the workspace's `@telorun/sdk` peer from npm.
     # On the "chore(release): version packages" commit the workspace is already
     # bumped to a version that `publish.yml` is still publishing concurrently, so
@@ -345,7 +347,39 @@ jobs:
           target: production
           push: true
           tags: |
-            telorun/telo-runner:latest
-            telorun/telo-runner:sha-${{ needs.context.outputs.short-sha }}
+            telorun/docker-runner:latest
+            telorun/docker-runner:sha-${{ needs.context.outputs.short-sha }}
           cache-from: type=gha,scope=runner
           cache-to: type=gha,mode=max,scope=runner
+
+  k8s-runner:
+    name: Build telorun/k8s-runner
+    # Same gating as docker-runner: skip the version-packages release commit on
+    # the push path (workspace bumped but not yet published); build on the
+    # post-publish workflow_call path instead.
+    if: |
+      github.event_name == 'workflow_call' ||
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'chore(release): version packages'))
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push k8s-runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/k8s-runner/Dockerfile
+          target: production
+          push: true
+          tags: |
+            telorun/k8s-runner:latest
+            telorun/k8s-runner:sha-${{ needs.context.outputs.short-sha }}
+          cache-from: type=gha,scope=k8s-runner
+          cache-to: type=gha,mode=max,scope=k8s-runner

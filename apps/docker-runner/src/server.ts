@@ -1,16 +1,19 @@
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
-import cors from "@fastify/cors";
-import websocket from "@fastify/websocket";
+import type { FastifyBaseLogger } from "fastify";
+import {
+  buildServer as coreBuildServer,
+  stopAllSessions,
+  type ServerHandle,
+  type SessionRegistry,
+} from "@telorun/runner-core";
 
+import packageJson from "../package.json" with { type: "json" };
 import { loadRunnerConfig, RunnerConfigError, type RunnerConfig } from "./config.js";
 import { createDockerClient, type DockerClient } from "./docker/client.js";
-import { stopContainer, type SessionDockerClient } from "./docker/run-session.js";
-import { healthRoute } from "./routes/health.js";
-import { ioRoute } from "./routes/io.js";
-import { probeRoute } from "./routes/probe.js";
-import { sessionsRoute } from "./routes/sessions.js";
+import { createDockerBackend } from "./docker/backend.js";
+import type { SessionDockerClient } from "./docker/run-session.js";
 import { sweepOrphanBundles } from "./session/bundle-sweep.js";
-import { SessionRegistry } from "./session/registry.js";
+
+const VERSION: string = packageJson.version;
 
 export interface ServerDeps {
   docker: DockerClient & SessionDockerClient;
@@ -18,59 +21,21 @@ export interface ServerDeps {
   registry?: SessionRegistry;
 }
 
-export interface ServerHandle {
-  app: FastifyInstance;
-  registry: SessionRegistry;
-}
-
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
-  const app = Fastify({
-    logger: {
-      level: deps.runnerConfig.logLevel,
-    },
+  const backend = createDockerBackend({
+    docker: deps.docker,
+    bundleRoot: deps.runnerConfig.bundleRoot,
+    bundleVolume: deps.runnerConfig.bundleVolume,
+    childNetwork: deps.runnerConfig.childNetwork,
   });
 
-  // CORS: SSE and fetch from the editor's browser origin are cross-origin by
-  // default. The runner already sits behind no auth — a tab that can reach the
-  // port can drive it — so default to `*` and let operators narrow via
-  // RUNNER_CORS_ORIGINS when they have a specific origin in mind.
-  await app.register(cors, {
-    origin: deps.runnerConfig.corsOrigins,
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+  return coreBuildServer({
+    backend,
+    config: deps.runnerConfig,
+    version: VERSION,
+    defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
+    registry: deps.registry,
   });
-
-  await app.register(websocket);
-
-  const registry =
-    deps.registry ??
-    new SessionRegistry({
-      maxSessions: deps.runnerConfig.maxSessions,
-      exitTtlMs: deps.runnerConfig.exitTtlMs,
-      replayBufferBytes: deps.runnerConfig.replayBufferBytes,
-    });
-
-  await app.register(healthRoute);
-  await app.register(
-    probeRoute({
-      docker: deps.docker,
-      runnerConfig: deps.runnerConfig,
-    }),
-  );
-  await app.register(
-    sessionsRoute({
-      docker: deps.docker,
-      registry,
-      runnerConfig: deps.runnerConfig,
-    }),
-  );
-  await app.register(
-    ioRoute({
-      registry,
-      runnerConfig: deps.runnerConfig,
-    }),
-  );
-
-  return { app, registry };
 }
 
 export async function verifyBootState(
@@ -115,26 +80,6 @@ export async function verifyBootState(
   return "ok";
 }
 
-async function killLiveSessions(
-  registry: SessionRegistry,
-  log: Pick<FastifyBaseLogger, "info" | "warn">,
-): Promise<void> {
-  const live = registry.list().filter((e) => e.container !== null && e.exitedAt === null);
-  if (live.length === 0) return;
-  log.info({ count: live.length }, "stopping live sessions before shutdown");
-  await Promise.all(
-    live.map(async (entry) => {
-      if (!entry.container) return;
-      entry.userStopped = true;
-      try {
-        await stopContainer(entry.container);
-      } catch (err) {
-        log.warn({ err, sessionId: entry.sessionId }, "failed to stop session during shutdown");
-      }
-    }),
-  );
-}
-
 async function main(): Promise<void> {
   let runnerConfig: RunnerConfig;
   try {
@@ -168,21 +113,12 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, "shutting down");
-    // Order matters. Three phases, because an in-flight POST /v1/sessions
-    // (e.g. mid-pull) has a registry entry but no container yet; naive
-    // killLiveSessions would skip it, app.close() would then finish the
-    // spawn, and the freshly-created container would leak past process exit.
-    //
-    //   1. Mark every live entry as userStopped. Entries mid-spawn trigger
-    //      the pre-start race fix in startSession and kill their container
-    //      as soon as it materializes.
-    //   2. app.close() drains in-flight requests (including the spawns from
-    //      step 1) and stops accepting new ones.
-    //   3. killLiveSessions mops up sessions that were already wired before
-    //      shutdown started.
+    // Mark every live entry userStopped first so an in-flight POST /v1/sessions
+    // (e.g. mid-pull) kills its workload as soon as it materializes; then drain
+    // in-flight requests; then mop up sessions wired before shutdown started.
     for (const entry of registry.list()) entry.userStopped = true;
     await app.close();
-    await killLiveSessions(registry, app.log);
+    await stopAllSessions(registry, app.log);
     process.exit(0);
   };
 

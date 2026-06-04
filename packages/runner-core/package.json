@@ -1,11 +1,10 @@
 {
-  "name": "@telorun/docker-runner",
-  "version": "0.3.0",
+  "name": "@telorun/runner-core",
+  "version": "0.0.0",
   "private": true,
-  "description": "Telo Docker Runner - HTTP service that runs Telo Applications in Docker containers on the host daemon.",
+  "description": "Backend-neutral core for Telo runners: the /v1 session contract, the RunnerBackend interface, the session registry, SSE/byte ring buffers, and bundle handling. Shared by docker-runner and k8s-runner.",
   "keywords": [
     "telo",
-    "docker",
     "runner"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
@@ -13,30 +12,30 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
-    "directory": "apps/docker-runner"
+    "directory": "packages/runner-core"
   },
   "type": "module",
-  "main": "./dist/server.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
     "@fastify/websocket": "^11.0.1",
-    "dockerode": "^4.0.7",
-    "fastify": "^5.7.2",
-    "pino": "^9.5.0",
-    "@telorun/runner-core": "workspace:*"
+    "fastify": "^5.7.2"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.43",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.13",
-    "tsx": "^4.19.2",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8",
     "ws": "^8.18.0"

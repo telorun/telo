@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+spec:
+  # Single replica is REQUIRED — the session registry is in-memory and the
+  # runner reaps orphaned pods on boot; two replicas would double-manage pods.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "telo-k8s-runner.name" . }}
+  template:
+    metadata:
+      labels:
+        {{- include "telo-k8s-runner.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "telo-k8s-runner.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The runner holds the cluster API credentials — it is the highest-value
+          # target, so it gets the same container hardening as session pods.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          ports:
+            - containerPort: {{ .Values.runner.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.runner.port }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.runner.logLevel }}"
+            - name: RUNNER_MAX_SESSIONS
+              value: "{{ .Values.runner.maxSessions }}"
+            - name: RUNNER_SELF_URL
+              value: {{ include "telo-k8s-runner.selfUrl" . | quote }}
+            - name: RUNNER_SESSION_NAMESPACE
+              value: {{ .Values.sessionNamespace | quote }}
+            - name: RUNNER_IMAGE
+              value: {{ .Values.session.image | quote }}
+            - name: RUNNER_INIT_IMAGE
+              value: {{ .Values.session.initImage | quote }}
+            - name: RUNNER_CACHE_ROOT
+              value: {{ .Values.session.cacheRoot | quote }}
+            {{- if .Values.session.runtimeClass }}
+            - name: RUNNER_RUNTIME_CLASS
+              value: {{ .Values.session.runtimeClass | quote }}
+            {{- end }}
+            {{- if .Values.ingress.baseDomain }}
+            - name: RUNNER_INGRESS_BASE_DOMAIN
+              value: {{ .Values.ingress.baseDomain | quote }}
+            {{- end }}
+            {{- if .Values.ingress.className }}
+            - name: RUNNER_INGRESS_CLASS
+              value: {{ .Values.ingress.className | quote }}
+            {{- end }}
+            - name: RUNNER_MAX_CPU
+              value: {{ .Values.limits.maxCpu | quote }}
+            - name: RUNNER_MAX_MEMORY
+              value: {{ .Values.limits.maxMemory | quote }}
+            - name: RUNNER_MAX_TTL_SECONDS
+              value: "{{ .Values.limits.maxTtlSeconds }}"
+            - name: RUNNER_MAX_EPHEMERAL_STORAGE
+              value: {{ .Values.limits.maxEphemeralStorage | quote }}
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: {{ .Values.runner.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: {{ .Values.runner.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 20
+      volumes:
+        # Writable scratch so readOnlyRootFilesystem doesn't break the runtime.
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "telo-k8s-runner.name" . }}
+  ports:
+    - name: http
+      port: {{ .Values.runner.port }}
+      targetPort: {{ .Values.runner.port }}

@@ -1,0 +1,90 @@
+# Telo Kubernetes Runner — default values.
+#
+# The runner is a DUMB executor: it has no auth, no per-IP concurrency, and no
+# rate limiting. Do NOT expose it directly to anonymous internet traffic — front
+# it with the Telo Cloud control plane (or equivalent abuse controls). Standalone
+# it is safe only on a trusted/internal network.
+
+image:
+  repository: telorun/k8s-runner
+  # Pin a digest (repository@sha256:...) in production. With a floating `latest`
+  # tag, pullPolicy stays Always so a security fix is actually picked up on
+  # restart rather than serving a stale cached image.
+  tag: latest
+  pullPolicy: Always
+
+# Namespace the runner Deployment/Service/RBAC live in.
+runnerNamespace: telo-runner
+# Namespace session Pods/Services/Ingresses/Jobs land in (baseline PSS).
+sessionNamespace: telo-sessions
+# Create the namespaces from this chart. Disable if managed elsewhere.
+createNamespaces: true
+
+runner:
+  # replicas is intentionally not exposed: it MUST be 1 (the session registry is
+  # in-memory and the runner reaps orphaned pods on boot by label; two replicas
+  # would double-manage pods). The Deployment hard-codes replicas: 1.
+  port: 8062
+  logLevel: info
+  maxSessions: 8
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+# HARD CEILINGS for every session. Requests may ask for less, never more
+# (min(requested, ceiling)). For an anonymous-tier runner these ARE the policy.
+limits:
+  maxCpu: "50m"
+  maxMemory: "100Mi"
+  maxTtlSeconds: 3600
+  maxEphemeralStorage: "512Mi"
+
+session:
+  # Image spawned for each run.
+  image: "telorun/node:latest-slim"
+  # Small image for the bundle-fetch initContainer (needs wget + tar).
+  initImage: "busybox:stable"
+  # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
+  runtimeClass: ""
+  # Reserved for a future shared `.telo` dependency cache (trusted build path).
+  # Today session pods use a per-pod cache (emptyDir); this value is not mounted.
+  cacheRoot: "/var/lib/telo-cache"
+
+# Per-session ingress. When baseDomain is empty the runner is logs-only.
+# Requires a wildcard DNS record + wildcard TLS cert + an ingress controller.
+ingress:
+  baseDomain: ""
+  className: ""
+  # Namespace the ingress controller runs in. Set when baseDomain is set so the
+  # session NetworkPolicy admits the controller's traffic (e.g. ingress-nginx).
+  controllerNamespace: ""
+
+# DoS backstop on the session namespace.
+resourceQuota:
+  enabled: true
+  hard:
+    pods: "32"
+    limits.cpu: "4"
+    limits.memory: "8Gi"
+    requests.cpu: "2"
+    requests.memory: "4Gi"
+
+# Session-pod network policy. This is NOT default-deny egress yet — until a
+# trusted build path exists, sessions resolve their own deps in-pod and still
+# need broad egress. The policy isolates pod-to-pod traffic and blocks the
+# configured CIDRs (cloud metadata + RFC1918); a true registry allowlist needs a
+# CNI with FQDN policy (Cilium) or an egress proxy (core NetworkPolicy is CIDR-only).
+networkPolicy:
+  enabled: true
+  # Namespace running the cluster DNS service (CoreDNS); DNS egress is scoped here.
+  dnsNamespace: kube-system
+  # CIDRs the session pods may NOT reach (cluster-internal, RFC1918, metadata).
+  blockedCidrs:
+    - "169.254.169.254/32" # cloud metadata endpoint
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"

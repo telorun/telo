@@ -1,3 +1,10 @@
+/**
+ * The backend-neutral `/v1` session contract. Every field here is shared by
+ * the docker and kubernetes backends and travels over the HTTP+SSE wire to the
+ * editor adapter. Backend-specific concerns (how a container/pod is spawned,
+ * how the bundle is delivered) live behind the `RunnerBackend` interface.
+ */
+
 export type PullPolicy = "missing" | "always" | "never";
 
 export interface ProbeConfig {
@@ -33,13 +40,20 @@ export interface PortMapping {
   protocol: PortProtocol;
 }
 
-/** Sent on the wire as part of `RunStatus.running`. The runner does not know
- *  the hostname clients use to reach it, so `host` is emitted empty and the
- *  client adapter fills it from its own baseUrl before surfacing to the UI. */
+/**
+ * Announced on `RunStatus.running`. `host`/`port` describe a directly-dialable
+ * endpoint (docker host-port publish); `url` carries a fully-qualified address
+ * for backends that front the workload with a proxy/ingress (k8s per-session
+ * ingress), where a bare host:port is not reachable. The client adapter fills an
+ * empty `host` from its own baseUrl — the runner does not know the hostname the
+ * client used to reach it.
+ */
 export interface RunnerEndpoint {
   host: string;
   port: number;
   protocol: PortProtocol;
+  /** Fully-qualified URL when the endpoint is fronted by a proxy/ingress. */
+  url?: string;
 }
 
 export interface StartSessionRequest {
@@ -61,6 +75,15 @@ export type RunEvent =
   | { type: "stderr"; chunk: string }
   | { type: "status"; status: RunStatus };
 
+export function isTerminal(status: RunStatus): boolean {
+  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
+}
+
+/**
+ * Stages a session start can fail at. The docker/k8s backends share the
+ * vocabulary; not every stage applies to every backend (`pull`/`inspect` are
+ * image-availability stages, `create`/`attach`/`start` are workload stages).
+ */
 export type StartFailureStage =
   | "pull"
   | "inspect"

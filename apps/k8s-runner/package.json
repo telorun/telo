@@ -1,11 +1,11 @@
 {
-  "name": "@telorun/docker-runner",
-  "version": "0.3.0",
+  "name": "@telorun/k8s-runner",
+  "version": "0.0.0",
   "private": true,
-  "description": "Telo Docker Runner - HTTP service that runs Telo Applications in Docker containers on the host daemon.",
+  "description": "Telo Kubernetes Runner - HTTP service that runs Telo Applications as sandboxed Kubernetes Pods. A backend over @telorun/runner-core, sibling to docker-runner.",
   "keywords": [
     "telo",
-    "docker",
+    "kubernetes",
     "runner"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
@@ -13,7 +13,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
-    "directory": "apps/docker-runner"
+    "directory": "apps/k8s-runner"
   },
   "type": "module",
   "main": "./dist/server.js",
@@ -25,20 +25,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@fastify/cors": "^11.0.1",
-    "@fastify/websocket": "^11.0.1",
-    "dockerode": "^4.0.7",
-    "fastify": "^5.7.2",
-    "pino": "^9.5.0",
-    "@telorun/runner-core": "workspace:*"
+    "@kubernetes/client-node": "^1.4.0",
+    "@telorun/runner-core": "workspace:*",
+    "fastify": "^5.7.2"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.43",
     "@types/node": "^20.0.0",
-    "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",
     "typescript": "^5.0.0",
-    "vitest": "^2.1.8",
-    "ws": "^8.18.0"
+    "vitest": "^2.1.8"
   }
 }

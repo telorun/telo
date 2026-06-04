@@ -1,16 +1,13 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { WebSocket } from "@fastify/websocket";
 
-import type { RunnerConfig } from "../config.js";
-import {
-  isTerminal,
-  type SessionRegistry,
-} from "../session/registry.js";
+import { isTerminal } from "../contract.js";
 import type { BufferedBytes } from "../session/byte-ring-buffer.js";
+import type { SessionRegistry } from "../session/registry.js";
 
 export interface IoRouteDeps {
   registry: SessionRegistry;
-  runnerConfig: Pick<RunnerConfig, "corsOrigins">;
+  corsOrigins: string[] | "*";
 }
 
 const RESIZE_THROTTLE_MS = 50;
@@ -18,7 +15,7 @@ const SEQ_PREFIX_BYTES = 4;
 /** Upper bound on cols/rows accepted from the client. xterm + a fit addon
  *  produce values in the low thousands at extreme zoom; anything past this
  *  is either nonsense or a malicious client trying to feed
- *  `Number.MAX_SAFE_INTEGER` straight to docker. */
+ *  `Number.MAX_SAFE_INTEGER` straight to the workload. */
 const MAX_RESIZE_DIMENSION = 10_000;
 const TERMINAL_DRAIN_INTERVAL_MS = 50;
 const TERMINAL_DRAIN_MAX_MS = 2_000;
@@ -52,7 +49,7 @@ function handleIo(
   // reconnect loops forever. Closing with an application code (4403) the
   // browser CAN read lets the client fail fast.
   const origin = headerString(req.headers.origin);
-  if (!isOriginAllowed(deps.runnerConfig.corsOrigins, origin)) {
+  if (!isOriginAllowed(deps.corsOrigins, origin)) {
     closeWith(socket, 4403, "forbidden_origin");
     return;
   }
@@ -126,24 +123,17 @@ function handleIo(
     const next = pendingResize;
     pendingResize = null;
     if (!next) return;
-    const container = entry.container;
-    if (!container) return;
-    container.resize({ h: next.rows, w: next.cols }).catch(() => {
-      // Container may have exited between schedule and flush; daemon 404s
-      // are expected here and not actionable.
-    });
+    // Session may have exited between schedule and flush; backends treat
+    // resize on a gone workload as a no-op.
+    entry.session?.resize(next.cols, next.rows);
   };
 
   socket.on("message", (raw, isBinary) => {
     if (isBinary) {
-      const ptyInput = entry.ptyInput;
-      if (!ptyInput) return;
+      const session = entry.session;
+      if (!session) return;
       const buf = raw instanceof Buffer ? raw : Buffer.from(raw as ArrayBuffer);
-      try {
-        ptyInput.write(buf);
-      } catch {
-        /* exit task will close the socket via terminal status replay */
-      }
+      session.writeStdin(buf);
       return;
     }
     const text = raw.toString();
@@ -169,8 +159,7 @@ function handleIo(
   // this, and clients can rely on socket close as their "stream finished"
   // signal alongside the SSE status frame. We poll `bufferedAmount` so
   // that an immediate close doesn't drop frames still queued on the
-  // server-side socket — common with chat-console.yaml's pattern where
-  // the prompt is printed and the process exits ~270ms later.
+  // server-side socket.
   let drainTimer: NodeJS.Timeout | null = null;
   const drainAndClose = (deadline: number): void => {
     drainTimer = null;
@@ -195,9 +184,8 @@ function handleIo(
 
   // Late-connect case: the session was already terminal at connect time
   // and had replayable bytes (so we didn't take the 4410 fast path). The
-  // status subscription above will never fire — no future status event
-  // will land — so the socket would otherwise stay open forever after
-  // replay completes. Schedule the drain-close directly.
+  // status subscription above will never fire — so the socket would
+  // otherwise stay open forever after replay completes. Schedule directly.
   if (isTerminal(entry.status) && drainTimer === null) {
     drainAndClose(Date.now() + TERMINAL_DRAIN_MAX_MS);
   }
@@ -271,10 +259,7 @@ function isOriginAllowed(
   // Browsers ALWAYS send Origin on WebSocket upgrades — a missing Origin
   // means the request is from a non-browser (curl, internal script, an
   // attacker who stripped the header). When an explicit allowlist is
-  // configured, an absent Origin is a rejection: the runner has no way to
-  // distinguish a legitimate non-browser caller from one trying to bypass
-  // the same-origin guarantees. Trusted non-browser callers should set an
-  // Origin matching the allowlist.
+  // configured, an absent Origin is a rejection.
   if (!origin) return false;
   return corsOrigins.includes(origin);
 }

@@ -1,6 +1,7 @@
 packages:
   - apps/telo-editor
   - apps/docker-runner
+  - apps/k8s-runner
   - benchmarks/*
   - cli/*
   - modules/*/*

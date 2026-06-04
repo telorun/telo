@@ -1,12 +1,10 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 
-import type { RunnerConfig } from "../config.js";
-import { runProbe, type ProbeDockerClient } from "../docker/probe.js";
-import type { ProbeConfig } from "../types.js";
+import type { RunnerBackend } from "../backend.js";
+import type { ProbeConfig } from "../contract.js";
 
 export interface ProbeRouteDeps {
-  docker: ProbeDockerClient;
-  runnerConfig: Pick<RunnerConfig, "bundleVolume" | "childNetwork">;
+  backend: RunnerBackend;
 }
 
 const bodySchema = {
@@ -31,7 +29,7 @@ export function probeRoute(deps: ProbeRouteDeps): FastifyPluginAsync {
     app.post<{ Body: { config: ProbeConfig } }>(
       "/v1/probe",
       { schema: { body: bodySchema } },
-      async (req) => runProbe(deps.docker, deps.runnerConfig, req.body.config),
+      async (req) => deps.backend.probe(req.body.config),
     );
   };
 }

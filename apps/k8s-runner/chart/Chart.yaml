@@ -1,0 +1,13 @@
+apiVersion: v2
+name: telo-k8s-runner
+description: Telo Kubernetes Runner — runs Telo Applications as sandboxed Pods behind the /v1 session contract.
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - telo
+  - kubernetes
+  - runner
+home: https://telo.run
+sources:
+  - https://github.com/telorun/telo

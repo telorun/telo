@@ -1,24 +1,11 @@
-export interface RunnerConfig {
-  port: number;
+import { loadCoreConfig, RunnerConfigError, type RunnerCoreConfig } from "@telorun/runner-core";
+
+export { RunnerConfigError };
+
+export interface RunnerConfig extends RunnerCoreConfig {
   bundleRoot: string;
   bundleVolume: string;
   childNetwork: string;
-  logLevel: string;
-  maxSessions: number;
-  exitTtlMs: number;
-  replayBufferBytes: number;
-  corsOrigins: string[] | "*";
-}
-
-export class RunnerConfigError extends Error {}
-
-function parsePositiveInt(raw: string | undefined, fallback: number, field: string): number {
-  if (raw === undefined || raw.trim() === "") return fallback;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new RunnerConfigError(`${field} must be a positive integer, got '${raw}'.`);
-  }
-  return n;
 }
 
 export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
@@ -36,33 +23,10 @@ export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
     );
   }
 
-  const portStr = env.PORT ?? "8061";
-  const port = Number(portStr);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new RunnerConfigError(`PORT must be an integer in 1..65535, got '${portStr}'.`);
-  }
-
   return {
-    port,
+    ...loadCoreConfig(env, { port: 8061 }),
     bundleRoot: env.BUNDLE_ROOT?.trim() || "/bundles",
     bundleVolume,
     childNetwork,
-    logLevel: env.LOG_LEVEL?.trim() || "info",
-    maxSessions: parsePositiveInt(env.RUNNER_MAX_SESSIONS, 8, "RUNNER_MAX_SESSIONS"),
-    exitTtlMs: parsePositiveInt(env.RUNNER_EXIT_TTL_MS, 5 * 60 * 1000, "RUNNER_EXIT_TTL_MS"),
-    replayBufferBytes: parsePositiveInt(
-      env.RUNNER_REPLAY_BUFFER_BYTES,
-      5_000_000,
-      "RUNNER_REPLAY_BUFFER_BYTES",
-    ),
-    corsOrigins: parseCorsOrigins(env.RUNNER_CORS_ORIGINS),
   };
-}
-
-function parseCorsOrigins(raw: string | undefined): string[] | "*" {
-  if (raw === undefined || raw.trim() === "" || raw.trim() === "*") return "*";
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
 }

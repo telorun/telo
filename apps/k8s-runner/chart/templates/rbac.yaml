@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+---
+# Scoped to the session namespace only — minimal blast radius if compromised.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}
+  namespace: {{ .Values.sessionNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/attach"]
+    verbs: ["get", "create"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}
+  namespace: {{ .Values.sessionNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "telo-k8s-runner.name" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "telo-k8s-runner.name" . }}
+    namespace: {{ .Values.runnerNamespace }}
+---
+# Read-only namespace check used by /v1/probe.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}-{{ .Release.Namespace }}-probe
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}-{{ .Release.Namespace }}-probe
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "telo-k8s-runner.name" . }}-{{ .Release.Namespace }}-probe
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "telo-k8s-runner.name" . }}
+    namespace: {{ .Values.runnerNamespace }}

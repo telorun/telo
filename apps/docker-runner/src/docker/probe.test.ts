@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeFakeDocker } from "../test-helpers.js";
-import type { ProbeConfig } from "../types.js";
+import type { ProbeConfig } from "@telorun/runner-core";
 import { runProbe } from "./probe.js";
 
 const RUNNER = { bundleVolume: "telo_bundles", childNetwork: "telo_default" };

@@ -1,12 +1,11 @@
 import type {
+  BackendSession,
   PortMapping,
-  RunEvent,
-  RunStatus,
   RunnerEndpoint,
   SessionConfig,
   StartFailureStage,
-} from "../types.js";
-import { SessionStartError } from "../types.js";
+} from "@telorun/runner-core";
+import { SessionStartError } from "@telorun/runner-core";
 
 /** Hijacked attach options accepted by dockerode: with `Tty: true` on the
  *  container, the daemon returns a single duplex stream — bytes flow both
@@ -67,7 +66,6 @@ export interface CreateContainerOpts {
 
 export interface SpawnSessionArgs {
   docker: SessionDockerClient;
-  sessionId: string;
   containerName: string;
   image: string;
   pullPolicy: SessionConfig["pullPolicy"];
@@ -77,29 +75,25 @@ export interface SpawnSessionArgs {
   ports: PortMapping[];
   bundleVolume: string;
   childNetwork: string;
-  onEvent: (event: RunEvent) => void;
-  onByteChunk: (chunk: Buffer) => void;
-  /** Fired once after `container.wait()` resolves (or rejects). The route
-   *  handler uses this to drop `entry.ptyInput` from the registry — pty
-   *  writes from the WS thereafter take the early-return path instead of
-   *  failing inside the now-ended duplex. */
-  onPtyClosed?: () => void;
+  onStatus: (status: import("@telorun/runner-core").RunStatus) => void;
+  onOutput: (chunk: Buffer) => void;
   isUserStopped: () => boolean;
 }
 
-export interface SpawnResult {
-  container: SessionDockerContainer;
-  ptyInput: NodeJS.WritableStream;
-  exit: Promise<void>;
-}
-
-export async function spawnSession(args: SpawnSessionArgs): Promise<SpawnResult> {
+/**
+ * Spawns the docker workload and adapts its hijacked-attach duplex onto the
+ * backend-neutral `BackendSession` (writeStdin / resize / done / stop). The
+ * duplex's readable side feeds `onOutput`; the writable side backs `writeStdin`.
+ */
+export async function spawnDockerSession(args: SpawnSessionArgs): Promise<BackendSession> {
   await ensureImage(args.docker, args.image, args.pullPolicy);
 
   const container = await createSessionContainer(args);
 
   const ptyStream = await attachContainer(container);
-  wirePty(ptyStream, args.onByteChunk);
+  ptyStream.on("data", (chunk: Buffer) => {
+    if (chunk.byteLength > 0) args.onOutput(chunk);
+  });
 
   try {
     await container.start();
@@ -108,40 +102,44 @@ export async function spawnSession(args: SpawnSessionArgs): Promise<SpawnResult>
     throw startError("start_failed", "start", err);
   }
 
-  args.onEvent({ type: "status", status: { kind: "starting" } });
-  args.onEvent({
-    type: "status",
-    status: { kind: "running", endpoints: buildEndpoints(args.ports) },
-  });
+  args.onStatus({ kind: "starting" });
+  args.onStatus({ kind: "running", endpoints: buildEndpoints(args.ports) });
 
-  const exit = container.wait().then(
+  const done = container.wait().then(
     (info) => {
-      const status = resolveExitStatus(info, args.isUserStopped());
-      args.onEvent({ type: "status", status });
-      // Close stdin on exit so any in-flight WS write rejects fast rather
-      // than hanging on a pipe whose far end has already gone away.
-      try {
-        ptyStream.end();
-      } catch {
-        /* already ended */
-      }
-      args.onPtyClosed?.();
+      args.onStatus(resolveExitStatus(info, args.isUserStopped()));
+      endQuietly(ptyStream);
     },
     (err) => {
-      args.onEvent({
-        type: "status",
-        status: { kind: "failed", message: `failed to await container: ${errMessage(err)}` },
-      });
-      try {
-        ptyStream.end();
-      } catch {
-        /* already ended */
-      }
-      args.onPtyClosed?.();
+      args.onStatus({ kind: "failed", message: `failed to await container: ${errMessage(err)}` });
+      endQuietly(ptyStream);
     },
   );
 
-  return { container, ptyInput: ptyStream, exit };
+  return {
+    writeStdin(bytes) {
+      try {
+        ptyStream.write(Buffer.from(bytes));
+      } catch {
+        /* exit task closes the stream; late writes are no-ops */
+      }
+    },
+    resize(cols, rows) {
+      container.resize({ h: rows, w: cols }).catch(() => {
+        /* container may have exited; daemon 404 is expected */
+      });
+    },
+    done,
+    stop: () => stopContainer(container),
+  };
+}
+
+function endQuietly(stream: NodeJS.WritableStream): void {
+  try {
+    stream.end();
+  } catch {
+    /* already ended */
+  }
 }
 
 export async function ensureImage(
@@ -182,14 +180,7 @@ async function performPull(docker: SessionDockerClient, image: string): Promise<
   await new Promise<void>((resolve, reject) => {
     docker.modem.followProgress(stream, (err) => {
       if (err) {
-        reject(
-          new SessionStartError(
-            "pull_failed",
-            "pull",
-            `pull of '${image}' failed`,
-            errMessage(err),
-          ),
-        );
+        reject(new SessionStartError("pull_failed", "pull", `pull of '${image}' failed`, errMessage(err)));
       } else {
         resolve();
       }
@@ -204,12 +195,9 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
     ...Object.entries(args.env).map(([k, v]) => `${k}=${v}`),
   ];
   const { exposedPorts, portBindings } = buildPortBindings(args.ports);
-  // Tty + OpenStdin + StdinOnce=false + the four Attach* flags are the
-  // dockerode invocation that yields a hijacked attach duplex carrying the
-  // PTY byte stream both ways. Without OpenStdin the container's stdin is
-  // detached at /dev/null; the hijacked attach's writable side errors on
-  // write and the WS handler's catch swallows the error — so user input
-  // would simply never reach the container.
+  // Tty + OpenStdin + StdinOnce=false + the four Attach* flags yield a hijacked
+  // attach duplex carrying the PTY byte stream both ways. Without OpenStdin the
+  // container's stdin is detached at /dev/null and user input never reaches it.
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,
@@ -237,11 +225,6 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   }
 }
 
-/** Builds the `ExposedPorts` and `HostConfig.PortBindings` fields Docker's
- *  Engine API uses to publish container ports on the host. Same container port
- *  is bound to the same host port; `HostIp: ""` publishes on all interfaces.
- *  Returns empty/undefined bags when `ports` is empty so the resulting
- *  container spec stays minimal. */
 function buildPortBindings(ports: PortMapping[]): {
   exposedPorts?: Record<string, Record<string, never>>;
   portBindings?: Record<string, Array<{ HostIp: string; HostPort: string }>>;
@@ -257,17 +240,14 @@ function buildPortBindings(ports: PortMapping[]): {
   return { exposedPorts, portBindings };
 }
 
-/** Produces the endpoints list announced on the `running` status. `host` is
- *  left blank — the runner does not know the hostname clients used to reach
- *  it, so the client adapter fills it from its configured baseUrl before
- *  surfacing to the UI. */
+/** Endpoints announced on the `running` status. `host` is left blank — the
+ *  runner does not know the hostname clients used; the client adapter fills it
+ *  from its configured baseUrl. */
 function buildEndpoints(ports: PortMapping[]): RunnerEndpoint[] {
   return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
 }
 
-async function attachContainer(
-  container: SessionDockerContainer,
-): Promise<NodeJS.ReadWriteStream> {
+async function attachContainer(container: SessionDockerContainer): Promise<NodeJS.ReadWriteStream> {
   try {
     return await container.attach({
       stream: true,
@@ -283,21 +263,10 @@ async function attachContainer(
   }
 }
 
-function wirePty(
-  ptyStream: NodeJS.ReadWriteStream,
-  onByteChunk: (chunk: Buffer) => void,
-): void {
-  ptyStream.on("data", (chunk: Buffer) => {
-    if (chunk.byteLength > 0) onByteChunk(chunk);
-  });
-  // No tail-flush needed — bytes are stored verbatim, not decoded into
-  // strings; an EOF without further bytes is just an EOF.
-}
-
 function resolveExitStatus(
   info: { StatusCode: number; Error?: { Message: string } | null },
   userStopped: boolean,
-): RunStatus {
+): import("@telorun/runner-core").RunStatus {
   if (userStopped) return { kind: "stopped" };
   if (info.Error?.Message) return { kind: "failed", message: info.Error.Message };
   return { kind: "exited", code: info.StatusCode };
@@ -324,8 +293,7 @@ async function safeRemove(container: SessionDockerContainer): Promise<void> {
   try {
     await container.remove({ force: true });
   } catch {
-    // Container may have been AutoRemove'd or never actually created past
-    // header — nothing to clean.
+    // Container may have been AutoRemove'd or never created past header.
   }
 }
 
