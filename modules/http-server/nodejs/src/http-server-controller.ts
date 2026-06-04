@@ -41,7 +41,7 @@ type HttpServerResource = RuntimeResource & {
   baseUrl?: string;
   logger?: boolean;
   cors?: CorsOptions;
-  contentTypeParsers?: Array<{ contentType: string; parser?: Invocable }>;
+  contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
   openapi?: {
     info: {
       title: string;
@@ -109,8 +109,15 @@ class HttpServer implements ResourceInstance {
   }
 
   private async setupPlugins() {
-    for (const { contentType, parser } of this.resource.contentTypeParsers ?? []) {
-      if (parser) {
+    for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
+      if (stream) {
+        // Raw passthrough: omit `parseAs` so Fastify hands the handler the
+        // undrained request stream. The matching route wraps `request.body`
+        // in a `Stream<Uint8Array>`. No buffering, no AJV — see http-api-controller.
+        this.app.addContentTypeParser(contentType, (_req, payload, done) => {
+          done(null, payload);
+        });
+      } else if (parser) {
         this.app.addContentTypeParser(
           contentType,
           { parseAs: "string" },

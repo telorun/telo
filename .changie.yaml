@@ -77,6 +77,13 @@ projects:
       - path: modules/console/telo.yaml
         find: '^  version: .*$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: gzip
+    key: gzip
+    changelog: modules/gzip/CHANGELOG.md
+    replacements:
+      - path: modules/gzip/telo.yaml
+        find: '^  version: .*$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: http-client
     key: http-client
     changelog: modules/http-client/CHANGELOG.md
@@ -194,6 +201,20 @@ projects:
     changelog: modules/starlark/CHANGELOG.md
     replacements:
       - path: modules/starlark/telo.yaml
+        find: '^  version: .*$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: stream
+    key: stream
+    changelog: modules/stream/CHANGELOG.md
+    replacements:
+      - path: modules/stream/telo.yaml
+        find: '^  version: .*$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: tar
+    key: tar
+    changelog: modules/tar/CHANGELOG.md
+    replacements:
+      - path: modules/tar/telo.yaml
         find: '^  version: .*$'
         replace: '  version: {{.VersionNoPrefix}}'
   - label: test

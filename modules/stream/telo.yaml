@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: stream
+  namespace: std
+  version: 0.1.0
+  description: |
+    Generic stream substrate — value-agnostic stream construction and
+    operators. `Stream.Of` emits a declared list of literal items as a stream,
+    in order. The element type flows at runtime (items may be strings, objects,
+    numbers); statically the output is an opaque stream, like every Telo stream.
+    Element-type validation is a planned evolution (see the stream-element-typing
+    plan and the `x-telo-stream: { items }` form).
+exports:
+  kinds:
+    - Of
+---
+# Emit a declared list of literal items as a stream, in order.
+#
+# Value-agnostic: `items` may hold strings, objects, numbers — whatever the
+# downstream consumer expects (e.g. strings into PlainText.Encoder, AI-shape
+# records into RecordStream.ExtractText). The output is an opaque stream today;
+# the eventual `x-telo-stream: { items }` form will let it carry a static
+# element type.
+kind: Telo.Definition
+metadata:
+  name: Of
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/stream@0.1.0?local_path=./nodejs#of
+schema:
+  type: object
+  properties:
+    items:
+      title: Items
+      description: Literal values to emit as a stream, in order.
+      type: array
+  required: [ items ]
+  additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Stream of the declared items, in order.
+    required: [ output ]
+    additionalProperties: false

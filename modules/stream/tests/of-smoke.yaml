@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: StreamOfSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for std/stream — Stream.Of seeds a stream of string items with
+    no JavaScript. A flat targets pipeline runs the items through
+    PlainText.Encoder (strings → bytes) → PlainText.Decoder (bytes → string)
+    and asserts the concatenation.
+imports:
+  Stream: ../
+  PlainText: ../../plain-text-codec
+  Assert: ../../assert
+targets:
+  - name: Source
+    invoke: { kind: Stream.Of, name: Source }
+  - name: ToBytes
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: PlainText.Encoder, name: ToBytes }
+  - name: ToText
+    inputs:
+      input: "${{ steps.ToBytes.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: Assert
+    inputs:
+      text: "${{ steps.ToText.result.text }}"
+    invoke: { kind: Assert.Schema, name: AssertText }
+---
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - "hello "
+  - "telo"
+---
+kind: PlainText.Encoder
+metadata: { name: ToBytes }
+---
+kind: PlainText.Decoder
+metadata: { name: ToText }
+---
+kind: Assert.Schema
+metadata: { name: AssertText }
+schema:
+  type: object
+  properties:
+    text: { const: "hello telo" }
+  required: [ text ]

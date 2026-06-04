@@ -36,6 +36,10 @@
     "./s3-get": {
       "bun": "./src/s3-get-controller.ts",
       "import": "./dist/s3-get-controller.js"
+    },
+    "./s3-delete": {
+      "bun": "./src/s3-delete-controller.ts",
+      "import": "./dist/s3-delete-controller.js"
     }
   },
   "files": [

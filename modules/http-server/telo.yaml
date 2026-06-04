@@ -124,7 +124,19 @@ schema:
                     type: "string"
                 required: [ "kind" ]
                 additionalProperties: true
+          stream:
+            title: Stream Body
+            description: |
+              When true, deliver request bodies of this content type to the
+              handler as a raw `Stream<Uint8Array>` — no buffering, no parsing,
+              no schema validation. The matching route must declare
+              `request.schema.body` with `x-telo-stream: true`. Mutually
+              exclusive with `parser`: a content type on one server is either
+              streamed or parsed, never both.
+            type: "boolean"
         required: [ "contentType" ]
+        not:
+          required: [ "parser", "stream" ]
     cors:
       title: CORS
       description: Cross-origin resource sharing configuration.

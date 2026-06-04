@@ -9,6 +9,7 @@ exports:
     - List
     - Put
     - Get
+    - Delete
 ---
 kind: Telo.Definition
 metadata:
@@ -72,6 +73,12 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-put
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: body is neither a string nor a Uint8Array.
+    ERR_INVALID_REFERENCE:
+      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
 schema:
   type: object
   properties:
@@ -97,8 +104,12 @@ schema:
           type: string
         body:
           title: Body
-          description: Object content to upload.
-          type: string
+          description: |
+            Object content to upload — a UTF-8 string, or buffered binary
+            (a Uint8Array, e.g. the `bytes` produced by Octet.Decoder).
+          oneOf:
+            - type: string
+            - type: object
         contentType:
           title: Content Type
           description: MIME type set on the uploaded object.
@@ -171,4 +182,60 @@ outputType:
         description: Content-Type header reported by the storage backend, when available.
     required:
       - output
+    additionalProperties: false
+---
+# Delete: removes an object from the bucket by key.
+#
+# Idempotent — deleting a key that does not exist succeeds — so the only error
+# is an unresolvable bucketRef.
+kind: Telo.Definition
+metadata:
+  name: Delete
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/s3@0.2.2?local_path=./nodejs#s3-delete
+throws:
+  codes:
+    ERR_INVALID_REFERENCE:
+      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
+schema:
+  type: object
+  properties:
+    bucketRef:
+      title: Bucket Reference
+      type: object
+      description: Reference to an S3.Bucket resource by name.
+      properties:
+        name:
+          title: Name
+          description: Name of the referenced bucket resource.
+          type: string
+      required:
+        - name
+  required:
+    - bucketRef
+  additionalProperties: false
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      key:
+        title: Key
+        description: Object key path inside the bucket.
+        type: string
+    required:
+      - key
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      key:
+        title: Key
+        description: The deleted object's key (echoed back).
+        type: string
+    required:
+      - key
     additionalProperties: false

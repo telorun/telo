@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: GzipSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for std/gzip — a pure telo compress→decompress round-trip, no
+    JavaScript. A flat targets pipeline: Stream.Of seeds a string,
+    PlainText.Encoder turns it into bytes, Gzip.Encoder compresses →
+    Gzip.Decoder decompresses → PlainText.Decoder collects, and the result is
+    asserted.
+imports:
+  Stream: ../../stream
+  Gzip: ../
+  PlainText: ../../plain-text-codec
+  Assert: ../../assert
+targets:
+  - name: Source
+    invoke: { kind: Stream.Of, name: Source }
+  - name: ToBytes
+    inputs:
+      input: "${{ steps.Source.result.output }}"
+    invoke: { kind: PlainText.Encoder, name: ToBytes }
+  - name: Compress
+    inputs:
+      input: "${{ steps.ToBytes.result.output }}"
+    invoke: { kind: Gzip.Encoder, name: Compress }
+  - name: Decompress
+    inputs:
+      input: "${{ steps.Compress.result.output }}"
+    invoke: { kind: Gzip.Decoder, name: Decompress }
+  - name: ToText
+    inputs:
+      input: "${{ steps.Decompress.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: Assert
+    inputs:
+      text: "${{ steps.ToText.result.text }}"
+    invoke: { kind: Assert.Schema, name: AssertText }
+---
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - "hello telo"
+---
+kind: PlainText.Encoder
+metadata: { name: ToBytes }
+---
+kind: Gzip.Encoder
+metadata: { name: Compress }
+---
+kind: Gzip.Decoder
+metadata: { name: Decompress }
+---
+kind: PlainText.Decoder
+metadata: { name: ToText }
+---
+kind: Assert.Schema
+metadata: { name: AssertText }
+schema:
+  type: object
+  properties:
+    text: { const: "hello telo" }
+  required: [ text ]

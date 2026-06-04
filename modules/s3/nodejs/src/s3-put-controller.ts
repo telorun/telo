@@ -1,5 +1,5 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { InvokeError, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { S3BucketResource } from "./s3-bucket-controller.js";
 
 interface S3PutManifest {
@@ -14,14 +14,21 @@ class S3PutResource implements ResourceInstance {
 
   async invoke(input: {
     key: string;
-    body: string;
+    body: string | Uint8Array;
     contentType?: string;
   }): Promise<{ key: string }> {
+    if (typeof input.body !== "string" && !(input.body instanceof Uint8Array)) {
+      throw new InvokeError(
+        "ERR_INVALID_INPUT",
+        `S3.Put "body" must be a string or Uint8Array; got ${typeof input.body}.`,
+      );
+    }
+
     const bucketRefName = this.ctx.expandValue(this.manifest.bucketRef.name, input ?? {}) as string;
 
-    const bucket: S3BucketResource = this.ctx.moduleContext.getInstance(bucketRefName) as any;
+    const bucket = this.ctx.moduleContext.getInstance(bucketRefName) as S3BucketResource | undefined;
     if (!bucket) {
-      throw new Error(`S3.Bucket "${bucketRefName}" not found`);
+      throw new InvokeError("ERR_INVALID_REFERENCE", `S3.Bucket "${bucketRefName}" not found`);
     }
 
     await bucket.getClient().send(

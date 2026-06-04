@@ -17,6 +17,7 @@ Read and write objects in an S3-compatible bucket from a Telo manifest. Targets 
 | `S3.Put` | Upload bytes or a stream to a key. |
 | `S3.Get` | Fetch an object's bytes by key. |
 | `S3.List` | List keys under a prefix. |
+| `S3.Delete` | Remove an object by key (idempotent). |
 
 ## Example
 
@@ -44,3 +45,4 @@ body: !cel "resources.GenerateReport.bytes"
 - [`S3.Put`](docs/put.md)
 - [`S3.Get`](docs/get.md)
 - [`S3.List`](docs/list.md)
+- [`S3.Delete`](docs/delete.md)

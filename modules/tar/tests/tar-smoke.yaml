@@ -1,0 +1,99 @@
+kind: Telo.Application
+metadata:
+  name: TarSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for std/tar — a pure telo .tar.gz round-trip, no JavaScript.
+    Tar.Pack builds a one-entry archive from literal content → Gzip.Encoder
+    compresses → Gzip.Decoder decompresses → Tar.Extract pulls the entry back
+    out → PlainText.Decoder collects it, and the text is asserted. A second
+    sequence asserts a missing path raises ERR_NOT_FOUND.
+imports:
+  Gzip: ../../gzip
+  Tar: ../
+  PlainText: ../../plain-text-codec
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - TestRoundtrip
+  - TestNotFound
+---
+kind: Tar.Pack
+metadata: { name: Pack }
+---
+kind: Gzip.Encoder
+metadata: { name: Compress }
+---
+kind: Gzip.Decoder
+metadata: { name: Gunzip }
+---
+kind: Tar.Extract
+metadata: { name: Pick }
+---
+kind: PlainText.Decoder
+metadata: { name: ToText }
+---
+kind: Run.Sequence
+metadata: { name: TestRoundtrip }
+steps:
+  - name: Pack
+    inputs:
+      entries:
+        - path: telo.yaml
+          contents: "name: hello"
+    invoke: { kind: Tar.Pack, name: Pack }
+  - name: Compress
+    inputs:
+      input: "${{ steps.Pack.result.output }}"
+    invoke: { kind: Gzip.Encoder, name: Compress }
+  - name: Gunzip
+    inputs:
+      input: "${{ steps.Compress.result.output }}"
+    invoke: { kind: Gzip.Decoder, name: Gunzip }
+  - name: Extract
+    inputs:
+      input: "${{ steps.Gunzip.result.output }}"
+      path: telo.yaml
+    invoke: { kind: Tar.Extract, name: Pick }
+  - name: ToText
+    inputs:
+      input: "${{ steps.Extract.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: Assert
+    inputs:
+      text: "${{ steps.ToText.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "name: hello" }
+        required: [ text ]
+---
+kind: Run.Sequence
+metadata: { name: TestNotFound }
+steps:
+  - name: Pack
+    inputs:
+      entries:
+        - path: telo.yaml
+          contents: "name: hello"
+    invoke: { kind: Tar.Pack, name: Pack }
+  - name: TryExtract
+    try:
+      - name: Extract
+        inputs:
+          input: "${{ steps.Pack.result.output }}"
+          path: missing.yaml
+        invoke: { kind: Tar.Extract, name: Pick }
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_NOT_FOUND }
+            required: [ code ]
