@@ -9,6 +9,7 @@ import type {
   Selection,
   SourceRevealRequest,
 } from "../../model";
+import type { RefWrite } from "./topology/application-canvas-model";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
@@ -25,9 +26,10 @@ export interface ViewProps {
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   /** Removes a resource from the active module (overview-canvas Delete key). */
   onDeleteResource: (kind: string, name: string) => void;
-  /** Rewrites the active Application's `targets`. Used by the overview graph's
-   *  drag-to-wire — the only field the Application root edits visually. */
-  onUpdateApplicationTargets: (targets: string[]) => void;
+  /** Applies reference writes from the overview graph (drag-to-wire, edge
+   *  deletion, picker selection) — set or clear a ref slot at a concrete path on
+   *  any resource, the Application root's `targets` included. */
+  onWriteRef: (writes: RefWrite[]) => void;
   /** Opens the create-resource flow. Surfaced as a canvas action. */
   onCreateResource: () => void;
   /** Registry servers — supplies the Imports view's add-import search and the

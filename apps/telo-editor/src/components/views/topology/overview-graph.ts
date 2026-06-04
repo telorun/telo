@@ -23,25 +23,11 @@ export interface LabeledEdge {
    *  path (`steps[0]`) this edge anchors to — the xyflow source handle id.
    *  Populated by the canvas model from `fromPath`, not the overview builder. */
   fromStepPath?: string;
-}
-
-/** An x-telo-ref whose target is an ambient value / schema source (Provider /
- *  Type). Rendered as a "uses" chip on the source node, with the target shown
- *  in the side strip rather than as a graph node. */
-export interface UsesChip {
-  /** Source resource name. */
-  on: string;
-  /** Target provider / type resource name. */
-  target: string;
-  /** Field label — the last segment of the ref's field path. */
-  label: string;
-  /** Concrete path of the ref within the source resource. */
-  fromPath?: string;
-}
-
-export interface OverviewGraph {
-  edges: LabeledEdge[];
-  chips: UsesChip[];
+  /** When the edge's invocation accepts `inputs`, where to edit them: a JSON
+   *  pointer into the source resource and the schema to render (the target's
+   *  `inputType` when typed, otherwise a freeform map). Populated by the canvas
+   *  model. */
+  inputs?: { pointer: string; schema: Record<string, unknown> };
 }
 
 /** Capabilities whose resources are first-class nodes on the overview canvas —
@@ -54,8 +40,9 @@ export const NODE_CAPABILITIES: ReadonlySet<string> = new Set([
   "Telo.Mount",
 ]);
 
-/** Capabilities whose resources are ambient value / schema sources — refs to
- *  them render as "uses" chips + side-strip entries, not edges. */
+/** Capabilities whose resources are ambient value / schema sources — the canvas
+ *  model renders refs to them as inline picker ports + side-strip entries, never
+ *  edges (so `buildOverviewGraph` skips them). */
 export const AMBIENT_CAPABILITIES: ReadonlySet<string> = new Set([
   "Telo.Provider",
   "Telo.Type",
@@ -88,14 +75,14 @@ function fieldLabel(fieldPath: string): string {
 }
 
 /**
- * Projects a module's resources into the overview graph's data model by
- * subscribing to the manifest visitor's `RefSite` events. Each ref is split by
- * its target's capability: node-capability targets become labelled edges,
- * ambient (Provider / Type) targets become "uses" chips.
+ * Projects a module's resources into node-to-node edges by subscribing to the
+ * manifest visitor's `RefSite` events: every ref whose target is a node
+ * capability becomes a labelled edge. Refs to ambient (Provider / Type) targets
+ * are skipped — the canvas model surfaces those as inline picker ports.
  *
- * Application↔target edges are NOT produced here — the Application root is not a
- * ResourceManifest and does not ride the visitor's iteration surface; the
- * caller constructs those edges directly from `manifest.targets`.
+ * Used now only for refs the model's port enumeration doesn't cover — chiefly
+ * step-internal invokes (`steps[].invoke`) nested behind a `$ref`. Top-level
+ * refs and Application `targets` come from node ports, not this pass.
  *
  * No resource kind is hardcoded: classification keys off the target
  * definition's capability, resolved generically through the registry.
@@ -103,7 +90,7 @@ function fieldLabel(fieldPath: string): string {
 export function buildOverviewGraph(
   resources: ResourceManifest[],
   registry: AnalysisRegistry,
-): OverviewGraph {
+): LabeledEdge[] {
   // name → kind, so refs given only a name (sentinel / string) can be resolved
   // to their declared kind and thence to a capability.
   const kindByName = new Map<string, string>();
@@ -113,7 +100,6 @@ export function buildOverviewGraph(
   }
 
   const edges: LabeledEdge[] = [];
-  const chips: UsesChip[] = [];
 
   registry.visitManifest(resources, {
     onRef: (e) => {
@@ -133,14 +119,15 @@ export function buildOverviewGraph(
       if (!targetKind) return;
 
       const capability = registry.resolveDefinition(targetKind)?.capability;
-      if (!capability) return;
+      if (!capability || !NODE_CAPABILITIES.has(capability)) return;
 
-      const label = fieldLabel(e.fieldPath);
-      if (NODE_CAPABILITIES.has(capability)) {
-        edges.push({ from, to: targetName, label, fromPath: e.concretePath, nested: e.nested });
-      } else if (AMBIENT_CAPABILITIES.has(capability)) {
-        chips.push({ on: from, target: targetName, label, fromPath: e.concretePath });
-      }
+      edges.push({
+        from,
+        to: targetName,
+        label: fieldLabel(e.fieldPath),
+        fromPath: e.concretePath,
+        nested: e.nested,
+      });
     },
     // `expand` surfaces refs nested behind x-telo-schema-from (matching the
     // validators); `discoverNestedRefs` surfaces refs behind a `$ref` the field
@@ -148,5 +135,5 @@ export function buildOverviewGraph(
     // aren't left detached.
   }, { expand: true, discoverNestedRefs: true });
 
-  return { edges, chips };
+  return edges;
 }

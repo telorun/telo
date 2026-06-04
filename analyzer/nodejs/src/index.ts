@@ -1,4 +1,5 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
+export type { RefFieldInfo } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";
 export type {
     GraphLoadError,

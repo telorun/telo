@@ -14,25 +14,56 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Boxes, ChevronRight, FileCog, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CanvasViewport } from "../../../model";
+import type { CanvasViewport, Selection } from "../../../model";
 import { Button } from "../../ui/button";
 import {
-  TARGET_CAPABILITIES,
-  TARGET_EDGE_LABEL,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/select";
+import {
   type AppCanvasModel,
   type GraphNode,
   type NodeStep,
+  type RefWrite,
 } from "./application-canvas-model";
+import type { NodePort } from "./node-ports";
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 64;
 const STEP_ROW_HEIGHT = 22;
 const STEPS_SECTION_PAD = 10;
+const PORT_ROW_HEIGHT = 22;
+const PORTS_SECTION_PAD = 10;
 
-/** Layout height for a node — grows with its rendered step rows so dagre spaces
- *  sequence-like nodes without overlap. */
+/** Select value standing in for "no ref" — Radix reserves the empty string. */
+const PICKER_NONE = "__none__";
+
+/** Rendered rows a port occupies: one per slot, plus the array add-slot. */
+function portRows(port: NodePort): number {
+  return port.slots.length + (port.addPath ? 1 : 0);
+}
+
+function portsRowCount(ports: NodePort[] | undefined): number {
+  return (ports ?? []).reduce((n, p) => n + portRows(p), 0);
+}
+
+/** Layout height for a node — grows with its rendered step rows and port rows so
+ *  dagre spaces nodes without overlap. */
 function nodeHeight(n: GraphNode): number {
-  return n.steps?.length ? NODE_HEIGHT + STEPS_SECTION_PAD + n.steps.length * STEP_ROW_HEIGHT : NODE_HEIGHT;
+  let h = NODE_HEIGHT;
+  if (n.steps?.length) h += STEPS_SECTION_PAD + n.steps.length * STEP_ROW_HEIGHT;
+  const ports = portsRowCount(n.ports);
+  if (ports) h += PORTS_SECTION_PAD + ports * PORT_ROW_HEIGHT;
+  return h;
 }
 
 /** Short capability label (drops the `Telo.` prefix). */
@@ -42,10 +73,11 @@ function capLabel(capability: string): string {
 
 const nodeId = (kind: string, name: string) => `${kind} ${name}`;
 
-/** Selector-safe xyflow handle id for a step path. Concrete paths carry `[` /
- *  `]` / `.`, which can trip xyflow's handle lookup, so collapse them to `-`.
- *  Applied identically to the rendered handle and the edge's `sourceHandle`. */
-const stepHandleId = (path: string) => path.replace(/[^a-zA-Z0-9]+/g, "-");
+/** Selector-safe xyflow handle id for a concrete path (step or port). Concrete
+ *  paths carry `[` / `]` / `.`, which can trip xyflow's handle lookup, so
+ *  collapse them to `-`. Applied identically to the rendered handle and the
+ *  edge's `sourceHandle`, and reversed via a lookup map for connections. */
+const handleId = (path: string) => path.replace(/[^a-zA-Z0-9]+/g, "-");
 
 /** Left indent per nesting level for a step row. */
 const STEP_INDENT = 10;
@@ -57,15 +89,208 @@ interface ResourceNodeData extends Record<string, unknown> {
   capability: string;
   isRoot?: boolean;
   selected: boolean;
-  chips: { label: string; target: string }[];
   steps: NodeStep[];
+  ports: NodePort[];
+  /** True when the node is the source of an edge that docks on neither a port
+   *  nor a step handle — the only case the fallback right-edge socket serves.
+   *  Leaf / pure-target nodes get no socket. */
+  hasFallbackOutput: boolean;
+  editable: boolean;
   onOpen: () => void;
+  /** Writes a picker port's selection (or clears it with `null`). */
+  onPick: (concretePath: string, target: string | null) => void;
+  /** Creates a new resource of `kind` and links the `+` slot at `concretePath`. */
+  onCreate: (concretePath: string, kind: string) => void;
 }
 
-/** Canvas node: resource name, capability badge, "uses" chips, and — for
- *  sequence-like nodes — an internal list of steps. Each step carries its own
- *  source handle (id = step path) so edges anchor to the exact invoke they came
- *  from. The module root (Application / Library) is styled distinctly. */
+/** One edge-port slot row: a label and a source handle that pokes out of the
+ *  node's right edge like an adapter. The handle is filled when wired. */
+function EdgeSlotRow({ label, target, path }: { label: string; target?: string; path: string }) {
+  return (
+    <div className="relative flex items-center px-3" style={{ height: PORT_ROW_HEIGHT }}>
+      <span className="truncate text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
+        {label}
+      </span>
+      {target && (
+        <span className="ml-auto truncate pl-1 font-mono text-[9px] text-zinc-400">{target}</span>
+      )}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={handleId(path)}
+        className={
+          target
+            ? "!size-2.5 !border-zinc-600 !bg-zinc-600"
+            : "!size-2.5 !border-zinc-400 !bg-white dark:!bg-zinc-900"
+        }
+      />
+    </div>
+  );
+}
+
+/** The array add-slot row: a `+` affordance and an empty source handle. Drag
+ *  from the handle to wire an existing node; click the `+` to create-and-link a
+ *  new resource of an applicable kind. */
+function AddSlotRow({
+  label,
+  path,
+  createKinds,
+  editable,
+  onCreate,
+}: {
+  label: string;
+  path: string;
+  createKinds: string[];
+  editable: boolean;
+  onCreate: (concretePath: string, kind: string) => void;
+}) {
+  const canCreate = editable && createKinds.length > 0;
+  return (
+    <div className="relative flex items-center px-3" style={{ height: PORT_ROW_HEIGHT }}>
+      <span className="truncate text-[10px] text-zinc-400">{label}</span>
+      {canCreate ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="nodrag nopan ml-auto flex items-center text-zinc-400 hover:text-zinc-600"
+              title="Create & link a resource"
+            >
+              <Plus className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+            {createKinds.map((k) => (
+              <DropdownMenuItem key={k} className="text-xs" onSelect={() => onCreate(path, k)}>
+                {k}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Plus className="ml-auto size-3 text-zinc-400" />
+      )}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={handleId(path)}
+        className="!size-2.5 !border-zinc-400 !bg-white dark:!bg-zinc-900"
+      />
+    </div>
+  );
+}
+
+/** One picker-port slot row: an inline select over the matching ambient
+ *  resources. No handle — picker ports never draw edges. */
+function PickerSlotRow({
+  label,
+  value,
+  candidates,
+  editable,
+  onPick,
+}: {
+  label: string;
+  value: string | undefined;
+  candidates: string[];
+  editable: boolean;
+  onPick: (target: string | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 px-3" style={{ height: PORT_ROW_HEIGHT }}>
+      <span className="truncate text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
+        {label}
+      </span>
+      <Select
+        value={value ?? PICKER_NONE}
+        disabled={!editable}
+        onValueChange={(v) => onPick(v === PICKER_NONE ? null : v)}
+      >
+        <SelectTrigger
+          size="sm"
+          className="nodrag nopan ml-auto !h-5 !min-h-0 !py-0 max-w-[110px] gap-1 px-1.5 text-[10px]"
+        >
+          <SelectValue placeholder="—" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={PICKER_NONE}>—</SelectItem>
+          {candidates.map((c) => (
+            <SelectItem key={c} value={c}>
+              {c}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/** Renders one port as a stack of rows. Edge ports emit handle rows + an add
+ *  row; picker ports emit select rows. The field label shows on the first row. */
+function PortRows({
+  port,
+  editable,
+  onPick,
+  onCreate,
+}: {
+  port: NodePort;
+  editable: boolean;
+  onPick: (concretePath: string, target: string | null) => void;
+  onCreate: (concretePath: string, kind: string) => void;
+}) {
+  if (port.flavor === "picker") {
+    const candidates = port.candidates ?? [];
+    return (
+      <>
+        {port.slots.map((slot, i) => (
+          <PickerSlotRow
+            key={slot.concretePath}
+            label={i === 0 ? port.label : ""}
+            value={slot.target}
+            candidates={candidates}
+            editable={editable}
+            onPick={(t) => onPick(slot.concretePath, t)}
+          />
+        ))}
+        {port.addPath && (
+          <PickerSlotRow
+            key={port.addPath}
+            label={port.slots.length === 0 ? port.label : ""}
+            value={undefined}
+            candidates={candidates}
+            editable={editable}
+            onPick={(t) => onPick(port.addPath!, t)}
+          />
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      {port.slots.map((slot, i) => (
+        <EdgeSlotRow
+          key={slot.concretePath}
+          label={i === 0 ? port.label : ""}
+          target={slot.target}
+          path={slot.concretePath}
+        />
+      ))}
+      {port.addPath && (
+        <AddSlotRow
+          label={port.slots.length === 0 ? port.label : ""}
+          path={port.addPath}
+          createKinds={port.createKinds ?? []}
+          editable={editable}
+          onCreate={onCreate}
+        />
+      )}
+    </>
+  );
+}
+
+/** Canvas node: resource name, capability badge, a rail of reference ports
+ *  (adapters), and — for sequence-like nodes — an internal list of steps. Each
+ *  edge port / step carries its own source handle (id = concrete path) so edges
+ *  anchor to the exact slot they came from. The module root is styled
+ *  distinctly. */
 function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
   const isRoot = data.isRoot;
   return (
@@ -77,7 +302,15 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
       } ${data.selected ? "ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-zinc-900" : ""}`}
       style={{ width: NODE_WIDTH }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-zinc-400" />
+      {/* The module root is an edge source only — nothing wires into it, so it
+          gets no input socket. */}
+      {!isRoot && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!size-2.5 !border-zinc-400 !bg-white dark:!bg-zinc-900"
+        />
+      )}
       <div className="flex items-center gap-1.5">
         {isRoot ? (
           <Boxes className="size-3.5 shrink-0 text-indigo-500" />
@@ -91,26 +324,26 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
       <div className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
         {capLabel(data.capability)}
       </div>
-      {data.chips.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {data.chips.map((c, i) => (
-            <span
-              key={i}
-              className="rounded bg-zinc-100 px-1 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-              title={`${c.label} → ${c.target}`}
-            >
-              {c.label}: {c.target}
-            </span>
+      {data.ports.length > 0 && (
+        <div className="mt-1.5 -mx-3 flex flex-col gap-0.5 border-t border-zinc-100 pt-1.5 dark:border-zinc-800">
+          {data.ports.map((port) => (
+            <PortRows
+              key={port.key}
+              port={port}
+              editable={data.editable}
+              onPick={data.onPick}
+              onCreate={data.onCreate}
+            />
           ))}
         </div>
       )}
       {data.steps.length > 0 && (
-        <div className="mt-1.5 flex flex-col gap-0.5 border-t border-zinc-100 pt-1.5 dark:border-zinc-800">
+        <div className="mt-1.5 -mx-3 flex flex-col gap-0.5 border-t border-zinc-100 pt-1.5 dark:border-zinc-800">
           {data.steps.map((s) => (
             <div
               key={s.path}
-              className="relative flex items-center gap-1.5 pr-1"
-              style={{ height: STEP_ROW_HEIGHT, paddingLeft: s.depth * STEP_INDENT }}
+              className="relative flex items-center gap-1.5 pr-3"
+              style={{ height: STEP_ROW_HEIGHT, paddingLeft: 12 + s.depth * STEP_INDENT }}
             >
               <span className="truncate text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
                 {s.name}
@@ -123,34 +356,52 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
               <Handle
                 type="source"
                 position={Position.Right}
-                id={stepHandleId(s.path)}
+                id={handleId(s.path)}
                 className="!bg-violet-400"
               />
             </div>
           ))}
         </div>
       )}
-      {/* Default source handle — anchors target/ref edges that don't belong to a
-          specific step (and any step node's top-level refs). */}
-      <Handle type="source" position={Position.Right} className="!bg-zinc-400" />
+      {/* Fallback source handle — rendered only when an edge actually docks here
+          (no specific port / step anchor). Leaf / target-only nodes get none. */}
+      {data.hasFallbackOutput && (
+        <Handle type="source" position={Position.Right} className="!bg-zinc-400" />
+      )}
     </div>
   );
 }
 
 const nodeTypes = { resource: ResourceNode };
 
-interface TargetEdgeData extends Record<string, unknown> {
-  isTarget: true;
-  toName: string;
+interface RefEdgeData extends Record<string, unknown> {
+  source: { kind: string; name: string };
+  concretePath: string;
+  /** Present when the edge's invocation accepts inputs — clicking opens the
+   *  inputs form at this pointer with this schema. */
+  inputs?: { pointer: string; schema: Record<string, unknown> };
 }
 
-/** Post-dagre alignment (Option A): pulls each node's vertical center toward the
- *  handle it is wired from — a step row for a per-step invoke edge, otherwise the
- *  source node's center — so edges run roughly horizontal instead of crossing.
- *  Ranks are swept left-to-right (dagre LR → x ascending) so a downstream node
- *  follows its source's *already-aligned* y, not dagre's original; this keeps a
- *  ref target (e.g. a model referenced by a stream step's target) beside the node
- *  that links it. Per rank, nodes are ordered on their desired y, pushed apart
+/** Concrete paths that have an edge-port handle on a given node (slots + add).
+ *  Keyed by node name. Used to anchor edges and gate deletion to port edges. */
+function portHandlePaths(nodes: GraphNode[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const n of nodes) {
+    const set = new Set<string>();
+    for (const p of n.ports ?? []) {
+      if (p.flavor !== "edge") continue;
+      for (const s of p.slots) set.add(s.concretePath);
+      if (p.addPath) set.add(p.addPath);
+    }
+    map.set(n.name, set);
+  }
+  return map;
+}
+
+/** Post-dagre alignment: pulls each node's vertical center toward the handle it
+ *  is wired from — a step row for a per-step invoke edge, otherwise the source
+ *  node's center — so edges run roughly horizontal. Ranks are swept
+ *  left-to-right; per rank, nodes are ordered on their desired y, pushed apart
  *  with a min gap, then re-centered on the desired centroid to limit drift. A
  *  node with no incoming edge keeps dagre's y. Returns center-y per node name. */
 function alignNodesToSources(
@@ -160,7 +411,6 @@ function alignNodesToSources(
   const GAP = 24;
   const nodeByName = new Map(model.nodes.map((n) => [n.name, n] as const));
 
-  // Rendered center-y of a node's i-th step row, relative to the node top.
   const stepRowCenter = (rowIndex: number) =>
     NODE_HEIGHT + STEPS_SECTION_PAD + (rowIndex + 0.5) * STEP_ROW_HEIGHT;
 
@@ -174,8 +424,6 @@ function alignNodesToSources(
   const finalY = new Map<string, number>();
   for (const n of model.nodes) finalY.set(n.name, center.get(n.name)?.y ?? 0);
 
-  // The y of the handle an edge leaves its source from, using the source's
-  // already-finalized center (earlier ranks are resolved first).
   const sourceAnchorY = (from: string, fromStepPath?: string): number => {
     const srcY = finalY.get(from) ?? center.get(from)?.y ?? 0;
     const src = nodeByName.get(from);
@@ -220,21 +468,18 @@ function alignNodesToSources(
   return finalY;
 }
 
-/** Runs dagre over the model and returns positioned xyflow nodes + edges.
- *  Target edges carry `{ isTarget, toName }` and are deletable only when the
- *  canvas is editable; ref edges are never directly editable. */
+/** Runs dagre over the model and returns positioned xyflow nodes + edges. Ref
+ *  edges dock onto the source node's port (or step) handle and are deletable —
+ *  when editable — only for port edges (deleting clears that ref). */
 function layout(
   model: AppCanvasModel,
   editable: boolean,
   selected: { kind: string; name: string } | null,
   onOpen: (n: GraphNode) => void,
+  onPickRef: (source: { kind: string; name: string }, concretePath: string, target: string | null) => void,
+  onCreateRef: (source: { kind: string; name: string }, concretePath: string, kind: string) => void,
 ): { nodes: Node[]; edges: Edge[] } {
-  const chipsByNode = new Map<string, { label: string; target: string }[]>();
-  for (const chip of model.chips) {
-    const list = chipsByNode.get(chip.on) ?? [];
-    list.push({ label: chip.label, target: chip.target });
-    chipsByNode.set(chip.on, list);
-  }
+  const portPaths = portHandlePaths(model.nodes);
 
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 32, ranksep: 80 });
@@ -255,6 +500,16 @@ function layout(
   }
   const finalY = alignNodesToSources(model, center);
 
+  // Source nodes whose edge docks on the fallback handle (neither a port nor a
+  // step handle) — the only nodes that need the right-edge socket rendered.
+  const fallbackSources = new Set<string>();
+  for (const e of model.edges) {
+    const isPortEdge = !!e.fromPath && !!portPaths.get(e.from)?.has(e.fromPath);
+    if (e.fromStepPath || isPortEdge) continue;
+    const from = model.nodes.find((n) => n.name === e.from);
+    if (from) fallbackSources.add(nodeId(from.kind, from.name));
+  }
+
   const nodes: Node[] = model.nodes.map((n) => {
     const c = center.get(n.name) ?? { x: 0, y: 0 };
     return {
@@ -268,9 +523,15 @@ function layout(
         capability: n.capability,
         isRoot: n.isRoot,
         selected: selected?.kind === n.kind && selected?.name === n.name,
-        chips: chipsByNode.get(n.name) ?? [],
         steps: n.steps ?? [],
+        ports: n.ports ?? [],
+        hasFallbackOutput: fallbackSources.has(nodeId(n.kind, n.name)),
+        editable,
         onOpen: () => onOpen(n),
+        onPick: (concretePath: string, target: string | null) =>
+          onPickRef({ kind: n.kind, name: n.name }, concretePath, target),
+        onCreate: (concretePath: string, kind: string) =>
+          onCreateRef({ kind: n.kind, name: n.name }, concretePath, kind),
       } satisfies ResourceNodeData,
     };
   });
@@ -279,18 +540,31 @@ function layout(
     const from = model.nodes.find((n) => n.name === e.from);
     const to = model.nodes.find((n) => n.name === e.to);
     if (!from || !to) return [];
-    const isTarget = e.label === TARGET_EDGE_LABEL;
+    const isPortEdge = !!e.fromPath && !!portPaths.get(e.from)?.has(e.fromPath);
+    const sourceHandle = e.fromStepPath
+      ? handleId(e.fromStepPath)
+      : isPortEdge
+        ? handleId(e.fromPath!)
+        : undefined;
+    const hasData = isPortEdge || !!e.inputs;
     return [
       {
-        id: `e${i} ${e.from} ${e.to} ${e.label} ${e.fromStepPath ?? ""}`,
+        id: `e${i} ${e.from} ${e.to} ${e.fromPath ?? ""} ${e.fromStepPath ?? ""}`,
         source: nodeId(from.kind, from.name),
-        sourceHandle: e.fromStepPath ? stepHandleId(e.fromStepPath) : undefined,
+        sourceHandle,
         target: nodeId(to.kind, to.name),
-        label: e.label,
-        labelStyle: { fontSize: 10, fill: isTarget ? "#6366f1" : "#a1a1aa" },
-        style: { stroke: isTarget ? "#a5b4fc" : "#d4d4d8" },
-        deletable: isTarget && editable,
-        ...(isTarget ? { data: { isTarget: true, toName: e.to } satisfies TargetEdgeData } : {}),
+        // Input-carrying edges are tinted to hint they're clickable.
+        style: { stroke: e.inputs ? "#a5b4fc" : "#d4d4d8" },
+        deletable: isPortEdge && editable,
+        ...(hasData
+          ? {
+              data: {
+                source: { kind: from.kind, name: from.name },
+                concretePath: e.fromPath ?? "",
+                inputs: e.inputs,
+              } satisfies RefEdgeData,
+            }
+          : {}),
       },
     ];
   });
@@ -314,20 +588,23 @@ interface ApplicationTopologyCanvasProps {
   onDeleteResource?: (kind: string, name: string) => void;
   /** Peek a node / strip entry in the detail panel. */
   onSelectResource: (kind: string, name: string) => void;
-  /** Rewrites the Application's `targets`. When omitted the canvas is read-only
-   *  (no drag-to-wire, no edge deletion). */
-  onTargetsChange?: (targets: string[]) => void;
+  /** Applies reference writes (drag-to-wire, edge deletion, picker changes).
+   *  When omitted the canvas is read-only (no wiring, no edge deletion). */
+  onWriteRef?: (writes: RefWrite[]) => void;
+  /** Opens a pointer-scoped editor — used when an edge carrying invocation
+   *  `inputs` is clicked, to edit those inputs in the detail panel. */
+  onSelect?: (selection: Selection) => void;
   /** Opens the create-resource flow. Rendered as a canvas action. */
   onCreateResource?: () => void;
   onBackgroundClick: () => void;
 }
 
-/** Module-wide overview graph rendered for the `Telo.Application` root. Nodes
- *  are capability-partitioned (the model decides); Provider / Type sources live
- *  in a collapsible side strip rather than as graph nodes. Clicking a node or
- *  strip entry peeks it in the detail panel. When `onTargetsChange` is supplied,
- *  dragging from the Application node to a Runnable / Service adds a target and
- *  deleting a target edge removes one — the only editable surface in v1. */
+/** Module-wide overview graph rendered for the `Telo.Application` /
+ *  `Telo.Library` root. Nodes are capability-partitioned (the model decides);
+ *  Provider / Type sources live in a collapsible side strip. Each node carries a
+ *  rail of reference ports: edge ports drag-to-wire to other nodes, picker ports
+ *  select an ambient source inline. When `onWriteRef` is supplied the rail is
+ *  editable — dragging from a port wires a ref, deleting a port edge clears it. */
 export function ApplicationTopologyCanvas({
   model,
   viewportKey,
@@ -336,27 +613,42 @@ export function ApplicationTopologyCanvas({
   selectedResource,
   onDeleteResource,
   onSelectResource,
-  onTargetsChange,
+  onWriteRef,
+  onSelect,
   onCreateResource,
   onBackgroundClick,
 }: ApplicationTopologyCanvasProps) {
   const [stripOpen, setStripOpen] = useState(true);
-  const editable = !!onTargetsChange;
+  const editable = !!onWriteRef;
   const selected = selectedResource ?? null;
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // Live count of selected edges — a selected target edge is xyflow's to delete
+  // Live count of selected edges — a selected port edge is xyflow's to delete
   // (`onEdgesDelete`), so the node-delete handler stands down when one is set.
   const selectedEdgeCount = useRef(0);
 
-  const { nodes, edges } = useMemo(
-    () => layout(model, editable, selected, (n) => onSelectResource(n.kind, n.name)),
-    [model, editable, selected, onSelectResource],
+  const onPickRef = useCallback(
+    (source: { kind: string; name: string }, concretePath: string, target: string | null) => {
+      onWriteRef?.([{ source, concretePath, target }]);
+    },
+    [onWriteRef],
   );
 
-  // Delete / Backspace removes the selected non-root node. The listener unmounts
-  // with the canvas; it stands down when a target edge is selected (xyflow owns
-  // that deletion) and only fires when focus is on the canvas itself (or nothing
-  // focused) — not when typing or working in another panel.
+  const onCreateRef = useCallback(
+    (source: { kind: string; name: string }, concretePath: string, kind: string) => {
+      onWriteRef?.([{ source, concretePath, target: null, createKind: kind }]);
+    },
+    [onWriteRef],
+  );
+
+  const { nodes, edges } = useMemo(
+    () =>
+      layout(model, editable, selected, (n) => onSelectResource(n.kind, n.name), onPickRef, onCreateRef),
+    [model, editable, selected, onSelectResource, onPickRef, onCreateRef],
+  );
+
+  // Delete / Backspace removes the selected non-root node. The listener stands
+  // down when a port edge is selected (xyflow owns that deletion) and only fires
+  // when focus is on the canvas itself — not when typing or in another panel.
   useEffect(() => {
     if (!onDeleteResource || !selected) return;
     const node = model.nodes.find((n) => n.kind === selected.kind && n.name === selected.name);
@@ -376,51 +668,86 @@ export function ApplicationTopologyCanvas({
     return () => window.removeEventListener("keydown", handler);
   }, [onDeleteResource, selected, model.nodes]);
 
-  // nodeId → {name, capability, isRoot} for connection validation / mapping.
+  // nodeId → {name, kind, capability} for connection validation / mapping.
   const nodeMeta = useMemo(() => {
-    const map = new Map<string, { name: string; capability: string; isRoot: boolean }>();
+    const map = new Map<string, { name: string; kind: string; capability: string }>();
     for (const n of model.nodes) {
-      map.set(nodeId(n.kind, n.name), {
-        name: n.name,
-        capability: n.capability,
-        isRoot: !!n.isRoot,
-      });
+      map.set(nodeId(n.kind, n.name), { name: n.name, kind: n.kind, capability: n.capability });
     }
     return map;
   }, [model.nodes]);
 
-  // A target edge may only run from the root node to a Runnable / Service that
-  // isn't already a target (the kernel's rule for `targets`).
+  // (nodeId, handleId) → the port slot's concrete path + accepted capabilities.
+  // Recovers the write target from a connection's sanitized source handle.
+  const portHandleMap = useMemo(() => {
+    const map = new Map<string, Map<string, { concretePath: string; capabilities: string[] }>>();
+    for (const n of model.nodes) {
+      const inner = new Map<string, { concretePath: string; capabilities: string[] }>();
+      for (const p of n.ports ?? []) {
+        if (p.flavor !== "edge") continue;
+        for (const s of p.slots) {
+          inner.set(handleId(s.concretePath), { concretePath: s.concretePath, capabilities: p.capabilities });
+        }
+        if (p.addPath) {
+          inner.set(handleId(p.addPath), { concretePath: p.addPath, capabilities: p.capabilities });
+        }
+      }
+      map.set(nodeId(n.kind, n.name), inner);
+    }
+    return map;
+  }, [model.nodes]);
+
+  // A connection is valid when the dragged port accepts the target's capability.
   const isValidConnection = useCallback(
     (c: Connection | Edge) => {
-      const source = nodeMeta.get(c.source ?? "");
+      const slot = portHandleMap.get(c.source ?? "")?.get(c.sourceHandle ?? "");
       const target = nodeMeta.get(c.target ?? "");
-      if (!source?.isRoot || !target) return false;
-      return TARGET_CAPABILITIES.has(target.capability) && !model.targets.includes(target.name);
+      if (!slot || !target) return false;
+      return slot.capabilities.includes(target.capability);
     },
-    [nodeMeta, model.targets],
+    [portHandleMap, nodeMeta],
   );
 
   const onConnect = useCallback(
     (c: Connection) => {
+      const slot = portHandleMap.get(c.source ?? "")?.get(c.sourceHandle ?? "");
+      const src = nodeMeta.get(c.source ?? "");
       const target = nodeMeta.get(c.target ?? "");
-      if (!onTargetsChange || !target || model.targets.includes(target.name)) return;
-      onTargetsChange([...model.targets, target.name]);
+      if (!onWriteRef || !slot || !src || !target) return;
+      onWriteRef([
+        { source: { kind: src.kind, name: src.name }, concretePath: slot.concretePath, target: target.name },
+      ]);
     },
-    [nodeMeta, model.targets, onTargetsChange],
+    [portHandleMap, nodeMeta, onWriteRef],
+  );
+
+  // Clicking an edge that carries invocation inputs opens the inputs form in the
+  // detail panel (runtime CEL fields). Other edges just select/highlight.
+  const onEdgeClick = useCallback(
+    (_e: unknown, edge: Edge) => {
+      const d = edge.data as RefEdgeData | undefined;
+      if (d?.inputs && onSelect) {
+        onSelect({
+          resource: d.source,
+          pointer: d.inputs.pointer,
+          schema: d.inputs.schema,
+          celEval: "runtime",
+        });
+      }
+    },
+    [onSelect],
   );
 
   const onEdgesDelete = useCallback(
     (deleted: Edge[]) => {
-      if (!onTargetsChange) return;
-      const removed = deleted
-        .map((e) => (e.data as TargetEdgeData | undefined))
-        .filter((d): d is TargetEdgeData => !!d?.isTarget)
-        .map((d) => d.toName);
-      if (removed.length === 0) return;
-      onTargetsChange(model.targets.filter((t) => !removed.includes(t)));
+      if (!onWriteRef) return;
+      const writes = deleted
+        .map((e) => e.data as RefEdgeData | undefined)
+        .filter((d): d is RefEdgeData => !!d?.concretePath)
+        .map((d) => ({ source: d.source, concretePath: d.concretePath, target: null }));
+      if (writes.length) onWriteRef(writes);
     },
-    [model.targets, onTargetsChange],
+    [onWriteRef],
   );
 
   return (
@@ -436,6 +763,7 @@ export function ApplicationTopologyCanvas({
           edgesReconnectable={false}
           isValidConnection={isValidConnection}
           onConnect={onConnect}
+          onEdgeClick={onEdgeClick}
           onEdgesDelete={onEdgesDelete}
           onSelectionChange={({ edges: sel }) => {
             selectedEdgeCount.current = sel.length;

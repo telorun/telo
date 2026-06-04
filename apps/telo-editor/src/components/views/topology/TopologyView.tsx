@@ -15,7 +15,7 @@ export function TopologyView({
   selectedResource,
   onUpdateResource,
   onDeleteResource,
-  onUpdateApplicationTargets,
+  onWriteRef,
   onCreateResource,
   onSelectResource,
   onSelect,
@@ -50,9 +50,6 @@ export function TopologyView({
     return buildApplicationCanvasModel(viewData, registry, targets);
   }, [graphTopology, registry, viewData]);
 
-  // Drag-to-wire edits `targets`, which only Applications have.
-  const isApplication = viewData.manifest.kind === "Application";
-
   if (graphResource && graphSchema) {
     return (
       <PickCanvas
@@ -66,7 +63,7 @@ export function TopologyView({
         onCanvasViewportChange={onCanvasViewportChange}
         selectedResource={selectedResource}
         onDeleteResource={onDeleteResource}
-        onUpdateApplicationTargets={isApplication ? onUpdateApplicationTargets : undefined}
+        onWriteRef={onWriteRef}
         onCreateResource={onCreateResource}
         onUpdateResource={onUpdateResource}
         onSelectResource={onSelectResource}

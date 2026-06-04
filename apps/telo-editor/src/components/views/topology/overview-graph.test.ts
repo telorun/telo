@@ -28,23 +28,22 @@ function registry(): AnalysisRegistry {
 }
 
 describe("buildOverviewGraph", () => {
-  it("splits refs into edges (node targets) and chips (ambient targets)", async () => {
+  it("emits node-target edges and skips ambient (Provider / Type) refs", async () => {
     const { buildOverviewGraph } = await import("./overview-graph");
     const resources: ResourceManifest[] = [
       {
         kind: "demo.Worker",
         metadata: { name: "w" },
-        uses: { kind: "demo.Conf", name: "c" },
+        uses: { kind: "demo.Conf", name: "c" }, // ambient → no edge
         next: { kind: "demo.Worker", name: "w2" },
       },
       { kind: "demo.Worker", metadata: { name: "w2" } },
       { kind: "demo.Conf", metadata: { name: "c" } },
     ] as unknown as ResourceManifest[];
 
-    const graph = buildOverviewGraph(resources, registry());
+    const edges = buildOverviewGraph(resources, registry());
 
-    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
-    expect(graph.chips).toEqual([{ on: "w", target: "c", label: "uses", fromPath: "uses" }]);
+    expect(edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
   });
 
   it("resolves a bare-name ref to its declared kind's capability", async () => {
@@ -54,10 +53,9 @@ describe("buildOverviewGraph", () => {
       { kind: "demo.Worker", metadata: { name: "w2" } },
     ] as unknown as ResourceManifest[];
 
-    const graph = buildOverviewGraph(resources, registry());
+    const edges = buildOverviewGraph(resources, registry());
 
-    expect(graph.edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
-    expect(graph.chips).toEqual([]);
+    expect(edges).toEqual([{ from: "w", to: "w2", label: "next", fromPath: "next" }]);
   });
 
   it("discovers a ref nested in a non-schema field (Run.Sequence-style invoke)", async () => {
@@ -73,9 +71,9 @@ describe("buildOverviewGraph", () => {
       { kind: "demo.Worker", metadata: { name: "w2" } },
     ] as unknown as ResourceManifest[];
 
-    const graph = buildOverviewGraph(resources, registry());
+    const edges = buildOverviewGraph(resources, registry());
 
-    expect(graph.edges).toEqual([
+    expect(edges).toEqual([
       { from: "w", to: "w2", label: "invoke", fromPath: "steps[0].invoke", nested: true },
     ]);
   });

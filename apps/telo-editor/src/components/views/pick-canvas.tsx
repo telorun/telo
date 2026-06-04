@@ -3,7 +3,7 @@ import type { CanvasViewport, ParsedResource, Selection } from "../../model";
 import type { ResolvedResourceOption } from "../resource-schema-form/types";
 import { ResourceCanvas } from "./resource-canvas/ResourceCanvas";
 import { ApplicationTopologyCanvas } from "./topology/ApplicationTopologyCanvas";
-import type { AppCanvasModel } from "./topology/application-canvas-model";
+import type { AppCanvasModel, RefWrite } from "./topology/application-canvas-model";
 import { RouterTopologyCanvas } from "./topology/RouterTopologyCanvas";
 import { SequenceTopologyCanvas } from "./topology/SequenceTopologyCanvas";
 
@@ -29,8 +29,9 @@ interface PickCanvasProps {
   selectedResource?: { kind: string; name: string } | null;
   /** Removes a resource (overview-canvas Delete key). */
   onDeleteResource?: (kind: string, name: string) => void;
-  /** Rewrites the Application's `targets` (drag-to-wire). Read-only when absent. */
-  onUpdateApplicationTargets?: (targets: string[]) => void;
+  /** Applies reference writes from the overview canvas (drag-to-wire, edge
+   *  deletion, picker changes). Read-only when absent. */
+  onWriteRef?: (writes: RefWrite[]) => void;
   /** Opens the create-resource flow (Application canvas action). */
   onCreateResource?: () => void;
   /** Forwarded to `ResourceCanvas` only. Specialized canvases (Router,
@@ -56,7 +57,7 @@ export function PickCanvas({
   onCanvasViewportChange,
   selectedResource,
   onDeleteResource,
-  onUpdateApplicationTargets,
+  onWriteRef,
   onCreateResource,
   hideHeader,
 }: PickCanvasProps) {
@@ -77,7 +78,8 @@ export function PickCanvas({
         selectedResource={selectedResource}
         onDeleteResource={onDeleteResource}
         onSelectResource={onSelectResource}
-        onTargetsChange={onUpdateApplicationTargets}
+        onWriteRef={onWriteRef}
+        onSelect={onSelect}
         onCreateResource={onCreateResource}
         onBackgroundClick={onBackgroundClick}
       />
