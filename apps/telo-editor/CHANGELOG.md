@@ -1,5 +1,13 @@
 # telo-editor
 
+## 0.7.0
+
+### Minor Changes
+
+- 125aeec: Add "Open in Telo Editor" support: launching the editor with a `?open=<url>` query parameter fetches a manifest over HTTP (e.g. a GitHub raw URL) and copies it into an in-browser virtual workspace under `/workspace/apps/<slug>/telo.yaml` for local editing. Relative (same-origin) imports cascade — their files are fetched and persisted verbatim, mirroring their layout relative to the root (without escaping the workspace) — while registry imports continue to resolve via the configured registry adapters. Before anything is written, a confirmation dialog previews the application/library name, description, declared imports, and the exact list of files to be created (flagging overwrites). A toast confirms the import. `loadWorkspace` now also resolves local imports that point at non-`telo.yaml` files copied in by a cascade.
+- 3dc20d0: Add a Kubernetes runner. Extract backend-neutral `@telorun/runner-core` from docker-runner (shared `/v1` contract, routes, registry, SSE, ring buffers) behind a `RunnerBackend` seam; docker-runner becomes a thin backend over it with no behaviour change. Add `@telorun/k8s-runner`, a `KubernetesBackend` that runs Telo apps as sandboxed Pods (attach-based PTY, hard-ceiling limit clamping, tokenized bundle delivery, per-session ingress, orphan reaping) plus a Helm chart (RBAC, quota, NetworkPolicy) and a CI image job. Add a k8s editor `RunAdapter` via a shared `createHttpRunnerAdapter` factory. Rename the docker image `telorun/telo-runner` → `telorun/docker-runner`.
+- e9c73ed: Add a raw file explorer and unified open-editors tabs. The left sidebar now shows the full workspace file tree (create/rename/delete/drag-move, with selection driving where new files land and top-level folders expanded by default), backed by a new `rename` workspace-adapter primitive across the Tauri, File System Access, and localStorage backends. The center pane is now a VSCode-style tab strip: module tabs host the structured views while non-telo files open in a Monaco editor (binary files show a placeholder). Open tabs, the active tab, and expanded folders persist across reloads, and structural file ops re-scan the workspace so the Applications/Libraries view stays in sync. Imports, Definitions, Resources, and Kinds moved from the sidebar/Inventory into dedicated module-view tabs (Imports keeps add/remove and the version-upgrade dropdown); the Inventory view and the redundant file-path/module-path labels were removed.
+
 ## 0.6.0
 
 ### Minor Changes
