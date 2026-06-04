@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: HttpBinaryStreamBodyTest
+  version: 1.0.0
+  description: |
+    End-to-end test for binary request bodies. An Http.Server declares a raw
+    stream content-type parser for application/gzip; a route marks its
+    request.schema.body with x-telo-stream, so request.body is delivered to the
+    handler as a Stream<Uint8Array> (no buffering, no AJV). The handler drains
+    the stream and echoes the bytes back; the client POSTs a known payload and
+    asserts it round-tripped byte-for-byte.
+imports:
+  Http: ../
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - TestUpload
+---
+# Handler: drain the streamed request body and echo it back decoded.
+kind: JS.Script
+metadata: { name: DrainBody }
+code: |
+  async function main({ body }) {
+    const chunks = [];
+    for await (const chunk of body) chunks.push(Buffer.from(chunk));
+    const buf = Buffer.concat(chunks);
+    return { length: buf.length, text: buf.toString("utf8") };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      body: { x-telo-stream: true }
+    required: [ body ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      length: { type: integer }
+      text: { type: string }
+    required: [ length, text ]
+---
+# Client: POST raw bytes with Content-Type application/gzip; the stream parser
+# passes them through undecoded. Read back the JSON echo.
+kind: JS.Script
+metadata: { name: Upload }
+code: |
+  async function main({ url, payload }) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/gzip" },
+      body: Buffer.from(payload, "utf8"),
+    });
+    const json = await r.json();
+    return { status: r.status, length: json.length, text: json.text };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+      payload: { type: string }
+    required: [ url, payload ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      length: { type: integer }
+      text: { type: string }
+    required: [ status, length, text ]
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request:
+      path: /upload
+      method: POST
+      schema:
+        body:
+          x-telo-stream: true
+    handler: { kind: JS.Script, name: DrainBody }
+    inputs:
+      body: "${{ request.body }}"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              length: "${{ result.length }}"
+              text: "${{ result.text }}"
+---
+kind: Run.Sequence
+metadata: { name: TestUpload }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8958
+    baseUrl: http://127.0.0.1:8958
+    logger: false
+    contentTypeParsers:
+      - contentType: application/gzip
+        stream: true
+    mounts:
+      - path: /
+        type: HttpBinaryStreamBodyTest.Api
+targets:
+  - Server
+steps:
+  - name: Upload
+    inputs:
+      url: http://127.0.0.1:8958/upload
+      payload: "hello stream body"
+    invoke: { kind: JS.Script, name: Upload }
+  - name: Assert
+    inputs:
+      status: "${{ steps.Upload.result.status }}"
+      length: "${{ steps.Upload.result.length }}"
+      text: "${{ steps.Upload.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          length: { const: 17 }
+          text: { const: "hello stream body" }
+        required: [ status, length, text ]

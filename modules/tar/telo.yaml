@@ -1,0 +1,104 @@
+kind: Telo.Library
+metadata:
+  name: tar
+  namespace: std
+  version: 0.1.0
+  description: |
+    Tar archive read/write. `Tar.Extract` pulls one named entry out of a tar
+    byte stream; `Tar.Pack` builds an archive from an ordered list of
+    `{ path, contents }` entries. Pair with the gzip codec to read or write a
+    `.tar.gz`. Whole-archive enumeration is deliberately out of scope until
+    stream element-typing lands.
+exports:
+  kinds:
+    - Extract
+    - Pack
+---
+# Build a tar archive from an ordered list of `{ path, contents }` entries and
+# emit it as a byte stream. Contents are UTF-8 text. Pipe through `Gzip.Encoder`
+# for a `.tar.gz`.
+kind: Telo.Definition
+metadata:
+  name: Pack
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/tar@0.1.0?local_path=./nodejs#pack
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      entries:
+        type: array
+        description: Files to write into the archive, in order.
+        items:
+          type: object
+          properties:
+            path:
+              type: string
+              description: Entry path inside the archive.
+            contents:
+              type: string
+              description: UTF-8 text content of the entry.
+          required: [ path, contents ]
+          additionalProperties: false
+    required: [ entries ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Tar archive byte stream.
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+---
+# Extract one named entry from a tar byte stream.
+#
+# The archive is scanned to completion; the matched entry's bytes are buffered
+# (entries selected this way are small — e.g. a manifest) and re-emitted as a
+# single-chunk `Stream<Uint8Array>` so the result composes with any downstream
+# decoder (`PlainText.Decoder`, etc.). A missing `path` raises `ERR_NOT_FOUND`.
+kind: Telo.Definition
+metadata:
+  name: Extract
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/tar@0.1.0?local_path=./nodejs#extract
+throws:
+  codes:
+    ERR_NOT_FOUND:
+      description: No entry at the requested path exists in the archive.
+    ERR_INVALID_INPUT:
+      description: input is not a byte stream, or path is missing/empty.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Tar archive byte stream.
+      path:
+        type: string
+        description: Entry path to extract from the archive (leading "./" is ignored).
+    required: [ input, path ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Byte stream of the extracted entry's contents.
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

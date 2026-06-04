@@ -48,7 +48,7 @@ Invoke inside a sequence:
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
 | `key` | string | yes | Object key (path inside the bucket). |
-| `body` | string | yes | Object content. |
+| `body` | string \| Uint8Array | yes | Object content — a UTF-8 string, or buffered binary (e.g. the `bytes` from `Octet.Decoder`). |
 | `contentType` | string | no | MIME type. Defaults to `application/octet-stream`. |
 
 ## Output

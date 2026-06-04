@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: gzip
+  namespace: std
+  version: 0.1.0
+  description: |
+    Gzip codec — Uint8Array stream ↔ Uint8Array stream. Encoder wraps Node
+    `zlib.createGzip()` (compress); Decoder wraps `zlib.createGunzip()`
+    (decompress). Pair with Content-Type `application/gzip`.
+imports:
+  Codec: ../codec
+exports:
+  kinds:
+    - Encoder
+    - Decoder
+---
+# Encoder: byte stream → gzip-compressed byte stream.
+kind: Telo.Definition
+metadata:
+  name: Encoder
+capability: Telo.Invocable
+extends: Codec.Encoder
+controllers:
+  - pkg:npm/@telorun/gzip@0.1.0?local_path=./nodejs#encoder
+schema:
+  type: object
+  additionalProperties: false
+---
+# Decoder: gzip byte stream → decompressed byte stream.
+#
+# Output stays a stream (not collected) so it pipes straight into a downstream
+# decoder — e.g. `Tar.Extract` for a `.tar.gz`, or `PlainText.Decoder` for a
+# gzipped text payload.
+kind: Telo.Definition
+metadata:
+  name: Decoder
+capability: Telo.Invocable
+extends: Codec.Decoder
+controllers:
+  - pkg:npm/@telorun/gzip@0.1.0?local_path=./nodejs#decoder
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Decompressed byte stream (gunzipped `input`).
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

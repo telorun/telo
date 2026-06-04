@@ -11,11 +11,13 @@ import {
 import {
   ControllerContext,
   Invocable,
+  InvokeError,
   isInvokeError,
   KindRef,
   Ref,
   ResourceContext,
   ResourceInstance,
+  Stream,
 } from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
@@ -90,9 +92,14 @@ export class HttpServerApi implements ResourceInstance {
 
     const schema: any = { response: {} };
 
+    // A stream-marked body is delivered as a raw `Stream<Uint8Array>` (see the
+    // server's `contentTypeParsers[].stream`); it is opaque to AJV, so skip
+    // body-schema registration and wrap the raw request stream in the handler.
+    const streamBody = route.request.schema?.body?.["x-telo-stream"] === true;
+
     if (route.request.schema?.query) schema.querystring = route.request.schema.query;
     if (route.request.schema?.params) schema.params = route.request.schema.params;
-    if (route.request.schema?.body) schema.body = route.request.schema.body;
+    if (route.request.schema?.body && !streamBody) schema.body = route.request.schema.body;
     if (route.request.schema?.headers) schema.headers = route.request.schema.headers;
 
     // Response schemas: register the FIRST content[mime].schema we find for
@@ -121,7 +128,7 @@ export class HttpServerApi implements ResourceInstance {
             params: request.params || {},
             query: request.query || {},
             headers: normalizeHeaders(request.headers),
-            body: request.body,
+            body: streamBody ? toByteStream(request) : request.body,
           },
         };
         const acceptHeader = (
@@ -211,6 +218,36 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
  */
 function translateOpenApiPath(openApiPath: string): string {
   return openApiPath.replace(/{([a-zA-Z_][a-zA-Z0-9_]*)}/g, ":$1");
+}
+
+/**
+ * Wraps an incoming request's raw body as a `Stream<Uint8Array>`. Requires a
+ * stream content-type parser (`contentTypeParsers[].stream`) for the request's
+ * Content-Type — only then is `request.body` the undrained payload stream.
+ * Without one, Fastify has already consumed the socket to build a string/object
+ * body, so `request.raw` is drained; fail fast with an actionable error rather
+ * than yield an empty stream or hang.
+ */
+function toByteStream(request: FastifyRequest): Stream<Uint8Array> {
+  const body = request.body as unknown;
+  if (!body || typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
+    const contentType = (request.headers["content-type"] as string | undefined) ?? "(none)";
+    throw new InvokeError(
+      "ERR_REQUEST_BODY_NOT_STREAMED",
+      `Route declares an x-telo-stream request body, but the body for content-type ` +
+        `"${contentType}" arrived parsed, not streamed. Register a raw stream parser on ` +
+        `the Http.Server: contentTypeParsers: [{ contentType: "${contentType}", stream: true }].`,
+    );
+  }
+  return new Stream(toUint8Chunks(body as AsyncIterable<Uint8Array | Buffer>));
+}
+
+async function* toUint8Chunks(
+  source: AsyncIterable<Uint8Array | Buffer>,
+): AsyncIterable<Uint8Array> {
+  for await (const chunk of source) {
+    yield chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+  }
 }
 
 /**

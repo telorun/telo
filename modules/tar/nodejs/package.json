@@ -1,0 +1,63 @@
+{
+  "name": "@telorun/tar",
+  "version": "0.1.0",
+  "description": "Tar archive extraction — pull a named entry out of a tar byte stream.",
+  "keywords": [
+    "telo",
+    "tar",
+    "archive"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/tar/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./extract": {
+      "types": "./dist/extract-controller.d.ts",
+      "bun": "./src/extract-controller.ts",
+      "import": "./dist/extract-controller.js"
+    },
+    "./pack": {
+      "types": "./dist/pack-controller.d.ts",
+      "bun": "./src/pack-controller.ts",
+      "import": "./dist/pack-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/tar-stream": "^3.1.3",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

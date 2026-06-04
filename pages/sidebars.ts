@@ -269,6 +269,7 @@ const sidebars: SidebarsConfig = {
                     { type: "doc", id: "modules/s3/docs/put", label: "S3.Put" },
                     { type: "doc", id: "modules/s3/docs/get", label: "S3.Get" },
                     { type: "doc", id: "modules/s3/docs/list", label: "S3.List" },
+                    { type: "doc", id: "modules/s3/docs/delete", label: "S3.Delete" },
                   ],
                 },
                 { type: "doc", id: "modules/type/README", label: "Type" },
@@ -316,6 +317,32 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "modules/sse-codec/README", label: "SSE Codec" },
                 { type: "doc", id: "modules/octet-codec/README", label: "Octet Codec" },
                 { type: "doc", id: "modules/record-stream/README", label: "Record Stream" },
+                {
+                  type: "category",
+                  label: "Stream",
+                  items: [
+                    { type: "doc", id: "modules/stream/README", label: "Overview" },
+                    { type: "doc", id: "modules/stream/docs/of", label: "Stream.Of" },
+                  ],
+                },
+                {
+                  type: "category",
+                  label: "Gzip Codec",
+                  items: [
+                    { type: "doc", id: "modules/gzip/README", label: "Overview" },
+                    { type: "doc", id: "modules/gzip/docs/encoder", label: "Gzip.Encoder" },
+                    { type: "doc", id: "modules/gzip/docs/decoder", label: "Gzip.Decoder" },
+                  ],
+                },
+                {
+                  type: "category",
+                  label: "Tar",
+                  items: [
+                    { type: "doc", id: "modules/tar/README", label: "Overview" },
+                    { type: "doc", id: "modules/tar/docs/pack", label: "Tar.Pack" },
+                    { type: "doc", id: "modules/tar/docs/extract", label: "Tar.Extract" },
+                  ],
+                },
               ],
             },
             {
