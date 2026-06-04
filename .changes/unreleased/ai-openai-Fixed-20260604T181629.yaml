@@ -1,4 +1,0 @@
-project: ai-openai
-kind: Fixed
-body: AiOpenai.OpenaiModel is now a Telo.Provider (was Telo.Invocable), matching the Ai.Model provider contract. It is referenced by Ai.Text / Ai.TextStream / Ai.Agent and never invoked directly as a target or step.
-time: 2026-06-04T18:16:29Z

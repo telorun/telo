@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-openai
   namespace: std
-  version: 0.4.0
+  version: 0.4.1
   description: OpenAI provider for Ai.Model (implements invoke and stream via Vercel AI SDK).
 imports:
   Ai: ../ai

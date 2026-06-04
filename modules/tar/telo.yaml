@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: tar
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Tar archive read/write. `Tar.Extract` pulls one named entry out of a tar
     byte stream; `Tar.Pack` builds an archive from an ordered list of
@@ -22,7 +22,7 @@ metadata:
   name: Pack
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/tar@0.1.0?local_path=./nodejs#pack
+  - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#pack
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -69,7 +69,7 @@ metadata:
   name: Extract
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/tar@0.1.0?local_path=./nodejs#extract
+  - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#extract
 throws:
   codes:
     ERR_NOT_FOUND:

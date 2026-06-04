@@ -1,6 +1,6 @@
 {
   "name": "@telorun/tar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tar archive extraction — pull a named entry out of a tar byte stream.",
   "keywords": [
     "telo",
