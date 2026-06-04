@@ -7,7 +7,7 @@ sidebar_label: Ai.OpenaiModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
-OpenAI provider for the `Ai.Model` abstract. Implements the full `AiModelInstance` runtime contract via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
+OpenAI provider for the `Ai.Model` abstract. A **`Telo.Provider`** — a configured OpenAI client referenced by `Ai.Text` / `Ai.TextStream` / `Ai.Agent`, never invoked directly as a target or step. Implements the full `AiModelInstance` runtime contract (`invoke` + `stream`) via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
 
 ```yaml
 kind: Telo.Application
@@ -51,7 +51,7 @@ model:
 
 Both methods delegate to Vercel AI SDK:
 
-- `invoke({messages, options})` → `generateText({...})` → `{text, usage, finishReason}`.
+- `invoke({messages, options, tools?})` → `generateText({...})` → `{text, usage, finishReason, toolCalls?}`.
 - `stream({messages, options})` → `streamText({...})` → `AsyncIterable<StreamPart>`.
 
 Vercel's finish reasons map straight into the Ai contract:
@@ -61,11 +61,12 @@ Vercel's finish reasons map straight into the Ai contract:
 | `stop`            | `stop`                  |
 | `length`          | `length`                |
 | `content-filter`  | `content-filter`        |
-| `tool-calls`      | `other`                 |
+| `tool-calls`      | `tool-calls`            |
 | `error`           | `error`                 |
+| `unknown`         | `other`                 |
 | anything else     | `other`                 |
 
-`tool-calls` maps to `other` because neither `Ai.Text` nor `Ai.TextStream` exposes tool choices — when (and if) `Ai.Agent` lands, that surface gets dedicated handling.
+`tool-calls` is preserved (not flattened to `other`): `Ai.Agent` drives the tool-use loop on it — when the model requests tools, the returned `toolCalls` are executed and replayed. `Ai.Text` / `Ai.TextStream` never pass `tools`, so they never see this reason.
 
 ## Options
 

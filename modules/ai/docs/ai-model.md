@@ -1,5 +1,5 @@
 ---
-description: "Ai.Model abstract: contract every LLM provider implements (invoke + stream methods, message/usage shapes, snapshot redaction). Walkthrough for adding a new provider."
+description: "Ai.Model abstract: the LLM client provider every backend implements (invoke + stream methods, message/usage shapes, snapshot redaction). Walkthrough for adding a new provider."
 sidebar_label: Ai.Model
 ---
 
@@ -15,10 +15,10 @@ The `@telorun/ai-openai` package is the canonical first-party implementation. Th
 kind: Telo.Abstract
 metadata:
   name: Model
-capability: Telo.Invocable
+capability: Telo.Provider
 ```
 
-The abstract carries `inputType` / `outputType` declarations for the buffered `invoke` path (see `modules/ai/telo.yaml`). When the typed-abstracts work lands, those become enforced; today they're documentation backed by runtime validation in `Ai.Text`.
+The abstract carries only the config schema each provider extends. The message-in / completion-out contract is owned by the **operations**: `Ai.Text` and `Ai.TextStream` declare their own `inputType` / `outputType` (see `modules/ai/telo.yaml`). The provider's `invoke` / `stream` methods are documented runtime conventions (like `Sql.Connection.execute()`), backed by runtime validation in `Ai.Text`.
 
 ---
 
@@ -27,22 +27,47 @@ The abstract carries `inputType` / `outputType` declarations for the buffered `i
 A provider's controller `create()` must return an object exposing **two methods** plus the usual `ResourceInstance` hooks. The consumer kind (`Ai.Text` vs `Ai.TextStream`) chooses which method to call — there is no `stream: boolean` flag.
 
 ```ts
-type Role = "system" | "user" | "assistant";
-interface Message { role: Role; content: string }
-interface Usage { promptTokens: number; completionTokens: number; totalTokens: number }
-type FinishReason = "stop" | "length" | "content-filter" | "error" | "other";
+// `tool` carries a tool-call result back to the model (paired with toolCallId).
+type Role = "system" | "user" | "assistant" | "tool";
 
+interface ToolCall { id: string; name: string; arguments: Record<string, unknown> }
+
+interface Message {
+  role: Role;
+  content: string;
+  toolCalls?: ToolCall[];   // assistant turns that requested tools
+  toolCallId?: string;      // `tool` turns — which call this answers
+}
+
+interface ToolDefinition { name: string; description?: string; parameters: Record<string, unknown> }
+interface Usage { promptTokens: number; completionTokens: number; totalTokens: number }
+type FinishReason = "stop" | "length" | "content-filter" | "error" | "tool-calls" | "other";
+
+interface CompletionResult {
+  text: string;
+  usage: Usage;
+  finishReason: FinishReason;
+  toolCalls?: ToolCall[];   // present when finishReason === "tool-calls"
+}
+
+// `tools` is additive — only Ai.Agent passes it; Ai.Text / Ai.TextStream never do.
+interface ModelInvokeInput {
+  messages: Message[];
+  options?: Record<string, unknown>;
+  tools?: ToolDefinition[];
+}
+
+// error carries a JSON-serializable shape (not a native Error) so generic
+// encoders can frame it on the wire without bespoke translation.
+type StreamPartError = { message: string; code?: string; data?: unknown };
 type StreamPart =
   | { type: "text-delta"; delta: string }
   | { type: "finish"; usage: Usage; finishReason: FinishReason }
-  | { type: "error"; error: Error };
+  | { type: "error"; error: StreamPartError };
 
 interface AiModelInstance {
-  invoke(input: { messages: Message[]; options?: Record<string, unknown> }):
-    Promise<{ text: string; usage: Usage; finishReason: FinishReason }>;
-
-  stream(input: { messages: Message[]; options?: Record<string, unknown> }):
-    AsyncIterable<StreamPart>;
+  invoke(input: ModelInvokeInput): Promise<CompletionResult>;
+  stream(input: ModelInvokeInput): AsyncIterable<StreamPart>;
 
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
@@ -53,7 +78,10 @@ interface AiModelInstance {
 Import the types directly:
 
 ```ts
-import type { AiModelInstance, Message, StreamPart, Usage, FinishReason } from "@telorun/ai/types";
+import type {
+  AiModelInstance, Message, ToolCall, ToolDefinition,
+  ModelInvokeInput, CompletionResult, StreamPart, StreamPartError, Usage, FinishReason,
+} from "@telorun/ai/types";
 ```
 
 ---
@@ -62,7 +90,8 @@ import type { AiModelInstance, Message, StreamPart, Usage, FinishReason } from "
 
 - `messages` is the canonical `{role, content}` array. It is at least one element.
 - `options` is the merged option bag from the caller. The provider should layer its own hardcoded defaults (typically none — defer to the SDK) **beneath** `options` and per-resource manifest options.
-- Returns `{ text, usage, finishReason }`. Map vendor-specific finish reasons into the enum; unknown values map to `"other"`.
+- `tools` is **additive and optional** — only `Ai.Agent` passes it. When tools are advertised and the model requests one, return `finishReason: "tool-calls"` with the requested calls on `toolCalls`; the agent executes them and replays the results. `Ai.Text`/`Ai.TextStream` never pass `tools`, so providers used only there never produce that path.
+- Returns `{ text, usage, finishReason, toolCalls? }`. Map vendor-specific finish reasons into the enum; unknown values map to `"other"`.
 - Errors surface as thrown `Error` (or `InvokeError`) — no swallowing, no retry. Vendor messages stay intact.
 
 ## `stream(input)` semantics
@@ -111,7 +140,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: <Provider>Model
-capability: Telo.Invocable
+capability: Telo.Provider
 extends: Ai.Model
 controllers:
   - pkg:npm/@telorun/ai-<provider>@1.0.0?local_path=./nodejs#<provider>-model
