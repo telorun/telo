@@ -19,7 +19,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: EchoModel
-capability: Telo.Invocable
+capability: Telo.Provider
 extends: Ai.Model
 controllers:
   - pkg:npm/@telorun/ai@1.0.0?local_path=../../nodejs#echo-model

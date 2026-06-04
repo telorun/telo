@@ -13,10 +13,19 @@ exports:
     - Tools
     - Agent
 ---
-# The abstract contract every LLM provider implements. Carries the input/output
-# schemas so the typed-abstracts plan (see kernel/nodejs/plans/typed-abstracts.md)
-# can enforce them once it ships — meanwhile Ai.Text validates output shape at
-# runtime, and Ai.TextStream enforces the StreamPart contract on the wire.
+# Ai.Model — the abstract LLM client every provider implements. Like Sql.Connection
+# or Http.Client, it is a Telo.Provider: a configured handle to a backend (model id,
+# API key, options), NOT an operation you invoke directly. The operation lives in the
+# consumers — Ai.Text / Ai.TextStream / Ai.Agent — which hold a reference to a model
+# and drive it through two documented runtime methods (the same convention
+# Ai.ToolProvider uses for listTools/callTool):
+#   invoke({ messages, options?, tools? }): CompletionResult
+#       — { text, usage, finishReason, toolCalls? }
+#   stream({ messages, options? }): AsyncIterable<StreamPart>
+#       — text-delta | finish | error parts
+# The messages-in / completion-out contract is owned by the operations (Ai.Text and
+# Ai.TextStream declare their own inputType/outputType); the model abstract carries
+# only the config schema each provider extends.
 #
 # Tool support (`tools` in, `toolCalls` out, the `tool` message role, the
 # `tool-calls` finishReason) is additive — only Ai.Agent passes `tools`; Ai.Text
@@ -24,59 +33,38 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Model
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: Text
 capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/ai@0.4.0?local_path=./nodejs#text
 inputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
+      prompt: { type: string }
       messages:
         type: array
-        minItems: 1
         items:
           type: object
           properties:
-            role:
-              type: string
-              enum: [system, user, assistant, tool]
-            content:
-              type: string
-            toolCalls:
-              type: array
-              items:
-                type: object
-                properties:
-                  id: { type: string }
-                  name: { type: string }
-                  arguments: { type: object, additionalProperties: true }
-                required: [id, name, arguments]
-                additionalProperties: false
-            toolCallId:
-              type: string
+            role: { type: string, enum: [system, user, assistant] }
+            content: { type: string }
           required: [role, content]
           additionalProperties: false
-      options:
-        type: object
-        additionalProperties: true
-      tools:
-        type: array
-        items:
-          type: object
-          properties:
-            name: { type: string }
-            description: { type: string }
-            parameters: { type: object, additionalProperties: true }
-          required: [name, parameters]
-          additionalProperties: false
-    required: [messages]
+      system: { type: string }
+      options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
   kind: Type.JsonSchema
   schema:
     type: object
     properties:
-      text:
-        type: string
+      text: { type: string }
       usage:
         type: object
         properties:
@@ -87,26 +75,9 @@ outputType:
         additionalProperties: false
       finishReason:
         type: string
-        enum: [stop, length, content-filter, error, tool-calls, other]
-      toolCalls:
-        type: array
-        items:
-          type: object
-          properties:
-            id: { type: string }
-            name: { type: string }
-            arguments: { type: object, additionalProperties: true }
-          required: [id, name, arguments]
-          additionalProperties: false
+        enum: [stop, length, content-filter, error, other]
     required: [text, usage, finishReason]
     additionalProperties: false
----
-kind: Telo.Definition
-metadata:
-  name: Text
-capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/ai@0.4.0?local_path=./nodejs#text
 schema:
   type: object
   properties:
@@ -141,6 +112,24 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.4.0?local_path=./nodejs#text-stream
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      prompt: { type: string }
+      messages:
+        type: array
+        items:
+          type: object
+          properties:
+            role: { type: string, enum: [system, user, assistant] }
+            content: { type: string }
+          required: [role, content]
+          additionalProperties: false
+      system: { type: string }
+      options: { type: object, additionalProperties: true }
+    additionalProperties: false
 outputType:
   kind: Type.JsonSchema
   schema:
