@@ -26,7 +26,12 @@ function definition(
 
 function registry(): AnalysisRegistry {
   const reg = new AnalysisRegistry();
-  reg.registerDefinition(definition("Worker", "Telo.Runnable", { uses: { "x-telo-ref": "demo#Conf" } }));
+  // Identity is needed so x-telo-ref constraints resolve to a capability (which
+  // classifies a port as edge vs picker).
+  reg.registerModuleIdentity("std", "demo");
+  reg.registerDefinition(
+    definition("Worker", "Telo.Runnable", { uses: { "x-telo-ref": "std/demo#Conf" } }),
+  );
   reg.registerDefinition(definition("Conf", "Telo.Provider"));
   return reg;
 }
@@ -97,7 +102,7 @@ function libraryViewData(): ModuleViewData {
 }
 
 describe("buildApplicationCanvasModel", () => {
-  it("partitions nodes vs strip and wires target + ref edges", () => {
+  it("partitions nodes vs strip; targets is an edge port, ambient refs are picker ports", () => {
     const model = buildApplicationCanvasModel(viewData(), registry(), ["w"]);
 
     expect(model.appName).toBe("app");
@@ -106,24 +111,55 @@ describe("buildApplicationCanvasModel", () => {
     expect(model.nodes.find((n) => n.isRoot)?.name).toBe("app");
     expect(model.stripItems.map((n) => n.name)).toEqual(["c"]);
 
-    // One Application→target edge; the ref to the provider is a chip, not an edge.
-    expect(model.edges).toContainEqual({ from: "app", to: "w", label: "target" });
-    expect(model.edges).toHaveLength(1);
-    expect(model.chips).toEqual([{ on: "w", target: "c", label: "uses", fromPath: "uses" }]);
-    expect(model.targets).toEqual(["w"]);
+    // The Application's `targets` is an ordinary array-of-refs edge port: one
+    // filled slot wired to `w`, plus the trailing add slot.
+    expect(model.nodes.find((n) => n.isRoot)?.ports).toEqual([
+      {
+        key: "targets[]",
+        label: "targets",
+        flavor: "edge",
+        refs: ["telo#Runnable", "telo#Service"],
+        capabilities: ["Telo.Runnable", "Telo.Service"],
+        slots: [{ concretePath: "targets[0]", target: "w" }],
+        addPath: "targets[1]",
+      },
+    ]);
+
+    // The Worker's ref to the provider is a picker port (no edge), with the
+    // matching ambient resource offered as a candidate.
+    expect(model.nodes.find((n) => n.name === "w")?.ports).toEqual([
+      {
+        key: "uses",
+        label: "uses",
+        flavor: "picker",
+        refs: ["std/demo#Conf"],
+        capabilities: ["Telo.Provider"],
+        slots: [{ concretePath: "uses", target: "c" }],
+        candidates: ["c"],
+      },
+    ]);
+
+    // Only the target edge is drawn; the picker port draws none.
+    expect(model.edges).toEqual([
+      expect.objectContaining({ from: "app", to: "w", fromPath: "targets[0]" }),
+    ]);
   });
 
   it("drops target edges that don't resolve to a node", () => {
     const model = buildApplicationCanvasModel(viewData(), registry(), ["w", "ghost"]);
-    expect(model.edges.filter((e) => e.label === "target").map((e) => e.to)).toEqual(["w"]);
+    expect(model.edges.filter((e) => e.from === "app").map((e) => e.to)).toEqual(["w"]);
   });
 
   it("normalizes !ref sentinel targets to names", () => {
     const model = buildApplicationCanvasModel(viewData(), registry(), [
       makeTaggedSentinel("ref", "w"),
     ]);
-    expect(model.targets).toEqual(["w"]);
-    expect(model.edges).toContainEqual({ from: "app", to: "w", label: "target" });
+    expect(model.nodes.find((n) => n.isRoot)?.ports?.[0].slots).toEqual([
+      { concretePath: "targets[0]", target: "w" },
+    ]);
+    expect(model.edges).toContainEqual(
+      expect.objectContaining({ from: "app", to: "w", fromPath: "targets[0]" }),
+    );
   });
 
   it("renders sequence steps as node sub-rows and anchors edges per step", () => {
@@ -304,9 +340,10 @@ describe("buildApplicationCanvasModel", () => {
     expect(root?.name).toBe("lib");
     expect(root?.capability).toBe("Telo.Library");
     expect(model.stripItems.map((n) => n.name)).toEqual(["c"]);
-    // No targets → no target edges; ref chips still surface.
-    expect(model.targets).toEqual([]);
-    expect(model.edges.filter((e) => e.label === "target")).toEqual([]);
-    expect(model.chips).toEqual([{ on: "w", target: "c", label: "uses", fromPath: "uses" }]);
+    // A Library root has no `targets` port, and the ambient ref is a picker
+    // port — so no edges are drawn at all.
+    expect(root?.ports ?? []).toEqual([]);
+    expect(model.edges).toEqual([]);
+    expect(model.nodes.find((n) => n.name === "w")?.ports?.[0].flavor).toBe("picker");
   });
 });

@@ -1,4 +1,5 @@
 import type { ManifestSource } from "@telorun/analyzer";
+import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { File as FileIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -104,6 +105,8 @@ import { Sidebar } from "./sidebar/Sidebar";
 import { TopBar } from "./TopBar";
 import { ViewContainer } from "./views/ViewContainer";
 import { refTargetName } from "./views/topology/overview-graph";
+import type { RefWrite } from "./views/topology/application-canvas-model";
+import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
 import type { Range } from "@telorun/analyzer";
 
 const INITIAL_STATE: EditorState = {
@@ -618,7 +621,7 @@ export function Editor() {
       activeModulePath: newFilePath,
       openTabs: upsertTab(s.openTabs, { type: "module", path: newFilePath }),
       activeTabId: newFilePath,
-      graphContext: null,
+      graphContext: defaultGraphContext(updated, newFilePath),
       selectedResource: null,
       panelStack: [],
     }));
@@ -1264,22 +1267,12 @@ export function Editor() {
     let updated = removeResourceViaAst(state.workspace, state.activeModulePath, kind, name);
     if (updated === state.workspace) return;
 
-    // This canvas owns the Application's `targets`, so a delete must also prune
-    // the now-dangling target ref — otherwise the manifest keeps `!ref <deleted>`
-    // and the canvas silently hides the broken edge.
-    const manifest = updated.modules.get(state.activeModulePath);
-    if (manifest?.kind === "Application") {
-      const names = (manifest.targets ?? [])
-        .map(refTargetName)
-        .filter((t): t is string => !!t);
-      if (names.includes(name)) {
-        updated = writeApplicationTargets(
-          updated,
-          state.activeModulePath,
-          names.filter((t) => t !== name),
-        );
-      }
-    }
+    // Prune every now-dangling ref to the deleted resource — any slot on any
+    // node (targets, a picker's `uses`, a server's `notFoundHandler`, a step
+    // invoke) — otherwise the manifest keeps a broken `!ref` the canvas silently
+    // hides. Schema-driven via the visitor, so all ref shapes and nesting are
+    // covered; the Application root rides along as a synthesized manifest.
+    updated = pruneDanglingRefs(updated, state.activeModulePath, name);
 
     const persisted = await persistModule(updated, state.activeModulePath);
     const matches = (r: { kind: string; name: string } | null) =>
@@ -1294,29 +1287,116 @@ export function Editor() {
     }));
   }
 
-  // Rewrites an Application's `targets` via the generic field writer. Targets
-  // are `!ref` sentinels; the canvas hands us bare resource names, so we wrap
-  // each one. `diffFields` treats the sentinels as opaque leaves, so reorder /
-  // add / remove round-trip without corrupting the `!ref` tags.
-  function writeApplicationTargets(
-    ws: Workspace,
-    modulePath: string,
-    names: string[],
-  ): Workspace {
+  // Clears every ref slot pointing at `deleted` across the module — found via
+  // the analysis registry's visitor (every ref shape and nesting), then routed
+  // through the generic ref writer. The Application root is fed in as a
+  // synthesized manifest so its `targets` are pruned the same way.
+  function pruneDanglingRefs(ws: Workspace, modulePath: string, deleted: string): Workspace {
+    const registry = state.diagnostics.registryByFile.get(modulePath);
     const manifest = ws.modules.get(modulePath);
-    if (manifest?.kind !== "Application") return ws;
+    if (!registry || !manifest) return ws;
+
     const root = moduleRootResource(manifest);
-    const nextFields = {
-      ...root.fields,
-      targets: names.map((name) => makeTaggedSentinel("ref", name)),
-    };
-    return setResourceFields(ws, modulePath, root.kind, root.name, root.fields, nextFields);
+    const asManifest = (r: { kind: string; name: string; fields: Record<string, unknown> }) =>
+      ({ kind: r.kind, metadata: { name: r.name }, ...r.fields }) as unknown as ResourceManifest;
+    const resources = [
+      ...manifest.resources.filter((r) => !isModuleRootKind(r.kind)).map(asManifest),
+      asManifest(root),
+    ];
+
+    const writes: RefWrite[] = [];
+    registry.visitManifest(
+      resources,
+      {
+        onRef: (e) => {
+          if (refTargetName(e.value) !== deleted) return;
+          const srcName = e.source.metadata?.name;
+          if (typeof e.source.kind === "string" && typeof srcName === "string") {
+            writes.push({
+              source: { kind: e.source.kind, name: srcName },
+              concretePath: e.concretePath,
+              target: null,
+            });
+          }
+        },
+      },
+      { expand: true, discoverNestedRefs: true },
+    );
+    return writes.length ? applyRefWrites(ws, modulePath, writes) : ws;
   }
 
-  async function handleUpdateApplicationTargets(targets: string[]) {
-    if (!state.workspace || !state.activeModulePath) return;
-    const updated = writeApplicationTargets(state.workspace, state.activeModulePath, targets);
-    const persisted = await persistModule(updated, state.activeModulePath);
+  // Applies a batch of reference writes from the overview canvas. Writes are
+  // grouped per source resource and ordered (removals high-to-low, then sets) so
+  // simultaneous array edits stay consistent; each group diffs once via the
+  // generic field writer. The Application root's `targets` is just another
+  // resource here — no special-casing.
+  function applyRefWrites(ws: Workspace, modulePath: string, writes: RefWrite[]): Workspace {
+    const bySource = new Map<string, RefWrite[]>();
+    for (const w of writes) {
+      const key = `${w.source.kind}::${w.source.name}`;
+      const list = bySource.get(key);
+      if (list) list.push(w);
+      else bySource.set(key, [w]);
+    }
+
+    let result = ws;
+    for (const group of bySource.values()) {
+      const { kind, name } = group[0].source;
+      const manifest = result.modules.get(modulePath);
+      if (!manifest) continue;
+      const src =
+        manifest.resources.find((r) => r.kind === kind && r.name === name) ??
+        (isModuleRootKind(kind) ? moduleRootResource(manifest) : undefined);
+      if (!src) continue;
+
+      const ordered = [...group].sort((a, b) => {
+        const ra = a.target === null ? 0 : 1;
+        const rb = b.target === null ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return leafConcreteIndex(b.concretePath) - leafConcreteIndex(a.concretePath);
+      });
+      const newFields = structuredClone(src.fields);
+      for (const w of ordered) {
+        writeConcretePath(
+          newFields,
+          w.concretePath,
+          w.target === null ? null : makeTaggedSentinel("ref", w.target),
+        );
+      }
+      result = setResourceFields(result, modulePath, src.kind, src.name, src.fields, newFields);
+    }
+    return result;
+  }
+
+  // A resource name derived from a kind (`Ai.Tools` → `Tools`), de-duplicated
+  // against existing resources so a fresh create-and-link never collides.
+  function uniqueResourceName(
+    manifest: { resources: { name: string }[] } | undefined,
+    kind: string,
+  ): string {
+    const base = kind.includes(".") ? kind.slice(kind.lastIndexOf(".") + 1) : kind;
+    const taken = new Set((manifest?.resources ?? []).map((r) => r.name));
+    if (!taken.has(base)) return base;
+    let i = 2;
+    while (taken.has(`${base}${i}`)) i++;
+    return `${base}${i}`;
+  }
+
+  async function handleWriteRef(writes: RefWrite[]) {
+    if (!state.workspace || !state.activeModulePath || writes.length === 0) return;
+    const modulePath = state.activeModulePath;
+    let ws = state.workspace;
+    // Create-and-link writes: materialize the new resource first, then link the
+    // slot to it by the generated name.
+    const resolved: RefWrite[] = writes.map((w) => {
+      if (!w.createKind) return w;
+      const name = uniqueResourceName(ws.modules.get(modulePath), w.createKind);
+      ws = createResourceViaAst(ws, modulePath, w.createKind, name, {});
+      return { source: w.source, concretePath: w.concretePath, target: name };
+    });
+    const updated = applyRefWrites(ws, modulePath, resolved);
+    if (updated === state.workspace) return;
+    const persisted = await persistModule(updated, modulePath);
     setState((s) => ({ ...s, workspace: persisted }));
   }
 
@@ -1616,7 +1696,7 @@ export function Editor() {
                       onNavigateResource: handleNavigateResource,
                       onUpdateResource: handleUpdateResource,
                       onDeleteResource: handleDeleteResource,
-                      onUpdateApplicationTargets: handleUpdateApplicationTargets,
+                      onWriteRef: handleWriteRef,
                       onCreateResource: () => setCreateResourceOpen(true),
                       registryServers: settings.registryServers,
                       onAddImport: handleAddImport,

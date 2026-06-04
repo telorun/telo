@@ -109,11 +109,13 @@ export function DetailPanel({
     if (!resource) return null;
 
     // The module root (Telo.Application / Telo.Library) has no pointer-scoped
-    // selection. Synthesize a context rooted at the whole fields object so it
-    // flows through the same schema form + debounced-commit pipeline as any
-    // other resource. The form schema exposes only variables/secrets; the
-    // remaining fields (metadata/targets/ports) pass through untouched.
-    if (isModuleRootKind(resource.kind)) {
+    // selection of its own. Synthesize a context rooted at the whole fields
+    // object so it flows through the same schema form + debounced-commit
+    // pipeline as any other resource. The form schema exposes only
+    // variables/secrets; the remaining fields (metadata/targets/ports) pass
+    // through untouched. A pointer-bearing selection (e.g. editing a target
+    // step's `inputs`) takes the selection path below instead.
+    if (isModuleRootKind(resource.kind) && !selection?.pointer) {
       return {
         resource: { kind: resource.kind, name: resource.name },
         pointer: "",
@@ -138,9 +140,12 @@ export function DetailPanel({
 
   const rootCelEval: CelEvalMode | null = useMemo(() => {
     if (!resource || !viewData) return null;
+    // A selection may pin its own CEL mode (an edge's `inputs` form runs at
+    // runtime); otherwise Providers evaluate at compile time, others not at all.
+    if (selection?.celEval) return selection.celEval;
     const capability = viewData.kinds.get(resource.kind)?.capability;
     return capability === "Telo.Provider" ? "compile" : null;
-  }, [resource, viewData]);
+  }, [resource, viewData, selection]);
 
   const [pointerFields, setPointerFields] = useState<Record<string, unknown>>({});
   const [hasFormErrors, setHasFormErrors] = useState(false);

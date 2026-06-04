@@ -302,4 +302,8 @@ export interface Selection {
   /** JSON pointer into the resource fields, e.g. "/steps/0" or "/entries/2/handler" */
   pointer: string;
   schema: Record<string, unknown>;
+  /** CEL evaluation mode for the rendered form — overrides the capability-based
+   *  default. An edge's `inputs` selection sets `"runtime"` so every input field
+   *  offers a CEL-expression toggle. */
+  celEval?: "compile" | "runtime";
 }

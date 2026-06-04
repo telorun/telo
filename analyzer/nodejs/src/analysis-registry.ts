@@ -6,6 +6,25 @@ import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import type { AnalysisContext } from "./types.js";
+import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+
+/** One reference field declared by a resource's definition, derived purely from
+ *  the schema field map (independent of whether the manifest fills it). Editor
+ *  hosts render these as ports / adapters on a node. */
+export interface RefFieldInfo {
+  /** Field-map path with `[]` / `{}` markers (e.g. `targets[]`,
+   *  `routes[].handler`, `encoder`). */
+  path: string;
+  /** True when the path traverses at least one array. */
+  isArray: boolean;
+  /** Accepted `x-telo-ref` constraint strings (e.g. `telo#Runnable`). */
+  refs: string[];
+  /** Distinct capabilities the slot may target (`Telo.Runnable`,
+   *  `Telo.Service`, `Telo.Provider`, …) — one per resolvable constraint. The
+   *  first classifies the port (node-capability → edge, ambient → picker); the
+   *  full set validates drag-to-wire endpoints. Empty when none resolve. */
+  capabilities: string[];
+}
 
 /**
  * Accumulates type and alias knowledge for a running kernel or analysis session.
@@ -61,6 +80,79 @@ export class AnalysisRegistry {
         onRef(fieldPath);
       }
     }
+  }
+
+  /**
+   * Returns every reference field a resource's definition declares, with arity
+   * and the capability each slot targets — derived purely from the schema field
+   * map, so it lists slots even when the manifest leaves them empty. Editor
+   * hosts render these as node ports (drag-to-wire for node-capability targets,
+   * inline picker for ambient targets).
+   */
+  refFieldsForResource(resource: ResourceManifest): RefFieldInfo[] {
+    const fieldMap = this.defs.expandedFieldMapForResource(
+      resource,
+      this.aliases,
+      this.aliasesByModule,
+    );
+    if (!fieldMap) return [];
+    const out: RefFieldInfo[] = [];
+    for (const [path, entry] of fieldMap) {
+      if (!isRefEntry(entry)) continue;
+      out.push({
+        path,
+        isArray: entry.isArray,
+        refs: entry.refs,
+        capabilities: this.capabilitiesForRefs(entry.refs),
+      });
+    }
+    return out;
+  }
+
+  /** Base capability an `x-telo-ref` constraint targets. A definition's declared
+   *  `capability` is always one of the base capabilities, so it wins — this
+   *  resolves user-defined abstracts (e.g. `std/ai#Model`, declared
+   *  `capability: Telo.Invocable`) to the capability instances satisfy, not the
+   *  abstract kind. Builtin abstracts (`telo#Runnable`) carry no `capability`
+   *  field — there the kind itself *is* the capability. Undefined when
+   *  unresolvable. */
+  capabilityForRef(xTeloRef: string): string | undefined {
+    const kind = this.defs.resolveRef(xTeloRef);
+    if (!kind) return undefined;
+    const def = this.defs.resolve(kind);
+    if (!def) return undefined;
+    return def.capability ?? kind;
+  }
+
+  /** Resolves the JSON Schema for a kind's `invoke()` inputs, for editor hosts
+   *  that render a typed inputs form. Two-layer fallback mirroring the analyzer's
+   *  template inputs typing: the definition's own `inputType`, then the
+   *  `extends`-declared abstract's `inputType`. Resolves the inline
+   *  (`{ kind: Type.JsonSchema, schema }`) and raw-schema forms; a bare named
+   *  type reference is left unresolved (returns undefined) so the caller can fall
+   *  back to a freeform map. Undefined when the kind declares no input contract. */
+  inputTypeForKind(kind: string): Record<string, unknown> | undefined {
+    const def = this.resolveDefinition(kind);
+    if (!def) return undefined;
+    const own = resolveTypeFieldToSchema(def.inputType, []);
+    if (own) return own;
+    if (def.extends) {
+      const abstractDef = this.resolveDefinition(def.extends);
+      if (abstractDef) {
+        const inherited = resolveTypeFieldToSchema(abstractDef.inputType, []);
+        if (inherited) return inherited;
+      }
+    }
+    return undefined;
+  }
+
+  private capabilitiesForRefs(refs: string[]): string[] {
+    const out: string[] = [];
+    for (const ref of refs) {
+      const cap = this.capabilityForRef(ref);
+      if (cap && !out.includes(cap)) out.push(cap);
+    }
+    return out;
   }
 
   /**

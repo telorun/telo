@@ -45,6 +45,11 @@ export interface ResourceDefinition {
    *  analyzer populates its `extendedBy` index from this field so references typed via
    *  `x-telo-ref: "<ns>/<mod>#<Abstract>"` accept this definition. */
   extends?: string;
+  /** Type reference (named, inline `Type.JsonSchema`, or raw schema) for the
+   *  resource's `invoke()` inputs / outputs. Read by the analyzer's CEL typing
+   *  and by editor hosts rendering typed input forms. */
+  inputType?: string | Record<string, any>;
+  outputType?: string | Record<string, any>;
   controllers?: Array<{
     runtime: string;
     entry: string;

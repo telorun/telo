@@ -146,6 +146,17 @@ steps:
         invoke: { kind: Ai.Agent, name: Assistant }
         inputs:
           messages: "${{ steps.ReadHistory.result.rows }}"
+      - name: ShowTools
+        if: "${{ steps.Ask.result.steps.exists(s, s.toolCalls.size() > 0) }}"
+        then:
+          - name: PrintTools
+            invoke: !ref Console.writeLine
+            inputs:
+              output: >-
+                {dim 🔧 ${{ steps.Ask.result.steps
+                  .map(s, s.toolCalls.map(tc, tc.name).join(', '))
+                  .filter(line, line != '')
+                  .join(' → ') }}}
       - name: Print
         invoke: !ref Console.writeLine
         inputs:

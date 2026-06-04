@@ -89,7 +89,7 @@ export function CodeEditor({
         options={{
           minimap: { enabled: false },
           fontSize: 12,
-          wordWrap: "on",
+          wordWrap: "off",
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,
