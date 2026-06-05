@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-06-05
+## 0.6.0 - 2026-06-05
+### Added
+* Update controller @telorun/ai-openai to 0.6.0.## 0.5.0 - 2026-06-05
 ### Added
 * Update controller @telorun/ai-openai to 0.5.0.## 0.4.1 - 2026-06-04
 ### Fixed
