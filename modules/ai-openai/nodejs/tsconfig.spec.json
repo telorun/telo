@@ -3,8 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true,
-    "types": ["node", "jest"]
+    "types": ["node"]
   },
   "files": [],
-  "include": ["test/**/*.ts"]
+  "include": ["tests/**/*.ts"]
 }

@@ -14,15 +14,15 @@ targets:
   - LiveText
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
-# unset. The model is constructed (Vercel SDK is lazy — no API call until
-# generateText is invoked), but never reached because the run-step is gated.
+# unset. The model is constructed (just config — no API call until invoke), but
+# never reached because the run-step is gated.
 kind: AiOpenai.OpenaiModel
 metadata: { name: Live }
 model: gpt-4o-mini
 apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
 options:
   temperature: 0
-  maxOutputTokens: 32
+  maxTokens: 32
 ---
 kind: Ai.Text
 metadata: { name: C }
