@@ -208,12 +208,84 @@ interface HttpRequestInputs {
 }
 
 interface HttpRequestManifest extends HttpRequestInputs {
-  client?: string;
+  // `client` is an x-telo-ref slot, so its runtime shape depends on where the
+  // Http.Request sits. See resolveClientConfig for the forms it can take.
+  client?: unknown;
   timeout?: number;
   throwOnHttpError?: boolean;
   retries?: number;
   mode?: "buffer" | "stream";
   inputs?: HttpRequestInputs;
+}
+
+interface ClientSnapshotInstance {
+  snapshot: () => Record<string, unknown>;
+}
+
+function hasSnapshot(value: unknown): value is ClientSnapshotInstance {
+  return !!value && typeof (value as { snapshot?: unknown }).snapshot === "function";
+}
+
+/**
+ * Normalize the `client` x-telo-ref value to a `{ name, alias? }` lookup.
+ *
+ * The value's shape depends on where the Http.Request sits:
+ *   - Inline inside a scope (e.g. a Run.Sequence step's `invoke:`) hits the kernel's
+ *     hidden-slot limitation (see resource-context.ts), so the reference arrives
+ *     unresolved — a `!ref` sentinel or a `{kind, name, alias?}` object.
+ *   - A bare resource-name string is still accepted by the analyzer as a legacy name
+ *     reference, so it stays supported here.
+ *
+ * `{kind, name, alias?}` objects are read directly rather than routed through
+ * `ctx.resolveChildren`: an `alias` key there registers a spurious inline manifest and
+ * drops the alias. Sentinels still go through `resolveChildren`, which performs the
+ * Self./Alias. split and cross-module export resolution.
+ */
+function normalizeClientRef(
+  client: unknown,
+  ctx: ResourceContext,
+): { name: string; alias?: string } {
+  if (typeof client === "string") return { name: client };
+  if (client && typeof client === "object") {
+    const ref = client as Record<string, unknown>;
+    if (typeof ref.name === "string") {
+      return { name: ref.name, alias: typeof ref.alias === "string" ? ref.alias : undefined };
+    }
+    const resolved = ctx.resolveChildren(client) as { name: string; alias?: string };
+    return { name: resolved.name, alias: resolved.alias };
+  }
+  throw new Error(
+    "Http.Request: 'client' must reference an Http.Client (use 'client: !ref MyClient').",
+  );
+}
+
+/**
+ * Resolve the `client` x-telo-ref slot to its config (baseUrl / headers / timeout).
+ * The returned config may still carry `${{ }}` expressions; the caller expands them.
+ */
+function resolveClientConfig(client: unknown, ctx: ResourceContext): Record<string, unknown> {
+  // Top-level Http.Request: the kernel injects the live Http.Client instance at Phase 5.
+  if (hasSnapshot(client)) return client.snapshot();
+
+  const { name, alias } = normalizeClientRef(client, ctx);
+
+  // Cross-module reference into an imported library's exported Http.Client instance.
+  if (alias && alias !== "Self") {
+    const instance = ctx.moduleContext.resolveImportedInstance(alias, name);
+    if (!hasSnapshot(instance)) {
+      throw new Error(
+        `Http.Request: client reference '${alias}.${name}' did not resolve to an imported Http.Client instance.`,
+      );
+    }
+    return instance.snapshot();
+  }
+
+  // Local Http.Client resource.
+  const resource = ctx.getResourcesByName("Client", name);
+  if (!resource) {
+    throw new Error(`Http.Request: Http.Client "${name}" not found.`);
+  }
+  return resource as unknown as Record<string, unknown>;
 }
 
 class HttpRequestResource implements ResourceInstance {
@@ -235,16 +307,7 @@ class HttpRequestResource implements ResourceInstance {
     let clientTimeout = DEFAULT_TIMEOUT;
 
     if (m.client) {
-      const clientName = ctx.expandValue(m.client, input ?? {}) as string;
-      const client: any = ctx.getResourcesByName("Client", clientName);
-      if (!client) {
-        throw new Error(`Http.Client "${clientName}" not found`);
-      }
-
-      const clientConfig =
-        typeof client.snapshot === "function"
-          ? (client.snapshot() as Record<string, unknown>)
-          : client;
+      const clientConfig = resolveClientConfig(m.client, ctx);
 
       const resolvedBaseUrl = ctx.expandValue(clientConfig.baseUrl ?? "", input ?? {});
       clientBaseUrl = typeof resolvedBaseUrl === "string" ? resolvedBaseUrl : "";

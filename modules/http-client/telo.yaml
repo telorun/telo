@@ -67,8 +67,8 @@ schema:
   properties:
     client:
       title: Client
-      type: "string"
-      description: "Reference to an Http.Client resource name"
+      x-telo-ref: "std/http-client#Client"
+      description: "Reference to an Http.Client resource. Injected as a live instance at runtime; its baseUrl, headers, and timeout supply per-request defaults."
     timeout:
       title: Timeout
       type: "integer"

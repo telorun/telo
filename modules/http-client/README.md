@@ -35,7 +35,7 @@ timeout: 5000
 ---
 kind: Http.Request
 metadata: { name: GetUser }
-client: GitHub
+client: !ref GitHub
 inputs:
   url: /users/octocat
   method: GET
