@@ -6,6 +6,7 @@ use napi::{Env, JsFunction, JsObject, JsUnknown, Ref};
 use serde_json::Value;
 
 use crate::error::ControllerError;
+use crate::invoke_context::{CancellationToken, InvokeContext};
 use crate::traits::{ControllerContext, DataValidator, ResourceContext, Result};
 
 impl From<napi::Error> for ControllerError {
@@ -16,6 +17,13 @@ impl From<napi::Error> for ControllerError {
 
 /// Convert a Rust [`ControllerError`] into a napi::Error so the JS side sees
 /// a thrown Error with the original code+message preserved.
+///
+/// Limitation: napi sets the JS error's `.code` from its own `Status` name, so
+/// the controller code is carried in the *message* (`[CODE] msg`), not as a JS
+/// `.code` property. The Node kernel recognizes structured errors (e.g.
+/// `ERR_INVOKE_CANCELLED`) by `.code`, so a code thrown from Rust is not yet
+/// reclassified there. Carrying controller codes as JS `.code` (via a raw JS
+/// error object with the code set) is a separate structured-error-bridge change.
 pub fn to_napi_error(err: ControllerError) -> napi::Error {
     napi::Error::new(
         napi::Status::GenericFailure,
@@ -96,4 +104,29 @@ pub fn js_to_value(env: &Env, val: JsUnknown) -> Result<Value> {
 pub fn value_to_js(env: &Env, val: &Value) -> Result<JsUnknown> {
     let js = env.to_js_value(val)?;
     Ok(js)
+}
+
+/// Build an [`InvokeContext`] whose token polls the JS `InvokeContext` object
+/// passed as the invoke's second argument. Each `is_cancelled()` reads
+/// `ctx.cancellation.isCancelled` (a getter) — a per-poll callback into JS,
+/// valid for the synchronous duration of the controller's `invoke()`. With no
+/// object (a direct napi call), the token is never cancelled.
+pub fn invoke_context_from_js(ctx: Option<JsObject>) -> InvokeContext {
+    match ctx {
+        Some(obj) => InvokeContext {
+            cancellation: CancellationToken::from_poll(move || poll_cancelled(&obj)),
+        },
+        None => InvokeContext::never(),
+    }
+}
+
+fn poll_cancelled(ctx: &JsObject) -> bool {
+    fn read(ctx: &JsObject) -> Result<bool> {
+        let cancellation: JsObject = ctx.get_named_property("cancellation")?;
+        let cancelled: bool = cancellation.get_named_property("isCancelled")?;
+        Ok(cancelled)
+    }
+    // A read failure (shape drift, torn-down handle) defaults to "not cancelled"
+    // rather than spuriously aborting live work.
+    read(ctx).unwrap_or(false)
 }

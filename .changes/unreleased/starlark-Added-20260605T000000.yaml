@@ -1,0 +1,4 @@
+project: starlark
+kind: Added
+body: The Rust controller now honors cooperative invoke cancellation — it checks the InvokeContext cancellation token before running and refuses with ERR_INVOKE_CANCELLED when the invocation tree was cancelled.
+time: 2026-06-05T00:00:00Z

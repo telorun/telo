@@ -1,4 +1,5 @@
 import type { Invocable } from "./capabilities/invokable.js";
+import type { InvokeContext } from "./cancellation.js";
 import type { ControllerPolicy } from "./controller-policy.js";
 import type { EvaluationContext } from "./evaluation-context.js";
 import type { BootTarget } from "./invoke-step.js";
@@ -41,5 +42,5 @@ export interface ModuleContext extends EvaluationContext {
     name: string,
   ): Invocable<TInput, TOutput>;
   resolveKind(kind: string): string;
-  runTargets(): Promise<void>;
+  runTargets(ctx?: InvokeContext): Promise<void>;
 }

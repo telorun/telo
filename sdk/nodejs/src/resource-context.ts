@@ -1,3 +1,4 @@
+import type { CancellationSource, InvokeContext } from "./cancellation.js";
 import { ControllerContext } from "./controller-context.js";
 import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -44,12 +45,17 @@ export interface ResourceContext extends ControllerContext {
   readonly args: ParsedArgs;
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
+  /** Mint a writable cancellation source for a trigger to own (HTTP request,
+   *  lambda budget). Pass `source.context` into `invokeResolved` to scope an
+   *  invocation tree to it. */
+  createCancellationSource(): CancellationSource;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
   invokeResolved<TInputs>(
     kind: string,
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    ctx?: InvokeContext,
   ): Promise<any>;
   run(kind: string, name: string): Promise<void>;
   getResourcesByName(kind: string, name: string): RuntimeResource | null;

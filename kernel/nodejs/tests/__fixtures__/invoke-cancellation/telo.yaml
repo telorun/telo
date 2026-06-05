@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: InvokeCancellationApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+---
+kind: JS.Script
+metadata:
+  name: Echo
+code: |
+  function main(input) { return { echoed: input.value }; }

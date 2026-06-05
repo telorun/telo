@@ -1,10 +1,14 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   isCompiledValue,
   isInvokeError,
+  isCancellationError,
   resourceKey,
+  UNCANCELLABLE_CONTEXT,
   type EvaluationContext as IEvaluationContext,
   type EmitEvent,
   type InstanceFactory,
+  type InvokeContext,
   type LifecycleState,
   type PreInitHook,
   type ResourceDefinition,
@@ -17,6 +21,15 @@ import {
 import { RuntimeError } from "@telorun/sdk";
 
 export { resourceKey };
+
+/**
+ * Kernel-internal propagation of the current invocation tree's cancellation
+ * scope. NEVER the controller-facing contract — controllers always receive the
+ * token as the explicit `InvokeContext` argument. This store exists only so the
+ * kernel's own `invoke`/`invokeResolved` can discover which token to forward
+ * when a composing controller re-invokes without threading it by hand.
+ */
+const cancellationStore = new AsyncLocalStorage<InvokeContext>();
 
 type Walker = (ctx: Record<string, unknown>) => unknown;
 
@@ -467,7 +480,12 @@ export class EvaluationContext implements IEvaluationContext {
    * emit callback. The single emission point for invoke-level events — callers
    * holding an already-resolved instance should use invokeResolved() instead.
    */
-  async invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
+  async invoke<TInputs>(
+    kind: string,
+    name: string,
+    inputs: TInputs,
+    ctx?: InvokeContext,
+  ): Promise<any> {
     const entry = this.resourceInstances.get(name);
 
     if (!entry) {
@@ -484,7 +502,7 @@ export class EvaluationContext implements IEvaluationContext {
       );
     }
 
-    return this.runInvoke(kind, name, entry.instance, inputs);
+    return this.runInvoke(kind, name, entry.instance, inputs, ctx);
   }
 
   /**
@@ -498,6 +516,7 @@ export class EvaluationContext implements IEvaluationContext {
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    ctx?: InvokeContext,
   ): Promise<any> {
     if (typeof instance.invoke !== "function") {
       throw new RuntimeError(
@@ -505,7 +524,7 @@ export class EvaluationContext implements IEvaluationContext {
         `Resource ${kind}.${name} does not have an invoke method`,
       );
     }
-    return this.runInvoke(kind, name, instance, inputs);
+    return this.runInvoke(kind, name, instance, inputs, ctx);
   }
 
   private async runInvoke<TInputs>(
@@ -513,12 +532,43 @@ export class EvaluationContext implements IEvaluationContext {
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    ctx?: InvokeContext,
   ): Promise<any> {
+    // Explicit seed (trigger / embedder) wins; otherwise inherit the ambient
+    // tree token; otherwise open a fresh, never-cancellable scope. The token
+    // reaches the controller only as the explicit argument below.
+    const ambient = cancellationStore.getStore();
+    const invokeCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
+    const token = invokeCtx.cancellation;
+
+    // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
+    // refused without ever touching the controller.
+    if (token.isCancelled) {
+      await this.emit(`${kind}.${name}.InvokeCancelled`, { reason: token.reason });
+      throw new RuntimeError(
+        "ERR_INVOKE_CANCELLED",
+        `Invoke ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+      );
+    }
+
     try {
-      const outputs = await (instance.invoke as (i: any) => any)(inputs as any);
+      // Only (re)establish the ALS scope when the token differs from the ambient
+      // one — nested invokes that inherited it skip the redundant `run`.
+      const call = () =>
+        (instance.invoke as (i: any, c?: InvokeContext) => any)(inputs as any, invokeCtx);
+      const outputs = await (invokeCtx === ambient
+        ? call()
+        : cancellationStore.run(invokeCtx, call));
       await this.emit(`${kind}.${name}.Invoked`, { outputs });
       return outputs;
     } catch (err) {
+      // Cooperative mid-flight cancellation (`throwIfCancelled`) joins the same
+      // observable event family rather than masquerading as a rejection/failure.
+      if (isCancellationError(err)) {
+        const reason = err instanceof Error ? err.message : String(err);
+        await this.emit(`${kind}.${name}.InvokeCancelled`, { reason });
+        throw err;
+      }
       if (isInvokeError(err)) {
         const payload = { code: err.code, message: err.message, data: err.data };
         await this.emit(`${kind}.${name}.InvokeRejected`, payload);
@@ -574,10 +624,25 @@ export class EvaluationContext implements IEvaluationContext {
     return new Set(Object.keys(codes));
   }
 
-  async run(name: string): Promise<void> {
+  async run(name: string, ctx?: InvokeContext): Promise<void> {
     const entry = this.resourceInstances.get(name);
     if (entry && typeof entry.instance.run === "function") {
-      return entry.instance.run();
+      const ambient = cancellationStore.getStore();
+      const invokeCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
+      const token = invokeCtx.cancellation;
+      // Refuse a target reached after the boot run was cancelled.
+      if (token.isCancelled) {
+        await this.emit(`${entry.resource.kind}.${name}.RunCancelled`, { reason: token.reason });
+        throw new RuntimeError(
+          "ERR_INVOKE_CANCELLED",
+          `Run ${entry.resource.kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+        );
+      }
+      // Run inside the scope so the runnable's nested invokes inherit the token,
+      // and pass it explicitly so long-lived targets can observe cancellation.
+      // Skip the redundant `run` when the token is already the ambient one.
+      const call = () => (entry.instance.run as (c?: InvokeContext) => Promise<void>)(invokeCtx);
+      return invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call);
     }
     throw new RuntimeError(
       "ERR_RESOURCE_NOT_RUNNABLE",

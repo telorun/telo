@@ -83,7 +83,6 @@ export default function DeveloperFirst() {
         {
           icon: "🛑",
           title: "Request cancellation",
-          planned: true,
           body: "A cancellation signal propagates through every downstream step, so abandoned requests stop their database, HTTP, and AI work instead of burning resources after the caller has gone.",
         },
       ]}

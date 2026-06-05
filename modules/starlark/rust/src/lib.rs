@@ -8,7 +8,7 @@
 //! is the right shape, not a throwaway.
 
 use telorun_sdk::{
-    controller, Controller, ControllerError, ResourceContext, Result, Value,
+    controller, Controller, ControllerError, InvokeContext, ResourceContext, Result, Value,
 };
 
 pub struct StarlarkScript {
@@ -31,7 +31,10 @@ impl Controller for StarlarkScript {
         Ok(Self { code })
     }
 
-    fn invoke(&self, input: Value) -> Result<Value> {
+    fn invoke(&self, input: Value, ctx: &InvokeContext) -> Result<Value> {
+        if ctx.cancellation.is_cancelled() {
+            return Err(ControllerError::new("ERR_INVOKE_CANCELLED", "cancelled"));
+        }
         Ok(serde_json::json!({
             "controller": "rust",
             "code_length": self.code.len(),

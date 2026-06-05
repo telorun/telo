@@ -32,9 +32,11 @@ pub use telorun_sdk_macros::controller;
 pub mod backend;
 
 mod error;
+mod invoke_context;
 mod traits;
 
 pub use error::ControllerError;
+pub use invoke_context::{CancellationToken, InvokeContext};
 pub use traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 
 // Re-exports used by `#[controller]`-generated code. Stable paths so

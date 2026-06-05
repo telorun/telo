@@ -1,4 +1,9 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type {
+  ControllerContext,
+  InvokeContext,
+  ResourceContext,
+  ResourceInstance,
+} from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
 import type { AiModelInstance, Message, StreamPart } from "./types.js";
 
@@ -39,7 +44,10 @@ const VALID_ROLES = new Set(["system", "user", "assistant"]);
 class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamOutput> {
   constructor(private readonly resource: AiTextStreamResource) {}
 
-  async invoke(inputs: AiTextStreamInputs = {}): Promise<AiTextStreamOutput> {
+  async invoke(
+    inputs: AiTextStreamInputs = {},
+    ctx?: InvokeContext,
+  ): Promise<AiTextStreamOutput> {
     const name = this.resource.metadata.name;
     const hasPrompt = typeof inputs.prompt === "string";
     const hasMessages = Array.isArray(inputs.messages);
@@ -89,7 +97,9 @@ class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamO
       );
     }
 
-    const parts = model.stream({ messages, options: mergedOptions });
+    // Capture the signal at invoke-time so it rides into the deferred Stream
+    // consumption and aborts the live model connection on cancel.
+    const parts = model.stream({ messages, options: mergedOptions, signal: ctx?.cancellation.signal });
     return { output: new Stream(parts) };
   }
 

@@ -2,6 +2,7 @@ import { Static, Type } from "@sinclair/typebox";
 import {
   ControllerContext,
   Invocable,
+  InvokeContext,
   KindRef,
   Ref,
   ResourceContext,
@@ -146,10 +147,24 @@ export class LambdaFunction implements ResourceInstance {
           `registered on this Function`,
       );
     }
-    return this.ctx.invokeResolved(entry.resource.kind, entry.resource.name, entry.instance, {
-      event,
-      context,
-    });
+    // Arm cancellation at the AWS deadline so honoring handlers stop before the
+    // platform hard-kills the invocation.
+    const deadlineMs = (context as { deadlineMs?: number } | undefined)?.deadlineMs;
+    const source =
+      typeof deadlineMs === "number" ? this.ctx.createCancellationSource() : undefined;
+    source?.cancelAt(deadlineMs!);
+    try {
+      return await this.ctx.invokeResolved(
+        entry.resource.kind,
+        entry.resource.name,
+        entry.instance,
+        { event, context },
+        source?.context,
+      );
+    } finally {
+      // Release the deadline timer when the handler finishes early.
+      source?.dispose();
+    }
   }
 
   private async pollLoop(runtimeApi: string): Promise<void> {

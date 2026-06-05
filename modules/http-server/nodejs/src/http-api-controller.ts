@@ -12,6 +12,7 @@ import {
   ControllerContext,
   Invocable,
   InvokeError,
+  isCancellationError,
   isInvokeError,
   KindRef,
   Ref,
@@ -146,12 +147,29 @@ export class HttpServerApi implements ResourceInstance {
 
         const sink = fastifyReplySink(reply);
 
+        // Per-request cancellation: abandon downstream work when the client
+        // disconnects before the response is sent.
+        const cancellation = this.ctx.createCancellationSource();
+        request.raw.on("close", () => {
+          if (!reply.sent) cancellation.cancel("client-disconnect");
+        });
+
         let result: unknown;
         try {
           result = handler
-            ? await this.ctx.invokeResolved(handlerKind, handlerName, handler, invokeInput)
+            ? await this.ctx.invokeResolved(
+                handlerKind,
+                handlerName,
+                handler,
+                invokeInput,
+                cancellation.context,
+              )
             : undefined;
         } catch (err) {
+          if (isCancellationError(err)) {
+            if (!reply.sent) reply.code(499).send();
+            return;
+          }
           if (!isInvokeError(err)) throw err;
           return dispatchCatches(
             route.catches,

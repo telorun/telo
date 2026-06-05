@@ -9,6 +9,14 @@ export interface KernelContext {
   kernel: Kernel;
 }
 
+/** Embedder-facing seed for an invocation tree's cancellation scope. Provide an
+ *  external `AbortSignal` to cancel on, an absolute epoch-millis `deadlineAt`,
+ *  or both. Omit to run uncancellable. */
+export interface InvokeOptions {
+  signal?: AbortSignal;
+  deadlineAt?: number;
+}
+
 export interface ExecContext {
   execute(urn: string, input: any): Promise<any>;
   [key: string]: any;
@@ -124,6 +132,7 @@ export interface Kernel {
   invoke<TInputs = any, TOutput = any>(
     ref: string | { kind: string; name: string },
     inputs: TInputs,
+    opts?: InvokeOptions,
   ): Promise<TOutput>;
   /**
    * Convenience: boot → runTargets → waitForIdle → teardown, with teardown
@@ -139,6 +148,13 @@ export interface Kernel {
    * `teardown()` for cleanup.
    */
   forceIdle(): void;
+  /**
+   * Cooperatively cancel the boot `targets` run. Not-yet-started targets are
+   * refused; long-lived runnables and in-flight invoke trees observe the
+   * cancellation token and stop early. Pairs with `forceIdle()` in signal
+   * handlers (cancel the work, then unblock the idle wait).
+   */
+  cancel(reason?: string): void;
   requestExit(code: number): void;
   readonly exitCode: number;
 }
