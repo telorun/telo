@@ -304,6 +304,14 @@ const sidebars: SidebarsConfig = {
                     },
                   ],
                 },
+                {
+                  type: "category",
+                  label: "Timer",
+                  items: [
+                    { type: "doc", id: "modules/timer/README", label: "Overview" },
+                    { type: "doc", id: "modules/timer/docs/delay", label: "Timer.Delay" },
+                  ],
+                },
                 { type: "doc", id: "modules/workflow/README", label: "Workflow" },
                 {
                   type: "doc",

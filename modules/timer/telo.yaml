@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: timer
+  namespace: std
+  version: 0.0.0
+  description: |
+    Time-based primitives. `Timer.Delay` waits for a duration, then completes —
+    composable as a `Run.Sequence` step, an HTTP handler, or any invoke target.
+    It honors invocation cancellation (client disconnect / deadline), so a
+    pending delay is abandoned instead of holding work open.
+exports:
+  kinds:
+    - Delay
+---
+# Delay: wait `duration`, then complete. Optionally echoes a `value` through
+# unchanged so it composes mid-pipeline (delay-then-forward). The wait is
+# cancellation-aware — if the invocation is cancelled while waiting, the timer
+# is cleared and the call fails with ERR_INVOKE_CANCELLED.
+kind: Telo.Definition
+metadata:
+  name: Delay
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/timer@0.0.0?local_path=./nodejs#delay
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      duration:
+        type: string
+        pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+        description: How long to wait before completing, e.g. "250ms", "2s", "1.5m", "1h".
+      value:
+        description: Optional value echoed back unchanged after the delay (pipeline passthrough).
+    required: [ duration ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      value:
+        description: The input `value`, returned once the delay elapses (null when omitted).
+    required: [ value ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
