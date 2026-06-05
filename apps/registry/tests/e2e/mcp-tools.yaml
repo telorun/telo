@@ -17,21 +17,17 @@ metadata:
 imports:
   HttpClient: ../../../../modules/http-client
   McpClient: ../../../../modules/mcp-client
-  Config: ../../../../modules/config
   Run: ../../../../modules/run
   Assert: ../../../../modules/assert
-targets:
-  - GetModuleManifest_ReturnsYaml
----
 # Reads the publish bearer from the test runner's environment so the test can
 # seed a fixture before reading it back. CI exports the same token the
 # registry container booted with; locally it comes from apps/registry/.env*.
-kind: Config.Env
-metadata: { name: TestEnv }
 secrets:
   registryToken:
     env: TELO_REGISTRY_TOKEN
     type: string
+targets:
+  - GetModuleManifest_ReturnsYaml
 ---
 # Typed MCP client + tool-call dispatcher. Replaces the hand-rolled
 # JS.Script McpFetch that previously crashed when the success envelope was
@@ -63,7 +59,7 @@ steps:
       method: PUT
       headers:
         content-type: text/yaml
-        authorization: "Bearer ${{ resources.TestEnv.registryToken }}"
+        authorization: "Bearer ${{ secrets.registryToken }}"
       body: |
         kind: Telo.Library
         metadata:

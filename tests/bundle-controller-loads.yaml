@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: BundleControllerLoads
+  version: 1.0.0
+  description: |
+    Verifies the kernel's BundleControllerLoader dispatches a pkg:telo PURL
+    end-to-end: a self-contained .mjs bundle alongside the manifest is
+    import()ed, its controller invoked, and the Stream it returns flows through
+    PlainText.Decoder — proving a bundled controller's Stream is recognized by
+    the kernel (no install, no node_modules, no resolve hook).
+imports:
+  Bundle: ./__fixtures__/bundle-test/telo.yaml
+  PlainText: ../modules/plain-text-codec
+  Assert: ../modules/assert
+targets:
+  - name: Produce
+    inputs:
+      text: "bundled hello"
+    invoke: { kind: Bundle.Producer, name: Producer }
+  - name: ToText
+    inputs:
+      input: "${{ steps.Produce.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: Assert
+    inputs:
+      text: "${{ steps.ToText.result.text }}"
+    invoke: { kind: Assert.Schema, name: AssertText }
+  # Env-missing fallback: ProducerFallback's first candidate bundle is missing,
+  # so the loader must skip it and load the second. If it works, the contract holds.
+  - name: ProduceFallback
+    inputs:
+      text: "bundled hello"
+    invoke: { kind: Bundle.ProducerFallback, name: ProducerFb }
+  - name: ToTextFallback
+    inputs:
+      input: "${{ steps.ProduceFallback.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: AssertFallback
+    inputs:
+      text: "${{ steps.ToTextFallback.result.text }}"
+    invoke: { kind: Assert.Schema, name: AssertText }
+  # Format-based fallback: first candidate is format=napi (file present, but the
+  # Node kernel can't host that format) → env-missing → loads the format=js one.
+  - name: ProduceFormat
+    inputs:
+      text: "bundled hello"
+    invoke: { kind: Bundle.ProducerFormatFallback, name: ProducerFmt }
+  - name: ToTextFormat
+    inputs:
+      input: "${{ steps.ProduceFormat.result.output }}"
+    invoke: { kind: PlainText.Decoder, name: ToText }
+  - name: AssertFormat
+    inputs:
+      text: "${{ steps.ToTextFormat.result.text }}"
+    invoke: { kind: Assert.Schema, name: AssertText }
+---
+kind: Bundle.Producer
+metadata: { name: Producer }
+---
+kind: Bundle.ProducerFallback
+metadata: { name: ProducerFb }
+---
+kind: Bundle.ProducerFormatFallback
+metadata: { name: ProducerFmt }
+---
+kind: PlainText.Decoder
+metadata: { name: ToText }
+---
+kind: Assert.Schema
+metadata: { name: AssertText }
+schema:
+  type: object
+  properties:
+    text: { const: "bundled hello" }
+  required: [ text ]

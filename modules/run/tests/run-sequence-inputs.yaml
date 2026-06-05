@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: RunSequenceInputs
+  version: 1.0.0
+imports:
+  Run: ../
+  JavaScript: ../../javascript
+  Assert: ../../assert
+targets:
+  - TestInputs
+---
+# A sub-sequence invoked with caller inputs reads them via the `inputs` CEL
+# variable across step `inputs:`, an `if:` predicate, and the `outputs:` mapping.
+# Regression: the controller used to spread caller inputs flat, so `inputs.x`
+# failed at runtime with "Unknown variable: inputs".
+kind: Run.Sequence
+metadata:
+  name: Greet
+steps:
+  - name: build
+    if: "${{ inputs.shout }}"
+    then:
+      - name: loud
+        inputs: { name: "${{ inputs.name }}" }
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main({ name }) { return { text: "HELLO " + name } }
+    else:
+      - name: quiet
+        inputs: { name: "${{ inputs.name }}" }
+        invoke:
+          kind: JavaScript.Script
+          code: |
+            function main({ name }) { return { text: "hello " + name } }
+outputs:
+  loud: "${{ steps.loud.result.text }}"
+---
+kind: Run.Sequence
+metadata:
+  name: TestInputs
+steps:
+  - name: callGreet
+    invoke: { kind: Run.Sequence, name: Greet }
+    inputs:
+      name: telo
+      shout: true
+  - name: verify
+    inputs:
+      text: "${{ steps.callGreet.result.loud }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "HELLO telo" }
+        required: [ text ]

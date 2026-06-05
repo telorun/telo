@@ -6,10 +6,10 @@ metadata:
   version: 1.0.0
 imports:
   Type: std/type@0.2.1
-  Http: std/http-server@0.6.1
+  Http: std/http-server@0.8.0
   HttpClient: std/http-client@0.4.1
   S3:
-    source: std/s3@0.2.1
+    source: std/s3@0.3.0
     secrets:
       accessKeyId: "${{ secrets.accessKeyId }}"
       secretAccessKey: "${{ secrets.secretAccessKey }}"
@@ -17,6 +17,8 @@ imports:
   Run: std/run@0.4.1
   Octet: std/octet-codec@0.4.1
   PlainText: std/plain-text-codec@0.4.1
+  Gzip: std/gzip@0.2.0
+  Tar: std/tar@0.2.0
   Yaml: std/yaml@0.4.1
   Mcp: std/mcp-server@0.6.1
 variables:
@@ -172,6 +174,10 @@ port: "${{ variables.port }}"
 logger: true
 contentTypeParsers:
   - contentType: text/yaml
+  # Bundle uploads arrive as binary tar.gz; deliver the raw stream to the
+  # handler (route declares an x-telo-stream body) instead of parsing.
+  - contentType: application/gzip
+    stream: true
 baseUrl: http://registry.telo.localhost:8060
 cors:
   origin: "*"
@@ -255,12 +261,14 @@ outputType:
       rows: { type: array }
       rowCount: { type: integer }
 ---
-# Publish handler — extracted as a top-level Run.Sequence so its CEL context is
-# not constrained by the route's handler:-field x-telo-context (which would hide
-# `error` inside catch blocks).
+# Authorize a publish: validate the Bearer header and that the token owns the
+# target namespace. Throws UNAUTHORIZED on failure; returns normally on success.
+# Shared by the yaml (PublishHandler) and bundle (PublishBundleHandler) routes so
+# the token CTE and its semantics live in exactly one place — authorized once per
+# request, never twice.
 kind: Run.Sequence
 metadata:
-  name: PublishHandler
+  name: AuthorizeNamespace
 steps:
   - name: checkHeader
     if: "${{ !inputs.authorization.startsWith('Bearer ') }}"
@@ -304,7 +312,15 @@ steps:
         throw:
           code: UNAUTHORIZED
           message: Invalid token or namespace not owned
-
+---
+# Core publish: parse + validate the manifest, store telo.yaml, index the row.
+# Auth-free — callers (PublishHandler, PublishBundleHandler) authorize first.
+# Top-level Run.Sequence so its CEL context isn't constrained by a route
+# handler field's x-telo-context (which would hide `error` inside catch blocks).
+kind: Run.Sequence
+metadata:
+  name: RecordManifest
+steps:
   # Parse the YAML body so we can index `metadata.description` server-side
   # (npm-style: the registry reads metadata from the manifest, the publisher
   # doesn't ship it out-of-band). Caught errors map to MANIFEST_PARSE_FAILED.
@@ -382,6 +398,132 @@ steps:
           message: "${{ error.message }}"
 outputs:
   published: "${{ inputs.published }}"
+---
+# Publish handler (text/yaml route) — authorize once, then record.
+kind: Run.Sequence
+metadata:
+  name: PublishHandler
+steps:
+  - name: authorize
+    invoke:
+      kind: Run.Sequence
+      name: AuthorizeNamespace
+    inputs:
+      authorization: "${{ inputs.authorization }}"
+      namespace: "${{ inputs.namespace }}"
+  - name: recordManifest
+    invoke:
+      kind: Run.Sequence
+      name: RecordManifest
+    inputs:
+      namespace: "${{ inputs.namespace }}"
+      name: "${{ inputs.name }}"
+      version: "${{ inputs.version }}"
+      body: "${{ inputs.body }}"
+      fileKey: "${{ inputs.fileKey }}"
+      published: "${{ inputs.published }}"
+outputs:
+  published: "${{ steps.recordManifest.result.published }}"
+---
+# Bundle publish handler — accepts a binary tar.gz upload (telo.yaml + bundled
+# controller .js). Authorizes once (shared AuthorizeNamespace), stores the
+# tarball, extracts telo.yaml out of it, then delegates parse/validate/index/
+# store to the shared RecordManifest. The upload streams in (request.body), is
+# buffered to bytes (Octet), stored to S3, then read back as a stream and
+# gunzip→untar'd — S3.Get is the tee that lets the same bytes be both stored and
+# extracted.
+#
+# Tradeoff: the tarball is stored before the manifest is validated (the S3.Get
+# read-back is the only available bytes→stream tee), so a structurally-invalid
+# upload leaves an orphaned module.tar.gz — unindexed, deterministically keyed,
+# overwritten on retry. Low impact; a bytes→Stream primitive would let us
+# validate before storing.
+kind: Run.Sequence
+metadata:
+  name: PublishBundleHandler
+steps:
+  - name: authorize
+    invoke:
+      kind: Run.Sequence
+      name: AuthorizeNamespace
+    inputs:
+      authorization: "${{ inputs.authorization }}"
+      namespace: "${{ inputs.namespace }}"
+
+  # Buffer the streamed upload to bytes so it can be both stored and re-read.
+  - name: buffer
+    invoke: { kind: Octet.Decoder }
+    inputs:
+      input: "${{ inputs.body }}"
+
+  - name: storeTar
+    try:
+      - name: doStoreTar
+        invoke:
+          kind: S3.Put
+          bucketRef:
+            name: ModuleStore
+        inputs:
+          key: "${{ inputs.tarKey }}"
+          body: "${{ steps.buffer.result.bytes }}"
+          contentType: "application/gzip"
+    catch:
+      - name: rethrowStoreTar
+        throw:
+          code: UPLOAD_FAILED
+          message: "${{ error.message }}"
+
+  # Read the stored tarball back as a stream (the tee), then gunzip + untar to
+  # pull telo.yaml out of it.
+  - name: readTar
+    try:
+      - name: getTar
+        invoke:
+          kind: S3.Get
+          bucketRef:
+            name: ModuleStore
+        inputs:
+          key: "${{ inputs.tarKey }}"
+    catch:
+      - name: rethrowReadTar
+        throw:
+          code: UPLOAD_FAILED
+          message: "Stored bundle could not be read back: ${{ error.message }}"
+  - name: extractManifest
+    try:
+      - name: gunzip
+        invoke: { kind: Gzip.Decoder }
+        inputs:
+          input: "${{ steps.getTar.result.output }}"
+      - name: doExtract
+        invoke: { kind: Tar.Extract }
+        inputs:
+          input: "${{ steps.gunzip.result.output }}"
+          path: "telo.yaml"
+    catch:
+      - name: rethrowExtract
+        throw:
+          code: INVALID_MANIFEST
+          message: "Invalid bundle (gunzip/untar failed or telo.yaml missing): ${{ error.message }}"
+  - name: manifestText
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: "${{ steps.doExtract.result.output }}"
+
+  # Reuse the shared core for parse → validate → store telo.yaml → index.
+  - name: recordManifest
+    invoke:
+      kind: Run.Sequence
+      name: RecordManifest
+    inputs:
+      namespace: "${{ inputs.namespace }}"
+      name: "${{ inputs.name }}"
+      version: "${{ inputs.version }}"
+      body: "${{ steps.manifestText.result.text }}"
+      fileKey: "${{ inputs.yamlKey }}"
+      published: "${{ inputs.published }}"
+outputs:
+  published: "${{ steps.recordManifest.result.published }}"
 ---
 kind: Http.Api
 metadata:
@@ -629,6 +771,105 @@ routes:
       version: "${{ request.params.version }}"
       body: "${{ request.body }}"
       fileKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
+      published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body:
+              published: "${{ result.published }}"
+    catches:
+      - when: "${{ error.code == 'UNAUTHORIZED' }}"
+        status: 401
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+      - when: "${{ error.code == 'MANIFEST_PARSE_FAILED' || error.code == 'INVALID_MANIFEST' }}"
+        status: 400
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+      - when: "${{ error.code == 'UPLOAD_FAILED' || error.code == 'RECORD_FAILED' }}"
+        status: 500
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+
+  # ── Bundle artifact (tar.gz: telo.yaml + bundled controllers) ──────────────
+  - request:
+      path: /{namespace}/{name}/{version}/module.tar.gz
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+            version: { type: string }
+          required: [ "namespace", "name", "version" ]
+    handler:
+      kind: S3.Get
+      bucketRef:
+        name: ModuleStore
+    inputs:
+      key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.tar.gz' }}"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/gzip:
+            encoder: { kind: Octet.Encoder }
+    catches:
+      - when: "${{ error.code == 'ERR_NOT_FOUND' }}"
+        status: 404
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+      - when: "${{ error.code == 'ERR_INVALID_REFERENCE' || error.code == 'ERR_INVALID_RESPONSE' }}"
+        status: 500
+        content:
+          application/json:
+            body:
+              error:
+                code: "${{ error.code }}"
+                message: "${{ error.message }}"
+
+  - request:
+      path: /{namespace}/{name}/{version}/module.tar.gz
+      method: PUT
+      schema:
+        params:
+          type: object
+          properties:
+            namespace: { type: string }
+            name: { type: string }
+            version: { type: string }
+          required: [ "namespace", "name", "version" ]
+        body:
+          x-telo-stream: true
+    handler:
+      kind: Run.Sequence
+      name: PublishBundleHandler
+    inputs:
+      authorization: "${{ has(request.headers.authorization) ? request.headers.authorization : '' }}"
+      namespace: "${{ request.params.namespace }}"
+      name: "${{ request.params.name }}"
+      version: "${{ request.params.version }}"
+      body: "${{ request.body }}"
+      tarKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.tar.gz' }}"
+      yamlKey: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
       published: "${{ request.params.namespace + '/' + request.params.name + '@' + request.params.version }}"
     returns:
       - status: 201

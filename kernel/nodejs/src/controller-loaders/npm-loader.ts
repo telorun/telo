@@ -9,6 +9,7 @@ import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { promisify } from "util";
 import { ControllerEnvMissingError } from "./napi-loader.js";
+import { REALM_COLLAPSE_NAMES } from "./realm.js";
 
 const execFileAsync = promisify(execFile);
 const requireFromHere = createRequire(import.meta.url);
@@ -418,19 +419,6 @@ export class NpmControllerLoader {
   }
 }
 
-/**
- * Names of packages whose realpath must be shared between the kernel and every
- * loaded controller. Each name here becomes a `file:` dep in the install-root
- * `package.json`, pinned at the kernel's own resolution; controllers declare
- * these names as `peerDependencies` so npm/pnpm resolves them to that single
- * copy instead of nesting their own.
- *
- * Add a name here if you ship another shared runtime symbol whose `instanceof`
- * or constructor identity matters across module boundaries. Today the only
- * such name is `@telorun/sdk` (carries the `Stream` class registered with
- * `@marcbachmann/cel-js`).
- */
-const REALM_COLLAPSE_NAMES: ReadonlyArray<string> = ["@telorun/sdk"];
 
 /**
  * Resolve a kernel-runtime dep name to the realpath of its package directory.

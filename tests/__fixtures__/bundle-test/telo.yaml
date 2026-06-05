@@ -1,0 +1,106 @@
+kind: Telo.Library
+metadata:
+  name: bundle-test
+  namespace: telo-test
+  version: 1.0.0
+exports:
+  kinds:
+    - Producer
+    - ProducerFallback
+    - ProducerFormatFallback
+---
+# A controller delivered inside this module's bundle (pkg:telo/local), not
+# fetched from npm. The name segment is the format (js) → the loader import()s
+# the .mjs at ?path=; #producer selects the export.
+kind: Telo.Definition
+metadata:
+  name: Producer
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./producer.mjs#producer
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [ text ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Byte stream of the echoed text.
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+---
+# Same controller, but the first candidate's bundle file does not exist. The
+# loader must hit ControllerEnvMissingError and advance to the second (present)
+# candidate — the headline env-missing fallback contract.
+kind: Telo.Definition
+metadata:
+  name: ProducerFallback
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./does-not-exist.mjs#producer
+  - pkg:telo/local/js?path=./producer.mjs#producer
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [ text ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Byte stream of the echoed text.
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+---
+# Format-based fallback: the first candidate's file exists, but format=napi is
+# not hostable by the Node bundle loader → ControllerEnvMissingError → advance
+# to the format=js candidate. Proves dispatch is by runtime/format, not just
+# file presence — the polyglot contract.
+kind: Telo.Definition
+metadata:
+  name: ProducerFormatFallback
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/napi?path=./producer.mjs#producer
+  - pkg:telo/local/js?path=./producer.mjs#producer
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [ text ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Byte stream of the echoed text.
+    required: [ output ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
