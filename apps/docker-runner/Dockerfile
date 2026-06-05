@@ -11,7 +11,9 @@ FROM development AS build
 COPY . .
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm run --filter @telorun/docker-runner build
+# `...` builds the @telorun/runner-core workspace dependency first; without it
+# tsc cannot resolve runner-core's dist/index.d.ts.
+RUN pnpm run --filter @telorun/docker-runner... build
 # pnpm deploy produces a self-contained, hoisted node_modules for a single
 # workspace package at /out, rewriting workspace:* deps and pruning devDeps.
 # Sidesteps the isolated-node-linker / symlinked-store issue in a

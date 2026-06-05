@@ -47,5 +47,7 @@ describe("NapiControllerLoader single-flight dedupe", () => {
     const followup = await loader.load(purl, fakeManifest);
     expect(followup.source).toBe("cache");
     expect(__getNapiBuildAttempts()).toBe(1);
-  });
+    // A real `cargo build` of the fixture crate runs here; a cold target/
+    // (e.g. a fresh CI runner) far exceeds vitest's 5s default.
+  }, 120_000);
 });

@@ -882,6 +882,25 @@ export function Editor() {
     setState((s) => ({ ...s, workspace: persisted }));
   }
 
+  async function handleUpgradeAllImports(updates: { name: string; newSource: string }[]) {
+    if (!state.workspace || !state.activeModulePath || updates.length === 0) return;
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    const registryAdapters = createRegistryAdapters(settings);
+    let workspace = state.workspace;
+    for (const { name, newSource } of updates) {
+      workspace = await upgradeImportViaAst(
+        workspace,
+        state.activeModulePath,
+        name,
+        newSource,
+        adapter,
+        registryAdapters,
+      );
+    }
+    const persisted = await persistModule(workspace, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation (direct set, no stack)
   // ---------------------------------------------------------------------------
@@ -1702,6 +1721,7 @@ export function Editor() {
                       onAddImport: handleAddImport,
                       onRemoveImport: handleRemoveImport,
                       onUpgradeImport: handleUpgradeImport,
+                      onUpgradeAllImports: handleUpgradeAllImports,
                       onSelect: handleSelect,
                       onClearSelection: handleClearSelection,
                       onSourceEdit: handleSourceEdit,

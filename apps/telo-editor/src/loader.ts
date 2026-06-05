@@ -29,6 +29,7 @@ export {
 export {
   createRegistryAdapters,
   fetchAvailableVersions,
+  fetchLatestVersion,
   isRegistryImportSource,
   parseRegistryRef,
 } from "./loader/registry";
