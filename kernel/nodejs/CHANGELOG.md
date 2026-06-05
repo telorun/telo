@@ -1,5 +1,11 @@
 # @telorun/kernel
 
+## 0.20.0
+
+### Minor Changes
+
+- 2864c4d: Add `pkg:telo` bundled controllers. A `Telo.Definition` can declare its controller as a bundle shipped inside the module's own artifact (the Telo registry tar.gz), not fetched from an external package registry — `pkg:telo/<ns>/<name>@<ver>?format=js&path=./nodejs/script.mjs#export`. `pkg:telo` names the delivery only; the runtime is carried by `?format=` (because bundling is the one delivery not tied to an ecosystem's runtime), and the new `BundleControllerLoader` dispatches on it: `format=js` is `import()`ed directly (no install, no node_modules); `napi`/`wasm` are recognized but env-missing on this kernel today, so a mixed candidate list falls through to a sibling here or a candidate another runtime's kernel can load. Selected via the default policy's `*` wildcard (no `runtime: bundle` label — bundling isn't a runtime). Authors write a normal `import { Stream } from "@telorun/sdk"`: the loader symlinks the realm-collapse names into a `node_modules/` next to the bundle, pointing at the kernel's own copy, so standard resolution finds them on both Node and Bun (ESM resolve hooks and Bun plugins don't intercept runtime imports portably; a symlink does). The bare import resolves with no per-bundle node_modules to author and `Stream`/`InvokeError` are the kernel's own instances. (The SDK's globalThis/`Symbol.for` singletons also keep identity correct if a publish step inlines the SDK instead.)
+
 ## 0.19.0
 
 ### Minor Changes
