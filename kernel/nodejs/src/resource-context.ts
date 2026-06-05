@@ -5,9 +5,12 @@ import {
   ResourceManifest,
   RuntimeError,
   RuntimeResource,
+  createCancellationSource,
   isCompiledValue,
+  type CancellationSource,
   type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
+  type InvokeContext,
   type LoadOptions,
   type ModuleContext,
   type ParsedArgs,
@@ -148,6 +151,10 @@ export class ResourceContextImpl implements ResourceContext {
     }
   }
 
+  createCancellationSource(): CancellationSource {
+    return createCancellationSource();
+  }
+
   invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
     return this.moduleContext.invoke(kind, name, inputs);
   }
@@ -157,8 +164,9 @@ export class ResourceContextImpl implements ResourceContext {
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    ctx?: InvokeContext,
   ): Promise<any> {
-    return this.moduleContext.invokeResolved(kind, name, instance, inputs);
+    return this.moduleContext.invokeResolved(kind, name, instance, inputs, ctx);
   }
 
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {

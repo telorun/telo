@@ -1,4 +1,11 @@
-import { Stream, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
+import {
+  ERR_INVOKE_CANCELLED,
+  InvokeError,
+  Stream,
+  type InvokeContext,
+  type ResourceContext,
+  type ResourceInstance,
+} from "@telorun/sdk";
 import { PassThrough, Readable } from "stream";
 
 const MAX_REDIRECTS = 5;
@@ -68,9 +75,14 @@ async function executeRequest(
   body: string | undefined,
   timeout: number,
   stream = false,
+  callerSignal?: AbortSignal,
 ): Promise<TeloResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
+  // Caller cancellation and the request timeout both abort the fetch.
+  const signal = callerSignal
+    ? AbortSignal.any([controller.signal, callerSignal])
+    : controller.signal;
 
   let currentUrl = url;
   let redirectsLeft = MAX_REDIRECTS;
@@ -82,7 +94,7 @@ async function executeRequest(
         headers,
         body,
         redirect: "manual",
-        signal: controller.signal,
+        signal,
       });
 
       // Handle redirects manually (limit to MAX_REDIRECTS)
@@ -147,6 +159,11 @@ async function executeRequest(
       return { status: response.status, headers: responseHeaders, body: responseBody };
     }
   } catch (err) {
+    // Caller cancellation (not the timeout) surfaces as the structured invoke
+    // cancellation rather than masquerading as a network TIMEOUT.
+    if (callerSignal?.aborted) {
+      throw new InvokeError(ERR_INVOKE_CANCELLED, "Request cancelled");
+    }
     mapNetworkError(err, url);
   } finally {
     clearTimeout(timeoutId);
@@ -161,12 +178,22 @@ async function executeWithRetry(
   timeout: number,
   retriesLeft: number,
   stream = false,
+  callerSignal?: AbortSignal,
 ): Promise<TeloResponse> {
   try {
-    return await executeRequest(url, method, headers, body, timeout, stream);
+    return await executeRequest(url, method, headers, body, timeout, stream, callerSignal);
   } catch (err) {
     if (retriesLeft > 0 && (err as any).error === "NetworkError") {
-      return executeWithRetry(url, method, headers, body, timeout, retriesLeft - 1, stream);
+      return executeWithRetry(
+        url,
+        method,
+        headers,
+        body,
+        timeout,
+        retriesLeft - 1,
+        stream,
+        callerSignal,
+      );
     }
     throw err;
   }
@@ -195,7 +222,10 @@ class HttpRequestResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: any): Promise<TeloResponse | { output: Stream<Uint8Array> }> {
+  async invoke(
+    input: any,
+    invokeCtx?: InvokeContext,
+  ): Promise<TeloResponse | { output: Stream<Uint8Array> }> {
     const ctx = this.ctx;
     const m = this.manifest;
 
@@ -295,6 +325,7 @@ class HttpRequestResource implements ResourceInstance {
       effectiveTimeout,
       retries,
       m.mode === "stream",
+      invokeCtx?.cancellation.signal,
     );
 
     if (throwOnHttpError && response.status >= 400) {

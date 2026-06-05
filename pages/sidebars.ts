@@ -86,6 +86,11 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/docs/inheritance", label: "Inheritance" },
                 { type: "doc", id: "kernel/docs/evaluation-context", label: "Evaluation Context" },
                 { type: "doc", id: "kernel/docs/data-types", label: "Data Types" },
+                {
+                  type: "doc",
+                  id: "kernel/docs/invoke-cancellation",
+                  label: "Invoke Cancellation",
+                },
               ],
             },
             {

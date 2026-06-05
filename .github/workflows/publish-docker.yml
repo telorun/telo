@@ -84,7 +84,16 @@ jobs:
 
   kernel-dev:
     name: Build telorun/node dev tags
-    if: github.event_name == 'push'
+    # Same gating as runner/k8s-runner: the Dockerfile's `--prod deploy` resolves
+    # the workspace's `@telorun/sdk` peer from npm. On the "chore(release): version
+    # packages" commit the workspace is already bumped to a version that publish.yml
+    # is still publishing concurrently, so a direct-push build here races the publish
+    # and 404s. Skip that commit on the push path; the post-publish release path
+    # (workflow_call → kernel-release, gated by `needs: release`) ships the same
+    # commit's images once the versions are guaranteed live.
+    if: |
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, 'chore(release): version packages')
     needs: context
     runs-on: ubuntu-latest
     steps:
@@ -267,11 +276,17 @@ jobs:
     # reproducible and exercises kernel changes in the same PR.
     # On release: FROM telorun/node:<cli-version>-slim — pins to the
     # just-published exact release.
+    # The "chore(release): version packages" commit is skipped on the push path:
+    # its sha kernel base is not built there (kernel-dev skips it for the publish
+    # race), so registry rides the post-publish release path (workflow_call) and
+    # pins to the just-published cli-version instead.
     # `always()` lets registry run even when an upstream kernel job was
     # skipped (kernel-dev on workflow_call, kernel-release on push).
     if: |
       always() &&
-      (github.event_name == 'push' || needs.context.outputs.release-cli == 'true') &&
+      ((github.event_name == 'push' &&
+        !contains(github.event.head_commit.message, 'chore(release): version packages'))
+        || needs.context.outputs.release-cli == 'true') &&
       needs.context.result == 'success' &&
       (needs.kernel-dev.result == 'success' || needs.kernel-dev.result == 'skipped') &&
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')

@@ -138,13 +138,14 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
     });
   }
 
-  async invoke({ messages, options, tools }: ModelInvokeInput): Promise<CompletionResult> {
+  async invoke({ messages, options, tools, signal }: ModelInvokeInput): Promise<CompletionResult> {
     const merged = mergeOptions(this.resource.options, options);
     const toolSet = buildTools(tools);
     const result = await generateText({
       model: this.client(this.resource.model),
       messages: translateMessages(messages),
       ...(toolSet ? { tools: toolSet } : {}),
+      ...(signal ? { abortSignal: signal } : {}),
       ...merged,
     } as Parameters<typeof generateText>[0]);
 
@@ -162,11 +163,12 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
     };
   }
 
-  async *stream({ messages, options }: ModelInvokeInput): AsyncIterable<StreamPart> {
+  async *stream({ messages, options, signal }: ModelInvokeInput): AsyncIterable<StreamPart> {
     const merged = mergeOptions(this.resource.options, options);
     const result = streamText({
       model: this.client(this.resource.model),
       messages: translateMessages(messages),
+      ...(signal ? { abortSignal: signal } : {}),
       ...merged,
     } as Parameters<typeof streamText>[0]);
 

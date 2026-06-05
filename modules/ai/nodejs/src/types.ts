@@ -77,6 +77,10 @@ export interface ModelInvokeInput {
   messages: Message[];
   options?: Record<string, unknown>;
   tools?: ToolDefinition[];
+  /** Cooperative cancellation signal, threaded from the invoke's `InvokeContext`.
+   *  Providers forward it to their underlying SDK (`abortSignal`) so an abandoned
+   *  request stops its live model connection instead of running to completion. */
+  signal?: AbortSignal;
 }
 
 /** Tagged part emitted by a streaming invocation. Consumers iterate until the stream

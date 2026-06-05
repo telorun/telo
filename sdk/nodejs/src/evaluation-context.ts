@@ -1,3 +1,4 @@
+import type { InvokeContext } from "./cancellation.js";
 import type { ScopeHandle } from "./ref.js";
 import type { ResourceInstance } from "./resource-instance.js";
 import type { ResourceManifest } from "./resource-manifest.js";
@@ -87,14 +88,15 @@ export interface EvaluationContext {
   createScopeHandle(manifests: ResourceManifest[]): ScopeHandle;
   teardownResources(): Promise<void>;
   transientChild(context: Record<string, any>): EvaluationContext;
-  invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any>;
+  invoke<TInputs>(kind: string, name: string, inputs: TInputs, ctx?: InvokeContext): Promise<any>;
   invokeResolved<TInputs>(
     kind: string,
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    ctx?: InvokeContext,
   ): Promise<any>;
-  run(name: string): Promise<void>;
+  run(name: string, ctx?: InvokeContext): Promise<void>;
   expand(value: unknown): unknown;
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown;
   expandPaths(

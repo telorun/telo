@@ -39,10 +39,13 @@ pub fn controller(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let invoke_fn = has_invoke.then(|| {
         quote! {
             #[napi]
-            pub fn invoke(&self, env: Env, input: JsUnknown) -> NapiResult<JsUnknown> {
+            pub fn invoke(&self, env: Env, input: JsUnknown, ctx: Option<JsObject>) -> NapiResult<JsUnknown> {
                 let value = ::telorun_sdk::backend::napi::js_to_value(&env, input)
                     .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
-                let result = <super::#self_ty as ::telorun_sdk::Controller>::invoke(&self.inner, value)
+                // Poll-only cancellation: the token reads `ctx.cancellation.isCancelled`
+                // from the JS InvokeContext on each `is_cancelled()` call.
+                let invoke_ctx = ::telorun_sdk::backend::napi::invoke_context_from_js(ctx);
+                let result = <super::#self_ty as ::telorun_sdk::Controller>::invoke(&self.inner, value, &invoke_ctx)
                     .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
                 ::telorun_sdk::backend::napi::value_to_js(&env, &result)
                     .map_err(::telorun_sdk::backend::napi::to_napi_error)

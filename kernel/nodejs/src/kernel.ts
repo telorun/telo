@@ -11,6 +11,7 @@ import {
 import {
   ControllerContext,
   ControllerPolicy,
+  createCancellationSource,
   Kernel as IKernel,
   isCompiledValue,
   ResourceContext,
@@ -20,7 +21,9 @@ import {
   RuntimeError,
   RuntimeEvent,
   type BootTarget,
+  type CancellationSource,
   type EvaluationContext as IEvaluationContext,
+  type InvokeOptions,
   type ModuleContext as IModuleContext,
   type LoadOptions,
   type ParsedArgs,
@@ -64,6 +67,32 @@ function throwInvalidState(operation: string, reason: string): never {
     "ERR_KERNEL_STATE_INVALID",
     `Cannot ${operation}(): ${reason}`,
   );
+}
+
+/** Translate embedder `InvokeOptions` (external signal / absolute deadline)
+ *  into a seeded cancellation source, or `undefined` when nothing was requested
+ *  so the dispatch path stays on its allocation-free sentinel. The caller
+ *  disposes the returned source once the invoke settles. */
+function seedInvokeSource(opts?: InvokeOptions): CancellationSource | undefined {
+  if (!opts?.signal && opts?.deadlineAt === undefined) return undefined;
+  const source = createCancellationSource();
+  if (opts.deadlineAt !== undefined) source.cancelAt(opts.deadlineAt);
+  const signal = opts.signal;
+  if (signal && !signal.aborted) {
+    const onAbort = () => source.cancel(String(signal.reason ?? "aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    // Detach from the (possibly long-lived) external signal on dispose so the
+    // listener — which captures the source — doesn't pin it until the signal
+    // eventually aborts (or forever if it never does).
+    const baseDispose = source.dispose.bind(source);
+    source.dispose = () => {
+      signal.removeEventListener("abort", onAbort);
+      baseDispose();
+    };
+  } else if (signal?.aborted) {
+    source.cancel(String(signal.reason ?? "aborted"));
+  }
+  return source;
 }
 
 function parseRef(ref: string): { kind: string; name: string } {
@@ -133,6 +162,10 @@ export class Kernel implements IKernel {
   private _isBooted = false;
   private _targetsRan = false;
   private _isTornDown = false;
+  // Cancellation scope for the boot `targets` run. Created lazily so an early
+  // SIGINT (before runTargets) still has a source to cancel, which the run then
+  // observes via the pre-dispatch gate.
+  private _bootCancellation?: CancellationSource;
 
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
@@ -545,8 +578,25 @@ export class Kernel implements IKernel {
     this._targetsRan = true;
 
     await this.eventBus.emit("Kernel.Starting", {});
-    await this.rootContext.runTargets();
+    await this.rootContext.runTargets(this.bootCancellation.context);
     await this.eventBus.emit("Kernel.Started", {});
+  }
+
+  /** The boot run's cancellation source, created on first access so a signal
+   *  handler can cancel even before `runTargets()` begins. */
+  private get bootCancellation(): CancellationSource {
+    if (!this._bootCancellation) this._bootCancellation = createCancellationSource();
+    return this._bootCancellation;
+  }
+
+  /**
+   * Cooperatively cancel the boot `targets` run. Not-yet-started targets are
+   * refused at the dispatch gate; long-lived runnables and in-flight invoke
+   * trees observe the token (`ctx.cancellation`) and stop early. Used by the
+   * CLI's SIGINT/SIGTERM handler. Safe to call before or after `runTargets()`.
+   */
+  cancel(reason = "cancelled"): void {
+    this.bootCancellation.cancel(reason);
   }
 
   /**
@@ -597,6 +647,7 @@ export class Kernel implements IKernel {
   async invoke<TInputs = any, TOutput = any>(
     ref: string | { kind: string; name: string },
     inputs: TInputs,
+    opts?: InvokeOptions,
   ): Promise<TOutput> {
     if (this._isTornDown) {
       throwInvalidState("invoke", "kernel has been torn down");
@@ -605,7 +656,17 @@ export class Kernel implements IKernel {
       throwInvalidState("invoke", "boot() has not completed");
     }
     const parsed = typeof ref === "string" ? parseRef(ref) : ref;
-    return (await this.rootContext.invoke(parsed.kind, parsed.name, inputs)) as TOutput;
+    const source = seedInvokeSource(opts);
+    try {
+      return (await this.rootContext.invoke(
+        parsed.kind,
+        parsed.name,
+        inputs,
+        source?.context,
+      )) as TOutput;
+    } finally {
+      source?.dispose();
+    }
   }
 
   async emitRuntimeEvent(event: string, payload?: any): Promise<void> {

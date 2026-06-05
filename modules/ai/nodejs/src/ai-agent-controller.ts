@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import type {
   AiModelInstance,
@@ -69,7 +69,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
 
   constructor(private readonly resource: AiAgentResource) {}
 
-  async invoke(inputs: AiAgentInputs = {}): Promise<AiAgentOutput> {
+  async invoke(inputs: AiAgentInputs = {}, ctx?: InvokeContext): Promise<AiAgentOutput> {
     const name = this.resource.metadata.name;
     const model = this.resource.model;
     if (!model || typeof model.invoke !== "function") {
@@ -116,9 +116,11 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     let last: CompletionResult | undefined;
 
     for (let step = 0; step < maxSteps; step++) {
+      ctx?.cancellation.throwIfCancelled();
       const result = await model.invoke({
         messages,
         options: mergedOptions,
+        signal: ctx?.cancellation.signal,
         ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
       });
       last = result;

@@ -1,8 +1,9 @@
-import { executeInvokeStep } from "@telorun/sdk";
+import { executeInvokeStep, RuntimeError } from "@telorun/sdk";
 import type {
   BootTarget,
   ControllerPolicy,
   Invocable,
+  InvokeContext,
   InvokeStep,
   InvokeStepContext,
   ModuleContext as IModuleContext,
@@ -279,8 +280,13 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this._secretValues = collectSecretValues(this._secrets);
   }
 
-  override async invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
-    const result = await super.invoke(kind, name, inputs);
+  override async invoke<TInputs>(
+    kind: string,
+    name: string,
+    inputs: TInputs,
+    ctx?: InvokeContext,
+  ): Promise<any> {
+    const result = await super.invoke(kind, name, inputs, ctx);
     const entry = this.resourceInstances.get(name);
     if (entry && typeof (entry.instance as any).snapshot === "function") {
       const snap = await Promise.resolve((entry.instance as any).snapshot());
@@ -289,33 +295,34 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return result;
   }
 
-  async run(name: string) {
+  override async run(name: string, ctx?: InvokeContext) {
     const resource = this.resourceInstances.get(name);
     if (!resource) {
       throw new Error(
         `Target resource ${name} not found in module context. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
       );
     }
-    if (typeof resource.instance.run === "function") {
-      await resource.instance.run();
-    } else {
+    if (typeof resource.instance.run !== "function") {
       throw new Error(`Target resource ${name} does not have a run() method.`);
     }
+    // Delegate execution to the base run(), which applies the cancellation gate
+    // and scope; the checks above keep the module-scoped error messages.
+    await super.run(name, ctx);
   }
 
-  async runTargets() {
+  async runTargets(ctx?: InvokeContext) {
     const steps: Record<string, unknown> = {};
     const stepCtx: InvokeStepContext = {
       expandValue: (value, context) => this.expandWith(value, context),
-      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs),
+      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs, ctx),
       invokeResolved: (kind, name, instance, inputs) =>
-        this.invokeResolved(kind, name, instance, inputs),
+        this.invokeResolved(kind, name, instance, inputs, ctx),
       resolveImportedInstance: (alias, name) => this.resolveImportedInstance(alias, name),
     };
     for (let i = 0; i < this.targets.length; i++) {
       const target = this.targets[i]!;
       if (typeof target === "string") {
-        await this.run(target);
+        await this.run(target, ctx);
         continue;
       }
       if ("invoke" in target && target.invoke !== undefined) {
@@ -343,15 +350,24 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
                 `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
               );
             }
-            await inst.run();
+            // Mirror the local-run gate: refuse a cross-module target reached
+            // after the boot run was cancelled.
+            const token = ctx?.cancellation;
+            if (token?.isCancelled) {
+              throw new RuntimeError(
+                "ERR_INVOKE_CANCELLED",
+                `Run ${r.alias}.${r.name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+              );
+            }
+            await inst.run(ctx);
           } else {
-            await this.run(typeof ref === "string" ? ref : r!.name);
+            await this.run(typeof ref === "string" ? ref : r!.name, ctx);
           }
         }
         continue;
       }
       if ("name" in target && typeof target.name === "string") {
-        await this.run(target.name);
+        await this.run(target.name, ctx);
         continue;
       }
       throw new Error(`Unrecognized target shape at index ${i}: ${JSON.stringify(target)}`);

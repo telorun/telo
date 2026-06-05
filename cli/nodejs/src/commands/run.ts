@@ -166,6 +166,9 @@ export async function run(argv: {
     const shutdown = () => {
       if (argv.watch) log.info("\n[watch] stopping...");
       watchHandle?.cleanup();
+      // Cooperatively cancel the boot run first (so honoring targets / in-flight
+      // invoke trees stop early), then unblock the idle wait for graceful exit.
+      kernel.cancel("interrupted");
       kernel.forceIdle();
     };
     process.once("SIGINT", shutdown);

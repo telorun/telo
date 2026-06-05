@@ -1,4 +1,5 @@
 use crate::error::ControllerError;
+use crate::invoke_context::InvokeContext;
 use crate::Value;
 
 pub type Result<T> = std::result::Result<T, ControllerError>;
@@ -19,7 +20,10 @@ pub trait Controller: Sized + 'static {
 
     /// One-shot invocation entry point. Default: not supported (the macro
     /// only emits an FFI binding when the impl block defines this method).
-    fn invoke(&self, _input: Value) -> Result<Value> {
+    ///
+    /// `ctx` carries the cooperative cancellation token — poll
+    /// `ctx.cancellation.is_cancelled()` between units of work to bail early.
+    fn invoke(&self, _input: Value, _ctx: &InvokeContext) -> Result<Value> {
         Err(ControllerError::new(
             "ERR_NOT_INVOCABLE",
             "Controller did not implement invoke()",

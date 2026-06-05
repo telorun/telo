@@ -1,4 +1,9 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type {
+  ControllerContext,
+  InvokeContext,
+  ResourceContext,
+  ResourceInstance,
+} from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import type {
   AiModelInstance,
@@ -32,7 +37,7 @@ const VALID_FINISH_REASONS = new Set(["stop", "length", "content-filter", "error
 class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
   constructor(private readonly resource: AiTextResource) {}
 
-  async invoke(inputs: AiTextInputs = {}): Promise<CompletionResult> {
+  async invoke(inputs: AiTextInputs = {}, ctx?: InvokeContext): Promise<CompletionResult> {
     const name = this.resource.metadata.name;
     const hasPrompt = typeof inputs.prompt === "string";
     const hasMessages = Array.isArray(inputs.messages);
@@ -92,7 +97,11 @@ class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
         `Ai.Text "${name}": 'model' is not a live Ai.Model instance — check that Phase 5 injection ran and the referenced resource exists.`,
       );
     }
-    const result = await model.invoke({ messages, options: mergedOptions });
+    const result = await model.invoke({
+      messages,
+      options: mergedOptions,
+      signal: ctx?.cancellation.signal,
+    });
 
     validateCompletionResult(result, name);
     return result;

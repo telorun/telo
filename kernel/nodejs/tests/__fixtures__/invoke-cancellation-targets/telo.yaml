@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: InvokeCancellationTargetsApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+targets:
+  - name: echoStep
+    invoke: { kind: JS.Script, name: Echo }
+    inputs: { value: 7 }
+---
+kind: JS.Script
+metadata:
+  name: Echo
+code: |
+  function main(input) { return { echoed: input.value }; }
