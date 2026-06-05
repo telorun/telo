@@ -151,16 +151,19 @@ class RunSequence {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
         await this.runScopeTargets(scope);
-        await this.executeSteps(this.resource.steps, {}, scope, {});
+        await this.executeSteps(this.resource.steps, {}, scope, { inputs: {} });
       });
     } else {
-      await this.executeSteps(this.resource.steps, {}, undefined, {});
+      await this.executeSteps(this.resource.steps, {}, undefined, { inputs: {} });
     }
   }
 
   async invoke(inputs: Record<string, unknown>): Promise<unknown> {
     const steps: Record<string, unknown> = {};
-    const extraCtx = inputs ?? {};
+    // Caller inputs are exposed under the `inputs` CEL variable (not spread
+    // flat) so steps read them as `${{ inputs.x }}`, matching the documented
+    // contract. `error` is threaded as a sibling key inside try/catch.
+    const extraCtx = { inputs: inputs ?? {} };
 
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {

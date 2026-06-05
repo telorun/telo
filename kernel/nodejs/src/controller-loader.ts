@@ -1,4 +1,5 @@
 import { ControllerInstance, RuntimeError } from "@telorun/sdk";
+import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
 import { ControllerEnvMissingError, NapiControllerLoader } from "./controller-loaders/napi-loader.js";
 import { NpmControllerLoader } from "./controller-loaders/npm-loader.js";
 import { ControllerPolicy, DEFAULT_POLICY, POLICY_WILDCARD } from "./runtime-registry.js";
@@ -16,7 +17,8 @@ export type ControllerResolveSource =
   | "node_modules"
   | "cache"
   | "npm-install"
-  | "cargo-build";
+  | "cargo-build"
+  | "bundle";
 
 export type ControllerLoaderEvent =
   | { name: "ControllerLoading"; payload: { purl: string } }
@@ -76,11 +78,13 @@ export class ControllerLoader {
   private readonly emit: ControllerLoaderEmit | undefined;
   private readonly npmLoader: NpmControllerLoader;
   private readonly napiLoader: NapiControllerLoader;
+  private readonly bundleLoader: BundleControllerLoader;
 
   constructor(options: ControllerLoaderOptions = {}) {
     this.emit = options.emit;
     this.npmLoader = new NpmControllerLoader({ entryUrl: options.entryUrl });
     this.napiLoader = new NapiControllerLoader();
+    this.bundleLoader = new BundleControllerLoader();
   }
 
   async load(
@@ -149,6 +153,9 @@ export class ControllerLoader {
     }
     if (purl.startsWith("pkg:cargo")) {
       return this.napiLoader.load(purl, baseUri);
+    }
+    if (purl.startsWith("pkg:telo")) {
+      return this.bundleLoader.load(purl, baseUri);
     }
     throw new ControllerEnvMissingError(`Unsupported PURL scheme: ${purl}`);
   }

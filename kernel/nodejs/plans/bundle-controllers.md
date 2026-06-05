@@ -14,25 +14,43 @@ selected by the existing fallback policy.
 
 ## Scope
 
-- **In:** pure-JS controllers. A `bundle:` source may import **only** the
-  realm-collapse externals (`@telorun/sdk`, …), Node built-ins, and its own
-  relative siblings (`./helper.js`). Anything else is a diagnostic.
-- **Out:** native addons (`better-sqlite3`, `bcrypt`) and Rust — these keep
-  `pkg:npm` / `pkg:cargo`. The publish-side bundler refuses to emit a bundle
-  when it sees a non-bundleable dependency and tells the author to keep
-  `pkg:npm`.
-- **Out (v1):** per-platform binary tarballs. The `bundle` rail is JS-only for
-  now; the native story is left on `pkg:npm`/`pkg:cargo`.
+Bundling is **polyglot by design** — `pkg:telo` is runtime-neutral and the
+loader dispatches on `?format=`. What's *implemented in this (Node) kernel* is a
+subset:
+
+- **In (implemented):** `format=js` controllers. A bundled JS source is
+  self-contained (esbuild inlines deps; `@telorun/sdk` is bundled in and stays
+  identity-correct via the SDK's globalThis/Symbol design — see below), so it
+  `import()`s with no install.
+- **Recognized, not yet hostable here:** `format=napi` (prebuilt `.node`) and
+  `format=wasm` → `ControllerEnvMissingError`, so the candidate list falls
+  through. These are the extension points; a Node kernel could grow napi/wasm
+  support, and a future Rust kernel adds its own formats. This is the
+  per-platform-binary matrix the publish side still has to solve for native.
+- **Out (publish v1):** the CLI bundler emits `format=js` only and refuses a
+  controller with non-bundleable deps (native `.node` addons), telling the
+  author to keep `pkg:npm` — until napi bundling lands.
 
 ## Locator
 
-New PURL type `pkg:telo`, e.g.:
+PURL type `pkg:telo`, e.g.:
 
 ```
-pkg:telo/javascript@0.4.1?path=./nodejs/script.mjs#script
+pkg:telo/javascript@0.4.1?format=js&path=./nodejs/script.mjs#script
 ```
 
-- `path` qualifier — relative path to the JS file, resolved against the
+**`pkg:telo` names the delivery only** — "the controller ships inside the
+module's own bundle (the Telo registry artifact)," parallel to how `pkg:npm` /
+`pkg:cargo` name *their* source registries. It is the one delivery whose runtime
+is **not** fixed by an ecosystem (npm ⇒ JS, cargo ⇒ Rust; a bundle is just
+files), so it — and only it — carries an explicit runtime via `?format=`.
+
+- `format` qualifier — the **artifact format**, dispatched on by the loader:
+  `js` → `import()`, `napi` → `require(.node)`, `wasm` → `WebAssembly`. Distinct
+  from *runtime*: one runtime hosts many formats (the Node kernel does js + napi
+  + wasm) and one format runs on many runtimes (wasm everywhere), so format ≠
+  runtime. Inferred from the file extension when omitted.
+- `path` qualifier — relative path to the artifact, resolved against the
   declaring manifest's `baseUri` (dev dir, extracted-cache dir, or runner
   working dir — same resolution in all three).
 - `#fragment` — named export selecting the controller within the module
@@ -42,14 +60,18 @@ pkg:telo/javascript@0.4.1?path=./nodejs/script.mjs#script
 
 ### Kernel wiring
 
-- `runtime-registry.ts`: add `bundle: "pkg:telo"` to `LABEL_TO_PURL_TYPE`. No
-  change to `KERNEL_NATIVE_PURL_TYPE` (`pkg:npm`) or `DEFAULT_POLICY` — `pkg:telo`
-  is picked up by the `*` wildcard tail of the default policy, and `runtime:
-  bundle` selects it explicitly. `orderCandidates` needs no change.
-- `controller-loader.ts` `dispatchOne`: add a branch
+- `controller-loader.ts` `dispatchOne`: a branch
   `if (purl.startsWith("pkg:telo")) return this.bundleLoader.load(purl, baseUri)`.
-- `ControllerResolveSource`: add `"bundle"` (always an instant local resolve —
+- `ControllerResolveSource`: `"bundle"` (always an instant local resolve —
   never a "downloading…" line).
+- **No `runtime:` label for bundling.** Runtime labels name a host runtime
+  (`nodejs → pkg:npm`, `rust → pkg:cargo`); bundling is a delivery, not a
+  runtime, so there is no `bundle` label. `pkg:telo` is selected via the default
+  policy's `*` wildcard. **Selection model A** (current): a `pkg:telo` candidate
+  loads if the kernel can host its `format`, else env-misses to the next; order
+  is preference. **Model B** (future, additive, same PURL shape): map a runtime
+  label to the `(type, format)` set it accepts (`nodejs ← pkg:npm | pkg:telo?format=js`,
+  `rust ← pkg:cargo | pkg:telo?format=napi`) so `runtime:` selects bundles too.
 
 ## `BundleControllerLoader` (kernel/nodejs/src/controller-loaders/bundle-loader.ts)
 
@@ -57,37 +79,51 @@ The simplest of the three loaders — no install root, no lock, no `.telo-state`
 
 ```
 load(purl, baseUri):
-  1. parse purl → { path, fragment }
+  1. parse purl (PackageURL.fromString) → { qualifiers.path, qualifiers.format, subpath }
   2. resolve absolute file = resolve(dirname(baseUri), path)
-     (env-missing → ControllerEnvMissingError so a mixed candidate list
-      falls back to the next candidate, matching the napi loader's contract)
-  3. ensureRealmHook()            // process-global, registered once
-  4. mod = await import(pathToFileURL(file).href)
-  5. instance = fragment ? mod[fragment] : mod
-  6. validate instance exposes create() or register() (same check as npm loader)
+     (missing path / remote baseUri / missing file → ControllerEnvMissingError
+      so a mixed candidate list falls back to the next candidate)
+  3. format = qualifiers.format ?? inferFromExtension(file)
+     (a format this kernel can't host — anything but "js" today, e.g. napi/wasm —
+      → ControllerEnvMissingError, so the list falls through to a sibling here or
+      a candidate another runtime's kernel can load)
+  4. await ensureRealmSymlinks(dir); mod = await import(pathToFileURL(file).href)  // js
+  5. instance = subpath ? mod[subpath] : mod
+  6. validate exports create()/register() (missing export, or present-but-not-a-
+     controller, → ERR_CONTROLLER_INVALID — distinguished for an actionable error)
   7. return { instance, source: "bundle" }
 ```
 
-### Realm-collapse resolve hook (2b)
+### Realm: resolution (the hook) vs identity (free)
 
-A bundled file still contains `import { Stream } from "@telorun/sdk"`. That bare
-specifier **must** resolve to the kernel's own copy or `instanceof Stream`
-breaks — the guarantee the npm loader gets today from `npm install file:` +
-`peerDependencies` ([npm-loader.ts:216-232](../src/controller-loaders/npm-loader.ts#L216-L232)).
+Authors write a normal `import { Stream } from "@telorun/sdk"`. Two separate
+things have to hold, and they're easy to conflate:
 
-Replace that mechanism, for `pkg:telo` only, with a **process-global Node ESM
-resolve hook**:
+- **Resolution** — the bare specifier must point at a file. A bundle lives in a
+  cache/extract dir with no `node_modules` path to the SDK, so
+  `ensureRealmSymlinks()` symlinks the `REALM_COLLAPSE_NAMES`
+  ([realm.ts](../src/controller-loaders/realm.ts)) into a `node_modules/` next to
+  the bundle, pointing at the kernel's own package root. Standard module
+  resolution then finds them. **Why a symlink, not a hook:** Node ESM resolve
+  hooks (`module.register`) aren't honoured by Bun, and `Bun.plugin` doesn't
+  intercept runtime `import()` either (both verified) — a `node_modules` symlink
+  is the one mechanism that resolves on *both* runtimes. Idempotent, cached per
+  dir; gitignored (`node_modules`). On a k8s read-only run mount the link must be
+  created at the extract phase (writable) instead of at load.
+- **Identity** — the symlink targets the *kernel's* SDK package root, so
+  `@telorun/sdk` resolves to the same module and `Stream`/`InvokeError` are the
+  same instances automatically. Even if a publish step inlines the SDK into the
+  bundle instead, identity still holds via the SDK's own singletons: `Stream` is
+  a globalThis singleton (`Symbol.for("@telorun/sdk:Stream")`,
+  [stream.ts](../../sdk/nodejs/src/stream.ts)) and `InvokeError` is recognized by
+  `Symbol.for("telo.InvokeError")` via `isInvokeError`
+  ([invoke-error.ts](../../sdk/nodejs/src/invoke-error.ts)), not `instanceof`.
 
-- Registered once (first bundle load), via `module.register` of a small resolver
-  module.
-- Intercepts exactly the `REALM_COLLAPSE_NAMES` set; maps each to
-  `resolveKernelPackageRoot(name)` (already computed by the npm loader — extract
-  it to a shared helper). Everything else (relative imports, Node built-ins)
-  falls through to default resolution.
-- No filesystem side effects → works identically under the k8s read-only mount.
-
-This hook is the **riskiest, most novel piece** — build and test it first
-(see Sequencing).
+The earlier "no hook needed" framing was wrong: it was true for *identity* but
+not for *resolution*. The symlink is what lets authors write a plain import — no
+`globalThis` access, no per-bundle `node_modules` to author, no ceremony. It
+covers the dev loop (editor → docker-runner raw sources) too, since they import
+the SDK the same way.
 
 ## Publish (cli/nodejs/src/commands/publish.ts + publishers/)
 
@@ -196,27 +232,38 @@ as `pkg:telo`. Update the relevant CLAUDE.md / CI note when this lands.
 
 ## Sequencing
 
-1. **Realm resolve hook + `BundleControllerLoader`** (kernel). Highest risk.
-   Prove `import()` of a hand-written `.mjs` with `import {Stream} from
-   "@telorun/sdk"` yields a working controller and `instanceof Stream` holds.
-   Kernel test fixture under `kernel/nodejs/` + a `tests/*.yaml`.
-2. **`pkg:telo` dispatch + `runtime: bundle` label** (kernel). Fallback-chain
-   test: `[pkg:telo …, pkg:npm …]` prefers the bundle, falls back on
-   env-missing.
-3. **Publish bundle path** (CLI): esbuild + externals + non-bundleable refusal +
-   tar/gz + `application/gzip` PUT. Dry-run + a real round-trip test.
-4. **Prerequisite kinds** — separate plan
-   ([binary-stream-prerequisites](../../modules/http-server/plans/binary-stream-prerequisites.md)):
-   http-server stream body, `std/gzip`, `std/tar`, `S3.Put` binary. **Release
-   and publish before step 5.**
-5. **Registry handler** rewrite to the gzip→tar→extract pipeline + `module.tar.gz`
-   GET endpoint (depends on step 4 being published).
-6. **Consumer cache extraction** of `module.tar.gz`.
-7. **Editor run-bundle** `.js` collection + relative-import crawl.
+Two independent tracks. The **run** track (loader) is the foundation for
+*running* a bundled controller (dev-loop and post-install) and is
+registry-independent; the **distribution** track must go registry-before-CLI
+(the CLI can't PUT a tar.gz until the registry accepts it).
 
-Steps 1–3 deliver a working dev loop (editor/docker-runner) end-to-end before
-any registry change. Step 4 (its own plan) and steps 5–6 add registry
-distribution. Step 7 is the editor polish.
+1. ✅ **`BundleControllerLoader`** (kernel) — resolve `?path=`, `import()`,
+   validate exports. No realm hook (SDK is dual-realm safe). Proven by
+   `tests/bundle-controller-loads.yaml`: a `pkg:telo` controller loads, invokes,
+   and the `Stream` it returns flows through `PlainText.Decoder`.
+2. ✅ **`pkg:telo` dispatch + `runtime: bundle` label** (kernel). Picked up by
+   the default policy's `*` wildcard; `runtime: bundle` selects it explicitly.
+3. ✅ **Prerequisite kinds** — separate plan
+   ([binary-stream-prerequisites](../../modules/http-server/plans/binary-stream-prerequisites.md)):
+   http-server stream body, `std/gzip`, `std/tar`, `S3.Put` binary, `S3.Delete`.
+   **Released + published.**
+4. ✅ **Registry accepts tar.gz** — dedicated `PUT`/`GET
+   /{ns}/{name}/{ver}/module.tar.gz` routes (single-format per route, so the
+   `text/yaml` path is untouched). `PublishBundleHandler` auths, buffers the
+   stream (`Octet.Decoder`), stores the tarball, reads it back via `S3.Get`
+   (the tee), `Gzip.Decoder` → `Tar.Extract telo.yaml` → `PlainText.Decoder`,
+   then **delegates** parse/validate/index/store-telo.yaml to the existing
+   `PublishHandler`. Static-checked; **needs `test:e2e` (S3 + Postgres) for
+   runtime verification.**
+5. ⬜ **CLI publish bundle path**: esbuild (SDK bundled in, no externals) +
+   non-bundleable refusal + tar/gz + PUT to `…/module.tar.gz`. Test against a
+   local registry (`--registry=http://registry.telo.localhost`). Depends on 4.
+6. ⬜ **Consumer cache extraction** of `module.tar.gz` into `.telo/manifests`.
+7. ⬜ **Editor run-bundle** `.js` collection + relative-import crawl (dev loop;
+   parallelizable with 5–6 once 1–2 landed).
+
+Steps 1–2 (run track) are done and tested. Step 4 (registry) is done but only
+static-checked here. Steps 5–7 remain.
 
 ## Testing
 

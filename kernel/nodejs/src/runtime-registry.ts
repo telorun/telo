@@ -22,6 +22,11 @@ export const POLICY_WILDCARD = "*";
  * label is the implementation directory name a contributor sees at
  * `modules/<name>/<label>/`.
  */
+// Runtime labels name a host runtime, never a delivery mechanism. `pkg:telo`
+// (bundled delivery) is intentionally absent: it carries its runtime in the
+// `?format=` qualifier and is selected via the default policy's `*` wildcard,
+// not by a "bundle" label (bundling isn't a runtime). Mapping a runtime label
+// to bundled `?format=` candidates is the model-B selection upgrade (future).
 const LABEL_TO_PURL_TYPE: Readonly<Record<string, string>> = {
   nodejs: "pkg:npm",
   rust: "pkg:cargo",
