@@ -1,0 +1,4 @@
+project: starlark
+kind: Fixed
+body: '`Starlark.Script` is now an Invocable (was incorrectly declared as a Runnable).'
+time: 2026-06-05T18:39:06.000000000Z

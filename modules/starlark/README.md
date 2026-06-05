@@ -13,7 +13,7 @@ Execute [Starlark](https://github.com/bazelbuild/starlark) code from a Telo reso
 
 | Kind | Purpose |
 | --- | --- |
-| `Starlark.Script` | Run an inline `run(input)` Starlark function as a runnable resource. |
+| `Starlark.Script` | Invoke an inline `run(input)` Starlark function as an invocable resource. |
 
 ## Example
 
