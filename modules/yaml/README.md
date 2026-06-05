@@ -22,7 +22,7 @@ kind: Telo.Application
 metadata: { name: parse-demo }
 imports:
   Yaml: std/yaml@0.4.1
-  Run: std/run@0.4.1
+  Run: std/run@0.5.0
 targets: [ ParseExample ]
 ---
 kind: Run.Sequence

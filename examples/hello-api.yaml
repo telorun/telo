@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
   Type: std/type@0.2.1
-  Http: std/http-server@0.6.1
+  Http: std/http-server@0.8.0
   JS: std/javascript@0.4.1
 targets:
   - ExampleServer
