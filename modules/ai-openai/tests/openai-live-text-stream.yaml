@@ -21,7 +21,7 @@ targets:
   - LiveTextStream
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
-# unset. Vercel SDK is lazy — no API call until streamText is invoked, and the
+# unset. The model is just config — no API call until stream() — and the
 # run-step is gated on env presence.
 kind: AiOpenai.OpenaiModel
 metadata: { name: Live }
@@ -29,7 +29,7 @@ model: gpt-4o-mini
 apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
 options:
   temperature: 0
-  maxOutputTokens: 32
+  maxTokens: 32
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }

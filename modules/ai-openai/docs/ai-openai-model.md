@@ -1,5 +1,5 @@
 ---
-description: "Ai.OpenaiModel: OpenAI provider for Ai.Model. Implements both invoke (generateText) and stream (streamText) via Vercel AI SDK. Schema, options, redaction."
+description: "Ai.OpenaiModel: OpenAI-compatible provider for Ai.Model. Implements invoke and stream against the OpenAI /chat/completions HTTP API directly (no vendor SDK). Schema, options, redaction."
 sidebar_label: Ai.OpenaiModel
 ---
 
@@ -7,7 +7,7 @@ sidebar_label: Ai.OpenaiModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
-OpenAI provider for the `Ai.Model` abstract. A **`Telo.Provider`** — a configured OpenAI client referenced by `Ai.Text` / `Ai.TextStream` / `Ai.Agent`, never invoked directly as a target or step. Implements the full `AiModelInstance` runtime contract (`invoke` + `stream`) via Vercel AI SDK (`ai` + `@ai-sdk/openai`). Available as a peer-installable package — users who don't talk to OpenAI don't pay for the SDK weight.
+OpenAI-compatible provider for the `Ai.Model` abstract. A **`Telo.Provider`** — a configured model client referenced by `Ai.Text` / `Ai.TextStream` / `Ai.Agent`, never invoked directly as a target or step. Implements the full `AiModelInstance` runtime contract (`invoke` + `stream`) by calling the OpenAI `POST /chat/completions` HTTP API **directly** — no vendor SDK, no `zod`, nothing beyond `@telorun/ai`. Because the wire protocol is the de-facto standard, the same controller serves OpenAI and every OpenAI-compatible endpoint (Azure OpenAI, Ollama, vLLM, Groq, Together, OpenRouter, …) via `baseUrl`.
 
 ```yaml
 kind: Telo.Application
@@ -21,7 +21,7 @@ model: gpt-4o
 apiKey: "${{ secrets.OPENAI_API_KEY }}"
 options:
   temperature: 0.2
-  maxOutputTokens: 800
+  maxTokens: 800
 ```
 
 The resource is then referenced from any `Ai.Model` consumer:
@@ -40,47 +40,48 @@ model:
 
 | Field     | Type   | Required | Description                                                                                                       |
 | --------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `model`   | string | yes      | OpenAI model identifier (e.g. `gpt-4o`, `gpt-4o-mini`, `o1-preview`).                                             |
-| `apiKey`  | string | yes      | API key. Use a secret reference: `"${{ secrets.OPENAI_API_KEY }}"`. Compile-evaluated, never appears at runtime CEL. |
-| `baseUrl` | string | no       | Override the OpenAI API base URL — useful for Azure OpenAI and OpenAI-compatible gateways.                        |
-| `options` | object | no       | Model-level defaults (temperature, maxOutputTokens, topP, frequencyPenalty, …). Merged beneath the caller's options. |
+| `model`   | string | yes      | Model identifier (e.g. `gpt-4o`, `gpt-4o-mini`, `o1-preview`).                                                    |
+| `apiKey`  | string | yes      | API key, sent as `Authorization: Bearer …`. Use a secret reference: `"${{ secrets.OPENAI_API_KEY }}"`. Compile-evaluated, never appears at runtime CEL. |
+| `baseUrl` | string | no       | Override the API base URL (default `https://api.openai.com/v1`). `/chat/completions` is appended. Useful for Azure OpenAI and OpenAI-compatible gateways. |
+| `options` | object | no       | camelCase OpenAI request params, normalized to snake_case and merged into the request body. Merged beneath the caller's options. |
 
 `apiKey` and `baseUrl` are `x-telo-eval: compile`, so they resolve at load time from `secrets.*` / `env.*`. Hardcoded keys in manifests work but are strongly discouraged.
 
 ## Invoke / stream
 
-Both methods delegate to Vercel AI SDK:
+Both methods call `POST {baseUrl}/chat/completions` directly:
 
-- `invoke({messages, options, tools?})` → `generateText({...})` → `{text, usage, finishReason, toolCalls?}`.
-- `stream({messages, options})` → `streamText({...})` → `AsyncIterable<StreamPart>`.
+- `invoke({messages, options, tools?})` → buffered request → `{text, usage, finishReason, toolCalls?}`.
+- `stream({messages, options})` → `stream: true` request, parsed from the SSE `data:` frames → `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
 
-Vercel's finish reasons map straight into the Ai contract:
+OpenAI `finish_reason` values map into the Ai contract:
 
-| Vercel reason     | Ai.Model `finishReason` |
-| ----------------- | ----------------------- |
-| `stop`            | `stop`                  |
-| `length`          | `length`                |
-| `content-filter`  | `content-filter`        |
-| `tool-calls`      | `tool-calls`            |
-| `error`           | `error`                 |
-| `unknown`         | `other`                 |
-| anything else     | `other`                 |
+| OpenAI `finish_reason` | Ai.Model `finishReason` |
+| ---------------------- | ----------------------- |
+| `stop`                 | `stop`                  |
+| `length`               | `length`                |
+| `tool_calls`           | `tool-calls`            |
+| `function_call`        | `tool-calls`            |
+| `content_filter`       | `content-filter`        |
+| anything else / absent | `other`                 |
 
 `tool-calls` is preserved (not flattened to `other`): `Ai.Agent` drives the tool-use loop on it — when the model requests tools, the returned `toolCalls` are executed and replayed. `Ai.Text` / `Ai.TextStream` never pass `tools`, so they never see this reason.
 
+Tool calls are advertised as OpenAI `tools: [{ type: "function", function: { name, description, parameters } }]` (no `execute` — the agent runs tools itself). The model's `tool_calls` come back with `arguments` as a JSON string; the provider parses each into the `ToolCall.arguments` object. Malformed argument JSON surfaces as an error rather than a silent empty object.
+
 ## Options
 
-Pass anything Vercel's `generateText` / `streamText` accepts. Common keys:
+`options` use **camelCase** (the Telo manifest convention). Each top-level key is normalized to the OpenAI snake_case wire parameter before the request is sent (`maxTokens` → `max_tokens`, `topP` → `top_p`):
 
 - `temperature: number`
-- `maxOutputTokens: number`
+- `maxTokens: number` (or `maxCompletionTokens` for reasoning models like `o1`/`o3`)
 - `topP: number`
 - `frequencyPenalty: number`
 - `presencePenalty: number`
 - `seed: number`
-- `stopSequences: string[]`
+- `stop: string | string[]`
 
-Provider-specific extensions (e.g. `providerOptions: { openai: { … } }`) flow through unchanged.
+Any other field OpenAI (or your compatible gateway) accepts flows through — `responseFormat`, `logitBias`, provider-specific extensions, etc. Only top-level keys are converted; nested object values (a `responseFormat` JSON schema, a `logitBias` token map) keep their own casing. Keys already written in snake_case are passed through unchanged.
 
 ## Snapshot redaction
 
@@ -94,18 +95,18 @@ inputs:
 
 ## Errors
 
-Vendor errors bubble through unchanged — rate limits, authentication failures, malformed prompts, etc. surface with their original messages. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
+A non-2xx response from `invoke` throws an actionable error built from the provider's `{ error: { message } }` body (falling back to the raw response text), prefixed with the HTTP status. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
 
-For streaming calls, mid-stream failures from the provider are translated into a `StreamPart` of shape `{ type: "error", error: { message, code?, data? } }` and yielded as the terminator — generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) frame this as an in-band error record without a bespoke serialization step. The native `Error` instance never reaches the wire (it isn't JSON-serializable). Already-emitted text-delta parts are preserved; consumers see partial output plus a structured error record.
+For streaming calls, a non-OK response or a mid-stream failure is translated into a `StreamPart` of shape `{ type: "error", error: { message, code?, data? } }` and yielded as the terminator — generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) frame this as an in-band error record without a bespoke serialization step. The native `Error` instance never reaches the wire (it isn't JSON-serializable). Already-emitted text-delta parts are preserved; consumers see partial output plus a structured error record.
 
 ## Azure OpenAI / OpenAI-compatible gateways
 
-Set `baseUrl` to override the endpoint:
+Set `baseUrl` to override the endpoint (the controller appends `/chat/completions`):
 
 ```yaml
 kind: AiOpenai.OpenaiModel
-metadata: { name: AzureGpt4 }
-model: gpt-4
-apiKey: "${{ secrets.AZURE_OPENAI_KEY }}"
-baseUrl: "https://my-resource.openai.azure.com/openai/deployments/gpt-4"
+metadata: { name: LocalLlama }
+model: llama3.1
+apiKey: "${{ secrets.OPENAI_API_KEY }}"   # ignored by servers that don't require auth
+baseUrl: "http://localhost:11434/v1"      # Ollama, vLLM, LM Studio, …
 ```

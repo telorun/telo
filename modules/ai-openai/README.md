@@ -1,12 +1,13 @@
 # AI OpenAI
 
-OpenAI provider for the `Ai.Model` abstract from `@telorun/ai`, backed by the Vercel AI SDK.
+OpenAI-compatible provider for the `Ai.Model` abstract from `@telorun/ai`. Calls the OpenAI `/chat/completions` HTTP API directly — no vendor SDK.
 
 ## Why use this
 
 - **Drop-in `Ai.Model`** — works with `Ai.Text`, `Ai.TextStream`, or any consumer that takes an `Ai.Model` reference.
-- **Buffered and streaming** — implements both the `invoke` path and the `stream` path via `@ai-sdk/openai`.
-- **OpenAI-compatible endpoints** — `baseUrl` opt-in for Azure OpenAI, gateways, and self-hosted OpenAI-compatible servers.
+- **Buffered and streaming** — implements both the `invoke` path and the SSE `stream` path.
+- **No SDK weight** — direct HTTP, no `ai` / `@ai-sdk/openai` / `zod`; only depends on `@telorun/ai`.
+- **OpenAI-compatible endpoints** — `baseUrl` opt-in for Azure OpenAI, gateways, and self-hosted OpenAI-compatible servers (Ollama, vLLM, Groq, …).
 - **Option layering** — model-level defaults are shallow-merged with per-call options; downstream wins.
 
 ## Kinds
@@ -34,7 +35,7 @@ model: gpt-4o-mini
 apiKey: "${{ secrets.openaiApiKey }}"
 options:
   temperature: 0.2
-  maxOutputTokens: 800
+  maxTokens: 800
 ---
 kind: Ai.Text
 metadata: { name: Summarizer }
@@ -45,4 +46,4 @@ model:
 
 ## Reference
 
-- [`Ai.OpenaiModel`](docs/ai-openai-model.md) — schema, options, redaction, Azure setup, Vercel finish-reason mapping.
+- [`Ai.OpenaiModel`](docs/ai-openai-model.md) — schema, options, redaction, Azure / compatible-gateway setup, finish-reason mapping.
