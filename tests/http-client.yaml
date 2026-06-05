@@ -59,7 +59,7 @@ steps:
     inputs: {}
     invoke:
       kind: Http.Request
-      client: PlaceholderApi
+      client: !ref PlaceholderApi
       url: /users/1
       method: GET
 
