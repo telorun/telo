@@ -28,7 +28,7 @@ kind: Telo.Application
 metadata: { name: my-mcp-app, version: 1.0.0 }
 imports:
   McpClient: std/mcp-client@0.3.1
-  Run: std/run@0.4.1
+  Run: std/run@0.5.0
 targets: [ GetWeather ]
 secrets:
   MCP_TOKEN: { type: string }

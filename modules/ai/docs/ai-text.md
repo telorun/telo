@@ -13,8 +13,8 @@ sidebar_label: Ai.Text
 kind: Telo.Application
 metadata: { name: summarizer, version: 1.0.0 }
 imports:
-  Ai: std/ai@0.4.0
-  AiOpenai: std/ai-openai@0.4.0
+  Ai: std/ai@0.5.0
+  AiOpenai: std/ai-openai@0.5.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }

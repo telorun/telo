@@ -13,7 +13,7 @@ OpenAI provider for the `Ai.Model` abstract. A **`Telo.Provider`** — a configu
 kind: Telo.Application
 metadata: { name: summarizer, version: 1.0.0 }
 imports:
-  AiOpenai: std/ai-openai@0.4.0
+  AiOpenai: std/ai-openai@0.5.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }

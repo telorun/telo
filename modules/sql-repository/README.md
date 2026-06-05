@@ -24,7 +24,7 @@ kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
   Sql: std/sql@0.5.1
-  SqlRepository: std/sql-repository@0.1.0
+  SqlRepository: std/sql-repository@0.2.0
 secrets:
   DATABASE_URL: { type: string }
 ---

@@ -7,14 +7,14 @@ metadata:
 imports:
   Type: std/type@0.2.1
   Http: std/http-server@0.8.0
-  HttpClient: std/http-client@0.4.1
+  HttpClient: std/http-client@0.6.0
   S3:
     source: std/s3@0.3.0
     secrets:
       accessKeyId: "${{ secrets.accessKeyId }}"
       secretAccessKey: "${{ secrets.secretAccessKey }}"
   Sql: std/sql@0.5.1
-  Run: std/run@0.4.1
+  Run: std/run@0.5.0
   Octet: std/octet-codec@0.4.1
   PlainText: std/plain-text-codec@0.4.1
   Gzip: std/gzip@0.2.0
