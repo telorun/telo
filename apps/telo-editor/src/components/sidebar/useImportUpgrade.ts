@@ -1,63 +1,58 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { fetchAvailableVersions, parseRegistryRef } from "../../loader";
 import type { RegistryVersion } from "../../loader";
 import type { ParsedImport, RegistryServer } from "../../model";
 
 export interface ImportUpgradeState {
-  /** Name of the import whose upgrade dropdown is currently open, or null. */
-  upgradingName: string | null;
+  /** Name of the import whose versions are currently loaded, or null. */
+  activeName: string | null;
   versions: RegistryVersion[];
   loading: boolean;
   error: string | null;
   submitting: boolean;
-  /** Open the dropdown for an import; closes again if already open. */
-  toggle(imp: ParsedImport): Promise<void>;
-  /** Apply a version selection — calls the parent handler, closes on success. */
+  /** Fetch the available versions for an import (called when its menu opens). */
+  loadVersions(imp: ParsedImport): Promise<void>;
+  /** Apply a version selection — calls the parent handler. */
   selectVersion(imp: ParsedImport, version: string): Promise<void>;
-  cancel(): void;
 }
 
 export function useImportUpgrade(
   registryServers: RegistryServer[],
   onUpgradeImport: (name: string, newSource: string) => Promise<void>,
 ): ImportUpgradeState {
-  const [upgradingName, setUpgradingName] = useState<string | null>(null);
+  const [activeName, setActiveName] = useState<string | null>(null);
   const [versions, setVersions] = useState<RegistryVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Monotonic token: only the most recent loadVersions call may paint results,
+  // so a slow fetch for a previously-opened menu can't overwrite a newer one.
+  const requestId = useRef(0);
 
-  const cancel = useCallback(() => {
-    setUpgradingName(null);
-    setVersions([]);
-    setError(null);
-  }, []);
-
-  const toggle = useCallback(
+  const loadVersions = useCallback(
     async (imp: ParsedImport) => {
-      if (upgradingName === imp.name) {
-        cancel();
-        return;
-      }
       const ref = parseRegistryRef(imp.source);
       if (!ref) return;
 
-      setUpgradingName(imp.name);
+      const id = ++requestId.current;
+      setActiveName(imp.name);
       setVersions([]);
       setError(null);
       setLoading(true);
 
       try {
         const result = await fetchAvailableVersions(ref.moduleId, registryServers);
+        if (requestId.current !== id) return;
         setVersions(result);
         if (result.length === 0) setError("No versions available");
       } catch {
+        if (requestId.current !== id) return;
         setError("Failed to fetch versions");
       } finally {
-        setLoading(false);
+        if (requestId.current === id) setLoading(false);
       }
     },
-    [upgradingName, registryServers, cancel],
+    [registryServers],
   );
 
   const selectVersion = useCallback(
@@ -68,8 +63,6 @@ export function useImportUpgrade(
       setSubmitting(true);
       try {
         await onUpgradeImport(imp.name, newSource);
-        setUpgradingName(null);
-        setVersions([]);
       } catch {
         setError("Upgrade failed");
       } finally {
@@ -79,19 +72,5 @@ export function useImportUpgrade(
     [onUpgradeImport],
   );
 
-  // Dismiss the dropdown on outside click. Clicks inside elements tagged with
-  // `data-upgrade-dropdown` are treated as in-dropdown and don't dismiss.
-  useEffect(() => {
-    if (!upgradingName) return;
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-upgrade-dropdown]")) {
-        setUpgradingName(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [upgradingName]);
-
-  return { upgradingName, versions, loading, error, submitting, toggle, selectVersion, cancel };
+  return { activeName, versions, loading, error, submitting, loadVersions, selectVersion };
 }

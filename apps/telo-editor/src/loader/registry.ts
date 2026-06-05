@@ -61,6 +61,27 @@ export async function fetchAvailableVersions(
   return merged;
 }
 
+// Resolves the registry-computed latest version for a module, querying enabled
+// servers in order and returning the first that answers. Returns null when no
+// server knows the module (e.g. local/remote imports, offline).
+export async function fetchLatestVersion(
+  moduleId: string,
+  registryServers: RegistryServer[],
+): Promise<string | null> {
+  const encodedModuleId = moduleId.split("/").map(encodeURIComponent).join("/");
+  for (const server of registryServers.filter((s) => s.enabled)) {
+    try {
+      const r = await fetch(`${server.url.replace(/\/+$/, "")}/${encodedModuleId}`);
+      if (!r.ok) continue;
+      const data = (await r.json()) as { version?: string };
+      if (data.version) return data.version;
+    } catch {
+      // try the next server
+    }
+  }
+  return null;
+}
+
 // Creates ManifestSources for all enabled registry servers in settings.
 export function createRegistryAdapters(settings: AppSettings): ManifestSource[] {
   function createSettingsRegistryAdapter(registryUrl: string): ManifestSource {

@@ -41,6 +41,8 @@ export interface ViewProps {
   onRemoveImport: (name: string) => void;
   /** Re-points an import at a new source/version (Imports view upgrade). */
   onUpgradeImport: (name: string, newSource: string) => Promise<void>;
+  /** Re-points many imports in one persist cycle (Imports view "Upgrade all"). */
+  onUpgradeAllImports: (updates: { name: string; newSource: string }[]) => Promise<void>;
   onSelect: (selection: Selection) => void;
   onClearSelection: () => void;
   /** Commit a source-view edit for one specific file in the active module.
