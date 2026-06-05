@@ -1,4 +1,6 @@
 # Changelog
-## 0.4.1 - 2026-06-04
+## 0.5.0 - 2026-06-05
+### Added
+* Update controller @telorun/ai to 0.5.0.## 0.4.1 - 2026-06-04
 ### Fixed
 * Ai.Model is now a Telo.Provider (a configured LLM client referenced by the operations) instead of a Telo.Invocable. The completion contract (inputType/outputType) now lives on the Ai.Text and Ai.TextStream operations. Referenced models render as ambient dependencies in the visual editor rather than standalone graph nodes.## 0.4.0
