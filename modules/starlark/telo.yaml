@@ -8,7 +8,7 @@ metadata:
 kind: Telo.Definition
 metadata:
   name: Script
-capability: Telo.Runnable
+capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/starlark@0.4.1?local_path=./nodejs#script
   - pkg:cargo/telorun-starlark?local_path=./rust
