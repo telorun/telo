@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.7 - 2026-06-05
+## 0.4.8 - 2026-06-05
+### Fixed
+* Update controller @telorun/test to 0.4.8.## 0.4.7 - 2026-06-05
 ### Fixed
 * Update controller @telorun/test to 0.4.7.## 0.4.6 - 2026-06-04
 ### Fixed

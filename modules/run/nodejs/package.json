@@ -1,6 +1,6 @@
 {
   "name": "@telorun/run",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Telo Run module - Sequence execution for Telo manifests.",
   "keywords": [
     "telo",
