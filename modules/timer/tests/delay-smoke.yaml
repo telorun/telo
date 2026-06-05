@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: TimerDelaySmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for timer. Invokes Timer.Delay with a short duration and a
+    passthrough value, then asserts the value returns unchanged after the wait.
+    Self-contained: depends only on this module + Run/Assert.
+imports:
+  Timer: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - TestDelay
+---
+kind: Run.Sequence
+metadata: { name: TestDelay }
+steps:
+  - name: Wait
+    inputs:
+      duration: "50ms"
+      value: { hello: "world" }
+    invoke: { kind: Timer.Delay }
+  - name: AssertPassthrough
+    inputs:
+      hello: "${{ steps.Wait.result.value.hello }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          hello: { const: "world" }
+        required: [ hello ]

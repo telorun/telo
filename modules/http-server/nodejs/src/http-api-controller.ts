@@ -148,9 +148,13 @@ export class HttpServerApi implements ResourceInstance {
         const sink = fastifyReplySink(reply);
 
         // Per-request cancellation: abandon downstream work when the client
-        // disconnects before the response is sent.
+        // disconnects before the response is sent. Listen on the response
+        // socket, not the request stream — the latter's `close` fires as normal
+        // cleanup once a request body has been fully received, which would
+        // cancel any body-bearing request that awaits (e.g. a DB call) before
+        // replying. The response socket only closes early on a real disconnect.
         const cancellation = this.ctx.createCancellationSource();
-        request.raw.on("close", () => {
+        reply.raw.on("close", () => {
           if (!reply.sent) cancellation.cancel("client-disconnect");
         });
 

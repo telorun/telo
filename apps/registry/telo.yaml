@@ -3,16 +3,12 @@
 kind: Telo.Application
 metadata:
   name: telo-registry
-  version: 1.0.0
+  version: 0.1.0
 imports:
   Type: std/type@0.2.1
   Http: std/http-server@0.8.0
   HttpClient: std/http-client@0.6.0
-  S3:
-    source: std/s3@0.3.0
-    secrets:
-      accessKeyId: "${{ secrets.accessKeyId }}"
-      secretAccessKey: "${{ secrets.secretAccessKey }}"
+  S3: std/s3@0.3.0
   Sql: std/sql@0.5.1
   Run: std/run@0.5.0
   Octet: std/octet-codec@0.4.1
@@ -1003,7 +999,7 @@ metadata:
   name: McpHttp
 serverInfo:
   name: telo-registry
-  version: 1.0.0
+  version: 0.1.0
 # Telo primer surfaced to the client on `initialize`. Compatible MCP clients
 # pass this to their LLM as system context, so a model with no prior Telo
 # knowledge knows what these tools mean and how to compose a manifest from

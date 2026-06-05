@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MODULES_DIR = join(ROOT, "modules");
+const APPS_DIR = join(ROOT, "apps");
 const CHANGES_DIR = join(ROOT, ".changes");
 
 /** Parse the first YAML document's metadata block for name/namespace/version + quote style. */
@@ -36,26 +37,46 @@ function readModuleMeta(manifestPath) {
   return { name, namespace, version: versionLine[2], quoted: versionLine[1] !== "" };
 }
 
-const modules = readdirSync(MODULES_DIR, { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => ({ dir: e.name, manifest: join(MODULES_DIR, e.name, "telo.yaml") }))
-  .filter((m) => existsSync(m.manifest))
-  .map((m) => ({ ...m, meta: readModuleMeta(m.manifest) }))
-  .filter((m) => m.meta) // skip modules without a metadata.version (dev/manifest/orm)
-  .sort((a, b) => a.dir.localeCompare(b.dir));
+// A changie project is any modules/<name>/ or apps/<name>/ that ships a telo.yaml with a
+// metadata.version — both directories are scanned identically, so onboarding a new module or
+// app needs no edit here, just the manifest. `versionLines` is how many 2-space semver
+// `version:` lines the release replacement intentionally rewrites; 1 except where a manifest
+// deliberately couples extra ones (apps/registry bumps its MCP serverInfo.version alongside
+// metadata.version).
+const VERSION_LINES = { registry: 2 };
 
-// The changie replacement rewrites the 2-space `version:` line with a file-global regexp
-// ReplaceAll, so a manifest must contain exactly one such line — a second one (e.g. a
-// Telo.Definition field named version) would be silently overwritten on release. Enforce it
-// here (CI runs this generator as a drift check) so a stray version field is a build error,
-// not corruption.
-for (const m of modules) {
-  const matches = (readFileSync(m.manifest, "utf8").match(/^ {2}version: .*$/gm) ?? []).length;
-  if (matches !== 1) {
+const scan = (baseDir, baseRel) =>
+  readdirSync(baseDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => ({
+      key: e.name,
+      dirRel: `${baseRel}/${e.name}`,
+      manifest: join(baseDir, e.name, "telo.yaml"),
+      versionLines: VERSION_LINES[e.name] ?? 1,
+    }))
+    .filter((m) => existsSync(m.manifest));
+
+const projectDefs = [...scan(MODULES_DIR, "modules"), ...scan(APPS_DIR, "apps")]
+  .map((m) => ({ ...m, meta: readModuleMeta(m.manifest) }))
+  .filter((m) => m.meta) // skip manifests without a metadata.version (dev/manifest/orm)
+  .sort((a, b) => a.key.localeCompare(b.key));
+
+// The changie replacement rewrites 2-space semver `version:` lines with a file-global regexp
+// ReplaceAll. A manifest must contain exactly as many such lines as the replacement intends to
+// touch (1 for modules; 2 for apps/registry's coupled metadata + serverInfo versions) — an
+// unexpected extra one (e.g. a Telo.Definition field named version) would be silently
+// overwritten on release. Non-semver `version:` lines (e.g. a Sql.Migration id) don't match the
+// regex and are left untouched. Enforce it here (CI runs this generator as a drift check) so a
+// stray semver version field is a build error, not corruption.
+for (const m of projectDefs) {
+  const matches = (
+    readFileSync(m.manifest, "utf8").match(/^ {2}version: ["']?\d+\.\d+\.\d+["']?$/gm) ?? []
+  ).length;
+  if (matches !== m.versionLines) {
     throw new Error(
-      `${m.manifest}: expected exactly one 2-space-indented \`version:\` line for the changie ` +
-        `replacement, found ${matches}. A second one would be corrupted on release — move or ` +
-        `re-indent it (only modules/<name>/telo.yaml metadata.version may sit at 2 spaces).`,
+      `${m.manifest}: expected ${m.versionLines} 2-space-indented semver \`version:\` line(s) for ` +
+        `the changie replacement, found ${matches}. An unexpected one would be corrupted on ` +
+        `release — move or re-indent it.`,
     );
   }
 }
@@ -87,18 +108,18 @@ kinds:
 projects:
 `;
 
-const projects = modules
+const projects = projectDefs
   .map((m) => {
     const replaceVal = m.meta.quoted
       ? `  version: "{{.VersionNoPrefix}}"`
       : `  version: {{.VersionNoPrefix}}`;
     return [
-      `  - label: ${m.dir}`,
-      `    key: ${m.dir}`,
-      `    changelog: modules/${m.dir}/CHANGELOG.md`,
+      `  - label: ${m.key}`,
+      `    key: ${m.key}`,
+      `    changelog: ${m.dirRel}/CHANGELOG.md`,
       `    replacements:`,
-      `      - path: modules/${m.dir}/telo.yaml`,
-      `        find: '^  version: .*$'`,
+      `      - path: ${m.dirRel}/telo.yaml`,
+      `        find: '^  version: ["'']?\\d+\\.\\d+\\.\\d+["'']?$'`,
       `        replace: '${replaceVal}'`,
     ].join("\n");
   })
@@ -116,8 +137,8 @@ const headerPath = join(CHANGES_DIR, "header.tpl.md");
 if (!existsSync(headerPath)) writeFileSync(headerPath, "# Changelog\n", "utf8");
 
 let seeded = 0;
-for (const m of modules) {
-  const projectDir = join(CHANGES_DIR, m.dir);
+for (const m of projectDefs) {
+  const projectDir = join(CHANGES_DIR, m.key);
   mkdirSync(projectDir, { recursive: true });
   const hasVersionFile = readdirSync(projectDir).some((f) => /^\d+\.\d+\.\d+\.md$/.test(f));
   if (hasVersionFile) continue;
@@ -126,5 +147,5 @@ for (const m of modules) {
 }
 
 console.log(
-  `gen-changie-config: ${modules.length} project(s) written to .changie.yaml, ${seeded} ledger version(s) seeded.`,
+  `gen-changie-config: ${projectDefs.length} project(s) written to .changie.yaml, ${seeded} ledger version(s) seeded.`,
 );

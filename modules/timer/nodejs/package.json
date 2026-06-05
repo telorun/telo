@@ -1,0 +1,51 @@
+{
+  "name": "@telorun/timer",
+  "version": "0.0.0",
+  "description": "Telo timer module — time-based primitives. Timer.Delay waits a duration, then completes.",
+  "keywords": [
+    "telo",
+    "timer",
+    "delay",
+    "sleep",
+    "scheduling"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/timer/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/delay.js",
+  "module": "./dist/delay.js",
+  "types": "./dist/delay.d.ts",
+  "exports": {
+    "./delay": {
+      "types": "./dist/delay.d.ts",
+      "bun": "./src/delay.ts",
+      "import": "./dist/delay.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}
