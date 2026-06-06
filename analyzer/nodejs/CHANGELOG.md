@@ -1,5 +1,12 @@
 # @telorun/analyzer
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [64debb5]
+  - @telorun/templating@0.5.0
+
 ## 0.19.0
 
 ### Minor Changes
