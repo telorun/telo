@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-06-06
+## 0.4.1 - 2026-06-06
+### Fixed
+* Compact the MCP server instructions to a ~2KB router. Clients truncate the instructions field at 2048 bytes, so the previous long form was silently cut — agents never received most of it. It now points to https://telo.run/llms.txt, https://telo.run/examples.md, and the build-generated https://telo.run/cel.md (plus telo cel functions / telo cel eval) instead of inlining the full CEL/kind reference.## 0.4.0 - 2026-06-06
 ### Added
 * Document CEL time functions (nowIso(tz)/today(tz)/nowMillis/nowSeconds) and uuidv1/3/4/5/6/7, the absence of ?? (use optional access / orValue), local bindings via cel.bind (CEL has no assignment), and that numeric JSON fields must be numbers not quoted strings. Mention `telo cel functions` / `telo cel eval`.## 0.3.0 - 2026-06-06
 ### Added
