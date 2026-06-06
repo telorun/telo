@@ -1114,12 +1114,62 @@ instructions: !literal |
 
   ### Available functions
 
-  This is the complete set — CEL has no `now`, no `Date`, no general
-  standard library beyond what is listed here. If a function is not below,
-  it does not exist; do not invent one.
+  This is the complete set — no general standard library beyond what is listed
+  here. If a function is not below, it does not exist; do not invent one.
+  Functions are available in every CEL context; only the *variables* in scope
+  (next section) differ. (`telo cel functions` prints this list live from the
+  runtime, and `telo cel eval "<expr>"` evaluates an expression to check it.)
 
   Conversion: `string(x)`, `int(x)`, `double(x)`, `bytes(x)`,
   `timestamp(isoString)`, `type(x)`.
+
+  Current time: `nowIso(tz?)` → ISO-8601 string (UTC `…Z` by default, or the
+  given IANA zone's offset, e.g. `nowIso("America/New_York")`); `today(tz?)` →
+  `YYYY-MM-DD` in that zone; `nowMillis()` / `nowSeconds()` → epoch int
+  (absolute — timezone-independent). There is no `Date` object and no
+  `.toISOString()` method. These are non-deterministic: in an `x-telo-eval:
+  compile` field they evaluate once at load and bake the result; use them in a
+  runtime field (a `!sql` query, a response body) for a fresh value per call.
+  For a stored row timestamp a DB default (`CURRENT_TIMESTAMP` / `NOW()`) is
+  often better.
+
+  UUIDs: `uuidv4()` (random); `uuidv1()` / `uuidv6()` / `uuidv7()`
+  (time-ordered); `uuidv3(name, namespace)` / `uuidv5(name, namespace)` derive a
+  stable UUID from a name under a namespace UUID; `uuidValidate(s)` → bool,
+  `uuidVersion(s)` → int. Same non-determinism caveat as the time functions,
+  except v3/v5 (stable for fixed inputs).
+
+  Strings: `lower(s)`, `upper(s)`, `trim(s)`, `replace(s, old, new)` (all
+  occurrences), `split(s, sep)` → list. Method-form also available:
+  `s.contains(x)`, `.startsWith(x)`, `.endsWith(x)`, `.matches(regex)`,
+  `.indexOf(x)`, `.lastIndexOf(x)`, `.substring(start)`, `.substring(start, end)`.
+
+  Math: `abs(x)`, `floor(x)`, `ceil(x)`, `round(x)`, `min(list)`, `max(list)`.
+
+  Collections: `size(x)` (string / list / map), `keys(map)`, `values(map)`,
+  `distinct(list)`, `sort(list)`, `reverse(list)`, `flatten(list)` (one level),
+  list method `.join(sep)` / free function `join(list, sep)`, and the macros
+  `has(x.field)`, `list.all(v, cond)`, `.exists(v, cond)`, `.exists_one(v, cond)`,
+  `.map(v, expr)`, `.filter(v, cond)`.
+
+  JSON: `json(value)` → string (serialize); `parseJson(s)` → value (parse;
+  numbers come back as doubles).
+
+  Encoding & hashing: `base64Encode(s)` / `base64Decode(s)`, `urlEncode(s)` /
+  `urlDecode(s)`, `sha256(s)` / `md5(s)` / `sha1(s)` / `sha512(s)`,
+  `hmac(algorithm, key, message)` — all hex for hashes.
+
+  Null handling: CEL has no `??`. Use `default(value, fallback)` (fallback when
+  null), `coalesce(list)` (first non-null), optional access
+  `x.?field.orValue(default)` / `list[?0].orValue(default)`, or
+  `has(x.field) ? x.field : default`.
+
+  Local bindings: CEL is a pure expression language — no assignment (`x = …`),
+  no statements, no `;`. To name/reuse a subexpression use the
+  `cel.bind(name, init, expr)` macro (a functional `let`, scoped to `expr`):
+  `cel.bind(u, request.body.user, u.name + ' <' + u.email + '>')`. In Telo an
+  intermediate value is more often a `Run.Sequence` step result (`steps.X.result`)
+  than an in-expression binding.
 
   `dyn(x)` — escape hatch for the strict type checker. CEL rejects
   heterogeneous lists/maps (e.g. `[1, "a", true]`) unless each element is
@@ -1141,6 +1191,10 @@ instructions: !literal |
     arms must resolve to the same type (or both be widened with `dyn`).
   - **`null` has its own type.** Mixing a value with `null` (a default, an
     optional field) needs `dyn(...)` on the non-null arm/element.
+  - **Numbers must be numbers, not quoted strings.** A field typed as a number
+    wants `95.0`, not `'95.0'` — the checker rejects the string, and a quoted
+    value serializes as a JSON string in responses. Coerce a string with
+    `double(x)` / `int(x)`.
 
   **Prefer YAML shape, CEL only on scalar leaves.** The homogeneity rules
   only bite when you write a big inline CEL collection literal
@@ -1164,25 +1218,10 @@ instructions: !literal |
   Use an inline CEL collection literal only when the collection itself must
   be computed (e.g. `.map(...)`); otherwise build it in YAML.
 
-  Collections: `size(x)` (string / list / map), `keys(map)`, `values(map)`,
-  list method `.join(sep)` and free function `join(list, sep)`.
-
-  Strings (method form): `.contains(s)`, `.startsWith(s)`, `.endsWith(s)`,
-  `.matches(regex)`, `.indexOf(s)`, `.lastIndexOf(s)`, `.substring(start)`,
-  `.substring(start, end)`.
-
-  Macros: `has(x.field)` (presence test), and on lists
-  `.all(v, cond)`, `.exists(v, cond)`, `.exists_one(v, cond)`,
-  `.map(v, expr)`, `.filter(v, cond)`.
-
-  Telo extras: `sha256(string)`, `json(value)` (serialize any value to a
-  JSON string).
-
   ### Available variables
 
-  Only these identifiers are in scope; there is **no `now`** for timestamps.
-  Capture a boot-time value via a provider or pass one in through
-  `variables:` instead.
+  Only these identifiers are in scope. (For the current time use the `now()` /
+  `today()` functions above — there is no `now` *variable*.)
 
   - `variables`, `secrets` — module inputs, always available.
   - `resources.<Name>` — another resource's snapshot, after it initializes.

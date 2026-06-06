@@ -210,6 +210,19 @@ export class AnalysisRegistry {
     return ctx.definitions?.resolve(kind) ?? (resolved ? ctx.definitions?.resolve(resolved) : undefined);
   }
 
+  /** Canonical kinds (`module.Name`) of every definition that extends the given
+   *  abstract kind — the concrete implementations a caller may instantiate in
+   *  its place. Empty when `kind` is not an abstract or has no implementations. */
+  implementationsOf(kind: string): string[] {
+    const defs = this._context().definitions;
+    if (!defs) return [];
+    return defs.getByExtends(kind).flatMap((def) => {
+      const module = (def.metadata as { module?: string } | undefined)?.module;
+      const name = def.metadata?.name as string | undefined;
+      return module && name ? [`${module}.${name}`] : [];
+    });
+  }
+
   allKinds(): string[] {
     return this._context().definitions?.kinds() ?? [];
   }
