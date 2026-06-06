@@ -22,9 +22,13 @@
   },
   "type": "module",
   "exports": {
-    "./sql-connection": {
-      "bun": "./src/sql-connection-controller.ts",
-      "import": "./dist/sql-connection-controller.js"
+    "./sql-postgres-connection": {
+      "bun": "./src/sql-postgres-connection-controller.ts",
+      "import": "./dist/sql-postgres-connection-controller.js"
+    },
+    "./sql-sqlite-connection": {
+      "bun": "./src/sql-sqlite-connection-controller.ts",
+      "import": "./dist/sql-sqlite-connection-controller.js"
     },
     "./sql-query": {
       "bun": "./src/sql-query-controller.ts",

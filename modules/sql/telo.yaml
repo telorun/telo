@@ -5,12 +5,25 @@ metadata:
   version: 0.6.0
   description: SQL database access — PostgreSQL and SQLite
 ---
-kind: Telo.Definition
+# Sql.Connection — the abstract database handle every driver implements. A
+# Telo.Provider: a configured connection to a backend, NOT an operation you
+# invoke. Consumers (Sql.Query / Sql.Exec / Sql.Select / Sql.Migrations /
+# Sql.Transaction) reference it via `x-telo-ref: "std/sql#Connection"` and a
+# concrete implementation (Sql.PostgresConnection / Sql.SqliteConnection)
+# satisfies the ref. Each implementation also fixes the driver-native bind
+# placeholder style, so inline `${{ }}` parameters in queries are dialect-neutral.
+kind: Telo.Abstract
 metadata:
   name: Connection
 capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: PostgresConnection
+capability: Telo.Provider
+extends: Self.Connection
 controllers:
-  - pkg:npm/@telorun/sql@0.6.0?local_path=./nodejs#sql-connection
+  - pkg:npm/@telorun/sql@0.6.0?local_path=./nodejs#sql-postgres-connection
 schema:
   type: object
   required:
@@ -20,12 +33,9 @@ schema:
       title: Connection String
       type: string
       description: >-
-        Database connection URL. The scheme selects the driver and is
-        mandatory: `postgres://` or `postgresql://` for PostgreSQL,
-        `sqlite:` for SQLite (`sqlite::memory:`, `sqlite:./data.db`,
-        `sqlite:///abs/path.db`). PostgreSQL TLS is configured with the
-        standard libpq `?sslmode=` query parameter (`disable`, `require`,
-        `verify-ca`, `verify-full`).
+        PostgreSQL connection URL — `postgres://` or `postgresql://`. TLS is
+        configured with the standard libpq `?sslmode=` query parameter
+        (`disable`, `require`, `verify-ca`, `verify-full`).
     pool:
       title: Pool
       description: Database connection pool configuration.
@@ -49,6 +59,24 @@ schema:
           title: Connection Timeout Ms
           description: Milliseconds to wait for a new connection.
           type: integer
+---
+kind: Telo.Definition
+metadata:
+  name: SqliteConnection
+capability: Telo.Provider
+extends: Self.Connection
+controllers:
+  - pkg:npm/@telorun/sql@0.6.0?local_path=./nodejs#sql-sqlite-connection
+schema:
+  type: object
+  properties:
+    file:
+      title: File
+      type: string
+      description: >-
+        Path to the SQLite database file (e.g. `./data.db`). The parent
+        directory is created if missing. Omit, or use `:memory:`, for an
+        in-memory database.
 ---
 kind: Telo.Definition
 metadata:
@@ -80,20 +108,37 @@ schema:
           title: SQL
           type: string
           description: >-
-            SQL query text; may contain CEL template expressions. On SQLite
-            exactly one statement is allowed (it runs through a single
-            prepared statement); PostgreSQL accepts multiple.
+            SQL query text. Inline CEL interpolations are bound as parameters,
+            not spliced into the text — dialect-neutral and injection-safe (the
+            connection emits its own native placeholder). Embed values, not
+            whole statements: a `!sql` whose entire body is a single
+            interpolation binds that value as one parameter, not as SQL. On
+            SQLite exactly one statement is allowed (single prepared statement);
+            PostgreSQL accepts multiple.
           contentMediaType: application/sql
           x-telo-widget: code
         bindings:
           title: Bindings
           type: array
           description: >-
-            Positional parameters bound to `?` placeholders in the SQL string.
-            Each value is passed to the driver as-is; drivers accept only
-            primitives (string, number, bigint, null, bytes). Serialize an
-            object/array first, e.g. `!cel "json(request.body)"`, before
-            storing it in a TEXT/JSON column.
+            Escape hatch for hand-written placeholders — SQLite anonymous `?`,
+            PostgreSQL numbered `$1`, `$2`, …. When set, `sql` is used verbatim
+            and these values bind positionally. Prefer inline interpolation in
+            `sql` instead (binds automatically, dialect-neutral); do not combine
+            the two. This is a regular YAML array — write one element per
+            placeholder, and tag each element that needs a dynamic value with
+            its own scalar `!cel` leaf. Do NOT build the whole array as a single
+            inline CEL list literal (`!cel "[a, b, c]"`); CEL requires list
+            literals to be homogeneously typed, so a mixed list of a string and
+            a number fails the type checker. Per-element `!cel` leaves sidestep
+            that entirely. Each value is passed to the driver as-is; drivers
+            accept only primitives (string, number, bigint, null, bytes).
+            Serialize an object/array first, e.g. `!cel "json(request.body)"`,
+            before storing it in a TEXT/JSON column.
+          examples:
+            - - !cel "request.body.email"
+              - !cel "json(request.body.profile)"
+              - !cel "request.body.age"
       required: [sql]
 ---
 kind: Telo.Definition
@@ -127,20 +172,37 @@ schema:
           title: SQL
           type: string
           description: >-
-            SQL statement text; may contain CEL template expressions. On
-            SQLite exactly one statement is allowed (it runs through a single
-            prepared statement); PostgreSQL accepts multiple.
+            SQL statement text. Inline CEL interpolations are bound as
+            parameters, not spliced into the text — dialect-neutral and
+            injection-safe (the connection emits its own native placeholder).
+            Embed values, not whole statements: a `!sql` whose entire body is a
+            single interpolation binds that value as one parameter, not as SQL.
+            On SQLite exactly one statement is allowed (single prepared
+            statement); PostgreSQL accepts multiple.
           contentMediaType: application/sql
           x-telo-widget: code
         bindings:
           title: Bindings
           type: array
           description: >-
-            Positional parameters bound to `?` placeholders in the SQL string.
-            Each value is passed to the driver as-is; drivers accept only
-            primitives (string, number, bigint, null, bytes). Serialize an
-            object/array first, e.g. `!cel "json(request.body)"`, before
-            storing it in a TEXT/JSON column.
+            Escape hatch for hand-written placeholders — SQLite anonymous `?`,
+            PostgreSQL numbered `$1`, `$2`, …. When set, `sql` is used verbatim
+            and these values bind positionally. Prefer inline interpolation in
+            `sql` instead (binds automatically, dialect-neutral); do not combine
+            the two. This is a regular YAML array — write one element per
+            placeholder, and tag each element that needs a dynamic value with
+            its own scalar `!cel` leaf. Do NOT build the whole array as a single
+            inline CEL list literal (`!cel "[a, b, c]"`); CEL requires list
+            literals to be homogeneously typed, so a mixed list of a string and
+            a number fails the type checker. Per-element `!cel` leaves sidestep
+            that entirely. Each value is passed to the driver as-is; drivers
+            accept only primitives (string, number, bigint, null, bytes).
+            Serialize an object/array first, e.g. `!cel "json(request.body)"`,
+            before storing it in a TEXT/JSON column.
+          examples:
+            - - !cel "request.body.email"
+              - !cel "json(request.body.profile)"
+              - !cel "request.body.age"
       required: [sql]
 ---
 kind: Telo.Definition

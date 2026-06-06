@@ -10,16 +10,16 @@ targets:
   - Migrate
   - VerifyMigrations
 ---
-kind: Sql.Connection
+kind: Sql.SqliteConnection
 metadata:
   name: Db
-connectionString: "sqlite::memory:"
+file: ":memory:"
 ---
 kind: Sql.Migrations
 metadata:
   name: Migrate
 connection:
-  kind: Sql.Connection
+  kind: Sql.SqliteConnection
   name: Db
 migrations:
   20260401_create_users:
@@ -42,7 +42,7 @@ steps:
     invoke:
       kind: Sql.Query
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
 
   - name: AssertSeeded
@@ -69,7 +69,7 @@ steps:
     invoke:
       kind: Sql.Query
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
 
   - name: AssertLedger

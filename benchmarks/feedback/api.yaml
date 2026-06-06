@@ -13,12 +13,12 @@ targets:
   - SetupDb
   - Server
 ---
-# SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
-kind: Sql.Connection
+# SQLite database — swap to Sql.PostgresConnection for PostgreSQL
+kind: Sql.SqliteConnection
 metadata:
   name: Db
   module: FeedbackApi
-connectionString: sqlite:/tmp/feedback.db
+file: /tmp/feedback.db
 ---
 # Startup migration: runs once before the server accepts requests
 kind: Run.Sequence
@@ -30,7 +30,7 @@ steps:
     invoke:
       kind: Sql.Exec
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
     inputs:
       sql: |
@@ -79,7 +79,7 @@ routes:
     handler:
       kind: Sql.Exec
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
     inputs:
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
@@ -102,7 +102,7 @@ routes:
     handler:
       kind: Sql.Query
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
@@ -126,7 +126,7 @@ routes:
     handler:
       kind: Sql.Query
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"

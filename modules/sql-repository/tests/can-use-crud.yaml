@@ -10,16 +10,16 @@ imports:
 targets:
   - TestCrud
 ---
-kind: Sql.Connection
+kind: Sql.SqliteConnection
 metadata:
   name: Db
-connectionString: "sqlite::memory:"
+file: ":memory:"
 ---
 kind: SqlRepository.Create
 metadata:
   name: InsertUser
 connection:
-  kind: Sql.Connection
+  kind: Sql.SqliteConnection
   name: Db
 table: users
 ---
@@ -27,7 +27,7 @@ kind: SqlRepository.Read
 metadata:
   name: GetUsers
 connection:
-  kind: Sql.Connection
+  kind: Sql.SqliteConnection
   name: Db
 table: users
 ---
@@ -35,7 +35,7 @@ kind: SqlRepository.Delete
 metadata:
   name: DeleteUser
 connection:
-  kind: Sql.Connection
+  kind: Sql.SqliteConnection
   name: Db
 table: users
 ---
@@ -49,7 +49,7 @@ steps:
     invoke:
       kind: Sql.Exec
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
 
   - name: Insert
