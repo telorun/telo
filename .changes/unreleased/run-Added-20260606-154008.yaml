@@ -1,4 +1,0 @@
-project: run
-kind: Added
-body: 'README: bringing up dependencies with a sequence''s with:/targets: (a Run.Sequence can start an Http.Server or DB for its steps); targets is not Application-only.'
-time: 2026-06-06T15:40:08.729415615Z
