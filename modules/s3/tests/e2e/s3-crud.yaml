@@ -1,0 +1,146 @@
+kind: Telo.Application
+metadata:
+  name: S3E2ECrud
+  version: 1.0.0
+  description: |
+    Same-module S3 lifecycle against a live backend: Put → Get (drained to text)
+    → List → Delete → List. Every S3 op references the bucket through the new
+    `bucketRef: !ref Store` form, so this exercises Phase-5 injection of the
+    `x-telo-ref: "std/s3#Bucket"` slot end-to-end. Connection defaults match the
+    docker-compose `storage` service; override via the `S3_*` env vars.
+imports:
+  S3: ../../
+  Run: ../../../run
+  Assert: ../../../assert
+  PlainText: ../../../plain-text-codec
+variables:
+  s3Endpoint:
+    env: S3_ENDPOINT
+    type: string
+    default: http://localhost:9000
+  bucketName:
+    env: S3_E2E_BUCKET
+    type: string
+    default: telo-s3-e2e
+  forcePathStyle:
+    env: S3_FORCE_PATH_STYLE
+    type: boolean
+    default: true
+secrets:
+  accessKeyId:
+    env: S3_ACCESS_KEY_ID
+    type: string
+    default: telo-registry-access
+  secretAccessKey:
+    env: S3_SECRET_ACCESS_KEY
+    type: string
+    default: telo-registry-secret
+targets:
+  - Lifecycle
+---
+kind: S3.Bucket
+metadata:
+  name: Store
+bucketName: "${{ variables.bucketName }}"
+endpoint: "${{ variables.s3Endpoint }}"
+forcePathStyle: "${{ variables.forcePathStyle }}"
+accessKeyId: "${{ secrets.accessKeyId }}"
+secretAccessKey: "${{ secrets.secretAccessKey }}"
+createIfMissing: true
+---
+# Each S3 op is a top-level resource so its `bucketRef: !ref Store` slot is
+# resolved and injected at boot. The sequence invokes them by name with the
+# per-call inputs.
+kind: S3.Put
+metadata: { name: PutObject }
+bucketRef: !ref Store
+---
+kind: S3.Get
+metadata: { name: GetObject }
+bucketRef: !ref Store
+---
+kind: S3.List
+metadata: { name: ListObjects }
+bucketRef: !ref Store
+---
+kind: S3.Delete
+metadata: { name: DeleteObject }
+bucketRef: !ref Store
+---
+kind: Run.Sequence
+metadata:
+  name: Lifecycle
+steps:
+  - name: put
+    invoke: { kind: S3.Put, name: PutObject }
+    inputs:
+      key: e2e/hello.txt
+      body: "hello e2e"
+      contentType: text/plain
+
+  - name: get
+    invoke: { kind: S3.Get, name: GetObject }
+    inputs:
+      key: e2e/hello.txt
+
+  # Drain the byte stream to a UTF-8 string so the content is assertable.
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: "${{ steps.get.result.output }}"
+
+  - name: assertContent
+    inputs:
+      text: "${{ steps.decode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertGetRoundTrip }
+      schema:
+        type: object
+        properties:
+          text: { const: "hello e2e" }
+        required: [ text ]
+
+  - name: listAfterPut
+    invoke: { kind: S3.List, name: ListObjects }
+    inputs:
+      prefix: "e2e/"
+
+  - name: assertListed
+    inputs:
+      keys: "${{ steps.listAfterPut.result.keys }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertKeyListed }
+      schema:
+        type: object
+        properties:
+          keys:
+            type: array
+            contains: { const: "e2e/hello.txt" }
+        required: [ keys ]
+
+  - name: delete
+    invoke: { kind: S3.Delete, name: DeleteObject }
+    inputs:
+      key: e2e/hello.txt
+
+  - name: listAfterDelete
+    invoke: { kind: S3.List, name: ListObjects }
+    inputs:
+      prefix: "e2e/"
+
+  - name: assertGone
+    inputs:
+      keys: "${{ steps.listAfterDelete.result.keys }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertKeyDeleted }
+      schema:
+        type: object
+        properties:
+          keys:
+            type: array
+            not:
+              contains: { const: "e2e/hello.txt" }
+        required: [ keys ]

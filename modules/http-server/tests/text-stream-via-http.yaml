@@ -176,7 +176,7 @@ with:
         version: 1.0.0
     mounts:
       - path: /
-        type: TextStreamViaHttpTest.Api
+        type: !ref Api
 targets:
   - Server
 steps:

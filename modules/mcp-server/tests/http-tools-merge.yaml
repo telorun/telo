@@ -157,7 +157,7 @@ with:
     baseUrl: http://127.0.0.1:8953
     logger: false
     mounts:
-      - { path: /mcp, type: McpHttpToolsMergeTest.McpHttp }
+      - { path: /mcp, type: !ref McpHttp }
 targets: [ Server ]
 steps:
   - name: ListTools

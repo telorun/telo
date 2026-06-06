@@ -61,7 +61,7 @@ with:
     baseUrl: http://127.0.0.1:8956
     logger: false
     mounts:
-      - { path: /mcp, type: McpClientToolsListHttpTest.McpHttp }
+      - { path: /mcp, type: !ref McpHttp }
 targets: [ Server ]
 steps:
   - name: List

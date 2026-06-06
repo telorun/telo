@@ -55,7 +55,7 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    type: Http.Api.FeedbackRoutes
+    type: !ref FeedbackRoutes
 ---
 kind: Http.Api
 metadata:

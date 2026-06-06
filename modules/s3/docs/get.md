@@ -23,8 +23,7 @@ Streaming an S3 object straight onto an HTTP response:
     method: GET
   handler:
     kind: S3.Get
-    bucketRef:
-      name: ModuleStore
+    bucketRef: !ref ModuleStore
   inputs:
     key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
   returns:
@@ -41,8 +40,7 @@ Iterating the byte stream inside a sequence:
 - name: fetchManifest
   invoke:
     kind: S3.Get
-    bucketRef:
-      name: ModuleStore
+    bucketRef: !ref ModuleStore
   inputs:
     key: "${{ inputs.fileKey }}"
 - name: drain
@@ -59,7 +57,7 @@ Iterating the byte stream inside a sequence:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bucketRef.name` | string | yes | Name of an `S3.Bucket` resource in the same module. |
+| `bucketRef` | reference | yes | A `!ref` to an `S3.Bucket` resource — local (`!ref ModuleStore`) or imported (`!ref Alias.ModuleStore`). |
 
 ## Invocation inputs
 
@@ -79,5 +77,5 @@ Iterating the byte stream inside a sequence:
 | Code | When |
 |------|------|
 | `ERR_NOT_FOUND` | The object does not exist under the given key. |
-| `ERR_INVALID_REFERENCE` | `bucketRef.name` does not resolve to a live `S3.Bucket` resource. |
+| `ERR_INVALID_REFERENCE` | `bucketRef` does not resolve to a live `S3.Bucket` resource. |
 | `ERR_INVALID_RESPONSE` | The storage backend returned no iterable body. |

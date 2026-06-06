@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: S3E2ECrossModule
+  version: 1.0.0
+  description: |
+    Cross-import-boundary round trip: the bucket is declared and exported by the
+    `storage-lib` fixture, and the S3 ops here reference it via
+    `bucketRef: !ref Storage.Store`. Validates that the kernel injects an
+    imported library's exported S3.Bucket into the bucketRef slot — the headline
+    of the bucketRef x-telo-ref change — against a live backend.
+imports:
+  S3: ../../
+  # The bucket lives in the imported library; its connection is supplied as
+  # literal import values (import variables are baked verbatim — they are not
+  # CEL-evaluated in the parent scope). Endpoint matches the docker-compose
+  # `storage` service the s3 CI job publishes on :9000.
+  Storage:
+    source: ./__fixtures__/storage-lib.yaml
+    variables:
+      s3Endpoint: http://localhost:9000
+      bucketName: telo-s3-e2e-xmod
+      forcePathStyle: true
+    secrets:
+      accessKeyId: telo-registry-access
+      secretAccessKey: telo-registry-secret
+  Run: ../../../run
+  Assert: ../../../assert
+  PlainText: ../../../plain-text-codec
+targets:
+  - CrossModuleRoundTrip
+---
+kind: S3.Put
+metadata: { name: PutObject }
+bucketRef: !ref Storage.Store
+---
+kind: S3.Get
+metadata: { name: GetObject }
+bucketRef: !ref Storage.Store
+---
+kind: S3.Delete
+metadata: { name: DeleteObject }
+bucketRef: !ref Storage.Store
+---
+kind: Run.Sequence
+metadata:
+  name: CrossModuleRoundTrip
+steps:
+  - name: put
+    invoke: { kind: S3.Put, name: PutObject }
+    inputs:
+      key: xmod/data.txt
+      body: "cross-module bucket works"
+      contentType: text/plain
+
+  - name: get
+    invoke: { kind: S3.Get, name: GetObject }
+    inputs:
+      key: xmod/data.txt
+
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: "${{ steps.get.result.output }}"
+
+  - name: assert
+    inputs:
+      text: "${{ steps.decode.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertCrossModuleRoundTrip }
+      schema:
+        type: object
+        properties:
+          text: { const: "cross-module bucket works" }
+        required: [ text ]
+
+  - name: cleanup
+    invoke: { kind: S3.Delete, name: DeleteObject }
+    inputs:
+      key: xmod/data.txt

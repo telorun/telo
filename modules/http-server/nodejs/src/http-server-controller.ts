@@ -18,7 +18,13 @@ import {
 import addFormats from "ajv-formats";
 import Fastify, { FastifyInstance } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
-import { HttpServerApi } from "./http-api-controller.js";
+
+/** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
+ *  live instance into a mount's `type` slot (x-telo-ref "telo#Mount") — cross-module refs
+ *  resolve to an imported library's exported mount — and every mountable exposes register(). */
+interface Mountable {
+  register(app: FastifyInstance, prefix: string): void | Promise<void>;
+}
 
 type CorsOptions = {
   origin?: string | boolean | string[];
@@ -50,7 +56,9 @@ type HttpServerResource = RuntimeResource & {
   };
   mounts?: Array<{
     path?: string;
-    type?: string;
+    // x-telo-ref "telo#Mount": Phase 5 replaces this slot with the live mounted
+    // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
+    type?: Mountable;
   }>;
   notFoundHandler?: {
     invoke: KindRef<Invocable>;
@@ -192,14 +200,14 @@ class HttpServer implements ResourceInstance {
     const mounts = this.resource.mounts || [];
     // const resolveSchema = createSchemaResolver(this.ctx);
     for (const mount of mounts) {
-      const type = mount.type || "";
-      const { kind, name } = parseType(type);
       const prefix = mount.path || "";
-
-      const api = this.ctx.moduleContext.getInstance(name) as unknown as HttpServerApi;
-
-      if (!api) {
-        throw new Error(`Failed to mount Http.Api at "${prefix}": ${type} not found`);
+      // `mount.type` is the live Telo.Mount instance injected by the kernel at Phase 5
+      // (x-telo-ref "telo#Mount") — a same-module or imported-library mount, uniformly.
+      const api = mount.type;
+      if (!api || typeof api.register !== "function") {
+        throw new Error(
+          `Failed to mount at "${prefix}": mount target did not resolve to a Telo.Mount instance`,
+        );
       }
       api.register(this.app, prefix);
     }
@@ -339,14 +347,6 @@ export async function create(
     };
   }
   return new HttpServer(resource, ctx, resolvedNotFoundHandler);
-}
-
-function parseType(type: string): { kind: string; name: string } {
-  const separator = type.lastIndexOf(".");
-  if (separator <= 0 || separator === type.length - 1) {
-    return { kind: "", name: "" };
-  }
-  return { kind: type.slice(0, separator), name: type.slice(separator + 1) };
 }
 
 /**

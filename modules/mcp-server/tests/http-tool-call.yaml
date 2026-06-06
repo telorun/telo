@@ -77,7 +77,7 @@ with:
     baseUrl: http://127.0.0.1:8951
     logger: false
     mounts:
-      - { path: /mcp, type: McpHttpToolCallTest.McpHttp }
+      - { path: /mcp, type: !ref McpHttp }
 targets: [ Server ]
 steps:
   - name: CallGetWeather

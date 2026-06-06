@@ -110,7 +110,7 @@ with:
         stream: true
     mounts:
       - path: /
-        type: HttpBinaryStreamBodyTest.Api
+        type: !ref Api
 targets:
   - Server
 steps:

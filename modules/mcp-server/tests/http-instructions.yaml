@@ -89,7 +89,7 @@ with:
     baseUrl: http://127.0.0.1:8954
     logger: false
     mounts:
-      - { path: /mcp, type: McpHttpInstructionsTest.McpHttp }
+      - { path: /mcp, type: !ref McpHttp }
 targets: [ Server ]
 steps:
   - name: Initialize

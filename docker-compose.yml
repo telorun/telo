@@ -130,6 +130,8 @@ services:
     environment:
       RUSTFS_ACCESS_KEY: telo-registry-access
       RUSTFS_SECRET_KEY: telo-registry-secret
+    ports:
+      - "${S3_PORT:-9000}:9000"
     volumes:
       - storage-data:/data
 

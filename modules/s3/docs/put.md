@@ -17,8 +17,7 @@ Uploads an object to a bucket declared as `S3.Bucket`. Invocable — invoke per 
 kind: S3.Put
 metadata:
   name: UploadManifest
-bucketRef:
-  name: ModuleStore
+bucketRef: !ref ModuleStore
 ```
 
 Invoke inside a sequence:
@@ -27,8 +26,7 @@ Invoke inside a sequence:
 - name: upload
   invoke:
     kind: S3.Put
-    bucketRef:
-      name: ModuleStore
+    bucketRef: !ref ModuleStore
   inputs:
     key: "${{ inputs.fileKey }}"
     body: "${{ inputs.body }}"
@@ -41,7 +39,7 @@ Invoke inside a sequence:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bucketRef.name` | string | yes | Name of an `S3.Bucket` resource in the same module. |
+| `bucketRef` | reference | yes | A `!ref` to an `S3.Bucket` resource — local (`!ref ModuleStore`) or imported (`!ref Alias.ModuleStore`). |
 
 ## Invocation inputs
 

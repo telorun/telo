@@ -262,7 +262,7 @@ export class EvaluationContext implements IEvaluationContext {
           const created = await this._createInstance(this, resource);
           if (created) {
             this.createdInstances.set(name, {
-              resource,
+              resource: created.resource,
               instance: created.instance,
               ctx: created.ctx,
             });

@@ -42,7 +42,7 @@ with:
     logger: false
     mounts:
       - path: /api
-        type: ApplicationPorts.TestApi
+        type: !ref TestApi
 targets:
   - TestServer
 steps:

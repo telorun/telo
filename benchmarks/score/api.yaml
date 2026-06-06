@@ -27,7 +27,7 @@ port: 8845
 logger: false
 mounts:
   - path: /v1
-    type: Http.Api.Routes
+    type: !ref Routes
 ---
 kind: Http.Api
 metadata:

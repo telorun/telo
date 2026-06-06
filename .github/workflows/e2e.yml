@@ -88,6 +88,70 @@ jobs:
           docker compose down -v
           rm -f apps/registry/.env.local
 
+  # Brings up only the `storage` (rustfs) service — published on :9000 — and
+  # runs the s3 module's e2e suite against the live S3 API from the host. Covers
+  # the Put/Get/List/Delete lifecycle plus a cross-import-boundary bucketRef
+  # round trip (a bucket exported by a fixture library, used via `!ref`).
+  s3:
+    name: S3 E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bring up storage
+        run: |
+          docker compose up -d storage \
+            || { echo "::group::storage failed to come up"; \
+                 docker compose ps -a; docker compose logs --no-color storage; \
+                 echo "::endgroup::"; exit 1; }
+          # rustfs has no compose healthcheck — poll the S3 API until it answers
+          # (any HTTP response, including 403, means it is up).
+          for i in $(seq 1 30); do
+            curl -s -o /dev/null http://localhost:9000 && break
+            sleep 1
+          done
+
+      - name: Run s3 e2e suite
+        run: pnpm run test:e2e:s3
+
+      - name: Dump storage logs on failure
+        if: failure()
+        run: docker compose logs --no-color storage
+
+      - name: Stop storage
+        if: always()
+        run: docker compose down -v
+
   # Drives the real `managed.mjs` / `custom.mjs` bootstraps inside the AWS
   # Lambda runtime image (via testcontainers) against the AWS Lambda Runtime
   # Interface Emulator. Each handler kind (Direct / HttpApi / Sqs) runs in
