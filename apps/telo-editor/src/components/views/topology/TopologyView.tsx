@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { MODULE_OVERVIEW_TOPOLOGY } from "../../../application-adapter";
-import type { ResolvedResourceOption } from "../../resource-schema-form/types";
+import { DetailPanel } from "../../DetailPanel";
+import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
 import { PickCanvas } from "../pick-canvas";
 import type { ViewProps } from "../types";
 import {
@@ -13,12 +14,14 @@ export function TopologyView({
   registry,
   graphContext,
   selectedResource,
+  selection,
   onUpdateResource,
   onDeleteResource,
   onWriteRef,
   onCreateResource,
   onSelectResource,
   onSelect,
+  onNavigateResource,
   onClearSelection,
   canvasViewport,
   onCanvasViewportChange,
@@ -43,6 +46,14 @@ export function TopologyView({
     [viewData],
   );
 
+  const typeKinds = useMemo<TypeKindOption[]>(
+    () =>
+      [...viewData.kinds.values()]
+        .filter((k) => k.capability === "Telo.Type")
+        .map((k) => ({ kind: k.fullKind, schema: k.schema })),
+    [viewData],
+  );
+
   // Same overview model for both module roots; a Library has no `targets`.
   const applicationModel = useMemo<AppCanvasModel | null>(() => {
     if (graphTopology !== MODULE_OVERVIEW_TOPOLOGY || !registry) return null;
@@ -50,18 +61,21 @@ export function TopologyView({
     return buildApplicationCanvasModel(viewData, registry, targets);
   }, [graphTopology, registry, viewData]);
 
-  if (graphResource && graphSchema) {
-    return (
+  const canvas =
+    graphResource && graphSchema ? (
       <PickCanvas
         resource={graphResource}
         schema={graphSchema}
         topology={graphTopology}
         resolvedResources={resolvedResources}
+        typeKinds={typeKinds}
+        registry={registry}
         applicationModel={applicationModel}
         viewportKey={viewData.manifest.filePath}
         canvasViewport={canvasViewport}
         onCanvasViewportChange={onCanvasViewportChange}
         selectedResource={selectedResource}
+        selection={selection}
         onDeleteResource={onDeleteResource}
         onWriteRef={onWriteRef}
         onCreateResource={onCreateResource}
@@ -70,17 +84,35 @@ export function TopologyView({
         onSelect={onSelect}
         onBackgroundClick={onClearSelection}
       />
+    ) : (
+      <div
+        className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900"
+        onClick={onClearSelection}
+      >
+        <span className="text-sm text-zinc-400 dark:text-zinc-600 pointer-events-none">
+          Select a resource to open its canvas
+        </span>
+      </div>
     );
-  }
 
+  // The detail panel belongs to the canvas — it edits the selected node and is
+  // meaningless on the other module tabs (Imports, Definitions, …), so it lives
+  // here rather than alongside the tab container. Renders null when nothing is
+  // selected, so it only takes space when a resource is in focus.
   return (
-    <div
-      className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900"
-      onClick={onClearSelection}
-    >
-      <span className="text-sm text-zinc-400 dark:text-zinc-600 pointer-events-none">
-        Select a resource to open its canvas
-      </span>
+    <div className="flex h-full min-w-0 flex-1 overflow-hidden">
+      {canvas}
+      <DetailPanel
+        selectedResource={selectedResource}
+        graphContext={graphContext}
+        selection={selection}
+        viewData={viewData}
+        registry={registry}
+        onUpdateResource={onUpdateResource}
+        onSelectResource={onSelectResource}
+        onSelect={onSelect}
+        onNavigateResource={onNavigateResource}
+      />
     </div>
   );
 }

@@ -20,41 +20,59 @@ function normalizeCapability(capability: string): string {
   return capability.trim().toLowerCase();
 }
 
+/** The slice of `AnalysisRegistry` candidate resolution needs. Declared here so
+ *  the form layer stays decoupled from the analyzer package — `AnalysisRegistry`
+ *  satisfies it structurally. */
+export interface RefResolver {
+  /** Canonical (`module.Type`) kinds that satisfy a ref — an abstract expands to
+   *  its implementations, a concrete kind yields itself. Undefined when the ref
+   *  can't be resolved. */
+  acceptedKindsForRef(refTarget: string): Set<string> | undefined;
+  /** Canonicalizes an alias-form kind (`Mcp.Redis` → `mcp-client.Redis`). */
+  resolveKind(kind: string): string | undefined;
+}
+
 /** Resolves one or more `x-telo-ref` target strings against the module's resolved
  *  resources and returns every resource that can fill any of the slots. Dedupes
- *  across targets (for oneOf/anyOf unions).
+ *  across targets (for oneOf/anyOf unions). Shared by the detail-pane
+ *  `ReferenceSelectField` and the overview-canvas picker so both agree.
  *
- *  Two resolution modes, picked from the ref scope:
+ *  When a `registry` is supplied and resolves the ref, candidates are narrowed
+ *  by **kind satisfaction** — an abstract ref (e.g. `std/mcp-client#SessionProvider`)
+ *  only matches resources whose kind implements that abstract, not every
+ *  `Telo.Provider`. Without a registry (or for a ref it can't resolve) it falls
+ *  back to the kind/capability heuristic:
  *
- *  - **Abstract capability ref** (`telo#Invocable`, `telo#Mount`) — matches any
- *    resource whose kind has `capability: Telo.<symbol>`. This is the common
- *    case for built-in capabilities.
- *  - **Concrete kind ref** (`std/pipeline#Job`, `std/http-server#Server`) —
- *    matches any resource whose kind ends with `.<symbol>`. Used for referring
- *    to a specific user-defined kind.
- *
- *  Replaces the stale `scope === "kernel"` branch left behind after the
- *  Kernel→Telo rename (post-rename the scope string is "telo", not "kernel"). */
+ *  - **`telo#X`** — matches any resource whose kind has `capability: Telo.<X>`.
+ *  - **concrete kind ref** — matches any resource whose kind ends with `.<symbol>`. */
 export function resolveRefCandidates(
   refTargets: string[],
   resolvedResources: ResolvedResourceOption[],
+  registry?: RefResolver | null,
 ): ResolvedResourceOption[] {
   const seen = new Set<string>();
   const candidates: ResolvedResourceOption[] = [];
 
   for (const refTarget of refTargets) {
-    const parsed = parseRefTarget(refTarget);
-    if (!parsed) continue;
-
-    const matches =
-      parsed.scope === "telo"
-        ? resolvedResources.filter(
-            (resource) =>
-              resource.capability &&
-              normalizeCapability(resource.capability) ===
-                normalizeCapability(`Telo.${parsed.symbol}`),
-          )
-        : resolvedResources.filter((resource) => resource.kind.endsWith(`.${parsed.symbol}`));
+    const accepted = registry?.acceptedKindsForRef(refTarget);
+    let matches: ResolvedResourceOption[];
+    if (accepted) {
+      matches = resolvedResources.filter((r) =>
+        accepted.has(registry!.resolveKind(r.kind) ?? r.kind),
+      );
+    } else {
+      const parsed = parseRefTarget(refTarget);
+      if (!parsed) continue;
+      matches =
+        parsed.scope === "telo"
+          ? resolvedResources.filter(
+              (resource) =>
+                resource.capability &&
+                normalizeCapability(resource.capability) ===
+                  normalizeCapability(`Telo.${parsed.symbol}`),
+            )
+          : resolvedResources.filter((resource) => resource.kind.endsWith(`.${parsed.symbol}`));
+    }
 
     for (const match of matches) {
       const key = `${match.kind}/${match.name}`;

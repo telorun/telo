@@ -2,7 +2,8 @@ import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import type { RefResolver } from "./ref-candidates";
+import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 
 interface ObjectFieldProps {
   rootFieldName: string;
@@ -15,6 +16,8 @@ interface ObjectFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  typeKinds?: TypeKindOption[];
+  registry?: RefResolver | null;
   /** Fallback for the collapsible trigger title when the schema has no
    *  `title`. Passed in by the parent (the property name it would otherwise
    *  have rendered as a label). */
@@ -53,6 +56,8 @@ export function ObjectField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  typeKinds,
+  registry,
   label,
   required,
   flat = false,
@@ -95,6 +100,8 @@ export function ObjectField({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
           label={childLabel}
           required={objectRequired.has(childName)}
         />

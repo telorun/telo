@@ -5,6 +5,7 @@ import {
   resolveRefCandidates,
   toRefString,
   toRefValue,
+  type RefResolver,
 } from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
@@ -14,6 +15,9 @@ interface ReferenceSelectFieldProps {
   onValueChange: (next: unknown) => void;
   onBlur: () => void;
   resolvedResources: ResolvedResourceOption[];
+  /** Narrows candidates by kind satisfaction (abstract refs). Omit to fall back
+   *  to the kind/capability heuristic. */
+  registry?: RefResolver | null;
   /** Opens the target in the peek panel when the chip is clicked. Omit to
    *  render a plain chip without peek affordance. */
   onSelectResource?: (kind: string, name: string) => void;
@@ -25,12 +29,13 @@ export function ReferenceSelectField({
   onValueChange,
   onBlur,
   resolvedResources,
+  registry,
   onSelectResource,
 }: ReferenceSelectFieldProps) {
   const refTargets = collectRefTargets(prop);
   if (refTargets.length === 0) return null;
 
-  const options = resolveRefCandidates(refTargets, resolvedResources);
+  const options = resolveRefCandidates(refTargets, resolvedResources, registry);
   const selected = parseRefValue(value);
   const selectedKey = selected ? toRefString(selected) : "";
   const mode = inferRefMode(prop);

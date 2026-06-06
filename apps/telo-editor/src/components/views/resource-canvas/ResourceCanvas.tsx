@@ -19,7 +19,12 @@ import {
   toRefString,
   toRefValue,
 } from "../../resource-schema-form/ref-candidates";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "../../resource-schema-form/types";
+import type { RefResolver } from "../../resource-schema-form/ref-candidates";
+import type {
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "../../resource-schema-form/types";
 import { Button } from "../../ui/button";
 import type { BindingDescriptor } from "./bindings";
 import { discoverBindings } from "./bindings";
@@ -28,6 +33,8 @@ interface ResourceCanvasProps {
   resource: ParsedResource;
   schema: Record<string, unknown>;
   resolvedResources: ResolvedResourceOption[];
+  typeKinds?: TypeKindOption[];
+  registry?: RefResolver | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   onSelectResource: (kind: string, name: string) => void;
   onBackgroundClick: () => void;
@@ -88,6 +95,8 @@ export function ResourceCanvas({
   resource,
   schema,
   resolvedResources,
+  typeKinds,
+  registry,
   onUpdateResource,
   onSelectResource,
   onBackgroundClick,
@@ -149,7 +158,7 @@ export function ResourceCanvas({
   }
 
   function renderArrayOfRefsBinding(descriptor: BindingDescriptor) {
-    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources);
+    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
     // Items schema used for ref-mode inference
@@ -218,7 +227,7 @@ export function ResourceCanvas({
   function renderArrayOfObjectsBinding(descriptor: BindingDescriptor) {
     const refFieldName = descriptor.refFieldName;
     if (!refFieldName) return null;
-    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources);
+    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
     const keyFieldName = descriptor.keyFieldName;
@@ -412,6 +421,8 @@ export function ResourceCanvas({
                 onFieldBlur={handleFieldBlur}
                 resolvedResources={resolvedResources}
                 onSelectResource={onSelectResource}
+                typeKinds={typeKinds}
+                registry={registry}
                 label={labelText}
               />
             );

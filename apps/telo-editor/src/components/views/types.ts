@@ -19,6 +19,10 @@ export interface ViewProps {
    *  analysis pass completes for the module. */
   registry: AnalysisRegistry | null;
   selectedResource: { kind: string; name: string } | null;
+  /** Active pointer-scoped selection (e.g. an edge's inputs or a node's in/out
+   *  type field). When set, a sub-part of a resource is focused — not the whole
+   *  node — so the canvas drops the node-level highlight. */
+  selection: Selection | null;
   /** The "canvas focus" resource — last resource the user worked with in a canvas view. */
   graphContext: { kind: string; name: string } | null;
   onSelectResource: (kind: string, name: string) => void;

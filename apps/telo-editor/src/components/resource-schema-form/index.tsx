@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
-import type { JsonSchema, JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import type { RefResolver } from "./ref-candidates";
+import type {
+  JsonSchema,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 
 export interface ResourceSchemaFormProps {
   schema: Record<string, unknown>;
@@ -12,12 +18,16 @@ export interface ResourceSchemaFormProps {
   resolvedResources?: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  /** Imported `Telo.Type` kinds offered for inline type fields. */
+  typeKinds?: TypeKindOption[];
+  /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
+  registry?: RefResolver | null;
   /** Render object/map entries inline (horizontal) instead of behind an
    *  accordion. An editor layout choice set by the consuming view. */
   flat?: boolean;
 }
 
-export type { ResolvedResourceOption } from "./types";
+export type { ResolvedResourceOption, TypeKindOption } from "./types";
 
 export function ResourceSchemaForm({
   schema,
@@ -28,6 +38,8 @@ export function ResourceSchemaForm({
   resolvedResources = [],
   rootCelEval,
   onSelectResource,
+  typeKinds,
+  registry,
   flat,
 }: ResourceSchemaFormProps) {
   const typedSchema = schema as JsonSchema;
@@ -94,6 +106,8 @@ export function ResourceSchemaForm({
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
+              typeKinds={typeKinds}
+              registry={registry}
               label={labelText}
               required={required.has(name)}
               flat={flat}

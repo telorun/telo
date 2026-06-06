@@ -14,6 +14,10 @@ import {
   resolveRef,
   type VariantMeta,
 } from "../../../schema-utils";
+import {
+  resolveRefCandidates,
+  type RefResolver,
+} from "../../resource-schema-form/ref-candidates";
 import { resolveEdgeInputs } from "./edge-inputs";
 import { buildNodePorts, type NodePort } from "./node-ports";
 import {
@@ -41,6 +45,26 @@ export interface NodeStep {
   depth: number;
 }
 
+/** An invocable's input or output type, resolved for display as a node
+ *  signature pill. Driven by the `inputType` / `outputType` convention, gated on
+ *  `capability: Telo.Invocable`. */
+export interface TypeSignature {
+  /** Display name when the type is a named `Telo.Type` reference. */
+  name?: string;
+  /** Resolved JSON Schema — from an inline definition, a named `Telo.Type`
+   *  lookup, or the kind definition. Undefined when only an unresolved name is
+   *  known. */
+  schema?: Record<string, unknown>;
+  /** Whether the instance declares the type at all (vs. a kind-definition
+   *  fallback / nothing). */
+  set: boolean;
+  /** Schema of the `inputType` / `outputType` field itself (from the kind
+   *  schema), so clicking the pill can open a focused editor for it. Absent when
+   *  the kind carries the type on its definition rather than as an instance
+   *  field — nothing to edit on the instance. */
+  fieldSchema?: Record<string, unknown>;
+}
+
 /** A resource rendered as a graph node or a side-strip entry. */
 export interface GraphNode {
   kind: string;
@@ -48,6 +72,10 @@ export interface GraphNode {
   capability: string;
   /** True for the synthetic module root node (Application or Library). */
   isRoot?: boolean;
+  /** Input / output type signatures — present only for `Telo.Invocable` nodes,
+   *  rendered as pills on the node's left edge (input top, output bottom). */
+  inputType?: TypeSignature;
+  outputType?: TypeSignature;
   /** Steps when the kind declares an `x-telo-topology-role: steps` field (e.g.
    *  Run.Sequence); omitted for plain nodes. Nested branch / case / loop bodies
    *  are flattened into their own depth-indented rows (see `NodeStep.depth`),
@@ -202,6 +230,32 @@ function buildNodeSteps(
   return out;
 }
 
+/** The capability whose nodes carry an `inputType` / `outputType` signature. */
+const INVOCABLE_CAPABILITY = "Telo.Invocable";
+
+/** Resolves one `inputType` / `outputType` field value into a display signature.
+ *  A string is a named `Telo.Type` reference (schema resolved from the module's
+ *  Type resources when present); an object is an inline / raw JSON Schema; an
+ *  absent value falls back to the kind definition. */
+function resolveTypeSignature(
+  value: unknown,
+  fallback: Record<string, unknown> | undefined,
+  typeSchemaByName: Map<string, Record<string, unknown>>,
+): TypeSignature {
+  if (typeof value === "string" && value) {
+    return { name: value, schema: typeSchemaByName.get(value), set: true };
+  }
+  if (isRecord(value)) {
+    const schema = isRecord(value.schema)
+      ? value.schema
+      : value.type || value.properties
+        ? value
+        : undefined;
+    return { schema, set: true };
+  }
+  return { schema: fallback, set: false };
+}
+
 /** Picks the source-handle anchor for an edge: the longest step path that is a
  *  prefix of the edge's concrete ref `fromPath`, so a nested invoke anchors to
  *  its top-level step (B1). Undefined when the node has no steps or the ref
@@ -284,6 +338,15 @@ export function buildApplicationCanvasModel(
     string,
     { kind: string; schema?: Record<string, unknown>; fields: Record<string, unknown> }
   >([[appName, { kind: rootKindId, schema: rootSchema, fields: { targets } }]]);
+  // Named `Telo.Type` resources, so a `inputType: SomeType` reference can show
+  // its resolved shape on the signature pill.
+  const typeSchemaByName = new Map<string, Record<string, unknown>>();
+  for (const r of resources) {
+    if (viewData.kinds.get(r.kind)?.capability === "Telo.Type" && isRecord(r.fields.schema)) {
+      typeSchemaByName.set(r.name, r.fields.schema);
+    }
+  }
+
   const stripItems: GraphNode[] = [];
   for (const r of resources) {
     const kindData = viewData.kinds.get(r.kind);
@@ -294,26 +357,55 @@ export function buildApplicationCanvasModel(
       const stepsField = kindData ? findStepsField(kindData.schema) : null;
       const steps = kindData ? buildNodeSteps(r.fields, kindData.schema) : [];
       if (steps.length) node.steps = steps;
-      node.ports = buildNodePorts(
-        registry.refFieldsForResource(toManifest(r)),
-        r.fields,
-        stepsField,
-        kindData?.schema,
-      );
+      // An invocable's `inputType` / `outputType` render as signature pills, not
+      // as picker ports — drop them from the rail and resolve the signatures.
+      const refFields = registry.refFieldsForResource(toManifest(r));
+      const portRefFields =
+        capability === INVOCABLE_CAPABILITY
+          ? refFields.filter((f) => f.path !== "inputType" && f.path !== "outputType")
+          : refFields;
+      node.ports = buildNodePorts(portRefFields, r.fields, stepsField, kindData?.schema);
+      if (capability === INVOCABLE_CAPABILITY) {
+        const kindProps = isRecord(kindData?.schema.properties) ? kindData.schema.properties : {};
+        node.inputType = {
+          ...resolveTypeSignature(r.fields.inputType, registry.inputTypeForKind(r.kind), typeSchemaByName),
+          fieldSchema: isRecord(kindProps.inputType) ? kindProps.inputType : undefined,
+        };
+        node.outputType = {
+          ...resolveTypeSignature(r.fields.outputType, registry.outputTypeForKind(r.kind), typeSchemaByName),
+          fieldSchema: isRecord(kindProps.outputType) ? kindProps.outputType : undefined,
+        };
+      }
       nodes.push(node);
       nodeInfo.set(r.name, { kind: r.kind, schema: kindData?.schema, fields: r.fields });
     } else if (AMBIENT_CAPABILITIES.has(capability)) stripItems.push(node);
   }
 
   // Picker ports select among the ambient (Provider / Type) resources that
-  // match their capability — surface those names as candidates. Edge `+` slots
-  // can create-and-link any user-facing kind that satisfies the port's refs.
+  // satisfy the port's `x-telo-ref` constraint. Uses the same registry-aware
+  // resolver as the detail-pane dropdown, so a slot typed to a specific abstract
+  // (e.g. an `Mcp.SessionProvider`) only offers that abstract's implementations,
+  // not every `Telo.Provider`. Edge `+` slots can create-and-link any
+  // user-facing kind that satisfies the port's refs.
+  //
+  // `acceptedKindsForRef` runs a `getByExtends` BFS; memoize it per ref for the
+  // duration of this rebuild since many ports across nodes share the same ref.
+  const acceptedKindsCache = new Map<string, Set<string> | undefined>();
+  const candidateResolver: RefResolver = {
+    acceptedKindsForRef: (ref) => {
+      if (acceptedKindsCache.has(ref)) return acceptedKindsCache.get(ref);
+      const result = registry.acceptedKindsForRef(ref);
+      acceptedKindsCache.set(ref, result);
+      return result;
+    },
+    resolveKind: (kind) => registry.resolveKind(kind),
+  };
   for (const n of nodes) {
     for (const port of n.ports ?? []) {
       if (port.flavor === "picker") {
-        port.candidates = stripItems
-          .filter((s) => port.capabilities.includes(s.capability))
-          .map((s) => s.name);
+        port.candidates = resolveRefCandidates(port.refs, stripItems, candidateResolver).map(
+          (c) => c.name,
+        );
       } else if (port.addPath) {
         const kinds = new Set<string>();
         for (const ref of port.refs) {
