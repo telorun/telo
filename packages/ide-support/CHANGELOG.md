@@ -1,5 +1,14 @@
 # @telorun/ide-support
 
+## 0.4.18
+
+### Patch Changes
+
+- Updated dependencies [81ebf47]
+- Updated dependencies [ea57e10]
+- Updated dependencies [81ebf47]
+  - @telorun/analyzer@0.19.0
+
 ## 0.4.17
 
 ### Patch Changes

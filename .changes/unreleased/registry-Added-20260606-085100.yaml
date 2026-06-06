@@ -1,4 +1,0 @@
-project: registry
-kind: Added
-body: get_module_manifest accepts 'latest' (the default) to fetch the most recently published version without a prior search_modules lookup.
-time: 2026-06-06T08:51:00.239817598Z

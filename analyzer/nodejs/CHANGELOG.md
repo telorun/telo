@@ -1,5 +1,16 @@
 # @telorun/analyzer
 
+## 0.19.0
+
+### Minor Changes
+
+- 81ebf47: Add `AnalysisRegistry.acceptedKindsForRef(ref)` — the canonical (`module.Type`) kinds that satisfy an `x-telo-ref` constraint (an abstract expands to its implementations, a concrete kind yields itself), import-independent so it also covers locally-defined kinds. `userFacingKindsForRef` now derives from it. Lets editor hosts narrow ref candidates by kind satisfaction instead of base capability, so a slot typed to a specific abstract (e.g. an `Mcp.SessionProvider`) only offers that abstract's implementations rather than every `Telo.Provider`.
+- 81ebf47: Add `AnalysisRegistry.outputTypeForKind(kind)`, mirroring `inputTypeForKind`: resolves a kind's `outputType` (own definition, then the `extends`-declared abstract) to its JSON Schema for editor hosts that render a typed output signature. Inline and raw-schema forms resolve; a bare named type reference is left unresolved.
+
+### Patch Changes
+
+- ea57e10: CEL type-checking now descends into `additionalProperties` map values, applying the map's value schema to every entry. Previously CEL inside an open-keyed object map (e.g. a migration's `sql:` body) was typed against an empty schema and went unchecked.
+
 ## 0.18.0
 
 ### Minor Changes
