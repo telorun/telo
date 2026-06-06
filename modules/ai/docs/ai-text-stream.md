@@ -16,7 +16,7 @@ kind: Telo.Application
 metadata: { name: chat, version: 1.0.0 }
 imports:
   Ai: std/ai@0.5.0
-  AiOpenai: std/ai-openai@0.5.0
+  AiOpenai: std/ai-openai@0.6.0
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }

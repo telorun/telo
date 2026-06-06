@@ -63,6 +63,7 @@ const sidebars: SidebarsConfig = {
       label: "Reference",
       collapsed: false,
       items: [
+        { type: "doc", id: "docs/cel-reference", label: "CEL Functions" },
         {
           type: "category",
           label: "Kernel",

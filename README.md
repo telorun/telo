@@ -55,8 +55,8 @@ metadata:
     A complete feedback collection REST API — no code, pure YAML.
     Persists entries to SQLite and serves them over HTTP.
 imports:
-  Http: std/http-server@0.8.0
-  Sql: std/sql@0.5.1
+  Http: std/http-server@0.9.0
+  Sql: std/sql@0.8.0
 targets:
   - Migrations
   - Server

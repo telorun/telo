@@ -1,0 +1,4 @@
+project: registry
+kind: Fixed
+body: Compact the MCP server instructions to a ~2KB router. Clients truncate the instructions field at 2048 bytes, so the previous long form was silently cut — agents never received most of it. It now points to https://telo.run/llms.txt, https://telo.run/examples.md, and the build-generated https://telo.run/cel.md (plus telo cel functions / telo cel eval) instead of inlining the full CEL/kind reference.
+time: 2026-06-06T17:39:21.54702786Z
