@@ -7,7 +7,7 @@ SQL database access for PostgreSQL and SQLite — connections, raw queries, a de
 - **Two backends, one shape** — `postgres` (pg + Kysely) and `sqlite` (Node SQLite) share the same resource kinds.
 - **Raw and structured** — `Sql.Query` / `Sql.Exec` for hand-written SQL; `Sql.Select` for declarative SELECTs as data.
 - **Implicit transactions** — `Sql.Transaction` propagates the active transaction through `AsyncLocalStorage`; nested invocations pick it up automatically.
-- **Idempotent migrations** — `Sql.Migrations` applies `Sql.Migration` entries in lexicographic order and tracks applied versions in a metadata table.
+- **Idempotent migrations** — `Sql.Migrations` applies its keyed migration entries in lexicographic key order and tracks applied versions in a metadata table.
 - **Tunable pooling** — Postgres pool `min`, `max`, and timeout knobs exposed on `Sql.Connection`.
 
 ## Kinds
@@ -19,8 +19,8 @@ SQL database access for PostgreSQL and SQLite — connections, raw queries, a de
 | `Sql.Exec` | Same shape as `Sql.Query` for statements that do not return rows. |
 | `Sql.Select` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
 | `Sql.Transaction` | Wraps an invocable in a database transaction; nested transactions are flattened. |
-| `Sql.Migration` | Single migration entry with a durable `version` and `sql:` body. |
-| `Sql.Migrations` | Boot-time runner that applies pending migrations in version order. |
+| `Sql.Migrations` | Boot-time runner holding a keyed `migrations` map; applies pending entries in key order. |
+| `Sql.Migration` | **Deprecated** — standalone migration entry, discovered and merged by `Sql.Migrations`. Prefer the inline map. |
 
 ## Example
 
@@ -41,16 +41,18 @@ pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 kind: Sql.Migrations
 metadata: { name: Migrate }
 connection: { kind: Sql.Connection, name: Db }
----
-kind: Sql.Migration
-metadata: { name: Migration_20260401120000_CreateUsers }
-version: 20260401120000_CreateUsers
-sql: |
-  CREATE TABLE users (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email      TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )
+migrations:
+  20260401120000_CreateUsers:
+    statement: |
+      CREATE TABLE users (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email      TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+  20260402090000_IndexEmail:
+    statements:
+      - CREATE INDEX users_email ON users(email)
+      - CREATE INDEX users_created_at ON users(created_at)
 ---
 kind: Sql.Select
 metadata: { name: ActiveUsers }
@@ -79,6 +81,12 @@ SQLite file paths auto-create their parent directory on connect; use `sqlite::me
 
 ## Migrations
 
-`version` is the durable key written to the migrations tracking table. It decides run order (lexicographic) and identifies the migration forever after — renaming a `version` makes the migrator think it's a new migration and try to re-run it. Conventionally a timestamp-prefixed slug. If omitted, the controller falls back to `metadata.name`, but `metadata.name` must satisfy Telo's resource-name rules (`^[a-zA-Z_][a-zA-Z0-9_]*$`, no leading digit), which is why new migrations should set `version` explicitly and give `metadata.name` a `Migration_`-prefixed handle.
+`Sql.Migrations` owns its migrations as a keyed `migrations` map. Each **key** is the durable ledger id: it is written to the migrations tracking table, decides run order (lexicographic over keys), and identifies the migration forever after — renaming a key makes the migrator think it's a new migration and try to re-run it. Conventionally a timestamp-prefixed slug (e.g. `20260419100200_CreateTokens`). The key is both order and identity, so there is no separate `version` field.
+
+Each value is **either** a single `statement` **or** an ordered list of `statements` (exactly one). Use `statements` when a logical migration needs several SQL statements. Values may contain `${{ }}` CEL expressions, evaluated at compile time.
+
+**All pending migrations run in a single transaction** — every statement of every entry commits together, or the whole batch rolls back on the first failure (PostgreSQL natively; SQLite via a transactional-DDL adapter). Note: statements that cannot run inside a transaction block (e.g. PostgreSQL `CREATE INDEX CONCURRENTLY`) are therefore not supported here.
 
 Make the Application `targets` list include the `Sql.Migrations` resource so schema evolution happens before services start serving traffic.
+
+The standalone `Sql.Migration` kind is **deprecated** but still supported: any `Sql.Migration` resource in the same module scope is discovered and merged into the runner's migration set, keyed by its `version` (falling back to `metadata.name`). Entries in the inline `migrations` map take precedence on a key collision. New manifests should use the inline map.

@@ -4,6 +4,7 @@ import {
   CompiledQuery,
   Kysely,
   PostgresDialect,
+  SqliteAdapter,
   SqliteDialect,
   type QueryResult,
   type Transaction,
@@ -58,7 +59,7 @@ export class SqlConnectionResource implements ResourceInstance {
       }
       this.sqlite = sqlite;
       this.db = new Kysely({
-        dialect: new SqliteDialect({
+        dialect: new TransactionalSqliteDialect({
           database: this.sqlite,
         }),
       });
@@ -136,6 +137,22 @@ export class SqlConnectionResource implements ResourceInstance {
     }
 
     return this.db;
+  }
+}
+
+// Kysely's stock SQLite adapter reports `supportsTransactionalDdl = false`, so
+// its Migrator runs migrations without a transaction. SQLite does support
+// transactional DDL, so we flip the flag — letting the Migrator wrap the whole
+// migration batch in a single transaction, matching PostgreSQL.
+class TransactionalSqliteAdapter extends SqliteAdapter {
+  override get supportsTransactionalDdl(): boolean {
+    return true;
+  }
+}
+
+class TransactionalSqliteDialect extends SqliteDialect {
+  override createAdapter(): SqliteAdapter {
+    return new TransactionalSqliteAdapter();
   }
 }
 

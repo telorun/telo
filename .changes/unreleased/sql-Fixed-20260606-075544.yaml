@@ -1,0 +1,4 @@
+project: sql
+kind: Fixed
+body: Document the SQLite single-statement limit on migration/query/exec SQL fields.
+time: 2026-06-06T07:55:44.592209807Z

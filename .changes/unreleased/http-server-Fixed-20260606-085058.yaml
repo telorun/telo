@@ -1,0 +1,4 @@
+project: http-server
+kind: Fixed
+body: Clarify the response body field accepts a YAML object (auto-serialized to JSON); don't embed a JSON string.
+time: 2026-06-06T08:50:58.154077071Z
