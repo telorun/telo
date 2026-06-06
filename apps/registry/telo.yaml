@@ -6,11 +6,11 @@ metadata:
   version: 0.4.0
 imports:
   Type: std/type@0.2.1
-  Http: std/http-server@0.8.1
+  Http: std/http-server@0.9.0
   HttpClient: std/http-client@0.6.0
   S3: std/s3@0.3.0
-  Sql: std/sql@0.5.1
-  Run: std/run@0.5.0
+  Sql: std/sql@0.8.0
+  Run: std/run@0.7.0
   Octet: std/octet-codec@0.4.1
   PlainText: std/plain-text-codec@0.4.1
   Gzip: std/gzip@0.2.0
@@ -65,7 +65,7 @@ publicRead: true
 ---
 # ── Database ──────────────────────────────────────────────────────────────────
 
-kind: Sql.Connection
+kind: Sql.PostgresConnection
 metadata:
   name: Db
 driver: postgres
@@ -74,9 +74,7 @@ connectionString: "${{ variables.dbConnection }}"
 kind: Sql.Migrations
 metadata:
   name: Migrations
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 ---
 kind: Sql.Migration
 metadata:
@@ -213,9 +211,7 @@ notFoundHandler:
 kind: Sql.Select
 metadata:
   name: SearchModules
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 from: modules
 distinctOn: [ namespace, name ]
 columns:
@@ -576,9 +572,7 @@ routes:
               type: integer
               default: 0
               description: "Number of results to skip for pagination."
-    handler:
-      kind: Sql.Select
-      name: SearchModules
+    handler: !ref SearchModules
     inputs:
       q: "${{ request.query.q }}"
       id: "${{ request.query.id }}"
@@ -604,9 +598,7 @@ routes:
           required: [ "namespace", "name" ]
     handler:
       kind: Sql.Query
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: >-
         SELECT version, published_at FROM modules WHERE namespace = $1 AND name = $2 ORDER BY published_at ASC
@@ -640,9 +632,7 @@ routes:
           required: [ "namespace", "name" ]
     handler:
       kind: Sql.Query
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: >-
         SELECT version, published_at as publishedAt FROM modules WHERE namespace = $1 AND name = $2 ORDER BY published_at DESC
@@ -675,9 +665,7 @@ routes:
           required: [ "namespace", "name", "version" ]
     handler:
       kind: Sql.Query
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: >-
         SELECT namespace, name, version, description, published_at FROM modules WHERE namespace = $1 AND name = $2 AND version = $3
@@ -1026,445 +1014,40 @@ serverInfo:
 # knowledge knows what these tools mean and how to compose a manifest from
 # what they return.
 instructions: !literal |
-  This MCP server exposes the **Telo module registry**. Telo is a declarative
-  runtime: YAML manifests describe desired state, the kernel resolves resource
-  dependencies via a multi-pass init loop, and controllers implement each
-  resource kind. CEL expressions are written as `!cel "..."` YAML tags.
+  This MCP server is the **Telo module registry**. Telo is a declarative runtime:
+  YAML manifests describe desired state; the kernel resolves resources and runs a
+  controller per kind. CEL expressions are written as `!cel "..."` tags.
 
-  For broader context on Telo (guides, kernel reference, full module
-  documentation), fetch <https://telo.run/llms.txt>.
+  Fetch these for full context:
+  - https://telo.run/llms.txt — guide & kind reference.
+  - https://telo.run/examples.md — working example manifests.
+  - https://telo.run/cel.md — CEL function reference (or run `telo cel functions`
+    / `telo cel eval "<expr>"`).
 
-  ## File layout
+  ## Tools
+  - `search_modules` — find modules by description.
+  - `get_module_manifest(namespace, name, version?)` — read a module's `telo.yaml`.
+    Its `Telo.Definition` docs are JSON Schemas: the EXACT field shapes you must
+    produce. `version` defaults to `latest`.
 
-  Each application or library lives in its own directory and is rooted at
-  a file named `telo.yaml`. That file holds the `Telo.Application` (for
-  runnable apps) or `Telo.Library` (for importable units), plus its
-  imports, definitions, and resources. The directory name is the
-  human-facing name; the kernel routes to it via the `telo.yaml` inside.
+  ## Composing an application
+  1. `search_modules` for what you need.
+  2. `get_module_manifest` on each candidate; read the `Telo.Definition` schemas —
+     never guess fields from a kind name.
+  3. Write one `Telo.Application` (`metadata.name` kebab-case + `metadata.version`).
+     Declare dependencies in the `imports` map (PascalCase alias →
+     `namespace/name@VERSION`; the version must be exact — `@latest`/ranges are
+     invalid). Add resources of `kind: <Alias>.<KindName>` using the schemas you
+     read. `targets` lists the runnables/services to start.
 
-  Recommended monorepo layout:
+  ## Must-know
+  - No `spec:` wrapper — resource fields sit at the doc top level, beside `kind`
+    and `metadata`.
+  - `variables:` / `secrets:` entries each need an `env:` var name and a
+    JSON-Schema `type:`.
+  - Write object fields as YAML maps, not JSON strings (the runtime serializes
+    them); tag dynamic leaves with `!cel`, not whole inline collections.
+  - Split a large app into `Telo.Library` directories imported by relative path;
+    the app stays a thin root that wires libraries via `imports` + `targets`.
 
-  ```
-  apps/
-    some-app/
-      telo.yaml
-  libs/
-    some-lib/
-      telo.yaml
-  ```
-
-  Relative `imports` sources resolve from the importing manifest's
-  directory and point at the **directory** that contains the library's
-  `telo.yaml` — e.g. `SomeLib: ../../libs/some-lib`
-  from `apps/some-app/telo.yaml` loads `libs/some-lib/telo.yaml`. A bare
-  `../some-lib` or `./some-lib` works the same way for a sibling/child
-  directory. Importing manifests directly is also possible with 
-  `./some-lib.yaml` but use it only as last resort. The library does not 
-  need to be published to the registry to be imported this way.
-
-  ### Prefer cohesive libraries over one large application
-
-  Keep applications small. When an application grows — many resource kinds,
-  several unrelated concerns, repeated patterns — split the cohesive pieces
-  out into `Telo.Library` directories and import them by relative path,
-  rather than letting one `telo.yaml` accumulate everything. Group a library
-  around a single responsibility (a domain area, a transport, a reusable set
-  of definitions) and expose only what importers need via `exports.kinds` /
-  `exports.resources`. The application then becomes a thin root that wires
-  libraries together through `imports` and `targets`. This keeps each
-  manifest readable, makes pieces reusable across apps, and keeps static
-  analysis scoped to one concern at a time.
-
-  ## Built-in kinds (do not need importing)
-
-  These kinds are part of the kernel itself, not published modules — they
-  cannot be discovered via `search_modules` and the model must know them:
-
-  - `Telo.Application` — the runnable root of every Telo file. Required
-    fields: `metadata.name` (kebab-case), `metadata.version`. Optional:
-    `targets` (resources to run on boot — services that should auto-start are
-    omitted).
-  - `Telo.Library` — importable unit of kinds / definitions. Same metadata
-    shape; adds optional `variables` (JSON Schema map declaring the
-    contract importers must supply), `secrets` (same shape), `exports.kinds`
-    (which kinds importers may reference). Cannot be run directly — only
-    imported.
-  - `imports` — a name-keyed map on the `Telo.Application` / `Telo.Library`
-    doc declaring its dependencies on `Telo.Library` modules. Each key is the
-    PascalCase alias used as the kind prefix; each value is the source — a
-    registry id like `std/http-server@1.0.0`, a relative path, or a URL
-    (`Http: std/http-server@1.0.0`). The object form
-    `{ source, variables?, secrets? }` passes values into the imported
-    library. A registry source MUST pin an EXACT version.
-  - `Telo.Definition` — declares a new resource kind inside a Library. Read
-    these via `get_module_manifest` to discover a module's surface; do not
-    write your own.
-
-  ## CEL templates
-
-  Pass dynamic values between resources by writing a CEL expression as a YAML
-  tag. Examples:
-
-  - `!cel "request.params.name"` — read a route param.
-  - `!cel "steps.parse.result.text"` — read the result of a previous step
-    inside a `Run.Sequence`.
-  - `!cel "resources.AppConfig.port"` — read another resource's snapshot.
-  - `!cel "steps.x.result.docs[?0].?metadata.?description.orValue('')"` —
-    optional access; safely handles missing intermediates.
-
-  ### Available functions
-
-  This is the complete set — no general standard library beyond what is listed
-  here. If a function is not below, it does not exist; do not invent one.
-  Functions are available in every CEL context; only the *variables* in scope
-  (next section) differ. (`telo cel functions` prints this list live from the
-  runtime, and `telo cel eval "<expr>"` evaluates an expression to check it.)
-
-  Conversion: `string(x)`, `int(x)`, `double(x)`, `bytes(x)`,
-  `timestamp(isoString)`, `type(x)`.
-
-  Current time: `nowIso(tz?)` → ISO-8601 string (UTC `…Z` by default, or the
-  given IANA zone's offset, e.g. `nowIso("America/New_York")`); `today(tz?)` →
-  `YYYY-MM-DD` in that zone; `nowMillis()` / `nowSeconds()` → epoch int
-  (absolute — timezone-independent). There is no `Date` object and no
-  `.toISOString()` method. These are non-deterministic: in an `x-telo-eval:
-  compile` field they evaluate once at load and bake the result; use them in a
-  runtime field (a `!sql` query, a response body) for a fresh value per call.
-  For a stored row timestamp a DB default (`CURRENT_TIMESTAMP` / `NOW()`) is
-  often better.
-
-  UUIDs: `uuidv4()` (random); `uuidv1()` / `uuidv6()` / `uuidv7()`
-  (time-ordered); `uuidv3(name, namespace)` / `uuidv5(name, namespace)` derive a
-  stable UUID from a name under a namespace UUID; `uuidValidate(s)` → bool,
-  `uuidVersion(s)` → int. Same non-determinism caveat as the time functions,
-  except v3/v5 (stable for fixed inputs).
-
-  Strings: `lower(s)`, `upper(s)`, `trim(s)`, `replace(s, old, new)` (all
-  occurrences), `split(s, sep)` → list. Method-form also available:
-  `s.contains(x)`, `.startsWith(x)`, `.endsWith(x)`, `.matches(regex)`,
-  `.indexOf(x)`, `.lastIndexOf(x)`, `.substring(start)`, `.substring(start, end)`.
-
-  Math: `abs(x)`, `floor(x)`, `ceil(x)`, `round(x)`, `min(list)`, `max(list)`.
-
-  Collections: `size(x)` (string / list / map), `keys(map)`, `values(map)`,
-  `distinct(list)`, `sort(list)`, `reverse(list)`, `flatten(list)` (one level),
-  list method `.join(sep)` / free function `join(list, sep)`, and the macros
-  `has(x.field)`, `list.all(v, cond)`, `.exists(v, cond)`, `.exists_one(v, cond)`,
-  `.map(v, expr)`, `.filter(v, cond)`.
-
-  JSON: `json(value)` → string (serialize); `parseJson(s)` → value (parse;
-  numbers come back as doubles).
-
-  Encoding & hashing: `base64Encode(s)` / `base64Decode(s)`, `urlEncode(s)` /
-  `urlDecode(s)`, `sha256(s)` / `md5(s)` / `sha1(s)` / `sha512(s)`,
-  `hmac(algorithm, key, message)` — all hex for hashes.
-
-  Null handling: CEL has no `??`. Use `default(value, fallback)` (fallback when
-  null), `coalesce(list)` (first non-null), optional access
-  `x.?field.orValue(default)` / `list[?0].orValue(default)`, or
-  `has(x.field) ? x.field : default`.
-
-  Local bindings: CEL is a pure expression language — no assignment (`x = …`),
-  no statements, no `;`. To name/reuse a subexpression use the
-  `cel.bind(name, init, expr)` macro (a functional `let`, scoped to `expr`):
-  `cel.bind(u, request.body.user, u.name + ' <' + u.email + '>')`. In Telo an
-  intermediate value is more often a `Run.Sequence` step result (`steps.X.result`)
-  than an in-expression binding.
-
-  `dyn(x)` — escape hatch for the strict type checker. CEL rejects
-  heterogeneous lists/maps (e.g. `[1, "a", true]`) unless each element is
-  wrapped: `[dyn(1), dyn("a"), dyn(true)]`. Reach for this whenever you
-  build a mixed-type collection — e.g. positional SQL bind parameters.
-
-  ### CEL typing — homogeneity, and the YAML-leaves idiom
-
-  CEL is strictly typed, and this surprises most callers:
-
-  - **List literals must be homogeneous.** `[user_id, json(x)]` fails
-    because `user_id` is a string and `json(x)` is also a string but
-    `user_id` may be typed `dyn` from an upstream access — mix any two
-    distinct types and the checker rejects it. Widen each element with
-    `dyn(...)`: `[dyn(user_id), dyn(json(x))]`.
-  - **Map literals must have a uniform value type** — same rule, applied to
-    values. Wrap mixed values in `dyn(...)`.
-  - **Ternary branches must share a type.** `cond ? "a" : 1` fails; both
-    arms must resolve to the same type (or both be widened with `dyn`).
-  - **`null` has its own type.** Mixing a value with `null` (a default, an
-    optional field) needs `dyn(...)` on the non-null arm/element.
-  - **Numbers must be numbers, not quoted strings.** A field typed as a number
-    wants `95.0`, not `'95.0'` — the checker rejects the string, and a quoted
-    value serializes as a JSON string in responses. Coerce a string with
-    `double(x)` / `int(x)`.
-
-  **Prefer YAML shape, CEL only on scalar leaves.** The homogeneity rules
-  only bite when you write a big inline CEL collection literal
-  (`!cel "[a, b, c]"`, `!cel "{k: v, ...}"`). If instead you build the
-  array/object as ordinary YAML structure and tag each dynamic *leaf* with
-  its own scalar `!cel`, the typing problem disappears — each leaf is type-
-  checked independently and YAML carries the shape. Always reach for this
-  idiom first:
-
-  ```yaml
-  # Good — YAML shape, scalar !cel leaves (no homogeneity constraint):
-  bindings:
-    - !cel "request.body.email"
-    - !cel "json(request.body.profile)"
-    - !cel "request.body.age"
-
-  # Avoid — one inline CEL list literal (triggers homogeneous-typing errors):
-  bindings: !cel "[request.body.email, json(request.body.profile), request.body.age]"
-  ```
-
-  Use an inline CEL collection literal only when the collection itself must
-  be computed (e.g. `.map(...)`); otherwise build it in YAML.
-
-  ### Available variables
-
-  Only these identifiers are in scope. (For the current time use the `now()` /
-  `today()` functions above — there is no `now` *variable*.)
-
-  - `variables`, `secrets` — module inputs, always available.
-  - `resources.<Name>` — another resource's snapshot, after it initializes.
-  - `steps.<name>.result` — a prior step's output, inside a `Run.Sequence`.
-  - `request` — inside an HTTP handler (`query`, `body`, `params`,
-    `headers`, `path`, `method`).
-  - `ports.<name>` — resolved inbound ports, root `Telo.Application` only.
-
-  ### `x-telo-eval` on schema fields
-
-  When a `Telo.Definition` schema annotates a field `x-telo-eval: compile`
-  (or `runtime`), that field accepts a CEL expression — `compile` evaluates
-  it once at load time, `runtime` re-evaluates it on every invocation. You
-  never write the annotation yourself; it tells you the field takes a `!cel`
-  value (e.g. `limit: !cel "inputs.limit"`).
-
-  ## Invoke steps & step results
-
-  Several places run an **invoke step** — the same shape everywhere:
-  `{ name, invoke, inputs?, when? }`.
-
-  - `invoke` — a `{ kind, name }` reference to an Invocable (or Runnable).
-  - `inputs` — an object of **values passed to that resource's `invoke()`**,
-    CEL-expanded against the surrounding scope (each value may be a `!cel`
-    leaf). This is NOT a schema declaration — it's the actual arguments.
-  - `when` — optional CEL boolean guard; the step is skipped when false.
-  - `name` — keys the step's output: after it runs, later expressions read
-    `!cel "steps.<name>.result"`.
-
-  This shape is shared by Application `targets` (inline invoke entries),
-  `Run.Sequence` steps, and `Telo.Definition` templates. A bare Runnable /
-  Service reference in `targets` just runs it (no inputs, no result).
-
-  Note: a `Run.Sequence`'s own top-level `inputs:` is a different thing — a
-  JSON Schema map declaring the sequence's *input contract* (callers supply
-  values at invoke time; steps read them as `!cel "inputs.<name>"`), not an
-  invoke step's arguments.
-
-  ## Common pitfalls
-
-  Patterns that look reasonable but break Telo manifests. These are the
-  most frequent mistakes in LLM-authored submissions — verify against
-  the actual `Telo.Definition` schemas via `get_module_manifest` if
-  ever unsure.
-
-  - **No `spec:` wrapper.** Resource fields go directly under the
-    resource doc, alongside `kind` and `metadata`. There is no
-    Kubernetes-style `spec:` block. `Http.Server`'s `port` and `mounts`,
-    `Http.Api`'s `routes`, `Run.Sequence`'s `steps`, and `JS.Script`'s
-    `code` all live at the top level. A `spec:` field is rejected as
-    `additional property not allowed`.
-
-  - **`variables:` and `secrets:` need `env:` and `type:`.** Each entry
-    binds a name to a host env var via `env: <VAR_NAME>` plus a JSON
-    Schema `type:` (`string` / `integer` / `number` / `boolean` /
-    `object` / `array`), plus any other JSON Schema keywords you want.
-    Without `env:`, the entry is a schema violation. The value resolves
-    at load time into the `variables.X` / `secrets.X` CEL scope.
-
-  - **YAML maps are the data — don't stringify JSON into a field.**
-    Anywhere a field takes an object (a response `body`, a config value,
-    request `inputs`), write a native YAML map. The runtime serializes it
-    to JSON at the boundary. Pasting a JSON string (e.g. `body: |` followed
-    by a `{ ... }` blob) defeats CEL interpolation, static analysis, and
-    type-checking, and usually double-encodes the value. Use `!cel` for
-    individual dynamic field values inside the map.
-
-  - **`JS.Script` is a last resort.** Before reaching for it, search
-    the registry for a kind that does the work declaratively — most
-    transformations belong as a new resource kind, not as inline JS.
-    Acceptable when (a) the logic is genuinely one-off and not
-    reusable, or (b) it bridges to a host API the kernel doesn't yet
-    expose.
-
-  ## Comprehensive example
-
-  A `Telo.Application` that persists notes in SQLite. It imports four modules,
-  runs migrations on boot, and serves a small HTTP API. The example shows the
-  patterns you will use most often:
-
-  - **Shared resources**: declare a resource once at the top level and reference
-    it from many places by `{ kind: <Kind>, name: <Name> }` (here: a single
-    `Sql.Connection` named `Db` is reused by migrations, a named handler, and
-    an inline handler).
-  - **Inline-defined resources**: a handler can also be written *inline* on the
-    route — no top-level resource, no name. Useful for one-off route logic.
-  - **JSON Schema on requests**: `request.schema.{query,body,params,headers}`
-    is plain JSON Schema; values become typed `request.query.x` / `request.body.x`
-    / `request.params.x` inside CEL.
-  - **JSON Schema on responses**: a reusable handler declares `inputType` /
-    `outputType` via `Type.JsonSchema`. The route's `returns[].content` then
-    shapes the public response from the typed `result`.
-  - **SQL with migrations**: `Sql.Migrations` is the runner (listed as an
-    application `target` so it executes on boot); each `Sql.Migration` is a
-    sibling resource — the runner auto-discovers them via the shared
-    connection.
-  - **Application env wiring**: declare `variables:` and `secrets:` directly
-    on the `Telo.Application`, each entry binding a name to a host env var
-    via `env:` plus `type:` (`string | integer | number | boolean | object
-    | array`) and any other JSON Schema keywords. Values resolve at load
-    time into the root `variables.X` / `secrets.X` CEL scope — no
-    intermediate `Config.Env` resource needed.
-
-  ```yaml
-  kind: Telo.Application
-  metadata:
-    name: notes-app
-    version: 1.0.0
-  imports:
-    Http: std/http-server@0.4.0
-    Sql: std/sql@0.5.1
-    Type: std/type@1.0.5
-  variables:
-    port:
-      env: PORT
-      type: integer
-      default: 8080
-    dbFile:
-      env: DB_FILE
-      type: string
-      default: ./notes.db
-  secrets:
-    adminToken:
-      env: ADMIN_TOKEN
-      type: string
-  targets:
-    - Migrations   # run schema migrations before the server starts
-    - Server
-  ---
-  # ── Shared resource: one Sql.Connection referenced by name from everywhere.
-  kind: Sql.Connection
-  metadata: { name: Db }
-  connectionString: !cel "'sqlite:' + variables.dbFile"
-  ---
-  # ── Migrations: the runner + its migration ledger entries.
-  kind: Sql.Migrations
-  metadata: { name: Migrations }
-  connection: { kind: Sql.Connection, name: Db }
-  ---
-  kind: Sql.Migration
-  metadata: { name: Migration_20260520120000_CreateNotes }
-  version: 20260520120000_CreateNotes
-  sql: |
-    CREATE TABLE notes (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      title      TEXT    NOT NULL,
-      body       TEXT    NOT NULL,
-      created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  ---
-  # ── Shared, named handler — referenced by route below as { kind, name }.
-  # Declaring inputType/outputType once lets the analyzer type-check every
-  # caller and every `result.*` access against the same schemas.
-  kind: Sql.Select
-  metadata: { name: ListNotes }
-  connection: { kind: Sql.Connection, name: Db }
-  from: notes
-  columns:
-    - id
-    - title
-    - body
-    - { column: created_at, as: createdAt }
-  orderBy: [{ column: created_at, direction: desc }]
-  limit: !cel "inputs.limit"
-  inputType:
-    kind: Type.JsonSchema
-    schema:
-      type: object
-      properties:
-        limit: { type: integer, default: 20 }
-  outputType:
-    kind: Type.JsonSchema
-    schema:
-      type: object
-      properties:
-        rows:     { type: array }
-        rowCount: { type: integer }
-  ---
-  kind: Http.Server
-  metadata: { name: Server }
-  host: 0.0.0.0
-  port: !cel "variables.port"
-  mounts:
-    - path: /
-      type: Http.Api.NotesApi
-  ---
-  kind: Http.Api
-  metadata: { name: NotesApi }
-  routes:
-    # GET /notes — references the SHARED ListNotes handler by { kind, name }.
-    - request:
-        path: /notes
-        method: GET
-        schema:                          # JSON Schema for the request.
-          query:
-            type: object
-            properties:
-              limit: { type: integer, default: 20, maximum: 100 }
-      handler: { kind: Sql.Select, name: ListNotes }
-      inputs:
-        limit: !cel "request.query.limit"
-      returns:
-        - status: 200
-          content:
-            application/json:
-              body:
-                items: !cel "result.rows"
-                count: !cel "result.rowCount"
-
-    # POST /notes — handler defined INLINE on the route. The Sql.Exec has no
-    # top-level resource, but still references the shared `Db` connection.
-    - request:
-        path: /notes
-        method: POST
-        schema:
-          body:                          # JSON Schema for the request body.
-            type: object
-            properties:
-              title: { type: string, minLength: 1 }
-              body:  { type: string }
-            required: [title, body]
-      handler:
-        kind: Sql.Exec
-        connection: { kind: Sql.Connection, name: Db }
-      inputs:
-        sql: "INSERT INTO notes (title, body) VALUES (?, ?)"
-        bindings:
-          - !cel "request.body.title"
-          - !cel "request.body.body"
-      returns:
-        - status: 201
-          content:
-            application/json:
-              body: { created: true }
-  ```
-
-  ## Workflow when composing a new application
-
-  1. Use `search_modules` to find candidate modules by their descriptions.
-  2. For each promising module, call `get_module_manifest` to read its
-     `Telo.Definition` documents — those JSON Schemas are the EXACT field
-     shapes you must produce. Do not guess from kind names alone.
-  3. Write a `Telo.Application` with the modules you need declared in its
-     `imports` map (exact-pinned versions), then instantiate resources of the
-     form `kind: <Alias>.<KindName>` using the schemas you read.
 tools: [ RegistryTools ]

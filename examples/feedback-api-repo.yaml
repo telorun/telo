@@ -5,15 +5,15 @@ metadata:
   description: |
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
 imports:
-  Http: std/http-server@0.8.0
-  Sql: std/sql@0.5.1
+  Http: std/http-server@0.9.0
+  Sql: std/sql@0.8.0
   SqlRepository: std/sql-repository@0.2.0
-  Run: std/run@0.5.0
+  Run: std/run@0.7.0
 targets:
   - SetupDb
   - Server
 ---
-kind: Sql.Connection
+kind: Sql.SqliteConnection
 metadata:
   name: Db
 connectionString: sqlite:./tmp/feedback-repo.db
@@ -21,25 +21,19 @@ connectionString: sqlite:./tmp/feedback-repo.db
 kind: SqlRepository.Create
 metadata:
   name: InsertFeedback
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: ListFeedback
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetFeedback
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 table: feedback
 ---
 kind: Run.Sequence

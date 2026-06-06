@@ -15,14 +15,14 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  AiOpenai: std/ai-openai@0.5.0
+  AiOpenai: std/ai-openai@0.6.0
   Ai: std/ai@0.5.0
   AiMcp: std/ai-mcp@0.4.1
   Mcp: std/mcp-client@0.3.1
   Http: std/http-client@0.6.0
   Console: std/console@0.8.0
-  Run: std/run@0.5.0
-  Sql: std/sql@0.5.1
+  Run: std/run@0.7.0
+  Sql: std/sql@0.8.0
 targets:
   - InitSchema
   - ChatLoop
@@ -32,24 +32,23 @@ secrets:
     type: string
 ---
 # --- Persistence -----------------------------------------------------------
-kind: Sql.Connection
+kind: Sql.SqliteConnection
 metadata: { name: ChatDb }
 connectionString: sqlite:./tmp/agent-history.sqlite
----
-kind: Sql.Migration
-metadata: { name: CreateMessagesTable }
-version: "20260601_create_messages"
-sql: |
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
-    content TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
+
 ---
 kind: Sql.Migrations
 metadata: { name: InitSchema }
-connection: { kind: Sql.Connection, name: ChatDb }
+connection: !ref ChatDb
+migrations:
+  20260601_create_messages:
+    statement: |
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
 ---
 # --- AI provider -----------------------------------------------------------
 kind: AiOpenai.OpenaiModel

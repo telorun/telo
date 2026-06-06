@@ -5,7 +5,7 @@ metadata:
   description: A demo showcasing a Starlark script run from flat `targets`.
 imports:
   Type: std/type@0.2.1
-  Starlark: std/starlark@0.5.0
+  Starlark: std/starlark@0.5.1
   Console: std/console@0.8.0
 targets:
   - name: Step1

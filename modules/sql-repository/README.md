@@ -23,7 +23,7 @@ Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connect
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
-  Sql: std/sql@0.5.1
+  Sql: std/sql@0.8.0
   SqlRepository: std/sql-repository@0.2.0
 secrets:
   DATABASE_URL: { type: string }

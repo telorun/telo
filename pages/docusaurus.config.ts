@@ -3,11 +3,13 @@ import path from "node:path";
 import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
 
+import { generateCelReference } from "./lib/generate-cel-reference";
 import { generateExamplesIndex } from "./lib/generate-examples-index";
 import sidebars from "./sidebars";
 
 const repoRoot = path.resolve(__dirname, "..");
 generateExamplesIndex(path.join(repoRoot, "examples"), path.join(repoRoot, "examples", "INDEX.md"));
+generateCelReference(path.join(repoRoot, "docs", "cel-reference.md"));
 
 function collectDocIds(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
