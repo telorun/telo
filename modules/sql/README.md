@@ -79,6 +79,26 @@ limit: 50
 
 The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `Sql.PostgresConnection` with `connectionString: "${{ secrets.DATABASE_URL }}"`.
 
+`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`Sql.PostgresConnection` / `Sql.SqliteConnection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
+
+## Reusing handlers
+
+`Sql.Query`, `Sql.Exec`, and `Sql.Select` are Invocables: declare one as a **top-level named resource** and reference it by `{ kind, name }` from any number of routes or `Run.Sequence` steps — define a query once, reuse it everywhere. (Inlining a handler on a single route also works for one-offs.)
+
+```yaml
+kind: Sql.Select
+metadata: { name: ActiveUsers }      # declared once
+connection: { kind: Sql.PostgresConnection, name: Db }
+from: users
+columns: [ id, email ]
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request: { path: /users, method: GET }
+    handler: { kind: Sql.Select, name: ActiveUsers }   # referenced by name
+```
+
 ## Binding values
 
 Never concatenate values into SQL. Two ways to bind, both injection-safe:

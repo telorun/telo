@@ -28,7 +28,7 @@ import {
   type LoadOptions,
   type ParsedArgs,
 } from "@telorun/sdk";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventStream } from "./event-stream.js";
@@ -127,8 +127,18 @@ export interface KernelOptions {
  * Kernel: Central orchestrator managing lifecycle and message bus
  * Handles resource loading, initialization, and execution through controllers
  */
-const celHandlers = {
+/** Node implementations of the host-injected CEL functions (`crypto` / `Buffer`).
+ *  The kernel wires these into the analyzer + loader; the CLI reuses them for
+ *  `telo cel eval` so its results match a real run. */
+export const nodeCelHandlers = {
   sha256: (s: string) => createHash("sha256").update(s).digest("hex"),
+  md5: (s: string) => createHash("md5").update(s).digest("hex"),
+  sha1: (s: string) => createHash("sha1").update(s).digest("hex"),
+  sha512: (s: string) => createHash("sha512").update(s).digest("hex"),
+  hmac: (algorithm: string, key: string, message: string) =>
+    createHmac(algorithm, key).update(message).digest("hex"),
+  base64Encode: (s: string) => Buffer.from(s, "utf8").toString("base64"),
+  base64Decode: (s: string) => Buffer.from(s, "base64").toString("utf8"),
   // cel-js represents int / uint as BigInt — JSON.stringify throws on BigInts,
   // so coerce them down to Number unconditionally. CEL int is i64 and JS Number
   // is f64, so values outside ±2^53 lose precision; that's accepted behaviour
@@ -142,7 +152,7 @@ const celHandlers = {
 
 export class Kernel implements IKernel {
   private readonly loader: Loader;
-  private readonly analyzer = new StaticAnalyzer({ celHandlers });
+  private readonly analyzer = new StaticAnalyzer({ celHandlers: nodeCelHandlers });
   private readonly registry = new AnalysisRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
@@ -181,7 +191,7 @@ export class Kernel implements IKernel {
     this.env = options.env ?? process.env;
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
-    this.loader = new Loader({ registryUrl: this.registryUrl, celHandlers });
+    this.loader = new Loader({ registryUrl: this.registryUrl, celHandlers: nodeCelHandlers });
     for (const source of options.sources) {
       this.loader.register(source);
     }
@@ -848,6 +858,18 @@ export class Kernel implements IKernel {
     if (!controller) {
       const kindInfo =
         resolvedKind !== kind ? `'${kind}' (resolved to '${resolvedKind}')` : `'${kind}'`;
+      // An abstract kind has no controller by design — it's a contract for
+      // `x-telo-ref` slots, not something you instantiate. Point at the concrete
+      // implementations instead of the generic "no controller" message.
+      if (this.registry.resolveDefinition(resolvedKind)?.kind === "Telo.Abstract") {
+        const impls = this.registry.implementationsOf(resolvedKind);
+        const hint = impls.length
+          ? `instantiate a concrete implementation: ${impls.join(", ")}`
+          : "no concrete implementations are registered — import a module that provides one";
+        throw new Error(
+          `Kind ${kindInfo} is abstract and cannot be instantiated directly; ${hint}.`,
+        );
+      }
       throw new Error(
         `No controller registered for kind ${kindInfo} (runtime fingerprint "${fingerprint}"), known controllers are: ${this.controllers.getKinds().join(", ")}`,
       );

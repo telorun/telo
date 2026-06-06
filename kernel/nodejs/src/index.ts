@@ -11,7 +11,7 @@ export {
 export { MemorySource } from "./manifest-sources/memory-source.js";
 export { EventStream } from "./event-stream.js";
 export { ExecutionContext } from "./execution-context.js";
-export { Kernel, type KernelOptions } from "./kernel.js";
+export { Kernel, type KernelOptions, nodeCelHandlers } from "./kernel.js";
 export { ModuleContext } from "./module-context.js";
 export { ManifestRegistry as Registry } from "./registry.js";
 export { ResourceURI } from "./resource-uri.js";

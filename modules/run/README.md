@@ -71,6 +71,32 @@ outputs:
 
 `inputs:` on the sequence (the contract) and `inputs:` on a step (the values passed to that step's `invoke()`) are different fields that share a name.
 
+## Bringing up dependencies (`with:` / `targets:`)
+
+A sequence can stand up its own resources for the duration of its run — a database connection, an `Http.Server`, a pool — without them being top-level Application resources:
+
+- **`with:`** declares resources scoped to the sequence. They are initialized before the steps run and torn down when the sequence finishes (or fails).
+- **`targets:`** names which of those `with:` resources to `run()` first (e.g. start a server / run migrations) before the steps execute.
+
+```yaml
+kind: Run.Sequence
+metadata: { name: IntegrationCheck }
+with:
+  - kind: Sql.SqliteConnection
+    metadata: { name: Db }
+    file: ":memory:"
+  - kind: Sql.Migrations
+    metadata: { name: Migrate }
+    connection: { kind: Sql.SqliteConnection, name: Db }
+targets: [ Migrate ]          # run() before the steps
+steps:
+  - name: seed
+    invoke: { kind: Sql.Exec, connection: { kind: Sql.SqliteConnection, name: Db } }
+    inputs: { sql: !sql "INSERT INTO users (name) VALUES (${{ 'Ada' }})" }
+```
+
+`targets:` is **not** Application-only — both `Telo.Application` and `Run.Sequence` have it. The difference is lifetime: an Application's targets/resources live for the process; a sequence's `with:` resources live only for that run. So yes, a `Run.Sequence` can start an `Http.Server` (put it in `with:`, list it in `targets:`) — useful for self-contained integration tests.
+
 ## Reference
 
 - [Structured Errors](docs/structured-errors.md) — how `try`/`catch` interacts with `InvokeError`.

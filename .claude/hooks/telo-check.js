@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // PostToolUse hook: runs `telo check` after Claude edits a top-level Telo
-// manifest YAML, surfacing analyzer diagnostics via stderr + exit 2 so they
-// land in the next turn's context.
+// manifest YAML. On failure it surfaces analyzer diagnostics via stderr + exit 2;
+// on success it confirms validity via hookSpecificOutput.additionalContext so the
+// model sees the manifest is correct without re-running `telo check`.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -44,7 +45,17 @@ const result = spawnSync("pnpm", ["-s", "run", "telo", "check", filePath], {
   cwd: repoRoot,
 });
 
-if (result.status === 0) process.exit(0);
+if (result.status === 0) {
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        additionalContext: `telo check passed: ${filePath} is a valid Telo manifest.`,
+      },
+    }),
+  );
+  process.exit(0);
+}
 
 process.stderr.write(`telo check found issues in ${filePath}:\n`);
 if (result.stdout) process.stderr.write(result.stdout);

@@ -1,5 +1,12 @@
 export { buildCelEnvironment, type CelHandlers } from "./cel/environment.js";
 export {
+  celFunctionCatalog,
+  CEL_FUNCTIONS,
+  type CelFunctionInfo,
+  type CelFunctionDoc,
+  type CelFunctionCategory,
+} from "./cel/catalog.js";
+export {
   compileExpression,
   compileString,
   toParameterized,

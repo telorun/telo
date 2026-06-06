@@ -2,6 +2,7 @@
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { celCommand } from "./commands/cel.js";
 import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
 import { publishCommand } from "./commands/publish.js";
@@ -12,6 +13,7 @@ let cli = yargs(hideBin(process.argv))
   .scriptName("telo")
   .usage("$0 <command> [options]");
 
+cli = celCommand(cli) as typeof cli;
 cli = checkCommand(cli) as typeof cli;
 cli = installCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
