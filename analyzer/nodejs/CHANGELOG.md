@@ -1,5 +1,17 @@
 # @telorun/analyzer
 
+## 0.20.0
+
+### Minor Changes
+
+- 06cfcbf: Instantiating an abstract kind directly (e.g. `kind: Sql.Connection`) now fails with a clear message — "Kind 'X' is abstract and cannot be instantiated directly; instantiate a concrete implementation: …" — listing the concrete kinds that extend it, instead of the generic "No controller registered". Adds `AnalysisRegistry.implementationsOf(kind)`.
+
+### Patch Changes
+
+- Updated dependencies [06cfcbf]
+- Updated dependencies [06cfcbf]
+  - @telorun/templating@0.6.0
+
 ## 0.19.1
 
 ### Patch Changes

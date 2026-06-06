@@ -1,5 +1,33 @@
 # @telorun/kernel
 
+## 0.22.0
+
+### Minor Changes
+
+- 06cfcbf: Add `telo cel functions` (list the CEL standard library — `--json` for tooling) and `telo cel eval "<expr>" [--context <json>]` (evaluate a CEL expression with the real Node handlers). Backed by a single-source CEL catalog: `@telorun/templating` now exports `celFunctionCatalog()` / `CEL_FUNCTIONS`, and `buildCelEnvironment` registers from it so the documented surface can't drift from what's registered. `@telorun/kernel` exports `nodeCelHandlers` (the Node `crypto`/`Buffer` implementations) so the CLI's eval matches a real run.
+
+### Patch Changes
+
+- 06cfcbf: Instantiating an abstract kind directly (e.g. `kind: Sql.Connection`) now fails with a clear message — "Kind 'X' is abstract and cannot be instantiated directly; instantiate a concrete implementation: …" — listing the concrete kinds that extend it, instead of the generic "No controller registered". Adds `AnalysisRegistry.implementationsOf(kind)`.
+- 06cfcbf: Expand the CEL stdlib:
+
+  - **Time:** `nowIso(tz?)` (ISO-8601, UTC by default or in an IANA timezone), `today(tz?)` (`YYYY-MM-DD` in that zone), `nowMillis()` / `nowSeconds()` (absolute epoch int).
+  - **UUID:** `uuidv1/3/4/5/6/7()`, `uuidValidate(s)`, `uuidVersion(s)`.
+  - **Strings:** `lower`, `upper`, `trim`, `replace(s, old, new)`, `split(s, sep)`.
+  - **Math:** `abs`, `floor`, `ceil`, `round`, `min(list)`, `max(list)`.
+  - **Collections:** `distinct`, `sort`, `reverse`, `flatten`.
+  - **JSON / encoding:** `parseJson(s)`, `base64Encode/Decode`, `urlEncode/Decode`.
+  - **Hashing:** `md5`, `sha1`, `sha512`, `hmac(algorithm, key, message)` (host-injected alongside `sha256`).
+  - **Null handling:** `default(value, fallback)`, `coalesce(list)` — CEL has no `??`.
+
+  Time/UUID/`nowMillis` are non-deterministic: in an `x-telo-eval: compile` field they bake once at load; use a runtime field for a fresh value per evaluation. Hashing and base64 are host-injected to keep `@telorun/templating` browser-safe (the kernel supplies Node `crypto`/`Buffer`); `buildCelEnvironment` now accepts a partial handler map. Adds `uuid` as a dependency.
+
+- Updated dependencies [06cfcbf]
+- Updated dependencies [06cfcbf]
+- Updated dependencies [06cfcbf]
+  - @telorun/analyzer@0.20.0
+  - @telorun/templating@0.6.0
+
 ## 0.21.0
 
 ### Patch Changes

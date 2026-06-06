@@ -1,4 +1,0 @@
-project: sql
-kind: Added
-body: 'README: reusing Sql.Query/Exec/Select as top-level named handlers across routes/sequences, and that Sql.Connection is abstract (instantiate Sql.PostgresConnection / Sql.SqliteConnection).'
-time: 2026-06-06T15:40:06.719820035Z
