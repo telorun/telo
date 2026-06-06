@@ -4,6 +4,8 @@ import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
 import { JsonSchemaField } from "./json-schema-field";
 import { MapField } from "./map-field";
 import { ObjectField } from "./object-field";
+import { isOneOfVariantSchema, OneOfVariantField } from "./oneof-variant-field";
+import { ScalarArrayField } from "./scalar-array-field";
 import type { RefResolver } from "./ref-candidates";
 import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
@@ -140,7 +142,7 @@ export function FieldControl({
             onBlur={onBlur}
             resolvedResources={resolvedResources}
             onSelectResource={onSelectResource}
-            rootCelEval={rootCelEval}
+            rootCelEval={evalMode}
             typeKinds={typeKinds}
             registry={registry}
           />
@@ -159,6 +161,25 @@ export function FieldControl({
       );
     }
 
+    if (kind === "object" && isOneOfVariantSchema(prop)) {
+      return (
+        <OneOfVariantField
+          rootFieldName={rootFieldName}
+          fieldPath={fieldPath}
+          prop={prop}
+          value={value}
+          onValueChange={onValueChange}
+          onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
+          resolvedResources={resolvedResources}
+          rootCelEval={evalMode}
+          onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
+        />
+      );
+    }
+
     if (kind === "object" && prop.properties) {
       return (
         <ObjectField
@@ -170,7 +191,7 @@ export function FieldControl({
           onFieldBlur={onFieldBlur}
           onErrorChange={onErrorChange}
           resolvedResources={resolvedResources}
-          rootCelEval={rootCelEval}
+          rootCelEval={evalMode}
           onSelectResource={onSelectResource}
           typeKinds={typeKinds}
           registry={registry}
@@ -192,7 +213,7 @@ export function FieldControl({
           onFieldBlur={onFieldBlur}
           onErrorChange={onErrorChange}
           resolvedResources={resolvedResources}
-          rootCelEval={rootCelEval}
+          rootCelEval={evalMode}
           onSelectResource={onSelectResource}
           typeKinds={typeKinds}
           registry={registry}
@@ -211,7 +232,7 @@ export function FieldControl({
           onFieldBlur={onFieldBlur}
           onErrorChange={onErrorChange}
           resolvedResources={resolvedResources}
-          rootCelEval={rootCelEval}
+          rootCelEval={evalMode}
           onSelectResource={onSelectResource}
           typeKinds={typeKinds}
           registry={registry}
@@ -224,6 +245,25 @@ export function FieldControl({
 
     if (kind === "object") {
       return <JsonSchemaField value={value} onValueChange={onValueChange} onBlur={onBlur} />;
+    }
+
+    if (kind === "array" && prop.items && !["object", "array"].includes(inferType(prop.items))) {
+      return (
+        <ScalarArrayField
+          rootFieldName={rootFieldName}
+          fieldPath={fieldPath}
+          prop={prop}
+          value={value}
+          onValueChange={onValueChange}
+          onFieldBlur={onFieldBlur}
+          onErrorChange={onErrorChange}
+          resolvedResources={resolvedResources}
+          rootCelEval={evalMode}
+          onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
+        />
+      );
     }
 
     if (kind === "array") {

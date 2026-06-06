@@ -9,26 +9,38 @@ import {
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 
+// A migration entry is one statement or an ordered list of statements; both
+// forms normalize to a non-empty array of single statements.
+interface MigrationEntry {
+  statement?: string;
+  statements?: string[];
+}
+
 interface SqlMigrationsManifest {
   metadata: { name: string; module: string };
   connection: SqlConnectionResource;
+  migrations?: Record<string, MigrationEntry>;
 }
 
-interface MigrationEntry {
-  name: string;
-  sql: string;
+function entryStatements(entry: MigrationEntry): string[] {
+  return entry.statements ?? (entry.statement != null ? [entry.statement] : []);
 }
 
 class TeloMigrationProvider implements MigrationProvider {
-  constructor(private readonly migrations: MigrationEntry[]) {}
+  constructor(private readonly migrations: Record<string, string[]>) {}
 
   async getMigrations(): Promise<Record<string, Migration>> {
     return Object.fromEntries(
-      this.migrations.map((m) => [
-        m.name,
+      Object.entries(this.migrations).map(([name, statements]) => [
+        name,
         {
+          // Each statement runs as its own prepared statement on the migration
+          // transaction's connection, so a migration may hold multiple
+          // statements while the whole batch stays a single transaction.
           async up(db: Kysely<any>): Promise<void> {
-            await db.executeQuery(CompiledQuery.raw(m.sql));
+            for (const statement of statements) {
+              await db.executeQuery(CompiledQuery.raw(statement));
+            }
           },
         },
       ]),
@@ -46,17 +58,25 @@ class SqlMigrationsResource implements ResourceInstance {
     const conn =
       resolveSqlConnection(this.manifest.connection, this.ctx) ?? failMissingConnection();
 
-    const migrations: MigrationEntry[] = [];
+    const migrations: Record<string, string[]> = {};
+    // Legacy: standalone `Sql.Migration` resources in the same module scope.
     for (const [, { resource }] of this.ctx.moduleContext.resourceInstances) {
       if (resource.kind === "Sql.Migration") {
         const version = (resource.version ?? resource.metadata.name) as string;
-        migrations.push({
-          name: version,
-          sql: resource.sql as string,
-        });
+        migrations[version] = [resource.sql as string];
       }
     }
-    migrations.sort((a, b) => a.name.localeCompare(b.name));
+    // Preferred: the keyed `migrations` map on this resource.
+    for (const [name, entry] of Object.entries(this.manifest.migrations ?? {})) {
+      const statements = entryStatements(entry);
+      if (statements.length === 0) {
+        throw new Error(
+          `Sql.Migrations: migration '${name}' has no statement(s) — ` +
+            `set 'statement' or a non-empty 'statements'`,
+        );
+      }
+      migrations[name] = statements;
+    }
 
     const migrator = new Migrator({
       db: conn.kysely,

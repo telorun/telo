@@ -58,6 +58,10 @@ controllers:
   - pkg:npm/@telorun/sql@0.5.1?local_path=./nodejs#sql-query
 schema:
   type: object
+  description: >-
+    Runs a SQL query and returns the result rows; `result.rowCount` is the
+    number of rows returned. Use for `SELECT` (and PostgreSQL `… RETURNING`).
+    For mutations with no row result, use `Sql.Exec`.
   properties:
     connection:
       title: Connection
@@ -75,13 +79,21 @@ schema:
         sql:
           title: SQL
           type: string
-          description: SQL query text; may contain CEL template expressions
+          description: >-
+            SQL query text; may contain CEL template expressions. On SQLite
+            exactly one statement is allowed (it runs through a single
+            prepared statement); PostgreSQL accepts multiple.
           contentMediaType: application/sql
           x-telo-widget: code
         bindings:
           title: Bindings
           type: array
-          description: Positional parameters bound to ? placeholders in the SQL string
+          description: >-
+            Positional parameters bound to `?` placeholders in the SQL string.
+            Each value is passed to the driver as-is; drivers accept only
+            primitives (string, number, bigint, null, bytes). Serialize an
+            object/array first, e.g. `!cel "json(request.body)"`, before
+            storing it in a TEXT/JSON column.
       required: [sql]
 ---
 kind: Telo.Definition
@@ -92,6 +104,11 @@ controllers:
   - pkg:npm/@telorun/sql@0.5.1?local_path=./nodejs#sql-exec
 schema:
   type: object
+  description: >-
+    Executes a SQL statement and reports rows affected; `result.rowCount`
+    comes from the driver's affected-row count and `result.rows` is empty
+    unless the statement returns rows. Use for `INSERT` / `UPDATE` / `DELETE`
+    without `RETURNING`. To read rows back, use `Sql.Query`.
   properties:
     connection:
       title: Connection
@@ -109,13 +126,21 @@ schema:
         sql:
           title: SQL
           type: string
-          description: SQL statement text; may contain CEL template expressions
+          description: >-
+            SQL statement text; may contain CEL template expressions. On
+            SQLite exactly one statement is allowed (it runs through a single
+            prepared statement); PostgreSQL accepts multiple.
           contentMediaType: application/sql
           x-telo-widget: code
         bindings:
           title: Bindings
           type: array
-          description: Positional parameters bound to ? placeholders in the SQL string
+          description: >-
+            Positional parameters bound to `?` placeholders in the SQL string.
+            Each value is passed to the driver as-is; drivers accept only
+            primitives (string, number, bigint, null, bytes). Serialize an
+            object/array first, e.g. `!cel "json(request.body)"`, before
+            storing it in a TEXT/JSON column.
       required: [sql]
 ---
 kind: Telo.Definition
@@ -261,6 +286,14 @@ controllers:
 schema:
   type: object
   required: [sql]
+  deprecated: true
+  description: >-
+    [Deprecated] Use the keyed `migrations` map on `Sql.Migrations` instead —
+    move this entry under `Sql.Migrations.migrations` with the `version` value
+    as its key and the `sql` as its value (`{ "<version>": { sql: ... } }`). A
+    standalone `Sql.Migration` is still discovered by any `Sql.Migrations` in
+    the same module scope and merged into its set, so existing manifests keep
+    working; new manifests should declare migrations inline.
   properties:
     version:
       title: Version
@@ -276,7 +309,9 @@ schema:
     sql:
       title: SQL
       type: string
-      description: SQL statement(s) to execute for this migration
+      description: >-
+        SQL to execute for this migration. The body runs as a script, so it
+        may contain multiple `;`-separated statements (any SQL).
       contentMediaType: application/sql
       x-telo-widget: code
 ---
@@ -294,3 +329,46 @@ schema:
       title: Connection
       description: Reference to the SQL connection resource.
       x-telo-ref: "std/sql#Connection"
+    migrations:
+      title: Migrations
+      description: >-
+        Ordered set of migrations keyed by their durable ledger id. Each key is
+        written to the migrations tracking table, decides run order
+        (lexicographic) and identifies the migration forever after — renaming a
+        key makes the migrator treat it as a new migration and re-run it.
+        Conventionally a timestamp-prefixed slug (e.g. `20260419100200_CreateTokens`).
+      type: object
+      x-telo-eval: compile
+      propertyNames:
+        pattern: "^[A-Za-z0-9_.-]+$"
+      additionalProperties:
+        title: Migration
+        description: >-
+          A migration is either a single `statement` or an ordered list of
+          `statements` — exactly one. All statements run inside the single
+          migration transaction, in order.
+        type: object
+        oneOf:
+          - required: [statement]
+          - required: [statements]
+        properties:
+          statement:
+            title: Statement
+            description: >-
+              A single SQL statement to execute. May contain CEL template
+              expressions, evaluated at compile time.
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+          statements:
+            title: Statements
+            description: >-
+              An ordered list of SQL statements, each executed in turn within
+              the migration transaction. Each entry may contain CEL template
+              expressions, evaluated at compile time.
+            type: array
+            minItems: 1
+            items:
+              type: string
+              contentMediaType: application/sql
+              x-telo-widget: code

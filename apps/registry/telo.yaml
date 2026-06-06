@@ -904,22 +904,39 @@ routes:
 # Http.Server. AI agents discover available modules and pull their manifests
 # without needing to know the registry's REST surface.
 
-# get_module_manifest handler — fetches the YAML bytes from S3 and drains the
-# byte stream into a single UTF-8 string so the MCP tool can return it as a
-# `text` content block. PlainText.Decoder accepts the stream-typed S3 output
-# directly (`steps.fetch.result.output` is the stream-marked property; only
-# member access *past* it is forbidden by the analyzer).
+# get_module_manifest handler — resolves the requested version (the literal
+# `latest` maps to the most recently published version), fetches the YAML
+# bytes from S3 and drains the byte stream into a single UTF-8 string so the
+# MCP tool can return it as a `text` content block. PlainText.Decoder accepts
+# the stream-typed S3 output directly (`steps.fetch.result.output` is the
+# stream-marked property; only member access *past* it is forbidden by the
+# analyzer). When the lookup finds no row, the S3 key falls back to a sentinel
+# that 404s, surfacing as the `Module not found` catch below.
 kind: Run.Sequence
 metadata:
   name: GetModuleManifest
 steps:
+  - name: resolve
+    invoke:
+      kind: Sql.Query
+      connection: { kind: Sql.Connection, name: Db }
+    inputs:
+      sql: >-
+        SELECT version FROM modules
+        WHERE namespace = $1 AND name = $2
+          AND ($3 = 'latest' OR version = $3)
+        ORDER BY published_at DESC LIMIT 1
+      bindings:
+        - "${{ inputs.namespace }}"
+        - "${{ inputs.name }}"
+        - "${{ inputs.version }}"
   - name: fetch
     invoke:
       kind: S3.Get
       bucketRef:
         name: ModuleStore
     inputs:
-      key: "${{ inputs.namespace + '/' + inputs.name + '/' + inputs.version + '/telo.yaml' }}"
+      key: "${{ inputs.namespace + '/' + inputs.name + '/' + (steps.resolve.result.rows.size() > 0 ? steps.resolve.result.rows[0].version : '__not_found__') + '/telo.yaml' }}"
   - name: decode
     invoke: { kind: PlainText.Decoder }
     inputs:
@@ -961,17 +978,21 @@ entries:
   # against it.
   - name: get_module_manifest
     description: |
-      Fetch the raw `telo.yaml` for a specific module version. The response
-      contains `Telo.Library`, `Telo.Definition`, and (optionally) `Telo.Import`
-      docs that fully describe the module's public surface (kinds, schemas,
-      capabilities). Discover candidates with `search_modules` first.
+      Fetch the raw `telo.yaml` for a module. The response contains
+      `Telo.Library` and `Telo.Definition` docs that fully describe the
+      module's public surface (kinds, schemas,
+      capabilities). `version` is optional and defaults to `latest` (the most
+      recently published version); pass an explicit version to fetch that one.
     argumentsSchema:
       type: object
       properties:
         namespace: { type: string }
         name: { type: string }
-        version: { type: string }
-      required: [ namespace, name, version ]
+        version:
+          type: string
+          default: latest
+          description: Exact version to fetch, or `latest` (default).
+      required: [ namespace, name ]
       additionalProperties: false
     handler:
       kind: Run.Sequence
@@ -979,7 +1000,7 @@ entries:
     inputs:
       namespace: "${{ request.arguments.namespace }}"
       name: "${{ request.arguments.name }}"
-      version: "${{ request.arguments.version }}"
+      version: "${{ request.arguments.?version.orValue('latest') }}"
     result:
       content:
         - type: text
@@ -1032,8 +1053,8 @@ instructions: !literal |
       telo.yaml
   ```
 
-  Relative `source:` paths on `Telo.Import` resolve from the importing
-  manifest's directory — e.g. `source: ../../libs/some-lib` from
+  Relative `imports` sources resolve from the importing manifest's
+  directory — e.g. `SomeLib: ../../libs/some-lib` from
   `apps/some-app/telo.yaml`.
 
   ## Built-in kinds (do not need importing)
@@ -1050,10 +1071,13 @@ instructions: !literal |
     contract importers must supply), `secrets` (same shape), `exports.kinds`
     (which kinds importers may reference). Cannot be run directly — only
     imported.
-  - `Telo.Import` — declares a dependency on a `Telo.Library`. Required:
-    `metadata.name` (PascalCase alias used as the kind prefix), `source`
-    (a registry id like `std/http-server@1.0.0`, a relative path, or a URL).
-    Optional `variables` / `secrets` pass values into the imported library.
+  - `imports` — a name-keyed map on the `Telo.Application` / `Telo.Library`
+    doc declaring its dependencies on `Telo.Library` modules. Each key is the
+    PascalCase alias used as the kind prefix; each value is the source — a
+    registry id like `std/http-server@1.0.0`, a relative path, or a URL
+    (`Http: std/http-server@1.0.0`). The object form
+    `{ source, variables?, secrets? }` passes values into the imported
+    library. A registry source MUST pin an EXACT version.
   - `Telo.Definition` — declares a new resource kind inside a Library. Read
     these via `get_module_manifest` to discover a module's surface; do not
     write your own.
@@ -1069,6 +1093,55 @@ instructions: !literal |
   - `!cel "resources.AppConfig.port"` — read another resource's snapshot.
   - `!cel "steps.x.result.docs[?0].?metadata.?description.orValue('')"` —
     optional access; safely handles missing intermediates.
+
+  ### Available functions
+
+  This is the complete set — CEL has no `now`, no `Date`, no general
+  standard library beyond what is listed here. If a function is not below,
+  it does not exist; do not invent one.
+
+  Conversion: `string(x)`, `int(x)`, `double(x)`, `bytes(x)`,
+  `timestamp(isoString)`, `type(x)`.
+
+  `dyn(x)` — escape hatch for the strict type checker. CEL rejects
+  heterogeneous lists/maps (e.g. `[1, "a", true]`) unless each element is
+  wrapped: `[dyn(1), dyn("a"), dyn(true)]`. Reach for this whenever you
+  build a mixed-type collection — e.g. positional SQL bind parameters.
+
+  Collections: `size(x)` (string / list / map), `keys(map)`, `values(map)`,
+  list method `.join(sep)` and free function `join(list, sep)`.
+
+  Strings (method form): `.contains(s)`, `.startsWith(s)`, `.endsWith(s)`,
+  `.matches(regex)`, `.indexOf(s)`, `.lastIndexOf(s)`, `.substring(start)`,
+  `.substring(start, end)`.
+
+  Macros: `has(x.field)` (presence test), and on lists
+  `.all(v, cond)`, `.exists(v, cond)`, `.exists_one(v, cond)`,
+  `.map(v, expr)`, `.filter(v, cond)`.
+
+  Telo extras: `sha256(string)`, `json(value)` (serialize any value to a
+  JSON string).
+
+  ### Available variables
+
+  Only these identifiers are in scope; there is **no `now`** for timestamps.
+  Capture a boot-time value via a provider or pass one in through
+  `variables:` instead.
+
+  - `variables`, `secrets` — module inputs, always available.
+  - `resources.<Name>` — another resource's snapshot, after it initializes.
+  - `steps.<name>.result` — a prior step's output, inside a `Run.Sequence`.
+  - `request` — inside an HTTP handler (`query`, `body`, `params`,
+    `headers`, `path`, `method`).
+  - `ports.<name>` — resolved inbound ports, root `Telo.Application` only.
+
+  ### `x-telo-eval` on schema fields
+
+  When a `Telo.Definition` schema annotates a field `x-telo-eval: compile`
+  (or `runtime`), that field accepts a CEL expression — `compile` evaluates
+  it once at load time, `runtime` re-evaluates it on every invocation. You
+  never write the annotation yourself; it tells you the field takes a `!cel`
+  value (e.g. `limit: !cel "inputs.limit"`).
 
   ## Common pitfalls
 
@@ -1090,6 +1163,14 @@ instructions: !literal |
     `object` / `array`), plus any other JSON Schema keywords you want.
     Without `env:`, the entry is a schema violation. The value resolves
     at load time into the `variables.X` / `secrets.X` CEL scope.
+
+  - **YAML maps are the data — don't stringify JSON into a field.**
+    Anywhere a field takes an object (a response `body`, a config value,
+    request `inputs`), write a native YAML map. The runtime serializes it
+    to JSON at the boundary. Pasting a JSON string (e.g. `body: |` followed
+    by a `{ ... }` blob) defeats CEL interpolation, static analysis, and
+    type-checking, and usually double-encodes the value. Use `!cel` for
+    individual dynamic field values inside the map.
 
   - **`JS.Script` is a last resort.** Before reaching for it, search
     the registry for a kind that does the work declaratively — most
@@ -1134,7 +1215,7 @@ instructions: !literal |
     version: 1.0.0
   imports:
     Http: std/http-server@0.4.0
-    Sql: std/sql@0.2.1
+    Sql: std/sql@0.5.1
     Type: std/type@1.0.5
   variables:
     port:
@@ -1156,8 +1237,7 @@ instructions: !literal |
   # ── Shared resource: one Sql.Connection referenced by name from everywhere.
   kind: Sql.Connection
   metadata: { name: Db }
-  driver: sqlite
-  file: !cel "variables.dbFile"
+  connectionString: !cel "'sqlite:' + variables.dbFile"
   ---
   # ── Migrations: the runner + its migration ledger entries.
   kind: Sql.Migrations
@@ -1267,7 +1347,7 @@ instructions: !literal |
   2. For each promising module, call `get_module_manifest` to read its
      `Telo.Definition` documents — those JSON Schemas are the EXACT field
      shapes you must produce. Do not guess from kind names alone.
-  3. Write a `Telo.Application` with the modules you need declared as
-     `Telo.Import` docs, then instantiate resources of the form
-     `kind: <Alias>.<KindName>` using the schemas you read.
+  3. Write a `Telo.Application` with the modules you need declared in its
+     `imports` map (exact-pinned versions), then instantiate resources of the
+     form `kind: <Alias>.<KindName>` using the schemas you read.
 tools: [ RegistryTools ]

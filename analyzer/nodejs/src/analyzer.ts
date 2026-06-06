@@ -540,11 +540,15 @@ function collectCelTypeIssues(
     }
   } else if (data !== null && typeof data === "object") {
     const props = (schema.properties ?? {}) as Record<string, any>;
+    const mapValueSchema =
+      schema.additionalProperties && typeof schema.additionalProperties === "object"
+        ? (schema.additionalProperties as Record<string, any>)
+        : {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       issues.push(
         ...collectCelTypeIssues(
           v,
-          (props[k] ?? {}) as Record<string, any>,
+          (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
           definition,
           manifest,

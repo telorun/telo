@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: CanRunLegacyMigrations
+  version: 1.0.0
+imports:
+  Sql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - Migrate
+  - VerifyLegacy
+---
+kind: Sql.Connection
+metadata:
+  name: Db
+connectionString: "sqlite::memory:"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection:
+  kind: Sql.Connection
+  name: Db
+migrations:
+  20260403_seed_users:
+    statement: "INSERT INTO users (id, name) VALUES (1, 'Alice')"
+---
+kind: Sql.Migration
+metadata:
+  name: Migration_CreateUsers
+version: 20260401_create_users
+sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyLegacy
+steps:
+  - name: Sel
+    inputs:
+      sql: "SELECT name FROM users WHERE id = 1"
+    invoke:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+
+  - name: Chk
+    inputs:
+      rows: "${{ steps.Sel.result.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              properties:
+                name:
+                  const: Alice

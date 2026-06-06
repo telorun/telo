@@ -1,0 +1,86 @@
+kind: Telo.Application
+metadata:
+  name: CanRunMigrations
+  version: 1.0.0
+imports:
+  Sql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - Migrate
+  - VerifyMigrations
+---
+kind: Sql.Connection
+metadata:
+  name: Db
+connectionString: "sqlite::memory:"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection:
+  kind: Sql.Connection
+  name: Db
+migrations:
+  20260401_create_users:
+    statements:
+      - "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+      - "CREATE UNIQUE INDEX users_name ON users(name)"
+      - "INSERT INTO users (id, name) VALUES (1, 'Alice')"
+  20260402_seed_more:
+    statement: "INSERT INTO users (id, name) VALUES (2, 'Bob')"
+  20260403_noop:
+    statement: "UPDATE users SET name = name"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyMigrations
+steps:
+  - name: SelectSeeded
+    inputs:
+      sql: "SELECT name FROM users WHERE id = 1"
+    invoke:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+
+  - name: AssertSeeded
+    inputs:
+      rows: "${{ steps.SelectSeeded.result.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              properties:
+                name:
+                  const: Alice
+
+  - name: SelectLedger
+    inputs:
+      sql: "SELECT name FROM migrations ORDER BY name"
+    invoke:
+      kind: Sql.Query
+      connection:
+        kind: Sql.Connection
+        name: Db
+
+  - name: AssertLedger
+    inputs:
+      rows: "${{ steps.SelectLedger.result.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 3
+            maxItems: 3

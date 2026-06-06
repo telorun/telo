@@ -409,7 +409,14 @@ schema:
                     properties:
                       body:
                         title: Body
-                        description: CEL expression or object mapping for response body (buffer mode).
+                        description: >-
+                          Response body (buffer mode). Write it as a YAML
+                          object — it is serialized to JSON automatically; do
+                          not embed a JSON string. Field values may be `!cel`
+                          expressions (e.g. `count: !cel "result.rowCount"`)
+                          or inline CEL interpolations, so the body stays
+                          statically analyzable and type-checked. A bare
+                          `!cel` expression or a scalar is also accepted.
                       schema:
                         title: Schema
                         description: JSON Schema used to validate the rendered body (buffer mode).
