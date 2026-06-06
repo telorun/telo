@@ -22,7 +22,7 @@ interface TabEntry {
 }
 
 const VIEW_TABS: TabEntry[] = [
-  { id: "topology", label: "Topology" },
+  { id: "topology", label: "Graph" },
   { id: "imports", label: "Imports" },
   { id: "definitions", label: "Definitions" },
   { id: "resources", label: "Resources" },

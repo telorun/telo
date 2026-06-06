@@ -2,7 +2,8 @@ import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import type { RefResolver } from "./ref-candidates";
+import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 
 interface ArrayObjectFieldProps {
   rootFieldName: string;
@@ -15,6 +16,8 @@ interface ArrayObjectFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  typeKinds?: TypeKindOption[];
+  registry?: RefResolver | null;
 }
 
 function setObjectChild(
@@ -42,6 +45,8 @@ export function ArrayObjectField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  typeKinds,
+  registry,
 }: ArrayObjectFieldProps) {
   const itemSchema = prop.items as JsonSchemaProperty;
   const entries = Array.isArray(value) ? value : [];
@@ -52,7 +57,7 @@ export function ArrayObjectField({
     const next: Record<string, unknown> = {};
     for (const [itemName, itemProp] of Object.entries(itemProperties)) {
       if (!itemRequired.has(itemName) && itemProp.default === undefined) continue;
-      const initial = buildEditorDefaultValue(itemProp, resolvedResources);
+      const initial = buildEditorDefaultValue(itemProp, resolvedResources, registry);
       if (initial !== undefined) next[itemName] = initial;
     }
     return next;
@@ -116,6 +121,8 @@ export function ArrayObjectField({
                       resolvedResources={resolvedResources}
                       rootCelEval={rootCelEval}
                       onSelectResource={onSelectResource}
+                      typeKinds={typeKinds}
+                      registry={registry}
                       label={itemLabel}
                       required={itemRequired.has(itemName)}
                     />

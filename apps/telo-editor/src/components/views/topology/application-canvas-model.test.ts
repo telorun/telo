@@ -331,6 +331,122 @@ describe("buildApplicationCanvasModel", () => {
     ]);
   });
 
+  it("narrows picker candidates to the ref's abstract, not every base-capability resource", () => {
+    // A field typed to a specific provider abstract must only offer that
+    // abstract's implementations — not every Telo.Provider in the module.
+    const reg = new AnalysisRegistry();
+    reg.registerModuleIdentity("std", "demo");
+    reg.registerDefinition({
+      kind: "Telo.Abstract",
+      metadata: { name: "SessionProvider", module: "demo" },
+      capability: "Telo.Provider",
+    } as unknown as ResourceDefinition);
+    reg.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "RedisSession", module: "demo" },
+      capability: "Telo.Provider",
+      extends: "demo.SessionProvider",
+      schema: { type: "object", properties: {} },
+    } as unknown as ResourceDefinition);
+    reg.registerDefinition(definition("OtherProvider", "Telo.Provider"));
+    reg.registerDefinition(
+      definition("Client", "Telo.Invocable", {
+        sessionProvider: { "x-telo-ref": "std/demo#SessionProvider" },
+      }),
+    );
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["c"],
+      resources: [
+        moduleRootResource(root),
+        { kind: "demo.Client", name: "c", fields: {} },
+        { kind: "demo.RedisSession", name: "redis", fields: {} },
+        { kind: "demo.OtherProvider", name: "other", fields: {} },
+      ],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Client", kind("demo.Client", "Telo.Invocable")],
+      ["demo.RedisSession", kind("demo.RedisSession", "Telo.Provider")],
+      ["demo.OtherProvider", kind("demo.OtherProvider", "Telo.Provider")],
+    ]);
+
+    const model = buildApplicationCanvasModel({ manifest, kinds, sourceFiles: [] }, reg, ["c"]);
+    const port = model.nodes.find((n) => n.name === "c")?.ports?.find((p) => p.key === "sessionProvider");
+
+    expect(port?.flavor).toBe("picker");
+    // Only the SessionProvider implementation — not the unrelated provider.
+    expect(port?.candidates).toEqual(["redis"]);
+  });
+
+  it("resolves invocable input/output signatures and keeps them off the port rail", () => {
+    // A Script-like invocable carrying its types on the instance: an inline
+    // input schema and a named-type output reference.
+    const SCRIPT_SCHEMA: Record<string, unknown> = {
+      type: "object",
+      properties: {
+        inputType: {
+          "x-telo-ref": "telo#Type",
+          oneOf: [{ type: "string" }, { type: "object", additionalProperties: true }],
+        },
+        outputType: {
+          "x-telo-ref": "telo#Type",
+          oneOf: [{ type: "string" }, { type: "object", additionalProperties: true }],
+        },
+      },
+    };
+
+    const reg = new AnalysisRegistry();
+    reg.registerModuleIdentity("std", "demo");
+    reg.registerDefinition(definition("Script", "Telo.Invocable", SCRIPT_SCHEMA.properties as Record<string, unknown>));
+    reg.registerDefinition(definition("Shape", "Telo.Type"));
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["s"],
+      resources: [
+        moduleRootResource(root),
+        {
+          kind: "demo.Script",
+          name: "s",
+          fields: {
+            inputType: { type: "object", properties: { q: { type: "string" } } },
+            outputType: "Shape",
+          },
+        },
+        { kind: "demo.Shape", name: "Shape", fields: { schema: { type: "object", properties: { ok: { type: "boolean" } } } } },
+      ],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Script", kind("demo.Script", "Telo.Invocable", SCRIPT_SCHEMA)],
+      ["demo.Shape", kind("demo.Shape", "Telo.Type")],
+    ]);
+
+    const model = buildApplicationCanvasModel({ manifest, kinds, sourceFiles: [] }, reg, ["s"]);
+    const script = model.nodes.find((n) => n.name === "s");
+
+    // Inline input schema flows straight through; the field schema is carried so
+    // the pill can open a focused editor.
+    expect(script?.inputType).toEqual({
+      set: true,
+      schema: { type: "object", properties: { q: { type: "string" } } },
+      fieldSchema: (SCRIPT_SCHEMA.properties as Record<string, unknown>).inputType,
+    });
+    // Named output reference resolves its shape from the Type resource.
+    expect(script?.outputType).toEqual({
+      set: true,
+      name: "Shape",
+      schema: { type: "object", properties: { ok: { type: "boolean" } } },
+      fieldSchema: (SCRIPT_SCHEMA.properties as Record<string, unknown>).outputType,
+    });
+    // The type fields are signatures, not picker ports.
+    expect(script?.ports ?? []).toEqual([]);
+  });
+
   it("builds the same canvas for a Library, with no target edges", () => {
     const model = buildApplicationCanvasModel(libraryViewData(), registry(), []);
 

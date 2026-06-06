@@ -5,7 +5,8 @@ import { isRecord, shallowEqualObject } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
 import { FieldControl } from "./field-control";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import type { RefResolver } from "./ref-candidates";
+import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 
 interface MapFieldProps {
   rootFieldName: string;
@@ -18,6 +19,8 @@ interface MapFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  typeKinds?: TypeKindOption[];
+  registry?: RefResolver | null;
   label?: string;
   required?: boolean;
   /** Render each entry inline: an aligned key column plus the value object's
@@ -49,6 +52,8 @@ export function MapField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  typeKinds,
+  registry,
   label,
   required,
   flat = false,
@@ -161,7 +166,7 @@ export function MapField({
   function handleAdd() {
     const nextRows: Row[] = [
       ...rows,
-      { id: newId(), key: "", value: buildEditorDefaultValue(valueSchema, resolvedResources) },
+      { id: newId(), key: "", value: buildEditorDefaultValue(valueSchema, resolvedResources, registry) },
     ];
     setRows(nextRows);
     // No emit — empty key is invalid, so the row exists in UI only until the
@@ -316,6 +321,8 @@ export function MapField({
                   resolvedResources={resolvedResources}
                   rootCelEval={rootCelEval}
                   onSelectResource={onSelectResource}
+                  typeKinds={typeKinds}
+                  registry={registry}
                   flat={flatEntry}
                 />
               </div>

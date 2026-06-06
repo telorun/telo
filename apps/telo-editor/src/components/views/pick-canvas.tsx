@@ -1,6 +1,7 @@
 import { MODULE_OVERVIEW_TOPOLOGY } from "../../application-adapter";
 import type { CanvasViewport, ParsedResource, Selection } from "../../model";
-import type { ResolvedResourceOption } from "../resource-schema-form/types";
+import type { RefResolver } from "../resource-schema-form/ref-candidates";
+import type { ResolvedResourceOption, TypeKindOption } from "../resource-schema-form/types";
 import { ResourceCanvas } from "./resource-canvas/ResourceCanvas";
 import { ApplicationTopologyCanvas } from "./topology/ApplicationTopologyCanvas";
 import type { AppCanvasModel, RefWrite } from "./topology/application-canvas-model";
@@ -12,6 +13,10 @@ interface PickCanvasProps {
   schema: Record<string, unknown>;
   topology?: string;
   resolvedResources: ResolvedResourceOption[];
+  /** Imported `Telo.Type` kinds offered for inline type fields. */
+  typeKinds?: TypeKindOption[];
+  /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
+  registry?: RefResolver | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
@@ -27,6 +32,9 @@ interface PickCanvasProps {
   onCanvasViewportChange?: (viewport: CanvasViewport) => void;
   /** Currently selected resource — highlights the matching overview node. */
   selectedResource?: { kind: string; name: string } | null;
+  /** Active pointer-scoped selection — suppresses the node highlight when a
+   *  sub-field (in/out type, edge inputs) is what's focused. */
+  selection?: Selection | null;
   /** Removes a resource (overview-canvas Delete key). */
   onDeleteResource?: (kind: string, name: string) => void;
   /** Applies reference writes from the overview canvas (drag-to-wire, edge
@@ -47,6 +55,8 @@ export function PickCanvas({
   schema,
   topology,
   resolvedResources,
+  typeKinds,
+  registry,
   onUpdateResource,
   onSelectResource,
   onSelect,
@@ -56,6 +66,7 @@ export function PickCanvas({
   canvasViewport,
   onCanvasViewportChange,
   selectedResource,
+  selection,
   onDeleteResource,
   onWriteRef,
   onCreateResource,
@@ -76,6 +87,7 @@ export function PickCanvas({
         viewport={canvasViewport}
         onViewportChange={onCanvasViewportChange}
         selectedResource={selectedResource}
+        selection={selection}
         onDeleteResource={onDeleteResource}
         onSelectResource={onSelectResource}
         onWriteRef={onWriteRef}
@@ -115,6 +127,8 @@ export function PickCanvas({
       resource={resource}
       schema={schema}
       resolvedResources={resolvedResources}
+      typeKinds={typeKinds}
+      registry={registry}
       onUpdateResource={onUpdateResource}
       onSelectResource={onSelectResource}
       onBackgroundClick={onBackgroundClick}

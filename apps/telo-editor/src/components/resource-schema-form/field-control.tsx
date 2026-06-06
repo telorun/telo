@@ -4,9 +4,11 @@ import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
 import { JsonSchemaField } from "./json-schema-field";
 import { MapField } from "./map-field";
 import { ObjectField } from "./object-field";
+import type { RefResolver } from "./ref-candidates";
 import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import { TypeField } from "./type-field";
+import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 import { UnsupportedField } from "./unsupported-field";
 
 interface FieldControlProps {
@@ -31,6 +33,10 @@ interface FieldControlProps {
   rootCelEval?: CelEvalMode | null;
   /** Propagated to `ReferenceSelectField` so ref chips can open the peek panel. */
   onSelectResource?: (kind: string, name: string) => void;
+  /** Imported `Telo.Type` kinds offered for inline type fields. */
+  typeKinds?: TypeKindOption[];
+  /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
+  registry?: RefResolver | null;
   /** User-facing label for the field — used by `ObjectField`/`MapField` as the
    *  collapsible trigger title. Ignored by non-self-headed field types. */
   label?: string;
@@ -100,6 +106,8 @@ export function FieldControl({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  typeKinds,
+  registry,
   label,
   required,
   flat,
@@ -117,6 +125,27 @@ export function FieldControl({
           typeof item === "object" && item !== null && typeof item["x-telo-ref"] === "string",
       );
     if (hasDirectRef || hasNestedRef) {
+      // A ref field that also permits an inline object (e.g. an invocable's
+      // `inputType`/`outputType`) gets a Reference/Inline toggle so an empty
+      // candidate list isn't a dead end.
+      const allowsInlineObject = (prop.oneOf ?? prop.anyOf ?? []).some(
+        (item) => typeof item === "object" && item !== null && item.type === "object",
+      );
+      if (allowsInlineObject) {
+        return (
+          <TypeField
+            prop={prop}
+            value={value}
+            onValueChange={onValueChange}
+            onBlur={onBlur}
+            resolvedResources={resolvedResources}
+            onSelectResource={onSelectResource}
+            rootCelEval={rootCelEval}
+            typeKinds={typeKinds}
+            registry={registry}
+          />
+        );
+      }
       return (
         <ReferenceSelectField
           prop={prop}
@@ -124,6 +153,7 @@ export function FieldControl({
           onValueChange={onValueChange}
           onBlur={onBlur}
           resolvedResources={resolvedResources}
+          registry={registry}
           onSelectResource={onSelectResource}
         />
       );
@@ -142,6 +172,8 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
           label={label}
           required={required}
           flat={flat}
@@ -162,6 +194,8 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
         />
       );
     }
@@ -179,6 +213,8 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          typeKinds={typeKinds}
+          registry={registry}
           label={label}
           required={required}
           flat={flat}

@@ -1,5 +1,5 @@
 import { inferType } from "./field-control";
-import { inferRefMode, resolveRefCandidates, toRefValue } from "./ref-candidates";
+import { inferRefMode, resolveRefCandidates, toRefValue, type RefResolver } from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 /** Editor-coupled default-value builder. Aware of `x-telo-ref` resolution
@@ -8,12 +8,13 @@ import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 export function buildEditorDefaultValue(
   prop: JsonSchemaProperty,
   resolvedResources: ResolvedResourceOption[],
+  registry?: RefResolver | null,
 ): unknown {
   if (prop.default !== undefined) return prop.default;
 
   const refTarget = prop["x-telo-ref"];
   if (typeof refTarget === "string") {
-    const options = resolveRefCandidates([refTarget], resolvedResources);
+    const options = resolveRefCandidates([refTarget], resolvedResources, registry);
     if (options.length === 0) return undefined;
     return toRefValue(options[0], inferRefMode(prop));
   }

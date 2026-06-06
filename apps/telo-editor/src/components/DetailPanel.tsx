@@ -8,7 +8,8 @@ import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/Diagnosti
 import { APPLICATION_KIND_ID, isModuleRootKind, moduleRootFormSchema } from "../application-adapter";
 import { ModuleRootTargetsSummary } from "./ModuleRootDetailBody";
 import { Button } from "./ui/button";
-import type { ResolvedResourceOption } from "./ResourceSchemaForm";
+import type { RefResolver } from "./resource-schema-form/ref-candidates";
+import type { ResolvedResourceOption, TypeKindOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
 import { PickCanvas } from "./views/pick-canvas";
 
@@ -17,6 +18,8 @@ interface DetailPanelProps {
   graphContext: { kind: string; name: string } | null;
   selection: Selection | null;
   viewData: ModuleViewData | null;
+  /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
+  registry: RefResolver | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
@@ -81,6 +84,7 @@ export function DetailPanel({
   graphContext,
   selection,
   viewData,
+  registry,
   onUpdateResource,
   onSelectResource,
   onSelect,
@@ -102,6 +106,17 @@ export function DetailPanel({
         name: r.name,
         capability: viewData?.kinds.get(r.kind)?.capability || undefined,
       })),
+    [viewData],
+  );
+
+  // Imported `Telo.Type` kinds — the type systems available to instantiate
+  // inline (JSON Schema, Cue, …). Sourced from the module's available kinds, so
+  // only what the manifest actually imports is offered.
+  const typeKinds: TypeKindOption[] = useMemo(
+    () =>
+      [...(viewData?.kinds.values() ?? [])]
+        .filter((k) => k.capability === "Telo.Type")
+        .map((k) => ({ kind: k.fullKind, schema: k.schema })),
     [viewData],
   );
 
@@ -234,6 +249,10 @@ export function DetailPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionContext, resource]);
 
+  // Hooks must run unconditionally — keep them above the early return below.
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+
   if (!resource) return null;
 
   const resourceKind = viewData?.kinds.get(resource.kind);
@@ -241,8 +260,6 @@ export function DetailPanel({
   const resourceTopology = resourceKind?.topology;
   const isGraphContext =
     graphContext?.kind === resource.kind && graphContext?.name === resource.name;
-  const diagState = useDiagnosticsState();
-  const filePaths = useActiveFilePaths();
   const detailSummary = summarizeResource(diagState, filePaths, resource.name);
 
   return (
@@ -286,6 +303,8 @@ export function DetailPanel({
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
+              typeKinds={typeKinds}
+              registry={registry}
               flat={isModuleRootKind(resource.kind)}
             />
           </div>
@@ -299,6 +318,8 @@ export function DetailPanel({
             schema={resourceSchema}
             topology={resourceTopology}
             resolvedResources={resolvedResources}
+            typeKinds={typeKinds}
+            registry={registry}
             onUpdateResource={onUpdateResource}
             onSelectResource={onSelectResource}
             onSelect={onSelect}

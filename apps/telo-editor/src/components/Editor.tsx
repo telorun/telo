@@ -1,4 +1,3 @@
-import type { ManifestSource } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { File as FileIcon } from "lucide-react";
@@ -8,48 +7,35 @@ import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
 import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
+import { useImportOps } from "../hooks/useImportOps";
+import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
+import { INITIAL_STATE, defaultGraphContext, pickInitialActiveModule } from "../editor-state";
 import {
-  addImportViaAst,
-  buildFileTree,
-  buildRemoteImportPlan,
-  classifyImport,
-  clearManifestUrlParam,
   createModule,
   createRegistryAdapters,
   createResourceViaAst,
-  createVirtualWorkspaceAdapter,
   deleteModule,
   hasUnresolvedImports,
-  isWorkspaceModule,
   loadWorkspace,
   noopAdapter,
   normalizePath,
-  openWorkspaceDirectory,
   persistWorkspaceModule,
-  readManifestUrlParam,
   rebuildManifestFromDocuments,
   reconcileImports,
-  removeImportViaAst,
   removeResourceViaAst,
-  reopenWorkspaceAt,
   setResourceFields,
-  upgradeImportViaAst,
   VIRTUAL_WORKSPACE_ROOT,
-  writeRemoteImportPlan,
 } from "../loader";
-import type { FileNode, RemoteImportPlan } from "../loader";
 import { pathBasename, pathDirname, pathJoin } from "../loader/paths";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
-import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
+import type { CanvasViewport, ModuleDocument } from "../model";
 import type {
   EditorState,
-  EditorTab,
   ModuleKind,
   PortMapping,
   Selection,
   ViewId,
   Workspace,
-  WorkspaceAdapter,
 } from "../model";
 import { closeTab, findTab, neighborTab, upsertTab } from "../tabs";
 import { DEFAULT_SETTINGS } from "../model";
@@ -64,10 +50,7 @@ import {
   RunView,
   useRun,
 } from "../run";
-import {
-  loadDeploymentsForWorkspace,
-  saveDeploymentsForWorkspace,
-} from "../storage-deployments";
+import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { buildModuleViewData } from "../view-data";
 import {
   AlertDialog,
@@ -89,16 +72,11 @@ import {
 } from "./ui/toast";
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
 import { CreateResourceModal } from "./CreateResourceModal";
-import { DetailPanel } from "./DetailPanel";
 import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
-import {
-  setActiveRegistry,
-  setActiveSettings,
-  setActiveWorkspaceAdapter,
-} from "./views/source/register-completion";
+import { setActiveRegistry } from "./views/source/register-completion";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -109,26 +87,6 @@ import type { RefWrite } from "./views/topology/application-canvas-model";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
 import type { Range } from "@telorun/analyzer";
 
-const INITIAL_STATE: EditorState = {
-  workspace: null,
-  activeModulePath: null,
-  openTabs: [],
-  activeTabId: null,
-  expandedDirs: [],
-  activeView: "topology",
-  graphContext: null,
-  selectedResource: null,
-  panelStack: [],
-  diagnostics: {
-    byResource: new Map(),
-    byFile: new Map(),
-    registryByFile: new Map(),
-  },
-  sourceRevealRequest: null,
-  deploymentsByApp: {},
-  viewportByModule: {},
-};
-
 /** Shallow, order-sensitive equality for `include:` lists. Used to detect
  *  source-edits that changed the owner module's partial-file set so Editor
  *  can trigger a full workspace reload — `rebuildManifestFromDocuments`
@@ -137,31 +95,6 @@ function includesEqual(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
-}
-
-function pickInitialActiveModule(workspace: Workspace): string | null {
-  const entries = [...workspace.modules.entries()].filter(([path]) =>
-    isWorkspaceModule(workspace, path),
-  );
-  entries.sort((a, b) => a[0].localeCompare(b[0]));
-  const app = entries.find(([, m]) => m.kind === "Application");
-  if (app) return app[0];
-  const lib = entries.find(([, m]) => m.kind === "Library");
-  if (lib) return lib[0];
-  return null;
-}
-
-/** The canvas focus a module lands on when opened — its overview graph, rooted
- *  at the synthesized `Telo.Application` / `Telo.Library` node. */
-function defaultGraphContext(
-  workspace: Workspace | null,
-  modulePath: string | null,
-): { kind: string; name: string } | null {
-  if (!workspace || !modulePath) return null;
-  const module = workspace.modules.get(modulePath);
-  if (!module) return null;
-  const kind = module.kind === "Application" ? "Telo.Application" : "Telo.Library";
-  return { kind, name: module.metadata.name };
 }
 
 /** Activates a module: ensures a module tab exists, makes it the active tab,
@@ -187,89 +120,35 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
   };
 }
 
-/** Restores persisted tabs against a freshly-loaded workspace: drops module
- *  tabs whose module no longer exists (file tabs are kept — the FileEditor
- *  surfaces a missing file itself), ensures the active module has a tab, and
- *  picks a valid active tab. */
-function restoreTabs(
-  workspace: Workspace,
-  persisted: { openTabs: EditorTab[]; activeTabId: string | null },
-  activeModulePath: string | null,
-): { openTabs: EditorTab[]; activeTabId: string | null } {
-  let openTabs = persisted.openTabs.filter(
-    (t) => t.type === "file" || workspace.modules.has(t.path),
-  );
-  if (activeModulePath && !openTabs.some((t) => t.type === "module" && t.path === activeModulePath)) {
-    openTabs = [...openTabs, { type: "module", path: activeModulePath }];
-  }
-  const activeTabId =
-    persisted.activeTabId && openTabs.some((t) => t.path === persisted.activeTabId)
-      ? persisted.activeTabId
-      : (activeModulePath ?? openTabs[0]?.path ?? null);
-  return { openTabs, activeTabId };
-}
-
-/** Whether a created / renamed / moved / deleted path could change module
- *  discovery or parsing — a `telo.yaml` (any location), or a path that is (or
- *  contains) a file currently tracked as part of a module. Used to decide
- *  whether a file op needs a full workspace reload or just a tree refresh. */
-function affectsModuleStructure(workspace: Workspace, p: string): boolean {
-  const base = pathBasename(p);
-  if (base === "telo.yaml" || base === "telo.yml") return true;
-  const key = normalizePath(p);
-  for (const manifest of workspace.modules.values()) {
-    for (const f of getModuleFiles(manifest)) {
-      if (f === key || f.startsWith(key + "/")) return true;
-    }
-  }
-  return false;
-}
-
-/** Reconciles open tabs against a freshly-reloaded workspace: drops module
- *  tabs whose module no longer exists, keeps file tabs, and repairs the active
- *  tab / module pointers. Used after a structural file op reloads the
- *  workspace. */
-function reconcileWorkspaceTabs(s: EditorState, reloaded: Workspace): EditorState {
-  const openTabs = s.openTabs.filter((t) => t.type === "file" || reloaded.modules.has(t.path));
-  let activeTabId = s.activeTabId;
-  if (activeTabId && !openTabs.some((t) => t.path === activeTabId)) {
-    activeTabId = openTabs[0]?.path ?? null;
-  }
-  const activeTab = openTabs.find((t) => t.path === activeTabId) ?? null;
-  let activeModulePath = s.activeModulePath;
-  if (activeTab?.type === "module") activeModulePath = activeTab.path;
-  else if (activeModulePath && !reloaded.modules.has(activeModulePath)) activeModulePath = null;
-  return { ...s, workspace: reloaded, openTabs, activeTabId, activeModulePath };
-}
-
 export function Editor() {
   const { state, setState, settings, setSettings, persistedHint } = useEditorPersistence(
     INITIAL_STATE,
     DEFAULT_SETTINGS,
   );
   const runContext = useRun();
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
-  // A resolved remote-open plan (root + same-origin relative cascade), held
-  // until the user confirms or cancels importing it into the workspace.
-  const [pendingImport, setPendingImport] = useState<{
-    adapter: ManifestSource & WorkspaceAdapter;
-    plan: RemoteImportPlan;
-  } | null>(null);
-  const [toast, setToast] = useState<{ title: string; description?: string } | null>(null);
-  const [fileTree, setFileTree] = useState<FileNode[]>([]);
 
-  const manifestAdapterRef = useRef<ManifestSource | null>(null);
-  const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
+  // Workspace bootstrap (open / restore / remote-import), the adapter refs every
+  // other handler reads, the explorer file tree, and the post-file-op reload.
+  const {
+    loading,
+    pendingImport,
+    toast,
+    setToast,
+    fileTree,
+    manifestAdapterRef,
+    workspaceAdapterRef,
+    handleOpen,
+    handleConfirmImport,
+    onImportDialogOpenChange,
+    refreshFileTree,
+    afterFileMutation,
+  } = useWorkspaceLifecycle({ state, setState, settings, persistedHint, setError });
+
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoRestoredRef = useRef(false);
-  const remoteImportRef = useRef(false);
-  // Set while the overwrite dialog is closing because the user confirmed, so
-  // the close handler can skip the cancel fallback.
-  const confirmingRef = useRef(false);
   // History manager lives in state so (a) construction runs in an effect, not
   // during render, and (b) swapping when rootDir changes triggers a re-render.
   // `historyVersion` bumps on every recordEdit/undo/redo; `canUndo`/`canRedo`
@@ -318,172 +197,6 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Persists a resolved remote-open plan into the virtual workspace, loads it,
-  // and makes the root the active module. Does not manage the `loading` flag —
-  // callers do.
-  async function finishRemoteImport(
-    adapter: ManifestSource & WorkspaceAdapter,
-    plan: RemoteImportPlan,
-  ) {
-    await writeRemoteImportPlan(adapter, plan);
-    manifestAdapterRef.current = adapter;
-    workspaceAdapterRef.current = adapter;
-    const workspace = await loadWorkspace(
-      VIRTUAL_WORKSPACE_ROOT,
-      adapter,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    setState({
-      ...INITIAL_STATE,
-      workspace,
-      activeModulePath: plan.rootDestPath,
-      openTabs: [{ type: "module", path: plan.rootDestPath }],
-      activeTabId: plan.rootDestPath,
-      graphContext: defaultGraphContext(workspace, plan.rootDestPath),
-      deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
-    });
-    const depCount = plan.files.length - 1;
-    setToast({
-      title: "Imported into workspace",
-      description:
-        depCount > 0
-          ? `${plan.name} and ${depCount} dependenc${depCount === 1 ? "y" : "ies"} added.`
-          : `${plan.name} is now editable locally.`,
-    });
-  }
-
-  // Re-attaches the last workspace from the persisted hint (Tauri filesystem /
-  // browser localStorage). Shared by the mount-time auto-restore and the
-  // overwrite-cancel fallback. `shouldAbort` lets the mount effect bail if it
-  // unmounts mid-load.
-  async function restoreLastWorkspace(shouldAbort?: () => boolean) {
-    if (!persistedHint?.rootDir) return;
-    const reopened = reopenWorkspaceAt(persistedHint.rootDir);
-    if (!reopened) return;
-    manifestAdapterRef.current = reopened.manifestAdapter;
-    workspaceAdapterRef.current = reopened.workspaceAdapter;
-    const workspace = await loadWorkspace(
-      reopened.rootDir,
-      reopened.manifestAdapter,
-      reopened.workspaceAdapter,
-      createRegistryAdapters(settings),
-    );
-    if (shouldAbort?.()) return;
-    const nextActiveModulePath =
-      persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
-        ? persistedHint.activeModulePath
-        : pickInitialActiveModule(workspace);
-    const nextActiveModule = nextActiveModulePath
-      ? workspace.modules.get(nextActiveModulePath)
-      : null;
-    // Deployment view only makes sense for Applications; if the persisted view
-    // is "deployment" and the active module is a Library, fall back to topology.
-    const persistedView = persistedHint.activeView;
-    const nextActiveView: ViewId =
-      persistedView === "deployment" && nextActiveModule?.kind !== "Application"
-        ? "topology"
-        : (persistedView ?? "topology");
-    const { openTabs, activeTabId } = restoreTabs(
-      workspace,
-      { openTabs: persistedHint.openTabs, activeTabId: persistedHint.activeTabId },
-      nextActiveModulePath,
-    );
-    setState((s) => ({
-      ...s,
-      workspace,
-      activeModulePath: nextActiveModulePath,
-      activeView: nextActiveView,
-      openTabs,
-      activeTabId,
-      expandedDirs: persistedHint.expandedDirs,
-      graphContext: defaultGraphContext(workspace, nextActiveModulePath),
-      deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
-    }));
-  }
-
-  // "Open in Telo Editor": when launched with `?open=<url>`, resolve the
-  // manifest and its same-origin relative cascade into an import plan and
-  // always surface it for confirmation before persisting. Takes precedence
-  // over the silent auto-restore below. Runs once per mount.
-  useEffect(() => {
-    if (remoteImportRef.current) return;
-    const url = readManifestUrlParam(window.location.search);
-    if (!url) return;
-    remoteImportRef.current = true;
-    autoRestoredRef.current = true;
-    clearManifestUrlParam();
-    setError(null);
-    setLoading(true);
-    let cancelled = false;
-    (async () => {
-      try {
-        const adapter = createVirtualWorkspaceAdapter();
-        const plan = await buildRemoteImportPlan(url, adapter, createRegistryAdapters(settings));
-        if (!cancelled) setPendingImport({ adapter, plan });
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Runs once on mount; the guard ref prevents re-import on settings changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-restore the last workspace on mount, when the environment allows
-  // re-attaching without a user gesture (Tauri filesystem, browser localStorage).
-  // FSA can't silently re-attach — user sees the recent rootDir hint instead.
-  useEffect(() => {
-    if (autoRestoredRef.current) return;
-    if (!persistedHint?.rootDir) return;
-    if (state.workspace) return;
-    autoRestoredRef.current = true;
-    let cancelled = false;
-    restoreLastWorkspace(() => cancelled).catch((err) => {
-      if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedHint, state.workspace, settings, setState]);
-
-  // Rebuild the raw file tree when the workspace root changes (open / restore /
-  // remote-import). Keyed on rootDir, not the workspace object, so the common
-  // case of an in-place edit producing a new workspace object doesn't trigger a
-  // full disk re-walk on every keystroke. Structural file ops refresh the tree
-  // explicitly via `refreshFileTree`.
-  useEffect(() => {
-    const ws = state.workspace;
-    const adapter = workspaceAdapterRef.current;
-    if (!ws || !adapter) {
-      setFileTree([]);
-      return;
-    }
-    let cancelled = false;
-    buildFileTree(ws.rootDir, adapter)
-      .then((tree) => {
-        if (cancelled) return;
-        setFileTree(tree);
-        // Expand the top-level directories by default — but only when nothing is
-        // already expanded, so a restored (or user-collapsed) tree is preserved.
-        setState((s) => {
-          if (s.expandedDirs.length > 0) return s;
-          const topDirs = tree.filter((n) => n.isDirectory).map((n) => n.path);
-          return topDirs.length ? { ...s, expandedDirs: topDirs } : s;
-        });
-      })
-      .catch((err) => console.error("Failed to build file tree:", err));
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.workspace?.rootDir]);
-
   // Debounced analysis: re-analyze whenever the workspace changes
   useEffect(() => {
     if (!state.workspace) return;
@@ -510,17 +223,6 @@ export function Editor() {
     setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
   }, [state.diagnostics, state.activeModulePath]);
 
-  // Keep the source-view completion provider's side-channel refs in sync with
-  // the current workspace adapter + settings. The provider needs the
-  // WorkspaceAdapter (to list directories for relative-path completion) and
-  // the registry server list (to fan out search/version queries). Both are
-  // ambient at the time a completion request fires — refs avoid re-registering
-  // the Monaco provider on every workspace/settings change.
-  useEffect(() => {
-    setActiveWorkspaceAdapter(workspaceAdapterRef.current ?? undefined);
-    setActiveSettings(settings);
-  }, [state.workspace, settings]);
-
   // Persist deployment config on every mutation. Workspace-scoped, stored
   // under its own localStorage key (not via saveState).
   useEffect(() => {
@@ -541,69 +243,6 @@ export function Editor() {
   const activeAppRun = activeAppPath
     ? (runContext.liveRunForApp(activeAppPath) ?? runContext.latestRunForApp(activeAppPath))
     : null;
-
-  // ---------------------------------------------------------------------------
-  // Workspace lifecycle
-  // ---------------------------------------------------------------------------
-
-  async function handleOpen() {
-    setError(null);
-    setLoading(true);
-    try {
-      const opened = await openWorkspaceDirectory();
-      if (!opened) return;
-      manifestAdapterRef.current = opened.manifestAdapter;
-      workspaceAdapterRef.current = opened.workspaceAdapter;
-      const workspace = await loadWorkspace(
-        opened.rootDir,
-        opened.manifestAdapter,
-        opened.workspaceAdapter,
-        createRegistryAdapters(settings),
-      );
-      const initialActivePath = pickInitialActiveModule(workspace);
-      setState({
-        ...INITIAL_STATE,
-        workspace,
-        activeModulePath: initialActivePath,
-        openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
-        activeTabId: initialActivePath,
-        graphContext: defaultGraphContext(workspace, initialActivePath),
-        deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleConfirmImport() {
-    const pending = pendingImport;
-    if (!pending) return;
-    confirmingRef.current = true;
-    setPendingImport(null);
-    setError(null);
-    setLoading(true);
-    try {
-      await finishRemoteImport(pending.adapter, pending.plan);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // User declined the import (Cancel / Escape). Abort and fall
-  // back to the last workspace the remote-import flow suppressed, so the editor
-  // isn't left empty when one was restorable.
-  function cancelRemoteImport() {
-    setPendingImport(null);
-    if (state.workspace) return;
-    setLoading(true);
-    restoreLastWorkspace()
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }
 
   // ---------------------------------------------------------------------------
   // Module creation + deletion
@@ -834,72 +473,9 @@ export function Editor() {
     return next;
   }
 
-  // ---------------------------------------------------------------------------
-  // Import authoring
-  // ---------------------------------------------------------------------------
-
-  async function handleAddImport(source: string, alias: string) {
-    if (!state.workspace || !state.activeModulePath) return;
-    const imp = { name: alias, source, importKind: classifyImport(source) };
-    const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const updated = await addImportViaAst(
-      state.workspace,
-      state.activeModulePath,
-      imp,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    const persisted = await persistModule(updated, state.activeModulePath);
-    setState((s) => ({ ...s, workspace: persisted }));
-  }
-
-  async function handleRemoveImport(name: string) {
-    if (!state.workspace || !state.activeModulePath) return;
-    const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const updated = await removeImportViaAst(
-      state.workspace,
-      state.activeModulePath,
-      name,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    const persisted = await persistModule(updated, state.activeModulePath);
-    setState((s) => ({ ...s, workspace: persisted }));
-  }
-
-  async function handleUpgradeImport(name: string, newSource: string) {
-    if (!state.workspace || !state.activeModulePath) return;
-    const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const updated = await upgradeImportViaAst(
-      state.workspace,
-      state.activeModulePath,
-      name,
-      newSource,
-      adapter,
-      createRegistryAdapters(settings),
-    );
-    const persisted = await persistModule(updated, state.activeModulePath);
-    setState((s) => ({ ...s, workspace: persisted }));
-  }
-
-  async function handleUpgradeAllImports(updates: { name: string; newSource: string }[]) {
-    if (!state.workspace || !state.activeModulePath || updates.length === 0) return;
-    const adapter = manifestAdapterRef.current ?? noopAdapter;
-    const registryAdapters = createRegistryAdapters(settings);
-    let workspace = state.workspace;
-    for (const { name, newSource } of updates) {
-      workspace = await upgradeImportViaAst(
-        workspace,
-        state.activeModulePath,
-        name,
-        newSource,
-        adapter,
-        registryAdapters,
-      );
-    }
-    const persisted = await persistModule(workspace, state.activeModulePath);
-    setState((s) => ({ ...s, workspace: persisted }));
-  }
+  // Import authoring for the active module — add / remove / upgrade.
+  const { handleAddImport, handleRemoveImport, handleUpgradeImport, handleUpgradeAllImports } =
+    useImportOps({ state, setState, settings, manifestAdapterRef, persistModule });
 
   // ---------------------------------------------------------------------------
   // Navigation (direct set, no stack)
@@ -994,50 +570,6 @@ export function Editor() {
     (p: string, text: string) => workspaceAdapterRef.current!.writeFile(p, text),
     [],
   );
-
-  /** Rebuilds the explorer tree from disk. Called after file ops (which mutate
-   *  disk without necessarily changing the workspace object). */
-  async function refreshFileTree(ws?: Workspace | null) {
-    const workspace = ws ?? state.workspace;
-    const adapter = workspaceAdapterRef.current;
-    if (!workspace || !adapter) return;
-    try {
-      setFileTree(await buildFileTree(workspace.rootDir, adapter));
-    } catch (err) {
-      console.error("Failed to build file tree:", err);
-    }
-  }
-
-  /** Re-scans + re-parses the workspace from disk. Run after a file op that can
-   *  change telo structure (a telo.yaml or included partial created / deleted /
-   *  renamed) so the Applications/Libraries view stays in sync. */
-  async function reloadWorkspace(): Promise<Workspace | null> {
-    const ws = state.workspace;
-    const adapter = workspaceAdapterRef.current;
-    const manifestAdapter = manifestAdapterRef.current;
-    if (!ws || !adapter || !manifestAdapter) return null;
-    return loadWorkspace(ws.rootDir, manifestAdapter, adapter, createRegistryAdapters(settings));
-  }
-
-  // After a file op: reload + re-parse the workspace only when one of the
-  // `affected` paths could change module structure (a telo.yaml, or a tracked
-  // module file); otherwise just rebuild the explorer tree. Avoids a full
-  // scanWorkspace on every non-telo create/rename/delete.
-  async function afterFileMutation(affected: string[]) {
-    const ws = state.workspace;
-    const structural = !!ws && affected.some((p) => affectsModuleStructure(ws, p));
-    try {
-      if (structural) {
-        const reloaded = await reloadWorkspace();
-        if (reloaded) setState((s) => reconcileWorkspaceTabs(s, reloaded));
-        await refreshFileTree(reloaded);
-      } else {
-        await refreshFileTree();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
 
   async function handleCreateFile(parentDir: string, name: string) {
     const adapter = workspaceAdapterRef.current;
@@ -1699,17 +1231,17 @@ export function Editor() {
                   saveFile={saveFileCb}
                 />
               ) : activeTab?.type === "module" && viewData ? (
-                <>
-                  <ViewContainer
-                    activeView={state.activeView}
-                    onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
-                    viewProps={{
+                <ViewContainer
+                  activeView={state.activeView}
+                  onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
+                  viewProps={{
                       viewData,
                       registry:
                         (state.activeModulePath
                           ? state.diagnostics.registryByFile.get(state.activeModulePath)
                           : undefined) ?? null,
                       selectedResource: state.selectedResource,
+                      selection,
                       graphContext: state.graphContext,
                       onSelectResource: handleSelectResource,
                       onNavigateResource: handleNavigateResource,
@@ -1740,17 +1272,6 @@ export function Editor() {
                       onCanvasViewportChange: handleCanvasViewportChange,
                     }}
                   />
-                  <DetailPanel
-                    selectedResource={state.selectedResource}
-                    graphContext={state.graphContext}
-                    selection={selection}
-                    viewData={viewData}
-                    onUpdateResource={handleUpdateResource}
-                    onSelectResource={handleSelectResource}
-                    onSelect={handleSelect}
-                    onNavigateResource={handleNavigateResource}
-                  />
-                </>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -1780,18 +1301,7 @@ export function Editor() {
         kinds={availableKinds}
         onCreate={handleCreateResource}
       />
-      <AlertDialog
-        open={pendingImport !== null}
-        onOpenChange={(open) => {
-          if (open) return;
-          if (confirmingRef.current) {
-            confirmingRef.current = false;
-            setPendingImport(null);
-            return;
-          }
-          cancelRemoteImport();
-        }}
-      >
+      <AlertDialog open={pendingImport !== null} onOpenChange={onImportDialogOpenChange}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Open in Telo Editor</AlertDialogTitle>

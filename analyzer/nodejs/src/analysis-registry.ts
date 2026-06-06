@@ -146,6 +146,27 @@ export class AnalysisRegistry {
     return undefined;
   }
 
+  /** Resolves the JSON Schema for a kind's `invoke()` / `run()` output, for
+   *  editor hosts that render a typed output signature. Mirrors
+   *  {@link inputTypeForKind}: the definition's own `outputType`, then the
+   *  `extends`-declared abstract's `outputType`. Resolves the inline and
+   *  raw-schema forms; a bare named type reference is left unresolved. Undefined
+   *  when the kind declares no output contract. */
+  outputTypeForKind(kind: string): Record<string, unknown> | undefined {
+    const def = this.resolveDefinition(kind);
+    if (!def) return undefined;
+    const own = resolveTypeFieldToSchema(def.outputType, []);
+    if (own) return own;
+    if (def.extends) {
+      const abstractDef = this.resolveDefinition(def.extends);
+      if (abstractDef) {
+        const inherited = resolveTypeFieldToSchema(abstractDef.outputType, []);
+        if (inherited) return inherited;
+      }
+    }
+    return undefined;
+  }
+
   private capabilitiesForRefs(refs: string[]): string[] {
     const out: string[] = [];
     for (const ref of refs) {
@@ -213,6 +234,35 @@ export class AnalysisRegistry {
     return computeSuggestKind(badKind, this.aliases, this.defs);
   }
 
+  /** Returns the **canonical** (`module.Type`) kinds that satisfy an `x-telo-ref`
+   *  constraint — an abstract target expands to its implementations (via the
+   *  extends / capability index), a concrete target yields just itself.
+   *  Resolution mirrors `validateReferences.checkKind`. Unlike
+   *  {@link userFacingKindsForRef} this is import-independent: it includes
+   *  locally-defined kinds (no alias), so callers can test whether an existing
+   *  resource's kind satisfies the ref by canonicalizing it (`resolveKind`) and
+   *  membership-checking here. Returns `undefined` when the ref can't be
+   *  resolved (e.g. unregistered identity). */
+  acceptedKindsForRef(xTeloRef: string): Set<string> | undefined {
+    const targetKind = this.defs.resolveRef(xTeloRef);
+    if (!targetKind) return undefined;
+    const targetDef = this.defs.resolve(targetKind);
+    if (!targetDef) return undefined;
+
+    const out = new Set<string>();
+    if (targetDef.kind === "Telo.Abstract") {
+      for (const def of this.defs.getByExtends(targetKind)) {
+        const module = (def.metadata as { module?: string } | undefined)?.module;
+        if (module && def.metadata?.name) {
+          out.add(`${module}.${def.metadata.name as string}`);
+        }
+      }
+    } else {
+      out.add(targetKind);
+    }
+    return out;
+  }
+
   /** Returns every user-facing (alias-form) kind that satisfies the given
    *  `x-telo-ref` constraint string (e.g. `"telo#Invocable"`, `"std/sql#Connection"`).
    *  Resolution mirrors `validateReferences.checkKind`: abstract targets expand to
@@ -220,22 +270,8 @@ export class AnalysisRegistry {
    *  Returns `undefined` when the ref can't be resolved (e.g. unregistered identity),
    *  so callers can fall back to the unfiltered kind list. */
   userFacingKindsForRef(xTeloRef: string): string[] | undefined {
-    const targetKind = this.defs.resolveRef(xTeloRef);
-    if (!targetKind) return undefined;
-    const targetDef = this.defs.resolve(targetKind);
-    if (!targetDef) return undefined;
-
-    const canonicalKinds: string[] = [];
-    if (targetDef.kind === "Telo.Abstract") {
-      for (const def of this.defs.getByExtends(targetKind)) {
-        const module = (def.metadata as { module?: string } | undefined)?.module;
-        if (module && def.metadata?.name) {
-          canonicalKinds.push(`${module}.${def.metadata.name as string}`);
-        }
-      }
-    } else {
-      canonicalKinds.push(targetKind);
-    }
+    const canonicalKinds = this.acceptedKindsForRef(xTeloRef);
+    if (!canonicalKinds) return undefined;
 
     const out = new Set<string>();
     for (const kind of canonicalKinds) {
