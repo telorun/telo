@@ -1,5 +1,11 @@
 # @telorun/ide-support
 
+## 0.4.19
+
+### Patch Changes
+
+- @telorun/analyzer@0.19.1
+
 ## 0.4.18
 
 ### Patch Changes

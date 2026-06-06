@@ -1,4 +1,0 @@
-project: run
-kind: Added
-body: Clarify Run.Sequence inputs/outputs docs — inputs declares the input contract (JSON Schema map, {} = dyn), outputs is the CEL map producing the caller-visible result. Adds a schema example and a "Sequence as an HTTP handler" README example.
-time: 2026-06-06T13:53:14.000000000Z
