@@ -4,7 +4,49 @@ import {
   validateChainAgainstSchema,
 } from "../cel/analyze.js";
 import { compileExpression } from "../cel/compile.js";
-import type { EngineDiagnostic, TemplatingEngine } from "../engine.js";
+import type { AnalyzeEnv, EngineDiagnostic, TemplatingEngine } from "../engine.js";
+
+/** Statically analyze one CEL expression against the effective context schema:
+ *  parse → extract member-access chains → validate each chain → flag nullable
+ *  access. Single source of truth shared by the `!cel` engine (one expression)
+ *  and the `!sql` engine (one per `${{ }}` interpolation), so diagnostic wording
+ *  can't drift between them. */
+export function analyzeCelExpression(source: string, env: AnalyzeEnv): EngineDiagnostic[] {
+  const out: EngineDiagnostic[] = [];
+
+  let parsed: ReturnType<typeof env.celEnv.parse>;
+  try {
+    parsed = env.celEnv.parse(source);
+  } catch (e) {
+    out.push({
+      code: "CEL_SYNTAX_ERROR",
+      message: e instanceof Error ? e.message : String(e),
+    });
+    return out;
+  }
+
+  if (!env.contextSchema) return out;
+
+  const chains = extractAccessChains(parsed.ast);
+  for (const chain of chains) {
+    const err = validateChainAgainstSchema(chain, env.contextSchema as Record<string, any>);
+    if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
+  }
+
+  for (const issue of findNullableAccessIssues(
+    parsed.ast,
+    env.contextSchema as Record<string, any>,
+  )) {
+    // Index access (member "[index]") attaches without a dot; a named field
+    // attaches with one — so the suggested CEL stays valid either way.
+    const access = issue.member === "[index]" ? issue.member : `.${issue.member}`;
+    out.push({
+      code: "CEL_NULLABLE_ACCESS",
+      message: `'${issue.path}' may be null — guard it (e.g. '${issue.path} != null && …' or '${issue.path} == null ? … : ${issue.path}${access}') before accessing '${access}'`,
+    });
+  }
+  return out;
+}
 
 /** The `!cel` engine. Treats the entire tagged scalar as a single CEL
  *  expression — no `${{ }}` wrapping. Analysis runs the same chain validator
@@ -19,39 +61,6 @@ export const celEngine: TemplatingEngine = {
   },
 
   analyze(source, env) {
-    const out: EngineDiagnostic[] = [];
-
-    let parsed: ReturnType<typeof env.celEnv.parse>;
-    try {
-      parsed = env.celEnv.parse(source);
-    } catch (e) {
-      out.push({
-        code: "CEL_SYNTAX_ERROR",
-        message: e instanceof Error ? e.message : String(e),
-      });
-      return out;
-    }
-
-    if (!env.contextSchema) return out;
-
-    const chains = extractAccessChains(parsed.ast);
-    for (const chain of chains) {
-      const err = validateChainAgainstSchema(chain, env.contextSchema as Record<string, any>);
-      if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
-    }
-
-    for (const issue of findNullableAccessIssues(
-      parsed.ast,
-      env.contextSchema as Record<string, any>,
-    )) {
-      // Index access (member "[index]") attaches without a dot; a named field
-      // attaches with one — so the suggested CEL stays valid either way.
-      const access = issue.member === "[index]" ? issue.member : `.${issue.member}`;
-      out.push({
-        code: "CEL_NULLABLE_ACCESS",
-        message: `'${issue.path}' may be null — guard it (e.g. '${issue.path} != null && …' or '${issue.path} == null ? … : ${issue.path}${access}') before accessing '${access}'`,
-      });
-    }
-    return out;
+    return analyzeCelExpression(source, env);
   },
 };

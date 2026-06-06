@@ -295,6 +295,14 @@ schema:
         additionalProperties: false
         properties:
           request:
+            title: Request
+            description: >-
+              Route matcher — `method` and `path` (required). Declare a nested
+              `schema:` block ({ params, query, body, headers }, each a JSON
+              Schema) to document and validate the request: it types the CEL
+              `request.*` context AND is rendered into the generated OpenAPI
+              document. Fill the schemas with `type`, `description`, and
+              `examples` so the OpenAPI spec is complete.
             x-telo-topology-role: matcher
             x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
           inputs:
@@ -419,7 +427,13 @@ schema:
                           `!cel` expression or a scalar is also accepted.
                       schema:
                         title: Schema
-                        description: JSON Schema used to validate the rendered body (buffer mode).
+                        description: >-
+                          JSON Schema for the response body (buffer mode).
+                          Validates the rendered body AND becomes this status's
+                          response schema in the generated OpenAPI document —
+                          declare it for every body-bearing return, with `type`,
+                          `description`, and `examples` on each field so the
+                          OpenAPI spec is complete.
                         type: "object"
                       encoder:
                         title: Encoder
@@ -535,4 +549,44 @@ schema:
                           type: "string"
               required: [ "status" ]
         required: [ "request", "returns" ]
+        examples:
+          - request:
+              method: POST
+              path: /users
+              schema:
+                body:
+                  type: object
+                  required: [ email ]
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                      description: New user's email address.
+                      examples: [ "ada@example.com" ]
+                    age:
+                      type: integer
+                      description: Age in years.
+                      examples: [ 36 ]
+            inputs:
+              email: !cel "request.body.email"
+              age: !cel "request.body.age"
+            handler: { kind: Sql.Query, name: InsertUser }
+            returns:
+              - status: 201
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Generated user id.
+                          examples: [ "8f14e45f" ]
+                        email:
+                          type: string
+                          description: The created user's email.
+                          examples: [ "ada@example.com" ]
+                    body:
+                      id: !cel "result.rows[0].id"
+                      email: !cel "result.rows[0].email"
   required: [ "routes" ]

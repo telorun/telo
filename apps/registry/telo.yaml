@@ -1054,8 +1054,26 @@ instructions: !literal |
   ```
 
   Relative `imports` sources resolve from the importing manifest's
-  directory — e.g. `SomeLib: ../../libs/some-lib` from
-  `apps/some-app/telo.yaml`.
+  directory and point at the **directory** that contains the library's
+  `telo.yaml` — e.g. `SomeLib: ../../libs/some-lib`
+  from `apps/some-app/telo.yaml` loads `libs/some-lib/telo.yaml`. A bare
+  `../some-lib` or `./some-lib` works the same way for a sibling/child
+  directory. Importing manifests directly is also possible with 
+  `./some-lib.yaml` but use it only as last resort. The library does not 
+  need to be published to the registry to be imported this way.
+
+  ### Prefer cohesive libraries over one large application
+
+  Keep applications small. When an application grows — many resource kinds,
+  several unrelated concerns, repeated patterns — split the cohesive pieces
+  out into `Telo.Library` directories and import them by relative path,
+  rather than letting one `telo.yaml` accumulate everything. Group a library
+  around a single responsibility (a domain area, a transport, a reusable set
+  of definitions) and expose only what importers need via `exports.kinds` /
+  `exports.resources`. The application then becomes a thin root that wires
+  libraries together through `imports` and `targets`. This keeps each
+  manifest readable, makes pieces reusable across apps, and keeps static
+  analysis scoped to one concern at a time.
 
   ## Built-in kinds (do not need importing)
 
@@ -1108,6 +1126,44 @@ instructions: !literal |
   wrapped: `[dyn(1), dyn("a"), dyn(true)]`. Reach for this whenever you
   build a mixed-type collection — e.g. positional SQL bind parameters.
 
+  ### CEL typing — homogeneity, and the YAML-leaves idiom
+
+  CEL is strictly typed, and this surprises most callers:
+
+  - **List literals must be homogeneous.** `[user_id, json(x)]` fails
+    because `user_id` is a string and `json(x)` is also a string but
+    `user_id` may be typed `dyn` from an upstream access — mix any two
+    distinct types and the checker rejects it. Widen each element with
+    `dyn(...)`: `[dyn(user_id), dyn(json(x))]`.
+  - **Map literals must have a uniform value type** — same rule, applied to
+    values. Wrap mixed values in `dyn(...)`.
+  - **Ternary branches must share a type.** `cond ? "a" : 1` fails; both
+    arms must resolve to the same type (or both be widened with `dyn`).
+  - **`null` has its own type.** Mixing a value with `null` (a default, an
+    optional field) needs `dyn(...)` on the non-null arm/element.
+
+  **Prefer YAML shape, CEL only on scalar leaves.** The homogeneity rules
+  only bite when you write a big inline CEL collection literal
+  (`!cel "[a, b, c]"`, `!cel "{k: v, ...}"`). If instead you build the
+  array/object as ordinary YAML structure and tag each dynamic *leaf* with
+  its own scalar `!cel`, the typing problem disappears — each leaf is type-
+  checked independently and YAML carries the shape. Always reach for this
+  idiom first:
+
+  ```yaml
+  # Good — YAML shape, scalar !cel leaves (no homogeneity constraint):
+  bindings:
+    - !cel "request.body.email"
+    - !cel "json(request.body.profile)"
+    - !cel "request.body.age"
+
+  # Avoid — one inline CEL list literal (triggers homogeneous-typing errors):
+  bindings: !cel "[request.body.email, json(request.body.profile), request.body.age]"
+  ```
+
+  Use an inline CEL collection literal only when the collection itself must
+  be computed (e.g. `.map(...)`); otherwise build it in YAML.
+
   Collections: `size(x)` (string / list / map), `keys(map)`, `values(map)`,
   list method `.join(sep)` and free function `join(list, sep)`.
 
@@ -1142,6 +1198,28 @@ instructions: !literal |
   it once at load time, `runtime` re-evaluates it on every invocation. You
   never write the annotation yourself; it tells you the field takes a `!cel`
   value (e.g. `limit: !cel "inputs.limit"`).
+
+  ## Invoke steps & step results
+
+  Several places run an **invoke step** — the same shape everywhere:
+  `{ name, invoke, inputs?, when? }`.
+
+  - `invoke` — a `{ kind, name }` reference to an Invocable (or Runnable).
+  - `inputs` — an object of **values passed to that resource's `invoke()`**,
+    CEL-expanded against the surrounding scope (each value may be a `!cel`
+    leaf). This is NOT a schema declaration — it's the actual arguments.
+  - `when` — optional CEL boolean guard; the step is skipped when false.
+  - `name` — keys the step's output: after it runs, later expressions read
+    `!cel "steps.<name>.result"`.
+
+  This shape is shared by Application `targets` (inline invoke entries),
+  `Run.Sequence` steps, and `Telo.Definition` templates. A bare Runnable /
+  Service reference in `targets` just runs it (no inputs, no result).
+
+  Note: a `Run.Sequence`'s own top-level `inputs:` is a different thing — a
+  JSON Schema map declaring the sequence's *input contract* (callers supply
+  values at invoke time; steps read them as `!cel "inputs.<name>"`), not an
+  invoke step's arguments.
 
   ## Common pitfalls
 

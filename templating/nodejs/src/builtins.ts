@@ -1,6 +1,7 @@
 import { celEngine } from "./engines/cel.js";
 import { literalEngine } from "./engines/literal.js";
 import { refEngine } from "./engines/ref.js";
+import { sqlEngine } from "./engines/sql.js";
 import { TemplatingEngineRegistry } from "./registry.js";
 import type { TemplatingEngine } from "./engine.js";
 
@@ -10,7 +11,12 @@ import type { TemplatingEngine } from "./engine.js";
  *  agree on which engines exist. Per-host à-la-carte registration would let
  *  a manifest validate clean in one host (e.g. `cel` only) and crash in
  *  another (e.g. `cel + literal`); always ship the same set. */
-export const builtinEngines: readonly TemplatingEngine[] = [celEngine, literalEngine, refEngine];
+export const builtinEngines: readonly TemplatingEngine[] = [
+  celEngine,
+  literalEngine,
+  refEngine,
+  sqlEngine,
+];
 
 export function createDefaultRegistry(): TemplatingEngineRegistry {
   const registry = new TemplatingEngineRegistry();

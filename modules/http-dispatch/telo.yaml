@@ -54,12 +54,21 @@ schema:
           title: Schema
           description: |
             User-supplied JSON Schemas typing the CEL-visible parts of the
-            incoming request. Read by the analyzer via
-            `x-telo-context-from: "request/schema"` to populate the
-            `request.{query,body,headers,params}` shape of CEL contexts
-            inside `inputs:` / `returns:` / `catches:`. Distinct from the
-            top-level `query`/`body`/`headers` fields above, which document
-            the matcher value-shape itself.
+            incoming request. Serves two purposes, so declare it for any route
+            that takes inputs:
+            (1) the analyzer reads it via
+            `x-telo-context-from: "request/schema"` to populate and type-check
+            the `request.{query,body,headers,params}` shape of CEL contexts
+            inside `inputs:` / `returns:` / `catches:` (without it, `request.*`
+            is untyped `dyn`);
+            (2) the server registers these as the route's request validation
+            schema and renders them into the generated OpenAPI document
+            (`query` → query parameters, `params` → path parameters, `body` →
+            request body, `headers` → header params).
+            For a good OpenAPI spec, write full property schemas with `type`,
+            `description`, and `examples` on each field, not bare `{}`.
+            Distinct from the top-level `query`/`body`/`headers` fields above,
+            which document the matcher value-shape itself.
           type: object
           additionalProperties: false
           properties:
@@ -125,7 +134,12 @@ schema:
                   description: CEL expression or object mapping for response body (buffer mode).
                 schema:
                   title: Schema
-                  description: JSON Schema used to validate the rendered body (buffer mode).
+                  description: >-
+                    JSON Schema for the response body (buffer mode). Validates
+                    the rendered body AND becomes this status's response schema
+                    in the generated OpenAPI document — declare it for every
+                    body-bearing return, with `type`, `description`, and
+                    `examples` on each field so the OpenAPI spec is complete.
                   type: object
                 encoder:
                   title: Encoder

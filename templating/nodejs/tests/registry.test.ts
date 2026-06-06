@@ -44,8 +44,8 @@ describe("TemplatingEngineRegistry", () => {
 });
 
 describe("builtinEngines + createDefaultRegistry", () => {
-  it("ships cel, literal and ref as built-ins", () => {
-    expect(builtinEngines.map((e) => e.name).sort()).toEqual(["cel", "literal", "ref"]);
+  it("ships cel, literal, ref and sql as built-ins", () => {
+    expect(builtinEngines.map((e) => e.name).sort()).toEqual(["cel", "literal", "ref", "sql"]);
   });
 
   it("createDefaultRegistry registers every builtin", () => {

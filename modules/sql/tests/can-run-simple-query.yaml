@@ -9,10 +9,10 @@ imports:
 targets:
   - TestSimpleQuery
 ---
-kind: Sql.Connection
+kind: Sql.SqliteConnection
 metadata:
   name: Db
-connectionString: "sqlite::memory:"
+file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
@@ -24,7 +24,7 @@ steps:
     invoke:
       kind: Sql.Query
       connection:
-        kind: Sql.Connection
+        kind: Sql.SqliteConnection
         name: Db
 
   - name: AssertResult

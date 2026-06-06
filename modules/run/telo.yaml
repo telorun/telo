@@ -257,12 +257,22 @@ schema:
     inputs:
       title: Inputs
       type: object
-      description: Input values passed to the sequence when invoked
+      description: >-
+        The sequence's input contract: a JSON Schema property map (name →
+        schema), NOT values. Each key declares one input the sequence accepts;
+        an empty schema `{}` declares an untyped (dyn) input. Callers supply
+        actual values at invoke time (e.g. an `Http.Api` route's `inputs:`
+        CEL map, or a parent step's `inputs:`), and steps read them as
+        `!cel "inputs.<name>"`.
       additionalProperties: true
     outputs:
       title: Outputs
       type: object
-      description: CEL mapping producing the sequence result
+      description: >-
+        A CEL map (key → `!cel` expression) evaluated over `steps.*` and
+        `inputs.*` after the steps run. Its value becomes the sequence's
+        `result` — what a caller sees, e.g. an `Http.Api` route's `returns:`.
+        Omit it to return the raw step-results map.
       additionalProperties: true
     steps:
       title: Steps
@@ -276,3 +286,22 @@ schema:
         $ref: "#/$defs/step"
   required:
     - steps
+  examples:
+    - inputs:
+        userId: {}
+        limit: { type: integer }
+      steps:
+        - name: fetchUser
+          invoke: { kind: Sql.Query, name: GetUser }
+          inputs:
+            bindings:
+              - !cel "inputs.userId"
+        - name: count
+          invoke: { kind: Sql.Query, name: CountPosts }
+          inputs:
+            bindings:
+              - !cel "inputs.userId"
+              - !cel "inputs.limit"
+      outputs:
+        name: !cel "steps.fetchUser.result.rows[0].name"
+        postCount: !cel "steps.count.result.rows[0].n"

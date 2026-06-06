@@ -1,4 +1,4 @@
-import type { CompiledValue } from "@telorun/sdk";
+import { isCompiledValue, type CompiledValue } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 
 export const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
@@ -41,7 +41,45 @@ export function compileString(s: string, env: Environment): unknown {
   return {
     __compiled: true,
     source: s,
+    parts,
     call: (ctx: Record<string, unknown>) =>
       parts.map((p) => (typeof p === "string" ? p : String(p.call(ctx) ?? ""))).join(""),
   } satisfies CompiledValue;
+}
+
+/** Split an interpolated value into literal fragments and the evaluated values
+ *  of its embedded expressions, instead of joining them into one string. Lets a
+ *  consumer emit its own placeholders between fragments and bind the values
+ *  separately (e.g. parameterized SQL). The invariant
+ *  `fragments.length === values.length + 1` always holds.
+ *
+ *  - plain string (no `${{ }}`)        → `{ fragments: [s], values: [] }`
+ *  - bare single expression `${{ x }}` → `{ fragments: ["", ""], values: [x] }`
+ *  - interpolated `"a ${{ x }} b"`     → `{ fragments: ["a ", " b"], values: [x] }`
+ */
+export function toParameterized(
+  value: unknown,
+  ctx: Record<string, unknown>,
+): { fragments: string[]; values: unknown[] } {
+  if (typeof value === "string") return { fragments: [value], values: [] };
+  if (!isCompiledValue(value)) {
+    throw new Error("toParameterized expects a string or CompiledValue");
+  }
+  if (!value.parts) {
+    return { fragments: ["", ""], values: [value.call(ctx)] };
+  }
+  const fragments: string[] = [];
+  const values: unknown[] = [];
+  let current = "";
+  for (const p of value.parts) {
+    if (typeof p === "string") {
+      current += p;
+    } else {
+      fragments.push(current);
+      current = "";
+      values.push(p.call(ctx));
+    }
+  }
+  fragments.push(current);
+  return { fragments, values };
 }

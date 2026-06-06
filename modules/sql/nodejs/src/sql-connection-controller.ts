@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ResourceInstance } from "@telorun/sdk";
 import { randomUUID } from "crypto";
 import {
   CompiledQuery,
@@ -21,24 +21,32 @@ interface PoolConfig {
   connectionTimeoutMs?: number;
 }
 
-interface SqlConnectionManifest {
-  metadata: { name: string; module: string };
-  connectionString: string;
+export type SqlDriver = "postgres" | "sqlite";
+
+/** Native bind-placeholder syntax per driver: SQLite binds anonymous `?`,
+ *  PostgreSQL binds numbered `$1`, `$2`, … */
+export type PlaceholderStyle = "qmark" | "numbered";
+
+export interface SqlConnectionConfig {
+  driver: SqlDriver;
+  /** Required for `postgres`; ignored for `sqlite` (which opens via `sqlite`). */
+  connectionString?: string;
   pool?: PoolConfig;
 }
-
-export type SqlDriver = "postgres" | "sqlite";
 
 export class SqlConnectionResource implements ResourceInstance {
   readonly driver: SqlDriver;
   private readonly db: Kysely<any>;
   private readonly sqlite?: SqliteDb;
 
-  constructor(m: SqlConnectionManifest, sqlite?: SqliteDb) {
-    this.driver = driverFromConnectionString(m.connectionString);
+  constructor(config: SqlConnectionConfig, sqlite?: SqliteDb) {
+    this.driver = config.driver;
 
     if (this.driver === "postgres") {
-      const url = new URL(m.connectionString);
+      if (!config.connectionString) {
+        throw new Error("Sql: postgres connection requires a connectionString");
+      }
+      const url = new URL(config.connectionString);
       const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
       url.searchParams.delete("sslmode");
       this.db = new Kysely({
@@ -46,10 +54,10 @@ export class SqlConnectionResource implements ResourceInstance {
           pool: new Pool({
             connectionString: url.toString(),
             ssl,
-            min: m.pool?.min ?? 1,
-            max: m.pool?.max ?? 10,
-            idleTimeoutMillis: m.pool?.idleTimeoutMs,
-            connectionTimeoutMillis: m.pool?.connectionTimeoutMs,
+            min: config.pool?.min ?? 1,
+            max: config.pool?.max ?? 10,
+            idleTimeoutMillis: config.pool?.idleTimeoutMs,
+            connectionTimeoutMillis: config.pool?.connectionTimeoutMs,
           }),
         }),
       });
@@ -96,6 +104,29 @@ export class SqlConnectionResource implements ResourceInstance {
   ): Promise<QueryResult<T>> {
     const executor = this.resolveExecutor(transaction);
     return executor.executeQuery<T>(CompiledQuery.raw(sql, params));
+  }
+
+  get placeholderStyle(): PlaceholderStyle {
+    return this.driver === "postgres" ? "numbered" : "qmark";
+  }
+
+  /** Assemble SQL from literal fragments by interleaving driver-native
+   *  placeholders, then bind `values` positionally. `fragments.length` must
+   *  equal `values.length + 1`. */
+  async executeTemplate<T>(
+    fragments: string[],
+    values: unknown[],
+    transaction?: SqlTransactionResource,
+  ): Promise<QueryResult<T>> {
+    let sql = fragments[0] ?? "";
+    for (let i = 1; i < fragments.length; i++) {
+      sql += this.placeholder(i) + fragments[i];
+    }
+    return this.execute<T>(sql, values, transaction);
+  }
+
+  private placeholder(index: number): string {
+    return this.placeholderStyle === "numbered" ? `$${index}` : "?";
   }
 
   async executeScript(sql: string): Promise<void> {
@@ -156,45 +187,9 @@ class TransactionalSqliteDialect extends SqliteDialect {
   }
 }
 
-export function register(): void {}
-
-export async function create(
-  resource: SqlConnectionManifest,
-  ctx: ResourceContext,
-): Promise<SqlConnectionResource> {
-  const sqlite =
-    driverFromConnectionString(resource.connectionString) === "sqlite"
-      ? await openSqliteDatabase(sqliteTargetFromConnectionString(resource.connectionString))
-      : undefined;
-  return new SqlConnectionResource(resource, sqlite);
-}
-
 type SslOption =
   | false
   | { rejectUnauthorized: boolean; checkServerIdentity?: () => undefined };
-
-function driverFromConnectionString(connectionString: string): SqlDriver {
-  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(connectionString)?.[1]?.toLowerCase();
-  switch (scheme) {
-    case "postgres":
-    case "postgresql":
-      return "postgres";
-    case "sqlite":
-      return "sqlite";
-    default:
-      throw new Error(
-        `Sql.Connection: connectionString must start with a driver scheme — ` +
-          `'postgres://' or 'postgresql://' for PostgreSQL, 'sqlite:' for SQLite. ` +
-          `Got ${scheme ? `'${scheme}:'` : "a string with no scheme"}: ${JSON.stringify(connectionString)}`,
-      );
-  }
-}
-
-function sqliteTargetFromConnectionString(connectionString: string): string {
-  const path = decodeURIComponent(new URL(connectionString).pathname);
-  // `sqlite:` / `sqlite://` with no path resolves to an in-memory database.
-  return path === "" || path === "/" ? ":memory:" : path;
-}
 
 function sslFromSslmode(mode: string | null): SslOption {
   switch (mode) {
@@ -217,7 +212,7 @@ function sslFromSslmode(mode: string | null): SslOption {
   }
 }
 
-async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
+export async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
   // Auto-create the parent directory for file-backed databases. SQLite
   // drivers fail-fast when the directory doesn't exist; mirroring `mkdir
   // -p` here lets manifests use paths like `./tmp/foo.sqlite` without a

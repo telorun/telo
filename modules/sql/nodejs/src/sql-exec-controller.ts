@@ -2,6 +2,7 @@ import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlResult } from "./sql-query-controller.js";
+import { runSql } from "./sql-run.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 interface SqlExecManifest {
@@ -20,28 +21,18 @@ class SqlExecResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: any): Promise<SqlResult> {
+  async invoke(input: unknown): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
-    const expandedInput = ctx.expandValue(input, {});
 
     const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
     if (!connection) {
       throw new Error("Sql: either 'connection' or 'transaction' must be set");
     }
 
-    return runExec(connection, m.transaction, expandedInput.sql, expandedInput.bindings ?? []);
+    const result = await runSql(connection, m.transaction, input, ctx);
+    return { rows: result.rows, rowCount: connection.toRowCount(result) };
   }
-}
-
-async function runExec(
-  connection: SqlConnectionResource,
-  transaction: SqlTransactionResource | undefined,
-  sql: string,
-  params: unknown[],
-): Promise<SqlResult> {
-  const result = await connection.execute<Record<string, unknown>>(sql, params, transaction);
-  return { rows: result.rows, rowCount: connection.toRowCount(result) };
 }
 
 export function register(): void {}

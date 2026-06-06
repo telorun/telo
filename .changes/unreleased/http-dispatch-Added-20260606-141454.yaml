@@ -1,0 +1,4 @@
+project: http-dispatch
+kind: Added
+body: Clarify that request.schema and returns content[mime].schema drive the generated OpenAPI document (request params/body, response schema), and advise filling fields with type/description/examples.
+time: 2026-06-06T14:14:54.000000000Z

@@ -38,7 +38,20 @@ mounts:
 kind: Http.Api
 metadata: { name: Api }
 routes:
-  - request: { method: GET, path: /hello/{name} }
+  # Declare request.schema and the response content.schema so the route is
+  # type-checked AND fully described in the generated OpenAPI document. Put
+  # `examples` on each field so the spec shows sample payloads.
+  - request:
+      method: GET
+      path: /hello/{name}
+      schema:
+        params:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Name to greet.
+              examples: [ "Ada" ]
     inputs:
       name: "${{ request.params.name }}"
     handler: { kind: JS.Script, name: Greet }
@@ -46,6 +59,13 @@ routes:
       - status: 200
         content:
           application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: The greeting.
+                  examples: [ "Hello, Ada!" ]
             body: { message: "${{ result.message }}" }
 ---
 kind: JS.Script
