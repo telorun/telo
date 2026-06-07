@@ -1,4 +1,4 @@
-import { DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
@@ -33,18 +33,34 @@ export async function create(
   // `isImportValidatedAtLoad` silently miss.
   const resolvedUrl = ctx.resolveImportUrl(base, moduleSource);
 
-  // Fast path: when the kernel's load-time `analyzeErrors` already covered
-  // this import's subtree (the common case — every Telo.Import declared in
-  // the entry graph is walked by `loadGraph` and validated by
-  // `kernel.load`), skip the redundant per-import StaticAnalyzer pass.
-  // Falls through to the full analysis for URLs that arrived
-  // programmatically after `load()` (e.g. dynamically constructed imports
-  // in tests). Two Telo.Imports with the same source but distinct
-  // metadata.name would each re-run analysis here — a memoisation hook
-  // can be reintroduced if that turns into a measurable cost.
-  if (!ctx.isImportValidatedAtLoad(resolvedUrl)) {
-    const analysisManifests = await ctx.loadManifests(resolvedUrl);
-    const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
+  // The analysis-flattened graph (follows Telo.Import chains, includes forwarded
+  // sub-import exports) serves two purposes here: validating the imported subtree,
+  // and populating a CHILD-SCOPED analysis registry whose top-level alias scope is
+  // the imported library's own. That child scope is required to normalize the
+  // library's `!ref` sentinels (resolve them to `{kind, name}`) before its
+  // resources are registered below — the same step the root load performs via
+  // `analyzer.normalize`. Without it a `!ref` inside the library reaches its
+  // controller as a raw sentinel and Phase-5 injection (which only recognizes
+  // `{kind, name}`) silently skips it.
+  const analysisManifests = await ctx.loadManifests(resolvedUrl);
+  const analyzer = new StaticAnalyzer();
+  const childRegistry = new AnalysisRegistry();
+
+  // Fast path: when the kernel's load-time `analyzeErrors` already covered this
+  // import's subtree (the common case — every Telo.Import declared in the entry
+  // graph is walked by `loadGraph` and validated by `kernel.load`), skip the
+  // per-resource diagnostic passes. Registration of identities / aliases /
+  // definitions still runs (it precedes the skipValidation early-return), so the
+  // child registry is populated for normalization either way. The full analysis
+  // runs for URLs that arrived programmatically after `load()` (e.g. dynamically
+  // constructed imports in tests).
+  const validatedAtLoad = ctx.isImportValidatedAtLoad(resolvedUrl);
+  const diagnostics = analyzer.analyze(
+    analysisManifests,
+    { skipValidation: validatedAtLoad },
+    childRegistry,
+  );
+  if (!validatedAtLoad) {
     const errors = diagnostics
       .filter((d) => d.severity === DiagnosticSeverity.Error)
       .map((d) => d.message);
@@ -63,10 +79,17 @@ export async function create(
   // those expanded into Telo.Import manifests and registered in its child
   // context — without it, a transitively-imported library's inline imports
   // would load but never execute (the execute-gap, one level down).
-  const manifests = await ctx.loadModule(resolvedUrl, {
+  const rawManifests = await ctx.loadModule(resolvedUrl, {
     compile: true,
     desugarImports: true,
   });
+
+  // Normalize in the library's own scope: extract inline resources and resolve
+  // `!ref` sentinels to `{kind, name}` (mirrors the root load at kernel.ts).
+  // `analysisManifests` are passed as cross-module resolution targets so a library
+  // that references its OWN sub-imports' exported instances (`!ref SubAlias.name`)
+  // resolves across that inner boundary too.
+  const manifests = analyzer.normalize(rawManifests, childRegistry, analysisManifests);
   // Import targets must be Telo.Library — Applications are run directly, not imported.
   const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library");
   if (!moduleManifest) {
