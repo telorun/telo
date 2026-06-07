@@ -5,10 +5,10 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestBadFieldAccess
-  - TestValidFieldAccess
-  - TestUntypedStepAccess
-  - TestBadCelOverload
+  - !ref TestBadFieldAccess
+  - !ref TestValidFieldAccess
+  - !ref TestUntypedStepAccess
+  - !ref TestBadCelOverload
 ---
 # Bad field access on typed output — should produce CEL_UNKNOWN_FIELD
 kind: Assert.Manifest

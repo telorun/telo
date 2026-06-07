@@ -1,8 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefSentinel } from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
-import type { DefinitionRegistry } from "./definition-registry.js";
-import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 /** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
@@ -10,9 +8,23 @@ import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 type ResolvedRef = { kind: string; name: string; alias?: string };
 
 /**
- * Walks every `x-telo-ref` slot in every non-system resource and rewrites
- * `!ref <name>` sentinels in-place to `{kind, name}` (local) or
- * `{kind, name, alias}` (cross-module).
+ * Rewrites every `!ref <name>` sentinel in each non-system resource's value tree
+ * to `{kind, name}` (local) or `{kind, name, alias}` (cross-module), in place.
+ *
+ * The walk is value-tree-driven, not field-map-driven: a `!ref` tag is an
+ * *explicit* reference marker, so any sentinel found anywhere is unambiguously a
+ * reference and is resolved. This reaches sites the field map intentionally does
+ * not descend — notably `Run.Sequence` step `invoke`s (behind a local `$ref`)
+ * and references nested inside inline definitions — so every downstream consumer
+ * (Phase-5 injection, the runtime controllers, the analyzer's step-context and
+ * dependency passes) sees the uniform `{kind, name}` shape regardless of where
+ * the reference was written.
+ *
+ * Resolving a sentinel here does NOT cause Phase-5 injection: that pass is
+ * driven by the field map, which still excludes step `invoke`s, so a resolved
+ * step invoke stays `{kind, name}` and is dispatched through
+ * `executeInvokeStep` (preserving `<Kind>.<Name>.Invoked` events) rather than
+ * being replaced with a live instance.
  *
  * Reference grammar — the tag's source string is split on the FIRST dot:
  *   - `!ref writeLine`          → local resource `writeLine`
@@ -22,8 +34,10 @@ type ResolvedRef = { kind: string; name: string; alias?: string };
  *
  * Aliases are PascalCase identifiers without dots and resource names carry no dots
  * (enforced as a hard diagnostic), so the first-dot split is unambiguous. When the
- * name doesn't resolve, the sentinel is left in place so `validateReferences` emits the
- * `UNRESOLVED_REFERENCE` diagnostic with full context.
+ * name doesn't resolve (e.g. a scope-local target, or a cross-module reference in
+ * partial single-file analysis), the sentinel is left in place — the runtime
+ * resolves scope-local names on demand, and `validateReferences` emits the
+ * `UNRESOLVED_REFERENCE` diagnostic for genuine misses.
  *
  * Forwarded foreign resources (an imported library's exported instances, carrying a
  * `metadata.module` that isn't a root module) are resolution TARGETS only — they are not
@@ -31,7 +45,6 @@ type ResolvedRef = { kind: string; name: string; alias?: string };
  */
 export function resolveRefSentinels(
   resources: ResourceManifest[],
-  registry: DefinitionRegistry,
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
   // Extra foreign resources used only as cross-module resolution TARGETS (not mutated, not
@@ -96,134 +109,27 @@ export function resolveRefSentinels(
     return undefined;
   };
 
-  const processResource = (r: ResourceManifest): void => {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) return;
-
-    const fieldMap =
-      aliases && aliasesByModule
-        ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
-        : registry.getFieldMapForKind(r.kind, aliases);
-    if (!fieldMap) return;
-
-    for (const [fieldPath, entry] of fieldMap) {
-      const parts = fieldPath.split(".");
-      if (isRefEntry(entry)) {
-        descend(r as Record<string, unknown>, parts, resolveTarget);
-      } else if (isScopeEntry(entry)) {
-        // x-telo-scope resources (e.g. a Run.Sequence `with` server) carry their own ref
-        // slots. The top-level walk skips scope contents, so recurse so a scoped resource's
-        // `!ref` (e.g. an Http.Server mount) is canonicalized to {kind, name} like any other.
-        forEachScopeResource(r as Record<string, unknown>, parts, processResource);
-      }
+  // Resolve every `!ref` sentinel in the tree; leave opaque tagged / precompiled
+  // nodes (e.g. `!cel`) untouched and don't descend into them.
+  const walk = (value: unknown): unknown => {
+    if (isRefSentinel(value)) {
+      return resolveTarget(value.source) ?? value;
     }
+    if (value === null || typeof value !== "object") return value;
+    if (isTaggedSentinel(value)) return value;
+    if ((value as { __compiled?: unknown }).__compiled) return value;
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) value[i] = walk(value[i]);
+      return value;
+    }
+    const obj = value as Record<string, unknown>;
+    for (const key of Object.keys(obj)) obj[key] = walk(obj[key]);
+    return value;
   };
 
   for (const r of resources) {
     if (isForeign(r)) continue;
-    processResource(r);
-  }
-}
-
-/**
- * Navigates `obj` along the scope field path (dot notation, `[]` = array items) and
- * invokes `cb` on every resource-like object found — any value carrying a `kind` string.
- *
- * Two-phase design:
- *
- *  Phase 1 — path-walk: steps through each `parts` segment. `[]`-suffixed parts spread
- *  the array into individual elements so `current` always ends up holding scalars or
- *  plain objects, never intermediate arrays. Non-`[]` parts push the value as-is.
- *
- *  Phase 2 — terminal visit: after the walk, `current` contains the values at the end
- *  of the path. These are always scalars or plain objects because of the `[]` spreading
- *  above, EXCEPT when a scope field is typed as an array in the schema but the path
- *  was authored WITHOUT a `[]` suffix. The `visit` function handles that case by
- *  recursing one level into arrays so `cb` is always called on resource objects, not
- *  on their container.
- */
-function forEachScopeResource(
-  obj: Record<string, unknown>,
-  parts: string[],
-  cb: (resource: ResourceManifest) => void,
-): void {
-  let current: unknown[] = [obj];
-  for (const part of parts) {
-    const isArr = part.endsWith("[]");
-    const key = isArr ? part.slice(0, -2) : part;
-    const next: unknown[] = [];
-    for (const node of current) {
-      if (!node || typeof node !== "object") continue;
-      const val = (node as Record<string, unknown>)[key];
-      if (val == null) continue;
-      if (isArr && Array.isArray(val)) next.push(...val);
-      else if (!isArr) next.push(val);
-    }
-    current = next;
-  }
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      for (const elem of node) visit(elem);
-    } else if (node && typeof node === "object" && typeof (node as { kind?: unknown }).kind === "string") {
-      cb(node as ResourceManifest);
-    }
-  };
-  for (const node of current) visit(node);
-}
-
-/** Walks `obj` along `fieldPath` parts (dot notation with `[]` for arrays and `{}` for
- *  additionalProperties-typed maps) and replaces any `!ref` sentinel at the terminal slot
- *  with its resolved `{kind, name, alias?}`. Mutates the parent container in place. */
-function descend(
-  obj: unknown,
-  parts: string[],
-  resolve: (source: string) => ResolvedRef | undefined,
-): void {
-  if (obj == null || typeof obj !== "object" || parts.length === 0) return;
-  const [head, ...rest] = parts;
-
-  if (head === "{}") {
-    const container = obj as Record<string, unknown>;
-    for (const key of Object.keys(container)) {
-      const child = container[key];
-      if (rest.length === 0) {
-        if (isRefSentinel(child)) {
-          const target = resolve(child.source);
-          if (target) container[key] = target;
-        }
-      } else {
-        descend(child, rest, resolve);
-      }
-    }
-    return;
-  }
-
-  const isArr = head.endsWith("[]");
-  const key = isArr ? head.slice(0, -2) : head;
-  const container = obj as Record<string, unknown>;
-  const val = container[key];
-  if (val == null) return;
-
-  if (isArr) {
-    if (!Array.isArray(val)) return;
-    for (let i = 0; i < val.length; i++) {
-      if (rest.length === 0) {
-        const elem = val[i];
-        if (isRefSentinel(elem)) {
-          const target = resolve(elem.source);
-          if (target) val[i] = target;
-        }
-      } else {
-        descend(val[i], rest, resolve);
-      }
-    }
-  } else {
-    if (rest.length === 0) {
-      if (isRefSentinel(val)) {
-        const target = resolve(val.source);
-        if (target) container[key] = target;
-      }
-    } else {
-      descend(val, rest, resolve);
-    }
+    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+    walk(r as Record<string, unknown>);
   }
 }

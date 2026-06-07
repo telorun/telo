@@ -15,18 +15,13 @@ function jsonResponse(body: unknown, opts: { sessionId?: string; status?: number
   });
 }
 
-/** Minimum ResourceContext surface McpHttpClient actually uses. Keeping this
- *  tight avoids constructing a real kernel — the only behaviors exercised
- *  here are the SessionProvider lookup via moduleContext.getInstance and
- *  controllers/SessionTerminateFailed event emission on teardown. */
-function makeCtx(provider: { provide?: () => Promise<{ sessionId: string }> } | null) {
+/** Minimum ResourceContext surface McpHttpClient actually uses — only
+ *  `emitEvent`, for the controllers/SessionTerminateFailed event on teardown.
+ *  The sessionProvider is not looked up via the context: the kernel injects the
+ *  live instance into `manifest.sessionProvider` at Phase 5, which the external
+ *  tests below pass in directly. */
+function makeCtx() {
   return {
-    moduleContext: {
-      getInstance: vi.fn((_name: string) => {
-        if (provider === null) throw new Error("not found");
-        return provider;
-      }),
-    },
     emitEvent: vi.fn(async () => {}),
   } as unknown as ResourceContext;
 }
@@ -47,14 +42,13 @@ afterEach(() => {
 describe("McpHttpClient (external sessionProvider mode)", () => {
   it("skips the initialize handshake and forwards provider sessionId", async () => {
     const provideSpy = vi.fn(async () => ({ sessionId: "from-provider" }));
-    const ctx = makeCtx({ provide: provideSpy });
     fetchMock.mockResolvedValue(
       jsonResponse({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "ok" }] } }),
     );
 
     const client = new McpHttpClient(
-      { metadata: { name: "Mcp" }, url: URL, sessionProvider: "SessionRef" },
-      ctx,
+      { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "SessionRef", provide: provideSpy } },
+      makeCtx(),
     );
     await client.init();
     const out = await client.invoke({ method: "tools/call", params: { name: "x", arguments: {} } });
@@ -70,7 +64,6 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
 
   it("calls provide() once per invoke (no per-client caching)", async () => {
     const provideSpy = vi.fn(async () => ({ sessionId: "rotating" }));
-    const ctx = makeCtx({ provide: provideSpy });
     // Each fetch call gets a fresh Response — Response bodies are
     // single-shot streams, so a shared instance can't be reused across
     // both invokes.
@@ -79,8 +72,8 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
     );
 
     const client = new McpHttpClient(
-      { metadata: { name: "Mcp" }, url: URL, sessionProvider: "SessionRef" },
-      ctx,
+      { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "SessionRef", provide: provideSpy } },
+      makeCtx(),
     );
     await client.init();
     await client.invoke({ method: "tools/call", params: { name: "x" } });
@@ -90,12 +83,12 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("throws ERR_MCP_TRANSPORT when sessionProvider name does not resolve", async () => {
-    const ctx = makeCtx(null);
-
+  it("throws ERR_MCP_TRANSPORT when the sessionProvider ref was never injected", async () => {
+    // Phase 5 left `sessionProvider` as the bare ref (no live instance), so it
+    // has no provide().
     const client = new McpHttpClient(
       { metadata: { name: "Mcp" }, url: URL, sessionProvider: "Missing" },
-      ctx,
+      makeCtx(),
     );
     await client.init();
 
@@ -109,12 +102,10 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
     expect((err as { code: string }).code).toBe("ERR_MCP_TRANSPORT");
   });
 
-  it("throws ERR_MCP_TRANSPORT when the resolved instance has no provide()", async () => {
-    const ctx = makeCtx({} as { provide?: () => Promise<{ sessionId: string }> });
-
+  it("throws ERR_MCP_TRANSPORT when the injected sessionProvider has no provide()", async () => {
     const client = new McpHttpClient(
-      { metadata: { name: "Mcp" }, url: URL, sessionProvider: "BadShape" },
-      ctx,
+      { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "BadShape" } },
+      makeCtx(),
     );
     await client.init();
 
@@ -124,11 +115,13 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
   });
 
   it("throws ERR_MCP_PROTOCOL when the provider returns an empty sessionId", async () => {
-    const ctx = makeCtx({ provide: async () => ({ sessionId: "" }) });
-
     const client = new McpHttpClient(
-      { metadata: { name: "Mcp" }, url: URL, sessionProvider: "EmptySid" },
-      ctx,
+      {
+        metadata: { name: "Mcp" },
+        url: URL,
+        sessionProvider: { name: "EmptySid", provide: async () => ({ sessionId: "" }) },
+      },
+      makeCtx(),
     );
     await client.init();
 
@@ -138,12 +131,15 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
   });
 
   it("teardown does NOT send DELETE in external-provider mode (sessions are owned upstream)", async () => {
-    const ctx = makeCtx({ provide: async () => ({ sessionId: "external" }) });
     fetchMock.mockResolvedValue(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }));
 
     const client = new McpHttpClient(
-      { metadata: { name: "Mcp" }, url: URL, sessionProvider: "S" },
-      ctx,
+      {
+        metadata: { name: "Mcp" },
+        url: URL,
+        sessionProvider: { name: "S", provide: async () => ({ sessionId: "external" }) },
+      },
+      makeCtx(),
     );
     await client.init();
     await client.invoke({ method: "tools/call", params: { name: "x" } });
@@ -156,7 +152,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
 
 describe("McpHttpClient (self-handshake mode)", () => {
   it("runs initialize + notifications/initialized once, then reuses the cached session", async () => {
-    const ctx = makeCtx(null);
+    const ctx = makeCtx();
     // First call: initialize → returns minted session id.
     // Second call: notifications/initialized → 202 (no body).
     // Third call: actual tools/call → result.
@@ -182,7 +178,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
   });
 
   it("re-handshakes once after ERR_MCP_SESSION_INVALID, then re-runs the original request", async () => {
-    const ctx = makeCtx(null);
+    const ctx = makeCtx();
     fetchMock
       // first handshake
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }, { sessionId: "old" }))
@@ -207,7 +203,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
   });
 
   it("stateless server (no Mcp-Session-Id minted on initialize): handshake runs once, follow-ups send no header", async () => {
-    const ctx = makeCtx(null);
+    const ctx = makeCtx();
     // initialize: 200 OK, no mcp-session-id header.
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }))
@@ -231,7 +227,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
   });
 
   it("teardown sends DELETE with the cached session ID", async () => {
-    const ctx = makeCtx(null);
+    const ctx = makeCtx();
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }, { sessionId: "to-delete" }))
       .mockResolvedValueOnce(new Response(null, { status: 202 }))

@@ -39,6 +39,4 @@ metadata:
 kind: AbstractMismatchedAliasesRejectsWrongKind.GreeterUser
 metadata:
   name: UsesWrongKind
-greeter:
-  kind: AL.Concrete
-  name: NotAGreeter
+greeter: !ref NotAGreeter

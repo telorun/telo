@@ -1,5 +1,6 @@
+import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../lib/utils";
-import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
+import type { ResolvedResourceOption } from "./types";
 
 /** Parsed `x-telo-ref` target, e.g. "telo#Mount" → { scope: "telo", symbol: "Mount" }. */
 interface ParsedRefTarget {
@@ -85,18 +86,22 @@ export function resolveRefCandidates(
   return candidates;
 }
 
-/** Parses a ref value (either a `"kind.name"` string or a `{kind, name}`
- *  object) into its components. Returns null for malformed input. */
-export function parseRefValue(value: unknown): { kind: string; name: string } | null {
+/** Reads a ref value into the referenced resource **name**. References are
+ *  written as `!ref` sentinels (`{ __tagged, engine: "ref", source }`), so the
+ *  name is `source`. Legacy `{kind, name}` objects and `"kind.name"` / bare
+ *  strings are still read tolerantly — for display only, so an unmigrated file
+ *  shows its current selection — and reduced to the name. The caller resolves
+ *  the kind from its candidate list. Returns null for malformed input. */
+export function parseRefValue(value: unknown): string | null {
+  if (isRefSentinel(value)) {
+    const dot = value.source.lastIndexOf(".");
+    return dot >= 0 ? value.source.slice(dot + 1) : value.source;
+  }
   if (typeof value === "string") {
     const dot = value.lastIndexOf(".");
-    if (dot <= 0) return null;
-    return { kind: value.slice(0, dot), name: value.slice(dot + 1) };
+    return dot >= 0 ? value.slice(dot + 1) : value || null;
   }
-  if (!isRecord(value)) return null;
-  if (typeof value.kind === "string" && typeof value.name === "string") {
-    return { kind: value.kind, name: value.name };
-  }
+  if (isRecord(value) && typeof value.name === "string") return value.name;
   return null;
 }
 
@@ -105,31 +110,10 @@ export function toRefString(option: { kind: string; name: string }): string {
   return `${option.kind}.${option.name}`;
 }
 
-/** Formats a resolved candidate into the shape the schema expects: a string
- *  `"kind.name"` or an object `{kind, name}`. `mode` comes from
- *  `inferRefMode(prop)` — when the ref slot's schema only allows object form,
- *  string form is unacceptable and vice versa. */
-export function toRefValue(
-  option: { kind: string; name: string },
-  mode: "string" | "object",
-): string | { kind: string; name: string } {
-  if (mode === "object") return { kind: option.kind, name: option.name };
-  return toRefString(option);
-}
-
-/** Decides whether a ref slot serializes as a `"kind.name"` string or a
- *  `{kind, name}` object, based on the schema's allowed types across the
- *  property itself and any `oneOf` / `anyOf` alternatives. Object form wins
- *  only when the schema forbids strings — otherwise default to string. */
-export function inferRefMode(prop: JsonSchemaProperty | undefined): "string" | "object" {
-  if (!prop) return "string";
-  const alternatives = [...(prop.oneOf ?? []), ...(prop.anyOf ?? [])];
-  const hasString =
-    prop.type === "string" || alternatives.some((candidate) => candidate.type === "string");
-  const hasObject =
-    prop.type === "object" || alternatives.some((candidate) => candidate.type === "object");
-  if (hasObject && !hasString) return "object";
-  return "string";
+/** Serializes a resolved candidate as a `!ref` sentinel — the only reference
+ *  form Telo accepts. The referenced resource's name is the sentinel source. */
+export function toRefValue(option: { kind: string; name: string }): TaggedSentinel {
+  return makeTaggedSentinel("ref", option.name);
 }
 
 /** Collects every `x-telo-ref` target from a property, including refs buried

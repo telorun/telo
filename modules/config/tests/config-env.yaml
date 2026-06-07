@@ -6,7 +6,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestConfigEnv
+  - !ref TestConfigEnv
 ---
 kind: Config.Env
 metadata:

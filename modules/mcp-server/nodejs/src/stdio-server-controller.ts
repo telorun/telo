@@ -6,9 +6,10 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { type ControllerContext, type ResourceContext, RuntimeError } from "@telorun/sdk";
 
 import { buildServer, type SessionContext, type ServerInfo } from "./registry.js";
-import type { McpToolsBundle } from "./tools-controller.js";
+import { asToolsBundle } from "./tools-controller.js";
 
 interface StdioServerManifest {
+  kind: string;
   metadata: { name: string };
   serverInfo: ServerInfo;
   instructions?: string;
@@ -38,20 +39,13 @@ export class McpStdioServer {
     if ((this.resource.resources ?? []).length > 0 || (this.resource.prompts ?? []).length > 0) {
       throw new RuntimeError(
         "ERR_MCP_V2_NOT_IMPLEMENTED",
-        `Mcp.StdioServer[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
+        `${this.resource.kind}[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
       );
     }
 
-    const toolsBundles = (this.resource.tools ?? []).map((bundleName) => {
-      const inst = this.ctx.moduleContext.getInstance(bundleName) as McpToolsBundle | undefined;
-      if (!inst) {
-        throw new RuntimeError(
-          "ERR_MCP_BUNDLE_NOT_FOUND",
-          `Mcp.StdioServer[${this.resource.metadata.name}]: tools bundle '${bundleName}' not found in module scope`,
-        );
-      }
-      return inst;
-    });
+    const toolsBundles = (this.resource.tools ?? []).map((ref) =>
+      asToolsBundle(ref, `${this.resource.kind}[${this.resource.metadata.name}]`),
+    );
 
     this.server = buildServer({
       serverInfo: this.resource.serverInfo,

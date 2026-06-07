@@ -37,6 +37,11 @@ schema:
               title: Invoke
               description: Resource to invoke for this step.
               x-telo-topology-role: invoke
+              # A reference is always an object (a `!ref` sentinel or its resolved
+              # `{kind, name}`); requiring an object rejects a bare-string ref —
+              # which `validateReferenceForms` cannot catch at this nested slot —
+              # at `telo check` instead of as an obscure runtime failure.
+              type: object
               anyOf:
                 - title: Invocable
                   description: Reference to an invocable resource.
@@ -244,16 +249,24 @@ schema:
   properties:
     with:
       title: With
-      x-telo-scope: /steps
+      # Visibility covers both `/steps` (where steps reference with-resources)
+      # and `/targets` (the run-before-steps references), so a `!ref` in either
+      # resolves against the scoped resources.
+      x-telo-scope: [ "/steps", "/targets" ]
       description: Resources available during sequence execution; torn down when done
     targets:
       title: Targets
       type: array
-      description: Names of with-resources to run() before executing steps; torn down when done
+      description: with-resources to run() before executing steps; torn down when done. Reference each with a `!ref <name>`.
       items:
         title: Target
-        description: Name of a with-resource to run before steps.
-        type: string
+        description: A with-resource to run before steps — write it as a `!ref`.
+        anyOf:
+          - type: string
+            x-telo-ref: "telo#Runnable"
+          - type: string
+            x-telo-ref: "telo#Service"
+          - $ref: "telo://manifest#/$defs/ResourceRef"
     inputs:
       title: Inputs
       type: object
@@ -292,12 +305,12 @@ schema:
         limit: { type: integer }
       steps:
         - name: fetchUser
-          invoke: { kind: Sql.Query, name: GetUser }
+          invoke: !ref GetUser
           inputs:
             bindings:
               - !cel "inputs.userId"
         - name: count
-          invoke: { kind: Sql.Query, name: CountPosts }
+          invoke: !ref CountPosts
           inputs:
             bindings:
               - !cel "inputs.userId"

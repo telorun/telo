@@ -6,7 +6,7 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - TestUntypedAccess
+  - !ref TestUntypedAccess
 ---
 # Script with no outputType — result should be untyped (any access allowed)
 kind: JavaScript.Script
@@ -22,9 +22,7 @@ metadata:
   name: TestUntypedAccess
 steps:
   - name: Step1
-    invoke:
-      kind: JavaScript.Script
-      name: Compute
+    invoke: !ref Compute
   - name: Step2
     inputs:
       val: "${{ steps.Step1.result.anything }}"

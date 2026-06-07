@@ -16,43 +16,43 @@ targets:
   - name: Produce
     inputs:
       text: "bundled hello"
-    invoke: { kind: Bundle.Producer, name: Producer }
+    invoke: !ref Producer
   - name: ToText
     inputs:
       input: "${{ steps.Produce.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: Assert
     inputs:
       text: "${{ steps.ToText.result.text }}"
-    invoke: { kind: Assert.Schema, name: AssertText }
+    invoke: !ref AssertText
   # Env-missing fallback: ProducerFallback's first candidate bundle is missing,
   # so the loader must skip it and load the second. If it works, the contract holds.
   - name: ProduceFallback
     inputs:
       text: "bundled hello"
-    invoke: { kind: Bundle.ProducerFallback, name: ProducerFb }
+    invoke: !ref ProducerFb
   - name: ToTextFallback
     inputs:
       input: "${{ steps.ProduceFallback.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: AssertFallback
     inputs:
       text: "${{ steps.ToTextFallback.result.text }}"
-    invoke: { kind: Assert.Schema, name: AssertText }
+    invoke: !ref AssertText
   # Format-based fallback: first candidate is format=napi (file present, but the
   # Node kernel can't host that format) → env-missing → loads the format=js one.
   - name: ProduceFormat
     inputs:
       text: "bundled hello"
-    invoke: { kind: Bundle.ProducerFormatFallback, name: ProducerFmt }
+    invoke: !ref ProducerFmt
   - name: ToTextFormat
     inputs:
       input: "${{ steps.ProduceFormat.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: AssertFormat
     inputs:
       text: "${{ steps.ToTextFormat.result.text }}"
-    invoke: { kind: Assert.Schema, name: AssertText }
+    invoke: !ref AssertText
 ---
 kind: Bundle.Producer
 metadata: { name: Producer }

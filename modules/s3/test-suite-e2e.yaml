@@ -12,7 +12,7 @@ metadata:
 imports:
   Test: ../test
 targets:
-  - RunAll
+  - !ref RunAll
 ---
 kind: Test.Suite
 metadata:

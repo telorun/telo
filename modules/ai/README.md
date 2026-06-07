@@ -41,9 +41,7 @@ apiKey: "${{ secrets.openaiApiKey }}"
 ---
 kind: Ai.Text
 metadata: { name: Summarizer }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4o
+model: !ref Gpt4o
 system: "Summarize concisely."
 ```
 

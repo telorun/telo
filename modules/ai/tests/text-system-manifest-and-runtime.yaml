@@ -8,8 +8,8 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestManifestSystemPrepends
-  - TestRuntimeSystemOverridesManifest
+  - !ref TestManifestSystemPrepends
+  - !ref TestRuntimeSystemOverridesManifest
 ---
 # Echo with a ":::" suffix so we can observe the full message trail when the echoed
 # content is the last message's content (verifying prepend order).
@@ -18,9 +18,7 @@ metadata: { name: Echo }
 ---
 kind: Ai.Text
 metadata: { name: WithSystem }
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 system: "manifest-system"
 ---
 # Case 1: manifest `system` is prepended when inputs carry no system override and
@@ -34,9 +32,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "user-content"
-    invoke:
-      kind: Ai.Text
-      name: WithSystem
+    invoke: !ref WithSystem
   - name: AssertText
     inputs:
       text: "${{ steps.Invoke.result.text }}"
@@ -59,9 +55,7 @@ steps:
     inputs:
       prompt: "u"
       system: "runtime-system"
-    invoke:
-      kind: Ai.Text
-      name: WithSystem
+    invoke: !ref WithSystem
   - name: Assert
     inputs:
       text: "${{ steps.Invoke.result.text }}"

@@ -7,8 +7,8 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - Migrate
-  - VerifyMigrations
+  - !ref Migrate
+  - !ref VerifyMigrations
 ---
 kind: Sql.SqliteConnection
 metadata:
@@ -18,9 +18,7 @@ file: ":memory:"
 kind: Sql.Migrations
 metadata:
   name: Migrate
-connection:
-  kind: Sql.SqliteConnection
-  name: Db
+connection: !ref Db
 migrations:
   20260401_create_users:
     statements:
@@ -41,9 +39,7 @@ steps:
       sql: "SELECT name FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: AssertSeeded
     inputs:
@@ -68,9 +64,7 @@ steps:
       sql: "SELECT name FROM migrations ORDER BY name"
     invoke:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: AssertLedger
     inputs:

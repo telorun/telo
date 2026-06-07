@@ -58,8 +58,8 @@ imports:
   Http: std/http-server@0.9.0
   Sql: std/sql@0.8.0
 targets:
-  - Migrations
-  - Server
+  - !ref Migrations
+  - !ref Server
 ---
 # SQLite database — swap driver/host/database for PostgreSQL with zero YAML changes
 kind: Sql.Connection
@@ -72,9 +72,7 @@ file: ./tmp/feedback.db
 kind: Sql.Migrations
 metadata:
   name: Migrations
-connection:
-  kind: Sql.Connection
-  name: Db
+connection: !ref Db
 ---
 kind: Sql.Migration
 metadata:
@@ -101,7 +99,7 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    type: Http.Api.FeedbackRoutes
+    mount: !ref FeedbackRoutes
 ---
 kind: Http.Api
 metadata:
@@ -123,9 +121,7 @@ routes:
           required: [ text ]
     handler:
       kind: Sql.Exec
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
       bindings:
@@ -146,9 +142,7 @@ routes:
       method: GET
     handler:
       kind: Sql.Select
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
       from: feedback
       columns: [ id, text, source, score, created_at ]
       orderBy:
@@ -172,9 +166,7 @@ routes:
           required: [ id ]
     handler:
       kind: Sql.Select
-      connection:
-        kind: Sql.Connection
-        name: Db
+      connection: !ref Db
       from: feedback
       columns: [ id, text, source, score, created_at ]
       where:

@@ -13,7 +13,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestRoundtrip
+  - !ref TestRoundtrip
 ---
 kind: JS.Script
 metadata: { name: Source }
@@ -45,19 +45,19 @@ kind: Run.Sequence
 metadata: { name: TestRoundtrip }
 steps:
   - name: Source
-    invoke: { kind: JS.Script, name: Source }
+    invoke: !ref Source
   - name: Encode
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: Octet.Encoder, name: Encoder }
+    invoke: !ref Encoder
   - name: Decode
     inputs:
       input: "${{ steps.Encode.result.output }}"
-    invoke: { kind: Octet.Decoder, name: Decoder }
+    invoke: !ref Decoder
   - name: ToText
     inputs:
       bytes: "${{ steps.Decode.result.bytes }}"
-    invoke: { kind: JS.Script, name: ToText }
+    invoke: !ref ToText
   - name: Assert
     inputs:
       text: "${{ steps.ToText.result.text }}"

@@ -356,18 +356,10 @@ schema:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
       x-telo-ref: "telo#Type"
-      oneOf:
-        - type: string
-        - type: object
-          additionalProperties: true
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
       x-telo-ref: "telo#Type"
-      oneOf:
-        - type: string
-        - type: object
-          additionalProperties: true
 ---
 kind: Telo.Definition
 metadata:

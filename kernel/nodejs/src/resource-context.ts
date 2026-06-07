@@ -251,14 +251,19 @@ export class ResourceContextImpl implements ResourceContext {
         return { kind: ref.kind, name: ref.name, alias };
       }
       const refName = alias === "Self" ? source.slice(dot + 1) : source;
-      const entry = this.moduleContext.resourceInstances.get(refName);
-      if (!entry) {
-        throw new RuntimeError(
-          "ERR_RESOURCE_NOT_FOUND",
-          `[${this.metadata.name}] !ref '${refName}' did not resolve to a registered resource.`,
-        );
-      }
-      return { kind: entry.resource.kind as string, name: refName };
+      // Mirror the legacy `{kind, name}` path: return a `{kind, name}` ref and let
+      // the downstream resolution (module-global `invoke`, or scope-local
+      // `executeInvokeStep → ScopeContext.getInstance`) find it by name at invoke
+      // time. The kind is carried for invocation-event naming. Prefer an
+      // already-initialized instance's kind, else the authored kind from the
+      // static manifest (init-order-independent — the target may not be
+      // initialized yet when this resolves, and scope-local resources never enter
+      // `resourceInstances`).
+      const kind =
+        (this.moduleContext.resourceInstances.get(refName)?.resource.kind as string | undefined) ??
+        this.kernel.resourceKindByName(refName) ??
+        "";
+      return { kind, name: refName };
     }
 
     if (!resource.kind) {
@@ -274,6 +279,12 @@ export class ResourceContextImpl implements ResourceContext {
       resource.metadata?.name ??
       resourceName ??
       `Unnamed${Math.random().toString(16).slice(2, 8)}`;
+    // `alias` marks a resolved cross-module reference (`{kind, name, alias}`)
+    // produced from a `!ref Alias.name`. It is always a reference into an
+    // imported library's exported instance — never an inline definition — so it
+    // is a reference key alongside kind/name/metadata (not inline config) and is
+    // carried through so downstream scope resolution routes into the import.
+    const alias = typeof resource.alias === "string" ? resource.alias : undefined;
 
     // Register an inline manifest when:
     //  - the ref carries definition properties (clearly an inline definition), or
@@ -287,7 +298,7 @@ export class ResourceContextImpl implements ResourceContext {
     // the contract here; previous silent-skip-on-duplicate hid real bugs
     // (e.g. inline auto-names colliding across sibling Run.Sequence steps).
     const hasInlineProperties = Object.keys(resource).some(
-      (k) => k !== "kind" && k !== "name" && k !== "metadata",
+      (k) => k !== "kind" && k !== "name" && k !== "metadata" && k !== "alias",
     );
     const hasExplicitName = resource.name !== undefined || resource.metadata?.name !== undefined;
     const shouldRegister =
@@ -304,7 +315,7 @@ export class ResourceContextImpl implements ResourceContext {
       });
     }
 
-    return { kind, name };
+    return alias ? { kind, name, alias } : { kind, name };
   }
 
   getResourcesByName(_kind: string, name: string): RuntimeResource | null {

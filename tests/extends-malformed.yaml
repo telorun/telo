@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestExtendsMalformed
+  - !ref TestExtendsMalformed
 ---
 # Asserts the analyzer emits EXTENDS_MALFORMED when `extends` is not in identity form.
 kind: Assert.Manifest

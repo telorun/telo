@@ -6,7 +6,7 @@ imports:
   JS: ../../../../../modules/javascript
 targets:
   - name: echoStep
-    invoke: { kind: JS.Script, name: Echo }
+    invoke: !ref Echo
     inputs: { value: 7 }
 ---
 kind: JS.Script

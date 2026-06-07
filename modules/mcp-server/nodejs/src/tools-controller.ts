@@ -114,6 +114,19 @@ export class McpToolsBundle {
   }
 }
 
+/** Narrow a transport's `tools` bundle slot to its live `McpToolsBundle`. The
+ *  `!ref` at the slot is replaced with the live instance by the kernel's Phase-5
+ *  injection before the transport's init() runs, so the value is used directly. */
+export function asToolsBundle(ref: unknown, label: string): McpToolsBundle {
+  if (ref && typeof (ref as McpToolsBundle).resolveEntries === "function") {
+    return ref as McpToolsBundle;
+  }
+  throw new RuntimeError(
+    "ERR_MCP_BUNDLE_NOT_FOUND",
+    `${label}: a tools bundle did not resolve to a live Mcp.Tools instance`,
+  );
+}
+
 export async function create(
   resource: ToolsManifest,
   ctx: ResourceContext,

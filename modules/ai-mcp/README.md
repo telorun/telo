@@ -43,13 +43,13 @@ clientInfo: { name: my-app, version: 1.0.0 }
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: FileTools }
-client: { kind: Mcp.StdioClient, name: FilesMcp }
+client: !ref FilesMcp
 ---
 kind: Ai.Agent
 metadata: { name: Assistant }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt4o }
+model: !ref Gpt4o
 toolProviders:
-  - provider: { kind: AiMcp.ToolProvider, name: FileTools }
+  - provider: !ref FileTools
     prefix: "fs_"
 ```
 

@@ -7,9 +7,10 @@ import { type ControllerContext, type ResourceContext, RuntimeError } from "@tel
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { buildServer, type SessionContext, type ServerInfo } from "./registry.js";
-import type { McpToolsBundle } from "./tools-controller.js";
+import { asToolsBundle, type McpToolsBundle } from "./tools-controller.js";
 
 interface HttpEndpointManifest {
+  kind: string;
   metadata: { name: string };
   serverInfo: ServerInfo;
   instructions?: string;
@@ -44,19 +45,12 @@ export class McpHttpEndpoint {
     if ((this.resource.resources ?? []).length > 0 || (this.resource.prompts ?? []).length > 0) {
       throw new RuntimeError(
         "ERR_MCP_V2_NOT_IMPLEMENTED",
-        `Mcp.HttpEndpoint[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
+        `${this.resource.kind}[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
       );
     }
-    this.toolsBundles = (this.resource.tools ?? []).map((bundleName) => {
-      const inst = this.ctx.moduleContext.getInstance(bundleName) as McpToolsBundle | undefined;
-      if (!inst) {
-        throw new RuntimeError(
-          "ERR_MCP_BUNDLE_NOT_FOUND",
-          `Mcp.HttpEndpoint[${this.resource.metadata.name}]: tools bundle '${bundleName}' not found in module scope`,
-        );
-      }
-      return inst;
-    });
+    this.toolsBundles = (this.resource.tools ?? []).map((ref) =>
+      asToolsBundle(ref, `${this.resource.kind}[${this.resource.metadata.name}]`),
+    );
   }
 
   /** Mount contract — duck-typed against Http.Server's mount loop. The

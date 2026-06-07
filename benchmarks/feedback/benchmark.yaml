@@ -6,7 +6,7 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - FeedbackLoad
+  - !ref FeedbackLoad
 ---
 kind: Bench.Suite
 metadata:

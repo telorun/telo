@@ -9,14 +9,14 @@ imports:
   Type: ../../../modules/type
   JS: ../../../modules/javascript
 targets:
-  - JsonString
-  - JsonNumber
-  - JsonBool
-  - JsonNull
-  - JsonStringList
-  - JsonStructured
-  - JsonInterpolated
-  - JsonLargeInt
+  - !ref JsonString
+  - !ref JsonNumber
+  - !ref JsonBool
+  - !ref JsonNull
+  - !ref JsonStringList
+  - !ref JsonStructured
+  - !ref JsonInterpolated
+  - !ref JsonLargeInt
 ---
 kind: Run.Sequence
 metadata: { name: JsonString }
@@ -95,7 +95,7 @@ kind: Run.Sequence
 metadata: { name: JsonStructured }
 steps:
   - name: build
-    invoke: { kind: JS.Script, name: BuildPayload }
+    invoke: !ref BuildPayload
     inputs: {}
   - name: stringify
     invoke: { kind: Assert.Equals }

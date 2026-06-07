@@ -7,7 +7,7 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - TestWhileLoop
+  - !ref TestWhileLoop
 ---
 kind: Run.Sequence
 metadata:

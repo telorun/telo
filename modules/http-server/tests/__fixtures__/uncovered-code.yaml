@@ -32,9 +32,7 @@ routes:
   - request:
       path: /x
       method: GET
-    handler:
-      kind: Run.Sequence
-      name: ThrowsAOrB
+    handler: !ref ThrowsAOrB
     returns:
       - status: 200
         content:

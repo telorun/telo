@@ -41,4 +41,5 @@ export {
   MANIFEST_SCHEMA_URI,
   ManifestRootSchema,
   ResourceRefSchema,
+  normalizeRefSlots,
 } from "./manifest-schemas.js";

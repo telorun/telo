@@ -23,7 +23,7 @@ imports:
   JS: std/javascript@0.3.2
   Type: std/type@0.1.0
 targets:
-  - Main
+  - !ref Main
 ---
 # Three handlers — one per event source.
 kind: JS.Script
@@ -90,9 +90,7 @@ routes:
   - request:
       method: GET
       path: "/health"
-    handler:
-      kind: JS.Script
-      name: GetHealth
+    handler: !ref GetHealth
     inputs: {}
     returns:
       - status: 200
@@ -105,18 +103,14 @@ kind: Lambda.Sqs
 metadata: { name: EventQueue }
 queue:
   queueName: app-events
-handler:
-  kind: JS.Script
-  name: ProcessEvents
+handler: !ref ProcessEvents
 inputs:
   records: !cel "event.Records"
 ---
 # Anything else (direct SDK invokes, Step Functions, internal RPC) → Direct.
 kind: Lambda.Direct
 metadata: { name: Admin }
-handler:
-  kind: JS.Script
-  name: AdminPing
+handler: !ref AdminPing
 inputs:
   caller: !cel "event.caller"
 ---
@@ -126,6 +120,6 @@ inputs:
 kind: Lambda.Function
 metadata: { name: Main }
 handlers:
-  - { kind: Lambda.HttpApi, name: Web }
-  - { kind: Lambda.Sqs, name: EventQueue }
-  - { kind: Lambda.Direct, name: Admin }
+  - !ref Web
+  - !ref EventQueue
+  - !ref Admin

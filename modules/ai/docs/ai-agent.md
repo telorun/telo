@@ -25,7 +25,7 @@ code: |
 kind: Ai.Tools
 metadata: { name: LocalTools }
 tools:
-  - tool: { kind: Js.Script, name: Multiplier }
+  - tool: !ref Multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -36,11 +36,11 @@ tools:
 ---
 kind: Ai.Agent
 metadata: { name: Assistant }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt4o }
+model: !ref Gpt4o
 system: "Use tools when helpful."
 maxSteps: 8
 toolProviders:
-  - provider: { kind: Ai.Tools, name: LocalTools }
+  - provider: !ref LocalTools
 ```
 
 ## Manifest fields

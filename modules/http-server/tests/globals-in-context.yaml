@@ -5,8 +5,8 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestValidGlobalsAccess
-  - TestBadGlobalsAccess
+  - !ref TestValidGlobalsAccess
+  - !ref TestBadGlobalsAccess
 ---
 # Kernel globals (variables, secrets, resources, imports, env) must be
 # available inside x-telo-context scopes without being re-declared.

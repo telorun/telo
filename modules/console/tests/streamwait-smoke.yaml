@@ -17,10 +17,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestForwardsItems
-  - TestEmptyStream
-  - TestSourceErrorBeforeFirstItem
-  - TestCancellationPropagatesUpstream
+  - !ref TestForwardsItems
+  - !ref TestEmptyStream
+  - !ref TestSourceErrorBeforeFirstItem
+  - !ref TestCancellationPropagatesUpstream
 ---
 # Source that yields three string items with a small delay before the first
 # (so the animation has time to paint at least one frame).
@@ -85,15 +85,15 @@ kind: Run.Sequence
 metadata: { name: TestForwardsItems }
 steps:
   - name: Source
-    invoke: { kind: JS.Script, name: DelayedSource }
+    invoke: !ref DelayedSource
   - name: Wait
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: Console.StreamWait, name: Wait }
+    invoke: !ref Wait
   - name: Collect
     inputs:
       input: "${{ steps.Wait.result.output }}"
-    invoke: { kind: JS.Script, name: CollectChunks }
+    invoke: !ref CollectChunks
   - name: AssertContents
     inputs:
       joined: "${{ steps.Collect.result.joined }}"
@@ -114,15 +114,15 @@ kind: Run.Sequence
 metadata: { name: TestEmptyStream }
 steps:
   - name: EmptySrc
-    invoke: { kind: JS.Script, name: EmptySource }
+    invoke: !ref EmptySource
   - name: Wait
     inputs:
       input: "${{ steps.EmptySrc.result.output }}"
-    invoke: { kind: Console.StreamWait, name: Wait }
+    invoke: !ref Wait
   - name: Collect
     inputs:
       input: "${{ steps.Wait.result.output }}"
-    invoke: { kind: JS.Script, name: CollectChunks }
+    invoke: !ref CollectChunks
   - name: AssertEmptyReached
     inputs:
       joined: "${{ steps.Collect.result.joined }}"
@@ -144,17 +144,17 @@ kind: Run.Sequence
 metadata: { name: TestSourceErrorBeforeFirstItem }
 steps:
   - name: ErrSrc
-    invoke: { kind: JS.Script, name: ImmediateErrorSource }
+    invoke: !ref ImmediateErrorSource
   - name: ErrWait
     inputs:
       input: "${{ steps.ErrSrc.result.output }}"
-    invoke: { kind: Console.StreamWait, name: Wait }
+    invoke: !ref Wait
   - name: ErrTried
     try:
       - name: ErrCollect
         inputs:
           input: "${{ steps.ErrWait.result.output }}"
-        invoke: { kind: JS.Script, name: CollectChunks }
+        invoke: !ref CollectChunks
     catch:
       - name: AssertErrCaught
         inputs:
@@ -215,15 +215,15 @@ kind: Run.Sequence
 metadata: { name: TestCancellationPropagatesUpstream }
 steps:
   - name: TrackedSrc
-    invoke: { kind: JS.Script, name: TrackedSource }
+    invoke: !ref TrackedSource
   - name: WrapWait
     inputs: { input: "${{ steps.TrackedSrc.result.output }}" }
-    invoke: { kind: Console.StreamWait, name: Wait }
+    invoke: !ref Wait
   - name: BreakEarly
     inputs: { input: "${{ steps.WrapWait.result.output }}" }
-    invoke: { kind: JS.Script, name: TakeUntilXAndBreak }
+    invoke: !ref TakeUntilXAndBreak
   - name: ReadFlag
-    invoke: { kind: JS.Script, name: ReadCancellationFlag }
+    invoke: !ref ReadCancellationFlag
   - name: AssertCancellationPropagated
     inputs:
       returnCalled: "${{ steps.ReadFlag.result.returnCalled }}"

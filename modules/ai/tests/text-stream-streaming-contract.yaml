@@ -18,16 +18,16 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestNdjson
-  - TestSse
-  - TestPlain
+  - !ref TestNdjson
+  - !ref TestSse
+  - !ref TestPlain
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiEcho.EchoModel, name: Echo }
+model: !ref Echo
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }
@@ -46,15 +46,15 @@ metadata: { name: TestNdjson }
 steps:
   - name: NdjsonStream
     inputs: { prompt: "hi" }
-    invoke: { kind: Ai.TextStream, name: ChatStream }
+    invoke: !ref ChatStream
   - name: NdjsonEncode
     inputs:
       input: "${{ steps.NdjsonStream.result.output }}"
-    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+    invoke: !ref NdjsonEnc
   - name: NdjsonDecode
     inputs:
       input: "${{ steps.NdjsonEncode.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: TextDec }
+    invoke: !ref TextDec
   - name: NdjsonAssert
     inputs:
       text: "${{ steps.NdjsonDecode.result.text }}"
@@ -75,15 +75,15 @@ metadata: { name: TestSse }
 steps:
   - name: SseStream
     inputs: { prompt: "hi" }
-    invoke: { kind: Ai.TextStream, name: ChatStream }
+    invoke: !ref ChatStream
   - name: SseEncode
     inputs:
       input: "${{ steps.SseStream.result.output }}"
-    invoke: { kind: Sse.Encoder, name: SseEnc }
+    invoke: !ref SseEnc
   - name: SseDecode
     inputs:
       input: "${{ steps.SseEncode.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: TextDec }
+    invoke: !ref TextDec
   - name: SseAssert
     inputs:
       text: "${{ steps.SseDecode.result.text }}"
@@ -101,15 +101,15 @@ metadata: { name: TestPlain }
 steps:
   - name: PlainStream
     inputs: { prompt: "hi" }
-    invoke: { kind: Ai.TextStream, name: ChatStream }
+    invoke: !ref ChatStream
   - name: PlainEncode
     inputs:
       input: "${{ steps.PlainStream.result.output }}"
-    invoke: { kind: PlainText.Encoder, name: PlainEnc }
+    invoke: !ref PlainEnc
   - name: PlainDecode
     inputs:
       input: "${{ steps.PlainEncode.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: TextDec }
+    invoke: !ref TextDec
   - name: PlainAssert
     inputs:
       text: "${{ steps.PlainDecode.result.text }}"

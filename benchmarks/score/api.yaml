@@ -7,7 +7,7 @@ imports:
   Http: ../../modules/http-server
   JavaScript: ../../modules/javascript
 targets:
-  - Server
+  - !ref Server
 ---
 # Pure passthrough — keeps the handler trivial so per-request time is dominated
 # by CEL evaluation in the route-level inputs and returns blocks.
@@ -27,7 +27,7 @@ port: 8845
 logger: false
 mounts:
   - path: /v1
-    type: !ref Routes
+    mount: !ref Routes
 ---
 kind: Http.Api
 metadata:
@@ -51,9 +51,7 @@ routes:
           properties:
             lead:
               type: object
-    handler:
-      kind: JavaScript.Script
-      name: PassThrough
+    handler: !ref PassThrough
     # Route-level inputs (~20 CEL) — pre-compute reusable signals once and
     # pass them to the handler. The handler returns them verbatim so the
     # `returns` block sees them as `result.*`.

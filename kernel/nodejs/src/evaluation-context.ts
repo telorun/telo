@@ -495,14 +495,20 @@ export class EvaluationContext implements IEvaluationContext {
       );
     }
 
+    // A `!ref` whose kind couldn't be determined at resolve time (e.g. a
+    // scope-local target absent from the static manifest set) arrives with an
+    // empty kind; dispatch is by name, so recover the authoritative kind from
+    // the resolved entry for event topics and error messages.
+    const effectiveKind = kind || (entry.resource.kind as string);
+
     if (typeof entry.instance.invoke !== "function") {
       throw new RuntimeError(
         "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${kind}.${name} does not have an invoke method`,
+        `Resource ${effectiveKind}.${name} does not have an invoke method`,
       );
     }
 
-    return this.runInvoke(kind, name, entry.instance, inputs, ctx);
+    return this.runInvoke(effectiveKind, name, entry.instance, inputs, ctx);
   }
 
   /**

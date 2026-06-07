@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestMismatchedAliases
+  - !ref TestMismatchedAliases
 ---
 # Regression: when a consumer imports libraries under different alias names than
 # the ones those libraries use internally for their own dependencies, the loader

@@ -11,9 +11,9 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestStringStream
-  - TestBytesStream
-  - TestInvalidInput
+  - !ref TestStringStream
+  - !ref TestBytesStream
+  - !ref TestInvalidInput
 ---
 kind: JS.Script
 metadata: { name: StringSource }
@@ -50,11 +50,11 @@ kind: Run.Sequence
 metadata: { name: TestStringStream }
 steps:
   - name: StringSrc
-    invoke: { kind: JS.Script, name: StringSource }
+    invoke: !ref StringSource
   - name: StringWrite
     inputs:
       input: "${{ steps.StringSrc.result.output }}"
-    invoke: { kind: Console.WriteStream, name: Stdout }
+    invoke: !ref Stdout
   - name: AssertStringReached
     inputs:
       reached: true
@@ -69,11 +69,11 @@ kind: Run.Sequence
 metadata: { name: TestBytesStream }
 steps:
   - name: BytesSrc
-    invoke: { kind: JS.Script, name: BytesSource }
+    invoke: !ref BytesSource
   - name: BytesWrite
     inputs:
       input: "${{ steps.BytesSrc.result.output }}"
-    invoke: { kind: Console.WriteStream, name: Stdout }
+    invoke: !ref Stdout
   - name: AssertBytesReached
     inputs:
       reached: true
@@ -88,13 +88,13 @@ kind: Run.Sequence
 metadata: { name: TestInvalidInput }
 steps:
   - name: BadSrc
-    invoke: { kind: JS.Script, name: BadSource }
+    invoke: !ref BadSource
   - name: BadTried
     try:
       - name: BadWrite
         inputs:
           input: "${{ steps.BadSrc.result.output }}"
-        invoke: { kind: Console.WriteStream, name: Stdout }
+        invoke: !ref Stdout
     catch:
       - name: AssertBadCaught
         inputs:

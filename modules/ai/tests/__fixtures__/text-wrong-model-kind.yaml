@@ -21,6 +21,4 @@ code: |
 kind: Ai.Text
 metadata:
   name: Bad
-model:
-  kind: JS.Script
-  name: NotAModel
+model: !ref NotAModel

@@ -8,11 +8,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - SingleDoc
-  - MultiDoc
-  - EmptyInput
-  - WhitespaceOnly
-  - MalformedInput
+  - !ref SingleDoc
+  - !ref MultiDoc
+  - !ref EmptyInput
+  - !ref WhitespaceOnly
+  - !ref MalformedInput
 ---
 kind: Run.Sequence
 metadata: { name: SingleDoc }

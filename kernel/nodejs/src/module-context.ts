@@ -47,6 +47,32 @@ function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
   return values;
 }
 
+/** A boot target whose ref slot Phase 5 injection already replaced with the
+ *  live instance (the documented "pre-resolved instance once Phase 5 ran"
+ *  shape from `BootTarget`). Distinguished from a structural `{kind, name}` ref
+ *  by carrying a `run()` method. */
+function isRunnableInstance(value: unknown): value is ResourceInstance {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { run?: unknown }).run === "function"
+  );
+}
+
+/** Cycle-safe serialization for diagnostics. A boot target can be a live
+ *  instance whose object graph (e.g. a Kysely/Ajv schema) is cyclic, which
+ *  would make a plain JSON.stringify throw and mask the real error. */
+function safeStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object") {
+      if (seen.has(val)) return "[Circular]";
+      seen.add(val);
+    }
+    return val;
+  });
+}
+
 /**
  * Persistent, module-scoped context. Reserved CEL namespaces:
  * variables, secrets, resources, ports (Application-only).
@@ -319,6 +345,18 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         this.invokeResolved(kind, name, instance, inputs, ctx),
       resolveImportedInstance: (alias, name) => this.resolveImportedInstance(alias, name),
     };
+    // Mirror the local-run gate: refuse a target reached after the boot run was
+    // cancelled, then run the pre-resolved instance directly.
+    const runResolvedInstance = async (inst: ResourceInstance, label: string) => {
+      const token = ctx?.cancellation;
+      if (token?.isCancelled) {
+        throw new RuntimeError(
+          "ERR_INVOKE_CANCELLED",
+          `Run ${label} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+        );
+      }
+      await inst.run!(ctx);
+    };
     for (let i = 0; i < this.targets.length; i++) {
       const target = this.targets[i]!;
       if (typeof target === "string") {
@@ -341,36 +379,54 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       if ("ref" in target && target.ref != null) {
         if (target.when === undefined || this.expandWith(target.when, { steps })) {
           const ref = target.ref as unknown;
-          const r =
-            ref && typeof ref === "object" ? (ref as { name: string; alias?: string }) : undefined;
-          if (r && typeof r.alias === "string" && r.alias !== "Self") {
-            const inst = this.resolveImportedInstance(r.alias, r.name);
-            if (!inst || typeof inst.run !== "function") {
-              throw new Error(
-                `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
-              );
-            }
-            // Mirror the local-run gate: refuse a cross-module target reached
-            // after the boot run was cancelled.
-            const token = ctx?.cancellation;
-            if (token?.isCancelled) {
-              throw new RuntimeError(
-                "ERR_INVOKE_CANCELLED",
-                `Run ${r.alias}.${r.name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
-              );
-            }
-            await inst.run(ctx);
+          // Phase 5 injection may have replaced the ref slot with the live
+          // instance; run it directly.
+          if (isRunnableInstance(ref)) {
+            await runResolvedInstance(ref, `target[${i}]`);
           } else {
-            await this.run(typeof ref === "string" ? ref : r!.name, ctx);
+            const r =
+              ref && typeof ref === "object"
+                ? (ref as { name: string; alias?: string })
+                : undefined;
+            if (r && typeof r.alias === "string" && r.alias !== "Self") {
+              const inst = this.resolveImportedInstance(r.alias, r.name);
+              if (!inst || typeof inst.run !== "function") {
+                throw new Error(
+                  `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
+                );
+              }
+              await runResolvedInstance(inst, `${r.alias}.${r.name}`);
+            } else {
+              await this.run(typeof ref === "string" ? ref : r!.name, ctx);
+            }
           }
         }
         continue;
       }
-      if ("name" in target && typeof target.name === "string") {
-        await this.run(target.name, ctx);
+      // Bare run target. Phase 5 injection resolves a `!ref name` /
+      // cross-module `!ref Alias.name` slot into the live instance before boot,
+      // so the common runtime shape here is a pre-resolved ResourceInstance;
+      // fall back to the structural ref forms when injection left them in place.
+      if (isRunnableInstance(target)) {
+        await runResolvedInstance(target, `target[${i}]`);
         continue;
       }
-      throw new Error(`Unrecognized target shape at index ${i}: ${JSON.stringify(target)}`);
+      const bare = target as { name?: unknown; alias?: unknown };
+      if (typeof bare.alias === "string" && bare.alias !== "Self" && typeof bare.name === "string") {
+        const inst = this.resolveImportedInstance(bare.alias, bare.name);
+        if (!inst || typeof inst.run !== "function") {
+          throw new Error(
+            `Boot target '${bare.alias}.${bare.name}' is not a runnable exported instance`,
+          );
+        }
+        await runResolvedInstance(inst, `${bare.alias}.${bare.name}`);
+        continue;
+      }
+      if (typeof bare.name === "string") {
+        await this.run(bare.name, ctx);
+        continue;
+      }
+      throw new Error(`Unrecognized target shape at index ${i}: ${safeStringify(target)}`);
     }
   }
 }

@@ -12,14 +12,14 @@ imports:
   Run: ../../run
   JS: ../../javascript
 targets:
-  - TestEqualsHappy
-  - TestEqualsFails
-  - TestEqualsRejectsNonPlainObjects
-  - TestMatchesHappy
-  - TestMatchesFails
-  - TestContainsString
-  - TestContainsArray
-  - TestContainsFails
+  - !ref TestEqualsHappy
+  - !ref TestEqualsFails
+  - !ref TestEqualsRejectsNonPlainObjects
+  - !ref TestMatchesHappy
+  - !ref TestMatchesFails
+  - !ref TestContainsString
+  - !ref TestContainsArray
+  - !ref TestContainsFails
 ---
 # --- Assert.Equals ---------------------------------------------------------
 kind: Run.Sequence
@@ -90,7 +90,7 @@ kind: Run.Sequence
 metadata: { name: TestEqualsRejectsNonPlainObjects }
 steps:
   - name: Dates
-    invoke: { kind: JS.Script, name: BuildDistinctDates }
+    invoke: !ref BuildDistinctDates
   - name: DatesTried
     try:
       - name: ShouldFail
@@ -105,7 +105,7 @@ steps:
           actual: "${{ error.code }}"
           expected: "ERR_ASSERTION_FAILED"
   - name: Maps
-    invoke: { kind: JS.Script, name: BuildDistinctMaps }
+    invoke: !ref BuildDistinctMaps
   - name: MapsTried
     try:
       - name: ShouldFail

@@ -8,7 +8,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestInlineInputOutputType
+  - !ref TestInlineInputOutputType
 ---
 # Inline {kind, schema} for both inputType and outputType — the analyzer
 # normalizes these into synthesized Type.JsonSchema resources. The kernel
@@ -43,9 +43,7 @@ steps:
   - name: Call
     inputs:
       name: "World"
-    invoke:
-      kind: JavaScript.Script
-      name: Greet
+    invoke: !ref Greet
   - name: VerifyMessage
     inputs:
       message: "${{ steps.Call.result.message }}"

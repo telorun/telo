@@ -21,7 +21,7 @@ imports:
   JS: std/javascript@0.3.2
   Type: std/type@0.1.0
 targets:
-  - Main
+  - !ref Main
 ---
 # User handler: receives the full batch and reports per-message failures
 # via the batchItemFailures shape AWS expects.
@@ -78,13 +78,11 @@ queue:
   queueArn: arn:aws:sqs:us-east-1:000000000000:orders
 batchSize: 10
 partialBatchResponse: true
-handler:
-  kind: JS.Script
-  name: ProcessOrders
+handler: !ref ProcessOrders
 inputs:
   records: !cel "event.Records"
 ---
 kind: Lambda.Function
 metadata: { name: Main }
 handlers:
-  - { kind: Lambda.Sqs, name: Orders }
+  - !ref Orders

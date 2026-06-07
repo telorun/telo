@@ -15,27 +15,27 @@ imports:
   Assert: ../../assert
 targets:
   - name: Source
-    invoke: { kind: Stream.Of, name: Source }
+    invoke: !ref Source
   - name: ToBytes
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: PlainText.Encoder, name: ToBytes }
+    invoke: !ref ToBytes
   - name: Compress
     inputs:
       input: "${{ steps.ToBytes.result.output }}"
-    invoke: { kind: Gzip.Encoder, name: Compress }
+    invoke: !ref Compress
   - name: Decompress
     inputs:
       input: "${{ steps.Compress.result.output }}"
-    invoke: { kind: Gzip.Decoder, name: Decompress }
+    invoke: !ref Decompress
   - name: ToText
     inputs:
       input: "${{ steps.Decompress.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: Assert
     inputs:
       text: "${{ steps.ToText.result.text }}"
-    invoke: { kind: Assert.Schema, name: AssertText }
+    invoke: !ref AssertText
 ---
 kind: Stream.Of
 metadata: { name: Source }

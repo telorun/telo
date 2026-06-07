@@ -7,7 +7,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 # Same hand-rolled MCP client as http-tool-call.yaml. Inlined because
 # resources defined in an imported library aren't visible to the parent
@@ -100,7 +100,7 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler: { kind: Run.Sequence, name: ThrowsNotFoundImpl }
+    handler: !ref ThrowsNotFoundImpl
     inputs:
       city: "${{ request.arguments.city }}"
     result:
@@ -116,7 +116,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
-tools: [ WeatherTools ]
+tools: [ !ref WeatherTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -128,15 +128,15 @@ with:
     baseUrl: http://127.0.0.1:8952
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: CallGetWeather
     inputs:
       url: http://127.0.0.1:8952/mcp
       method: tools/call
       params: { name: get_weather, arguments: { city: Atlantis } }
-    invoke: { kind: JS.Script, name: McpFetch }
+    invoke: !ref McpFetch
   - name: AssertResponse
     inputs:
       hasError: "${{ steps.CallGetWeather.result.hasError }}"

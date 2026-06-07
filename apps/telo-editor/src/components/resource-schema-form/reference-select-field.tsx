@@ -1,6 +1,5 @@
 import {
   collectRefTargets,
-  inferRefMode,
   parseRefValue,
   resolveRefCandidates,
   toRefString,
@@ -36,9 +35,14 @@ export function ReferenceSelectField({
   if (refTargets.length === 0) return null;
 
   const options = resolveRefCandidates(refTargets, resolvedResources, registry);
-  const selected = parseRefValue(value);
+  const selectedName = parseRefValue(value);
+  const selected = selectedName
+    ? (options.find((option) => option.name === selectedName) ?? {
+        kind: "",
+        name: selectedName,
+      })
+    : null;
   const selectedKey = selected ? toRefString(selected) : "";
-  const mode = inferRefMode(prop);
   const hasOptions = options.length > 0;
 
   return (
@@ -69,7 +73,7 @@ export function ReferenceSelectField({
             }
             const option = options.find((item) => toRefString(item) === next);
             if (!option) return;
-            onValueChange(toRefValue(option, mode));
+            onValueChange(toRefValue(option));
           }}
           onBlur={onBlur}
           disabled={!hasOptions}

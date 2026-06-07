@@ -22,15 +22,15 @@ imports:
   Run: ../../../../modules/run
   Assert: ../../../../modules/assert
 targets:
-  - HealthLiveness
-  - HealthReadiness
-  - SearchEmpty
-  - GetMissingModule_Returns404
-  - GetMissingVersions_Returns404
-  - GetMissingVersion_Returns404
-  - GetMissingTeloYaml_Returns404
-  - PublishMissingAuth_Returns401
-  - PublishBadBearer_Returns401
+  - !ref HealthLiveness
+  - !ref HealthReadiness
+  - !ref SearchEmpty
+  - !ref GetMissingModule_Returns404
+  - !ref GetMissingVersions_Returns404
+  - !ref GetMissingVersion_Returns404
+  - !ref GetMissingTeloYaml_Returns404
+  - !ref PublishMissingAuth_Returns401
+  - !ref PublishBadBearer_Returns401
 ---
 kind: Run.Sequence
 metadata: { name: HealthLiveness }

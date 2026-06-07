@@ -5,10 +5,10 @@ metadata:
   name: telo-registry
   version: 0.4.1
 imports:
-  Type: std/type@0.2.1
-  Http: std/http-server@0.9.0
+  Type: std/type@0.3.0
+  Http: std/http-server@0.10.0
   HttpClient: std/http-client@0.6.0
-  S3: std/s3@0.3.0
+  S3: std/s3@0.4.0
   Sql: std/sql@0.8.0
   Run: std/run@0.7.0
   Octet: std/octet-codec@0.4.1
@@ -46,9 +46,9 @@ secrets:
     env: TELO_PUBLISH_TOKEN
     type: string
 targets:
-  - Migrations
-  - SeedRootPublishToken
-  - RegistryServer
+  - !ref Migrations
+  - !ref SeedRootPublishToken
+  - !ref RegistryServer
 ---
 # ── Storage ───────────────────────────────────────────────────────────────────
 
@@ -186,11 +186,11 @@ openapi:
       Compatible with the Telo CLI and module import source resolution.
 mounts:
   - path: /mcp
-    type: Mcp.HttpEndpoint.McpHttp
+    mount: !ref McpHttp
   - path: /
-    type: Http.Api.PublicApi
+    mount: !ref PublicApi
   - path: /health
-    type: Http.Api.Health
+    mount: !ref Health
 notFoundHandler:
   invoke:
     kind: HttpClient.Request
@@ -345,8 +345,7 @@ steps:
       - name: doUpload
         invoke:
           kind: S3.Put
-          bucketRef:
-            name: ModuleStore
+          bucketRef: !ref ModuleStore
         inputs:
           key: "${{ inputs.fileKey }}"
           body: "${{ inputs.body }}"
@@ -397,16 +396,12 @@ metadata:
   name: PublishHandler
 steps:
   - name: authorize
-    invoke:
-      kind: Run.Sequence
-      name: AuthorizeNamespace
+    invoke: !ref AuthorizeNamespace
     inputs:
       authorization: "${{ inputs.authorization }}"
       namespace: "${{ inputs.namespace }}"
   - name: recordManifest
-    invoke:
-      kind: Run.Sequence
-      name: RecordManifest
+    invoke: !ref RecordManifest
     inputs:
       namespace: "${{ inputs.namespace }}"
       name: "${{ inputs.name }}"
@@ -435,9 +430,7 @@ metadata:
   name: PublishBundleHandler
 steps:
   - name: authorize
-    invoke:
-      kind: Run.Sequence
-      name: AuthorizeNamespace
+    invoke: !ref AuthorizeNamespace
     inputs:
       authorization: "${{ inputs.authorization }}"
       namespace: "${{ inputs.namespace }}"
@@ -453,8 +446,7 @@ steps:
       - name: doStoreTar
         invoke:
           kind: S3.Put
-          bucketRef:
-            name: ModuleStore
+          bucketRef: !ref ModuleStore
         inputs:
           key: "${{ inputs.tarKey }}"
           body: "${{ steps.buffer.result.bytes }}"
@@ -472,8 +464,7 @@ steps:
       - name: getTar
         invoke:
           kind: S3.Get
-          bucketRef:
-            name: ModuleStore
+          bucketRef: !ref ModuleStore
         inputs:
           key: "${{ inputs.tarKey }}"
     catch:
@@ -504,9 +495,7 @@ steps:
 
   # Reuse the shared core for parse → validate → store telo.yaml → index.
   - name: recordManifest
-    invoke:
-      kind: Run.Sequence
-      name: RecordManifest
+    invoke: !ref RecordManifest
     inputs:
       namespace: "${{ inputs.namespace }}"
       name: "${{ inputs.name }}"
@@ -704,8 +693,7 @@ routes:
           required: [ "namespace", "name", "version" ]
     handler:
       kind: S3.Get
-      bucketRef:
-        name: ModuleStore
+      bucketRef: !ref ModuleStore
     inputs:
       key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/telo.yaml' }}"
     returns:
@@ -745,9 +733,7 @@ routes:
           required: [ "namespace", "name", "version" ]
         body:
           type: string
-    handler:
-      kind: Run.Sequence
-      name: PublishHandler
+    handler: !ref PublishHandler
     inputs:
       authorization: "${{ has(request.headers.authorization) ? request.headers.authorization : '' }}"
       namespace: "${{ request.params.namespace }}"
@@ -802,8 +788,7 @@ routes:
           required: [ "namespace", "name", "version" ]
     handler:
       kind: S3.Get
-      bucketRef:
-        name: ModuleStore
+      bucketRef: !ref ModuleStore
     inputs:
       key: "${{ request.params.namespace + '/' + request.params.name + '/' + request.params.version + '/module.tar.gz' }}"
     returns:
@@ -843,9 +828,7 @@ routes:
           required: [ "namespace", "name", "version" ]
         body:
           x-telo-stream: true
-    handler:
-      kind: Run.Sequence
-      name: PublishBundleHandler
+    handler: !ref PublishBundleHandler
     inputs:
       authorization: "${{ has(request.headers.authorization) ? request.headers.authorization : '' }}"
       namespace: "${{ request.params.namespace }}"
@@ -907,7 +890,7 @@ steps:
   - name: resolve
     invoke:
       kind: Sql.Query
-      connection: { kind: Sql.Connection, name: Db }
+      connection: !ref Db
     inputs:
       sql: >-
         SELECT version FROM modules
@@ -921,8 +904,7 @@ steps:
   - name: fetch
     invoke:
       kind: S3.Get
-      bucketRef:
-        name: ModuleStore
+      bucketRef: !ref ModuleStore
     inputs:
       key: "${{ inputs.namespace + '/' + inputs.name + '/' + (steps.resolve.result.rows.size() > 0 ? steps.resolve.result.rows[0].version : '__not_found__') + '/telo.yaml' }}"
   - name: decode
@@ -948,9 +930,7 @@ entries:
       type: object
       properties: {}
       additionalProperties: false
-    handler:
-      kind: Sql.Select
-      name: SearchModules
+    handler: !ref SearchModules
     inputs:
       q: ""
       id: ""
@@ -982,9 +962,7 @@ entries:
           description: Exact version to fetch, or `latest` (default).
       required: [ namespace, name ]
       additionalProperties: false
-    handler:
-      kind: Run.Sequence
-      name: GetModuleManifest
+    handler: !ref GetModuleManifest
     inputs:
       namespace: "${{ request.arguments.namespace }}"
       name: "${{ request.arguments.name }}"
@@ -1050,4 +1028,5 @@ instructions: !literal |
   - Split a large app into `Telo.Library` directories imported by relative path;
     the app stays a thin root that wires libraries via `imports` + `targets`.
 
-tools: [ RegistryTools ]
+tools:
+  - !ref RegistryTools

@@ -13,7 +13,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestEncode
+  - !ref TestEncode
 ---
 kind: JS.Script
 metadata: { name: Source }
@@ -45,15 +45,15 @@ kind: Run.Sequence
 metadata: { name: TestEncode }
 steps:
   - name: Source
-    invoke: { kind: JS.Script, name: Source }
+    invoke: !ref Source
   - name: Encode
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: Ndjson.Encoder, name: Encoder }
+    invoke: !ref Encoder
   - name: Drain
     inputs:
       bytes: "${{ steps.Encode.result.output }}"
-    invoke: { kind: JS.Script, name: Drain }
+    invoke: !ref Drain
   - name: Assert
     inputs:
       text: "${{ steps.Drain.result.text }}"

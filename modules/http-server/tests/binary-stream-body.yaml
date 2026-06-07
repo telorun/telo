@@ -16,7 +16,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestUpload
+  - !ref TestUpload
 ---
 # Handler: drain the streamed request body and echo it back decoded.
 kind: JS.Script
@@ -85,7 +85,7 @@ routes:
       schema:
         body:
           x-telo-stream: true
-    handler: { kind: JS.Script, name: DrainBody }
+    handler: !ref DrainBody
     inputs:
       body: "${{ request.body }}"
     returns:
@@ -110,15 +110,15 @@ with:
         stream: true
     mounts:
       - path: /
-        type: !ref Api
+        mount: !ref Api
 targets:
-  - Server
+  - !ref Server
 steps:
   - name: Upload
     inputs:
       url: http://127.0.0.1:8958/upload
       payload: "hello stream body"
-    invoke: { kind: JS.Script, name: Upload }
+    invoke: !ref Upload
   - name: Assert
     inputs:
       status: "${{ steps.Upload.result.status }}"

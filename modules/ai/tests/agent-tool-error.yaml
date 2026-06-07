@@ -9,7 +9,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestToolError
+  - !ref TestToolError
 ---
 # Echo requests a tool that doesn't exist. With the default onToolError "feedback",
 # the agent records the error and feeds it back to the model rather than aborting.
@@ -30,7 +30,7 @@ kind: Ai.Tools
 metadata:
   name: LocalTools
 tools:
-  - tool: { kind: Js.Script, name: Multiplier }
+  - tool: !ref Multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -44,12 +44,10 @@ tools:
 kind: Ai.Agent
 metadata:
   name: Assistant
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 onToolError: feedback
 toolProviders:
-  - provider: { kind: Ai.Tools, name: LocalTools }
+  - provider: !ref LocalTools
 ---
 kind: Run.Sequence
 metadata:
@@ -58,9 +56,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "do something"
-    invoke:
-      kind: Ai.Agent
-      name: Assistant
+    invoke: !ref Assistant
   # The unknown-tool error is surfaced as the tool result (not swallowed), then echoed.
   - name: AssertText
     inputs:

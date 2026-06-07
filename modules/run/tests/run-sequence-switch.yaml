@@ -7,7 +7,7 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - TestSwitch
+  - !ref TestSwitch
 ---
 kind: Run.Sequence
 metadata:

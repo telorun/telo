@@ -8,7 +8,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 kind: JS.Script
 metadata: { name: GetWeatherImpl }
@@ -41,7 +41,7 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler: { kind: JS.Script, name: GetWeatherImpl }
+    handler: !ref GetWeatherImpl
     inputs:
       city: "${{ request.arguments.city }}"
     result:
@@ -52,7 +52,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
-tools: [ WeatherTools ]
+tools: [ !ref WeatherTools ]
 ---
 # Client-side: the new typed Mcp.HttpClient + Mcp.ToolsCall replace the
 # hand-rolled JS.Script McpFetch. With no sessionProvider declared, the client
@@ -65,7 +65,7 @@ clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
 metadata: { name: CallGetWeather }
-client: WeatherMcpClient
+client: !ref WeatherMcpClient
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -77,14 +77,14 @@ with:
     baseUrl: http://127.0.0.1:8951
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: CallGetWeather
     inputs:
       name: get_weather
       arguments: { city: Atlantis }
-    invoke: { kind: McpClient.ToolsCall, name: CallGetWeather }
+    invoke: !ref CallGetWeather
   - name: AssertResponse
     inputs:
       contentText: "${{ steps.CallGetWeather.result.content[0].text }}"

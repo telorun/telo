@@ -1,6 +1,6 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { isRefSentinel, isTaggedSentinel, ManifestRootSchema } from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel, ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -138,20 +138,39 @@ export interface SchemaIssue {
   path: string;
 }
 
+/** Does `schema` compile as-authored? Used to tell a malformed module schema
+ *  (the author's problem) apart from a fault we introduced while normalizing it. */
+function schemaCompiles(schema: Record<string, any>): boolean {
+  try {
+    ajv.compile(schema);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Validate actual data against a JSON Schema. Returns issues with path info, or empty array if valid. */
 export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaIssue[] {
   let validate = compiledSchemaValidators.get(schema);
   if (!validate) {
+    // Normalize outside the try: a fault in our own ref-slot normalization must
+    // surface, never be mistaken for the module author's schema being malformed.
+    // Drop the legacy scalar `type` an older published module may still pin on
+    // its `x-telo-ref` slots so a resolved reference object validates.
+    const normalized = normalizeRefSlots(schema) as Record<string, any>;
     try {
-      validate = ajv.compile(schema);
-      compiledSchemaValidators.set(schema, validate);
-    } catch {
-      // A schema that won't compile is reported loudly (once, on the owning
-      // definition) by the analyzer's definition-schema compile check
-      // (`DefinitionRegistry.schemaCompileError`), so returning `[]` here does
-      // not silently accept resources of that kind.
+      validate = ajv.compile(normalized);
+    } catch (err) {
+      // The normalized schema didn't compile. If the original schema is itself
+      // malformed, that is the module author's error — already surfaced once,
+      // anchored on the definition, by the analyzer's `SCHEMA_COMPILE_ERROR`
+      // pre-check (`DefinitionRegistry.schemaCompileError`); re-reporting it per
+      // resource would be noise, so skip. If the original compiles and only the
+      // normalized form fails, the fault is ours — let it throw.
+      if (schemaCompiles(schema)) throw err;
       return [];
     }
+    compiledSchemaValidators.set(schema, validate);
   }
   if (validate(data)) return [];
   return (validate.errors ?? []).map((err: any) => ({

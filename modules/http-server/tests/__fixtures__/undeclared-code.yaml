@@ -24,9 +24,7 @@ routes:
   - request:
       path: /x
       method: GET
-    handler:
-      kind: Run.Sequence
-      name: AlwaysThrowsFoo
+    handler: !ref AlwaysThrowsFoo
     returns:
       - status: 200
         content:

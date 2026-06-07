@@ -7,10 +7,10 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - TestGetAbsoluteUrl
-  - TestGetWithClient
-  - TestPostWithJsonBody
-  - TestNotFoundDoesNotThrow
+  - !ref TestGetAbsoluteUrl
+  - !ref TestGetWithClient
+  - !ref TestPostWithJsonBody
+  - !ref TestNotFoundDoesNotThrow
 ---
 # Shared Http.Client with baseUrl for tests that exercise client resolution
 kind: Http.Client

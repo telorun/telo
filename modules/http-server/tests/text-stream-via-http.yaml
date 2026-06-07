@@ -20,7 +20,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestAllFormats
+  - !ref TestAllFormats
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -28,7 +28,7 @@ metadata: { name: Echo }
 # One source — wire format is decided by the route's encoder, not by the source.
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiEcho.EchoModel, name: Echo }
+model: !ref Echo
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }
@@ -91,7 +91,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: { kind: Ai.TextStream, name: ChatStream }
+    handler: !ref ChatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -99,7 +99,7 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: { kind: Ndjson.Encoder, name: NdjsonEnc }
+            encoder: !ref NdjsonEnc
   - request:
       path: /sse
       method: POST
@@ -109,7 +109,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: { kind: Ai.TextStream, name: ChatStream }
+    handler: !ref ChatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -117,7 +117,7 @@ routes:
         mode: stream
         content:
           text/event-stream:
-            encoder: { kind: Sse.Encoder, name: SseEnc }
+            encoder: !ref SseEnc
   - request:
       path: /plain
       method: POST
@@ -127,7 +127,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: { kind: Ai.TextStream, name: ChatStream }
+    handler: !ref ChatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -135,7 +135,7 @@ routes:
         mode: stream
         content:
           text/plain; charset=utf-8:
-            encoder: { kind: PlainText.Encoder, name: PlainEnc }
+            encoder: !ref PlainEnc
 
   # Negotiated route — three formats on one entry, Accept-header picks one.
   - request:
@@ -147,7 +147,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: { kind: Ai.TextStream, name: ChatStream }
+    handler: !ref ChatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -155,11 +155,11 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: { kind: Ndjson.Encoder, name: NdjsonEnc }
+            encoder: !ref NdjsonEnc
           text/event-stream:
-            encoder: { kind: Sse.Encoder, name: SseEnc }
+            encoder: !ref SseEnc
           text/plain; charset=utf-8:
-            encoder: { kind: PlainText.Encoder, name: PlainEnc }
+            encoder: !ref PlainEnc
 ---
 kind: Run.Sequence
 metadata: { name: TestAllFormats }
@@ -176,15 +176,15 @@ with:
         version: 1.0.0
     mounts:
       - path: /
-        type: !ref Api
+        mount: !ref Api
 targets:
-  - Server
+  - !ref Server
 steps:
   - name: HitNdjson
     inputs:
       url: http://127.0.0.1:8946/ndjson
       prompt: "hi"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertNdjson
     inputs:
       status: "${{ steps.HitNdjson.result.status }}"
@@ -208,7 +208,7 @@ steps:
     inputs:
       url: http://127.0.0.1:8946/sse
       prompt: "hi"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertSse
     inputs:
       status: "${{ steps.HitSse.result.status }}"
@@ -229,7 +229,7 @@ steps:
     inputs:
       url: http://127.0.0.1:8946/plain
       prompt: "hi"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertPlain
     inputs:
       status: "${{ steps.HitPlain.result.status }}"
@@ -251,7 +251,7 @@ steps:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "application/x-ndjson"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertNegotiateNdjson
     inputs:
       contentType: "${{ steps.NegotiateNdjson.result.contentType }}"
@@ -269,7 +269,7 @@ steps:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "text/event-stream"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertNegotiateSse
     inputs:
       contentType: "${{ steps.NegotiateSse.result.contentType }}"
@@ -287,7 +287,7 @@ steps:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "*/*"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: AssertNegotiateDefault
     inputs:
       contentType: "${{ steps.NegotiateDefault.result.contentType }}"
@@ -305,7 +305,7 @@ steps:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "image/png"
-    invoke: { kind: JS.Script, name: FetchAndDrain }
+    invoke: !ref FetchAndDrain
   - name: Assert406
     inputs:
       status: "${{ steps.NotAcceptable.result.status }}"

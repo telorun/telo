@@ -27,6 +27,6 @@ openapi:
     version: "1.0.0"
 mounts:
   - path: /v1
-    type: Templated.HelloApi
+    mount: !ref Templated.HelloApi
   - path: /v2
-    type: Templated.HelloApi
+    mount: !ref Templated.HelloApi

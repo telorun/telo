@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { formatAjvErrors } from "./manifest-schemas.js";
-import { ManifestRootSchema } from "@telorun/templating";
+import { ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;
 // AJV's standalone subpath is CJS — the default export shows up as either
@@ -174,7 +174,7 @@ export class SchemaValidator {
           required: Object.keys(schema),
           additionalProperties: false,
         };
-    const injected =
+    const withImplicit =
       normalized.additionalProperties === false
         ? {
             ...normalized,
@@ -185,6 +185,13 @@ export class SchemaValidator {
             },
           }
         : normalized;
+
+    // Drop the legacy scalar `type` an older published module may still pin on
+    // its `x-telo-ref` slots. Schema validation runs in create() before Phase 5
+    // injection, so a ref slot holds the resolved `{kind, name, alias?}` object
+    // (or an unresolved sentinel) — both objects the stale `type: "string"`
+    // would otherwise reject.
+    const injected = normalizeRefSlots(withImplicit) as typeof withImplicit;
 
     const hash = createHash("sha256")
       .update(JSON.stringify({ runtime: VALIDATOR_RUNTIME_TAG, schema: injected }))

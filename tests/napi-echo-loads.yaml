@@ -7,7 +7,7 @@ imports:
   NapiTest: ./__fixtures__/napi-test/telo.yaml
   Assert: ../modules/assert
 targets:
-  - VerifyKernelStarted
+  - !ref VerifyKernelStarted
 ---
 kind: NapiTest.Echo
 metadata:

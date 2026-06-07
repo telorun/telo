@@ -13,7 +13,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestSqsDispatch
+  - !ref TestSqsDispatch
 ---
 # Handler iterates the records and "fails" message id "bad" — surfaces it as a
 # partial-batch retry. Real consumers would do per-record business logic here.
@@ -57,9 +57,7 @@ metadata:
   name: Orders
 queue:
   queueName: orders
-handler:
-  kind: JavaScript.Script
-  name: ProcessRecords
+handler: !ref ProcessRecords
 inputs:
   records: !cel "event.Records"
 ---
@@ -67,7 +65,7 @@ kind: Lambda.Function
 metadata:
   name: Main
 handlers:
-  - { kind: Lambda.Sqs, name: Orders }
+  - !ref Orders
 ---
 kind: Run.Sequence
 metadata:
@@ -86,9 +84,7 @@ steps:
             eventSource: "aws:sqs"
             eventSourceARN: arn:aws:sqs:us-east-1:000000000000:orders
       context: {}
-    invoke:
-      kind: Lambda.Function
-      name: Main
+    invoke: !ref Main
   - name: VerifyPartialBatch
     inputs:
       batchItemFailures: "${{ steps.InvokeFunction.result.batchItemFailures }}"

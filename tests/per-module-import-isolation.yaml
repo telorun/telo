@@ -20,7 +20,7 @@ imports:
   # ModuleContext — it must not pollute root's alias table or snapshot.
   SiblingLib: ./__fixtures__/sibling-lib-with-shared-alias.yaml
 targets:
-  - VerifyRootKeepsItsOwnSnapshot
+  - !ref VerifyRootKeepsItsOwnSnapshot
 ---
 # Root's snapshot of Tiny must still reflect root's variables/secrets — proves the
 # sibling library's identically-named import did not leak into root's scope.

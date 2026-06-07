@@ -11,19 +11,11 @@ kind: Telo.Application
 metadata:
   name: e2e-direct
   version: 1.0.0
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: ${MODULE_SOURCES.lambda}
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ${MODULE_SOURCES.javascript}
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ${MODULE_SOURCES.type}
+imports:
+  Lambda: ${MODULE_SOURCES.lambda}
+  JS: ${MODULE_SOURCES.javascript}
+  Type: ${MODULE_SOURCES.type}
+targets: [!ref Main]
 ---
 kind: JS.Script
 metadata: { name: Echo }
@@ -42,16 +34,14 @@ code: |
 ---
 kind: Lambda.Direct
 metadata: { name: Greeter }
-handler:
-  kind: JS.Script
-  name: Echo
+handler: !ref Echo
 inputs:
   payload: !cel "event"
 ---
 kind: Lambda.Function
 metadata: { name: Main }
 handlers:
-  - { kind: Lambda.Direct, name: Greeter }
+  - !ref Greeter
 `;
 
 export const httpApiManifest = `\
@@ -59,19 +49,11 @@ kind: Telo.Application
 metadata:
   name: e2e-http-api
   version: 1.0.0
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: ${MODULE_SOURCES.lambda}
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ${MODULE_SOURCES.javascript}
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ${MODULE_SOURCES.type}
+imports:
+  Lambda: ${MODULE_SOURCES.lambda}
+  JS: ${MODULE_SOURCES.javascript}
+  Type: ${MODULE_SOURCES.type}
+targets: [!ref Main]
 ---
 kind: JS.Script
 metadata: { name: GreetById }
@@ -100,9 +82,7 @@ routes:
   - request:
       method: GET
       path: "/users/{id}"
-    handler:
-      kind: JS.Script
-      name: GreetById
+    handler: !ref GreetById
     inputs:
       id: !cel "request.params.id"
     returns:
@@ -114,7 +94,7 @@ routes:
 kind: Lambda.Function
 metadata: { name: Main }
 handlers:
-  - { kind: Lambda.HttpApi, name: Web }
+  - !ref Web
 `;
 
 export const sqsManifest = `\
@@ -122,19 +102,11 @@ kind: Telo.Application
 metadata:
   name: e2e-sqs
   version: 1.0.0
-targets: [Main]
----
-kind: Telo.Import
-metadata: { name: Lambda }
-source: ${MODULE_SOURCES.lambda}
----
-kind: Telo.Import
-metadata: { name: JS }
-source: ${MODULE_SOURCES.javascript}
----
-kind: Telo.Import
-metadata: { name: Type }
-source: ${MODULE_SOURCES.type}
+imports:
+  Lambda: ${MODULE_SOURCES.lambda}
+  JS: ${MODULE_SOURCES.javascript}
+  Type: ${MODULE_SOURCES.type}
+targets: [!ref Main]
 ---
 kind: JS.Script
 metadata: { name: ProcessRecords }
@@ -162,14 +134,12 @@ kind: Lambda.Sqs
 metadata: { name: Orders }
 queue:
   queueName: orders
-handler:
-  kind: JS.Script
-  name: ProcessRecords
+handler: !ref ProcessRecords
 inputs:
   records: !cel "event.Records"
 ---
 kind: Lambda.Function
 metadata: { name: Main }
 handlers:
-  - { kind: Lambda.Sqs, name: Orders }
+  - !ref Orders
 `;

@@ -24,9 +24,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler:
-      kind: JavaScript.Script
-      name: SayHello
+    handler: !ref SayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
     returns:

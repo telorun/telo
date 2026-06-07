@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestCapabilityShadowsExtends
+  - !ref TestCapabilityShadowsExtends
 ---
 # Asserts that `capability: <UserAbstract>` emits CAPABILITY_SHADOWS_EXTENDS (warning).
 # Builtin lifecycle capabilities (Telo.Invocable, etc.) must NOT trigger this — verified

@@ -13,7 +13,6 @@ import {
   ownsLabel,
 } from "../../resource-schema-form/field-control";
 import {
-  inferRefMode,
   parseRefValue,
   resolveRefCandidates,
   toRefString,
@@ -69,24 +68,6 @@ function getByPath(root: Record<string, unknown>, path: string[]): unknown {
   for (const seg of path) {
     if (!isRecord(current)) return undefined;
     current = current[seg];
-  }
-  return current;
-}
-
-/** Walks the schema to find the property at the given path so we can infer its
- *  ref-mode (string vs object form). */
-function propAtPath(
-  schema: Record<string, unknown>,
-  path: string[],
-): JsonSchemaProperty | undefined {
-  let properties = isRecord(schema.properties) ? schema.properties : null;
-  let current: JsonSchemaProperty | undefined;
-  for (const seg of path) {
-    if (!properties) return undefined;
-    const next = properties[seg];
-    if (!isRecord(next)) return undefined;
-    current = next as JsonSchemaProperty;
-    properties = isRecord(next.properties) ? (next.properties as Record<string, unknown>) : null;
   }
   return current;
 }
@@ -161,28 +142,27 @@ export function ResourceCanvas({
     const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
-    // Items schema used for ref-mode inference
-    const arrayProp = propAtPath(schema, descriptor.fieldPath);
-    const itemProp = (arrayProp?.items as JsonSchemaProperty | undefined) ?? undefined;
-    const mode = inferRefMode(itemProp);
 
     return (
       <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-wrap gap-2">
           {entries.map((entry, index) => {
-            const parsed = parseRefValue(entry);
+            const name = parseRefValue(entry);
+            const candidate = name
+              ? candidates.find((c) => c.name === name)
+              : undefined;
             return (
               <div
                 key={index}
                 className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
               >
-                {parsed ? (
+                {name ? (
                   <button
                     type="button"
                     className="text-zinc-800 hover:text-amber-700 dark:text-zinc-100 dark:hover:text-amber-300"
-                    onClick={() => onSelectResource(parsed.kind, parsed.name)}
+                    onClick={() => onSelectResource(candidate?.kind ?? "", name)}
                   >
-                    {parsed.kind}:{parsed.name}
+                    {candidate ? `${candidate.kind}:${name}` : name}
                   </button>
                 ) : (
                   <span className="text-zinc-500">(invalid)</span>
@@ -208,7 +188,7 @@ export function ResourceCanvas({
             if (!v) return;
             const option = candidates.find((c) => toRefString(c) === v);
             if (!option) return;
-            commitAt(descriptor.fieldPath, [...entries, toRefValue(option, mode)]);
+            commitAt(descriptor.fieldPath, [...entries, toRefValue(option)]);
           }}
           disabled={candidates.length === 0}
           className="self-start rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:disabled:bg-zinc-800"
@@ -232,16 +212,6 @@ export function ResourceCanvas({
     const entries = Array.isArray(current) ? current : [];
     const keyFieldName = descriptor.keyFieldName;
 
-    const arrayProp = propAtPath(schema, descriptor.fieldPath);
-    const itemProp = (arrayProp?.items as JsonSchemaProperty | undefined) ?? undefined;
-    const refSubProp =
-      itemProp && isRecord(itemProp.properties)
-        ? ((itemProp.properties as Record<string, unknown>)[refFieldName] as
-            | JsonSchemaProperty
-            | undefined)
-        : undefined;
-    const mode = inferRefMode(refSubProp);
-
     function updateEntry(index: number, patch: Record<string, unknown>) {
       const next = entries.map((entry, i) => {
         if (i !== index) return entry;
@@ -263,7 +233,7 @@ export function ResourceCanvas({
       if (!refFieldName) return;
       const first = candidates[0];
       const entry: Record<string, unknown> = {};
-      if (first) entry[refFieldName] = toRefValue(first, mode);
+      if (first) entry[refFieldName] = toRefValue(first);
       commitAt(descriptor.fieldPath, [...entries, entry]);
     }
 
@@ -273,7 +243,8 @@ export function ResourceCanvas({
           const record = isRecord(entry) ? entry : {};
           const keyValue = keyFieldName ? record[keyFieldName] : undefined;
           const refValue = record[refFieldName];
-          const parsed = parseRefValue(refValue);
+          const name = parseRefValue(refValue);
+          const candidate = name ? candidates.find((c) => c.name === name) : undefined;
 
           return (
             <div
@@ -290,7 +261,7 @@ export function ResourceCanvas({
                 />
               )}
               <select
-                value={parsed ? toRefString(parsed) : ""}
+                value={candidate ? toRefString(candidate) : ""}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (!v) {
@@ -299,7 +270,7 @@ export function ResourceCanvas({
                   }
                   const option = candidates.find((c) => toRefString(c) === v);
                   if (!option) return;
-                  updateEntry(index, { [refFieldName]: toRefValue(option, mode) });
+                  updateEntry(index, { [refFieldName]: toRefValue(option) });
                 }}
                 disabled={candidates.length === 0}
                 className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:disabled:bg-zinc-800"
@@ -313,10 +284,10 @@ export function ResourceCanvas({
                   </option>
                 ))}
               </select>
-              {parsed && (
+              {name && (
                 <button
                   type="button"
-                  onClick={() => onSelectResource(parsed.kind, parsed.name)}
+                  onClick={() => onSelectResource(candidate?.kind ?? "", name)}
                   className="rounded px-1 text-zinc-500 hover:text-amber-700 dark:hover:text-amber-300"
                   title="Peek in side panel"
                 >

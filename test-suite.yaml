@@ -5,7 +5,7 @@ metadata:
 imports:
   Test: ./modules/test
 targets:
-  - RunAll
+  - !ref RunAll
 ---
 kind: Test.Suite
 metadata:

@@ -7,8 +7,8 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestInlineBinding
-  - TestSqlPlusBindingsRejected
+  - !ref TestInlineBinding
+  - !ref TestSqlPlusBindingsRejected
 ---
 kind: Sql.SqliteConnection
 metadata:
@@ -24,9 +24,7 @@ steps:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
     invoke:
       kind: Sql.Exec
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   # Inline interpolation: the apostrophe in the value would break the statement
   # if it were spliced into the SQL text. It must be bound as a parameter.
@@ -35,18 +33,14 @@ steps:
       sql: !sql "INSERT INTO users (id, name) VALUES (${{ 1 }}, ${{ \"O'Brien\" }})"
     invoke:
       kind: Sql.Exec
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: SelectInline
     inputs:
       sql: !sql "SELECT name FROM users WHERE id = ${{ 1 }}"
     invoke:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: AssertInline
     inputs:
@@ -75,9 +69,7 @@ steps:
         - !cel "'Alice'"
     invoke:
       kind: Sql.Exec
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: SelectBindings
     inputs:
@@ -85,9 +77,7 @@ steps:
       bindings: [!cel "2"]
     invoke:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: AssertBindings
     inputs:
@@ -120,9 +110,7 @@ steps:
           bindings: [!cel "1"]
         invoke:
           kind: Sql.Query
-          connection:
-            kind: Sql.SqliteConnection
-            name: Db
+          connection: !ref Db
       - name: NotReached
         inputs: { note: "should not get here" }
         invoke:

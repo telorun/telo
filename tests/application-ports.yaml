@@ -42,9 +42,9 @@ with:
     logger: false
     mounts:
       - path: /api
-        type: !ref TestApi
+        mount: !ref TestApi
 targets:
-  - TestServer
+  - !ref TestServer
 steps:
   - name: Ping
     invoke:

@@ -18,7 +18,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - LiveTextStream
+  - !ref LiveTextStream
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
 # unset. The model is just config — no API call until stream() — and the
@@ -33,7 +33,7 @@ options:
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiOpenai.OpenaiModel, name: Live }
+model: !ref Live
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }
@@ -78,19 +78,19 @@ steps:
       - name: Stream
         inputs:
           prompt: "Reply with exactly: hello"
-        invoke: { kind: Ai.TextStream, name: ChatStream }
+        invoke: !ref ChatStream
       - name: Encode
         inputs:
           input: "${{ steps.Stream.result.output }}"
-        invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+        invoke: !ref NdjsonEnc
       - name: Decode
         inputs:
           input: "${{ steps.Encode.result.output }}"
-        invoke: { kind: PlainText.Decoder, name: TextDec }
+        invoke: !ref TextDec
       - name: Analyze
         inputs:
           ndjson: "${{ steps.Decode.result.text }}"
-        invoke: { kind: JS.Script, name: AnalyzeNdjson }
+        invoke: !ref AnalyzeNdjson
       - name: Assert
         inputs:
           lineCount: "${{ steps.Analyze.result.lineCount }}"

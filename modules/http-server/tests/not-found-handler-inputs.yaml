@@ -16,7 +16,7 @@ imports:
   Assert: ../../assert
   Type: ../../type
 targets:
-  - Test
+  - !ref Test
 ---
 # The "echo path" invocable used as the not-found target. It reads `inputs.path`
 # (the value the sibling `inputs:` block produces) and returns it verbatim, so
@@ -86,7 +86,7 @@ with:
       info: { title: NotFoundHandlerInputsTest, version: 1.0.0 }
     mounts: []
     notFoundHandler:
-      invoke: { kind: JS.Script, name: EchoPath }
+      invoke: !ref EchoPath
       inputs:
         path: "${{ request.path }}"
         method: "${{ request.method }}"
@@ -98,12 +98,12 @@ with:
                 receivedPath: "${{ result.path }}"
                 receivedMethod: "${{ result.method }}"
 targets:
-  - Server
+  - !ref Server
 steps:
   - name: HitMissing
     inputs:
       url: http://127.0.0.1:8947/no-such-route
-    invoke: { kind: JS.Script, name: FetchJson }
+    invoke: !ref FetchJson
   - name: AssertResponse
     inputs:
       status: "${{ steps.HitMissing.result.status }}"

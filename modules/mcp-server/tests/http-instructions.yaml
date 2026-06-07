@@ -7,7 +7,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 # Hand-rolled `initialize` call. Returns the parsed `result` so the test can
 # assert the `instructions` string lands in the InitializeResult envelope.
@@ -77,7 +77,7 @@ serverInfo: { name: telo-test-mcp, version: 1.0.0 }
 instructions: |
   This is a test primer carried on the SDK Server's `instructions` option.
   Compatible MCP clients surface it to the LLM as system context.
-tools: [ NoTools ]
+tools: [ !ref NoTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -89,13 +89,13 @@ with:
     baseUrl: http://127.0.0.1:8954
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: Initialize
     inputs:
       url: http://127.0.0.1:8954/mcp
-    invoke: { kind: JS.Script, name: McpInitialize }
+    invoke: !ref McpInitialize
   - name: AssertInstructions
     inputs:
       instructions: "${{ steps.Initialize.result.result.instructions }}"

@@ -25,9 +25,7 @@ apiKey: "${{ secrets.OPENAI_API_KEY }}"
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4o
+model: !ref Gpt4o
 system: "You are a helpful assistant."
 ```
 
@@ -79,11 +77,11 @@ kind: Run.Sequence
 steps:
   - name: Stream
     inputs: { prompt: "Hello" }
-    invoke: { kind: Ai.TextStream, name: ChatStream }
+    invoke: !ref ChatStream
   - name: Encode
     inputs:
       input: "${{ steps.Stream.result.output }}"
-    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+    invoke: !ref NdjsonEnc
   # steps.Encode.result.output is now Stream<Uint8Array>, one line per StreamPart.
 ```
 
@@ -156,7 +154,7 @@ code: |
 - name: Collect
   inputs:
     stream: "${{ steps.Stream.result.output }}"
-  invoke: { kind: JS.Script, name: CollectText }
+  invoke: !ref CollectText
 ```
 
 ## Cancellation

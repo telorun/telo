@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestSystemKindRejected
+  - !ref TestSystemKindRejected
 ---
 kind: Assert.Manifest
 metadata:

@@ -29,6 +29,25 @@ describe("fail-loud validation", () => {
     expect((compileErrors[0].data as { path?: string }).path).toBe("schema");
   });
 
+  it("reports a kind's broken schema once even when instances exist, without crashing", () => {
+    // A resource of the broken kind reaches per-resource validation. The compile
+    // failure must surface once (on the definition, via the pre-check) — not crash
+    // analysis and not re-report per instance — proving the skip in
+    // `validateAgainstSchema` is a deliberate dedup, not a silent swallow.
+    const brokenDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Broken", module: "test" },
+      capability: "Telo.Invocable",
+      schema: { type: "object", properties: { x: { $ref: "#/$defs/DoesNotExist" } } },
+    };
+    const a = { kind: "test.Broken", metadata: { name: "a" }, x: 1 };
+    const b = { kind: "test.Broken", metadata: { name: "b" }, x: 2 };
+
+    const diagnostics = analyze([brokenDef, a, b]);
+    expect(diagnostics.filter((d) => d.code === "SCHEMA_COMPILE_ERROR").length).toBe(1);
+    expect(diagnostics.filter((d) => d.code === "SCHEMA_VIOLATION")).toEqual([]);
+  });
+
   it("does not report SCHEMA_COMPILE_ERROR for a valid definition schema", () => {
     const goodDef = {
       kind: "Telo.Definition",

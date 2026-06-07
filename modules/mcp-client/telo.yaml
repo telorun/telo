@@ -121,7 +121,6 @@ schema:
         present, each invoke() calls provider.provide() and forwards the
         returned sessionId; the client never handshakes. Omit for self-managed
         handshake mode.
-      type: string
       x-telo-ref: "std/mcp-client#SessionProvider"
     clientInfo:
       title: Client Info
@@ -216,7 +215,6 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      type: string
       x-telo-ref: "std/mcp-client#Client"
 inputType:
   kind: Type.JsonSchema
@@ -315,7 +313,6 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation.
-      type: string
       x-telo-ref: "std/mcp-client#Client"
 inputType:
   kind: Type.JsonSchema

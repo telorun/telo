@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestAnalyzerRejectsNonModelRef
+  - !ref TestAnalyzerRejectsNonModelRef
 ---
 # The analyzer must reject an Ai.Text whose `model` field references a resource
 # whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Text.model

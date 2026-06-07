@@ -20,7 +20,7 @@ imports:
   Temporal: std/workflow-temporal@0.2.1
   JS: std/javascript@0.4.1
 targets:
-  - DataSyncWorkflow
+  - !ref DataSyncWorkflow
 ---
 kind: Temporal.Backend
 metadata:
@@ -72,21 +72,15 @@ outputType:
 kind: Workflow.Graph
 metadata:
   name: DataSyncWorkflow
-backend:
-  kind: Temporal.Backend
-  name: TemporalProd
+backend: !ref TemporalProd
 nodes:
   - name: Fetch
-    invoke:
-      kind: JS.Script
-      name: FetchData
+    invoke: !ref FetchData
     options:
       scheduleToCloseTimeout: 30s
       retryPolicy:
         maxAttempts: 3
   - name: Transform
-    invoke:
-      kind: JS.Script
-      name: TransformData
+    invoke: !ref TransformData
     options:
       scheduleToCloseTimeout: 10s

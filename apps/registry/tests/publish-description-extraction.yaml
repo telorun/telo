@@ -17,11 +17,11 @@ imports:
   Run: ../../../modules/run
   Assert: ../../../modules/assert
 targets:
-  - WithDescription
-  - WithoutDescription
-  - WithoutMetadata
-  - EmptyDocs
-  - NonStringDescription
+  - !ref WithDescription
+  - !ref WithoutDescription
+  - !ref WithoutMetadata
+  - !ref EmptyDocs
+  - !ref NonStringDescription
 ---
 kind: Run.Sequence
 metadata: { name: WithDescription }

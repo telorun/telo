@@ -31,9 +31,9 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestWriteLine
-  - TestWriteStream
-  - TestUnknownStyleFallback
+  - !ref TestWriteLine
+  - !ref TestWriteStream
+  - !ref TestUnknownStyleFallback
 ---
 kind: Run.Sequence
 metadata: { name: TestWriteLine }
@@ -85,7 +85,7 @@ kind: Run.Sequence
 metadata: { name: TestWriteStream }
 steps:
   - name: StreamSrc
-    invoke: { kind: JS.Script, name: MarkupSource }
+    invoke: !ref MarkupSource
   - name: Stream
     inputs:
       input: "${{ steps.StreamSrc.result.output }}"

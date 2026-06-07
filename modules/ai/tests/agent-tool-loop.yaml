@@ -9,7 +9,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestAgentLoop
+  - !ref TestAgentLoop
 ---
 # Echo emits one deterministic tool call (multiply 6×7) on the first turn when tools
 # are present, then echoes the tool result on the second turn — driving a full agent
@@ -31,7 +31,7 @@ kind: Ai.Tools
 metadata:
   name: LocalTools
 tools:
-  - tool: { kind: Js.Script, name: Multiplier }
+  - tool: !ref Multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -45,12 +45,10 @@ tools:
 kind: Ai.Agent
 metadata:
   name: Assistant
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 system: "Use tools when needed."
 toolProviders:
-  - provider: { kind: Ai.Tools, name: LocalTools }
+  - provider: !ref LocalTools
 ---
 kind: Run.Sequence
 metadata:
@@ -59,9 +57,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "multiply 6 and 7"
-    invoke:
-      kind: Ai.Agent
-      name: Assistant
+    invoke: !ref Assistant
   # Turn 1 → tool call multiply(6,7) → Multiplier returns {product:42} → tool message
   # content is the JSON-stringified output. Turn 2 → Echo echoes that content as the
   # final answer.

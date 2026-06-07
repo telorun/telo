@@ -46,12 +46,31 @@ async function ensureRealmSymlinks(bundleDir: string): Promise<void> {
     }
     if (!pkgRoot) continue;
     const linkPath = path.join(bundleDir, "node_modules", ...name.split("/"));
-    if (existsSync(linkPath)) continue;
+    // Reuse an existing link only when it already points at this kernel's copy. A
+    // link a run in another environment left behind — e.g. the host symlink a
+    // local run writes, then bind-mounts into a container where its target path is
+    // absent — is dangling/wrong here; replace it rather than leaving the bundle's
+    // import broken (`existsSync` follows the link, so it can't tell the two
+    // apart). A real file/dir in the slot is left untouched.
+    let stale = false;
     try {
+      const stat = await fs.lstat(linkPath);
+      if (stat.isSymbolicLink()) {
+        const target = await fs.readlink(linkPath);
+        if (path.resolve(path.dirname(linkPath), target) === path.resolve(pkgRoot)) continue;
+        stale = true;
+      } else {
+        continue;
+      }
+    } catch {
+      // Nothing at linkPath — fall through to create it.
+    }
+    try {
+      if (stale) await fs.rm(linkPath, { force: true });
       await fs.mkdir(path.dirname(linkPath), { recursive: true });
       await fs.symlink(pkgRoot, linkPath, process.platform === "win32" ? "junction" : "dir");
     } catch {
-      // EEXIST race or read-only FS — fine if it now exists; otherwise the
+      // EEXIST race or read-only FS — fine if it now resolves; otherwise the
       // import surfaces the resolution failure.
     }
   }

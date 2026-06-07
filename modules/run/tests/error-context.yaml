@@ -5,10 +5,10 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestErrorTypo
-  - TestErrorValid
-  - TestNullableAccess
-  - TestNullableAccessNested
+  - !ref TestErrorTypo
+  - !ref TestErrorValid
+  - !ref TestNullableAccess
+  - !ref TestNullableAccessNested
 ---
 # A typo on the `error` object inside a catch is caught at any nesting depth.
 kind: Assert.Manifest

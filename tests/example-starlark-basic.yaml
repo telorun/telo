@@ -10,8 +10,8 @@ imports:
   Console: ../modules/console
   Assert: ../modules/assert
 targets:
-  - RunScriptOnEvent
-  - VerifyStarlarkBasicEvents
+  - !ref RunScriptOnEvent
+  - !ref VerifyStarlarkBasicEvents
 ---
 kind: Type.JsonSchema
 metadata:
@@ -40,8 +40,8 @@ code: |
   def run(input):
     result = input["value"] * 2
     return {"result": result}
-inputType: ScriptInput
-outputType: ScriptOutput
+inputType: !ref ScriptInput
+outputType: !ref ScriptOutput
 ---
 kind: Run.Sequence
 metadata:
@@ -50,9 +50,7 @@ steps:
   - name: Step1
     inputs:
       value: 42
-    invoke:
-      kind: Starlark.Script
-      name: ExampleStarlarkScript
+    invoke: !ref ExampleStarlarkScript
   - name: Step2
     invoke: { kind: Console.WriteLine }
     inputs:

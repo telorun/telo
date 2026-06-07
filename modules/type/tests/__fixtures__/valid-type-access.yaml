@@ -7,7 +7,7 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - TestValidAccess
+  - !ref TestValidAccess
 ---
 kind: Type.JsonSchema
 metadata:
@@ -22,7 +22,7 @@ schema:
 kind: JavaScript.Script
 metadata:
   name: AddNumbers
-outputType: SumOutput
+outputType: !ref SumOutput
 code: |
   function main({ a, b }) {
     return { sum: a + b }
@@ -36,9 +36,7 @@ steps:
     inputs:
       a: 1
       b: 2
-    invoke:
-      kind: JavaScript.Script
-      name: AddNumbers
+    invoke: !ref AddNumbers
   - name: UseResult
     inputs:
       value: "${{ steps.Add.result.sum }}"

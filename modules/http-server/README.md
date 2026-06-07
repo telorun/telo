@@ -24,16 +24,16 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 kind: Telo.Application
 metadata: { name: hello-http, version: 1.0.0 }
 imports:
-  Http: pkg:npm/@telorun/http-server@^1.0.0
-  JS: pkg:npm/@telorun/javascript@^1.0.0
-targets: [Server]
+  Http: std/http-server@0.9.0
+  JS: std/javascript@0.4.1
+targets: [ !ref Server ]
 ---
 kind: Http.Server
 metadata: { name: Server }
 port: 8080
 mounts:
   - path: /api
-    type: Api
+    mount: !ref Api
 ---
 kind: Http.Api
 metadata: { name: Api }
@@ -54,7 +54,7 @@ routes:
               examples: [ "Ada" ]
     inputs:
       name: "${{ request.params.name }}"
-    handler: { kind: JS.Script, name: Greet }
+    handler: !ref Greet
     returns:
       - status: 200
         content:

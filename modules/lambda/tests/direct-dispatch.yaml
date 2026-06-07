@@ -13,7 +13,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestDirectDispatch
+  - !ref TestDirectDispatch
 ---
 # User-supplied invocable. Receives the Direct-resolved inputs and returns
 # a greeting payload.
@@ -44,9 +44,7 @@ code: |
 kind: Lambda.Direct
 metadata:
   name: Greeter
-handler:
-  kind: JavaScript.Script
-  name: Greet
+handler: !ref Greet
 inputs:
   name: !cel "event.name"
 ---
@@ -57,7 +55,7 @@ kind: Lambda.Function
 metadata:
   name: Main
 handlers:
-  - { kind: Lambda.Direct, name: Greeter }
+  - !ref Greeter
 ---
 # Run.Sequence drives the test: call the Function with a synthetic payload
 # (simulates `kernel.invoke` from a managed-runtime bootstrap), assert the
@@ -71,9 +69,7 @@ steps:
       event:
         name: "World"
       context: {}
-    invoke:
-      kind: Lambda.Function
-      name: Main
+    invoke: !ref Main
   - name: VerifyMessage
     inputs:
       message: "${{ steps.InvokeFunction.result.message }}"

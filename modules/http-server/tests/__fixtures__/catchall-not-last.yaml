@@ -21,9 +21,7 @@ routes:
   - request:
       path: /x
       method: GET
-    handler:
-      kind: JavaScript.Script
-      name: Handler
+    handler: !ref Handler
     returns:
       - status: 200
         content:

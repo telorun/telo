@@ -29,7 +29,7 @@ metadata: { name: my-mcp-app, version: 1.0.0 }
 imports:
   McpClient: std/mcp-client@0.3.1
   Run: std/run@0.7.0
-targets: [ GetWeather ]
+targets: [ !ref GetWeather ]
 secrets:
   MCP_TOKEN: { type: string }
 ---
@@ -42,7 +42,7 @@ clientInfo: { name: my-mcp-app, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
 metadata: { name: CallGetWeather }
-client: RemoteMcp
+client: !ref RemoteMcp
 ---
 kind: Run.Sequence
 metadata: { name: GetWeather }
@@ -51,7 +51,7 @@ steps:
     inputs:
       name: get_weather
       arguments: { city: Atlantis }
-    invoke: { kind: McpClient.ToolsCall, name: CallGetWeather }
+    invoke: !ref CallGetWeather
 ```
 
 ## Reference

@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestExtendsUnknownTarget
+  - !ref TestExtendsUnknownTarget
 ---
 # Asserts the analyzer emits EXTENDS_UNKNOWN_TARGET when the identity resolves but
 # no registered definition with that name exists.

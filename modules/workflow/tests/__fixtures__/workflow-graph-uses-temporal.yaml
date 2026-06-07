@@ -28,11 +28,7 @@ namespace: default
 kind: Workflow.Graph
 metadata:
   name: TinyGraph
-backend:
-  kind: Temporal.Backend
-  name: TemporalProd
+backend: !ref TemporalProd
 nodes:
   - name: DoNothing
-    invoke:
-      kind: JS.Script
-      name: Noop
+    invoke: !ref Noop

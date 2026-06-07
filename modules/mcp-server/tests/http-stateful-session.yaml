@@ -7,7 +7,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 # Drives the stateful flow end-to-end so the session-id contract can be
 # asserted: initialize must return an `Mcp-Session-Id` header, that header must
@@ -102,7 +102,7 @@ entries:
   - name: ping
     description: Echo a synthetic pong.
     argumentsSchema: { type: object, properties: {}, additionalProperties: false }
-    handler: { kind: JS.Script, name: PingImpl }
+    handler: !ref PingImpl
     inputs: {}
     result:
       content:
@@ -113,7 +113,7 @@ kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-stateful, version: 1.0.0 }
 stateful: true
-tools: [ PingTools ]
+tools: [ !ref PingTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -125,13 +125,13 @@ with:
     baseUrl: http://127.0.0.1:8955
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: Probe
     inputs:
       url: http://127.0.0.1:8955/mcp
-    invoke: { kind: JS.Script, name: McpStatefulProbe }
+    invoke: !ref McpStatefulProbe
   - name: AssertContract
     inputs:
       sessionIdPresent: "${{ steps.Probe.result.sessionIdPresent }}"

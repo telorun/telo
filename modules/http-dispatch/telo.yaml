@@ -149,16 +149,6 @@ schema:
                   title: Encoder
                   description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
                   x-telo-ref: "std/codec#Encoder"
-                  oneOf:
-                    - title: Encoder Reference
-                      type: string
-                    - type: object
-                      title: Encoder Object
-                      properties:
-                        kind: { title: Kind, type: string }
-                        name: { title: Name, type: string }
-                      required: ["kind"]
-                      additionalProperties: true
                 headers:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.

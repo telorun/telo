@@ -7,7 +7,7 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - TestTryBlocks
+  - !ref TestTryBlocks
 ---
 kind: Run.Sequence
 metadata:

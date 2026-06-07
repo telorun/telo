@@ -14,9 +14,9 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestEmitAndDrop
-  - TestThrow
-  - TestUnknownRecord
+  - !ref TestEmitAndDrop
+  - !ref TestThrow
+  - !ref TestUnknownRecord
 ---
 # Source: emits two text-delta parts then a finish part. ExtractText should
 # drop the finish part and yield the two delta strings.
@@ -58,15 +58,15 @@ kind: Run.Sequence
 metadata: { name: TestEmitAndDrop }
 steps:
   - name: Source
-    invoke: { kind: JS.Script, name: AiLikeSource }
+    invoke: !ref AiLikeSource
   - name: Project
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+    invoke: !ref Deltas
   - name: Collect
     inputs:
       input: "${{ steps.Project.result.output }}"
-    invoke: { kind: JS.Script, name: CollectStrings }
+    invoke: !ref CollectStrings
   - name: Assert
     inputs:
       text: "${{ steps.Collect.result.text }}"
@@ -97,17 +97,17 @@ kind: Run.Sequence
 metadata: { name: TestThrow }
 steps:
   - name: ErrorSource
-    invoke: { kind: JS.Script, name: ErrorSource }
+    invoke: !ref ErrorSource
   - name: ErrorProject
     inputs:
       input: "${{ steps.ErrorSource.result.output }}"
-    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+    invoke: !ref Deltas
   - name: ErrorTried
     try:
       - name: ErrorDrain
         inputs:
           input: "${{ steps.ErrorProject.result.output }}"
-        invoke: { kind: JS.Script, name: CollectStrings }
+        invoke: !ref CollectStrings
     catch:
       - name: AssertErrorCaught
         inputs:
@@ -136,17 +136,17 @@ kind: Run.Sequence
 metadata: { name: TestUnknownRecord }
 steps:
   - name: UnknownSource
-    invoke: { kind: JS.Script, name: UnknownSource }
+    invoke: !ref UnknownSource
   - name: UnknownProject
     inputs:
       input: "${{ steps.UnknownSource.result.output }}"
-    invoke: { kind: RecordStream.ExtractText, name: Deltas }
+    invoke: !ref Deltas
   - name: UnknownTried
     try:
       - name: UnknownDrain
         inputs:
           input: "${{ steps.UnknownProject.result.output }}"
-        invoke: { kind: JS.Script, name: CollectStrings }
+        invoke: !ref CollectStrings
     catch:
       - name: AssertUnknownCaught
         inputs:
