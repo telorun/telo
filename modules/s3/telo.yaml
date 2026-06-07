@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: s3
   namespace: std
-  version: 0.4.0
+  version: 0.5.0
   description: >-
     S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, RustFS).
     `S3.Bucket` configures a bucket handle; `S3.Put`, `S3.Get` (streams object

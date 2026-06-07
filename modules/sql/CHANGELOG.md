@@ -1,5 +1,8 @@
 # Changelog
-## 0.8.0 - 2026-06-06
+## 0.9.0 - 2026-06-07
+### Added
+* Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.
+* Connection / transaction / type reference slots use the unified `!ref` form; the legacy `oneOf` string / `{kind, name}` shapes are removed from the schema.## 0.8.0 - 2026-06-06
 ### Added
 * README: reusing Sql.Query/Exec/Select as top-level named handlers across routes/sequences, and that Sql.Connection is abstract (instantiate Sql.PostgresConnection / Sql.SqliteConnection).## 0.7.0 - 2026-06-06
 ### Added

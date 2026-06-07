@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: timer
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Time-based primitives. `Timer.Delay` waits for a duration, then completes —
     composable as a `Run.Sequence` step, an HTTP handler, or any invoke target.

@@ -1,5 +1,13 @@
 # @telorun/test
 
+## 0.4.13
+
+### Patch Changes
+
+- Updated dependencies [ee8926f]
+- Updated dependencies [ee8926f]
+  - @telorun/kernel@0.24.0
+
 ## 0.4.12
 
 ### Patch Changes

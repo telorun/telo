@@ -1,5 +1,8 @@
 # Changelog
-## 0.7.0 - 2026-06-06
+## 0.8.0 - 2026-06-07
+### Added
+* Update controller @telorun/run to 0.6.0.
+* Step `invoke` examples reference resources with the unified `!ref` form.## 0.7.0 - 2026-06-06
 ### Added
 * README: bringing up dependencies with a sequence's with:/targets: (a Run.Sequence can start an Http.Server or DB for its steps); targets is not Application-only.## 0.6.0 - 2026-06-06
 ### Added
