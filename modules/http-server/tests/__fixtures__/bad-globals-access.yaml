@@ -29,9 +29,7 @@ routes:
   - request:
       path: /test
       method: GET
-    handler:
-      kind: JavaScript.Script
-      name: Handler
+    handler: !ref Handler
     inputs:
       key: "${{ variables.nonExistent }}"
     returns:

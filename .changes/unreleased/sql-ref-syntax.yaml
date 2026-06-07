@@ -1,0 +1,4 @@
+project: sql
+kind: Added
+body: Connection / transaction / type reference slots use the unified `!ref` form; the legacy `oneOf` string / `{kind, name}` shapes are removed from the schema.
+time: 2026-06-07T13:22:00Z

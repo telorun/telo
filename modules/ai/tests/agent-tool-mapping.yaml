@@ -9,7 +9,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestMapping
+  - !ref TestMapping
 ---
 kind: AiEcho.EchoModel
 metadata:
@@ -30,7 +30,7 @@ kind: Ai.Tools
 metadata:
   name: GreetTools
 tools:
-  - tool: { kind: Js.Script, name: Greeter }
+  - tool: !ref Greeter
     name: greet
     description: Greet someone by name.
     parameters:
@@ -46,11 +46,9 @@ tools:
 kind: Ai.Agent
 metadata:
   name: GreetAgent
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 toolProviders:
-  - provider: { kind: Ai.Tools, name: GreetTools }
+  - provider: !ref GreetTools
 ---
 kind: Run.Sequence
 metadata:
@@ -59,9 +57,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "greet the world"
-    invoke:
-      kind: Ai.Agent
-      name: GreetAgent
+    invoke: !ref GreetAgent
   # arguments.who="world" → inputs maps to {target:"world"} → Greeter →
   # {greeting:"Hello, world!"} → result maps to the bare string → fed back → echoed.
   - name: AssertText

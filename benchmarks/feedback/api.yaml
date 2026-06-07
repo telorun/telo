@@ -10,8 +10,8 @@ imports:
   Sql: ../../modules/sql
   Run: ../../modules/run
 targets:
-  - SetupDb
-  - Server
+  - !ref SetupDb
+  - !ref Server
 ---
 # SQLite database — swap to Sql.PostgresConnection for PostgreSQL
 kind: Sql.SqliteConnection
@@ -55,7 +55,7 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    type: !ref FeedbackRoutes
+    mount: !ref FeedbackRoutes
 ---
 kind: Http.Api
 metadata:

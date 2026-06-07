@@ -9,4 +9,4 @@ imports:
 include:
   - "__fixtures__/include-glob-*.yaml"
 targets:
-  - TestIncludeGlob
+  - !ref TestIncludeGlob

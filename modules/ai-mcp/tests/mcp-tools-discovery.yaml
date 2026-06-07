@@ -10,7 +10,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestMcpAgent
+  - !ref TestMcpAgent
 ---
 # A stub MCP server advertising one tool (echo_text).
 kind: Stub.StubClient
@@ -21,9 +21,7 @@ metadata:
 kind: AiMcp.ToolProvider
 metadata:
   name: ServerTools
-client:
-  kind: Stub.StubClient
-  name: McpServer
+client: !ref McpServer
 ---
 # Echo discovers the tool (echo_text) and requests it on the first turn.
 kind: AiEcho.EchoModel
@@ -36,11 +34,9 @@ emitToolCall:
 kind: Ai.Agent
 metadata:
   name: Assistant
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 toolProviders:
-  - provider: { kind: AiMcp.ToolProvider, name: ServerTools }
+  - provider: !ref ServerTools
 ---
 kind: Run.Sequence
 metadata:
@@ -49,9 +45,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "echo hi please"
-    invoke:
-      kind: Ai.Agent
-      name: Assistant
+    invoke: !ref Assistant
   # Discovery → tools/list → echo_text. Echo calls it → tools/call → content echoed
   # back. The agent JSON-stringifies the MCP content array as the tool result.
   - name: AssertText

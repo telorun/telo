@@ -15,7 +15,7 @@ imports:
   Http: std/http-server@0.9.0
   JS: std/javascript@0.4.1
 targets:
-  - ExampleServer
+  - !ref ExampleServer
 ports:
   http:
     env: PORT
@@ -34,7 +34,7 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    type: Http.Api.HelloApi
+    mount: !ref HelloApi
 ---
 kind: Http.Api
 metadata:
@@ -50,9 +50,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler:
-      kind: JS.Script
-      name: SayHello
+    handler: !ref SayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
     returns:

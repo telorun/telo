@@ -13,18 +13,14 @@ metadata:
   name: CyclicA
 steps:
   - name: callB
-    invoke:
-      kind: Run.Sequence
-      name: CyclicB
+    invoke: !ref CyclicB
 ---
 kind: Run.Sequence
 metadata:
   name: CyclicB
 steps:
   - name: callA
-    invoke:
-      kind: Run.Sequence
-      name: CyclicA
+    invoke: !ref CyclicA
 ---
 kind: Http.Api
 metadata:
@@ -33,9 +29,7 @@ routes:
   - request:
       path: /x
       method: GET
-    handler:
-      kind: Run.Sequence
-      name: CyclicA
+    handler: !ref CyclicA
     returns:
       - status: 200
         content:

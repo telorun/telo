@@ -11,7 +11,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - LiveText
+  - !ref LiveText
 ---
 # apiKey is null-coalesced so the resource passes schema validation when env is
 # unset. The model is constructed (just config — no API call until invoke), but
@@ -26,9 +26,7 @@ options:
 ---
 kind: Ai.Text
 metadata: { name: C }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Live
+model: !ref Live
 ---
 kind: Run.Sequence
 metadata:
@@ -40,9 +38,7 @@ steps:
       - name: Invoke
         inputs:
           prompt: "Say the single word: pong."
-        invoke:
-          kind: Ai.Text
-          name: C
+        invoke: !ref C
       - name: Assert
         inputs:
           text: "${{ steps.Invoke.result.text }}"

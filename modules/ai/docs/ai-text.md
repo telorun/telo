@@ -23,9 +23,7 @@ apiKey: "${{ secrets.OPENAI_API_KEY }}"
 ---
 kind: Ai.Text
 metadata: { name: Summarizer }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4o
+model: !ref Gpt4o
 system: "Summarize in one sentence."
 options:
   temperature: 0.2
@@ -98,15 +96,13 @@ steps:
   - name: Summarize
     inputs:
       prompt: "Summarize:\n${{ vars.articleText }}"
-    invoke:
-      kind: Ai.Text
-      name: Summarizer
+    invoke: !ref Summarizer
   - name: Save
     inputs:
       summary: "${{ steps.Summarize.result.text }}"
     invoke:
       kind: Sql.Exec
-      connection: { kind: Sql.Connection, name: Db }
+      connection: !ref Db
       inputs:
         sql: "INSERT INTO summaries (text) VALUES (?)"
         bindings: ["${{ inputs.summary }}"]

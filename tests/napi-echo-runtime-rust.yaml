@@ -9,7 +9,7 @@ imports:
     runtime: rust
   Assert: ../modules/assert
 targets:
-  - VerifyKernelStarted
+  - !ref VerifyKernelStarted
 ---
 kind: NapiTest.Echo
 metadata:

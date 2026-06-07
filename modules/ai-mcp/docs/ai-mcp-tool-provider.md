@@ -30,13 +30,13 @@ clientInfo: { name: my-app, version: 1.0.0 }
 # Bridge the server's tools into the Ai.ToolProvider contract.
 kind: AiMcp.ToolProvider
 metadata: { name: FileTools }
-client: { kind: Mcp.StdioClient, name: FilesMcp }
+client: !ref FilesMcp
 ---
 kind: Ai.Agent
 metadata: { name: Assistant }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt4o }
+model: !ref Gpt4o
 toolProviders:
-  - provider: { kind: AiMcp.ToolProvider, name: FileTools }
+  - provider: !ref FileTools
     prefix: "fs_"                        # → fs_read_file, fs_list_directory, …
     include: [read_file, list_directory] # optional allowlist
 ```

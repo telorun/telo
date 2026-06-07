@@ -22,7 +22,7 @@ variables:
       type: string
     minItems: 1
 targets:
-  - TestApplicationEnvObjectArray
+  - !ref TestApplicationEnvObjectArray
 ---
 kind: Run.Sequence
 metadata:

@@ -13,19 +13,19 @@ imports:
   Assert: ../../assert
 targets:
   - name: Source
-    invoke: { kind: Stream.Of, name: Source }
+    invoke: !ref Source
   - name: ToBytes
     inputs:
       input: "${{ steps.Source.result.output }}"
-    invoke: { kind: PlainText.Encoder, name: ToBytes }
+    invoke: !ref ToBytes
   - name: ToText
     inputs:
       input: "${{ steps.ToBytes.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: Assert
     inputs:
       text: "${{ steps.ToText.result.text }}"
-    invoke: { kind: Assert.Schema, name: AssertText }
+    invoke: !ref AssertText
 ---
 kind: Stream.Of
 metadata: { name: Source }

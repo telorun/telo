@@ -694,6 +694,17 @@ export class Kernel implements IKernel {
     return this._entryUrl;
   }
 
+  /** Authored `kind` of a declared resource by name, from the static manifest
+   *  set. Init-order-independent (unlike `resourceInstances`), so a controller
+   *  resolving a `!ref <name>` sentinel before the target initializes can still
+   *  recover the kind for invocation-event naming. */
+  resourceKindByName(name: string): string | undefined {
+    for (const m of this.staticManifests) {
+      if (m.metadata?.name === name && typeof m.kind === "string") return m.kind;
+    }
+    return undefined;
+  }
+
   get exitCode(): number {
     return this._exitCode;
   }

@@ -17,7 +17,7 @@ imports:
   Http: std/http-server@0.9.0
   JavaScript: std/javascript@0.4.1
 targets:
-  - PaymentServer
+  - !ref PaymentServer
 variables:
   apiBaseUrl:
     env: API_BASE_URL
@@ -65,4 +65,4 @@ openapi:
 port: 4444
 mounts:
   - path: /v1
-    type: Http.Api.PaymentApi
+    mount: !ref PaymentApi

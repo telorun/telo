@@ -8,7 +8,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestEchoStreamContract
+  - !ref TestEchoStreamContract
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
@@ -18,9 +18,7 @@ metadata: { name: Echo }
 # echo.stream(...) and returns the collected StreamPart data we can assert on.
 kind: AiEcho.StreamCollector
 metadata: { name: Collector }
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 ---
 kind: Run.Sequence
 metadata:
@@ -29,9 +27,7 @@ steps:
   - name: Collect
     inputs:
       prompt: "hi"
-    invoke:
-      kind: AiEcho.StreamCollector
-      name: Collector
+    invoke: !ref Collector
   - name: Assert
     inputs:
       deltas: "${{ steps.Collect.result.deltas }}"

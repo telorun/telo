@@ -289,45 +289,10 @@ export function validateReferences(
           return;
         }
 
-        // Name-only reference (plain string) — look up by name to validate.
-        // Qualified references use "Kind.Name" format (e.g. "Http.Api.PaymentApi");
-        // extract the resource name from the last dot segment.
-        if (typeof val === "string") {
-          const lastDot = val.lastIndexOf(".");
-          const refName = lastDot > 0 ? val.slice(lastDot + 1) : val;
-          const refKindPrefix = lastDot > 0 ? val.slice(0, lastDot) : undefined;
-          const target =
-            byName.get(refName) ?? visibleScopeManifests.find((m) => m.metadata?.name === refName);
-          if (!target) {
-            // Cross-module reference: "Alias.ResourceName" (single dot, bare alias prefix).
-            // The resource lives in the imported module's scope and can't be validated here.
-            // Multi-dot prefixes like "Alias.Kind.Name" are local resources with qualified
-            // kinds — those must be validated.
-            if (refKindPrefix && !refKindPrefix.includes(".") && aliases.hasAlias(refKindPrefix)) {
-              return;
-            }
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "UNRESOLVED_REFERENCE",
-              source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → resource '${val}' not found`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            });
-            return;
-          }
-          const kindErrors = checkKind(target.kind as string, entry, registry, aliases);
-          if (kindErrors.length > 0) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "REFERENCE_KIND_MISMATCH",
-              source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            });
-          }
-          return;
-        }
-
+        // Bare strings are no longer a reference shape — `validateReferenceForms`
+        // rejects an author-written string at a ref slot before this pass runs,
+        // and a `${{ }}` reference flowed through CEL is resolved/typed
+        // elsewhere. Anything still a string here is not a reference to resolve.
         if (typeof val !== "object") return;
         const refVal = val as Record<string, unknown>;
 

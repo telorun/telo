@@ -10,8 +10,8 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - RunScript
-  - VerifyRustMarker
+  - !ref RunScript
+  - !ref VerifyRustMarker
 ---
 kind: Starlark.Script
 metadata:
@@ -27,9 +27,7 @@ steps:
   - name: Invoke
     inputs:
       value: 21
-    invoke:
-      kind: Starlark.Script
-      name: SimpleScript
+    invoke: !ref SimpleScript
 ---
 kind: Assert.Events
 metadata:

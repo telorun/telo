@@ -7,7 +7,7 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - TestInputs
+  - !ref TestInputs
 ---
 # A sub-sequence invoked with caller inputs reads them via the `inputs` CEL
 # variable across step `inputs:`, an `if:` predicate, and the `outputs:` mapping.
@@ -41,7 +41,7 @@ metadata:
   name: TestInputs
 steps:
   - name: callGreet
-    invoke: { kind: Run.Sequence, name: Greet }
+    invoke: !ref Greet
     inputs:
       name: telo
       shout: true

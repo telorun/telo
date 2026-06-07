@@ -29,9 +29,7 @@ The resource is then referenced from any `Ai.Model` consumer:
 ```yaml
 kind: Ai.Text
 metadata: { name: Summarizer }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4o
+model: !ref Gpt4o
 ```
 
 ---

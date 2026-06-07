@@ -35,7 +35,7 @@ code: |
 kind: Ai.Tools
 metadata: { name: LocalTools }
 tools:
-  - tool: { kind: Js.Script, name: Multiplier }
+  - tool: !ref Multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -60,7 +60,7 @@ By default the model's arguments forward straight to `invoke()` and the output i
 
 ```yaml
 tools:
-  - tool: { kind: Js.Script, name: Greeter }     # main({ target })
+  - tool: !ref Greeter     # main({ target })
     name: greet
     parameters:
       type: object

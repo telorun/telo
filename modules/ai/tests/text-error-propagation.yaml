@@ -8,7 +8,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestProviderErrorSurfacesUnchanged
+  - !ref TestProviderErrorSurfacesUnchanged
 ---
 # Echo configured to throw a provider-side InvokeError when it sees the marker
 # message. This is the actual provider error used by the test below.
@@ -21,9 +21,7 @@ failOn:
 ---
 kind: Ai.Text
 metadata: { name: C }
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 ---
 # When the provider (Echo) throws, the completion controller must surface the
 # error unchanged — same code, same message, no retry, no swallowing, no wrapping.
@@ -36,9 +34,7 @@ steps:
       - name: Invoke
         inputs:
           prompt: TRIGGER_FAILURE
-        invoke:
-          kind: Ai.Text
-          name: C
+        invoke: !ref C
     catch:
       - name: AssertPassthrough
         inputs:

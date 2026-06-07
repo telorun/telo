@@ -49,11 +49,9 @@ with:
                 name:
                   type: string
               required: [ "name" ]
-        handler:
-          kind: JavaScript.Script
-          name: GreetingHandler
-          inputs:
-            name: "${{ request.query.name }}"
+        inputs:
+          name: "${{ request.query.name }}"
+        handler: !ref GreetingHandler
         returns:
           - status: 200
             content:
@@ -77,7 +75,7 @@ with:
         version: 1.0.0
     mounts:
       - path: /api
-        type: !ref TestApi
+        mount: !ref TestApi
 steps:
   - name: FetchGreeting
     inputs: {}

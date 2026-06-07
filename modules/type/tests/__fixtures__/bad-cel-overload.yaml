@@ -6,7 +6,7 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - TestBadOverload
+  - !ref TestBadOverload
 ---
 # `.slice(int)` is not a CEL string method — the overload is `string.substring(int)`.
 # The analyzer's env.check() must catch this as a type error and surface a

@@ -6,7 +6,7 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - ScoreSmoke
+  - !ref ScoreSmoke
 ---
 kind: Bench.Suite
 metadata:

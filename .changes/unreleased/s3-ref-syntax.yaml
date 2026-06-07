@@ -1,0 +1,4 @@
+project: s3
+kind: Added
+body: Bucket reference slots use the unified `!ref` form; the legacy inline `{kind, name}` / string ref shapes are no longer advertised in the schema.
+time: 2026-06-07T13:20:00Z

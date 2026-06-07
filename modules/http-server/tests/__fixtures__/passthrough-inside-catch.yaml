@@ -36,9 +36,7 @@ routes:
   - request:
       path: /x
       method: GET
-    handler:
-      kind: Run.Sequence
-      name: CatchAndRethrow
+    handler: !ref CatchAndRethrow
     returns:
       - status: 200
         content:

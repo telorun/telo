@@ -14,7 +14,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestHttpApiDispatch
+  - !ref TestHttpApiDispatch
 ---
 kind: JavaScript.Script
 metadata:
@@ -45,9 +45,7 @@ routes:
   - request:
       method: GET
       path: "/users/{id}"
-    handler:
-      kind: JavaScript.Script
-      name: GreetById
+    handler: !ref GreetById
     inputs:
       id: !cel "request.params.id"
     returns:
@@ -60,7 +58,7 @@ kind: Lambda.Function
 metadata:
   name: Main
 handlers:
-  - { kind: Lambda.HttpApi, name: Web }
+  - !ref Web
 ---
 kind: Run.Sequence
 metadata:
@@ -78,9 +76,7 @@ steps:
         headers:
           accept: application/json
       context: {}
-    invoke:
-      kind: Lambda.Function
-      name: Main
+    invoke: !ref Main
   - name: VerifyEnvelope
     inputs:
       statusCode: "${{ steps.InvokeFunction.result.statusCode }}"

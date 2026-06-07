@@ -37,6 +37,4 @@ prefix: "HEY "
 kind: AbstractMismatchedAliases.GreeterUser
 metadata:
   name: UsesShouter
-greeter:
-  kind: AImpl.Shouter
-  name: MyShouter
+greeter: !ref MyShouter

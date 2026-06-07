@@ -37,9 +37,7 @@ steps:
   - name: UseHelper
     inputs:
       value: 5
-    invoke:
-      kind: JavaScript.Script
-      name: SharedHelper
+    invoke: !ref SharedHelper
 
   - name: VerifyResult
     inputs:

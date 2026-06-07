@@ -8,7 +8,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestPromptShorthand
+  - !ref TestPromptShorthand
 ---
 kind: AiEcho.EchoModel
 metadata:
@@ -17,9 +17,7 @@ metadata:
 kind: Ai.Text
 metadata:
   name: Summarize
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 ---
 # `inputs.prompt` is shorthand for `messages: [{role: "user", content: prompt}]`.
 # Echo returns the content of the last message verbatim → result.text === prompt.
@@ -30,9 +28,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "hello world"
-    invoke:
-      kind: Ai.Text
-      name: Summarize
+    invoke: !ref Summarize
   - name: AssertText
     inputs:
       text: "${{ steps.Invoke.result.text }}"

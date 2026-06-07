@@ -8,7 +8,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 kind: JS.Script
 metadata: { name: PingImpl }
@@ -30,7 +30,7 @@ entries:
       type: object
       properties: {}
       additionalProperties: false
-    handler: { kind: JS.Script, name: PingImpl }
+    handler: !ref PingImpl
     inputs: {}
     result:
       content:
@@ -40,7 +40,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-list, version: 1.0.0 }
-tools: [ ListedTools ]
+tools: [ !ref ListedTools ]
 ---
 kind: McpClient.HttpClient
 metadata: { name: ClientUnderTest }
@@ -49,7 +49,7 @@ clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsList
 metadata: { name: ListTools }
-client: ClientUnderTest
+client: !ref ClientUnderTest
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -61,12 +61,12 @@ with:
     baseUrl: http://127.0.0.1:8956
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: List
     inputs: {}
-    invoke: { kind: McpClient.ToolsList, name: ListTools }
+    invoke: !ref ListTools
   - name: AssertListed
     inputs:
       toolName: "${{ steps.List.result.tools[0].name }}"

@@ -11,7 +11,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestDelay
+  - !ref TestDelay
 ---
 kind: Run.Sequence
 metadata: { name: TestDelay }

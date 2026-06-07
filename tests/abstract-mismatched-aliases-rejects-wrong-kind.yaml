@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestRejectsWrongKind
+  - !ref TestRejectsWrongKind
 ---
 # Strengthens the mismatched-aliases coverage by asserting that the analyzer
 # *actually validates* the x-telo-ref slot, not just "produces no errors." A

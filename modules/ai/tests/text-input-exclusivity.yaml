@@ -8,17 +8,15 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestBothPromptAndMessagesRejected
-  - TestNeitherPromptNorMessagesRejected
+  - !ref TestBothPromptAndMessagesRejected
+  - !ref TestNeitherPromptNorMessagesRejected
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
 kind: Ai.Text
 metadata: { name: C }
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 ---
 # Both prompt AND messages → throws.
 kind: Run.Sequence
@@ -32,9 +30,7 @@ steps:
           prompt: "x"
           messages:
             - { role: user, content: "y" }
-        invoke:
-          kind: Ai.Text
-          name: C
+        invoke: !ref C
       - name: NotReached
         inputs: { note: "should not get here" }
         invoke:
@@ -61,9 +57,7 @@ steps:
     try:
       - name: Invoke
         inputs: {}
-        invoke:
-          kind: Ai.Text
-          name: C
+        invoke: !ref C
       - name: NotReached
         inputs: { note: "should not get here" }
         invoke:

@@ -27,7 +27,7 @@ imports:
   Assert: ../../../assert
   PlainText: ../../../plain-text-codec
 targets:
-  - CrossModuleRoundTrip
+  - !ref CrossModuleRoundTrip
 ---
 kind: S3.Put
 metadata: { name: PutObject }
@@ -46,14 +46,14 @@ metadata:
   name: CrossModuleRoundTrip
 steps:
   - name: put
-    invoke: { kind: S3.Put, name: PutObject }
+    invoke: !ref PutObject
     inputs:
       key: xmod/data.txt
       body: "cross-module bucket works"
       contentType: text/plain
 
   - name: get
-    invoke: { kind: S3.Get, name: GetObject }
+    invoke: !ref GetObject
     inputs:
       key: xmod/data.txt
 
@@ -75,6 +75,6 @@ steps:
         required: [ text ]
 
   - name: cleanup
-    invoke: { kind: S3.Delete, name: DeleteObject }
+    invoke: !ref DeleteObject
     inputs:
       key: xmod/data.txt

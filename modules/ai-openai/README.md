@@ -39,9 +39,7 @@ options:
 ---
 kind: Ai.Text
 metadata: { name: Summarizer }
-model:
-  kind: AiOpenai.OpenaiModel
-  name: Gpt4oMini
+model: !ref Gpt4oMini
 ```
 
 ## Reference

@@ -10,8 +10,8 @@ imports:
   SqlRepository: std/sql-repository@0.2.0
   Run: std/run@0.7.0
 targets:
-  - SetupDb
-  - Server
+  - !ref SetupDb
+  - !ref Server
 ---
 kind: Sql.SqliteConnection
 metadata:
@@ -68,7 +68,7 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    type: Http.Api.FeedbackRoutes
+    mount: !ref FeedbackRoutes
 ---
 kind: Http.Api
 metadata:
@@ -88,9 +88,7 @@ routes:
             source:
               type: string
           required: [ text ]
-    handler:
-      kind: SqlRepository.Create
-      name: InsertFeedback
+    handler: !ref InsertFeedback
     inputs:
       data:
         text: "${{ request.body.text }}"
@@ -108,9 +106,7 @@ routes:
   - request:
       path: /feedback
       method: GET
-    handler:
-      kind: SqlRepository.Read
-      name: ListFeedback
+    handler: !ref ListFeedback
     inputs:
       filters: {}
     returns:
@@ -130,9 +126,7 @@ routes:
             id:
               type: integer
           required: [ id ]
-    handler:
-      kind: SqlRepository.Read
-      name: GetFeedback
+    handler: !ref GetFeedback
     inputs:
       filters:
         id: "${{ request.params.id }}"

@@ -17,14 +17,14 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestNdjson
+  - !ref TestNdjson
 ---
 kind: AiEcho.EchoModel
 metadata: { name: Echo }
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiEcho.EchoModel, name: Echo }
+model: !ref Echo
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }
@@ -38,15 +38,15 @@ steps:
   - name: TextStream
     inputs:
       prompt: "hi"
-    invoke: { kind: Ai.TextStream, name: ChatStream }
+    invoke: !ref ChatStream
   - name: Encode
     inputs:
       input: "${{ steps.TextStream.result.output }}"
-    invoke: { kind: Ndjson.Encoder, name: NdjsonEnc }
+    invoke: !ref NdjsonEnc
   - name: Decode
     inputs:
       input: "${{ steps.Encode.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: TextDec }
+    invoke: !ref TextDec
   - name: Assert
     inputs:
       text: "${{ steps.Decode.result.text }}"

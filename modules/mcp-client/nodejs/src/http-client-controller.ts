@@ -25,10 +25,11 @@ interface ClientInfo {
 }
 
 interface HttpClientManifest {
+  kind: string;
   metadata: { name: string };
   url: string;
   headers?: Record<string, string>;
-  sessionProvider?: string;
+  sessionProvider?: unknown;
   clientInfo?: ClientInfo;
   protocolVersion?: string;
 }
@@ -77,6 +78,16 @@ export class McpHttpClient {
   private handshakePromise: Promise<string | null> | null = null;
   private readonly clientInfo: ClientInfo;
   private readonly protocolVersion: string;
+  /** Mode discriminator (external vs self-handshake): whether a
+   *  `sessionProvider` was configured at all. Captured as a plain presence
+   *  check so it stays correct whether the slot still holds the unresolved ref
+   *  or Phase 5 has already swapped in the live instance — deriving the mode
+   *  from `sessionProviderName` would silently misroute if that name ever came
+   *  back null for a configured provider. */
+  private readonly hasSessionProvider: boolean;
+  /** Best-effort provider name for `snapshot()`, read from the unresolved ref
+   *  at construction — before Phase 5 replaces it with the live instance. */
+  private readonly sessionProviderName: string | null;
 
   constructor(
     private readonly manifest: HttpClientManifest,
@@ -84,6 +95,15 @@ export class McpHttpClient {
   ) {
     this.clientInfo = manifest.clientInfo ?? DEFAULT_CLIENT_INFO;
     this.protocolVersion = manifest.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
+    // Capture provider presence + best-effort name from the unresolved ref now —
+    // Phase 5 replaces `sessionProvider` with the live instance before the
+    // controller runs.
+    const sp = manifest.sessionProvider;
+    this.hasSessionProvider = sp != null;
+    this.sessionProviderName =
+      typeof sp === "string"
+        ? sp
+        : ((sp as { name?: unknown } | null | undefined)?.name as string | undefined) ?? null;
   }
 
   async init(): Promise<void> {
@@ -104,32 +124,25 @@ export class McpHttpClient {
     if (!inputs || typeof inputs.method !== "string") {
       throw protocolError("Mcp.HttpClient.invoke requires inputs.method");
     }
-    if (this.manifest.sessionProvider) {
+    if (this.hasSessionProvider) {
       return this.invokeExternal(inputs);
     }
     return this.invokeSelfHandshake(inputs);
   }
 
   private async invokeExternal(inputs: InvokeInput): Promise<Record<string, unknown>> {
-    let provider: SessionProviderInstance;
-    try {
-      provider = this.ctx.moduleContext.getInstance(
-        this.manifest.sessionProvider!,
-      ) as SessionProviderInstance;
-    } catch (err) {
-      throw transportError(
-        `Mcp.HttpClient: sessionProvider '${this.manifest.sessionProvider}' not found: ${(err as Error).message}`,
-      );
-    }
+    // The `sessionProvider` x-telo-ref is replaced with the live instance by
+    // Phase-5 injection before the controller runs.
+    const provider = this.manifest.sessionProvider as SessionProviderInstance | undefined;
     if (!provider || typeof provider.provide !== "function") {
       throw transportError(
-        `Mcp.HttpClient: sessionProvider '${this.manifest.sessionProvider}' did not resolve to a Mcp.SessionProvider instance (no provide())`,
+        `${this.manifest.kind}: sessionProvider did not resolve to a Mcp.SessionProvider instance (no provide())`,
       );
     }
     const { sessionId } = await provider.provide();
     if (!sessionId || typeof sessionId !== "string") {
       throw protocolError(
-        `Mcp.HttpClient: sessionProvider '${this.manifest.sessionProvider}' returned no sessionId`,
+        `${this.manifest.kind}: sessionProvider returned no sessionId`,
       );
     }
     const { result } = await postJsonRpc(
@@ -253,7 +266,7 @@ export class McpHttpClient {
   snapshot(): Record<string, unknown> {
     return {
       url: this.manifest.url,
-      sessionProviderName: this.manifest.sessionProvider ?? null,
+      sessionProviderName: this.sessionProviderName,
       protocolVersion: this.protocolVersion,
     };
   }
@@ -266,7 +279,7 @@ export class McpHttpClient {
     this.cachedSessionId = null;
     this.handshakeComplete = false;
     this.handshakePromise = null;
-    if (this.manifest.sessionProvider || !sessionId) return;
+    if (this.hasSessionProvider || !sessionId) return;
     try {
       await fetch(this.manifest.url, {
         method: "DELETE",

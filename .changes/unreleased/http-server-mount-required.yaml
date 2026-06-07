@@ -1,0 +1,4 @@
+project: http-server
+kind: Fixed
+body: Validate `Http.Server` mounts strictly — each entry now requires `mount:` and rejects unknown keys, so a misnamed or missing mount reference is caught at `telo check` instead of failing only at boot.
+time: 2026-06-07T15:18:49Z

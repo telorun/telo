@@ -11,7 +11,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestMixed
+  - !ref TestMixed
 ---
 # Mixed providers in one agent: a static Ai.Tools list AND an MCP server. This is the
 # headline scenario from the example, and it guards the analyzer fix — referencing
@@ -24,9 +24,7 @@ metadata:
 kind: AiMcp.ToolProvider
 metadata:
   name: ServerTools
-client:
-  kind: Stub.StubClient
-  name: McpServer
+client: !ref McpServer
 ---
 kind: Js.Script
 metadata:
@@ -38,7 +36,7 @@ kind: Ai.Tools
 metadata:
   name: LocalTools
 tools:
-  - tool: { kind: Js.Script, name: Multiplier }
+  - tool: !ref Multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -61,12 +59,10 @@ emitToolCall:
 kind: Ai.Agent
 metadata:
   name: Assistant
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 toolProviders:
-  - provider: { kind: Ai.Tools, name: LocalTools }
-  - provider: { kind: AiMcp.ToolProvider, name: ServerTools }
+  - provider: !ref LocalTools
+  - provider: !ref ServerTools
 ---
 kind: Run.Sequence
 metadata:
@@ -75,9 +71,7 @@ steps:
   - name: Invoke
     inputs:
       prompt: "multiply 6 and 7"
-    invoke:
-      kind: Ai.Agent
-      name: Assistant
+    invoke: !ref Assistant
   - name: AssertText
     inputs:
       text: "${{ steps.Invoke.result.text }}"

@@ -27,7 +27,7 @@ secrets:
     env: TELO_REGISTRY_TOKEN
     type: string
 targets:
-  - GetModuleManifest_ReturnsYaml
+  - !ref GetModuleManifest_ReturnsYaml
 ---
 # Typed MCP client + tool-call dispatcher. Replaces the hand-rolled
 # JS.Script McpFetch that previously crashed when the success envelope was
@@ -40,7 +40,7 @@ clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
 metadata: { name: McpToolCall }
-client: RegistryMcp
+client: !ref RegistryMcp
 ---
 # Reproduces the failure: GetModuleManifest pipes S3.Get's stream-typed
 # `output` through `${{ steps.fetch.result.output }}` into PlainText.Decoder.
@@ -81,7 +81,7 @@ steps:
     inputs:
       name: get_module_manifest
       arguments: { namespace: std, name: e2e-mcp-fixture, version: 1.0.0 }
-    invoke: { kind: McpClient.ToolsCall, name: McpToolCall }
+    invoke: !ref McpToolCall
   - name: assert
     inputs:
       contentType: "${{ steps.call.result.content[0].type }}"

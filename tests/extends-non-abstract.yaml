@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestExtendsNonAbstract
+  - !ref TestExtendsNonAbstract
 ---
 # Asserts the analyzer emits EXTENDS_NON_ABSTRACT when `extends` targets a concrete definition.
 kind: Assert.Manifest

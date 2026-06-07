@@ -8,7 +8,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestOptionsMergeReachesModel
+  - !ref TestOptionsMergeReachesModel
 ---
 # Echo doesn't surface options in its output — the smoke test is just that a call
 # with per-call, per-completion, AND per-model options survives the merge and
@@ -21,9 +21,7 @@ suffix: ""
 ---
 kind: Ai.Text
 metadata: { name: C }
-model:
-  kind: AiEcho.EchoModel
-  name: Echo
+model: !ref Echo
 options:
   temperature: 0.2
   maxTokens: 100
@@ -38,9 +36,7 @@ steps:
       options:
         temperature: 0.9
         topP: 0.5
-    invoke:
-      kind: Ai.Text
-      name: C
+    invoke: !ref C
   - name: Assert
     inputs:
       text: "${{ steps.Invoke.result.text }}"

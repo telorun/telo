@@ -24,8 +24,8 @@ imports:
   Run: std/run@0.7.0
   Sql: std/sql@0.8.0
 targets:
-  - InitSchema
-  - ChatLoop
+  - !ref InitSchema
+  - !ref ChatLoop
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -66,7 +66,7 @@ clientInfo: { name: agent-console, version: 1.0.0 }
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: RegistryTools }
-client: { kind: Mcp.HttpClient, name: RegistryMcp }
+client: !ref RegistryMcp
 ---
 # --- Tool: a regular invocable (HTTP weather lookup) -----------------------
 kind: Http.Client
@@ -77,7 +77,7 @@ baseUrl: https://api.open-meteo.com
 # Ai.Tools `inputs:` mapping below.
 kind: Http.Request
 metadata: { name: GetWeather }
-client: OpenMeteo
+client: !ref OpenMeteo
 throwOnHttpError: true
 ---
 # Wrap the HTTP request as a tool. The model produces { latitude, longitude }; the
@@ -85,7 +85,7 @@ throwOnHttpError: true
 kind: Ai.Tools
 metadata: { name: WeatherTools }
 tools:
-  - tool: { kind: Http.Request, name: GetWeather }
+  - tool: !ref GetWeather
     name: get_weather
     description: Get the current weather at a latitude/longitude (open-meteo).
     parameters:
@@ -107,14 +107,14 @@ tools:
 # --- Agent -----------------------------------------------------------------
 kind: Ai.Agent
 metadata: { name: Assistant }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+model: !ref Gpt4oMini
 system: |
   You are a helpful CLI assistant. Use the available tools when they help answer;
   don't guess at facts you can look up. Keep replies brief.
 maxSteps: 6
 toolProviders:
-  - provider: { kind: Ai.Tools, name: WeatherTools }
-  - provider: { kind: AiMcp.ToolProvider, name: RegistryTools }
+  - provider: !ref WeatherTools
+  - provider: !ref RegistryTools
     prefix: "registry_"
 ---
 # --- REPL ------------------------------------------------------------------
@@ -134,15 +134,15 @@ steps:
           bindings: [ "user", "${{ steps.Read.result.value }}" ]
         invoke:
           kind: Sql.Exec
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       - name: ReadHistory
         inputs:
           sql: "SELECT role, content FROM messages ORDER BY id ASC"
         invoke:
           kind: Sql.Query
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       - name: Ask
-        invoke: { kind: Ai.Agent, name: Assistant }
+        invoke: !ref Assistant
         inputs:
           messages: "${{ steps.ReadHistory.result.rows }}"
       - name: ShowTools
@@ -166,7 +166,7 @@ steps:
           bindings: [ "assistant", "${{ steps.Ask.result.text }}" ]
         invoke:
           kind: Sql.Exec
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       - name: Read
         invoke: !ref Console.readLine
         inputs:

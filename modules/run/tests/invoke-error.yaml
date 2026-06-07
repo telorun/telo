@@ -6,7 +6,7 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - TestCaught
+  - !ref TestCaught
 ---
 # A `throw:` step throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
 # The enclosing try/catch binds it to `error` — we verify every field is

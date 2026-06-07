@@ -15,7 +15,7 @@ imports:
   Assert: ../
   Run: ../../run
 targets:
-  - Check
+  - !ref Check
 ---
 kind: Run.Sequence
 metadata: { name: Check }

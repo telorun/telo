@@ -5,12 +5,12 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestUndeclaredCode
-  - TestUncoveredCode
-  - TestCatchAllNotLast
-  - TestPassthroughInsideCatch
-  - TestInheritCycle
-  - TestRethrowPlain
+  - !ref TestUndeclaredCode
+  - !ref TestUncoveredCode
+  - !ref TestCatchAllNotLast
+  - !ref TestPassthroughInsideCatch
+  - !ref TestInheritCycle
+  - !ref TestRethrowPlain
 ---
 # A catches: entry references a code not in the handler's declared / resolved
 # throw union → UNDECLARED_THROW_CODE.

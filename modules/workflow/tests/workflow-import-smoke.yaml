@@ -5,8 +5,8 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - TestWorkflowImport
-  - TestWorkflowGraphXRef
+  - !ref TestWorkflowImport
+  - !ref TestWorkflowGraphXRef
 ---
 # The workflow + workflow-temporal pair is the canonical cross-package abstract example:
 # `Workflow.Backend` is a Telo.Abstract in std/workflow, `Temporal.Backend` is a concrete

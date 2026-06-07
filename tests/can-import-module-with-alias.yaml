@@ -15,7 +15,7 @@ imports:
       password: "supersecret"
   MyAssert: ../modules/assert
 targets:
-  - VerifyTinyModuleContext
+  - !ref VerifyTinyModuleContext
 ---
 kind: MyAssert.ModuleContext
 metadata:

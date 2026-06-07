@@ -7,7 +7,7 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - TestInvokeStep
+  - !ref TestInvokeStep
 ---
 kind: Run.Sequence
 metadata:

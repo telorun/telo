@@ -20,7 +20,7 @@ secrets:
     env: APP_DATABASE_URL
     type: string
 targets:
-  - TestApplicationEnv
+  - !ref TestApplicationEnv
 ---
 kind: Run.Sequence
 metadata:

@@ -19,8 +19,8 @@ imports:
   Run: std/run@0.7.0
   Sql: std/sql@0.8.0
 targets:
-  - InitSchema
-  - ChatLoop
+  - !ref InitSchema
+  - !ref ChatLoop
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -52,7 +52,7 @@ apiKey: "${{ secrets.openaiApiKey }}"
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
-model: { kind: AiOpenai.OpenaiModel, name: Gpt54Nano }
+model: !ref Gpt54Nano
 system: "You are a helpful CLI assistant. Keep replies brief — one or two sentences."
 ---
 # --- Stream pipeline -------------------------------------------------------
@@ -110,35 +110,35 @@ steps:
           bindings: [ "user", "${{ steps.Read.result.value }}" ]
         invoke:
           kind: Sql.Exec
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       - name: ReadHistory
         inputs:
           sql: "SELECT role, content FROM messages ORDER BY id ASC"
         invoke:
           kind: Sql.Query
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       - name: Stream
-        invoke: { kind: Ai.TextStream, name: ChatStream }
+        invoke: !ref ChatStream
         inputs:
           messages: "${{ steps.ReadHistory.result.rows }}"
       - name: Project
-        invoke: { kind: RecordStream.ExtractText, name: Deltas }
+        invoke: !ref Deltas
         inputs:
           input: "${{ steps.Stream.result.output }}"
       - name: Tee
-        invoke: { kind: RecordStream.Tee, name: ModelTee }
+        invoke: !ref ModelTee
         inputs:
           input: "${{ steps.Project.result.output }}"
       - name: Spin
-        invoke: { kind: Console.StreamWait, name: ChatSpinner }
+        invoke: !ref ChatSpinner
         inputs:
           input: "${{ steps.Tee.result.outputA }}"
       - name: Print
-        invoke: { kind: Console.WriteStream, name: Stdout }
+        invoke: !ref Stdout
         inputs:
           input: "${{ steps.Spin.result.output }}"
       - name: Collect
-        invoke: { kind: PlainText.Decoder, name: AssistantText }
+        invoke: !ref AssistantText
         inputs:
           input: "${{ steps.Tee.result.outputB }}"
       - name: InsertAssistant
@@ -147,7 +147,7 @@ steps:
           bindings: [ "assistant", "${{ steps.Collect.result.text }}" ]
         invoke:
           kind: Sql.Exec
-          connection: { kind: Sql.Connection, name: ChatDb }
+          connection: !ref ChatDb
       # Move cursor to a fresh line so the next Read's TTY readline
       # interface doesn't refresh-erase the assistant's reply (readline
       # in TTY mode emits `\r\x1b[K` when re-prompting on a non-empty

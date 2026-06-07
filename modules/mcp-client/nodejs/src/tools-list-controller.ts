@@ -7,8 +7,11 @@ import {
 import { protocolError, transportError } from "./errors.js";
 
 interface ToolsListManifest {
+  kind: string;
   metadata: { name: string };
-  client: string;
+  // The `client` x-telo-ref is replaced with the live Mcp.Client instance by
+  // the kernel's Phase-5 injection before the controller runs.
+  client: unknown;
 }
 
 interface ToolEntry {
@@ -47,23 +50,13 @@ export class McpToolsList {
   }
 
   private resolveClient(): GenericClient {
-    let resolved: unknown;
-    try {
-      resolved = this.ctx.moduleContext.getInstance(this.manifest.client);
-    } catch (err) {
+    const client = this.manifest.client;
+    if (!client || typeof (client as { invoke?: unknown }).invoke !== "function") {
       throw transportError(
-        `Mcp.ToolsList: client '${this.manifest.client}' not found: ${(err as Error).message}`,
+        `${this.manifest.kind}: client did not resolve to an Mcp.Client instance (no invoke())`,
       );
     }
-    if (
-      !resolved ||
-      typeof (resolved as { invoke?: unknown }).invoke !== "function"
-    ) {
-      throw transportError(
-        `Mcp.ToolsList: client '${this.manifest.client}' did not resolve to an Mcp.Client (no invoke())`,
-      );
-    }
-    return resolved as GenericClient;
+    return client as GenericClient;
   }
 }
 

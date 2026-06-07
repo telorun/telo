@@ -5,8 +5,8 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestAbstractImportClean
-  - TestAbstractXRefResolution
+  - !ref TestAbstractImportClean
+  - !ref TestAbstractXRefResolution
 ---
 # Asserts that a library declaring a Telo.Abstract plus a canonical `capability +
 # extends` implementation analyzes with zero diagnostics. This is the baseline

@@ -51,6 +51,11 @@ export function resolveTypeFieldToSchema(
     if (obj.type || obj.properties) {
       return obj;
     }
+    // Named type reference resolved from a `!ref` → { kind, name } — resolve the
+    // named Telo.Type the same way as the bare-string form.
+    if (typeof obj.name === "string") {
+      return resolveTypeFieldToSchema(obj.name, allManifests);
+    }
   }
 
   return undefined;

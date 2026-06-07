@@ -12,9 +12,9 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestSequentialDrain
-  - TestErrorPropagation
-  - TestEarlyCancellation
+  - !ref TestSequentialDrain
+  - !ref TestErrorPropagation
+  - !ref TestEarlyCancellation
 ---
 kind: JS.Script
 metadata: { name: NumberSource }
@@ -71,19 +71,19 @@ kind: Run.Sequence
 metadata: { name: TestSequentialDrain }
 steps:
   - name: SeqSource
-    invoke: { kind: JS.Script, name: NumberSource }
+    invoke: !ref NumberSource
   - name: SeqTee
     inputs:
       input: "${{ steps.SeqSource.result.output }}"
-    invoke: { kind: RecordStream.Tee, name: TeeStream }
+    invoke: !ref TeeStream
   - name: SeqDrainA
     inputs:
       input: "${{ steps.SeqTee.result.outputA }}"
-    invoke: { kind: JS.Script, name: CollectArray }
+    invoke: !ref CollectArray
   - name: SeqDrainB
     inputs:
       input: "${{ steps.SeqTee.result.outputB }}"
-    invoke: { kind: JS.Script, name: CollectArray }
+    invoke: !ref CollectArray
   - name: SeqAssertA
     inputs:
       count: "${{ steps.SeqDrainA.result.count }}"
@@ -111,17 +111,17 @@ kind: Run.Sequence
 metadata: { name: TestErrorPropagation }
 steps:
   - name: ErrSource
-    invoke: { kind: JS.Script, name: ErrorSource }
+    invoke: !ref ErrorSource
   - name: ErrTee
     inputs:
       input: "${{ steps.ErrSource.result.output }}"
-    invoke: { kind: RecordStream.Tee, name: TeeStream }
+    invoke: !ref TeeStream
   - name: ErrTried
     try:
       - name: ErrDrainA
         inputs:
           input: "${{ steps.ErrTee.result.outputA }}"
-        invoke: { kind: JS.Script, name: CollectArray }
+        invoke: !ref CollectArray
     catch:
       - name: AssertErrCaught
         inputs:
@@ -139,19 +139,19 @@ kind: Run.Sequence
 metadata: { name: TestEarlyCancellation }
 steps:
   - name: EarlySource
-    invoke: { kind: JS.Script, name: FiveItemSource }
+    invoke: !ref FiveItemSource
   - name: EarlyTee
     inputs:
       input: "${{ steps.EarlySource.result.output }}"
-    invoke: { kind: RecordStream.Tee, name: TeeStream }
+    invoke: !ref TeeStream
   - name: EarlyTakeTwo
     inputs:
       input: "${{ steps.EarlyTee.result.outputA }}"
-    invoke: { kind: JS.Script, name: TakeTwo }
+    invoke: !ref TakeTwo
   - name: EarlyDrainAll
     inputs:
       input: "${{ steps.EarlyTee.result.outputB }}"
-    invoke: { kind: JS.Script, name: CollectArray }
+    invoke: !ref CollectArray
   - name: AssertEarlyA
     inputs:
       count: "${{ steps.EarlyTakeTwo.result.count }}"

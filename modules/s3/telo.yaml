@@ -70,15 +70,6 @@ schema:
       title: Bucket
       description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
       x-telo-ref: "std/s3#Bucket"
-      type: object
-      properties:
-        kind:
-          title: Kind
-          description: Kind of the referenced bucket resource.
-          type: string
-      required:
-        - kind
-      additionalProperties: true
   required:
     - bucketRef
 ---
@@ -103,15 +94,6 @@ schema:
       title: Bucket
       description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
       x-telo-ref: "std/s3#Bucket"
-      type: object
-      properties:
-        kind:
-          title: Kind
-          description: Kind of the referenced bucket resource.
-          type: string
-      required:
-        - kind
-      additionalProperties: true
     inputs:
       title: Inputs
       description: Object key and content written to the bucket.
@@ -172,15 +154,6 @@ schema:
       title: Bucket
       description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
       x-telo-ref: "std/s3#Bucket"
-      type: object
-      properties:
-        kind:
-          title: Kind
-          description: Kind of the referenced bucket resource.
-          type: string
-      required:
-        - kind
-      additionalProperties: true
   required:
     - bucketRef
   additionalProperties: false
@@ -236,15 +209,6 @@ schema:
       title: Bucket
       description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
       x-telo-ref: "std/s3#Bucket"
-      type: object
-      properties:
-        kind:
-          title: Kind
-          description: Kind of the referenced bucket resource.
-          type: string
-      required:
-        - kind
-      additionalProperties: true
   required:
     - bucketRef
   additionalProperties: false

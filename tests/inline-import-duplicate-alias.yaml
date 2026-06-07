@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - TestDuplicateAlias
+  - !ref TestDuplicateAlias
 ---
 kind: Assert.Manifest
 metadata:

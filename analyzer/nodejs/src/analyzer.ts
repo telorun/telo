@@ -36,6 +36,7 @@ import { validateExtends } from "./validate-extends.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
+import { validateReferenceForms } from "./validate-reference-forms.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 
@@ -774,6 +775,15 @@ export class StaticAnalyzer {
       defs.register(normalized);
     }
 
+    // Reference-form validation — enforce `!ref` as the only reference shape.
+    // Runs on the RAW manifests, BEFORE inline extraction and sentinel
+    // resolution, while an author-written `{kind, name}` is still
+    // distinguishable from the resolver's own substitution (after Phase 2/2.5
+    // they are the same object).
+    if (!options?.skipValidation) {
+      diagnostics.push(...validateReferenceForms(manifests, defs, aliases, aliasesByModule));
+    }
+
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
     const allManifests = normalizeInlineResources(manifests, defs, aliases, aliasesByModule);
 
@@ -781,7 +791,7 @@ export class StaticAnalyzer {
     // {kind, name} objects so downstream phases (validation, dependency graph,
     // kernel controllers) see a uniform shape. Runs after normalize so both
     // original and inline-extracted manifests have their sentinels resolved.
-    resolveRefSentinels(allManifests, defs, aliases, aliasesByModule);
+    resolveRefSentinels(allManifests, aliases, aliasesByModule);
 
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
@@ -1286,13 +1296,7 @@ export class StaticAnalyzer {
     // Resolve !ref sentinels after normalize so both the original and
     // inline-extracted manifests get their refs canonicalized to
     // {kind, name} for the kernel that consumes this output.
-    resolveRefSentinels(
-      normalized,
-      ctx.definitions!,
-      ctx.aliases,
-      ctx.aliasesByModule,
-      crossModuleTargets ?? [],
-    );
+    resolveRefSentinels(normalized, ctx.aliases, ctx.aliasesByModule, crossModuleTargets ?? []);
     return normalized;
   }
 

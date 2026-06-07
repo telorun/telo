@@ -15,8 +15,8 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestRoundtrip
-  - TestNotFound
+  - !ref TestRoundtrip
+  - !ref TestNotFound
 ---
 kind: Tar.Pack
 metadata: { name: Pack }
@@ -41,24 +41,24 @@ steps:
       entries:
         - path: telo.yaml
           contents: "name: hello"
-    invoke: { kind: Tar.Pack, name: Pack }
+    invoke: !ref Pack
   - name: Compress
     inputs:
       input: "${{ steps.Pack.result.output }}"
-    invoke: { kind: Gzip.Encoder, name: Compress }
+    invoke: !ref Compress
   - name: Gunzip
     inputs:
       input: "${{ steps.Compress.result.output }}"
-    invoke: { kind: Gzip.Decoder, name: Gunzip }
+    invoke: !ref Gunzip
   - name: Extract
     inputs:
       input: "${{ steps.Gunzip.result.output }}"
       path: telo.yaml
-    invoke: { kind: Tar.Extract, name: Pick }
+    invoke: !ref Pick
   - name: ToText
     inputs:
       input: "${{ steps.Extract.result.output }}"
-    invoke: { kind: PlainText.Decoder, name: ToText }
+    invoke: !ref ToText
   - name: Assert
     inputs:
       text: "${{ steps.ToText.result.text }}"
@@ -78,14 +78,14 @@ steps:
       entries:
         - path: telo.yaml
           contents: "name: hello"
-    invoke: { kind: Tar.Pack, name: Pack }
+    invoke: !ref Pack
   - name: TryExtract
     try:
       - name: Extract
         inputs:
           input: "${{ steps.Pack.result.output }}"
           path: missing.yaml
-        invoke: { kind: Tar.Extract, name: Pick }
+        invoke: !ref Pick
     catch:
       - name: Caught
         inputs:

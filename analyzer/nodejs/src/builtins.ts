@@ -236,7 +236,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
               },
               // Gated reference: run() a Runnable/Service only when the
               // `when` CEL guard holds. Discriminated by the `ref` key. `ref`
-              // is a bare name or a resolved `!ref` (`{ kind, name }`).
+              // is a `!ref` that resolves to the `{ kind, name }` shape below.
               {
                 type: "object",
                 required: ["ref"],
@@ -264,12 +264,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
               // with an optional `name` (for steps.<name>.result plumbing),
               // `when` guard, and `inputs`. Discriminated by the `invoke` key.
               // Control flow (if/while/switch/try) is not available here —
-              // reach for Run.Sequence. `invoke` is ref-only and must resolve
-              // to a `{ kind, name }` reference (a `!ref` / `{kind,name}`):
-              // requiring `name` rejects an inline `{ kind }` definition (no
-              // name) at analysis instead of failing at boot with an undefined
-              // resource name. The Invocable/Runnable kind set mirrors
-              // Run.Sequence invoke steps.
+              // reach for Run.Sequence. `invoke` is ref-only: a `!ref` that
+              // resolves to the `{ kind, name }` shape below. Requiring `name`
+              // rejects an inline `{ kind }` definition (no name) at analysis
+              // instead of failing at boot with an undefined resource name. The
+              // Invocable/Runnable kind set mirrors Run.Sequence invoke steps.
               {
                 type: "object",
                 required: ["invoke"],

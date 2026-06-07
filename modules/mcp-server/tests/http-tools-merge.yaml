@@ -7,7 +7,7 @@ imports:
   Type: ../../type
   Run: ../../run
   Assert: ../../assert
-targets: [ TestRun ]
+targets: [ !ref TestRun ]
 ---
 kind: JS.Script
 metadata: { name: McpFetch }
@@ -119,7 +119,7 @@ entries:
       type: object
       properties: { city: { type: string } }
       required: [ city ]
-    handler: { kind: JS.Script, name: WeatherImpl }
+    handler: !ref WeatherImpl
     inputs: { city: "${{ request.arguments.city }}" }
     result:
       content:
@@ -135,7 +135,7 @@ entries:
       type: object
       properties: { table: { type: string } }
       required: [ table ]
-    handler: { kind: JS.Script, name: DbImpl }
+    handler: !ref DbImpl
     inputs: { table: "${{ request.arguments.table }}" }
     result:
       content:
@@ -145,7 +145,7 @@ entries:
 kind: Mcp.HttpEndpoint
 metadata: { name: McpHttp }
 serverInfo: { name: telo-test-merge, version: 1.0.0 }
-tools: [ WeatherTools, DatabaseTools ]
+tools: [ !ref WeatherTools, !ref DatabaseTools ]
 ---
 kind: Run.Sequence
 metadata: { name: TestRun }
@@ -157,14 +157,14 @@ with:
     baseUrl: http://127.0.0.1:8953
     logger: false
     mounts:
-      - { path: /mcp, type: !ref McpHttp }
-targets: [ Server ]
+      - { path: /mcp, mount: !ref McpHttp }
+targets: [ !ref Server ]
 steps:
   - name: ListTools
     inputs:
       url: http://127.0.0.1:8953/mcp
       method: tools/list
-    invoke: { kind: JS.Script, name: McpFetch }
+    invoke: !ref McpFetch
   - name: AssertListed
     inputs:
       hasError: "${{ steps.ListTools.result.hasError }}"
@@ -185,7 +185,7 @@ steps:
       url: http://127.0.0.1:8953/mcp
       method: tools/call
       params: { name: get_weather, arguments: { city: Mars } }
-    invoke: { kind: JS.Script, name: McpFetch }
+    invoke: !ref McpFetch
   - name: AssertWeather
     inputs:
       contentText: "${{ steps.CallWeather.result.result.content[0].text }}"
@@ -202,7 +202,7 @@ steps:
       url: http://127.0.0.1:8953/mcp
       method: tools/call
       params: { name: count_rows, arguments: { table: users } }
-    invoke: { kind: JS.Script, name: McpFetch }
+    invoke: !ref McpFetch
   - name: AssertDb
     inputs:
       contentText: "${{ steps.CallDb.result.result.content[0].text }}"

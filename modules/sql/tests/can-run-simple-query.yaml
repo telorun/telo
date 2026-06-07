@@ -7,7 +7,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - TestSimpleQuery
+  - !ref TestSimpleQuery
 ---
 kind: Sql.SqliteConnection
 metadata:
@@ -23,9 +23,7 @@ steps:
       sql: "SELECT 1 as result"
     invoke:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
 
   - name: AssertResult
     inputs:

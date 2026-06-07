@@ -53,10 +53,27 @@ interface ThrowStep {
 
 type Step = InvokeStep | IfStep | WhileStep | SwitchStep | TryStep | ThrowStep;
 
+/** Read the referenced resource name from a `targets` entry. After `!ref`
+ *  resolution the entry is a `{kind, name}` reference; an unresolved `!ref`
+ *  sentinel (`{__tagged, engine: "ref", source}`) carries the name as `source`.
+ *  Scope targets are always with-resources, so the name is resolved against the
+ *  scope (never Phase-5-injected into a live instance). */
+function scopeTargetName(target: unknown): string {
+  if (target && typeof target === "object") {
+    const ref = target as { name?: unknown; source?: unknown };
+    if (typeof ref.name === "string") return ref.name;
+    if (typeof ref.source === "string") {
+      const dot = ref.source.lastIndexOf(".");
+      return dot >= 0 ? ref.source.slice(dot + 1) : ref.source;
+    }
+  }
+  throw new Error(`Run.Sequence target is not a resource reference: ${JSON.stringify(target)}`);
+}
+
 interface RunSequenceManifest {
   metadata: Record<string, string | number | boolean>;
   with?: ScopeHandle;
-  targets?: string[];
+  targets?: unknown[];
   inputs?: Record<string, Record<string, unknown>>;
   outputs?: Record<string, unknown>;
   steps: Step[];
@@ -183,7 +200,8 @@ class RunSequence {
   private async runScopeTargets(scope: ScopeContext): Promise<void> {
     if (!this.resource.targets?.length) return;
     await Promise.all(
-      this.resource.targets.map((name) => {
+      this.resource.targets.map((target) => {
+        const name = scopeTargetName(target);
         const instance = scope.getInstance(name);
         if (typeof instance.run !== "function") {
           throw new Error(`Scope target '${name}' does not have a run() method`);

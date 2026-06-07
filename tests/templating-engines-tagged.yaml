@@ -7,7 +7,7 @@ imports:
   JavaScript: ../modules/javascript
   Assert: ../modules/assert
 targets:
-  - TestTagged
+  - !ref TestTagged
 ---
 # Mixed templating engines on the same field type. Each step exercises one
 # delivery mode and asserts the value the JavaScript controller actually

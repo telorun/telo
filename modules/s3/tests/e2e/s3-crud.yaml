@@ -36,7 +36,7 @@ secrets:
     type: string
     default: telo-registry-secret
 targets:
-  - Lifecycle
+  - !ref Lifecycle
 ---
 kind: S3.Bucket
 metadata:
@@ -72,14 +72,14 @@ metadata:
   name: Lifecycle
 steps:
   - name: put
-    invoke: { kind: S3.Put, name: PutObject }
+    invoke: !ref PutObject
     inputs:
       key: e2e/hello.txt
       body: "hello e2e"
       contentType: text/plain
 
   - name: get
-    invoke: { kind: S3.Get, name: GetObject }
+    invoke: !ref GetObject
     inputs:
       key: e2e/hello.txt
 
@@ -102,7 +102,7 @@ steps:
         required: [ text ]
 
   - name: listAfterPut
-    invoke: { kind: S3.List, name: ListObjects }
+    invoke: !ref ListObjects
     inputs:
       prefix: "e2e/"
 
@@ -121,12 +121,12 @@ steps:
         required: [ keys ]
 
   - name: delete
-    invoke: { kind: S3.Delete, name: DeleteObject }
+    invoke: !ref DeleteObject
     inputs:
       key: e2e/hello.txt
 
   - name: listAfterDelete
-    invoke: { kind: S3.List, name: ListObjects }
+    invoke: !ref ListObjects
     inputs:
       prefix: "e2e/"
 
