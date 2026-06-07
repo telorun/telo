@@ -41,3 +41,12 @@ schema:
       additionalProperties: true
   required: [ model, apiKey ]
   additionalProperties: false
+  examples:
+    - model: gpt-4o-mini
+      apiKey: "${{ secrets.openaiApiKey }}"
+    - model: gpt-4o
+      apiKey: "${{ secrets.openaiApiKey }}"
+      baseUrl: https://my-gateway.example.com/v1
+      options:
+        temperature: 0.2
+        maxTokens: 512

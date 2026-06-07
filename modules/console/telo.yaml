@@ -3,6 +3,10 @@ metadata:
   name: console
   namespace: std
   version: 0.8.0
+  description: >-
+    Console I/O over stdin and stdout. `Console.WriteLine` and `Console.ReadLine`
+    handle line text with `{style}` markup; `Console.WriteStream` and
+    `Console.StreamWait` drain and animate streaming output.
 exports:
   resources:
     - writeLine
@@ -18,6 +22,8 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - output: "Hello {green world}"
     properties:
       output:
         title: Output
@@ -41,6 +47,8 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - prompt: "Name: "
     properties:
       prompt:
         title: Prompt

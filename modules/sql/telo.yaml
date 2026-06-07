@@ -26,6 +26,12 @@ controllers:
   - pkg:npm/@telorun/sql@0.7.0?local_path=./nodejs#sql-postgres-connection
 schema:
   type: object
+  examples:
+    - connectionString: postgres://user:password@localhost:5432/mydb?sslmode=require
+    - connectionString: postgres://user:password@localhost:5432/mydb
+      pool:
+        min: 2
+        max: 20
   required:
     - connectionString
   properties:
@@ -69,6 +75,9 @@ controllers:
   - pkg:npm/@telorun/sql@0.7.0?local_path=./nodejs#sql-sqlite-connection
 schema:
   type: object
+  examples:
+    - file: ./data.db
+    - file: ":memory:"
   properties:
     file:
       title: File
@@ -103,6 +112,11 @@ schema:
       title: Inputs
       description: Query parameters supplied at invocation time.
       type: object
+      examples:
+        - sql: SELECT id, name, age FROM users WHERE id = ?
+          bindings:
+            - !cel "request.params.id"
+        - sql: !sql "SELECT id, name FROM users WHERE id = ${{ request.params.id }}"
       properties:
         sql:
           title: SQL
@@ -167,6 +181,13 @@ schema:
       title: Inputs
       description: Statement parameters supplied at invocation time.
       type: object
+      examples:
+        - sql: INSERT INTO users (id, name, age) VALUES (?, ?, ?)
+          bindings:
+            - !cel "request.body.id"
+            - !cel "request.body.name"
+            - !cel "request.body.age"
+        - sql: !sql "DELETE FROM users WHERE id = ${{ request.params.id }}"
       properties:
         sql:
           title: SQL
@@ -239,6 +260,15 @@ controllers:
 schema:
   type: object
   required: [from]
+  examples:
+    - from: users
+      columns: [id, name, email, created_at]
+      where:
+        - { column: deleted_at, op: is_null }
+        - { column: status, op: eq, value: active }
+      orderBy:
+        - { column: created_at, direction: desc }
+      limit: 50
   properties:
     connection:
       title: Connection
@@ -386,6 +416,17 @@ controllers:
 schema:
   type: object
   required: [connection]
+  examples:
+    - connection:
+        kind: Sql.SqliteConnection
+        name: Db
+      migrations:
+        20260401_create_users:
+          statements:
+            - "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+            - "CREATE UNIQUE INDEX users_name ON users(name)"
+        20260402_seed_admin:
+          statement: "INSERT INTO users (id, name) VALUES (1, 'Alice')"
   properties:
     connection:
       title: Connection

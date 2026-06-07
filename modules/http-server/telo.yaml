@@ -3,6 +3,11 @@ metadata:
   name: "http-server"
   namespace: std
   version: "0.10.0"
+  description: >-
+    HTTP server and routing. `Http.Server` is the listener (port, host, CORS,
+    OpenAPI, mounts); `Http.Api` is a mountable router whose routes declare a
+    request schema, a CEL-mapped handler, and conditional typed responses
+    (buffered or streamed).
 imports:
   # Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
   # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
@@ -283,6 +288,21 @@ schema:
           x-telo-catches-for: invoke
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
   required: [ "port", "mounts" ]
+  examples:
+    - host: 0.0.0.0
+      port: !cel "ports.http"
+      baseUrl: http://localhost:${{ ports.http }}
+      logger: true
+      openapi:
+        info:
+          title: Users API
+          version: 1.0.0
+      cors:
+        origin: "*"
+        methods: [ GET, POST ]
+      mounts:
+        - path: /v1
+          type: Http.Api.UsersApi
 ---
 kind: "Telo.Definition"
 metadata:
@@ -601,3 +621,47 @@ schema:
                       id: !cel "result.rows[0].id"
                       email: !cel "result.rows[0].email"
   required: [ "routes" ]
+  examples:
+    - routes:
+        - request:
+            method: GET
+            path: /users/:id
+            schema:
+              params:
+                type: object
+                required: [ id ]
+                properties:
+                  id:
+                    type: string
+                    description: User id to fetch.
+                    examples: [ "8f14e45f" ]
+              query:
+                type: object
+                properties:
+                  expand:
+                    type: string
+                    description: Comma-separated list of relations to expand.
+                    examples: [ "posts" ]
+          inputs:
+            id: !cel "request.params.id"
+            expand: !cel "request.query.expand"
+          handler: { kind: Sql.Query, name: GetUser }
+          returns:
+            - status: 200
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required: [ id, email ]
+                    properties:
+                      id:
+                        type: string
+                        description: User id.
+                        examples: [ "8f14e45f" ]
+                      email:
+                        type: string
+                        description: User's email address.
+                        examples: [ "ada@example.com" ]
+                  body:
+                    id: !cel "result.rows[0].id"
+                    email: !cel "result.rows[0].email"

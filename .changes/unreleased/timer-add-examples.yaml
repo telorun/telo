@@ -1,0 +1,4 @@
+project: timer
+kind: Added
+body: Schema `examples:` on `Timer.Delay` so the MCP `get_module_manifest` tool gives authors a copyable invoke template.
+time: 2026-06-07T12:10:05Z

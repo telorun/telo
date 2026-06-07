@@ -98,6 +98,13 @@ schema:
       additionalProperties: true
   required: [model]
   additionalProperties: false
+  examples:
+    - model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+      system: |
+        You are a concise assistant. Answer in one sentence.
+      options:
+        temperature: 0.2
+        maxTokens: 256
 ---
 # Streaming consumer. Drives Ai.Model.stream() and forwards the StreamPart
 # iterable on `result.output` per the streaming-Invocable convention. Encoding
@@ -160,6 +167,12 @@ schema:
       additionalProperties: true
   required: [model]
   additionalProperties: false
+  examples:
+    - model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+      system: |
+        You are a concise assistant. Answer in one sentence.
+      options:
+        temperature: 0.7
 ---
 # Ai.ToolProvider — abstract source of callable tools, mounted into an Ai.Agent the
 # same way an Http.Api mounts into an Http.Server. Implementations expose a runtime
@@ -236,6 +249,26 @@ schema:
         additionalProperties: false
   required: [tools]
   additionalProperties: false
+  examples:
+    - tools:
+        - tool: { kind: Http.Request, name: GetWeather }
+          name: get_weather
+          description: Get the current weather at a latitude/longitude (open-meteo).
+          parameters:
+            type: object
+            additionalProperties: false
+            required: [latitude, longitude]
+            properties:
+              latitude: { type: number, description: "Latitude in decimal degrees." }
+              longitude: { type: number, description: "Longitude in decimal degrees." }
+          inputs:
+            url: /v1/forecast
+            method: GET
+            query:
+              latitude: "${{ arguments.latitude }}"
+              longitude: "${{ arguments.longitude }}"
+              current_weather: "true"
+          result: "${{ result.body }}"
 ---
 # Ai.Agent — a tool-use loop. Invoked like Ai.Text (prompt xor messages, plus
 # system/options); calls the model with the merged tool set, executes any requested
@@ -354,3 +387,13 @@ schema:
         additionalProperties: false
   required: [model]
   additionalProperties: false
+  examples:
+    - model: { kind: AiOpenai.OpenaiModel, name: Gpt4oMini }
+      system: |
+        You are a helpful CLI assistant. Use the available tools when they help
+        answer; don't guess at facts you can look up. Keep replies brief.
+      maxSteps: 6
+      toolProviders:
+        - provider: { kind: Ai.Tools, name: WeatherTools }
+        - provider: { kind: AiMcp.ToolProvider, name: RegistryTools }
+          prefix: "registry_"

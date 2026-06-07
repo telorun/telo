@@ -13,6 +13,11 @@ controllers:
   - pkg:npm/@telorun/http-client@0.6.0?local_path=./nodejs#http-client
 schema:
   type: "object"
+  examples:
+    - baseUrl: https://jsonplaceholder.typicode.com
+      headers:
+        Authorization: Bearer token
+      timeout: 10000
   properties:
     baseUrl:
       title: Base URL
@@ -64,6 +69,9 @@ outputType:
           Type kinds).
 schema:
   type: "object"
+  examples:
+    - client: !ref PlaceholderApi
+      throwOnHttpError: true
   properties:
     client:
       title: Client
@@ -95,6 +103,15 @@ schema:
       title: Inputs
       type: "object"
       description: "Request parameters, resolved dynamically on each invocation"
+      examples:
+        - url: https://jsonplaceholder.typicode.com/todos/1
+          method: GET
+        - url: https://jsonplaceholder.typicode.com/posts
+          method: POST
+          body:
+            title: Hello
+            body: World
+            userId: 1
       properties:
         url:
           title: URL
