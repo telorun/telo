@@ -1,5 +1,10 @@
 # Changelog
-## 0.10.0 - 2026-06-07
+## 0.11.0 - 2026-06-07
+### Added
+* Update controller @telorun/http-server to 0.10.0.
+* Module `description` and schema `examples:` for registry / MCP discovery (`search_modules` + `get_module_manifest`).
+### Fixed
+* Validate `Http.Server` mounts strictly — each entry now requires `mount:` and rejects unknown keys, so a misnamed or missing mount reference is caught at `telo check` instead of failing only at boot.## 0.10.0 - 2026-06-07
 ### Added
 * Update controller @telorun/http-server to 0.9.0.## 0.9.0 - 2026-06-06
 ### Added

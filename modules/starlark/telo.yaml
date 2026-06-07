@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  version: 0.5.1
+  version: 0.6.0
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows

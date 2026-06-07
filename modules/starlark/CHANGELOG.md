@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.1 - 2026-06-05
+## 0.6.0 - 2026-06-07
+### Added
+* `inputType` / `outputType` reference slots use the unified `!ref` form; the legacy `oneOf` string / `{kind, name}` shapes are removed from the schema.## 0.5.1 - 2026-06-05
 ### Fixed
 * `Starlark.Script` is now an Invocable (was incorrectly declared as a Runnable).## 0.5.0 - 2026-06-05
 ### Added

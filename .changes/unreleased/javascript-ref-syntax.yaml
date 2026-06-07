@@ -1,4 +1,0 @@
-project: javascript
-kind: Added
-body: "`inputType` / `outputType` reference slots use the unified `!ref` form; the legacy `oneOf` string / `{kind, name}` shapes are removed from the schema."
-time: 2026-06-07T13:21:00Z

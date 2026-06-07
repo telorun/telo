@@ -1,2 +1,4 @@
 # Changelog
-## 0.8.0
+## 0.9.0 - 2026-06-07
+### Added
+* Module `description` and schema `examples:` for registry / MCP discovery (`search_modules` + `get_module_manifest`).## 0.8.0
