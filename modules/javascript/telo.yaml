@@ -3,6 +3,10 @@ metadata:
   name: "javascript"
   namespace: std
   version: "0.4.1"
+  description: >-
+    Run JavaScript inside a manifest. `JavaScript.Script` executes a
+    `main(input)` function with optional typed inputs / outputs. A last
+    resort — prefer a declarative resource kind where one exists.
 ---
 kind: "Telo.Definition"
 metadata:
@@ -37,3 +41,26 @@ schema:
           additionalProperties: true
   required: ["metadata", "code"]
   additionalProperties: false
+  examples:
+    - "code": |
+        function main(input) {
+          return { sum: input.a + input.b }
+        }
+    - "inputType":
+        "kind": "Type.JsonSchema"
+        "schema":
+          "type": "object"
+          "required": ["name"]
+          "properties":
+            "name": { "type": "string" }
+      "outputType":
+        "kind": "Type.JsonSchema"
+        "schema":
+          "type": "object"
+          "required": ["message"]
+          "properties":
+            "message": { "type": "string" }
+      "code": |
+        function main({ name }) {
+          return { message: `Hello ${name}!` }
+        }

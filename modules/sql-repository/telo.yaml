@@ -12,6 +12,11 @@ capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]
+  examples:
+    - connection:
+        kind: Sql.SqliteConnection
+        name: Db
+      table: users
   properties:
     connection:
       title: Connection
@@ -41,6 +46,11 @@ capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]
+  examples:
+    - connection:
+        kind: Sql.SqliteConnection
+        name: Db
+      table: users
   properties:
     connection:
       title: Connection
@@ -68,6 +78,11 @@ capability: Telo.Invocable
 schema:
   type: object
   required: [connection, table]
+  examples:
+    - connection:
+        kind: Sql.SqliteConnection
+        name: Db
+      table: users
   properties:
     connection:
       title: Connection

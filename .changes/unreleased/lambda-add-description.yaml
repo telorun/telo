@@ -1,0 +1,4 @@
+project: lambda
+kind: Added
+body: Module `description` so registry search and the MCP `search_modules` tool surface the module's purpose.
+time: 2026-06-07T12:00:08Z

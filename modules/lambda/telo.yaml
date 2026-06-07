@@ -3,6 +3,11 @@ metadata:
   namespace: aws
   name: lambda
   version: 0.5.0
+  description: >-
+    AWS Lambda functions driven by multiple event sources from one artifact.
+    `Lambda.Function` is the AWS-facing transport; `Lambda.HttpApi`,
+    `Lambda.Sqs`, and `Lambda.Direct` handlers dispatch API Gateway HTTP API,
+    SQS, and direct / SDK invocations.
 imports:
   # Shared HTTP outcome + matcher schemas for HTTP-shaped handler kinds.
   HttpDispatch: ../http-dispatch

@@ -3,6 +3,10 @@ metadata:
   name: s3
   namespace: std
   version: 0.4.0
+  description: >-
+    S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, RustFS).
+    `S3.Bucket` configures a bucket handle; `S3.Put`, `S3.Get` (streams object
+    bytes), `S3.List`, and `S3.Delete` operate on it.
 exports:
   kinds:
     - Bucket
@@ -19,6 +23,13 @@ controllers:
   - pkg:npm/@telorun/s3@0.4.0?local_path=./nodejs#s3-bucket
 schema:
   type: object
+  examples:
+    - bucketName: my-bucket
+      endpoint: https://s3.us-east-1.amazonaws.com
+      accessKeyId: "${{ secrets.accessKeyId }}"
+      secretAccessKey: "${{ secrets.secretAccessKey }}"
+      forcePathStyle: false
+      createIfMissing: false
   properties:
     bucketName:
       title: Bucket Name
@@ -52,6 +63,8 @@ controllers:
   - pkg:npm/@telorun/s3@0.4.0?local_path=./nodejs#s3-list
 schema:
   type: object
+  examples:
+    - bucketRef: !ref Store
   properties:
     bucketRef:
       title: Bucket
@@ -83,6 +96,8 @@ throws:
       description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
 schema:
   type: object
+  examples:
+    - bucketRef: !ref Store
   properties:
     bucketRef:
       title: Bucket
@@ -101,6 +116,10 @@ schema:
       title: Inputs
       description: Object key and content written to the bucket.
       type: object
+      examples:
+        - key: reports/2026-06.txt
+          body: hello world
+          contentType: text/plain
       properties:
         key:
           title: Key
@@ -146,6 +165,8 @@ throws:
       description: The storage backend returned a successful response with no iterable body.
 schema:
   type: object
+  examples:
+    - bucketRef: !ref Store
   properties:
     bucketRef:
       title: Bucket
@@ -167,6 +188,8 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - key: reports/2026-06.txt
     properties:
       key:
         title: Key
@@ -206,6 +229,8 @@ throws:
       description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
 schema:
   type: object
+  examples:
+    - bucketRef: !ref Store
   properties:
     bucketRef:
       title: Bucket
@@ -227,6 +252,8 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - key: reports/2026-06.txt
     properties:
       key:
         title: Key

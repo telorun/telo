@@ -3,6 +3,10 @@ metadata:
   name: "mcp-server"
   namespace: std
   version: "0.6.1"
+  description: >-
+    Serve the Model Context Protocol over stdio or HTTP. Bundle tools, resources,
+    and prompts as `Mcp.Tools` / `Mcp.Resources` / `Mcp.Prompts`, then expose them
+    via `Mcp.StdioServer` or an `Mcp.HttpEndpoint` mounted on an `Http.Server`.
 exports:
   kinds:
     - StdioServer

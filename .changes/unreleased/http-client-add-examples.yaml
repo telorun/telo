@@ -1,0 +1,4 @@
+project: http-client
+kind: Added
+body: Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.
+time: 2026-06-07T12:10:04Z

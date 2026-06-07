@@ -26,6 +26,10 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - duration: "250ms"
+      - duration: "2s"
+        value: { any: thing }
     properties:
       duration:
         type: string

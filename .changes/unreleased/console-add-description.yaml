@@ -1,0 +1,4 @@
+project: console
+kind: Added
+body: Module `description` and schema `examples:` for registry / MCP discovery (`search_modules` + `get_module_manifest`).
+time: 2026-06-07T12:00:02Z

@@ -49,6 +49,12 @@ controllers:
   - pkg:npm/@telorun/assert@0.7.8?local_path=./nodejs#schema
 schema:
   type: object
+  examples:
+    - schema:
+        type: object
+        properties:
+          code: { const: "ERR_ASSERTION_FAILED" }
+        required: [code]
   properties:
     metadata:
       type: object
@@ -168,6 +174,9 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - actual: 42
+        expected: 42
     properties:
       actual:
         title: Actual
@@ -198,6 +207,10 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - actual: "HELLO"
+        pattern: "^hello$"
+        flags: "i"
     properties:
       actual:
         title: Actual
@@ -230,6 +243,9 @@ inputType:
   kind: Type.JsonSchema
   schema:
     type: object
+    examples:
+      - actual: [1, 2, 3]
+        value: 2
     properties:
       actual:
         title: Actual

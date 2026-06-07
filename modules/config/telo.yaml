@@ -3,6 +3,10 @@ metadata:
   name: "config"
   namespace: std
   version: "0.3.1"
+  description: >-
+    Environment and configuration providers. Deprecated in favour of
+    application-level `variables:` / `secrets:` with `env:` bindings; retained
+    for backwards compatibility.
 exports:
   kinds:
     - EnvironmentVariableStore

@@ -3,6 +3,10 @@ metadata:
   name: type
   namespace: std
   version: "0.3.0"
+  description: >-
+    Reusable JSON Schema type definitions. `Type.JsonSchema` declares a named
+    data shape — usable as an `inputType` / `outputType` on any invocable — and
+    supports `extends` inheritance plus CEL `rules` for business invariants.
 exports:
   kinds:
     - JsonSchema
@@ -47,3 +51,19 @@ schema:
         required: ["condition", "code"]
   required: ["schema"]
   additionalProperties: false
+  examples:
+    - schema:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+    - extends: Entity
+      schema:
+        type: object
+        required: [amount]
+        properties:
+          amount: { type: number }
+      rules:
+        - condition: "this.amount > 0"
+          code: "ERR_NON_POSITIVE"
+          message: "Amount must be positive"
