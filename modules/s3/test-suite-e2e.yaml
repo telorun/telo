@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: S3E2ESuite
+  version: 1.0.0
+  description: |
+    End-to-end suite for the s3 module against a live S3-compatible backend
+    (the docker-compose `storage` / rustfs service, published on :9000). Kept
+    separate from the in-process suite (`test-suite.yaml` at the repo root),
+    which has no S3 backend and therefore can't exercise the controllers'
+    network path. Bring the backend up with `docker compose up -d storage`
+    (which now publishes 9000) and run via `pnpm run test:e2e:s3`.
+imports:
+  Test: ../test
+targets:
+  - RunAll
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "tests/e2e/*.yaml"

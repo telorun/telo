@@ -229,6 +229,7 @@ function traverseNode(
     }
     return;
   }
+  if (typeof node?.$ref === "string") return;
 
   // Array — recurse into items
   if (node.type === "array" && node.items) {

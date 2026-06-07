@@ -1,9 +1,11 @@
 import { ListObjectsCommand } from "@aws-sdk/client-s3";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { S3BucketResource } from "./s3-bucket-controller.js";
+import { resolveBucket } from "./s3-bucket-ref.js";
 
 interface S3ListManifest {
-  bucketRef: { name: string };
+  // x-telo-ref "std/s3#Bucket": Phase 5 injects the live S3.Bucket instance here.
+  bucketRef: S3BucketResource;
 }
 
 class S3ListResource implements ResourceInstance {
@@ -13,15 +15,9 @@ class S3ListResource implements ResourceInstance {
   ) {}
 
   async invoke(input: any): Promise<{ keys: string[] }> {
-    const ctx = this.ctx;
-    const m = this.manifest;
-    const bucketRefName = ctx.expandValue(m.bucketRef.name, input ?? {}) as string;
     const prefix = (input?.prefix as string) ?? "";
 
-    const bucket: S3BucketResource = ctx.moduleContext.getInstance(bucketRefName) as any;
-    if (!bucket) {
-      throw new Error(`S3.Bucket "${bucketRefName}" not found`);
-    }
+    const bucket = resolveBucket(this.manifest.bucketRef);
 
     const client = bucket.getClient();
     const result = await client.send(

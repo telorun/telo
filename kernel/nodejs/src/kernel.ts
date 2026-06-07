@@ -844,7 +844,11 @@ export class Kernel implements IKernel {
   private async _createInstance(
     evalContext: IEvaluationContext,
     resource: ResourceManifest,
-  ): Promise<{ instance: ResourceInstance; ctx: ResourceContext } | null> {
+  ): Promise<{
+    instance: ResourceInstance;
+    ctx: ResourceContext;
+    resource: ResourceManifest;
+  } | null> {
     const kind = resource.kind;
 
     // Resolve the alias-prefixed kind to its real fully-qualified kind against the
@@ -928,7 +932,7 @@ export class Kernel implements IKernel {
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 
-    if (!runtime.length) return { instance, ctx };
+    if (!runtime.length) return { instance, ctx, resource: processedResource };
 
     // Override invoke in-place so all lifecycle methods (init/invoke/teardown/snapshot)
     // share the same `this`. A wrapper object would split identity: state mutated by
@@ -940,7 +944,7 @@ export class Kernel implements IKernel {
       const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
       return originalInvoke(expanded);
     };
-    return { instance, ctx };
+    return { instance, ctx, resource: processedResource };
   }
 
   /**

@@ -17,8 +17,7 @@ Lists object keys in a bucket declared as `S3.Bucket`. Invocable.
 kind: S3.List
 metadata:
   name: ListModules
-bucketRef:
-  name: ModuleStore
+bucketRef: !ref ModuleStore
 ```
 
 Invoke with an optional key prefix:
@@ -27,8 +26,7 @@ Invoke with an optional key prefix:
 - name: list
   invoke:
     kind: S3.List
-    bucketRef:
-      name: ModuleStore
+    bucketRef: !ref ModuleStore
   inputs:
     prefix: "${{ 'std/' + inputs.name + '/' }}"
 ```
@@ -39,7 +37,7 @@ Invoke with an optional key prefix:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bucketRef.name` | string | yes | Name of an `S3.Bucket` resource in the same module. |
+| `bucketRef` | reference | yes | A `!ref` to an `S3.Bucket` resource — local (`!ref ModuleStore`) or imported (`!ref Alias.ModuleStore`). |
 
 ## Invocation inputs
 

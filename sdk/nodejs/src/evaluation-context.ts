@@ -13,7 +13,15 @@ export type LifecycleState = "Pending" | "Validated" | "Initialized" | "Draining
  * Result of the create phase: the instance and its bound ResourceContext.
  * The ctx is typed as any to avoid a circular import with resource-context.ts.
  */
-export type CreatedResource = { instance: ResourceInstance; ctx: any };
+export type CreatedResource = {
+  instance: ResourceInstance;
+  ctx: any;
+  // The resource manifest the controller was actually created with. When the factory
+  // expands compile-time CEL fields it hands the controller an expanded clone; returning
+  // it here lets initializeResources inject live instances (preInitHook) into THAT object
+  // — the one the controller reads — instead of the pre-expansion original.
+  resource: ResourceManifest;
+};
 
 /**
  * Creates a ResourceInstance for the given manifest, or returns null if not yet

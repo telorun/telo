@@ -67,7 +67,7 @@ with:
     baseUrl: http://127.0.0.1:8957
     logger: false
     mounts:
-      - { path: /mcp, type: McpClientToolErrorTest.McpHttp }
+      - { path: /mcp, type: !ref McpHttp }
 targets: [ Server ]
 steps:
   - name: Wrap

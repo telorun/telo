@@ -83,9 +83,20 @@ schema:
             type: "string"
           type:
             title: Type
-            description: Mount resource kind to attach.
-            type: "string"
+            description: >-
+              Mount resource to attach — a reference to a Telo.Mount (Http.Api,
+              Mcp.HttpEndpoint, …). Use a `!ref` to the resource by name; an
+              `!ref <Alias>.<name>` reaches a mount exported by an imported
+              library.
             x-telo-ref: "telo#Mount"
+            type: "object"
+            properties:
+              kind:
+                title: Kind
+                description: Kind of the mounted resource.
+                type: "string"
+            required: [ "kind" ]
+            additionalProperties: true
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.

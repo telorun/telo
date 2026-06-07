@@ -2,7 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { isRefEntry } from "./reference-field-map.js";
+import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 /** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
@@ -96,21 +96,78 @@ export function resolveRefSentinels(
     return undefined;
   };
 
-  for (const r of resources) {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
-    if (isForeign(r)) continue;
+  const processResource = (r: ResourceManifest): void => {
+    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) return;
 
     const fieldMap =
       aliases && aliasesByModule
         ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
         : registry.getFieldMapForKind(r.kind, aliases);
-    if (!fieldMap) continue;
+    if (!fieldMap) return;
 
     for (const [fieldPath, entry] of fieldMap) {
-      if (!isRefEntry(entry)) continue;
-      descend(r as Record<string, unknown>, fieldPath.split("."), resolveTarget);
+      const parts = fieldPath.split(".");
+      if (isRefEntry(entry)) {
+        descend(r as Record<string, unknown>, parts, resolveTarget);
+      } else if (isScopeEntry(entry)) {
+        // x-telo-scope resources (e.g. a Run.Sequence `with` server) carry their own ref
+        // slots. The top-level walk skips scope contents, so recurse so a scoped resource's
+        // `!ref` (e.g. an Http.Server mount) is canonicalized to {kind, name} like any other.
+        forEachScopeResource(r as Record<string, unknown>, parts, processResource);
+      }
     }
+  };
+
+  for (const r of resources) {
+    if (isForeign(r)) continue;
+    processResource(r);
   }
+}
+
+/**
+ * Navigates `obj` along the scope field path (dot notation, `[]` = array items) and
+ * invokes `cb` on every resource-like object found — any value carrying a `kind` string.
+ *
+ * Two-phase design:
+ *
+ *  Phase 1 — path-walk: steps through each `parts` segment. `[]`-suffixed parts spread
+ *  the array into individual elements so `current` always ends up holding scalars or
+ *  plain objects, never intermediate arrays. Non-`[]` parts push the value as-is.
+ *
+ *  Phase 2 — terminal visit: after the walk, `current` contains the values at the end
+ *  of the path. These are always scalars or plain objects because of the `[]` spreading
+ *  above, EXCEPT when a scope field is typed as an array in the schema but the path
+ *  was authored WITHOUT a `[]` suffix. The `visit` function handles that case by
+ *  recursing one level into arrays so `cb` is always called on resource objects, not
+ *  on their container.
+ */
+function forEachScopeResource(
+  obj: Record<string, unknown>,
+  parts: string[],
+  cb: (resource: ResourceManifest) => void,
+): void {
+  let current: unknown[] = [obj];
+  for (const part of parts) {
+    const isArr = part.endsWith("[]");
+    const key = isArr ? part.slice(0, -2) : part;
+    const next: unknown[] = [];
+    for (const node of current) {
+      if (!node || typeof node !== "object") continue;
+      const val = (node as Record<string, unknown>)[key];
+      if (val == null) continue;
+      if (isArr && Array.isArray(val)) next.push(...val);
+      else if (!isArr) next.push(val);
+    }
+    current = next;
+  }
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const elem of node) visit(elem);
+    } else if (node && typeof node === "object" && typeof (node as { kind?: unknown }).kind === "string") {
+      cb(node as ResourceManifest);
+    }
+  };
+  for (const node of current) visit(node);
 }
 
 /** Walks `obj` along `fieldPath` parts (dot notation with `[]` for arrays and `{}` for

@@ -17,8 +17,7 @@ Removes an object from a bucket declared as `S3.Bucket`. Invocable — invoke pe
 kind: S3.Delete
 metadata:
   name: RemoveObject
-bucketRef:
-  name: ModuleStore
+bucketRef: !ref ModuleStore
 ```
 
 Invoke inside a sequence:
@@ -27,8 +26,7 @@ Invoke inside a sequence:
 - name: remove
   invoke:
     kind: S3.Delete
-    bucketRef:
-      name: ModuleStore
+    bucketRef: !ref ModuleStore
   inputs:
     key: "${{ inputs.objectKey }}"
 ```
@@ -39,7 +37,7 @@ Invoke inside a sequence:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bucketRef.name` | string | yes | Name of an `S3.Bucket` resource in the same module. |
+| `bucketRef` | reference | yes | A `!ref` to an `S3.Bucket` resource — local (`!ref ModuleStore`) or imported (`!ref Alias.ModuleStore`). |
 
 ## Invocation inputs
 
@@ -57,4 +55,4 @@ Invoke inside a sequence:
 
 | Code | When |
 |------|------|
-| `ERR_INVALID_REFERENCE` | `bucketRef.name` does not resolve to a live `S3.Bucket` at invoke time. |
+| `ERR_INVALID_REFERENCE` | `bucketRef` does not resolve to a live `S3.Bucket` at invoke time. |

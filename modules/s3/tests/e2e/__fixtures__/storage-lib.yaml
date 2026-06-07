@@ -1,0 +1,30 @@
+kind: Telo.Library
+metadata:
+  name: storage-lib
+  version: 1.0.0
+  description: |
+    Test fixture: a library that owns a configured S3.Bucket and exports the
+    instance. Importers reference it across the boundary as `!ref <Alias>.Store`,
+    exercising cross-module resolution of the `bucketRef` x-telo-ref slot.
+imports:
+  S3: ../../../
+variables:
+  s3Endpoint: { type: string, default: http://localhost:9000 }
+  bucketName: { type: string, default: telo-s3-e2e-xmod }
+  forcePathStyle: { type: boolean, default: true }
+secrets:
+  accessKeyId: { type: string, default: telo-registry-access }
+  secretAccessKey: { type: string, default: telo-registry-secret }
+exports:
+  resources:
+    - Store
+---
+kind: S3.Bucket
+metadata:
+  name: Store
+bucketName: "${{ variables.bucketName }}"
+endpoint: "${{ variables.s3Endpoint }}"
+forcePathStyle: "${{ variables.forcePathStyle }}"
+accessKeyId: "${{ secrets.accessKeyId }}"
+secretAccessKey: "${{ secrets.secretAccessKey }}"
+createIfMissing: true

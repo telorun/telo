@@ -54,16 +54,18 @@ schema:
   type: object
   properties:
     bucketRef:
-      title: Bucket Reference
+      title: Bucket
+      description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
+      x-telo-ref: "std/s3#Bucket"
       type: object
-      description: Reference to an S3.Bucket resource by name
       properties:
-        name:
-          title: Name
-          description: Name of the referenced bucket resource.
+        kind:
+          title: Kind
+          description: Kind of the referenced bucket resource.
           type: string
       required:
-        - name
+        - kind
+      additionalProperties: true
   required:
     - bucketRef
 ---
@@ -78,21 +80,23 @@ throws:
     ERR_INVALID_INPUT:
       description: body is neither a string nor a Uint8Array.
     ERR_INVALID_REFERENCE:
-      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
+      description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
 schema:
   type: object
   properties:
     bucketRef:
-      title: Bucket Reference
+      title: Bucket
+      description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
+      x-telo-ref: "std/s3#Bucket"
       type: object
-      description: Reference to an S3.Bucket resource by name
       properties:
-        name:
-          title: Name
-          description: Name of the referenced bucket resource.
+        kind:
+          title: Kind
+          description: Kind of the referenced bucket resource.
           type: string
       required:
-        - name
+        - kind
+      additionalProperties: true
     inputs:
       title: Inputs
       description: Object key and content written to the bucket.
@@ -137,23 +141,25 @@ throws:
     ERR_NOT_FOUND:
       description: No object exists at the requested key in the referenced bucket.
     ERR_INVALID_REFERENCE:
-      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
+      description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
     ERR_INVALID_RESPONSE:
       description: The storage backend returned a successful response with no iterable body.
 schema:
   type: object
   properties:
     bucketRef:
-      title: Bucket Reference
+      title: Bucket
+      description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
+      x-telo-ref: "std/s3#Bucket"
       type: object
-      description: Reference to an S3.Bucket resource by name.
       properties:
-        name:
-          title: Name
-          description: Name of the referenced bucket resource.
+        kind:
+          title: Kind
+          description: Kind of the referenced bucket resource.
           type: string
       required:
-        - name
+        - kind
+      additionalProperties: true
   required:
     - bucketRef
   additionalProperties: false
@@ -197,21 +203,23 @@ controllers:
 throws:
   codes:
     ERR_INVALID_REFERENCE:
-      description: bucketRef.name does not resolve to a live S3.Bucket resource at invoke time.
+      description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
 schema:
   type: object
   properties:
     bucketRef:
-      title: Bucket Reference
+      title: Bucket
+      description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
+      x-telo-ref: "std/s3#Bucket"
       type: object
-      description: Reference to an S3.Bucket resource by name.
       properties:
-        name:
-          title: Name
-          description: Name of the referenced bucket resource.
+        kind:
+          title: Kind
+          description: Kind of the referenced bucket resource.
           type: string
       required:
-        - name
+        - kind
+      additionalProperties: true
   required:
     - bucketRef
   additionalProperties: false
