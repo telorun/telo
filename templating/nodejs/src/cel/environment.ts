@@ -38,14 +38,49 @@ const STUB_HANDLERS: CelHandlers = {
  *  no fields, so terminal access (passing the value through CEL) succeeds but
  *  member access raises a CEL error at runtime — matching the analyzer's
  *  static check on `x-telo-stream`-marked properties. */
+/** Expand a documented signature that may contain `type?`-marked optional
+ *  parameters into one cel-js registration signature per arity. For example,
+ *  `"nowIso(string?): string"` produces `["nowIso(): string",
+ *  "nowIso(string): string"]`. Required parameters must precede optional ones.
+ *  Returns `[signature]` unchanged when no `?` is present or the signature
+ *  cannot be parsed. */
+export function deriveSignatures(signature: string): string[] {
+  const m = signature.match(/^(\w+)\((.*?)\):\s*(.+)$/);
+  if (!m) return [signature];
+  const name = m[1]!;
+  const paramsStr = m[2]!.trim();
+  const returnType = m[3]!.trim();
+  if (!paramsStr.includes("?")) return [signature];
+
+  const params = paramsStr.split(",").map((p) => p.trim());
+  const required: string[] = [];
+  const optional: string[] = [];
+  for (const p of params) {
+    if (p.endsWith("?")) {
+      optional.push(p.slice(0, -1));
+    } else {
+      if (optional.length > 0) return [signature];
+      required.push(p);
+    }
+  }
+  if (optional.length === 0) return [signature];
+
+  return Array.from({ length: optional.length + 1 }, (_, i) => {
+    const allParams = [...required, ...optional.slice(0, i)];
+    return `${name}(${allParams.join(", ")}): ${returnType}`;
+  });
+}
+
 export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): Environment {
   const h: CelHandlers = { ...STUB_HANDLERS, ...handlers };
   let env = new Environment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true });
   for (const fn of CEL_FUNCTIONS) {
     const impl = fn.build(h);
-    // `register` lists one cel-js signature per arity (overloaded functions);
-    // it falls back to `signature` for the single-arity common case.
-    for (const sig of fn.register ?? [fn.signature]) {
+    // `register` lists one cel-js signature per arity (overloaded functions).
+    // When absent, `deriveSignatures` expands `type?` optional-param notation
+    // into one registration per arity — so `nowIso(string?): string` registers
+    // both `nowIso(): string` and `nowIso(string): string` automatically.
+    for (const sig of fn.register ?? deriveSignatures(fn.signature)) {
       env = env.registerFunction(sig, impl);
     }
   }

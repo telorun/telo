@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { CEL_FUNCTIONS, celFunctionCatalog } from "../src/cel/catalog.js";
-import { buildCelEnvironment } from "../src/cel/environment.js";
+import { buildCelEnvironment, deriveSignatures } from "../src/cel/environment.js";
+
+describe("deriveSignatures", () => {
+  it("returns the signature unchanged when no ? is present", () => {
+    expect(deriveSignatures("fn(string): bool")).toEqual(["fn(string): bool"]);
+    expect(deriveSignatures("fn(): string")).toEqual(["fn(): string"]);
+  });
+
+  it("expands a single optional param into 0-arg and 1-arg variants", () => {
+    expect(deriveSignatures("nowIso(string?): string")).toEqual([
+      "nowIso(): string",
+      "nowIso(string): string",
+    ]);
+  });
+
+  it("expands mixed required + optional params", () => {
+    expect(deriveSignatures("fn(int, string?): bool")).toEqual([
+      "fn(int): bool",
+      "fn(int, string): bool",
+    ]);
+  });
+
+  it("returns the signature unchanged when it cannot be parsed", () => {
+    expect(deriveSignatures("not a signature")).toEqual(["not a signature"]);
+  });
+});
 
 describe("CEL function catalog", () => {
   it("is the single source: every catalog function registers in the environment", () => {
@@ -9,12 +34,25 @@ describe("CEL function catalog", () => {
     // name is callable in the built env (for the ones that take no args).
     const env = buildCelEnvironment();
     for (const fn of CEL_FUNCTIONS) {
-      for (const sig of fn.register ?? [fn.signature]) {
+      for (const sig of fn.register ?? deriveSignatures(fn.signature)) {
         if (/^\w+\(\)/.test(sig)) {
-          // The nullary overload parses (name resolved, no "unknown function").
+          // The nullary overload both parses AND type-checks successfully.
           expect(() => env.parse(`${fn.name}()`)).not.toThrow();
+          expect(env.check(`${fn.name}()`)).toMatchObject({ valid: true });
         }
       }
+    }
+  });
+
+  it("optional-param functions pass type check for both 0-arg and N-arg calls", () => {
+    // Specifically guards the case where a function has optional args — the
+    // 0-arg form must pass env.check() just like the explicit-arg form does.
+    const env = buildCelEnvironment();
+    const optionalFns = CEL_FUNCTIONS.filter((fn) => fn.signature.includes("?"));
+    expect(optionalFns.length).toBeGreaterThan(0);
+    for (const fn of optionalFns) {
+      const result0 = env.check(`${fn.name}()`);
+      expect(result0, `${fn.name}() should type-check`).toMatchObject({ valid: true });
     }
   });
 
