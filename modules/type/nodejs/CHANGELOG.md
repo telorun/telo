@@ -1,5 +1,11 @@
 # @telorun/type
 
+## 0.3.0
+
+### Minor Changes
+
+- 2292a84: Upgraded cel-js package to 7.6.1
+
 ## 0.2.1
 
 ### Patch Changes

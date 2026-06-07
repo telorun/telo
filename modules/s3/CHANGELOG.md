@@ -1,4 +1,6 @@
 # Changelog
-## 0.3.0 - 2026-06-04
+## 0.4.0 - 2026-06-07
+### Added
+* Update controller @telorun/s3 to 0.4.0.## 0.3.0 - 2026-06-04
 ### Added
 * Update controller @telorun/s3 to 0.3.0.## 0.2.2
