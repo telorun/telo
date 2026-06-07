@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "javascript"
   namespace: std
-  version: "0.4.1"
+  version: "0.5.0"
   description: >-
     Run JavaScript inside a manifest. `JavaScript.Script` executes a
     `main(input)` function with optional typed inputs / outputs. A last
