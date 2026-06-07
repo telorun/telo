@@ -38,8 +38,10 @@ export interface CelFunctionDoc {
    *  optional args even though cel-js itself has no optional syntax. */
   readonly signature: string;
   /** Actual cel-js signatures to register — one per arity for an overloaded
-   *  function. Defaults to `[signature]` when omitted (the common single-arity
-   *  case, where `signature` is itself a valid cel-js signature). */
+   *  function. When omitted, `deriveSignatures(signature)` is used: if the
+   *  signature contains `type?`-marked optional params (e.g. `fn(string?): T`),
+   *  it auto-expands to one registration per arity. Set `register` explicitly
+   *  only when the auto-derivation is insufficient. */
   readonly register?: readonly string[];
   readonly category: CelFunctionCategory;
   readonly summary: string;
@@ -423,8 +425,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   // (default "UTC"); epoch values are absolute and take none.
   {
     name: "nowIso",
-    signature: "nowIso(tz?): string",
-    register: ["nowIso(): string", "nowIso(string): string"],
+    signature: "nowIso(string?): string",
     category: "time",
     summary: "Current time as ISO-8601; UTC by default, or in the given IANA timezone.",
     deterministic: false,
@@ -433,8 +434,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   },
   {
     name: "today",
-    signature: "today(tz?): string",
-    register: ["today(): string", "today(string): string"],
+    signature: "today(string?): string",
     category: "time",
     summary: "Current calendar date (YYYY-MM-DD); UTC by default, or in the given IANA timezone.",
     deterministic: false,
