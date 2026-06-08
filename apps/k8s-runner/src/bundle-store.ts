@@ -16,25 +16,36 @@ interface StoredBundle {
 const STAGING_TTL_MS = 5 * 60 * 1000;
 
 /**
- * Holds session bundles in memory and serves them over a tokenized,
- * cluster-internal URL the session initContainer fetches once. The per-session
- * unguessable token prevents one session from reading another's bundle; the
- * entry is dropped after first fetch (or on session removal).
+ * Holds image-build contexts in memory and serves them over a tokenized,
+ * cluster-internal URL the build Job's initContainer fetches once. The
+ * per-build unguessable token prevents cross-build disclosure; the entry is
+ * dropped after first fetch (or explicitly on cleanup).
  */
 export class BundleStore {
   private readonly bundles = new Map<string, StoredBundle>();
 
   constructor(private readonly selfUrl: string) {}
 
-  /** Stages a bundle and returns the URL the initContainer should fetch. */
-  async stage(sessionId: string, bundle: RunBundle): Promise<string> {
-    this.drop(sessionId);
+  /**
+   * Stages an image-build context — the bundle plus a generated `Dockerfile` at
+   * the context root — and returns the tokenized, single-use URL the build Job's
+   * initContainer fetches. Keyed by `id` (a build id).
+   */
+  async stageBuildContext(id: string, bundle: RunBundle, dockerfile: string): Promise<string> {
+    return this.stage(id, {
+      entryRelativePath: bundle.entryRelativePath,
+      files: [...bundle.files, { relativePath: "Dockerfile", contents: dockerfile }],
+    });
+  }
+
+  private async stage(id: string, bundle: RunBundle): Promise<string> {
+    this.drop(id);
     const token = randomBytes(24).toString("hex");
     const tarGz = await makeBundleTarGz(bundle);
-    const evictTimer = setTimeout(() => this.bundles.delete(sessionId), STAGING_TTL_MS);
+    const evictTimer = setTimeout(() => this.bundles.delete(id), STAGING_TTL_MS);
     evictTimer.unref?.();
-    this.bundles.set(sessionId, { token, tarGz, evictTimer });
-    return `${this.selfUrl}/internal/bundles/${sessionId}?token=${token}`;
+    this.bundles.set(id, { token, tarGz, evictTimer });
+    return `${this.selfUrl}/internal/bundles/${id}?token=${token}`;
   }
 
   drop(sessionId: string): void {

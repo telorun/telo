@@ -50,9 +50,54 @@ session:
   initImage: "busybox:stable"
   # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
   runtimeClass: ""
-  # Reserved for a future shared `.telo` dependency cache (trusted build path).
-  # Today session pods use a per-pod cache (emptyDir); this value is not mounted.
-  cacheRoot: "/var/lib/telo-cache"
+
+# On-cluster image build (REQUIRED — there is no in-pod install fallback). The
+# runner prebuilds a self-contained per-app image (controllers + module manifests
+# baked in via `telo install`) and session pods run it directly, so a slow or
+# unreachable npm registry can't stall a session. You MUST give it a registry the
+# cluster's KUBELET can pull from: either point build.repository at an external/
+# cloud registry (+ pushSecretName), or enable the in-cluster registry below
+# (which works only where nodes are configured to trust it — see its caveat).
+build:
+  # Namespace the trusted Kaniko build Jobs run in (baseline PSS — Kaniko needs a
+  # writable rootfs and registry egress; isolated from sessions and the runner).
+  namespace: telo-builds
+  # Registry repository for per-app images; the tag is the bundle content hash.
+  # Leave empty to derive from the in-cluster registry when registry.enabled.
+  repository: ""
+  builderImage: "gcr.io/kaniko-project/executor:latest"
+  timeoutSeconds: 600
+  # Push/pull over HTTP / self-signed — set true for the in-cluster registry.
+  insecureRegistry: false
+  # HTTP(S) base for a best-effort manifest existence check (skip build on a hit).
+  # Empty → derive from the in-cluster registry, else always build.
+  registryApiUrl: ""
+  # Telo module registry `telo install` resolves manifests from during the build.
+  teloRegistryUrl: "https://registry.telo.run"
+  # Reference pre-existing dockerconfigjson Secrets by name (alternative to
+  # registry.dockerconfigjson below, which creates them for you). pushSecretName
+  # lives in build.namespace (Kaniko push); pullSecretName lives in
+  # sessionNamespace (kubelet pull). Leave empty for a no-auth registry.
+  pushSecretName: ""
+  pullSecretName: ""
+
+# Optional in-cluster container registry (registry:2). CAVEAT: the kubelet pulls
+# session images directly and does NOT use cluster DNS, so each node must be
+# configured to trust this registry (e.g. containerd registries.conf) for pulls
+# to succeed. For most clusters an external registry is simpler. Off by default.
+registry:
+  enabled: false
+  image: "registry:2"
+  port: 5000
+  storage: "10Gi"
+  # Registry auth, as a docker config JSON. When set, the chart creates a
+  # kubernetes.io/dockerconfigjson Secret in BOTH build.namespace (Kaniko push)
+  # and sessionNamespace (kubelet pull) and wires the runner to use them — one
+  # place to put credentials for a private registry. Supply via
+  # `--set-file registry.dockerconfigjson=./dockerconfig.json`. Leave empty for a
+  # no-auth registry, or use build.pushSecretName/pullSecretName to reference
+  # Secrets you manage yourself.
+  dockerconfigjson: ""
 
 # Per-session ingress. When baseDomain is empty the runner is logs-only.
 # Requires a wildcard DNS record + wildcard TLS cert + an ingress controller.

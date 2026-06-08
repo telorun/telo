@@ -14,9 +14,20 @@ metadata:
     {{- include "telo-k8s-runner.labels" . | nindent 4 }}
     # Restricted PodSecurity: session pods use only emptyDir volumes and set
     # non-root / read-only-rootfs / drop-all-caps / no-SA-token / seccomp
-    # RuntimeDefault, so they satisfy the restricted standard. If the future
-    # trusted content-addressed build introduces a hostPath cache, relax to
-    # baseline (hostPath is disallowed under restricted).
+    # RuntimeDefault, so they satisfy the restricted standard. Dependencies are
+    # baked into the per-app image (no hostPath cache), so this stays restricted.
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.build.namespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+    # Baseline (not restricted) PodSecurity: the Kaniko builder needs a writable
+    # root filesystem to assemble layers, which restricted forbids. This is the
+    # trusted build namespace, isolated from untrusted session pods.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: baseline
 {{- end }}

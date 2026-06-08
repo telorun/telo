@@ -2,7 +2,7 @@ import type { V1Pod } from "@kubernetes/client-node";
 
 import type { K8sRunnerConfig } from "../config.js";
 import type { ResolvedLimits } from "../limits.js";
-import type { PortMapping, SessionConfig } from "@telorun/runner-core";
+import type { PortMapping } from "@telorun/runner-core";
 
 export interface BuildPodArgs {
   config: K8sRunnerConfig;
@@ -11,10 +11,10 @@ export interface BuildPodArgs {
   entryRelativePath: string;
   env: Record<string, string>;
   ports: PortMapping[];
-  session: SessionConfig;
   limits: ResolvedLimits;
-  /** Tokenized URL the initContainer fetches the bundle tarball from. */
-  bundleUrl: string;
+  /** Prebuilt per-app image to run — controllers + module manifests baked into
+   *  /app/.telo by the on-cluster build. */
+  image: string;
 }
 
 const WORK_DIR = "/work";
@@ -25,15 +25,10 @@ const TMP_MOUNT = "/tmp";
  * Builds the session Pod. Hardening that needs no RuntimeClass is always on
  * (non-root, read-only rootfs, drop-all caps, no service-account token,
  * seccomp RuntimeDefault); a sandbox RuntimeClass is layered on when configured.
- * The bundle is delivered by an initContainer that fetches a tarball into a
- * shared emptyDir.
  *
- * NOTE: telo's dependency cache is a PER-POD emptyDir, not a shared volume. A
- * writable cache shared across tenants would be a cross-tenant poisoning channel
- * (untrusted session code writing entries the next user warm-mounts and runs) —
- * exactly what the plan's "session pod consumes read-only" decision forbids.
- * Per-node shared caching is deferred to the trusted content-addressed build Job
- * (`config.cacheRoot` is reserved for it); until then each pod resolves fresh.
+ * `args.image` is the prebuilt per-app image — controllers + module manifests
+ * are baked into /app/.telo by the on-cluster build, so `telo run` resolves
+ * everything from disk: no initContainer, no install on the start path.
  */
 export function buildSessionPod(args: BuildPodArgs): V1Pod {
   const { config, limits } = args;
@@ -72,6 +67,11 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
       restartPolicy: "Never",
       activeDeadlineSeconds: limits.ttlSeconds,
       automountServiceAccountToken: false,
+      // Pull the per-app image from a private registry. The Secret must exist in
+      // the session namespace (pull secrets are namespace-scoped).
+      ...(config.build.imagePullSecret
+        ? { imagePullSecrets: [{ name: config.build.imagePullSecret }] }
+        : {}),
       ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
       securityContext: {
         runAsNonRoot: true,
@@ -80,35 +80,20 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
         fsGroup: 1000,
         seccompProfile: { type: "RuntimeDefault" },
       },
-      initContainers: [
-        {
-          name: "bundle-fetch",
-          image: config.initImage,
-          // Fetch the tokenized bundle tarball and unpack it into the shared
-          // work dir. `set -e` so a fetch failure fails the Pod loudly.
-          command: ["sh", "-c"],
-          args: [
-            // busybox sh has no reliable pipefail, so download to a file first
-            // and fail the Pod loudly on a fetch error rather than unpacking an
-            // empty pipe and letting `telo run` fail later with a confusing error.
-            `set -e; mkdir -p ${WORK_DIR}/${args.sessionId}; ` +
-              `wget -qO ${TMP_MOUNT}/bundle.tgz "${args.bundleUrl}"; ` +
-              `tar xzf ${TMP_MOUNT}/bundle.tgz -C ${WORK_DIR}/${args.sessionId}`,
-          ],
-          volumeMounts: [
-            { name: "work", mountPath: WORK_DIR },
-            { name: "tmp", mountPath: TMP_MOUNT },
-          ],
-          securityContext: hardenedContainerSecurity(),
-        },
-      ],
       containers: [
         {
           name: "session",
-          image: args.session.image || config.defaultImage,
-          imagePullPolicy: mapPullPolicy(args.session.pullPolicy),
-          workingDir: `${WORK_DIR}/${args.sessionId}`,
-          command: ["telo", "run", `./${args.entryRelativePath}`],
+          image: args.image,
+          // The per-app tag is an immutable content hash, so IfNotPresent lets
+          // the kubelet reuse a node-cached layer across runs of the same app.
+          imagePullPolicy: "IfNotPresent",
+          // Run the manifest by absolute path so `telo run` anchors its
+          // install-root to the baked /app/.telo (read-only, cache-only — no
+          // writes). WORK_DIR is a writable emptyDir set as cwd so the
+          // workload's own relative paths resolve somewhere writable under
+          // readOnlyRootFilesystem.
+          workingDir: WORK_DIR,
+          command: ["telo", "run", `/app/${args.entryRelativePath}`],
           env: envVars,
           stdin: true,
           stdinOnce: false,
@@ -119,8 +104,8 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
           resources,
           volumeMounts: [
             { name: "work", mountPath: WORK_DIR },
-            // Per-pod cache (emptyDir) — NOT shared across tenants. See the
-            // class comment: a shared writable cache would be a poisoning hole.
+            // Writable scratch for HOME/npm under a read-only rootfs. Controllers
+            // live in the image, so nothing is installed here at runtime.
             { name: "telo-cache", mountPath: CACHE_MOUNT },
             { name: "tmp", mountPath: TMP_MOUNT },
           ],
@@ -145,15 +130,4 @@ function hardenedContainerSecurity(): Record<string, unknown> {
     runAsNonRoot: true,
     capabilities: { drop: ["ALL"] },
   };
-}
-
-function mapPullPolicy(policy: SessionConfig["pullPolicy"]): string {
-  switch (policy) {
-    case "always":
-      return "Always";
-    case "never":
-      return "Never";
-    default:
-      return "IfNotPresent";
-  }
 }

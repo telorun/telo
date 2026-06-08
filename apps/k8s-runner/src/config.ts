@@ -24,12 +24,42 @@ export interface LimitCeilings {
   ephemeralStorage: string;
 }
 
+/**
+ * On-cluster image-build settings. The runner ALWAYS prebuilds a self-contained
+ * per-app image (controllers + module manifests baked in via `telo install`) and
+ * the session pod runs it directly — there is no in-pod install fallback, so a
+ * registry repository (`RUNNER_IMAGE_REPOSITORY`) is required.
+ */
+export interface ImageBuildConfig {
+  /** Registry repository the per-app image is pushed to / pulled from; the tag
+   *  is the bundle content hash (e.g. `registry.telo-runner.svc:5000/telo-sessions`). */
+  repository: string;
+  /** Namespace the trusted Kaniko build Jobs run in (registry egress lives here). */
+  namespace: string;
+  /** Builder image — Kaniko (or a compatible `--context`/`--destination` executor). */
+  builderImage: string;
+  /** Build Job `activeDeadlineSeconds` and the runner's wait budget. */
+  timeoutSeconds: number;
+  /** Push/pull to an insecure (HTTP / self-signed) registry — the in-cluster default. */
+  insecureRegistry: boolean;
+  /** HTTP(S) base for a best-effort manifest existence check (skip build on hit);
+   *  undefined → always build. */
+  registryApiUrl?: string;
+  /** Telo module registry `telo install` resolves manifests from during the build. */
+  teloRegistryUrl: string;
+  /** Optional dockerconfig Secret (in the build namespace) Kaniko pushes with. */
+  pushSecretName?: string;
+  /** Optional dockerconfig Secret (in the session namespace) the kubelet uses to
+   *  pull per-app images from a private registry. */
+  imagePullSecret?: string;
+}
+
 export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Namespace where session Pods/Services/Ingresses are created. */
   sessionNamespace: string;
   /** Default image for spawned session Pods (telorun/node). */
   defaultImage: string;
-  /** Small image for the bundle-fetch initContainer (needs wget + tar). */
+  /** Small image for the bundle/build-context fetch initContainer (needs wget + tar). */
   initImage: string;
   /** Optional sandbox RuntimeClass (gvisor/kata). Unset → cluster default (runc). */
   runtimeClass?: string;
@@ -37,12 +67,10 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   ingressBaseDomain?: string;
   /** Optional IngressClass name for created Ingresses. */
   ingressClassName?: string;
-  /** Reserved for a future shared `.telo` dependency cache (trusted build path,
-   *  e.g. hostPath or other node-local storage). Today session pods use a
-   *  per-pod emptyDir cache and this value is not mounted. */
-  cacheRoot: string;
-  /** Runner's own in-cluster base URL, used to build the bundle fetch URL the
-   *  session initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
+  /** On-cluster image build — the only delivery path (always present). */
+  build: ImageBuildConfig;
+  /** Runner's own in-cluster base URL, used to build the bundle/build-context
+   *  fetch URL the initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
   selfUrl: string;
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
@@ -60,6 +88,31 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     );
   }
 
+  const repository = env.RUNNER_IMAGE_REPOSITORY?.trim();
+  if (!repository) {
+    throw new RunnerConfigError(
+      "RUNNER_IMAGE_REPOSITORY env var is required. The runner prebuilds a per-app session image for " +
+        "every run (there is no in-pod install fallback); set it to the registry repository the built " +
+        "images are pushed to / pulled from (e.g. registry.example.com/telo-sessions). The tag is the " +
+        "bundle content hash.",
+    );
+  }
+  const build: ImageBuildConfig = {
+    repository: repository.replace(/\/+$/, ""),
+    namespace: env.RUNNER_BUILD_NAMESPACE?.trim() || "telo-builds",
+    builderImage: env.RUNNER_BUILDER_IMAGE?.trim() || "gcr.io/kaniko-project/executor:latest",
+    timeoutSeconds: parsePositiveInt(
+      env.RUNNER_BUILD_TIMEOUT_SECONDS,
+      600,
+      "RUNNER_BUILD_TIMEOUT_SECONDS",
+    ),
+    insecureRegistry: env.RUNNER_REGISTRY_INSECURE?.trim() === "true",
+    registryApiUrl: env.RUNNER_REGISTRY_API_URL?.trim() || undefined,
+    teloRegistryUrl: env.TELO_REGISTRY_URL?.trim() || "https://registry.telo.run",
+    pushSecretName: env.RUNNER_REGISTRY_PUSH_SECRET?.trim() || undefined,
+    imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
+  };
+
   return {
     ...loadCoreConfig(env, { port: DEFAULT_PORT }),
     sessionNamespace: env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions",
@@ -68,7 +121,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
     ingressBaseDomain: env.RUNNER_INGRESS_BASE_DOMAIN?.trim() || undefined,
     ingressClassName: env.RUNNER_INGRESS_CLASS?.trim() || undefined,
-    cacheRoot: env.RUNNER_CACHE_ROOT?.trim() || "/var/lib/telo-cache",
+    build,
     selfUrl: selfUrl.replace(/\/+$/, ""),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
     limits: {

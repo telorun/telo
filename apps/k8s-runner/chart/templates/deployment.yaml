@@ -57,8 +57,37 @@ spec:
               value: {{ .Values.session.image | quote }}
             - name: RUNNER_INIT_IMAGE
               value: {{ .Values.session.initImage | quote }}
-            - name: RUNNER_CACHE_ROOT
-              value: {{ .Values.session.cacheRoot | quote }}
+            {{- $repo := include "telo-k8s-runner.imageRepository" . }}
+            {{- if not $repo }}
+            {{- fail "set build.repository or registry.enabled — the runner prebuilds session images and requires an image registry" }}
+            {{- end }}
+            - name: RUNNER_IMAGE_REPOSITORY
+              value: {{ $repo | quote }}
+            - name: RUNNER_BUILD_NAMESPACE
+              value: {{ .Values.build.namespace | quote }}
+            - name: RUNNER_BUILDER_IMAGE
+              value: {{ .Values.build.builderImage | quote }}
+            - name: RUNNER_BUILD_TIMEOUT_SECONDS
+              value: "{{ .Values.build.timeoutSeconds }}"
+            - name: RUNNER_REGISTRY_INSECURE
+              value: "{{ .Values.build.insecureRegistry }}"
+            - name: TELO_REGISTRY_URL
+              value: {{ .Values.build.teloRegistryUrl | quote }}
+            {{- $apiUrl := include "telo-k8s-runner.registryApiUrl" . }}
+            {{- if $apiUrl }}
+            - name: RUNNER_REGISTRY_API_URL
+              value: {{ $apiUrl | quote }}
+            {{- end }}
+            {{- $push := include "telo-k8s-runner.pushSecretName" . }}
+            {{- if $push }}
+            - name: RUNNER_REGISTRY_PUSH_SECRET
+              value: {{ $push | quote }}
+            {{- end }}
+            {{- $pull := include "telo-k8s-runner.pullSecretName" . }}
+            {{- if $pull }}
+            - name: RUNNER_IMAGE_PULL_SECRET
+              value: {{ $pull | quote }}
+            {{- end }}
             {{- if .Values.session.runtimeClass }}
             - name: RUNNER_RUNTIME_CLASS
               value: {{ .Values.session.runtimeClass | quote }}

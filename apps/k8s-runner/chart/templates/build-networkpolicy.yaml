@@ -1,0 +1,40 @@
+{{- if .Values.networkPolicy.enabled }}
+# Egress for the trusted Kaniko build pods: DNS, the runner Service (build-context
+# fetch + in-cluster registry push), and the public internet (npm + telo module
+# registry, and any external image registry). This is the ONE namespace where
+# registry egress is deliberately allowed — session pods stay separate. FQDN
+# allowlisting needs a CNI with FQDN policy (Cilium) or an egress proxy; core
+# NetworkPolicy is CIDR-only, so this is a broad allow minus the metadata IP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}-build-egress
+  namespace: {{ .Values.build.namespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: telo-k8s-runner
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dnsNamespace }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.runnerNamespace }}
+    - to:
+        - ipBlock:
+            cidr: "0.0.0.0/0"
+            except:
+              - "169.254.169.254/32"
+{{- end }}

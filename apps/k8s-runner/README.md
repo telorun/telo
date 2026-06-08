@@ -22,19 +22,29 @@ serving an anonymous tier, the ceiling *is* the policy.
 
 ## How it works
 
-Per session the runner: stages the bundle as a tokenized in-memory tarball;
-creates a Pod (`telorun/node` running `telo run`) whose initContainer fetches
-the bundle into a shared `emptyDir`; watches the Pod for status; attaches a PTY
-over the Pod `attach` subresource for the interactive `/io` channel; and, when an
-ingress base domain is configured, creates a per-session Service + Ingress
-(`<sessionId>.<base-domain>`) garbage-collected via an ownerReference to the Pod.
+Per session the runner resolves the image, creates a Pod (`telo run`), watches it
+for status, attaches a PTY over the Pod `attach` subresource for the interactive
+`/io` channel, and — when an ingress base domain is configured — creates a
+per-session Service + Ingress (`<sessionId>.<base-domain>`) garbage-collected via
+an ownerReference to the Pod.
+
+**Every session runs a prebuilt per-app image** — there is no in-pod install
+path. On a session-create the runner stages the bundle plus a generated
+`Dockerfile` (`FROM <base>`, `RUN telo install`), runs a trusted **Kaniko** Job in
+the `telo-builds` namespace that bakes every controller and module manifest into
+`/app/.telo` and pushes the result (tagged by the bundle's content hash), then
+runs the session pod from that image — so the session never installs anything on
+the start path and a slow/unreachable package registry can't stall it. Builds are
+content-addressed (reused across identical runs), existence-checked before
+building, and single-flighted; a build failure surfaces as an actionable error
+carrying the build pod's log tail. `RUNNER_IMAGE_REPOSITORY` is therefore
+**required** — the runner refuses to start without a registry to build into.
 
 Sandbox hardening is always on (non-root, read-only rootfs, drop-all caps, no
 service-account token, seccomp `RuntimeDefault`); a sandbox RuntimeClass
-(gVisor/Kata) is layered on when configured. Dependency caching is currently
-**per-session** (an `emptyDir` at `/telo-cache`); `RUNNER_CACHE_ROOT` is reserved
-for a future shared cache fed by a trusted build path (a writable shared cache
-across tenants would be a poisoning channel).
+(gVisor/Kata) is layered on when configured. In the prebuilt path the per-app
+image is single-tenant, so install scripts run normally inside the trusted build
+(native/postinstall controllers work) with no cross-tenant cache to poison.
 
 ## Configuration (env)
 
@@ -44,34 +54,69 @@ across tenants would be a poisoning channel).
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | `telorun/node:latest-slim` | Image spawned per run |
-| `RUNNER_INIT_IMAGE` | `busybox:stable` | Bundle-fetch initContainer image |
+| `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
 | `RUNNER_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
-| `RUNNER_CACHE_ROOT` | `/var/lib/telo-cache` | Node path for the per-node `.telo` cache |
 | `RUNNER_MAX_CPU` | `50m` | CPU ceiling |
 | `RUNNER_MAX_MEMORY` | `100Mi` | Memory ceiling |
 | `RUNNER_MAX_TTL_SECONDS` | `3600` | Wall-clock TTL (Pod `activeDeadlineSeconds`) |
 | `RUNNER_MAX_EPHEMERAL_STORAGE` | `512Mi` | Per-Pod ephemeral-storage ceiling |
 | `RUNNER_MAX_SESSIONS` | `8` | Global concurrent-session backstop |
 
+### Image build (required)
+
+| Env | Default | Purpose |
+| --- | --- | --- |
+| `RUNNER_IMAGE_REPOSITORY` | _(required)_ | Registry repo for per-app images; tag = bundle hash |
+| `RUNNER_BUILD_NAMESPACE` | `telo-builds` | Namespace the trusted Kaniko build Jobs run in |
+| `RUNNER_BUILDER_IMAGE` | `gcr.io/kaniko-project/executor:latest` | Image builder |
+| `RUNNER_BUILD_TIMEOUT_SECONDS` | `600` | Build Job deadline / wait budget |
+| `RUNNER_REGISTRY_INSECURE` | `false` | Push/pull over HTTP / self-signed |
+| `RUNNER_REGISTRY_API_URL` | _(unset → always build)_ | HTTP(S) base for the manifest existence check (authenticated via the push Secret) |
+| `RUNNER_REGISTRY_PUSH_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-builds`) Kaniko pushes with; also authenticates the existence check |
+| `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls per-app images with |
+| `TELO_REGISTRY_URL` | `https://registry.telo.run` | Telo module registry used by `telo install` |
+
 ## Deploy (Helm)
+
+The runner **requires a registry to build into** (there is no in-pod install
+fallback), so point it at one your cluster's kubelet can pull from:
 
 ```bash
 helm install telo-runner ./chart \
-  --set ingress.baseDomain=run.example.com \
+  --set build.repository=registry.example.com/telo-sessions \
+  --set-file registry.dockerconfigjson=./dockerconfig.json \  # private-registry auth
   --set session.runtimeClass=gvisor
 ```
 
+For a private registry, `registry.dockerconfigjson` creates the dockerconfig
+Secret in **both** namespaces (push in `telo-builds`, pull in `telo-sessions`) and
+wires `RUNNER_REGISTRY_PUSH_SECRET` + `RUNNER_IMAGE_PULL_SECRET` — the kubelet
+needs the pull copy because the per-app image is private. (Or manage the Secrets
+yourself and reference them via `build.pushSecretName` / `build.pullSecretName`.)
+The push Secret doubles as the credential for the manifest existence check, so
+the runner can see an already-built image in a private registry and skip the
+rebuild — without it a private registry answers `401` and every run rebuilds.
+A no-auth registry needs none of this.
+
 The chart provisions the static scaffolding: the runner Deployment (single
 replica — the registry is in-memory and the runner reaps orphaned pods on boot),
-Service, scoped RBAC, the `telo-runner` and restricted-PSS `telo-sessions`
-namespaces, a `ResourceQuota`, and NetworkPolicies (pod-to-pod isolation + broad
-egress with blocked CIDRs — not yet a registry allowlist). The runner creates
-per-session objects at runtime.
+Service, scoped RBAC, the `telo-runner` / restricted-PSS `telo-sessions` /
+baseline-PSS `telo-builds` namespaces, a `ResourceQuota`, and NetworkPolicies
+(session pod-to-pod isolation + the build namespace's registry egress). The
+runner creates per-session and per-build objects at runtime.
 
-> **Egress note.** Core NetworkPolicy is CIDR-only and cannot express the
-> package-registry FQDN allowlist the trusted build path needs — use a CNI with
-> FQDN policy (Cilium) or an egress proxy for that.
+The optional in-cluster registry (`--set registry.enabled=true --set
+build.insecureRegistry=true`) derives `build.repository` for you, but works only
+on clusters whose **nodes are configured to trust it** — otherwise an external/
+cloud registry is simpler. Installing with neither a `build.repository` nor
+`registry.enabled` is rejected at template time.
+
+> **Egress notes.** (1) The kubelet pulls session images directly and does **not**
+> use cluster DNS, so the in-cluster registry only works where nodes trust it
+> (e.g. containerd `registries.conf`). (2) Core NetworkPolicy is CIDR-only and
+> cannot express the package-registry FQDN allowlist the build namespace needs —
+> use a CNI with FQDN policy (Cilium) or an egress proxy to tighten it.
 
 ## Development
 

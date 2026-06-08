@@ -26,8 +26,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     version: VERSION,
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
   });
-  // Mount the internal, tokenized bundle-fetch route on the same app so the
-  // session initContainer can pull the bundle tarball.
+  // Mount the internal, tokenized fetch route on the same app so a build Job's
+  // initContainer can pull the build-context tarball (bundle + Dockerfile).
   deps.bundleStore.registerRoute(handle.app);
   return handle;
 }
