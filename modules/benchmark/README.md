@@ -25,7 +25,7 @@ metadata:
   version: 1.0.0
 imports:
   Benchmark: std/benchmark@0.4.1
-  HttpClient: std/http-client@0.6.0
+  HttpClient: std/http-client@0.7.0
 ---
 kind: HttpClient.Client
 metadata:

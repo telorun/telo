@@ -52,9 +52,9 @@ and how to use them — onboarding without requiring the LLM to call a separate
 kind: Telo.Application
 metadata: { name: my-stdio-mcp }
 imports:
-  Mcp: std/mcp-server@0.6.1
-  JS: std/javascript@0.4.1
-targets: [ Server ]
+  Mcp: std/mcp-server@0.7.0
+  JS: std/javascript@0.5.0
+targets: [ !ref Server ]
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }

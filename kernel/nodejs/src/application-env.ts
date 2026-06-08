@@ -81,6 +81,50 @@ export function resolveApplicationEnv(
 }
 
 /**
+ * Build-time cache warm: compile — but do NOT validate — the residual schema
+ * for every `variables` / `secrets` / `ports` entry the runtime
+ * `resolveApplicationEnv` would, so each standalone validator lands in the
+ * on-disk `__validators` cache. Schema *compilation* is value-independent, so
+ * this needs none of the host env vars / secrets `resolveApplicationEnv`
+ * requires — it can run during `telo install`. At run time on a read-only
+ * session rootfs `resolveApplicationEnv` then hits the cache instead of
+ * recompiling and failing to persist (ENOENT / EROFS).
+ *
+ * Mirrors `resolveApplicationEnv` exactly: same `residualEntrySchema` per
+ * variable/secret and the same `PORT_RESIDUAL_SCHEMA`, so the cache keys
+ * match byte-for-byte. Compile failures are swallowed — a genuinely broken
+ * schema surfaces through the normal analysis/runtime path, not here.
+ */
+export function precompileApplicationEnvSchemas(
+  manifest: Record<string, any>,
+  validator: SchemaValidator,
+): void {
+  const compile = (schema: Record<string, unknown>): void => {
+    try {
+      validator.compile(schema as any);
+    } catch {
+      // Broken schemas are reported by analysis / runtime, not the warm pass.
+    }
+  };
+  for (const block of [manifest.variables, manifest.secrets]) {
+    if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+    for (const entry of Object.values(block as Record<string, EnvEntry>)) {
+      if (!entry || typeof entry !== "object") continue;
+      compile(residualEntrySchema(entry as Record<string, unknown>));
+    }
+  }
+  const ports = manifest.ports;
+  if (
+    ports &&
+    typeof ports === "object" &&
+    !Array.isArray(ports) &&
+    Object.keys(ports).length > 0
+  ) {
+    compile(PORT_RESIDUAL_SCHEMA);
+  }
+}
+
+/**
  * Populate the root Application's `ports` namespace from host environment
  * variables. Mirrors `resolveBlock` but fixes the value type to a port integer
  * (1–65535): read `entry.env`, coerce the raw value as an integer, validate it
