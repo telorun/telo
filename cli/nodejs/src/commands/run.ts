@@ -44,27 +44,74 @@ function tryReadFile(filePath: string): string {
 
 type WatchHandle = { cleanup: () => void };
 
-function setupWatchMode(kernel: Kernel, log: Logger): WatchHandle {
+/** The local manifest files a loaded graph was built from — entry, every
+ *  `include:` partial, and every transitively-imported library + its partials.
+ *  Remote (`http(s)://`) sources are skipped; only on-disk files are watchable.
+ *  Empty until `load()` succeeds (the graph is dropped again on teardown), so
+ *  callers must snapshot the set before `start()`. */
+function collectWatchFiles(kernel: Kernel): Set<string> {
+  const files = new Set<string>();
+  const add = (source: string | undefined): void => {
+    if (!source) return;
+    if (source.startsWith("file://")) {
+      files.add(fileURLToPath(source));
+    } else if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
+      // No URL scheme → an absolute local path (the loader's canonical form
+      // for local files). A scheme like `https://` is remote, skip it.
+      files.add(source);
+    }
+  };
+  const graph = kernel.getLoadedGraph();
+  if (graph) {
+    for (const mod of graph.modules.values()) {
+      add(mod.owner.source);
+      for (const partial of mod.partials) add(partial.source);
+    }
+  }
+  return files;
+}
+
+/** Best-effort entry file for the load-failed case, where no graph exists to
+ *  enumerate. A directory entry resolves to its `telo.yaml`. */
+function entryFilePath(manifestPath: string): string {
+  const resolved = path.resolve(manifestPath);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    return path.join(resolved, "telo.yaml");
+  }
+  return resolved;
+}
+
+type WatcherSet = {
+  /** Add a watcher for any path not already watched; returns the live count.
+   *  Persistent across reload cycles — paths are never re-watched, because
+   *  closing then re-`fs.watch`-ing the same path is silently dropped under
+   *  bun (it never fires again), whereas one long-lived watcher fires on every
+   *  change. So the set only ever grows as new files enter the graph. */
+  sync: (files: Set<string>) => number;
+};
+
+/** One watcher set for the whole watch session. `onChange` is called, debounced
+ *  per file, on every change to any watched path. */
+function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & WatchHandle {
   const watchers = new Map<string, fs.FSWatcher>();
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const reloading = new Set<string>();
   let active = true;
 
-  function watchFile(filePath: string): void {
-    if (!active || watchers.has(filePath)) return;
-    // getSourceFiles() returns file:// URLs; fs.watch needs a filesystem path
-    const fsPath = filePath.startsWith("file://") ? fileURLToPath(filePath) : filePath;
+  function watchFile(fsPath: string): void {
+    if (!active || watchers.has(fsPath)) return;
     let watcher: fs.FSWatcher;
     try {
       watcher = fs.watch(fsPath, () => {
         if (!active) return;
-        const existing = debounceTimers.get(filePath);
+        const existing = debounceTimers.get(fsPath);
         if (existing) clearTimeout(existing);
         debounceTimers.set(
-          filePath,
+          fsPath,
           setTimeout(() => {
-            debounceTimers.delete(filePath);
-            void handleChange(filePath);
+            debounceTimers.delete(fsPath);
+            if (!active) return;
+            log.info(`[watch] change detected in ${fsPath}`);
+            onChange();
           }, 150),
         );
       });
@@ -73,46 +120,32 @@ function setupWatchMode(kernel: Kernel, log: Logger): WatchHandle {
     }
     watcher.on("error", () => {
       // OS invalidated the watch (e.g. file deleted). Remove and re-establish.
-      if (watchers.get(filePath) === watcher) {
-        watchers.delete(filePath);
+      if (watchers.get(fsPath) === watcher) {
+        watchers.delete(fsPath);
         setTimeout(() => {
-          if (active) watchFile(filePath);
+          if (active) watchFile(fsPath);
         }, 50);
       }
     });
-    watchers.set(filePath, watcher);
+    watchers.set(fsPath, watcher);
   }
 
-  async function handleChange(filePath: string): Promise<void> {
-    // Prevent concurrent reloads for the same file
-    if (reloading.has(filePath)) return;
-    reloading.add(filePath);
-    log.info(`[watch] reloading ${filePath}`);
-    try {
-      // await kernel.reloadSource(filePath);
-      // Watch any new files that appeared after reload
-      // for (const f of kernel.getSourceFiles()) watchFile(f);
-      log.info(log.ok(`[watch] complete`));
-    } catch (err) {
-      log.info(log.error(`[watch] error: ${err instanceof Error ? err.message : String(err)}`));
-    } finally {
-      reloading.delete(filePath);
-    }
-  }
-
-  function cleanup(): void {
-    active = false;
-    for (const t of debounceTimers.values()) clearTimeout(t);
-    debounceTimers.clear();
-    for (const w of watchers.values()) w.close();
-    watchers.clear();
-  }
-
-  // for (const f of kernel.getSourceFiles()) watchFile(f);
-  return { cleanup };
+  return {
+    sync(files: Set<string>): number {
+      for (const f of files) watchFile(f);
+      return watchers.size;
+    },
+    cleanup(): void {
+      active = false;
+      for (const t of debounceTimers.values()) clearTimeout(t);
+      debounceTimers.clear();
+      for (const w of watchers.values()) w.close();
+      watchers.clear();
+    },
+  };
 }
 
-export async function run(argv: {
+type RunArgv = {
   path: string;
   verbose: boolean;
   debug: boolean;
@@ -120,52 +153,104 @@ export async function run(argv: {
   watch: boolean;
   registryUrl?: string;
   "--"?: string[];
-}): Promise<void> {
+};
+
+function registryUrlFor(argv: RunArgv): string {
+  // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
+  // RegistrySource default. The kernel itself does no env lookup — programmatic
+  // callers (tests, SDK) pass registryUrl explicitly when they need one.
+  return argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? "https://registry.telo.run";
+}
+
+async function buildKernel(argv: RunArgv, log: Logger): Promise<Kernel> {
+  const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
+  // The manifest cache (populated by `telo install`) wins over the registry
+  // / HTTP sources so production images boot without any registry network
+  // I/O. A missing cache file falls through transparently — dev runs and
+  // ad-hoc invocations work unchanged.
+  const sources: ManifestSource[] = [new LocalFileSource()];
+  const entryDir = resolveEntryDir(argv.path);
+  if (entryDir) {
+    // Pass the same registry URL the kernel will use so the cache source's
+    // URL→path mapping matches what `telo install` wrote.
+    sources.push(new LocalManifestCacheSource(entryDir, registryUrlFor(argv)));
+  }
+  const kernel = new Kernel({ argv: argv["--"], registryUrl, sources });
+  // Pretty controller-download progress. With --verbose, always render
+  // (so captured logs/CI output get the lines too); otherwise gate on TTY
+  // so CI and the docker service stay silent.
+  attachControllerProgress(kernel, log, { force: argv.verbose });
+
+  if (argv.debug) {
+    const debugDir = path.join(process.cwd(), ".telo-debug");
+    const eventStreamPath = path.join(debugDir, "events.jsonl");
+    await kernel.enableEventStream(eventStreamPath);
+    log.info(`Event stream enabled: ${eventStreamPath}`);
+  }
+  return kernel;
+}
+
+/**
+ * Write-through to `<entry-dir>/.telo/manifests/` after a successful load. Same
+ * persistence path as `telo install` — reuses `writeManifestCache` so cache
+ * contents converge no matter which command populates them. Idempotent: a graph
+ * whose files all came from `file://` sources (cache hit) results in no writes,
+ * since `cachePathForCanonical` returns null for non-cacheable schemes. On
+ * read-only filesystems (e.g. baked Docker images) we surface the error but do
+ * not abort — caching is an optimization.
+ */
+async function persistManifestCache(argv: RunArgv, kernel: Kernel, log: Logger): Promise<void> {
+  const entryDir = resolveEntryDir(argv.path);
+  if (!entryDir) return;
+  const graph = kernel.getLoadedGraph();
+  if (!graph) return;
+  try {
+    await writeManifestCache(graph, entryDir, registryUrlFor(argv));
+  } catch (err) {
+    // Warnings belong on stderr — stdout is reserved for the manifest's own
+    // output (consumers may pipe `telo run` into jq / a downstream process).
+    process.stderr.write(
+      `${log.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
+    );
+  }
+}
+
+/** Format an error as diagnostics on the terminal. Returns the non-warning
+ *  count so the single-shot path can pick an exit code while watch keeps going. */
+function reportError(argv: RunArgv, error: unknown, log: Logger): number {
+  const isUrl = argv.path.startsWith("http://") || argv.path.startsWith("https://");
+  const displayPath = isUrl
+    ? argv.path
+    : path.relative(process.cwd(), path.resolve(process.cwd(), argv.path));
+  const attached = (error as any)?.diagnostics as RuntimeDiagnostic[] | undefined;
+  const diags: RuntimeDiagnostic[] = attached?.length
+    ? attached
+    : [
+        {
+          message: error instanceof Error ? error.message : String(error),
+          code: (error as any)?.code,
+        },
+      ];
+  formatDiagnostics(diags, log, displayPath);
+  const errorCount = diags.filter((d) => d.severity !== "warning").length;
+  const warnCount = diags.filter((d) => d.severity === "warning").length;
+  const parts: string[] = [];
+  if (errorCount > 0) parts.push(log.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));
+  if (warnCount > 0) parts.push(log.warn(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`));
+  console.error(`\n${parts.join(", ")}`);
+  return errorCount;
+}
+
+export async function run(argv: RunArgv): Promise<void> {
   const log = createLogger(argv.verbose);
+  if (argv.watch) {
+    await runWatch(argv, log);
+    return;
+  }
 
   try {
-    // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
-    // RegistrySource default. The kernel itself does no env lookup — programmatic
-    // callers (tests, SDK) pass registryUrl explicitly when they need one.
-    const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
-    // The manifest cache (populated by `telo install`) wins over the registry
-    // / HTTP sources so production images boot without any registry network
-    // I/O. A missing cache file falls through transparently — dev runs and
-    // ad-hoc invocations work unchanged.
-    const sources: ManifestSource[] = [new LocalFileSource()];
-    const entryDir = resolveEntryDir(argv.path);
-    if (entryDir) {
-      // Pass the same registry URL the kernel will use so the cache source's
-      // URL→path mapping matches what `telo install` wrote.
-      sources.push(
-        new LocalManifestCacheSource(
-          entryDir,
-          registryUrl ?? "https://registry.telo.run",
-        ),
-      );
-    }
-    const kernel = new Kernel({
-      argv: argv["--"],
-      registryUrl,
-      sources,
-    });
-    // Pretty controller-download progress. With --verbose, always render
-    // (so captured logs/CI output get the lines too); otherwise gate on TTY
-    // so CI and the docker service stay silent.
-    attachControllerProgress(kernel, log, { force: argv.verbose });
-
-    if (argv.debug) {
-      const debugDir = path.join(process.cwd(), ".telo-debug");
-      const eventStreamPath = path.join(debugDir, "events.jsonl");
-      await kernel.enableEventStream(eventStreamPath);
-      log.info(`Event stream enabled: ${eventStreamPath}`);
-    }
-
-    let watchHandle: WatchHandle | null = null;
-
+    const kernel = await buildKernel(argv, log);
     const shutdown = () => {
-      if (argv.watch) log.info("\n[watch] stopping...");
-      watchHandle?.cleanup();
       // Cooperatively cancel the boot run first (so honoring targets / in-flight
       // invoke trees stop early), then unblock the idle wait for graceful exit.
       kernel.cancel("interrupted");
@@ -174,77 +259,88 @@ export async function run(argv: {
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
 
-    if (argv.watch) {
-      // Acquire a hold BEFORE start() to keep the kernel alive for apps that
-      // don't have their own holds (e.g. script-only manifests).
-      // forceIdle() will force-resolve waitForIdle() on Ctrl+C regardless of
-      // how many holds are active (e.g. Http.Server may hold its own).
-      kernel.acquireHold("watch-mode");
-
-      kernel.on("Kernel.Started", () => {
-        // const files = kernel.getSourceFiles();
-        // log.info(`[watch] watching ${files.length} file(s)`);
-        watchHandle = setupWatchMode(kernel, log);
-      });
-    }
-
     loadEnvFiles(argv.path);
     await kernel.load(argv.path);
-
-    // Write-through to `<entry-dir>/.telo/manifests/` after the first
-    // successful load. Same persistence path as `telo install` — reuses
-    // `writeManifestCache` so cache contents converge no matter which
-    // command populates them. Idempotent: a graph whose files all came
-    // from `file://` sources (cache hit) results in no writes, since
-    // `cachePathForCanonical` returns null for non-cacheable schemes.
-    // On read-only filesystems (e.g. baked Docker images) we surface the
-    // error but do not abort — caching is an optimization.
-    if (entryDir) {
-      const graph = kernel.getLoadedGraph();
-      if (graph) {
-        try {
-          await writeManifestCache(
-            graph,
-            entryDir,
-            registryUrl ?? "https://registry.telo.run",
-          );
-        } catch (err) {
-          // Warnings belong on stderr — stdout is reserved for the
-          // manifest's own output (consumers may pipe `telo run` into
-          // jq / a downstream process).
-          process.stderr.write(
-            `${log.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
-          );
-        }
-      }
-    }
+    await persistManifestCache(argv, kernel, log);
 
     await kernel.start();
     if (kernel.exitCode !== 0) {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
-    const isUrl = argv.path.startsWith("http://") || argv.path.startsWith("https://");
-    const displayPath = isUrl
-      ? argv.path
-      : path.relative(process.cwd(), path.resolve(process.cwd(), argv.path));
-    const attached = (error as any)?.diagnostics as RuntimeDiagnostic[] | undefined;
-    const diags: RuntimeDiagnostic[] = attached?.length
-      ? attached
-      : [
-          {
-            message: error instanceof Error ? error.message : String(error),
-            code: (error as any)?.code,
-          },
-        ];
-    formatDiagnostics(diags, log, displayPath);
-    const errorCount = diags.filter((d) => d.severity !== "warning").length;
-    const warnCount = diags.filter((d) => d.severity === "warning").length;
-    const parts: string[] = [];
-    if (errorCount > 0) parts.push(log.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));
-    if (warnCount > 0) parts.push(log.warn(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`));
-    console.error(`\n${parts.join(", ")}`);
+    reportError(argv, error, log);
     process.exit(1);
+  }
+}
+
+/**
+ * Watch mode. The kernel has no incremental reload, so each cycle runs a fresh
+ * kernel to completion-or-change: load → snapshot the graph's local files →
+ * start (held alive so one-shot apps don't exit) → wait for a file change →
+ * cancel + forceIdle to drive teardown → rebuild. A load/boot failure is
+ * reported but does not exit; we keep watching so the next edit retries.
+ */
+async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
+  loadEnvFiles(argv.path);
+
+  let stopping = false;
+  let signalChange: (() => void) | null = null;
+  let currentKernel: Kernel | null = null;
+
+  // One watcher set for the whole session — see createWatcherSet. A change
+  // resolves the current cycle's `changed` gate; cycles re-read `signalChange`
+  // so the same watcher drives every reload.
+  const watchers = createWatcherSet(log, () => signalChange?.());
+
+  const requestStop = () => {
+    stopping = true;
+    log.info("\n[watch] stopping...");
+    watchers.cleanup();
+    currentKernel?.cancel("interrupted");
+    currentKernel?.forceIdle();
+    signalChange?.();
+  };
+  process.once("SIGINT", requestStop);
+  process.once("SIGTERM", requestStop);
+
+  // Watch the entry up-front so an edit during the first (possibly slow) load
+  // still queues a reload; the graph's full file set is added after each load.
+  watchers.sync(new Set([entryFilePath(argv.path)]));
+
+  while (!stopping) {
+    const kernel = await buildKernel(argv, log);
+    currentKernel = kernel;
+    // Hold the kernel alive across the cycle so apps without their own hold
+    // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
+    // overrides every hold (including a server's own) when we want to reload.
+    kernel.acquireHold("watch-mode");
+
+    const changed = new Promise<void>((resolve) => {
+      signalChange = resolve;
+    });
+
+    try {
+      await kernel.load(argv.path);
+      await persistManifestCache(argv, kernel, log);
+      const count = watchers.sync(collectWatchFiles(kernel));
+      log.info(`[watch] watching ${count} file(s)`);
+
+      // start() resolves on its own only on boot error or one-shot completion
+      // without a hold; the hold keeps long-running and completed apps alive,
+      // so the cycle advances on a file change. Errors are reported, not thrown.
+      const startPromise = kernel.start().catch((err) => reportError(argv, err, log));
+      await changed;
+      kernel.cancel("reload");
+      kernel.forceIdle();
+      await startPromise;
+    } catch (error) {
+      // Load failed before start(); report and wait for an edit before retrying.
+      reportError(argv, error, log);
+      await kernel.teardown();
+      await changed;
+    }
+
+    if (!stopping) log.info(log.ok("[watch] reloading..."));
   }
 }
 
