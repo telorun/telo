@@ -22,8 +22,8 @@ kind: Telo.Application
 metadata: { name: parse-demo }
 imports:
   Yaml: std/yaml@0.4.1
-  Run: std/run@0.7.0
-targets: [ ParseExample ]
+  Run: std/run@0.8.0
+targets: [ !ref ParseExample ]
 ---
 kind: Run.Sequence
 metadata: { name: ParseExample }

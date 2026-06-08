@@ -41,7 +41,7 @@ import {
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
 import { resolveEntryDir } from "./manifest-sources/local-manifest-cache-source.js";
-import { resolveApplicationEnv } from "./application-env.js";
+import { precompileApplicationEnvSchemas, resolveApplicationEnv } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
 
@@ -305,8 +305,17 @@ export class Kernel implements IKernel {
    * Load a manifest by URL. The URL is dispatched through the registered
    * `ManifestSource` chain (file://, http://, pkg:, memory://, …); URL-shape
    * normalization is each source's responsibility.
+   *
+   * `analyzeOnly` runs the static-analysis pre-flight and persists its
+   * caches (the `.validated.json` analysis stamp and the compiled
+   * `__validators/` schema cache) but stops before module instantiation,
+   * target wiring, and application-env/secret resolution. Build steps
+   * (`telo install`) use it to bake those caches into a prebuilt image on a
+   * writable filesystem, so the runtime `load()` — which runs on a read-only
+   * session rootfs — hits the stamp and skips the validation walk entirely
+   * instead of failing to write the caches on every boot.
    */
-  async load(url: string): Promise<void> {
+  async load(url: string, options?: { analyzeOnly?: boolean }): Promise<void> {
     const sourceUrl = await this.loader.resolveEntryPoint(url);
     this._entryUrl = sourceUrl;
     // Point the shared schema validator at the entry-anchored cache so
@@ -415,6 +424,24 @@ export class Kernel implements IKernel {
           `[telo:kernel] analysis stamp write failed: ${err instanceof Error ? err.message : String(err)}\n`,
         );
       }
+    }
+
+    // Build-time warm pass: the analysis caches are now on disk. Also bake the
+    // application-env residual validators — the runtime `resolveApplicationEnv`
+    // (below) compiles these on EVERY boot regardless of the stamp, so without
+    // pre-compiling them here an app with `variables`/`secrets`/`ports` would
+    // still hit the read-only `__validators` write on a baked image. Then stop
+    // before module instantiation / target wiring / application-env value
+    // resolution — those need a running environment (e.g. session secrets) the
+    // build does not have, and the runtime `load()` performs them anyway.
+    if (options?.analyzeOnly) {
+      if (rootModuleDoc?.kind === "Telo.Application") {
+        precompileApplicationEnvSchemas(
+          rootModuleDoc as Record<string, any>,
+          this.sharedSchemaValidator,
+        );
+      }
+      return;
     }
 
     // Load runtime configuration — root module gets access to host env.

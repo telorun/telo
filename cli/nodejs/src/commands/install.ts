@@ -1,7 +1,9 @@
 import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
 import {
   ControllerLoader,
+  Kernel,
   LocalFileSource,
+  LocalManifestCacheSource,
   resolveEntryDir,
   writeManifestCache,
 } from "@telorun/kernel";
@@ -52,6 +54,49 @@ function collectControllerJobs(manifests: ResourceManifest[]): ControllerJob[] {
   }
 
   return Array.from(byKey.values());
+}
+
+/**
+ * Bake the kernel's analysis caches into `<entryDir>/.telo/manifests/` so a
+ * prebuilt image boots without re-deriving them. `writeManifestCache` (above)
+ * only warms the URL→content manifest cache and `.telo/npm/`; the analysis
+ * stamp (`.validated.json`) and the compiled `__validators/` schema cache are
+ * produced exclusively by `kernel.load`. Without this pass the runtime
+ * `kernel.load` — running on a read-only session rootfs — misses the stamp,
+ * re-runs the full validation walk on every boot, and fails to persist either
+ * cache (EROFS / ENOENT noise on stderr).
+ *
+ * Runs the same offline `kernel.load` the runtime uses (LocalFileSource +
+ * LocalManifestCacheSource, same registry URL) in `analyzeOnly` mode, so the
+ * stamp's content signature matches byte-for-byte at run time. Best-effort:
+ * a failure here (e.g. a manifest that fails analysis) is surfaced as a
+ * warning but does not fail the install — the runtime re-validates and
+ * reports the real error there.
+ */
+async function warmAnalysisCache(
+  entryPath: string,
+  entryDir: string,
+  registryUrl: string,
+  log: Logger,
+): Promise<void> {
+  try {
+    const kernel = new Kernel({
+      registryUrl,
+      sources: [
+        new LocalFileSource(),
+        new LocalManifestCacheSource(entryDir, registryUrl),
+      ],
+    });
+    await kernel.load(entryPath, { analyzeOnly: true });
+    console.log(
+      `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), path.join(entryDir, ".telo/manifests")))}`,
+    );
+  } catch (err) {
+    console.error(
+      `  ${log.warn("⚠")}  analysis cache not warmed: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  }
 }
 
 async function installOne(
@@ -115,6 +160,7 @@ async function installOne(
 
   if (jobs.length === 0) {
     console.log(log.ok("✓") + `  ${displayPath}: no controllers to install`);
+    if (entryDir) await warmAnalysisCache(entryPath, entryDir, registryUrl, log);
     return true;
   }
 
@@ -154,6 +200,7 @@ async function installOne(
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   if (failed === 0) {
     console.log(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
+    if (entryDir) await warmAnalysisCache(entryPath, entryDir, registryUrl, log);
     return true;
   }
   console.log(
