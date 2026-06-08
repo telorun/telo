@@ -9,12 +9,14 @@ import type {
   RunnerBackend,
 } from "@telorun/runner-core";
 import { SessionStartError } from "@telorun/runner-core";
+import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
 
 import type { K8sRunnerConfig } from "../config.js";
 import type { BundleStore } from "../bundle-store.js";
 import { clampLimits } from "../limits.js";
 import type { KubeClient } from "./client.js";
 import { buildSessionPod } from "./pod-spec.js";
+import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
 
 /** Minimal surface of the websocket client-node's Attach returns. */
@@ -68,7 +70,26 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // a control plane begins passing limits, plumb them here — the clamp is
     // already min(requested, ceiling).
     const limits = clampLimits(config.limits, undefined);
-    const bundleUrl = await bundleStore.stage(spec.sessionId, spec.bundle);
+
+    // Prebuild a self-contained per-app image on-cluster (controllers + module
+    // manifests baked in) and run it directly. Controller resolution never
+    // happens on the session start path, so a slow or unreachable package
+    // registry can't stall a session. Throws SessionStartError on a build
+    // failure, carrying the build pod's log tail.
+    const image = await ensureSessionImage(
+      {
+        kube,
+        build: config.build,
+        bundleStore,
+        initImage: config.initImage,
+        managedByLabel: config.managedByLabel,
+      },
+      {
+        bundle: spec.bundle,
+        entryRelativePath: spec.entryRelativePath,
+        baseImage: spec.config.image || config.defaultImage,
+      },
+    );
 
     const pod = buildSessionPod({
       config,
@@ -77,9 +98,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       entryRelativePath: spec.entryRelativePath,
       env: spec.env,
       ports: spec.ports,
-      session: spec.config,
       limits,
-      bundleUrl,
+      image,
     });
 
     let podUid: string;
@@ -87,7 +107,6 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       const created = await kube.core.createNamespacedPod({ namespace: ns, body: pod });
       podUid = created.metadata?.uid ?? "";
     } catch (err) {
-      bundleStore.drop(spec.sessionId);
       throw new SessionStartError("start_failed", "create", `failed to create pod: ${msg(err)}`, msg(err));
     }
 
@@ -120,7 +139,6 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       clearStartDeadline();
       abortWatch();
       spec.onStatus(status);
-      bundleStore.drop(spec.sessionId);
       try {
         socket?.close();
       } catch {
@@ -220,7 +238,6 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       clearStartDeadline();
       abortWatch();
       await deletePod(kube, ns, podName);
-      bundleStore.drop(spec.sessionId);
       throw new SessionStartError("start_failed", "start", `pod failed to start: ${msg(err)}`, msg(err));
     }
 
@@ -335,8 +352,12 @@ async function clusterReachable(kube: KubeClient): Promise<boolean> {
   }
 }
 
+function podStatus(obj: unknown): V1Pod["status"] | undefined {
+  return (obj as V1Pod | undefined)?.status;
+}
+
 function podPhase(obj: unknown): string | undefined {
-  return (obj as { status?: { phase?: string } } | undefined)?.status?.phase;
+  return podStatus(obj)?.phase;
 }
 
 function terminalStatus(obj: unknown, userStopped: boolean): RunStatus {
@@ -346,20 +367,67 @@ function terminalStatus(obj: unknown, userStopped: boolean): RunStatus {
   return { kind: "failed", message: podFailureMessage(obj) };
 }
 
+// Exit code of the main session container — used to report a clean exit.
 function containerExitCode(obj: unknown): number | null {
-  const statuses = (obj as { status?: { containerStatuses?: Array<{ state?: { terminated?: { exitCode?: number } } }> } })
-    ?.status?.containerStatuses;
-  const term = statuses?.[0]?.state?.terminated;
+  const term = podStatus(obj)?.containerStatuses?.[0]?.state?.terminated;
   return typeof term?.exitCode === "number" ? term.exitCode : null;
 }
 
-function podFailureMessage(obj: unknown): string {
-  const status = (obj as { status?: { message?: string; reason?: string } })?.status;
-  const code = containerExitCode(obj);
-  if (status?.message) return status.message;
+const MAX_FAILURE_DETAIL = 500;
+
+/**
+ * Builds an actionable failure message from a terminal Pod status. Init
+ * containers are inspected first: a failed init container leaves the main
+ * container unstarted, so reading only `containerStatuses` would fall through
+ * to the bare "pod failed". For prebuilt session pods the common failure is the
+ * main container itself (image pull, OOM, a non-zero exit).
+ */
+export function podFailureMessage(obj: unknown): string {
+  const status = podStatus(obj);
+  const fromContainer = firstContainerProblem(status);
+  if (fromContainer) return fromContainer;
+  if (status?.message) return truncateDetail(status.message);
   if (status?.reason) return status.reason;
-  if (code !== null) return `container exited with code ${code}`;
   return "pod failed";
+}
+
+function firstContainerProblem(status: V1Pod["status"] | undefined): string | undefined {
+  const groups: Array<[string, V1ContainerStatus[] | undefined]> = [
+    ["init container", status?.initContainerStatuses],
+    ["container", status?.containerStatuses],
+  ];
+  for (const [label, statuses] of groups) {
+    for (const cs of statuses ?? []) {
+      const problem = containerStateProblem(cs.state) ?? containerStateProblem(cs.lastState);
+      if (problem) return `${label} "${cs.name}" ${problem}`;
+    }
+  }
+  return undefined;
+}
+
+function containerStateProblem(state: V1ContainerState | undefined): string | undefined {
+  const term = state?.terminated;
+  if (term && term.exitCode !== 0) {
+    const reason = term.reason ? `${term.reason} ` : "";
+    const detail = term.message ? `: ${truncateDetail(term.message)}` : "";
+    return `failed: ${reason}(exit code ${term.exitCode ?? "unknown"})${detail}`;
+  }
+  const waiting = state?.waiting;
+  if (waiting?.reason && isBlockingWaitReason(waiting.reason)) {
+    const detail = waiting.message ? `: ${truncateDetail(waiting.message)}` : "";
+    return `waiting: ${waiting.reason}${detail}`;
+  }
+  return undefined;
+}
+
+// Benign transient reasons the kubelet reports while a Pod is still coming up.
+function isBlockingWaitReason(reason: string): boolean {
+  return reason !== "PodInitializing" && reason !== "ContainerCreating";
+}
+
+function truncateDetail(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > MAX_FAILURE_DETAIL ? `${trimmed.slice(0, MAX_FAILURE_DETAIL)}…` : trimmed;
 }
 
 function is404(err: unknown): boolean {
