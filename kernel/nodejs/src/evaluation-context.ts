@@ -501,10 +501,13 @@ export class EvaluationContext implements IEvaluationContext {
     // the resolved entry for event topics and error messages.
     const effectiveKind = kind || (entry.resource.kind as string);
 
-    if (typeof entry.instance.invoke !== "function") {
+    if (
+      typeof entry.instance.invoke !== "function" &&
+      typeof entry.instance.run !== "function"
+    ) {
       throw new RuntimeError(
         "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${effectiveKind}.${name} does not have an invoke method`,
+        `Resource ${effectiveKind}.${name} does not have an invoke or run method`,
       );
     }
 
@@ -524,10 +527,10 @@ export class EvaluationContext implements IEvaluationContext {
     inputs: TInputs,
     ctx?: InvokeContext,
   ): Promise<any> {
-    if (typeof instance.invoke !== "function") {
+    if (typeof instance.invoke !== "function" && typeof instance.run !== "function") {
       throw new RuntimeError(
         "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${kind}.${name} does not have an invoke method`,
+        `Resource ${kind}.${name} does not have an invoke or run method`,
       );
     }
     return this.runInvoke(kind, name, instance, inputs, ctx);
@@ -560,8 +563,15 @@ export class EvaluationContext implements IEvaluationContext {
     try {
       // Only (re)establish the ALS scope when the token differs from the ambient
       // one — nested invokes that inherited it skip the redundant `run`.
+      // A step / boot-target slot may reference a pure Runnable (the schema
+      // allows `telo#Runnable` alongside `telo#Invocable`); dispatch it via
+      // `run()` — side effects only, no outputs. Prefer `invoke()` when both
+      // exist so a dual-capability instance (e.g. Run.Sequence) keeps invoke
+      // semantics and returns its `steps`/`outputs`.
       const call = () =>
-        (instance.invoke as (i: any, c?: InvokeContext) => any)(inputs as any, invokeCtx);
+        typeof instance.invoke === "function"
+          ? (instance.invoke as (i: any, c?: InvokeContext) => any)(inputs as any, invokeCtx)
+          : (instance.run as (c?: InvokeContext) => any)(invokeCtx);
       const outputs = await (invokeCtx === ambient
         ? call()
         : cancellationStore.run(invokeCtx, call));

@@ -12,7 +12,14 @@ export type {
 export {
     flattenForAnalyzer,
     flattenLoadedModule,
+    forwardReExportManifests,
+    parseExportEntry,
+    reExportSpecsFromExports,
+    resolveExportedKinds,
     selectModuleManifestsForAnalysis,
+    stampReExportedKinds,
+    type ParsedExportEntry,
+    type ReExportSpec,
 } from "./flatten-for-analyzer.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {

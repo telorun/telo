@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: re-export-kind-domain, version: 1.0.0 }
+imports:
+  Assert: ../../../../modules/assert
+exports:
+  kinds: [ Assert.Equals ]

@@ -1,0 +1,23 @@
+kind: Telo.Library
+metadata:
+  name: re-export-domain
+  version: 1.0.0
+imports:
+  Sql: ../../../../modules/sql
+exports:
+  resources: [ Db, Migrate ]
+---
+kind: Sql.SqliteConnection
+metadata:
+  name: Db
+file: ":memory:"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection: !ref Db
+migrations:
+  20260401_create_users:
+    statements:
+      - "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+      - "INSERT INTO users (id, name) VALUES (1, 'Alice')"

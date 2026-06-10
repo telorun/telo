@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: re-export-gateway
+  version: 1.0.0
+imports:
+  Api: ../api
+exports:
+  resources: [ Api.Db, Api.Migrate ]

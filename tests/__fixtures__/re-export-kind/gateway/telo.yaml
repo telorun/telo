@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: re-export-kind-gateway, version: 1.0.0 }
+imports:
+  Api: ../api
+exports:
+  kinds: [ Api.Equals ]

@@ -1,0 +1,52 @@
+# A Run.Sequence step `invoke:` may target a pure Runnable (the schema allows
+# `telo#Runnable` beside `telo#Invocable`); the runtime dispatches it via run().
+# Also exercises a Run.Sequence as a boot target (run+invoke dual instance).
+kind: Telo.Application
+metadata:
+  name: InvokeRunnableStep
+  version: 1.0.0
+imports:
+  Sql: ../modules/sql
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref Flow
+---
+kind: Sql.SqliteConnection
+metadata:
+  name: Db
+file: ":memory:"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection: !ref Db
+migrations:
+  init:
+    statements:
+      - "CREATE TABLE t (id INTEGER PRIMARY KEY)"
+      - "INSERT INTO t (id) VALUES (1)"
+---
+kind: Run.Sequence
+metadata:
+  name: Flow
+steps:
+  - name: RunMigrate
+    invoke: !ref Migrate
+  - name: Select
+    inputs:
+      sql: "SELECT id FROM t"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+  - name: Assert
+    inputs:
+      rows: "${{ steps.Select.result.rows }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            minItems: 1

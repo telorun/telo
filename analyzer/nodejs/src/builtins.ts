@@ -455,8 +455,10 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "object",
           properties: {
             kinds: { type: "array", items: { type: "string" } },
-            // `variables` / `secrets` are reserved on the resources.<Alias> value-flow
-            // surface, so a library may not export instances under those names.
+            // An entry is a bare name (`Db`, a locally-owned export) or a dotted `Alias.Name`
+            // (re-export of the instance reached via this library's import aliased `Alias`,
+            // under the name `Name`) — mirroring `exports.kinds`. `variables` / `secrets` are
+            // reserved on the resources.<Alias> value-flow surface, so they may not be exported.
             resources: {
               type: "array",
               items: { type: "string", not: { enum: ["variables", "secrets"] } },

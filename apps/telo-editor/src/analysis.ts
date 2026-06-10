@@ -2,15 +2,20 @@ import {
   AnalysisRegistry,
   StaticAnalyzer,
   buildDocumentPositions,
+  forwardReExportManifests,
   inlineImportManifests,
   isModuleKind,
+  reExportSpecsFromExports,
+  resolveExportedKinds,
   selectModuleManifestsForAnalysis,
+  stampReExportedKinds,
   type DocumentPosition,
+  type ReExportSpec,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { isWorkspaceModule, normalizePath } from "./loader";
-import type { ModuleDocument, Workspace } from "./model";
+import type { ModuleDocument, ParsedImport, Workspace } from "./model";
 
 interface EnrichedMetadata {
   name: string;
@@ -51,6 +56,17 @@ function toAnalysisManifests(
   const result: ResourceManifest[] = [];
   const positions: PositionMap = new Map();
 
+  // Accumulated for transitive re-export forwarding (mirrors the CLI's flattenForAnalyzer):
+  // re-export specs from each library's `exports.resources`, plus the data to map an
+  // import alias to its target module name.
+  const reExportSpecs: ReExportSpec[] = [];
+  const kindModules: Array<{ module: string; exportsKinds: string[] }> = [];
+  const importsByModule = new Map<string, ParsedImport[]>();
+  const moduleNameByPath = new Map<string, string>();
+  for (const [ownerPath, m] of app.modules) {
+    moduleNameByPath.set(normalizePath(ownerPath), m.metadata.name);
+  }
+
   for (const [ownerPath, manifest] of app.modules) {
     if (includeOwners && !includeOwners.has(ownerPath)) continue;
     const ownerKey = normalizePath(ownerPath);
@@ -58,6 +74,7 @@ function toAnalysisManifests(
     if (!ownerDoc) continue;
 
     const ownerModuleName = manifest.metadata.name;
+    importsByModule.set(ownerModuleName, manifest.imports);
 
     const partialKeys = new Set<string>();
     for (const r of manifest.resources) {
@@ -82,7 +99,40 @@ function toAnalysisManifests(
     }
 
     result.push(...selectModuleManifestsForAnalysis(moduleManifests, ownerPath === root));
+
+    // Collect re-export specs from this library's `exports` (imported modules only; the root
+    // Application has no exports). Forwarded after the loop once every module's own exports
+    // are in `result`.
+    if (ownerPath !== root) {
+      const libDoc = moduleManifests.find((mm) => isModuleKind(mm.kind)) as
+        | (ResourceManifest & { exports?: { resources?: unknown[]; kinds?: string[] } })
+        | undefined;
+      if (libDoc?.metadata?.name) {
+        const moduleName = libDoc.metadata.name as string;
+        reExportSpecs.push(...reExportSpecsFromExports(moduleName, libDoc.exports?.resources));
+        kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds ?? [] });
+      }
+    }
   }
+
+  const aliasToModule = (module: string, alias: string): string | undefined => {
+    const imp = importsByModule.get(module)?.find((i) => i.name === alias);
+    return imp?.resolvedPath ? moduleNameByPath.get(normalizePath(imp.resolvedPath)) : undefined;
+  };
+  forwardReExportManifests(result, reExportSpecs, aliasToModule);
+
+  // Resolve re-exported kinds and stamp them onto the synthetic Telo.Import manifests, mirroring
+  // flattenForAnalyzer so the editor's diagnostics match `telo check`.
+  const exportedKinds = resolveExportedKinds(kindModules, aliasToModule);
+  const imports: Array<{ manifest: ResourceManifest; targetModule: string }> = [];
+  for (const m of result) {
+    if (m.kind !== "Telo.Import") continue;
+    const ownerMod = (m.metadata as { module?: string } | undefined)?.module;
+    const alias = m.metadata?.name as string | undefined;
+    const target = ownerMod && alias ? aliasToModule(ownerMod, alias) : undefined;
+    if (target) imports.push({ manifest: m, targetModule: target });
+  }
+  stampReExportedKinds(imports, exportedKinds);
 
   return { manifests: result, positions };
 }
