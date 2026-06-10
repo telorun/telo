@@ -3,12 +3,22 @@
 export class AliasResolver {
   private readonly importAliases = new Map<string, string>();
   private readonly importedKinds = new Map<string, Set<string>>();
+  /** `${alias}.${suffix}` → canonical `<owningModule>.<Kind>` for kinds an import
+   *  transitively RE-EXPORTS (`exports.kinds: [Alias.Kind]`), which don't live in the
+   *  import's own module. Resolved before the normal `<module>.<suffix>` construction. */
+  private readonly reExportedKinds = new Map<string, string>();
 
   registerImport(alias: string, targetModule: string, exportedKinds: string[]): void {
     this.importAliases.set(alias, targetModule);
     if (exportedKinds.length > 0) {
       this.importedKinds.set(alias, new Set(exportedKinds));
     }
+  }
+
+  /** Register that `<alias>.<suffix>` re-exports the kind canonically named `canonicalKind`
+   *  (owned by a module the alias's target imports, possibly several hops away). */
+  registerKindReExport(alias: string, suffix: string, canonicalKind: string): void {
+    this.reExportedKinds.set(`${alias}.${suffix}`, canonicalKind);
   }
 
   /** Real module name an alias points at (e.g. "Console" → "console"), or undefined.
@@ -29,6 +39,10 @@ export class AliasResolver {
     if (dot === -1) return undefined;
     const prefix = kind.slice(0, dot);
     const suffix = kind.slice(dot + 1);
+    // Re-export takes precedence: a re-exported kind resolves to its true owning module,
+    // not `${prefix-target}.${suffix}` (and bypasses the gate — it's explicitly re-exported).
+    const reExported = this.reExportedKinds.get(`${prefix}.${suffix}`);
+    if (reExported) return reExported;
     const realModule = this.importAliases.get(prefix);
     if (!realModule) return undefined;
     const allowed = this.importedKinds.get(prefix);

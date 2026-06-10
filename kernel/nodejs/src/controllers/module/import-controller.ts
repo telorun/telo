@@ -1,4 +1,4 @@
-import { AnalysisRegistry, DiagnosticSeverity, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DiagnosticSeverity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
@@ -157,8 +157,26 @@ export async function create(
   // Throws if resources.X is not yet populated — the kernel retry loop catches this and retries.
   // const evaluatedExports: any = child.expand(moduleManifest.exports ?? {});
 
-  const exportedKinds: string[] = moduleManifest.exports?.kinds ?? [];
-  const exportedResourceNames: string[] = moduleManifest.exports?.resources ?? [];
+  // `exports.kinds` entries are a bare kind name (locally defined) or `Alias.Kind` (a re-export
+  // of an imported library's kind). `parseExportEntry` (shared with the analyzer) yields
+  // `{name, alias?}` — `name` is the exported kind suffix, `alias` (when set) names this
+  // library's own import it re-exports from.
+  const kindEntries = ((moduleManifest.exports?.kinds ?? []) as string[]).map(parseExportEntry);
+  const exportedKindSuffixes = kindEntries.map((k) => k.name);
+  // `exports.resources` entries are a bare name (`Db`, a locally-owned export) or a dotted
+  // `Alias.Name` (re-export of an imported instance, under name `Name`) — same grammar as
+  // `exports.kinds`.
+  const exportEntries = ((moduleManifest.exports?.resources ?? []) as unknown[]).map((e) => {
+    if (typeof e !== "string") {
+      throw new RuntimeError(
+        "ERR_INVALID_EXPORT",
+        `Library '${targetModule}' exports.resources entries must be plain names ('Name' or ` +
+          `'Alias.Name'); the '!ref' tag is not allowed in exports.resources.`,
+      );
+    }
+    return parseExportEntry(e);
+  });
+  const exportedResourceNames = exportEntries.map((e) => e.name);
   for (const name of exportedResourceNames) {
     if (name === "variables" || name === "secrets") {
       throw new RuntimeError(
@@ -167,30 +185,22 @@ export async function create(
       );
     }
   }
-  ctx.registerModuleImport(alias, targetModule, exportedKinds);
+  ctx.registerModuleImport(alias, targetModule, exportedKindSuffixes);
 
   // Publish the child's exported instances to the parent so cross-module `!ref Alias.name`
   // (Phase 5 injection / boot targets) and `${{ resources.Alias.name }}` (CEL value-flow)
-  // resolve. The gate is `exports.resources`; the lookup is lazy — instances exist after
-  // this import's init() has run child.initializeResources().
+  // resolve. The gate is `exports.resources`; the child's terminal getter is read lazily —
+  // it exists after this import's init() built the child's export table. Handing the parent
+  // the child's TERMINAL getter (not a wrapper) keeps resolution O(1) across re-export hops.
   (ctx.moduleContext as ModuleContext).registerImportedScope(
     alias,
     exportedResourceNames,
-    (name) => {
-      const entry = childCtx.resourceInstances.get(name);
-      if (!entry) return undefined;
-      // Canonicalize the authored kind to `<module>.<Kind>` so the cross-module ref shape and
-      // event naming are scope-independent. Exported instances are authored `Self.<Kind>` —
-      // the only case the std modules use, and the only one canonicalized here; it maps to the
-      // owning module directly, matching the analyzer's rule in resolve-ref-sentinels.ts. A
-      // re-exported foreign kind (authored via another import alias) is a future case with no
-      // current consumer and is left verbatim.
-      const rawKind = entry.resource.kind as string;
-      const kind = rawKind.startsWith("Self.")
-        ? `${targetModule}.${rawKind.slice("Self.".length)}`
-        : rawKind;
-      return { kind, instance: entry.instance };
-    },
+    (name) => childCtx.getTerminalExport(name),
+  );
+  // Same for kinds: `kind: Alias.Kind` resolves through the child's exported-kind table,
+  // covering both locally-defined and transitively re-exported kinds in O(1).
+  (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
+    childCtx.getExportedKind(suffix),
   );
 
   // Return a ResourceInstance whose snapshot() surfaces the exported values under
@@ -201,7 +211,7 @@ export async function create(
     snapshot: async () => {
       const exported: Record<string, unknown> = {};
       for (const name of exportedResourceNames) {
-        const inst = childCtx.resourceInstances.get(name)?.instance;
+        const inst = childCtx.getExported(name)?.instance;
         if (inst && typeof inst.snapshot === "function") {
           exported[name] = await Promise.resolve(inst.snapshot());
         }
@@ -214,6 +224,11 @@ export async function create(
     },
     init: async () => {
       await child.initializeResources();
+      // Build this import's flattened export tables now that its own imports are
+      // registered (leaves-first), so a re-export (`!ref Alias.name` / `Alias.Kind`)
+      // copies the source import's terminal getter / canonical kind by reference —
+      // O(1) resolution at any depth.
+      childCtx.buildExportTable(exportEntries, kindEntries, targetModule);
     },
     teardown: async () => {
       await child.teardownResources();

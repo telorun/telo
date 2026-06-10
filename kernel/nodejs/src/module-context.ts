@@ -103,14 +103,40 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   /** Maps import alias → its child context's exported instances. Registered by the
    *  Telo.Import controller; read when resolving a cross-module `!ref Alias.name`
    *  reference (Phase 5 injection and boot targets). `names` is the import's
-   *  `exports.resources` gate — only listed instances are reachable. */
+   *  `exports.resources` gate — only listed instances are reachable. `terminal`
+   *  returns the child's pre-flattened terminal getter for a name (a closure that
+   *  points directly at the OWNING context's instance, however many re-export hops
+   *  away), so resolution stays O(1) regardless of re-export depth. */
   private readonly importedScopes = new Map<
     string,
     {
       names: Set<string>;
-      get: (name: string) => { kind: string; instance: ResourceInstance } | undefined;
+      terminal: (
+        name: string,
+      ) => (() => { kind: string; instance: ResourceInstance } | undefined) | undefined;
     }
   >();
+
+  /** This module's flattened export table: export name → terminal getter. A local
+   *  export's getter reads this context's own `resourceInstances`; a re-export
+   *  (`!ref Alias.name`) holds the SAME closure object as the owner's entry, copied
+   *  by reference at build time so depth adds no resolution hops. Built once by the
+   *  Telo.Import controller after this module's own imports have initialized. */
+  private readonly exportedGetters = new Map<
+    string,
+    () => { kind: string; instance: ResourceInstance } | undefined
+  >();
+
+  /** This module's flattened exported-KIND table: exported kind suffix → canonical
+   *  `<owningModule>.<Kind>`. A local exported kind maps to `<thisModule>.<Kind>`; a
+   *  re-export (`exports.kinds: [Alias.Kind]`) copies the source import's already-canonical
+   *  string, so depth adds no resolution hops. Built by `buildExportTable`. */
+  private readonly exportedKinds = new Map<string, string>();
+
+  /** Maps import alias → a resolver into that import's exported-kind table. Registered by the
+   *  Telo.Import controller; consulted by `resolveKind` so an imported library's kinds — local
+   *  OR transitively re-exported — resolve to their true owning module in O(1). */
+  private readonly importedKindResolvers = new Map<string, (suffix: string) => string | undefined>();
 
   /**
    * Resolved controller-selection policy for this module's `Telo.Definition`s.
@@ -202,24 +228,127 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   /** Register an import alias's exported instances for cross-module reference resolution.
-   *  `names` is the gate (the import's `exports.resources`); `get` reads the child context's
-   *  live instance + its canonical kind lazily — they exist only after the import's `init()`
-   *  runs. */
+   *  `names` is the gate (the import's `exports.resources`); `terminal` returns the child
+   *  context's pre-flattened terminal getter for a name (existing only after the import's
+   *  `init()` built the child's export table). */
   registerImportedScope(
     alias: string,
     names: string[],
-    get: (name: string) => { kind: string; instance: ResourceInstance } | undefined,
+    terminal: (
+      name: string,
+    ) => (() => { kind: string; instance: ResourceInstance } | undefined) | undefined,
   ): void {
-    this.importedScopes.set(alias, { names: new Set(names), get });
+    this.importedScopes.set(alias, { names: new Set(names), terminal });
+  }
+
+  /** This module's terminal getter for an exported `name`, or undefined. Read by a parent
+   *  import building its own (re-)export table — copying this closure by reference flattens
+   *  the chain so resolution never walks hops. */
+  getTerminalExport(
+    name: string,
+  ): (() => { kind: string; instance: ResourceInstance } | undefined) | undefined {
+    return this.exportedGetters.get(name);
+  }
+
+  /** O(1) resolution of an exported instance owned or re-exported by this module. */
+  getExported(name: string): { kind: string; instance: ResourceInstance } | undefined {
+    return this.exportedGetters.get(name)?.();
+  }
+
+  /** Register an import alias's exported-kind resolver (the child's `getExportedKind`). */
+  registerImportedKindScope(alias: string, resolve: (suffix: string) => string | undefined): void {
+    this.importedKindResolvers.set(alias, resolve);
+  }
+
+  /** This module's canonical kind for an exported suffix (local or re-exported), or undefined. */
+  getExportedKind(suffix: string): string | undefined {
+    return this.exportedKinds.get(suffix);
+  }
+
+  /** Build this module's flattened export tables from `exports.resources` / `exports.kinds`.
+   *  A resource entry is a local export (no alias) or a re-export `Alias.Name` (alias set); a
+   *  kind entry is a local kind (no alias) or a re-export `Alias.Kind` (alias set). A local
+   *  export gets a fresh terminal getter / `<module>.<Kind>` canonical; a re-export copies the
+   *  source import's terminal getter / already-canonical kind by reference, collapsing the chain
+   *  to a single hop. Called once by the Telo.Import controller after this module's own imports
+   *  have initialized (leaves-first), so re-export sources are already registered — an
+   *  unresolvable re-export is therefore a permanent misconfiguration and throws here. */
+  buildExportTable(
+    entries: ReadonlyArray<{ name: string; alias?: string }>,
+    kindEntries: ReadonlyArray<{ name: string; alias?: string }>,
+    moduleName: string,
+  ): void {
+    for (const entry of entries) {
+      const name = entry.name;
+      if (entry.alias && entry.alias !== "Self") {
+        // A re-export resolves against this module's own imports, which have all initialized
+        // by now (leaves-first) — so an unresolved source is a permanent misconfiguration, not
+        // a transient miss. Surface it instead of silently dropping the export.
+        const scope = this.importedScopes.get(entry.alias);
+        if (!scope) {
+          throw new RuntimeError(
+            "ERR_INVALID_REEXPORT",
+            `Library '${moduleName}' re-exports '${entry.alias}.${name}' but declares no import ` +
+              `aliased '${entry.alias}'. Add it to this library's 'imports', or remove the ` +
+              `'exports.resources' entry.`,
+          );
+        }
+        const terminal = scope.terminal(name);
+        if (!terminal) {
+          throw new RuntimeError(
+            "ERR_INVALID_REEXPORT",
+            `Library '${moduleName}' re-exports '${entry.alias}.${name}', but the imported ` +
+              `library '${entry.alias}' exports no instance named '${name}'.`,
+          );
+        }
+        this.exportedGetters.set(name, terminal);
+        continue;
+      }
+      this.exportedGetters.set(name, () => {
+        const inst = this.resourceInstances.get(name);
+        if (!inst) return undefined;
+        // Canonicalize the authored kind to `<module>.<Kind>` so the cross-module ref shape
+        // and event naming are scope-independent (matches resolve-ref-sentinels.ts).
+        const rawKind = inst.resource.kind as string;
+        const kind = rawKind.startsWith("Self.")
+          ? `${moduleName}.${rawKind.slice("Self.".length)}`
+          : rawKind;
+        return { kind, instance: inst.instance };
+      });
+    }
+    for (const k of kindEntries) {
+      if (k.alias && k.alias !== "Self") {
+        const resolver = this.importedKindResolvers.get(k.alias);
+        if (!resolver) {
+          throw new RuntimeError(
+            "ERR_INVALID_REEXPORT",
+            `Library '${moduleName}' re-exports kind '${k.alias}.${k.name}' but declares no ` +
+              `import aliased '${k.alias}'. Add it to this library's 'imports', or remove the ` +
+              `'exports.kinds' entry.`,
+          );
+        }
+        const canonical = resolver(k.name);
+        if (!canonical) {
+          throw new RuntimeError(
+            "ERR_INVALID_REEXPORT",
+            `Library '${moduleName}' re-exports kind '${k.alias}.${k.name}', but the imported ` +
+              `library '${k.alias}' exports no kind named '${k.name}'.`,
+          );
+        }
+        this.exportedKinds.set(k.name, canonical);
+        continue;
+      }
+      this.exportedKinds.set(k.name, `${moduleName}.${k.name}`);
+    }
   }
 
   /** Resolve `Alias.name` to a live exported instance, gated by `exports.resources`.
    *  Returns undefined when the alias is unknown, the name isn't exported, or the import
-   *  hasn't initialized its instances yet (the injection path defers and retries). */
+   *  hasn't built its export table yet (the injection path defers and retries). O(1). */
   override resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;
-    return scope.get(name)?.instance;
+    return scope.terminal(name)?.()?.instance;
   }
 
   /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)
@@ -228,7 +357,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;
-    const entry = scope.get(name);
+    const entry = scope.terminal(name)?.();
     return entry ? { kind: entry.kind, name } : undefined;
   }
 
@@ -292,6 +421,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           `Exported kinds: ${[...allowed].join(", ")}`,
       );
     }
+    // Re-export override: if this import's exported-kind table maps the suffix to a DIFFERENT
+    // owning module, the kind is transitively re-exported (`exports.kinds: [Alias.Kind]`) —
+    // resolve to its true owner. A local kind maps to `${realModule}.${suffix}` (no override),
+    // and a module without `exports.kinds` has an empty table (unrestricted, unchanged). Built
+    // deferred, so before the import inits this returns the un-overridden kind, whose controller
+    // miss makes the init loop retry until the table is ready.
+    const reExported = this.importedKindResolvers.get(prefix)?.(suffix);
+    if (reExported && reExported !== `${realModule}.${suffix}`) return reExported;
     return `${realModule}.${suffix}`;
   }
 
@@ -363,7 +500,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         await this.run(target, ctx);
         continue;
       }
-      if ("invoke" in target && target.invoke !== undefined) {
+      // A bare `!ref Alias.name` boot target is Phase-5-injected into the live
+      // instance, which for a Run.Sequence exposes both `run()` and `invoke()`.
+      // Guard against treating such an instance as an authored inline-invoke
+      // step — only a structural `{ invoke: <ref>, inputs }` spec (no `run`)
+      // belongs here; the live instance falls through to the runnable branch.
+      if (!isRunnableInstance(target) && "invoke" in target && target.invoke !== undefined) {
         const step: InvokeStep = {
           name: target.name ?? `Target${i}`,
           when: target.when,

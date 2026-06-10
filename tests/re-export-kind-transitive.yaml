@@ -1,0 +1,24 @@
+# Transitive re-export of a KIND across three import boundaries:
+# app -> gateway -> api -> domain, where `domain` re-exports the real `Assert.Equals`
+# kind it imports. The app imports ONLY gateway yet instantiates `Gw.Equals`, which
+# must resolve to the owning `assert.Equals` controller. See plans/transitive-re-export.md.
+kind: Telo.Application
+metadata:
+  name: ReExportKindTransitive
+  version: 1.0.0
+imports:
+  Gw: ./__fixtures__/re-export-kind/gateway
+  Run: ../modules/run
+targets:
+  - !ref Check
+---
+kind: Run.Sequence
+metadata:
+  name: Check
+steps:
+  - name: Assert
+    inputs:
+      actual: 42
+      expected: 42
+    invoke:
+      kind: Gw.Equals

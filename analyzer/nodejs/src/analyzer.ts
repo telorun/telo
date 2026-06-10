@@ -706,16 +706,22 @@ export class StaticAnalyzer {
           if (resolvedModuleName) {
             defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
           }
+          // `metadata.reExportedKinds` (stamped by flattenForAnalyzer / the editor projection)
+          // maps an exported suffix to the true owning module's canonical kind for kinds this
+          // import transitively re-exports (`exports.kinds: [Alias.Kind]`).
+          const reExportedKinds = ((m.metadata as any)?.reExportedKinds ?? {}) as Record<
+            string,
+            string
+          >;
           // Alias registration is scoped: consumer imports vs. imported-library imports.
-          if (!ownModule || rootModules.has(ownModule)) {
-            aliases.registerImport(alias, targetModule, exportedKinds);
-          } else {
-            let libResolver = aliasesByModule.get(ownModule);
-            if (!libResolver) {
-              libResolver = new AliasResolver();
-              aliasesByModule.set(ownModule, libResolver);
-            }
-            libResolver.registerImport(alias, targetModule, exportedKinds);
+          const resolver =
+            !ownModule || rootModules.has(ownModule)
+              ? aliases
+              : (aliasesByModule.get(ownModule) ??
+                aliasesByModule.set(ownModule, new AliasResolver()).get(ownModule)!);
+          resolver.registerImport(alias, targetModule, exportedKinds);
+          for (const [suffix, canonical] of Object.entries(reExportedKinds)) {
+            resolver.registerKindReExport(alias, suffix, canonical);
           }
         }
       }
@@ -862,6 +868,26 @@ export class StaticAnalyzer {
               data: { resource, filePath, path: `${block}.${entryName}.env` },
             });
           }
+        }
+      }
+      // `exports.resources` entries are plain names: `Db` (local) or `Alias.Name` (re-export),
+      // mirroring `exports.kinds`. The `!ref` tag is not accepted here — a `!ref` parses to a
+      // sentinel object that the schema's CEL/ref exemption would silently pass, so reject any
+      // non-string entry with an actionable message instead.
+      const exportsResources = (m as Record<string, any>).exports?.resources;
+      if (Array.isArray(exportsResources)) {
+        for (let i = 0; i < exportsResources.length; i++) {
+          if (typeof exportsResources[i] === "string") continue;
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "INVALID_EXPORT",
+            source: SOURCE,
+            message:
+              `Telo.Library exports.resources[${i}]: write the exported name as a plain string — ` +
+              `'Name' to export a local instance, or 'Alias.Name' to re-export an imported one. ` +
+              `The '!ref' tag is not allowed in exports.resources.`,
+            data: { resource, filePath, path: `exports.resources.${i}` },
+          });
         }
       }
     }

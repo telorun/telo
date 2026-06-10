@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: re-export-api
+  version: 1.0.0
+imports:
+  Domain: ../domain
+exports:
+  resources: [ Domain.Db, Domain.Migrate ]
