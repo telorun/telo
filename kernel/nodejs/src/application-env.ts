@@ -125,6 +125,43 @@ export function precompileApplicationEnvSchemas(
 }
 
 /**
+ * Build-time cache warm for resource-config validators. The runtime
+ * `_createInstance` compiles `controller.schema` — which falls back to the
+ * declaring `Telo.Definition`'s own `schema` — to validate every resource's
+ * config, then validates inputs/outputs against `inputType` / `outputType`.
+ * The analyze-only warm pass stops before instantiation, so without this those
+ * validators are absent from the `__validators` cache and the runtime
+ * recompiles (and, on a read-only image, fails to persist) them on every boot.
+ *
+ * Compiling each definition's `schema` (plus any inline `inputType` /
+ * `outputType` object schemas) here writes them into the same content-addressed
+ * cache the runtime reads, keyed identically because the same schema object is
+ * fed to the same `validator.compile`. Definitions whose controller exports its
+ * own `schema` (rare) still recompile at runtime — that needs the controller
+ * loaded, which the warm pass does not do. Compile failures are swallowed; a
+ * genuinely broken schema surfaces through analysis / runtime, not here.
+ */
+export function precompileDefinitionSchemas(
+  manifests: Array<Record<string, any>>,
+  validator: SchemaValidator,
+): void {
+  const compile = (schema: unknown): void => {
+    if (!schema || typeof schema !== "object") return;
+    try {
+      validator.compile(schema as any);
+    } catch {
+      // Broken schemas are reported by analysis / runtime, not the warm pass.
+    }
+  };
+  for (const m of manifests) {
+    if (m?.kind !== "Telo.Definition") continue;
+    compile(m.schema);
+    compile(m.inputType);
+    compile(m.outputType);
+  }
+}
+
+/**
  * Populate the root Application's `ports` namespace from host environment
  * variables. Mirrors `resolveBlock` but fixes the value type to a port integer
  * (1–65535): read `entry.env`, coerce the raw value as an integer, validate it

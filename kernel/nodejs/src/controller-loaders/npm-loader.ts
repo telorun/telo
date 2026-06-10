@@ -104,14 +104,17 @@ export interface NpmControllerLoaderOptions {
  * local entry manifest (`file://` URL or bare path) the root lives at
  * `<entry-manifest-dir>/.telo/npm/`; for an HTTP(S) entry URL it lives in a
  * user-level cache keyed by `sha256(entryUrl)` (see `computeInstallRoot`).
- * Every controller — registry tag or `local_path` — is installed via
- * `npm install <spec>` into this root, then imported from
- * `<root>/node_modules/<pkg>`. This collapses two parallel
- * module realms (kernel-side @telorun/sdk vs. controller-side @telorun/sdk)
- * into one: the kernel's own SDK is wired in as a `file:` dep, npm/pnpm
- * symlink it, and Node's ESM resolver follows the symlink to the same
- * realpath as the kernel — so `Stream` (and any other class-identity-sensitive
- * type) has a single constructor across the process.
+ * Every controller — registry tag or `local_path` — is installed under a
+ * version-scoped npm alias (`npm install <alias>@<spec>`, see `installAlias`)
+ * into this root, then imported from `<root>/node_modules/<alias>`. The alias
+ * encodes `name@version`, so a graph that references one package at two
+ * versions keeps both in the single flat `node_modules` instead of the last
+ * `--save` clobbering the first. This still collapses two parallel module
+ * realms (kernel-side @telorun/sdk vs. controller-side @telorun/sdk) into one:
+ * `@telorun/sdk` is exempt from aliasing and wired in as a `file:` dep under
+ * its real name, npm/pnpm hoist a single copy, and Node's ESM resolver follows
+ * it to the same realpath as the kernel — so `Stream` (and any other
+ * class-identity-sensitive type) has a single constructor across the process.
  *
  * Per-kernel state lives on each `NpmControllerLoader` instance (one is
  * constructed per `ControllerLoader`, which is itself constructed per
@@ -169,17 +172,21 @@ export class NpmControllerLoader {
       throw new Error(`Invalid PURL '${purl}': missing package name`);
     }
     const packageName = parsed.namespace ? `${parsed.namespace}/${parsed.name}` : parsed.name;
+    const version = parsed.version ?? null;
+    // Version-scope the install under an alias so the same package at two
+    // versions can coexist in one flat node_modules (see installAlias).
+    const alias = installAlias(packageName, version);
 
     const installRoot = await this.ensureInstallRoot();
     const resolved = await resolveInstallSpec(parsed, packageName, baseUri);
     const source = await this.installPackage(
       installRoot,
-      packageName,
+      alias,
       resolved.spec,
       resolved.kind,
-      parsed.version ?? null,
+      version,
     );
-    const instance = await loadFromInstall(installRoot, packageName, parsed.subpath ?? null, purl);
+    const instance = await loadFromInstall(installRoot, alias, parsed.subpath ?? null, purl);
     return { instance, source };
   }
 
@@ -296,6 +303,11 @@ export class NpmControllerLoader {
     installRoot: string,
     dependencies: Record<string, string>,
   ): Promise<void> {
+    // `dependencies` is only the realm-collapse deps (`@telorun/sdk`), keyed by
+    // real `name@spec`. Controllers, by contrast, key `installedSpecs` by their
+    // version-scoped alias in `installPackage`. The two key spaces are
+    // intentionally disjoint — realm-collapse names are wired in here and never
+    // flow through `installPackage`, so an alias and a `name@spec` never clash.
     for (const [name, spec] of Object.entries(dependencies)) {
       this.installedSpecs.add(`${name}@${spec}`);
     }
@@ -303,11 +315,14 @@ export class NpmControllerLoader {
   }
 
   /**
-   * Install one controller spec into the existing root. Single-flight per
-   * spec within the process; cross-process safety is the fs-lock around the
-   * `npm install` call. If the spec is already present in the manifest's
-   * package.json (under `dependencies`), skip — reusing the previous install.
+   * Install one controller into the existing root under its version-scoped
+   * `alias` folder. Single-flight per alias within the process; cross-process
+   * safety is the fs-lock around the `npm install` call. If the alias is
+   * already installed (right version on disk, or a matching `file:` record),
+   * skip — reusing the previous install.
    *
+   * `spec` is the source half of the install (`npm:<name>@<version>` or
+   * `file:<abs>`); the package manager is invoked with `<alias>@<spec>`.
    * `kind` distinguishes a `local_path` source (loader synthesized `file:`
    * spec) from a registry tag. The CLI silences progress for both `cache`
    * and `local`; `npm-install` is the only event surfaced. Folding this
@@ -316,12 +331,12 @@ export class NpmControllerLoader {
    */
   private async installPackage(
     installRoot: string,
-    packageName: string,
+    alias: string,
     spec: string,
     kind: SpecKind,
     requestedVersion: string | null,
   ): Promise<NpmResolveSource> {
-    const cacheKey = `${packageName}@${spec}`;
+    const cacheKey = alias;
     if (this.installedSpecs.has(cacheKey)) return "cache";
 
     const inFlight = this.inFlight.get(cacheKey);
@@ -330,17 +345,20 @@ export class NpmControllerLoader {
       return "cache";
     }
 
-    const targetPath = path.join(installRoot, "node_modules", ...packageName.split("/"));
+    // The package is installed under its version-scoped alias, so its folder
+    // name in node_modules is the alias, not the bare package name.
+    const targetPath = path.join(installRoot, "node_modules", alias);
 
     // Registry fast path: compare against the installed package's own
-    // `package.json` version field. `rootDeps[packageName]` can't be used
-    // here because npm rewrites registry specs on `--save` — we pass
-    // `@scope/pkg@0.3.4`, npm writes `^0.3.4` — so a string comparison
-    // never matches and every fresh `NpmControllerLoader` (one per
-    // `Telo.Definition.init`) would fall through to a no-op but ~200ms
+    // `package.json` version field. The recorded dep spec can't be used here
+    // because npm rewrites registry specs on `--save` — we pass
+    // `<alias>@npm:@scope/pkg@0.3.4`, npm writes `npm:@scope/pkg@^0.3.4` — so a
+    // string comparison never matches and every fresh `NpmControllerLoader`
+    // (one per `Telo.Definition.init`) would fall through to a no-op but ~200ms
     // `npm install`. Reading the installed package.json sidesteps that
-    // entirely: if the requested PURL version equals what's on disk, we
-    // already have the right thing.
+    // entirely: if the requested PURL version equals what's on disk under this
+    // alias, we already have the right thing. Because the alias encodes the
+    // version, a present alias folder is always the requested version.
     //
     // Ranges (`^1.0.0`, `~2.3.0`) fall through to a real `npm install` —
     // they're rare in PURLs (which typically pin) and a proper range check
@@ -354,37 +372,47 @@ export class NpmControllerLoader {
         this.installedSpecs.add(cacheKey);
         return "cache";
       }
-    }
-
-    // Local (`file:`) spec fast path: consult the in-process snapshot of the
-    // install root's `dependencies` map (seeded by `materializeInstallRoot`).
-    // Normalize because npm rewrites absolute `file:` deps to relative paths
-    // inside the install root's `package.json` — the loader passes the
-    // absolute path, the on-disk record is `file:../../foo`.
-    const cachedSpec = this.rootDeps[packageName];
-    if (
-      cachedSpec !== undefined &&
-      normalizeFileSpec(cachedSpec, installRoot) === normalizeFileSpec(spec, installRoot) &&
-      (await pathExists(targetPath))
-    ) {
-      this.installedSpecs.add(cacheKey);
-      return "cache";
+    } else {
+      // Local (`file:`) spec fast path: consult the in-process snapshot of the
+      // install root's `dependencies` map (seeded by `materializeInstallRoot`).
+      // Normalize because npm rewrites absolute `file:` deps to relative paths
+      // inside the install root's `package.json` — the loader passes the
+      // absolute path, the on-disk record is `file:../../foo`.
+      const cachedSpec = this.rootDeps[alias];
+      if (
+        cachedSpec !== undefined &&
+        normalizeFileSpec(cachedSpec, installRoot) === normalizeFileSpec(spec, installRoot) &&
+        (await pathExists(targetPath))
+      ) {
+        this.installedSpecs.add(cacheKey);
+        return "cache";
+      }
     }
 
     const work = (async () => {
       await withInstallLock(installRoot, async () => {
         // Re-check inside the lock: a peer process may have installed the
-        // spec between the fast-path miss and our acquisition. Normalize
-        // the on-disk record to absolute form before comparing — npm
-        // rewrites `file:` deps to be relative to the install root.
-        const lockedSpec = await readDepSpec(installRoot, packageName);
-        if (
-          lockedSpec !== undefined &&
-          normalizeFileSpec(lockedSpec, installRoot) === normalizeFileSpec(spec, installRoot) &&
-          (await pathExists(targetPath))
-        ) {
-          this.rootDeps[packageName] = lockedSpec;
-          return;
+        // spec between the fast-path miss and our acquisition.
+        if (kind === "registry") {
+          const installedVersion = await readInstalledVersion(targetPath);
+          if (
+            installedVersion !== null &&
+            (requestedVersion === null || requestedVersion === installedVersion)
+          ) {
+            return;
+          }
+        } else {
+          // Normalize the on-disk record to absolute form before comparing —
+          // npm rewrites `file:` deps to be relative to the install root.
+          const lockedSpec = await readDepSpec(installRoot, alias);
+          if (
+            lockedSpec !== undefined &&
+            normalizeFileSpec(lockedSpec, installRoot) === normalizeFileSpec(spec, installRoot) &&
+            (await pathExists(targetPath))
+          ) {
+            this.rootDeps[alias] = lockedSpec;
+            return;
+          }
         }
 
         await runPackageManager(installRoot, [
@@ -394,14 +422,17 @@ export class NpmControllerLoader {
           "--silent",
           ...PEER_INSTALL_FLAGS,
           "--save",
-          spec,
+          // `<alias>@<source-spec>` installs the package under the alias folder
+          // (`npm:` for registry, `file:` for local) so multiple versions of
+          // one package name coexist in the single install root.
+          `${alias}@${spec}`,
         ]);
         // Re-read what npm actually wrote (it normalizes `file:` paths to
         // be relative to the install root). Caching the spec in its on-disk
         // form keeps subsequent fast-path comparisons stable.
-        const written = await readDepSpec(installRoot, packageName);
-        if (written !== undefined) this.rootDeps[packageName] = written;
-        else this.rootDeps[packageName] = spec;
+        const written = await readDepSpec(installRoot, alias);
+        if (written !== undefined) this.rootDeps[alias] = written;
+        else this.rootDeps[alias] = spec;
       });
     })();
 
@@ -694,6 +725,35 @@ function computeInstallRoot(entryUrl: string): string {
 }
 
 /**
+ * Version-qualified install alias for a controller package. The kernel's single
+ * flat install root can hold only one folder per package name, but a manifest
+ * graph may legitimately reference the same package at multiple versions (e.g.
+ * a library pins `@telorun/mcp-client@0.3.1` while the app uses `0.4.0`).
+ * Installing each `name@version` under a distinct npm alias
+ * (`npm install <alias>@npm:<name>@<version>`) lets every version coexist in
+ * one `node_modules`, mirroring the per-(name, version) identity of a Telo
+ * module singleton. `@telorun/sdk` is intentionally NOT routed through here —
+ * it stays under its real name so realm-collapse hoists a single copy across
+ * the kernel/controller boundary (see REALM_COLLAPSE_NAMES).
+ *
+ * The result is a valid unscoped npm package name: the scope `@` is dropped,
+ * `/` becomes `__`, and any character outside npm's name grammar is replaced
+ * with `-`. Because that sanitization is lossy (e.g. build metadata `1.0.0+x`
+ * and prerelease `1.0.0-x` both fold to `1.0.0-x`, and a `__` already in a
+ * package name overlaps the scope separator), the alias ends with a short hash
+ * of the *exact* `name@version` — so two distinct pairs can never collide onto
+ * one folder regardless of how their readable prefixes sanitize. The readable
+ * prefix is kept purely so the install tree is greppable.
+ */
+function installAlias(packageName: string, version: string | null): string {
+  const prefix = `${packageName.replace(/^@/, "").replace(/\//g, "__")}__${version ?? "latest"}`
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .toLowerCase();
+  const digest = sha256(`${packageName}@${version ?? ""}`).slice(0, 8);
+  return `${prefix}__${digest}`;
+}
+
+/**
  * Normalize a `file:` spec to an absolute path so two specs that point at the
  * same source — one absolute (what the loader synthesizes from `local_path`)
  * and one relative (what npm rewrites into the install root's package.json) —
@@ -770,7 +830,10 @@ async function resolveInstallSpec(
       return { kind: "local", spec: `file:${absolutePath}`, absolutePath };
     }
   }
-  const spec = parsed.version ? `${packageName}@${parsed.version}` : packageName;
+  // `npm:` source spec so the caller can install it under a version-scoped
+  // alias (`<alias>@npm:<name>@<version>`); both versions of one package name
+  // then coexist in the single flat install root.
+  const spec = parsed.version ? `npm:${packageName}@${parsed.version}` : `npm:${packageName}`;
   return { kind: "registry", spec };
 }
 
@@ -782,11 +845,13 @@ async function resolveInstallSpec(
  */
 async function loadFromInstall(
   installRoot: string,
-  packageName: string,
+  alias: string,
   subpath: string | null,
   purl: string,
 ): Promise<ControllerInstance> {
-  const packageRoot = path.join(installRoot, "node_modules", ...packageName.split("/"));
+  // The package lives under its version-scoped alias folder (see installAlias),
+  // not its bare scoped name.
+  const packageRoot = path.join(installRoot, "node_modules", alias);
   const entry = subpath ? `./${subpath}` : ".";
   const entryFile = await resolvePackageEntry(packageRoot, entry);
   // ESM dynamic `import()` accepts either a relative specifier or a `file://`
@@ -937,6 +1002,7 @@ function resolveExportTargetValue(
  * Not part of the kernel's public API — consumers should not import these.
  */
 export const __testing__ = {
+  installAlias,
   normalizeFileSpec,
   resolvePackageExportTarget,
   resolveExportTargetValue,

@@ -41,7 +41,11 @@ import {
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
 import { resolveEntryDir } from "./manifest-sources/local-manifest-cache-source.js";
-import { precompileApplicationEnvSchemas, resolveApplicationEnv } from "./application-env.js";
+import {
+  precompileApplicationEnvSchemas,
+  precompileDefinitionSchemas,
+  resolveApplicationEnv,
+} from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
 
@@ -441,6 +445,25 @@ export class Kernel implements IKernel {
           this.sharedSchemaValidator,
         );
       }
+      // Bake the per-kind resource-config validators too. `_createInstance`
+      // compiles `controller.schema` (which falls back to the definition's own
+      // `schema`) for every resource at runtime — work this analyze-only pass
+      // otherwise skips because it stops before instantiation, leaving the
+      // runtime to recompile and fail to persist them on a read-only image.
+      // Pre-compiling every `Telo.Definition` schema here writes them into the
+      // same content-addressed `__validators/` cache the runtime reads.
+      precompileDefinitionSchemas(staticManifests, this.sharedSchemaValidator);
+      // Framework/builtin controller schemas (`Telo.Import`, `Telo.Definition`,
+      // the module controller, …) aren't in the static manifests but are
+      // validated per-resource at runtime just the same. They're registered by
+      // `loadBuiltinDefinitions` above, so bake them from the registry.
+      precompileDefinitionSchemas(
+        this.controllers.getControllerSchemas().map((schema) => ({
+          kind: "Telo.Definition",
+          schema,
+        })),
+        this.sharedSchemaValidator,
+      );
       return;
     }
 
