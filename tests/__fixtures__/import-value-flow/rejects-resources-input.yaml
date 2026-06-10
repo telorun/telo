@@ -1,0 +1,13 @@
+# Import inputs are a config-only contract: referencing `resources.*` (a runtime
+# value-flow surface) is a static error. Used by import-input-rejects-resources.yaml.
+kind: Telo.Application
+metadata:
+  name: ImportInputRejectsResources
+  version: 1.0.0
+imports:
+  Data:
+    source: ./data
+    variables:
+      dbFile: "${{ resources.Foo.value }}"
+targets:
+  - !ref Data.Migrate

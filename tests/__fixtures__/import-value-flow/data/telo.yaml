@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata:
+  name: import-value-flow-data
+  version: 1.0.0
+imports:
+  Sql: ../../../../modules/sql
+variables:
+  dbFile:
+    type: string
+exports:
+  resources: [ Db, Migrate ]
+---
+# The connection path is the forwarded config value. Before the import-value-flow
+# fix this `${{ }}` reached the controller as a compiled-value object and crashed.
+kind: Sql.SqliteConnection
+metadata:
+  name: Db
+file: "${{ variables.dbFile }}"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection: !ref Db
+migrations:
+  20260601_seed:
+    statements:
+      - "CREATE TABLE marker (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+      - "INSERT INTO marker (id, name) VALUES (1, 'flowed')"

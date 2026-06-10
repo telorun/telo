@@ -1,0 +1,19 @@
+# Import inputs are config-only: a `${{ resources.X }}` reference in an import's
+# variables/secrets must be a static error (resources/env are not in scope there).
+kind: Telo.Application
+metadata:
+  name: ImportInputRejectsResourcesTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref Check
+---
+kind: Assert.Manifest
+metadata:
+  name: Check
+source: ./__fixtures__/import-value-flow/rejects-resources-input.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "No such key: Foo"

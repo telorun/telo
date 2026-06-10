@@ -108,12 +108,27 @@ export async function create(
   validateRequiredInputs(moduleManifest.variables ?? {}, resource.variables ?? {}, "variables");
   validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");
 
-  // Create child context with the imported variables/secrets baked in, so that
-  // ${{ variables.x }} / ${{ secrets.y }} templates resolve correctly at runtime.
+  // Evaluate the import's variables/secrets ONCE against the IMPORTER's config
+  // scope, instead of baking the raw compiled-value objects verbatim. Resolution
+  // is eager and per-hop: each importer resolves its child's inputs from its own
+  // already-settled config, so config flows app -> lib -> lib at any nesting depth
+  // and a leaf reads `variables.X` as an O(1) concrete lookup with no chain-walk.
+  // The single concrete result seeds both the child scope and the snapshot value-
+  // flow surface, so they can never diverge.
+  //
+  // NOTE: `expandValue` evaluates against the importer's FULL context (variables /
+  // secrets, plus env/resources for a root app). The config-only import contract —
+  // no resources/env/ports in import inputs — is enforced by the analyzer, not here;
+  // a `${{ resources.X }}` slipping past analysis (skipValidation / programmatic
+  // load) would evaluate at runtime rather than being rejected.
+  const importVariables =
+    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {};
+  const importSecrets =
+    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {};
   const childCtx = new ModuleContext(
     ctx.moduleContext.source,
-    (resource.variables as Record<string, unknown>) ?? {},
-    (resource.secrets as Record<string, unknown>) ?? {},
+    importVariables,
+    importSecrets,
     {},
     [],
     ctx.moduleContext.createInstance,
@@ -217,8 +232,8 @@ export async function create(
         }
       }
       return {
-        variables: ctx.expandValue(resource.variables, {}) ?? {},
-        secrets: ctx.expandValue(resource.secrets, {}) ?? {},
+        variables: importVariables,
+        secrets: importSecrets,
         ...exported,
       };
     },

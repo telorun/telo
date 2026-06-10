@@ -5,6 +5,7 @@ import { AliasResolver } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
   buildCelEnvironment,
+  buildImportInputCelEnvironment,
   buildTypedCelEnvironment,
   type CelHandlers,
 } from "./cel-environment.js";
@@ -969,8 +970,27 @@ export class StaticAnalyzer {
                 },
               }
             : definition.schema;
-        // Phase 1: CEL type checking — walk data+schema together, check env.check() return types
-        const baseTypedEnv = buildTypedCelEnvironment(this.celEnv, m, undefined, moduleManifest);
+        // Phase 1: CEL type checking — walk data+schema together, check env.check() return types.
+        // A Telo.Import's variables/secrets are a config-only contract evaluated against the
+        // IMPORTING module's scope, so type them from the owning module doc (matched by
+        // `metadata.module`) and drop `resources`/`env` so referencing them is an error. A
+        // library's own internal import is validated against that library in the library's
+        // standalone analysis; in this flattened app pass the library doc is absent, so the
+        // importer is undefined here and variables/secrets fall back to a permissive `map`
+        // (no false positives) while resources/env stay rejected.
+        const importerModule =
+          m.kind === "Telo.Import"
+            ? allManifests.find(
+                (mm) =>
+                  (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
+                  (mm.metadata as { name?: string } | undefined)?.name ===
+                    (m.metadata as { module?: string } | undefined)?.module,
+              )
+            : undefined;
+        const baseTypedEnv =
+          m.kind === "Telo.Import"
+            ? buildImportInputCelEnvironment(this.celEnv, importerModule)
+            : buildTypedCelEnvironment(this.celEnv, m, undefined, moduleManifest);
         const celIssues = collectCelTypeIssues(
           m,
           schema,

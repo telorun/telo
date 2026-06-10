@@ -1,0 +1,44 @@
+# Config flows app -> mid -> data (leaf) through two nested import hops. The
+# app->mid hop forwards via the `!cel` form, the mid->data hop via `${{ }}` —
+# both reach the leaf's Sql.SqliteConnection as a concrete string. Before the
+# fix the CEL hop was baked verbatim as a compiled-value object and crashed the
+# connection. `:memory:` keeps it hermetic; the forwarding hops are still CEL, so
+# the bug is exercised. `Mid.Db`/`Mid.Migrate` are re-exported from data, proving
+# the value reached the single owning instance.
+kind: Telo.Application
+metadata:
+  name: ImportValueFlow
+  version: 1.0.0
+variables:
+  db:
+    env: IMPORT_VALUE_FLOW_DB
+    type: string
+    default: ":memory:"
+imports:
+  Mid:
+    source: ./__fixtures__/import-value-flow/mid
+    variables:
+      dbFile: !cel "variables.db"
+  Sql: ../modules/sql
+  Assert: ../modules/assert
+  Run: ../modules/run
+targets:
+  - !ref Mid.Migrate
+  - !ref Verify
+---
+kind: Run.Sequence
+metadata:
+  name: Verify
+steps:
+  - name: Select
+    inputs:
+      sql: "SELECT name FROM marker WHERE id = 1"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Mid.Db
+  - name: AssertSeeded
+    inputs:
+      actual: "${{ steps.Select.result.rows[0].name }}"
+      expected: "flowed"
+    invoke:
+      kind: Assert.Equals

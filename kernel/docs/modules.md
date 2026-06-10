@@ -162,11 +162,11 @@ The root of every running instance is a `Telo.Application`. It is the only modul
 
 ### 5.1 The `env` Capability
 
-The `env` object represents the host process's environment variables and is **exclusively available** in the root Application. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
+The `env` object represents the host process's environment variables and is **exclusively available** in the root Application's own resource CEL. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: The root `Telo.Application` and any `imports:` entry declared in its files.
-- **Unavailable in**: Any imported `Telo.Library`, regardless of nesting depth.
-- **Usage**: `${{ env.VARIABLE_NAME }}` in any CEL expression within the root Application.
+- **Available in**: CEL expressions on the root `Telo.Application`'s own resources.
+- **Unavailable in**: an `imports:` entry's `variables:`/`secrets:` — those are a **config-only contract** whose expressions see only the importing module's `variables`/`secrets` (never `env`, `resources`, or `ports`) — and any imported `Telo.Library`, regardless of nesting depth.
+- **Usage**: `${{ env.VARIABLE_NAME }}` in a root-Application resource. To pass an env-derived value into an import, bind it to a typed root `variables:`/`secrets:` entry and forward it as `${{ variables.X }}` / `${{ secrets.X }}`.
 
 ### 5.2 Designating a Root Module
 
@@ -174,7 +174,7 @@ The root is always the `Telo.Application` named on the CLI or by the deployment 
 
 ### 5.3 Example
 
-The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely.
+The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely. The root binds host env into its own typed `variables:`/`secrets:`, then forwards those into each import — an import input is a **config-only** expression that may reference the importing module's `variables`/`secrets`, but not `env` directly.
 
 ```yaml
 # main.yaml (The Root Application)
@@ -182,23 +182,34 @@ kind: Telo.Application
 metadata:
   name: backend-root
   version: 1.0.0
+# Host env is bound into the root's own typed contract...
+secrets:
+  stripeApiKey:
+    env: STRIPE_SECRET_KEY
+    type: string
+  stripeWebhookSignature:
+    env: STRIPE_WEBHOOK_SECRET
+    type: string
+variables:
+  databaseUrl:
+    env: DATABASE_URL
+    type: string
 imports:
-  # The root module imports the payment gateway and injects host environment
-  # variables into the child module's explicit contract.
+  # ...then forwarded into each child's explicit contract. Import inputs reference
+  # the importing module's variables/secrets — never `env`. Forwarding is eager and
+  # per-hop, so a value flows app -> lib -> lib at any depth and resolves in O(1).
   PaymentGateway:
     source: acme/payment-gateway@1.2.0
     variables:
       upstreamProviderUrl: "https://api.stripe.com"
       retryTimeoutMs: 5000
     secrets:
-      # The 'env' capability is available here because this is the root module.
-      # It securely maps host environment variables to the child's secret contract.
-      providerApiKey: "${{ env.STRIPE_SECRET_KEY }}"
-      webhookSignature: "${{ env.STRIPE_WEBHOOK_SECRET }}"
+      providerApiKey: "${{ secrets.stripeApiKey }}"
+      webhookSignature: "${{ secrets.stripeWebhookSignature }}"
   UserService:
     source: acme/user-service@1.0.0
     variables:
-      dbConnectionString: "${{ env.DATABASE_URL }}"
+      dbConnectionString: "${{ variables.databaseUrl }}"
 ```
 
 The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or reference `env`. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
