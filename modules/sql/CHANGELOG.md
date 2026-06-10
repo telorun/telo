@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-06-07
+## 0.9.1 - 2026-06-10
+### Fixed
+* Update controller @telorun/sql to 0.7.1.## 0.9.0 - 2026-06-07
 ### Added
 * Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.
 * Connection / transaction / type reference slots use the unified `!ref` form; the legacy `oneOf` string / `{kind, name}` shapes are removed from the schema.## 0.8.0 - 2026-06-06
