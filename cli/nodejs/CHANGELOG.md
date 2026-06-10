@@ -1,5 +1,30 @@
 # @telorun/cli
 
+## 0.25.0
+
+### Patch Changes
+
+- 206cf98: fix(cli): restore `telo run --watch`
+
+  Watch mode was inert — its file watching and reload were stubbed out against
+  two kernel methods (`getSourceFiles`, `reloadSource`) that no longer exist.
+  Reimplement it as a full-restart loop: load → derive the graph's local files
+  (entry, `include:` partials, imported libraries) → start (held alive so
+  one-shot apps don't exit) → reload on any change by cancelling and tearing the
+  kernel down, then rebuilding. Load/boot failures are reported as diagnostics
+  and watch keeps running so the next edit retries. The watcher set is persistent
+  across reloads (one long-lived `fs.watch` per file) rather than torn down and
+  recreated each cycle — under bun, re-`fs.watch`-ing a just-closed path never
+  fires again, which limited reloads to exactly one.
+
+- Updated dependencies [c89e79b]
+- Updated dependencies [c89e79b]
+- Updated dependencies [1098ad0]
+- Updated dependencies [4794671]
+  - @telorun/kernel@0.25.0
+  - @telorun/analyzer@0.23.0
+  - @telorun/ide-support@0.4.23
+
 ## 0.24.2
 
 ### Patch Changes

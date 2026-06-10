@@ -1,5 +1,60 @@
 # @telorun/analyzer
 
+## 0.23.0
+
+### Minor Changes
+
+- c89e79b: feat(kernel,analyzer): transitive re-export of exported instances and kinds
+
+  A `Telo.Library` may now re-export both an instance and a kind it reaches through one
+  of its own imports, using plain dotted names (the `!ref` tag is not allowed in
+  `exports.resources`):
+
+  ```yaml
+  exports:
+    resources:
+      - Migrate # export a locally-owned instance
+      - Domain.Db # re-export the instance reached via this lib's `Domain` import
+    kinds:
+      - Greeting # export a locally-defined kind
+      - Domain.Thing # re-export a kind imported from `Domain`
+  ```
+
+  A consumer importing the library as `Api` then references `!ref Api.Db` /
+  `kind: Api.Thing`. Re-export composes to arbitrary depth (`app → api → domain → …`)
+  because each hop just re-declares `<PrevAlias>.<Name>` / `<PrevAlias>.<Kind>`,
+  and resolution stays O(1) regardless of depth: each import builds flattened export
+  tables that copy the owner's terminal getter / canonical kind by reference, so a
+  lookup never walks the chain. The analyzer forwards re-exported instances and kinds
+  transitively (fixpoint over the import graph) so `telo check` resolves them too,
+  keeping static analysis and runtime in agreement, and the `exports.kinds` gate still
+  rejects kinds that aren't re-exported. Bare-string `exports.resources` entries keep
+  working as local exports.
+
+### Patch Changes
+
+- 4794671: fix(kernel,analyzer): evaluate import `variables`/`secrets` against the importer's config
+
+  An import's `variables:`/`secrets:` values that contained CEL expressions (`${{ }}` or
+  `!cel`) were baked into the child library context **verbatim** — as unevaluated
+  compiled-value objects — instead of being evaluated against the importing module. So
+  config could not flow from an application through intermediate libraries into leaf
+  libraries: a nested `dbFile: "${{ variables.dbFile }}"` reached the leaf as an object and
+  crashed the consumer (e.g. `Sql.SqliteConnection`: `path must be of type string, got
+object`).
+
+  Import inputs are now evaluated against the **importing module's `variables`/`secrets`**.
+  Resolution is eager and per-hop — each importer resolves its child's inputs from its own
+  already-settled config — so a value flows `app -> lib -> lib` at any nesting depth and a
+  leaf reads `variables.X` as an O(1) concrete lookup, with no chain-walk.
+
+  Import inputs are a config-only contract: the analyzer now type-checks these expressions
+  against the importer's `variables`/`secrets` (catching typos and fixing the prior
+  wrong-scope `!cel` false positive), and rejects `resources`/`env`/`ports` references —
+  runtime value-flow surfaces are deliberately out of scope here. To pass an env-derived
+  value into a library, bind it to a typed root `variables:`/`secrets:` entry and forward
+  `${{ variables.X }}` / `${{ secrets.X }}`.
+
 ## 0.22.0
 
 ### Minor Changes

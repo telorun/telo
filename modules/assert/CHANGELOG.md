@@ -1,5 +1,7 @@
 # Changelog
-## 0.8.0 - 2026-06-07
+## 0.8.1 - 2026-06-10
+### Fixed
+* Update controller @telorun/assert to 0.7.10.## 0.8.0 - 2026-06-07
 ### Added
 * Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.
 ### Fixed
