@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: import-value-flow-mid
+  version: 1.0.0
+imports:
+  Data:
+    source: ../data
+    variables:
+      dbFile: "${{ variables.dbFile }}"
+variables:
+  dbFile:
+    type: string
+exports:
+  resources: [ Data.Db, Data.Migrate ]

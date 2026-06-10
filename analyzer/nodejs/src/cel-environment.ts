@@ -102,3 +102,60 @@ export function buildTypedCelEnvironment(
     return baseEnv.clone();
   }
 }
+
+/** Register a `variables`/`secrets` namespace typed from a module doc's schema map
+ *  (`{ name: <schema>, … }`), falling back to dyn `map` when absent or untyped. */
+function registerConfigNamespace(
+  env: Environment,
+  block: unknown,
+  name: "variables" | "secrets",
+): void {
+  if (block !== null && typeof block === "object" && !Array.isArray(block)) {
+    const entries = Object.entries(block as Record<string, unknown>).filter(
+      ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
+    );
+    if (entries.length > 0) {
+      const schema: Record<string, string> = {};
+      for (const [k, v] of entries) schema[k] = jsonSchemaToCelType(v as Record<string, any>);
+      (env as any).registerVariable({ name, schema });
+      return;
+    }
+  }
+  env.registerVariable(name, "map");
+}
+
+/** CEL environment for the `variables:`/`secrets:` expressions on a `Telo.Import`.
+ *
+ *  Import inputs are a config-only contract: their expressions are evaluated
+ *  against the IMPORTING module's `variables`/`secrets`, never the import's own
+ *  values map (the bug) nor the imported child's. `resources`, `env`, and `ports`
+ *  are registered as empty typed objects, so referencing them is a "No such key"
+ *  error that steers authors to a typed `variables` entry. */
+export function buildImportInputCelEnvironment(
+  baseEnv: Environment,
+  moduleManifest: ResourceManifest | undefined,
+): Environment {
+  const env = baseEnv.clone();
+  for (const brand of Object.keys(VALUE_BRAND_BASE)) {
+    (env as any).registerType(brand, { fields: {} });
+  }
+  const mod = moduleManifest as Record<string, unknown> | undefined;
+  // Typing variables/secrets from the importer's schema can fail on a malformed
+  // schema; degrade those to permissive `map` if so — but never lose the
+  // resources/env/ports rejection registered below (the catch is scoped so a
+  // typing failure can't silently re-open the config-only contract).
+  try {
+    registerConfigNamespace(env, mod?.variables, "variables");
+    registerConfigNamespace(env, mod?.secrets, "secrets");
+  } catch {
+    env.registerVariable("variables", "map");
+    env.registerVariable("secrets", "map");
+  }
+  // Override the base env's dyn `resources`/`env`/`ports` with empty typed objects
+  // so any access (`resources.X`, `env.X`) is a "No such key" error — these
+  // surfaces are not part of the config-only import contract.
+  for (const name of ["resources", "env", "ports"]) {
+    (env as any).registerVariable({ name, schema: {} });
+  }
+  return env;
+}

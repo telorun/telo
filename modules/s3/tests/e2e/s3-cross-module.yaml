@@ -11,9 +11,10 @@ metadata:
 imports:
   S3: ../../
   # The bucket lives in the imported library; its connection is supplied as
-  # literal import values (import variables are baked verbatim — they are not
-  # CEL-evaluated in the parent scope). Endpoint matches the docker-compose
-  # `storage` service the s3 CI job publishes on :9000.
+  # literal import values here. Import variables may also be `${{ variables.X }}`
+  # / `${{ secrets.X }}` expressions, evaluated against the importing module's
+  # config. Endpoint matches the docker-compose `storage` service the s3 CI job
+  # publishes on :9000.
   Storage:
     source: ./__fixtures__/storage-lib.yaml
     variables:
