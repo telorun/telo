@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __testing__ } from "../src/controller-loaders/npm-loader.js";
 
 const {
+  installAlias,
   normalizeFileSpec,
   resolvePackageExportTarget,
   resolveExportTargetValue,
@@ -13,6 +14,42 @@ const {
   DEFAULT_RESOLVER_CONDITIONS,
   REALM_COLLAPSE_NAMES,
 } = __testing__;
+
+describe("installAlias", () => {
+  const validNpmName = /^[a-z0-9][a-z0-9._-]*$/;
+
+  it("produces a greppable, valid unscoped npm package name", () => {
+    const a = installAlias("@telorun/mcp-client", "0.4.0");
+    expect(a).toMatch(validNpmName);
+    expect(a.startsWith("telorun__mcp-client__0.4.0__")).toBe(true);
+    expect(installAlias("plain-pkg", "1.2.3").startsWith("plain-pkg__1.2.3__")).toBe(true);
+  });
+
+  it("gives distinct aliases to two versions of the same package so they coexist", () => {
+    expect(installAlias("@telorun/mcp-client", "0.4.0")).not.toBe(
+      installAlias("@telorun/mcp-client", "0.3.1"),
+    );
+  });
+
+  it("is deterministic for the same input", () => {
+    expect(installAlias("@telorun/mcp-client", "0.4.0")).toBe(
+      installAlias("@telorun/mcp-client", "0.4.0"),
+    );
+  });
+
+  it("falls back to a 'latest' sentinel when no version is pinned", () => {
+    expect(installAlias("@telorun/sql", null).startsWith("telorun__sql__latest__")).toBe(true);
+  });
+
+  it("never collides distinct versions whose readable prefixes sanitize alike", () => {
+    // `1.0.0+build.5` and `1.0.0-build.5` both fold to the same readable prefix
+    // once `+` is sanitized — the content hash must keep them apart so two
+    // versions never share one install folder (the bug this whole change fixes).
+    const build = installAlias("@telorun/ai", "1.0.0+build.5");
+    const prerelease = installAlias("@telorun/ai", "1.0.0-build.5");
+    expect(build).not.toBe(prerelease);
+  });
+});
 
 describe("normalizeFileSpec", () => {
   const installRoot = "/abs/install/root";

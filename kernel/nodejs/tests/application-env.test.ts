@@ -1,11 +1,105 @@
 import { RuntimeError } from "@telorun/sdk";
-import { describe, expect, it } from "vitest";
-import { resolveApplicationEnv } from "../src/application-env.js";
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  precompileDefinitionSchemas,
+  resolveApplicationEnv,
+} from "../src/application-env.js";
 import { SchemaValidator } from "../src/schema-validator.js";
 
 function buildValidator(): SchemaValidator {
   return new SchemaValidator();
 }
+
+describe("precompileDefinitionSchemas", () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-defwarm-"));
+  });
+  afterEach(async () => {
+    await fs.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const defSchema = {
+    type: "object",
+    properties: { url: { type: "string" } },
+    required: ["url"],
+  };
+
+  it("bakes a standalone validator for each Telo.Definition schema", async () => {
+    const v = buildValidator();
+    v.setCacheDir(cacheDir);
+    precompileDefinitionSchemas(
+      [{ kind: "Telo.Definition", metadata: { name: "Thing" }, schema: defSchema }],
+      v,
+    );
+    const baked = await fs.readdir(cacheDir);
+    expect(baked.filter((f) => f.endsWith(".cjs")).length).toBe(1);
+  });
+
+  it("warm-compiled validators are hash-stable across a fresh validator (runtime hits the cache)", async () => {
+    // Warm with one validator instance, then a brand-new instance pointed at the
+    // same cache must reuse the baked file — i.e. write nothing new. Mirrors the
+    // build (`telo install`) → runtime (`telo run`) handoff across processes.
+    const warm = buildValidator();
+    warm.setCacheDir(cacheDir);
+    precompileDefinitionSchemas([{ kind: "Telo.Definition", schema: defSchema }], warm);
+    const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+    const runtime = buildValidator();
+    runtime.setCacheDir(cacheDir);
+    runtime.compile(defSchema).validate({ url: "x" });
+    const afterRuntime = (await fs.readdir(cacheDir)).sort();
+    expect(afterRuntime).toEqual(afterWarm);
+  });
+
+  it("converges a parse-time tagged sentinel with the runtime compiled value of the same source", () => {
+    // Build-time warm sees `{__tagged, engine, source}`; runtime sees
+    // `{__compiled, source}`. Same `source` → one validator identity.
+    const v = buildValidator();
+    const tagged = {
+      ...defSchema,
+      examples: [{ url: { __tagged: true, engine: "cel", source: "req.id" } }],
+    };
+    const compiled = {
+      ...defSchema,
+      examples: [{ url: { __compiled: true, source: "req.id" } }],
+    };
+    expect(v.compile(tagged)).toBe(v.compile(compiled));
+  });
+
+  it("converges an inline-template string with its compiled form (same source)", () => {
+    const v = buildValidator();
+    const inline = { ...defSchema, description: "hi ${{ x }}" };
+    const compiledInline = {
+      ...defSchema,
+      description: { __compiled: true, source: "hi ${{ x }}" },
+    };
+    expect(v.compile(inline)).toBe(v.compile(compiledInline));
+  });
+
+  it("does NOT collide schemas that differ by a property literally named 'description'", () => {
+    // Regression guard: the cache key must not drop keys by name — `description`
+    // here is a validated field, not an annotation keyword.
+    const v = buildValidator();
+    const withDesc = {
+      type: "object",
+      properties: { name: { type: "string" }, description: { type: "string" } },
+      additionalProperties: false,
+    };
+    const withoutDesc = {
+      type: "object",
+      properties: { name: { type: "string" } },
+      additionalProperties: false,
+    };
+    expect(v.compile(withDesc)).not.toBe(v.compile(withoutDesc));
+    expect(v.compile(withDesc).isValid({ name: "x", description: "y" })).toBe(true);
+    expect(v.compile(withoutDesc).isValid({ name: "x", description: "y" })).toBe(false);
+  });
+});
 
 describe("resolveApplicationEnv", () => {
   it("populates variables and secrets from env", () => {

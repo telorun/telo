@@ -99,6 +99,24 @@ export class ControllerRegistry {
   }
 
   /**
+   * Distinct controller `schema` objects across all registered kinds (one per
+   * kind, default fingerprint preferred). Used by the build-time validator warm
+   * to pre-compile the framework/builtin controller schemas (`Telo.Import`,
+   * `Telo.Definition`, the module controller, …) the runtime validates
+   * resources against — module-defined kinds aren't registered here until
+   * instantiation, so those are warmed from the static manifests instead.
+   */
+  getControllerSchemas(): object[] {
+    const schemas: object[] = [];
+    for (const byFp of this.controllersByKind.values()) {
+      const controller = byFp.get(DEFAULT_FINGERPRINT) ?? byFp.values().next().value;
+      const schema = controller?.schema;
+      if (schema && typeof schema === "object") schemas.push(schema);
+    }
+    return schemas;
+  }
+
+  /**
    * Register a controller for a (kind, fingerprint). Multiple registrations
    * for the same kind with different fingerprints coexist; same fingerprint
    * overwrites the prior entry.

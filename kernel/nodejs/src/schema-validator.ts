@@ -1,5 +1,5 @@
 import { evaluate } from "@marcbachmann/cel-js";
-import { DataValidator, RuntimeError, TypeRule } from "@telorun/sdk";
+import { DataValidator, isCompiledValue, RuntimeError, TypeRule } from "@telorun/sdk";
 import AjvModule, { type ValidateFunction } from "ajv";
 import standaloneCodeMod from "ajv/dist/standalone/index.js";
 import addFormats from "ajv-formats";
@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { formatAjvErrors } from "./manifest-schemas.js";
-import { ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
+import { isTaggedSentinel, ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;
 // AJV's standalone subpath is CJS — the default export shows up as either
@@ -76,6 +76,39 @@ function verifyAndExtractBody(text: string): string | null {
   const body = text.slice(match[0].length);
   const actual = createHash("sha256").update(body).digest("hex");
   return actual === match[1] ? body : null;
+}
+
+/** Deep-clone `value` collapsing every CEL/template sentinel to its original
+ *  `source` string, for use as the validator cache *key* only.
+ *
+ *  The same `Telo.Definition` schema reaches `compile()` in two forms: the
+ *  build-time validator warm feeds the raw analysis graph (parse-time
+ *  `{__tagged, engine, source}` sentinels, or plain `${{ }}` strings for inline
+ *  templates), while the runtime feeds the compile-loader output (`{__compiled,
+ *  source, parts}`). A `!cel` / `!sql` tag embedded anywhere in a schema — most
+ *  commonly inside `examples` / `description`, but the loader rewrites them at
+ *  any position — therefore serialises differently between the two, so without
+ *  normalisation the same kind hashes differently and the runtime misses the
+ *  warmed cache (and fails to persist it read-only). Both sentinel shapes carry
+ *  the same original `source`, so collapsing each to that string converges them.
+ *
+ *  This rewrites only the hash key — AJV still compiles the full `injected`
+ *  schema. Unlike dropping keys by name, it never removes a structural node, so
+ *  a property literally named `description` / `examples` keeps its schema in the
+ *  key and two genuinely different shapes never collide. */
+function normalizeSentinelsForHash(value: unknown): unknown {
+  if (isCompiledValue(value) || isTaggedSentinel(value)) {
+    return typeof value.source === "string" ? value.source : { __teloSentinel: true };
+  }
+  if (Array.isArray(value)) return value.map(normalizeSentinelsForHash);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = normalizeSentinelsForHash(v);
+    }
+    return out;
+  }
+  return value;
 }
 
 export class SchemaValidator {
@@ -194,7 +227,12 @@ export class SchemaValidator {
     const injected = normalizeRefSlots(withImplicit) as typeof withImplicit;
 
     const hash = createHash("sha256")
-      .update(JSON.stringify({ runtime: VALIDATOR_RUNTIME_TAG, schema: injected }))
+      .update(
+        JSON.stringify({
+          runtime: VALIDATOR_RUNTIME_TAG,
+          schema: normalizeSentinelsForHash(injected),
+        }),
+      )
       .digest("hex")
       .slice(0, 32);
     const cachedByHash = this.hashCache.get(hash);
