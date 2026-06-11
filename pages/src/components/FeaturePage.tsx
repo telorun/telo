@@ -15,9 +15,9 @@ export interface FeaturePoint {
 // Ordered carousel of the "Designed to be" pages. The hero arrows cycle
 // through this list, so each page knows its siblings by its own slug.
 const FEATURE_PAGES: { slug: string; title: string }[] = [
-  { slug: "/developer-first", title: "Developer first" },
-  { slug: "/business-first", title: "Business first" },
-  { slug: "/ai-first", title: "AI first" },
+  { slug: "/for-developers", title: "For developers" },
+  { slug: "/for-teams", title: "For teams" },
+  { slug: "/for-ai", title: "For AI" },
 ];
 
 export interface FeaturePageProps {

@@ -3,9 +3,9 @@ import FeaturePage from "@site/src/components/FeaturePage";
 export default function BusinessFirst() {
   return (
     <FeaturePage
-      slug="/business-first"
+      slug="/for-teams"
       emoji="🤝"
-      title="Business first"
+      title="For teams"
       tagline="One artifact for product and engineering - no spec-to-code translation layer."
       intro="Most backends live as a spec the business owns and code the engineers own, with a lossy translation in between. Telo collapses that gap: the manifest is both the specification and the running system, and it stays visually editable the whole way."
       points={[
