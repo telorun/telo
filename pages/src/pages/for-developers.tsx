@@ -3,9 +3,9 @@ import FeaturePage from "@site/src/components/FeaturePage";
 export default function DeveloperFirst() {
   return (
     <FeaturePage
-      slug="/developer-first"
+      slug="/for-developers"
       emoji="🛠"
-      title="Developer first"
+      title="For developers"
       tagline="Errors caught early, surfaced clearly, and traced to the line that needs fixing."
       intro="Telo treats developer experience as a correctness problem. Mistakes show up as actionable diagnostics in your editor - not as opaque stack traces at runtime - and the analyzer that powers them runs the same checks the kernel does before it boots."
       points={[

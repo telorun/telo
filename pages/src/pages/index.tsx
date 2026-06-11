@@ -16,7 +16,7 @@ export default function Home() {
             width={160}
           />
           <h1 className="hero__title">Telo</h1>
-          <p className="hero__subtitle">Runtime for declarative backends.</p>
+          <p className="hero__subtitle">Define how your app works. Telo builds and runs it.</p>
           <div className="heroButtons">
             <Link className="button button--primary button--lg margin-right--md" to="/learn/getting-started">
               Get started
@@ -28,41 +28,41 @@ export default function Home() {
 
           <div className="row heroCards margin-top--xl">
             <div className="col col--4">
-              <Link className="card cardLink heroCard" to="/developer-first">
+              <Link className="card cardLink heroCard" to="/for-developers">
                 <div className="card__header text--center">
                   <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
                     🛠
                   </div>
-                  <h3 className="margin-top--sm margin-bottom--none">Developer first</h3>
+                  <h3 className="margin-top--sm margin-bottom--none">For developers</h3>
                 </div>
                 <div className="card__body">
-                  Errors caught early, surfaced clearly, and traced to the line that needs fixing.
+                  Mistakes get caught early and traced to the exact line to fix.
                 </div>
               </Link>
             </div>
             <div className="col col--4">
-              <Link className="card cardLink heroCard" to="/business-first">
+              <Link className="card cardLink heroCard" to="/for-teams">
                 <div className="card__header text--center">
                   <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
                     🤝
                   </div>
-                  <h3 className="margin-top--sm margin-bottom--none">Business first</h3>
+                  <h3 className="margin-top--sm margin-bottom--none">For teams</h3>
                 </div>
                 <div className="card__body">
-                  One artifact for product and engineering - no spec-to-code translation layer.
+                  One shared file product and engineering both read - no translating ideas into code.
                 </div>
               </Link>
             </div>
             <div className="col col--4">
-              <Link className="card cardLink heroCard" to="/ai-first">
+              <Link className="card cardLink heroCard" to="/for-ai">
                 <div className="card__header text--center">
                   <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
                     ✨
                   </div>
-                  <h3 className="margin-top--sm margin-bottom--none">AI first</h3>
+                  <h3 className="margin-top--sm margin-bottom--none">For AI</h3>
                 </div>
                 <div className="card__body">
-                  Agents can generate, review, and transform entire backends without losing intent.
+                  AI assistants can build and edit your whole system without losing the plan.
                 </div>
               </Link>
             </div>
@@ -71,14 +71,55 @@ export default function Home() {
       </header>
 
       <main className="container margin-vert--xl">
-        <p>
-          Telo is an execution engine (Micro-Kernel) that runs logic defined entirely in YAML
-          manifests. Instead of writing imperative backend code, you define your routes, databases,
-          schemas, and AI workflows as atomic, interconnected YAML documents. Telo takes those
-          manifests and runs them.
+        <p className="text--center" style={{ fontSize: "1.25rem", maxWidth: 720, margin: "0 auto" }}>
+          Instead of writing code, you define what your app needs — its data, its rules, what happens
+          when something comes in — and Telo turns that into a working system and runs it.
         </p>
 
-        <h2 className="text--center margin-top--xl margin-bottom--lg">Why Telo?</h2>
+        <h2 className="text--center margin-top--xl margin-bottom--lg">How it works</h2>
+        <div className="row margin-bottom--xl">
+          <div className="col col--4 margin-bottom--md">
+            <div className="card">
+              <div className="card__header text--center">
+                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                  ✍️
+                </div>
+                <h3 className="margin-top--sm">1. Define it</h3>
+              </div>
+              <div className="card__body">
+                Lay out what your app should do, piece by piece. No programming language to learn.
+              </div>
+            </div>
+          </div>
+          <div className="col col--4 margin-bottom--md">
+            <div className="card">
+              <div className="card__header text--center">
+                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                  ✅
+                </div>
+                <h3 className="margin-top--sm">2. Telo checks it</h3>
+              </div>
+              <div className="card__body">
+                Mistakes get caught and explained in plain language - before anything runs.
+              </div>
+            </div>
+          </div>
+          <div className="col col--4 margin-bottom--md">
+            <div className="card">
+              <div className="card__header text--center">
+                <div style={{ fontSize: "2.5rem", lineHeight: 1 }} aria-hidden>
+                  🚀
+                </div>
+                <h3 className="margin-top--sm">3. Telo runs it</h3>
+              </div>
+              <div className="card__body">
+                Your data, logic, and AI workflows go live - built straight from your description.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h2 className="text--center margin-top--xl margin-bottom--lg">Under the hood</h2>
         <div className="row">
           <div className="col col--6 margin-bottom--md">
             <div className="card">
