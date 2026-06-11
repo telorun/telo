@@ -159,6 +159,30 @@ export async function create(
     child.registerManifest(manifest);
   }
 
+  // Initialize the child's resources in dependency order, mirroring the root
+  // context (kernel.boot → setInitOrder). Without this, an imported library's
+  // resources init in registration order, so a dependent can run Phase 5
+  // injection before its dependency exists — e.g. an Http.Api whose inline route
+  // handler is appended after it during inline-resource extraction would init,
+  // and inject, before the handler is created, leaving the handler ref
+  // unresolved. The order is computed in the library's OWN scope (childRegistry),
+  // so an anonymous child resolves against the declaring library, not the
+  // consumer. setInitOrder ignores names it doesn't recognize, so a partial order
+  // is safe. A cycle purely among a library's own resources is invisible to the
+  // root graph (which stops at the import boundary), so this is the only place it
+  // surfaces — throw it the same way the root does rather than silently falling
+  // back to registration order (which would re-manifest as a confusing runtime
+  // ERR_RESOURCE_NOT_INVOKABLE). `prepare` returns null order on a ref-validation
+  // error too (already reported by analyze above); those we leave to fall back.
+  const { order, cycleError } = analyzer.prepare(manifests, childRegistry);
+  if (cycleError) {
+    throw new RuntimeError(
+      "ERR_CIRCULAR_DEPENDENCY",
+      `Circular dependency in imported library '${targetModule}': ${cycleError}`,
+    );
+  }
+  if (order) (child as ModuleContext).setInitOrder(order);
+
   // Link the target module context as a child of the declaring module context in
   // the lifecycle tree. This enables cascading teardown (parent → child order)
   // and makes the import hierarchy visible at runtime.

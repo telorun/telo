@@ -1,6 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
-import type { AliasResolver } from "./alias-resolver.js";
+import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 
 export interface ThrowsCodeMeta {
@@ -32,6 +32,13 @@ export interface ResolveCtx {
   allManifests: ResourceManifest[];
   defs: DefinitionRegistry;
   aliases: AliasResolver;
+  /** Per-imported-library alias resolvers, keyed by module name. A manifest that
+   *  originated in an imported library resolves its kind aliases against its own
+   *  module's resolver, not the consumer's — an inline handler extracted from an
+   *  imported Http.Api inherits the lexical scope of the library that declares it. */
+  aliasesByModule: Map<string, AliasResolver>;
+  /** The consumer/root module names; resources owned by these resolve against `aliases`. */
+  rootModules: Set<string>;
   memo: Map<string, ThrowsUnion>;
   inProgress: Set<string>;
 }
@@ -40,11 +47,15 @@ export function createResolveCtx(
   allManifests: ResourceManifest[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver> = new Map(),
+  rootModules: Set<string> = new Set(),
 ): ResolveCtx {
   return {
     allManifests,
     defs,
     aliases,
+    aliasesByModule,
+    rootModules,
     memo: new Map(),
     inProgress: new Set(),
   };
@@ -52,6 +63,11 @@ export function createResolveCtx(
 
 function emptyUnion(): ThrowsUnion {
   return { codes: new Map(), unbounded: false };
+}
+
+/** The owning module's alias resolver for a manifest in this resolve context. */
+function scopeResolverFor(ctx: ResolveCtx, ownModule: string | undefined): AliasResolver | undefined {
+  return scopeResolverForModule(ownModule, ctx.rootModules, ctx.aliasesByModule);
 }
 
 function unionInto(target: ThrowsUnion, src: ThrowsUnion): void {
@@ -66,9 +82,17 @@ function definitionFor(
   kind: string,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
+  scopeResolver?: AliasResolver,
 ): ResourceDefinition | undefined {
+  const direct = defs.resolve(kind);
+  if (direct) return direct;
+  const scoped = scopeResolver?.resolveKind(kind);
+  if (scoped) {
+    const d = defs.resolve(scoped);
+    if (d) return d;
+  }
   const resolved = aliases.resolveKind(kind);
-  return defs.resolve(kind) ?? (resolved ? defs.resolve(resolved) : undefined);
+  return resolved ? defs.resolve(resolved) : undefined;
 }
 
 function codesFromDefinition(definition: ResourceDefinition): Map<string, ThrowsCodeMeta> {
@@ -97,7 +121,9 @@ export function resolveThrowsUnion(
     if (ctx.inProgress.has(name)) return emptyUnion();
   }
 
-  const definition = definitionFor(manifest.kind, ctx.defs, ctx.aliases);
+  const ownModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  const scopeResolver = scopeResolverFor(ctx, ownModule);
+  const definition = definitionFor(manifest.kind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) {
     const u: ThrowsUnion = { codes: new Map(), unbounded: true };
     if (name) ctx.memo.set(name, u);
@@ -126,7 +152,7 @@ export function resolveThrowsUnion(
     }
 
     if (throws.inherit) {
-      const inherited = resolveInherited(manifest, definition, ctx);
+      const inherited = resolveInherited(manifest, definition, ctx, ownModule);
       unionInto(result, inherited);
     }
 
@@ -141,6 +167,7 @@ function resolveInherited(
   manifest: ResourceManifest,
   definition: ResourceDefinition,
   ctx: ResolveCtx,
+  ownerModule: string | undefined,
 ): ThrowsUnion {
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
   const props = definition.schema?.properties as Record<string, any> | undefined;
@@ -151,7 +178,7 @@ function resolveInherited(
     if (!stepCtx?.invoke) continue;
     const steps = (manifest as Record<string, any>)[fieldName];
     if (!Array.isArray(steps)) continue;
-    unionInto(result, collectStepArrayThrows(steps, stepCtx.invoke, undefined, ctx));
+    unionInto(result, collectStepArrayThrows(steps, stepCtx.invoke, undefined, ctx, ownerModule));
   }
 
   return result;
@@ -162,13 +189,14 @@ function collectStepArrayThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
+  ownerModule: string | undefined,
 ): ThrowsUnion {
   const result = emptyUnion();
   for (const step of steps) {
     if (!step || typeof step !== "object") continue;
     unionInto(
       result,
-      collectStepThrows(step as Record<string, any>, invokeField, enclosingTryCodes, ctx),
+      collectStepThrows(step as Record<string, any>, invokeField, enclosingTryCodes, ctx, ownerModule),
     );
   }
   return result;
@@ -184,11 +212,14 @@ function collectStepThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
+  ownerModule: string | undefined,
 ): ThrowsUnion {
   if (step[invokeField]) {
     // Any invoked resource can throw a non-InvokeError at runtime, which an
     // enclosing catch surfaces as PLAIN_ERROR_CODE — record that possibility.
-    const u = cloneUnion(resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx));
+    const u = cloneUnion(
+      resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx, ownerModule),
+    );
     u.canThrowPlain = true;
     return u;
   }
@@ -198,7 +229,7 @@ function collectStepThrows(
   }
 
   if (Array.isArray(step.try)) {
-    const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx);
+    const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx, ownerModule);
     let propagated: ThrowsUnion;
     if (Array.isArray(step.catch)) {
       // Catch absorbs the try block's codes; the catch's own throws propagate
@@ -209,7 +240,7 @@ function collectStepThrows(
       // `error.code === PLAIN_ERROR_CODE`, so a `throw: { code: error.code }`
       // rethrow can propagate it — seed the set the catch resolves against.
       if (tryUnion.canThrowPlain) tryCodes.add(PLAIN_ERROR_CODE);
-      propagated = collectStepArrayThrows(step.catch, invokeField, tryCodes, ctx);
+      propagated = collectStepArrayThrows(step.catch, invokeField, tryCodes, ctx, ownerModule);
       // Unbounded in the try block still signals the caller to expect
       // arbitrary codes to flow through the catch (e.g. via passthrough).
       if (tryUnion.unbounded) propagated.unbounded = true;
@@ -219,7 +250,7 @@ function collectStepThrows(
     if (Array.isArray(step.finally)) {
       unionInto(
         propagated,
-        collectStepArrayThrows(step.finally, invokeField, enclosingTryCodes, ctx),
+        collectStepArrayThrows(step.finally, invokeField, enclosingTryCodes, ctx, ownerModule),
       );
     }
     return propagated;
@@ -227,16 +258,16 @@ function collectStepThrows(
 
   if (Array.isArray(step.then)) {
     const result = emptyUnion();
-    unionInto(result, collectStepArrayThrows(step.then, invokeField, enclosingTryCodes, ctx));
+    unionInto(result, collectStepArrayThrows(step.then, invokeField, enclosingTryCodes, ctx, ownerModule));
     if (Array.isArray(step.else)) {
-      unionInto(result, collectStepArrayThrows(step.else, invokeField, enclosingTryCodes, ctx));
+      unionInto(result, collectStepArrayThrows(step.else, invokeField, enclosingTryCodes, ctx, ownerModule));
     }
     if (Array.isArray(step.elseif)) {
       for (const branch of step.elseif) {
         if (Array.isArray(branch?.then)) {
           unionInto(
             result,
-            collectStepArrayThrows(branch.then, invokeField, enclosingTryCodes, ctx),
+            collectStepArrayThrows(branch.then, invokeField, enclosingTryCodes, ctx, ownerModule),
           );
         }
       }
@@ -245,18 +276,18 @@ function collectStepThrows(
   }
 
   if (Array.isArray(step.do)) {
-    return collectStepArrayThrows(step.do, invokeField, enclosingTryCodes, ctx);
+    return collectStepArrayThrows(step.do, invokeField, enclosingTryCodes, ctx, ownerModule);
   }
 
   if (step.cases && typeof step.cases === "object") {
     const result = emptyUnion();
     for (const arr of Object.values(step.cases as Record<string, unknown>)) {
       if (Array.isArray(arr)) {
-        unionInto(result, collectStepArrayThrows(arr, invokeField, enclosingTryCodes, ctx));
+        unionInto(result, collectStepArrayThrows(arr, invokeField, enclosingTryCodes, ctx, ownerModule));
       }
     }
     if (Array.isArray(step.default)) {
-      unionInto(result, collectStepArrayThrows(step.default, invokeField, enclosingTryCodes, ctx));
+      unionInto(result, collectStepArrayThrows(step.default, invokeField, enclosingTryCodes, ctx, ownerModule));
     }
     return result;
   }
@@ -277,13 +308,18 @@ function resolveStepInvokeThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
+  ownerModule: string | undefined,
 ): ThrowsUnion {
   const invokeRef = step[invokeField];
   if (!invokeRef || typeof invokeRef !== "object") return emptyUnion();
   const invokedKind = invokeRef.kind as string | undefined;
   if (!invokedKind) return emptyUnion();
 
-  const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases);
+  // The invoked kind's alias resolves in the OWNER manifest's lexical scope (the
+  // composer that declares the step), so a library's step referencing its own
+  // import resolves against that library, not the consumer.
+  const scopeResolver = scopeResolverFor(ctx, ownerModule);
+  const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) return { codes: new Map(), unbounded: true };
 
   if (definition.throws?.passthrough) {
@@ -293,12 +329,14 @@ function resolveStepInvokeThrows(
   // Named manifest: resolve the full chain (covers transitive inherit).
   const invokeName = invokeRef.name as string | undefined;
   if (invokeName) {
+    const scopedInvokedKind = scopeResolver?.resolveKind(invokedKind);
     const target = ctx.allManifests.find(
       (m) =>
         m.metadata?.name === invokeName &&
         (m.kind === invokedKind ||
           ctx.aliases.resolveKind(m.kind) === invokedKind ||
-          m.kind === ctx.aliases.resolveKind(invokedKind)),
+          m.kind === ctx.aliases.resolveKind(invokedKind) ||
+          (scopedInvokedKind !== undefined && m.kind === scopedInvokedKind)),
     );
     if (target) return resolveThrowsUnion(target, ctx);
   }

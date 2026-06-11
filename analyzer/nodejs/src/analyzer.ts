@@ -1,7 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import { defaultRegistry, isTaggedSentinel } from "@telorun/templating";
-import { AliasResolver } from "./alias-resolver.js";
+import { AliasResolver, scopeResolverForModule } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
   buildCelEnvironment,
@@ -938,8 +938,15 @@ export class StaticAnalyzer {
 
       // Resolve kind through alias if needed; direct lookup takes priority so that
       // aliases whose name matches the module name (the common case) work without
-      // path-derived name mangling.
-      const resolvedKind = aliases.resolveKind(m.kind);
+      // path-derived name mangling. A resource that originated in an imported library
+      // (its `metadata.module` names a non-root module — e.g. an inline route handler
+      // extracted from an imported Http.Api) must resolve its kind alias against THAT
+      // library's import map, not the consumer's; an anonymous child inherits the
+      // lexical scope of the document that declares it. Mirrors the nested-inline and
+      // reference-resolution paths: own-module scope first, root/consumer aliases last.
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      const scopeResolver = scopeResolverForModule(ownModule, rootModules, aliasesByModule);
+      const resolvedKind = scopeResolver?.resolveKind(m.kind) ?? aliases.resolveKind(m.kind);
       const definition =
         defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
       if (!definition) {
@@ -1025,10 +1032,8 @@ export class StaticAnalyzer {
         // first, then the parent module's own aliases (for resources declared
         // inside an imported module), then the root aliases. Mirrors how the
         // analyzer resolves kinds elsewhere so module-scoped aliases don't
-        // produce false UNDEFINED_KIND diagnostics.
-        const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-        const scopeResolver =
-          ownModule && !rootModules.has(ownModule) ? aliasesByModule.get(ownModule) : undefined;
+        // produce false UNDEFINED_KIND diagnostics. `scopeResolver` is the
+        // owning module's resolver computed above.
         diagnostics.push(
           ...validateNestedInlineResources(
             m,
@@ -1304,7 +1309,9 @@ export class StaticAnalyzer {
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
-    diagnostics.push(...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv));
+    diagnostics.push(
+      ...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv, aliasesByModule, rootModules),
+    );
 
     // Warn about declared variables / secrets / ports that no CEL references.
     diagnostics.push(...validateUnusedDeclarations(allManifests, this.celEnv));

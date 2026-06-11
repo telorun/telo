@@ -69,3 +69,22 @@ export class AliasResolver {
     return result;
   }
 }
+
+/**
+ * The alias resolver for a resource's own lexical scope. A resource that
+ * originated in an imported library (its `ownModule` names a non-root module —
+ * e.g. an inline handler extracted from an imported Http.Api) resolves its kind
+ * aliases against THAT library's import map, so an anonymous child inherits the
+ * lexical scope of the document that declares it. Returns undefined for
+ * root/consumer-owned resources (and unknown modules), so callers fall back to
+ * the root `aliases`.
+ */
+export function scopeResolverForModule(
+  ownModule: string | undefined,
+  rootModules: Set<string>,
+  aliasesByModule: Map<string, AliasResolver>,
+): AliasResolver | undefined {
+  return ownModule && !rootModules.has(ownModule)
+    ? aliasesByModule.get(ownModule)
+    : undefined;
+}
