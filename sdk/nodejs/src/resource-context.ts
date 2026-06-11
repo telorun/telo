@@ -94,6 +94,12 @@ export interface ResourceContext extends ControllerContext {
    * recorded it.
    */
   getEntryUrl(): string | undefined;
+  /** The npm install root threaded from the kernel's single cache-root
+   *  resolution (`<cache-root>/npm`). Controllers pass it to the
+   *  controller-loader so a relocated `TELO_CACHE_DIR` is honoured without the
+   *  loader re-deriving the root from the entry URL. `undefined` mirrors
+   *  `getEntryUrl()` (callers that bypass `Kernel.load()`). */
+  getInstallRoot(): string | undefined;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

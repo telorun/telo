@@ -30,15 +30,32 @@ an ownerReference to the Pod.
 
 **Every session runs a prebuilt per-app image** — there is no in-pod install
 path. On a session-create the runner stages the bundle plus a generated
-`Dockerfile` (`FROM <base>`, `RUN telo install`), runs a trusted **Kaniko** Job in
-the `telo-builds` namespace that bakes every controller and module manifest into
-`/app/.telo` and pushes the result (tagged by the bundle's content hash), then
-runs the session pod from that image — so the session never installs anything on
-the start path and a slow/unreachable package registry can't stall it. Builds are
-content-addressed (reused across identical runs), existence-checked before
-building, and single-flighted; a build failure surfaces as an actionable error
-carrying the build pod's log tail. `RUNNER_IMAGE_REPOSITORY` is therefore
-**required** — the runner refuses to start without a registry to build into.
+`Dockerfile` (`FROM <base>`, `ENV TELO_CACHE_DIR=/telo-cache`, `RUN telo install`),
+runs a trusted **Kaniko** Job in the `telo-builds` namespace that bakes every
+controller and module manifest into `/telo-cache/{manifests,npm}` and pushes the
+result, then runs the session pod from that image — so the session never installs
+anything on the start path and a slow/unreachable package registry can't stall it.
+
+**The image is keyed on the dependency closure, not the whole bundle** — the
+`imports:` set plus any controllers declared by inline `Telo.Definition` docs
+(see `extractDependencyKey`). A body-only edit (resource config, CEL) reuses the
+existing image; only an import or controller change rebuilds. The per-session
+**body is delivered at boot**, not baked: a body-fetch initContainer untars the
+staged bundle into a writable `/app` emptyDir, and the session runs `telo run
+/app/<entry> --no-cache-write` — reading the baked deps from the read-only
+`/telo-cache` and validating in-memory, so `readOnlyRootFilesystem` stays on with
+nothing written to the cache. Builds are existence-checked before building and
+single-flighted; a build failure surfaces as an actionable error carrying the
+build pod's log tail. `RUNNER_IMAGE_REPOSITORY` is therefore **required** — the
+runner refuses to start without a registry to build into.
+
+**Coming-up progress** is reported over the `/v1` SSE stream as `progress` events
+(`build` → `provision`) while the session is still `starting`. The session is
+created with a fast `201` carrying the `streamUrl` **before** the build runs, so
+the client connects immediately and sees build + provision progress live; the
+backend then runs in the background and a start failure surfaces as a terminal
+`failed` status on the stream. The session flips to `running` when the Pod reaches
+`Running`.
 
 Sandbox hardening is always on (non-root, read-only rootfs, drop-all caps, no
 service-account token, seccomp `RuntimeDefault`); a sandbox RuntimeClass

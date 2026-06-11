@@ -1,5 +1,6 @@
 import { PassThrough, Writable } from "node:stream";
 
+import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
 import type {
   AvailabilityReport,
   BackendSession,
@@ -9,15 +10,14 @@ import type {
   RunnerBackend,
 } from "@telorun/runner-core";
 import { SessionStartError } from "@telorun/runner-core";
-import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
 
-import type { K8sRunnerConfig } from "../config.js";
 import type { BundleStore } from "../bundle-store.js";
+import type { K8sRunnerConfig } from "../config.js";
 import { clampLimits } from "../limits.js";
 import type { KubeClient } from "./client.js";
-import { buildSessionPod } from "./pod-spec.js";
 import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
+import { buildSessionPod } from "./pod-spec.js";
 
 /** Minimal surface of the websocket client-node's Attach returns. */
 interface ResizableSocket {
@@ -88,8 +88,13 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         bundle: spec.bundle,
         entryRelativePath: spec.entryRelativePath,
         baseImage: spec.config.image || config.defaultImage,
+        onProgress: (message, done) => spec.onProgress("build", message, done),
       },
     );
+
+    // The image is keyed on the dependency closure only, so deliver the
+    // per-session body to the Pod's /app at boot via a tokenized, single-use URL.
+    const bundleUrl = await bundleStore.stageSessionBundle(spec.sessionId, spec.bundle);
 
     const pod = buildSessionPod({
       config,
@@ -100,6 +105,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       ports: spec.ports,
       limits,
       image,
+      bundleUrl,
     });
 
     let podUid: string;
@@ -112,6 +118,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
 
     let finished = false;
     let runningSeen = false;
+    let readyFlipped = false;
+    let lastProvision: string | undefined;
     let resolveDone!: () => void;
     const done = new Promise<void>((r) => (resolveDone = r));
     let socket: ResizableSocket | undefined;
@@ -138,6 +146,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       finished = true;
       clearStartDeadline();
       abortWatch();
+      bundleStore.drop(spec.sessionId);
       spec.onStatus(status);
       try {
         socket?.close();
@@ -145,6 +154,17 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         /* already closed */
       }
       resolveDone();
+    };
+
+    // Flip the session to `running` when the pod reaches Running. Deterministic
+    // and independent of the session image's telo version — a readiness signal
+    // would couple this to the in-image CLI (and a stale base image would never
+    // flip). The build/provision progress (streamed before this) covers the slow
+    // part; the brief post-Running validation runs while already `running`.
+    const flipRunning = (): void => {
+      if (readyFlipped || finished) return;
+      readyFlipped = true;
+      spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, spec.ports) });
     };
 
     let resolveRunning!: () => void;
@@ -157,10 +177,19 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     const handlePhase = (obj: unknown): void => {
       if (finished) return;
       const phase = podPhase(obj);
+      // Coming-up feed: scheduling / pulling / body delivery / container create.
+      if (!runningSeen) {
+        const provision = provisionMessage(obj);
+        if (provision && provision !== lastProvision) {
+          lastProvision = provision;
+          spec.onProgress("provision", provision);
+        }
+      }
       if (phase === "Running" && !runningSeen) {
         runningSeen = true;
         clearStartDeadline();
         resolveRunning();
+        flipRunning();
       } else if (phase === "Succeeded") {
         finish(terminalStatus(obj, spec.isUserStopped()));
       } else if (phase === "Failed") {
@@ -237,6 +266,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     } catch (err) {
       clearStartDeadline();
       abortWatch();
+      bundleStore.drop(spec.sessionId);
       await deletePod(kube, ns, podName);
       throw new SessionStartError("start_failed", "start", `pod failed to start: ${msg(err)}`, msg(err));
     }
@@ -256,8 +286,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       });
     }
 
-    spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, spec.ports) });
-
+    // `flipRunning` already announced `running` from the watch's Running
+    // transition (which `await running` above waited on).
     return {
       writeStdin(bytes) {
         try {
@@ -358,6 +388,36 @@ function podStatus(obj: unknown): V1Pod["status"] | undefined {
 
 function podPhase(obj: unknown): string | undefined {
   return podStatus(obj)?.phase;
+}
+
+/** A coming-up message for the editor feed while the Pod is still scheduling /
+ *  pulling / delivering the body / creating the container; undefined once running. */
+function provisionMessage(obj: unknown): string | undefined {
+  const status = podStatus(obj);
+  if (status?.phase !== "Pending") return undefined;
+  const containers = [
+    ...(status.initContainerStatuses ?? []),
+    ...(status.containerStatuses ?? []),
+  ];
+  for (const cs of containers) {
+    const reason = cs.state?.waiting?.reason;
+    if (reason) return humanizeWaitReason(reason);
+  }
+  return "Scheduling";
+}
+
+function humanizeWaitReason(reason: string): string {
+  switch (reason) {
+    case "ContainerCreating":
+      return "Creating container";
+    case "PodInitializing":
+      return "Delivering application";
+    case "ErrImagePull":
+    case "ImagePullBackOff":
+      return "Pulling image";
+    default:
+      return reason;
+  }
 }
 
 function terminalStatus(obj: unknown, userStopped: boolean): RunStatus {

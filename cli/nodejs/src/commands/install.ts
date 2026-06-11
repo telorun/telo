@@ -4,6 +4,7 @@ import {
   Kernel,
   LocalFileSource,
   LocalManifestCacheSource,
+  resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
 } from "@telorun/kernel";
@@ -78,18 +79,20 @@ async function warmAnalysisCache(
   entryDir: string,
   registryUrl: string,
   log: Logger,
+  cacheRoot: string,
 ): Promise<void> {
+  const manifestsDir = path.join(cacheRoot, "manifests");
   try {
     const kernel = new Kernel({
       registryUrl,
       sources: [
         new LocalFileSource(),
-        new LocalManifestCacheSource(entryDir, registryUrl),
+        new LocalManifestCacheSource(entryDir, registryUrl, manifestsDir),
       ],
     });
-    await kernel.load(entryPath, { analyzeOnly: true });
+    await kernel.load(entryPath, { analyzeOnly: true, cacheDir: cacheRoot });
     console.log(
-      `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), path.join(entryDir, ".telo/manifests")))}`,
+      `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
     );
   } catch (err) {
     console.error(
@@ -114,6 +117,10 @@ async function installOne(
   // would freeze stale bytes in place — re-running `telo install` could
   // never refresh a corrupted or outdated entry without manual deletion.
   const entryDir = resolveEntryDir(entryPath);
+  // Resolve the `.telo` cache root once (honours TELO_CACHE_DIR so a prebuilt
+  // image bakes deps at the relocated root) and thread it to the manifest
+  // cache, controller install root, and analysis-warm pass.
+  const cacheRoot = resolveCacheRoot(entryPath);
   const loader = new Loader({
     extraSources: [new LocalFileSource()],
     registryUrl,
@@ -139,12 +146,13 @@ async function installOne(
   // boot path (`telo run`) can resolve every import from disk and skip
   // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
   // line then carries this whole tree into the production image.
-  if (entryDir) {
+  if (entryDir && cacheRoot) {
+    const manifestsDir = path.join(cacheRoot, "manifests");
     try {
-      const written = await writeManifestCache(graph, entryDir, registryUrl);
+      const written = await writeManifestCache(graph, entryDir, registryUrl, manifestsDir);
       if (written.length > 0) {
         console.log(
-          `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), path.join(entryDir, ".telo/manifests")))}`,
+          `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
         );
       }
     } catch (err) {
@@ -160,7 +168,7 @@ async function installOne(
 
   if (jobs.length === 0) {
     console.log(log.ok("✓") + `  ${displayPath}: no controllers to install`);
-    if (entryDir) await warmAnalysisCache(entryPath, entryDir, registryUrl, log);
+    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
     return true;
   }
 
@@ -173,7 +181,10 @@ async function installOne(
   // pathToFileURL handles non-ASCII bytes and Windows drive letters
   // correctly; bare `file://` concatenation breaks on either.
   const entryUrl = isUrl ? entryPath : pathToFileURL(entryPath).toString();
-  const controllerLoader = new ControllerLoader({ entryUrl });
+  const controllerLoader = new ControllerLoader({
+    entryUrl,
+    installRoot: cacheRoot ? path.join(cacheRoot, "npm") : undefined,
+  });
   const started = Date.now();
   const results = await Promise.allSettled(
     jobs.map((job) => controllerLoader.load(job.purls, job.baseUri)),
@@ -200,7 +211,7 @@ async function installOne(
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   if (failed === 0) {
     console.log(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
-    if (entryDir) await warmAnalysisCache(entryPath, entryDir, registryUrl, log);
+    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
     return true;
   }
   console.log(

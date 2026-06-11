@@ -38,6 +38,16 @@ export class BundleStore {
     });
   }
 
+  /**
+   * Stages the raw session bundle (no Dockerfile) and returns the tokenized,
+   * single-use URL the session Pod's body-delivery initContainer fetches into
+   * `/app`. Keyed by `sessionId`. The image is keyed only on the dependency
+   * closure, so the per-session body is delivered here at boot rather than baked.
+   */
+  async stageSessionBundle(sessionId: string, bundle: RunBundle): Promise<string> {
+    return this.stage(sessionId, bundle);
+  }
+
   private async stage(id: string, bundle: RunBundle): Promise<string> {
     this.drop(id);
     const token = randomBytes(24).toString("hex");

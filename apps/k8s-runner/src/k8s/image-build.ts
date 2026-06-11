@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { V1Job } from "@kubernetes/client-node";
 import type { RunBundle } from "@telorun/runner-core";
-import { SessionStartError } from "@telorun/runner-core";
+import { SessionStartError, extractDependencyKey } from "@telorun/runner-core";
 
 import type { ImageBuildConfig } from "../config.js";
 import type { BundleStore } from "../bundle-store.js";
@@ -15,8 +15,6 @@ const WAIT_GRACE_MS = 30_000;
 
 export interface ImageTagInputs {
   bundle: RunBundle;
-  /** Normalized entry path the image's `telo run` will target. */
-  entryRelativePath: string;
   /** Base image the per-app image is built FROM. */
   baseImage: string;
   /** Telo module registry baked into the build (affects resolved manifests). */
@@ -24,24 +22,35 @@ export interface ImageTagInputs {
 }
 
 /**
- * Content-address the per-app image. Two byte-identical bundles built the same
- * way map to one tag, so re-running an app reuses the image; a single change to
- * any source file, the entry, the base image, or the telo registry produces a
- * fresh tag. Files are hashed in a stable order so map iteration can't perturb
- * the digest.
+ * Content-address the per-app image on its DEPENDENCY closure — the only thing
+ * `telo install` bakes into `.telo/{manifests,npm}`: the `imports:` set plus any
+ * controllers declared by inline `Telo.Definition` docs (`extractDependencyKey`).
+ * A body-only edit (resource config, CEL) keeps the tag stable so the image is
+ * reused and the new body is delivered to the pod at runtime; an import or
+ * controller change produces a fresh tag and rebuilds. The entry path is
+ * deliberately excluded — it's supplied to `telo run` at runtime, and the same
+ * imports resolve the same closure regardless of the entry filename.
+ *
+ * `local_path` controllers (or an unparseable file) set `fullContentFallback`,
+ * which folds the whole bundle into the digest — keying degrades to today's
+ * content-address, which is correct (those depend on body bytes) if less optimal.
  */
 export function computeImageTag(inputs: ImageTagInputs): string {
+  const key = extractDependencyKey(inputs.bundle);
   const h = createHash("sha256");
   h.update("base\0" + inputs.baseImage + "\0");
   h.update("telo-registry\0" + inputs.teloRegistryUrl + "\0");
-  h.update("entry\0" + inputs.entryRelativePath + "\0");
-  const files = [...inputs.bundle.files].sort((a, b) =>
-    a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0,
-  );
-  for (const f of files) {
-    h.update("file\0" + f.relativePath + "\0");
-    h.update(f.contents);
-    h.update("\0");
+  for (const source of key.importSources) h.update("import\0" + source + "\0");
+  for (const locator of key.controllerLocators) h.update("controller\0" + locator + "\0");
+  if (key.fullContentFallback) {
+    const files = [...inputs.bundle.files].sort((a, b) =>
+      a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0,
+    );
+    for (const f of files) {
+      h.update("file\0" + f.relativePath + "\0");
+      h.update(f.contents);
+      h.update("\0");
+    }
   }
   return h.digest("hex").slice(0, 32);
 }
@@ -52,10 +61,16 @@ export function imageRef(config: ImageBuildConfig, tag: string): string {
 
 /**
  * Dockerfile for a self-contained per-app image: `telo install` populates
- * `/app/.telo/{manifests,npm}` so the runtime `telo run /app/<entry>` resolves
- * every controller and module from disk with no network and no install. The
- * telo registry arrives as a build-arg so the build (not the running session)
+ * `/telo-cache/{manifests,npm}` so the runtime `telo run` resolves every
+ * controller and module from disk with no network and no install. The telo
+ * registry arrives as a build-arg so the build (not the running session)
  * carries the registry dependency.
+ *
+ * `TELO_CACHE_DIR=/telo-cache` relocates the baked `.telo` OFF `/app`, so at
+ * runtime the pod mounts the freshly-delivered body at `/app` without shadowing
+ * the deps. The deps depend only on the imports/controllers closure (see
+ * `computeImageTag`); the body COPYed here is whichever session first built this
+ * tag — disposable, replaced at boot.
  */
 export function buildDockerfile(opts: { baseImage: string; entryRelativePath: string }): string {
   return [
@@ -64,6 +79,7 @@ export function buildDockerfile(opts: { baseImage: string; entryRelativePath: st
     `COPY . /app`,
     `ARG TELO_REGISTRY_URL`,
     `ENV TELO_REGISTRY_URL=$TELO_REGISTRY_URL`,
+    `ENV TELO_CACHE_DIR=/telo-cache`,
     `RUN telo install /app/${opts.entryRelativePath}`,
     ``,
   ].join("\n");
@@ -181,6 +197,8 @@ export interface EnsureImageArgs {
   bundle: RunBundle;
   entryRelativePath: string;
   baseImage: string;
+  /** Build-phase progress for the editor feed. */
+  onProgress?: (message: string, done?: boolean) => void;
 }
 
 /**
@@ -200,14 +218,16 @@ export async function ensureSessionImage(
 ): Promise<string> {
   const tag = computeImageTag({
     bundle: args.bundle,
-    entryRelativePath: args.entryRelativePath,
     baseImage: args.baseImage,
     teloRegistryUrl: deps.build.teloRegistryUrl,
   });
   const ref = imageRef(deps.build, tag);
 
   const existing = inFlight.get(ref);
-  if (existing) return existing;
+  if (existing) {
+    args.onProgress?.("Waiting for in-progress build…");
+    return existing;
+  }
 
   const work = buildOnce(deps, args, tag, ref).finally(() => inFlight.delete(ref));
   inFlight.set(ref, work);
@@ -220,7 +240,11 @@ async function buildOnce(
   tag: string,
   ref: string,
 ): Promise<string> {
-  if (await imageExists(deps.kube, deps.build, tag)) return ref;
+  if (await imageExists(deps.kube, deps.build, tag)) {
+    args.onProgress?.("Using cached image", true);
+    return ref;
+  }
+  args.onProgress?.("Building image…");
 
   const dockerfile = buildDockerfile({
     baseImage: args.baseImage,
@@ -259,6 +283,7 @@ async function buildOnce(
   } finally {
     deps.bundleStore.drop(buildId);
   }
+  args.onProgress?.("Image built", true);
   return ref;
 }
 

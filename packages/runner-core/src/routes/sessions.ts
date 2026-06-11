@@ -145,30 +145,43 @@ async function startSession(
     throw err;
   }
 
-  let entry: ReturnType<SessionRegistry["register"]> | null = null;
+  let entry: ReturnType<SessionRegistry["register"]>;
   try {
-    try {
-      entry = deps.registry.register({ sessionId });
-    } catch (err) {
-      if (err instanceof SessionLimitError) {
-        reply.code(409).send({ error: "too_many_sessions", message: err.message });
-        return;
-      }
-      throw err;
+    entry = deps.registry.register({ sessionId });
+  } catch (err) {
+    if (err instanceof SessionLimitError) {
+      reply.code(409).send({ error: "too_many_sessions", message: err.message });
+      return;
     }
+    throw err;
+  }
 
-    // Surface a TELO_REGISTRY_URL to the workload so the telo CLI inside picks
-    // it up. Precedence: body.env explicit value > body.config.registryUrl
-    // (per-request override) > runner's own default. Trim client-supplied URLs
-    // so stray whitespace from an editor input doesn't flow into the workload.
-    const configRegistryUrl = body.config.registryUrl?.trim() || undefined;
-    const registryUrl = configRegistryUrl ?? deps.defaultRegistryUrl;
-    const sessionEnv =
-      registryUrl && !("TELO_REGISTRY_URL" in body.env)
-        ? { ...body.env, TELO_REGISTRY_URL: registryUrl }
-        : body.env;
+  // Surface a TELO_REGISTRY_URL to the workload so the telo CLI inside picks
+  // it up. Precedence: body.env explicit value > body.config.registryUrl
+  // (per-request override) > runner's own default. Trim client-supplied URLs
+  // so stray whitespace from an editor input doesn't flow into the workload.
+  const configRegistryUrl = body.config.registryUrl?.trim() || undefined;
+  const registryUrl = configRegistryUrl ?? deps.defaultRegistryUrl;
+  const sessionEnv =
+    registryUrl && !("TELO_REGISTRY_URL" in body.env)
+      ? { ...body.env, TELO_REGISTRY_URL: registryUrl }
+      : body.env;
 
-    const session = await deps.backend.start({
+  // Respond as soon as the session is registered — BEFORE the backend starts.
+  // `backend.start()` now spans the on-cluster image build and pod bring-up,
+  // which can take seconds-to-minutes; awaiting it here would hide the event
+  // stream until the workload is already up, so the client never sees build /
+  // provision / boot progress live. Returning the streamUrl first lets the
+  // client connect immediately; start runs in the background and its progress,
+  // output, and terminal status flow over the stream.
+  reply.code(201).send({
+    sessionId,
+    streamUrl: `/v1/sessions/${sessionId}/events`,
+    createdAt: entry.createdAt.toISOString(),
+  });
+
+  deps.backend
+    .start({
       sessionId,
       bundle: body.bundle,
       entryRelativePath: entryRelative,
@@ -176,44 +189,36 @@ async function startSession(
       ports: body.ports ?? [],
       config: body.config,
       onStatus: (status) => deps.registry.emit(sessionId, { type: "status", status }),
+      onProgress: (phase, message, done) =>
+        deps.registry.emit(sessionId, { type: "progress", phase, message, done }),
       onOutput: (chunk) => deps.registry.pushBytes(sessionId, chunk),
-      isUserStopped: () => entry?.userStopped ?? false,
-    });
-
-    entry.session = session;
-
-    // Pre-start DELETE race: a DELETE received during backend.start (e.g. while
-    // an image pull was running) can't stop a workload that didn't exist yet —
-    // it sets userStopped and returns 204. Now that start is done and the
-    // workload is live, honor the earlier DELETE.
-    if (entry.userStopped) {
-      try {
-        await session.stop();
-      } catch (err) {
-        app.log.warn({ err, sessionId }, "failed to stop after race with pre-start DELETE");
+      isUserStopped: () => entry.userStopped,
+    })
+    .then(async (session) => {
+      entry.session = session;
+      // Pre-start DELETE race: a DELETE received during backend.start (e.g.
+      // while an image build was running) can't stop a workload that didn't
+      // exist yet — it set userStopped and returned 204. Now that the workload
+      // is live, honor the earlier DELETE.
+      if (entry.userStopped) {
+        try {
+          await session.stop();
+        } catch (err) {
+          app.log.warn({ err, sessionId }, "failed to stop after race with pre-start DELETE");
+        }
       }
-    }
-
-    reply.code(201).send({
-      sessionId,
-      streamUrl: `/v1/sessions/${sessionId}/events`,
-      createdAt: entry.createdAt.toISOString(),
+    })
+    .catch((err) => {
+      // The 201 is already sent, so a start failure surfaces as a terminal
+      // `failed` status on the stream (the registry schedules eviction on a
+      // terminal status; the SSE channel delivers it, then closes).
+      const message =
+        err instanceof SessionStartError
+          ? `${err.stage}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      app.log.error({ err, sessionId }, "session start failed");
+      deps.registry.emit(sessionId, { type: "status", status: { kind: "failed", message } });
     });
-  } catch (err) {
-    if (entry) deps.registry.remove(entry.sessionId);
-
-    if (err instanceof SessionStartError) {
-      const statusCode = err.kind === "pull_failed" ? 502 : 503;
-      reply.code(statusCode).send({
-        error: err.kind,
-        stage: err.stage,
-        message: err.message,
-        daemonMessage: err.daemonMessage,
-      });
-      return;
-    }
-
-    app.log.error({ err, sessionId }, "unexpected start error");
-    reply.code(500).send({ error: "internal", message: (err as Error).message });
-  }
 }

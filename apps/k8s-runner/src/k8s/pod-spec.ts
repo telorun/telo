@@ -12,13 +12,25 @@ export interface BuildPodArgs {
   env: Record<string, string>;
   ports: PortMapping[];
   limits: ResolvedLimits;
-  /** Prebuilt per-app image to run — controllers + module manifests baked into
-   *  /app/.telo by the on-cluster build. */
+  /** Prebuilt per-app image to run. Controllers + module manifests are baked
+   *  into `/telo-cache/{manifests,npm}` (read-only) by the on-cluster build;
+   *  the image is keyed only on the dependency closure, so the per-session body
+   *  is NOT baked — it's delivered to `/app` at boot via the initContainer. */
   image: string;
+  /** Tokenized, single-use URL the body-delivery initContainer fetches the
+   *  session bundle tarball from (`BundleStore.stageSessionBundle`). */
+  bundleUrl: string;
 }
 
+const APP_DIR = "/app";
 const WORK_DIR = "/work";
-const CACHE_MOUNT = "/telo-cache";
+/** Baked, read-only deps (`telo install` output). Set via TELO_CACHE_DIR, NOT
+ *  mounted — it lives on the image rootfs, so `telo run --no-cache-write` reads
+ *  it without writing. */
+const DEPS_DIR = "/telo-cache";
+/** Writable HOME / npm scratch under a read-only rootfs. Separate from DEPS_DIR
+ *  (which is now read-only baked deps, not scratch). */
+const HOME_DIR = "/home/telo";
 const TMP_MOUNT = "/tmp";
 
 /**
@@ -26,9 +38,10 @@ const TMP_MOUNT = "/tmp";
  * (non-root, read-only rootfs, drop-all caps, no service-account token,
  * seccomp RuntimeDefault); a sandbox RuntimeClass is layered on when configured.
  *
- * `args.image` is the prebuilt per-app image — controllers + module manifests
- * are baked into /app/.telo by the on-cluster build, so `telo run` resolves
- * everything from disk: no initContainer, no install on the start path.
+ * The body-delivery initContainer fetches the session bundle into the writable
+ * `/app` emptyDir; the session container runs `telo run /app/<entry>
+ * --no-cache-write` reading its deps from the baked, read-only `/telo-cache`.
+ * `readOnlyRootFilesystem` stays on — every write lands on a mounted emptyDir.
  */
 export function buildSessionPod(args: BuildPodArgs): V1Pod {
   const { config, limits } = args;
@@ -46,10 +59,11 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
   };
 
   const envVars = Object.entries(args.env).map(([name, value]) => ({ name, value }));
-  // Writable locations for telo / npm under a read-only root filesystem.
-  envVars.push({ name: "TELO_CACHE_DIR", value: CACHE_MOUNT });
-  envVars.push({ name: "HOME", value: CACHE_MOUNT });
-  envVars.push({ name: "npm_config_cache", value: `${CACHE_MOUNT}/.npm` });
+  // Read deps from the baked, read-only `/telo-cache`; keep HOME/npm scratch on a
+  // separate writable emptyDir under the read-only root filesystem.
+  envVars.push({ name: "TELO_CACHE_DIR", value: DEPS_DIR });
+  envVars.push({ name: "HOME", value: HOME_DIR });
+  envVars.push({ name: "npm_config_cache", value: `${HOME_DIR}/.npm` });
   envVars.push({ name: "FORCE_COLOR", value: "1" });
 
   const pod: V1Pod = {
@@ -80,6 +94,23 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
         fsGroup: 1000,
         seccompProfile: { type: "RuntimeDefault" },
       },
+      initContainers: [
+        {
+          // Deliver the per-session body into the writable /app emptyDir. The
+          // image bakes only the dependency closure, so the body arrives here.
+          name: "body-fetch",
+          image: config.initImage,
+          command: ["sh", "-c"],
+          args: [
+            `set -e; wget -qO /tmp/body.tgz "${args.bundleUrl}"; tar xzf /tmp/body.tgz -C ${APP_DIR}`,
+          ],
+          volumeMounts: [
+            { name: "app", mountPath: APP_DIR },
+            { name: "tmp", mountPath: TMP_MOUNT },
+          ],
+          securityContext: hardenedContainerSecurity(),
+        },
+      ],
       containers: [
         {
           name: "session",
@@ -87,13 +118,12 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
           // The per-app tag is an immutable content hash, so IfNotPresent lets
           // the kubelet reuse a node-cached layer across runs of the same app.
           imagePullPolicy: "IfNotPresent",
-          // Run the manifest by absolute path so `telo run` anchors its
-          // install-root to the baked /app/.telo (read-only, cache-only — no
-          // writes). WORK_DIR is a writable emptyDir set as cwd so the
-          // workload's own relative paths resolve somewhere writable under
-          // readOnlyRootFilesystem.
+          // Run the delivered body by absolute path; `--no-cache-write` reads
+          // the baked deps from TELO_CACHE_DIR and validates in-memory without
+          // touching the read-only cache. WORK_DIR is a writable emptyDir cwd so
+          // the workload's relative paths resolve under readOnlyRootFilesystem.
           workingDir: WORK_DIR,
-          command: ["telo", "run", `/app/${args.entryRelativePath}`],
+          command: ["telo", "run", `${APP_DIR}/${args.entryRelativePath}`, "--no-cache-write"],
           env: envVars,
           stdin: true,
           stdinOnce: false,
@@ -103,18 +133,18 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
             : {}),
           resources,
           volumeMounts: [
+            { name: "app", mountPath: APP_DIR },
             { name: "work", mountPath: WORK_DIR },
-            // Writable scratch for HOME/npm under a read-only rootfs. Controllers
-            // live in the image, so nothing is installed here at runtime.
-            { name: "telo-cache", mountPath: CACHE_MOUNT },
+            { name: "home", mountPath: HOME_DIR },
             { name: "tmp", mountPath: TMP_MOUNT },
           ],
           securityContext: hardenedContainerSecurity(),
         },
       ],
       volumes: [
+        { name: "app", emptyDir: {} },
         { name: "work", emptyDir: {} },
-        { name: "telo-cache", emptyDir: {} },
+        { name: "home", emptyDir: {} },
         { name: "tmp", emptyDir: {} },
       ],
     },

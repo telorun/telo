@@ -136,9 +136,13 @@ export function computeAnalysisSignature(graph: LoadedGraph): string {
  *  reading a newer stamp (or vice versa) discard rather than misparse. */
 export async function readAnalysisStamp(
   entryDir: string,
+  manifestsDir?: string,
 ): Promise<AnalysisStamp | undefined> {
+  const stampPath = manifestsDir
+    ? path.join(manifestsDir, ".validated.json")
+    : path.join(entryDir, ANALYSIS_STAMP_FILE);
   try {
-    const text = await fs.readFile(path.join(entryDir, ANALYSIS_STAMP_FILE), "utf-8");
+    const text = await fs.readFile(stampPath, "utf-8");
     const parsed = JSON.parse(text) as Partial<AnalysisStamp>;
     if (
       parsed?.version === ANALYSIS_STAMP_FORMAT_VERSION &&
@@ -158,12 +162,15 @@ export async function readAnalysisStamp(
 export async function writeAnalysisStamp(
   entryDir: string,
   signature: string,
+  manifestsDir?: string,
 ): Promise<void> {
   const stamp: AnalysisStamp = {
     version: ANALYSIS_STAMP_FORMAT_VERSION,
     signature,
   };
-  const target = path.join(entryDir, ANALYSIS_STAMP_FILE);
+  const target = manifestsDir
+    ? path.join(manifestsDir, ".validated.json")
+    : path.join(entryDir, ANALYSIS_STAMP_FILE);
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, JSON.stringify(stamp), "utf-8");
 }

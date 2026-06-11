@@ -161,3 +161,20 @@ export function makeRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     ...overrides,
   };
 }
+
+/**
+ * Poll `predicate` until it returns true or the timeout elapses. Used by route
+ * tests now that `POST /v1/sessions` returns 201 before `backend.start()` runs
+ * (the start, and its side effects / terminal status, complete in the background).
+ */
+export async function waitFor(
+  predicate: () => boolean,
+  label = "condition",
+  timeoutMs = 2000,
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error(`waitFor(${label}) timed out`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}

@@ -2,6 +2,7 @@ export * from "./contract.js";
 export * from "./backend.js";
 export * from "./config.js";
 export * from "./server.js";
+export { extractDependencyKey, type DependencyKey } from "./dependency-key.js";
 
 export {
   SessionRegistry,

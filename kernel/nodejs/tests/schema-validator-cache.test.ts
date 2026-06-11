@@ -118,6 +118,31 @@ describe("SchemaValidator disk cache", () => {
     expect(healed.endsWith("// tampered\n")).toBe(false);
   });
 
+  it("read-only mode (write:false) reads existing validators but never writes", async () => {
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    };
+    // Warm the cache writably (as `telo install` does at build time).
+    const writer = new SchemaValidator();
+    writer.setCacheDir(workdir);
+    writer.compile(schema);
+    const afterWarm = await fs.readdir(workdir);
+    expect(afterWarm).toHaveLength(1);
+
+    // A read-only consumer (`telo run --no-cache-write`) reuses the baked
+    // validator and compiles an UNSEEN schema in-memory without writing.
+    const reader = new SchemaValidator();
+    reader.setCacheDir(workdir, { write: false });
+    expect(reader.compile(schema).isValid({ name: "x" })).toBe(true);
+    const fresh = reader.compile({ type: "object", properties: { other: { type: "number" } } });
+    expect(fresh.isValid({ other: 1 })).toBe(true);
+
+    // No new file appeared — the unseen schema stayed in-memory.
+    expect(await fs.readdir(workdir)).toEqual(afterWarm);
+  });
+
   it("includes the AJV runtime version in the cache file name", async () => {
     // The hash incorporates AJV / ajv-formats versions, so an upgrade
     // to either invalidates the cache by name (the old hash isn't a

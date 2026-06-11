@@ -86,10 +86,16 @@ export type RunStatus =
   | { kind: "failed"; message: string }
   | { kind: "stopped" };
 
+/** Coarse coming-up phase carried on `progress` events (mirrors runner-core's
+ *  `RunPhase`). Additive to status: drives the spinner + step feed while the
+ *  session is still `starting`. */
+export type RunPhase = "build" | "provision" | "boot";
+
 export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
-  | { type: "status"; status: RunStatus };
+  | { type: "status"; status: RunStatus }
+  | { type: "progress"; phase: RunPhase; message: string; done?: boolean };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

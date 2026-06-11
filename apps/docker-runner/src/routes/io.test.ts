@@ -9,7 +9,7 @@ import { WebSocket } from "ws";
 import { buildServer } from "../server.js";
 import type { SessionRegistry } from "@telorun/runner-core";
 import type { FakeDocker } from "../test-helpers.js";
-import { makeFakeDocker, makeRunnerConfig } from "../test-helpers.js";
+import { makeFakeDocker, makeRunnerConfig, waitFor } from "../test-helpers.js";
 
 interface IoHarness {
   app: FastifyInstance;
@@ -63,6 +63,10 @@ async function buildIoHarness(opts: { corsOrigins?: string[] | "*" } = {}): Prom
     },
   });
   const { sessionId } = startRes.json() as { sessionId: string };
+  // The route returns 201 before backend.start() runs; wait for the background
+  // start to set entry.session so a test that overwrites it with a mock (resize
+  // tests) isn't clobbered when the real start later resolves.
+  await waitFor(() => registry.get(sessionId)?.session != null, "session started");
 
   return {
     app,

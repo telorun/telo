@@ -12,11 +12,26 @@ import {
   registryHost,
 } from "./image-build.js";
 
+const APP_DOC = [
+  "kind: Telo.Application",
+  "metadata:",
+  "  name: app",
+  "imports:",
+  "  Console: std/console@0.9.0",
+  "---",
+  "kind: Telo.Definition",
+  "metadata:",
+  "  name: Thing",
+  "controllers:",
+  "  - pkg:npm/@acme/thing@1.0.0",
+  "",
+].join("\n");
+
 const BUNDLE: RunBundle = {
   entryRelativePath: "manifest.yaml",
   files: [
-    { relativePath: "manifest.yaml", contents: "kind: Telo.Application\n" },
-    { relativePath: "lib/util.yaml", contents: "kind: Telo.Library\n" },
+    { relativePath: "manifest.yaml", contents: APP_DOC },
+    { relativePath: "lib/util.yaml", contents: "kind: Telo.Library\nmetadata:\n  name: util\n" },
   ],
 };
 
@@ -26,14 +41,23 @@ const TELO_REGISTRY = "https://registry.telo.run";
 function tagInputs(over: Partial<Parameters<typeof computeImageTag>[0]> = {}) {
   return {
     bundle: BUNDLE,
-    entryRelativePath: "manifest.yaml",
     baseImage: BASE,
     teloRegistryUrl: TELO_REGISTRY,
     ...over,
   };
 }
 
-describe("computeImageTag — content addressing", () => {
+function editApp(replace: string, withText: string): RunBundle {
+  return {
+    ...BUNDLE,
+    files: [
+      { relativePath: "manifest.yaml", contents: APP_DOC.replace(replace, withText) },
+      BUNDLE.files[1],
+    ],
+  };
+}
+
+describe("computeImageTag — dependency-closure addressing", () => {
   it("is deterministic for identical inputs", () => {
     expect(computeImageTag(tagInputs())).toBe(computeImageTag(tagInputs()));
   });
@@ -43,18 +67,24 @@ describe("computeImageTag — content addressing", () => {
     expect(computeImageTag(tagInputs({ bundle: reversed }))).toBe(computeImageTag(tagInputs()));
   });
 
-  it("changes when a file's contents change", () => {
-    const edited: RunBundle = {
-      ...BUNDLE,
-      files: [{ ...BUNDLE.files[0], contents: "kind: Telo.Application # edited\n" }, BUNDLE.files[1]],
-    };
+  it("ignores body-only edits that don't touch imports or controllers", () => {
+    const edited = editApp("  name: app", "  name: app # renamed");
+    expect(computeImageTag(tagInputs({ bundle: edited }))).toBe(computeImageTag(tagInputs()));
+  });
+
+  it("changes when an import changes", () => {
+    const edited = editApp("std/console@0.9.0", "std/console@0.10.0");
     expect(computeImageTag(tagInputs({ bundle: edited }))).not.toBe(computeImageTag(tagInputs()));
   });
 
-  it("changes when the base image, entry, or telo registry change", () => {
+  it("changes when a body-declared controller changes", () => {
+    const edited = editApp("pkg:npm/@acme/thing@1.0.0", "pkg:npm/@acme/thing@2.0.0");
+    expect(computeImageTag(tagInputs({ bundle: edited }))).not.toBe(computeImageTag(tagInputs()));
+  });
+
+  it("changes when the base image or telo registry change", () => {
     const base = computeImageTag(tagInputs());
     expect(computeImageTag(tagInputs({ baseImage: "telorun/node:next" }))).not.toBe(base);
-    expect(computeImageTag(tagInputs({ entryRelativePath: "other.yaml" }))).not.toBe(base);
     expect(computeImageTag(tagInputs({ teloRegistryUrl: "https://other.example" }))).not.toBe(base);
   });
 
@@ -76,6 +106,7 @@ describe("buildDockerfile", () => {
     expect(df).toContain(`FROM ${BASE}`);
     expect(df).toContain("COPY . /app");
     expect(df).toContain("ARG TELO_REGISTRY_URL");
+    expect(df).toContain("ENV TELO_CACHE_DIR=/telo-cache");
     expect(df).toContain("RUN telo install /app/app/manifest.yaml");
   });
 });

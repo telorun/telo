@@ -117,6 +117,11 @@ export class SchemaValidator {
   private rawSchemas = new Map<string, object>();
   private compiledValidators = new WeakMap<object, DataValidator>();
   private cacheDir: string | undefined;
+  /** When false, the disk cache is read-only: compiled validators are still
+   *  loaded from `cacheDir` but never written back. `telo run --no-cache-write`
+   *  sets this so an ephemeral, read-only session rootfs validates in-memory
+   *  without touching (or failing to write) the baked cache. */
+  private cacheWritable = true;
   /** Tracks (schema-hash → in-memory compiled validator) so two distinct
    *  but content-equal schema objects share one compile across the kernel
    *  process — `compiledValidators` is keyed by object identity and would
@@ -183,8 +188,9 @@ export class SchemaValidator {
    *  kernel anchors this under `<entry-dir>/.telo/manifests/__validators/`
    *  so it lives next to the manifest cache and rides along in
    *  `COPY --from=build /srv /srv` Docker images. */
-  setCacheDir(dir: string | undefined): void {
+  setCacheDir(dir: string | undefined, opts?: { write?: boolean }): void {
     this.cacheDir = dir;
+    this.cacheWritable = opts?.write ?? true;
   }
 
   compile(schema: any): DataValidator {
@@ -315,7 +321,7 @@ export class SchemaValidator {
     }
 
     const validate = this.ajv.compile(schema) as ValidateFunction;
-    if (cacheDir) {
+    if (cacheDir && this.cacheWritable) {
       try {
         const body = standaloneCode(this.ajv, validate);
         const integrity = createHash("sha256").update(body).digest("hex");

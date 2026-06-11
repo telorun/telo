@@ -67,6 +67,11 @@ export function RunView() {
         {selectedRun.status.kind === "running" && (
           <EndpointChips endpoints={selectedRun.status.endpoints ?? []} />
         )}
+        {selectedRun.status.kind === "starting" && selectedRun.progress && (
+          <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+            {selectedRun.progress.message}
+          </span>
+        )}
         <div className="flex-1" />
         <Button
           size="sm"
