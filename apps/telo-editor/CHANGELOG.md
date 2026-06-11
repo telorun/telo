@@ -1,5 +1,22 @@
 # telo-editor
 
+## 0.8.0
+
+### Minor Changes
+
+- e6e8d88: Unify the docker and kubernetes runners behind a `/v1/capabilities` discovery
+  endpoint. Runners advertise their own editable config schema; the editor
+  collapses the docker-api and k8s adapters into a single capability-driven
+  http-runner adapter with managed add/edit/remove/switch runners, and preflights
+  required variables/secrets before a run.
+
+### Patch Changes
+
+- Updated dependencies [1ddd803]
+  - @telorun/sdk@0.26.0
+  - @telorun/analyzer@0.23.0
+  - @telorun/templating@0.8.0
+
 ## 0.7.8
 
 ### Patch Changes
