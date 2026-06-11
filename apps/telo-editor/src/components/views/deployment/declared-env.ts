@@ -20,6 +20,23 @@ export function extractDeclaredEnvEntries(
   return out;
 }
 
+/** Declared env entries that the kernel would reject at boot: required (no
+ *  `default`) and with no value supplied in the active deployment environment.
+ *  Used to pre-flight a run so the user is sent to the Deployment tab instead of
+ *  hitting `ERR_MANIFEST_VALIDATION_FAILED` on the runner. */
+export function findMissingRequiredEnv(
+  manifest: ManifestLike | null | undefined,
+  env: Record<string, string>,
+): DeclaredEnvEntry[] {
+  return extractDeclaredEnvEntries(manifest).filter(
+    (entry) => entry.defaultText === undefined && !hasValue(env[entry.envVar]),
+  );
+}
+
+function hasValue(value: string | undefined): boolean {
+  return typeof value === "string" && value.trim() !== "";
+}
+
 function collect(
   block: Record<string, unknown> | undefined,
   secret: boolean,

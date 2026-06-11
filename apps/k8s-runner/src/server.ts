@@ -7,6 +7,7 @@ import {
 
 import packageJson from "../package.json" with { type: "json" };
 import { BundleStore } from "./bundle-store.js";
+import { kubernetesRunnerCapabilities } from "./capabilities.js";
 import { loadK8sRunnerConfig, RunnerConfigError, type K8sRunnerConfig } from "./config.js";
 import { createKubernetesBackend } from "./k8s/backend.js";
 import { createKubeClient } from "./k8s/client.js";
@@ -24,6 +25,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     backend: deps.backend,
     config: deps.config,
     version: VERSION,
+    capabilities: kubernetesRunnerCapabilities(deps.config.defaultImage),
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
   });
   // Mount the internal, tokenized fetch route on the same app so a build Job's

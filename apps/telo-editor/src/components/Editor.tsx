@@ -51,6 +51,8 @@ import {
   useRun,
 } from "../run";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
+import { findMissingRequiredEnv } from "./views/deployment/declared-env";
+import type { DeclaredEnvEntry } from "./views/deployment/DeclaredEnvEditor";
 import { buildModuleViewData } from "../view-data";
 import {
   AlertDialog,
@@ -128,6 +130,7 @@ export function Editor() {
   const runContext = useRun();
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [missingEnv, setMissingEnv] = useState<DeclaredEnvEntry[] | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
 
@@ -314,16 +317,21 @@ export function Editor() {
       return;
     }
 
-    const adapter = runRegistry.get(settings.activeRunAdapterId);
-    if (!adapter) {
-      // PR 5 will surface this as an inline message in the Run Settings row.
-      setError(`Run adapter "${settings.activeRunAdapterId}" is not registered.`);
+    const runner = settings.runners.find((r) => r.id === settings.activeRunnerId);
+    if (!runner) {
+      setError("No runner selected. Add or select a runner in Settings.");
       setSettingsOpen(true);
       return;
     }
 
-    const persistedConfig = settings.runAdapterConfig[adapter.id];
-    const config = persistedConfig ?? adapter.defaultConfig;
+    const adapter = runRegistry.get(runner.adapterId);
+    if (!adapter) {
+      setError(`Runner "${runner.name}" uses an unavailable adapter "${runner.adapterId}".`);
+      setSettingsOpen(true);
+      return;
+    }
+
+    const config = runner.config ?? adapter.defaultConfig;
 
     const syncIssues = adapter.validateConfig(config);
     if (syncIssues.length > 0) {
@@ -379,6 +387,18 @@ export function Editor() {
     // edit via `setActiveEnvironmentEnv`. Running doesn't need to persist a
     // record just because the user ran it once with default env.
     const environment = readActiveEnvironment(state.deploymentsByApp, filePath);
+
+    // Pre-flight required variables/secrets so a missing value sends the user to
+    // the Deployment tab instead of failing at boot with a validation error.
+    const manifest =
+      activeManifest?.filePath === filePath
+        ? activeManifest
+        : ([...workspace.modules.values()].find((m) => m.filePath === filePath) ?? null);
+    const missing = findMissingRequiredEnv(manifest, environment.env);
+    if (missing.length > 0) {
+      setMissingEnv(missing);
+      return;
+    }
 
     let bundle;
     try {
@@ -1376,6 +1396,38 @@ export function Editor() {
               onClick={() => void handleConfirmImport()}
             >
               {pendingImport?.plan.files.some((f) => f.exists) ? "Overwrite & import" : "Import"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={missingEnv !== null} onOpenChange={(open) => !open && setMissingEnv(null)}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Missing required configuration</AlertDialogTitle>
+            <AlertDialogDescription>
+              This Application declares required values with no default. Fill them in the
+              Deployment tab before running:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {missingEnv && (
+            <ul className="max-h-[50vh] space-y-1 overflow-auto text-sm">
+              {missingEnv.map((entry) => (
+                <li key={entry.envVar} className="flex items-baseline gap-2">
+                  <code className="font-medium">{entry.name}</code>
+                  <span className="text-xs text-muted-foreground">{entry.envVar}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({entry.secret ? "secret" : "variable"})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => setState((s) => ({ ...s, activeView: "deployment" as ViewId }))}
+            >
+              Open Deployment tab
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

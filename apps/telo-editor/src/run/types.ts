@@ -1,5 +1,4 @@
 import type { JSONSchema7 } from "json-schema";
-import type { ComponentType } from "react";
 import type { PortMapping } from "../model";
 
 export interface RunAdapter<Config = unknown> {
@@ -12,15 +11,29 @@ export interface RunAdapter<Config = unknown> {
 
   validateConfig(config: Config): ConfigIssue[];
 
-  customForm?: ComponentType<{
-    value: Config;
-    issues: ConfigIssue[];
-    onChange: (next: Config) => void;
-  }>;
+  /** Fetch the runner's advertised capabilities (display name + editable config
+   *  schema) for the given config. Returns `null` only when the endpoint is
+   *  legitimately absent (HTTP 404 — an older runner), so the caller falls back
+   *  to the static `configSchema`. THROWS for a real fault — unreachable host,
+   *  non-404 HTTP status, or a malformed document — so a misconfiguration is
+   *  surfaced rather than masked as "no endpoint". Only adapters that talk to a
+   *  self-describing runner implement this. */
+  fetchCapabilities?(config: Config): Promise<RunnerCapabilities | null>;
 
   isAvailable(config: Config): Promise<AvailabilityReport>;
 
   start(request: RunRequest, config: Config): Promise<RunSession>;
+}
+
+/** A runner's self-description, fetched from `GET /v1/capabilities`. Mirrors
+ *  `RunnerCapabilities` in `@telorun/runner-core`. */
+export interface RunnerCapabilities {
+  displayName: string;
+  description: string;
+  config: { schema: JSONSchema7 };
+  /** Advertised by every runner; reserved for future editor use (e.g. hiding
+   *  the terminal when `io` is false). Not consumed yet. */
+  features: { io: boolean; ports: boolean };
 }
 
 export type AvailabilityReport =

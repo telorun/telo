@@ -25,7 +25,7 @@ interface ServerControlFrame {
  * from `lastSeq` persisted in `sessionStorage`, and surfaces a `gap`
  * diagnostic on the byte stream when the runner reports buffer eviction.
  */
-export function makeDockerApiIo(deps: IoClientDeps): RunIo {
+export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
   const storageKey = `${STORAGE_PREFIX}${deps.sessionId}`;
   let opened = false;
 

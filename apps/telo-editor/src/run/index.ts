@@ -13,13 +13,13 @@ export type {
   RunIo,
   RunIoConnection,
   RunIoHandlers,
+  RunnerCapabilities,
   RunRequest,
   RunSession,
   RunStatus,
 } from "./types";
 export { buildRunBundle } from "./bundle";
 export { registry } from "./registry";
-export { AdapterConfigForm } from "./ui/AdapterConfigForm";
 export { RunSettingsSection } from "./ui/RunSettingsSection";
 export { RunStatusChip } from "./ui/RunStatusChip";
 export { RunView } from "./ui/RunView";
@@ -27,31 +27,26 @@ export { RunView } from "./ui/RunView";
 import { isTauri } from "@tauri-apps/api/core";
 import { registry } from "./registry";
 import { tauriDockerAdapter } from "./adapters/tauri-docker/adapter";
-import { dockerApiAdapter } from "./adapters/docker-api/adapter";
-import { k8sAdapter } from "./adapters/k8s/adapter";
+import { httpRunnerAdapter } from "./adapters/http-runner/adapter";
 
-/** Registers all built-in adapters with the registry exactly once.
+/** Registers all built-in adapter *types* with the registry exactly once.
  *  Called from the editor entry point; idempotent so re-mounting the
- *  provider during HMR doesn't double-register.
+ *  provider during HMR doesn't double-register. Runner *instances* (the
+ *  user-managed list) live in settings, not here.
  *
  *  The tauri-docker adapter only works inside a Tauri window — `invoke()`
  *  has no target in a plain browser, so registering it outside that
  *  environment would let the user open a config form that throws on every
- *  probe. When `isTauri()` is false we skip registration; the Run Settings
- *  section then shows the "no adapters registered" empty state.
+ *  probe. When `isTauri()` is false we skip registration.
  *
- *  The docker-api adapter is an HTTP client and works in both Tauri and
- *  plain-browser contexts — always registered. */
+ *  The http-runner adapter is an HTTP client and works in both Tauri and
+ *  plain-browser contexts — always registered. It serves docker-runner,
+ *  k8s-runner, and Telo Cloud via the same `/v1` contract. */
 export function setupAdapters(): void {
   if (isTauri() && !registry.get(tauriDockerAdapter.id)) {
     registry.register(tauriDockerAdapter);
   }
-  if (!registry.get(dockerApiAdapter.id)) {
-    registry.register(dockerApiAdapter);
-  }
-  // The k8s adapter is an HTTP client too — works in both Tauri and plain
-  // browser. It targets a k8s-runner or a Telo Cloud control plane.
-  if (!registry.get(k8sAdapter.id)) {
-    registry.register(k8sAdapter);
+  if (!registry.get(httpRunnerAdapter.id)) {
+    registry.register(httpRunnerAdapter);
   }
 }

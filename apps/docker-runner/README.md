@@ -55,6 +55,10 @@ The repo's [docker-compose.yml](../../docker-compose.yml) already wires the runn
 
 Liveness. `200 { ok: true, version }` regardless of daemon state. Use `/v1/probe` for daemon reachability.
 
+### `GET /v1/capabilities`
+
+The runner's self-description, so the editor renders a generic runner config form without hardcoding per-backend fields. `200 { displayName, description, config: { schema }, features: { io, ports } }` where `config.schema` is a JSON Schema for the editable `SessionConfig` fields (each property carries its own `default`). docker-runner advertises `image` / `pullPolicy` / `registryUrl` as editable (it trusts the caller to pick the image). `baseUrl` is never in this schema — the client owns it.
+
 ### `POST /v1/probe`
 
 Body: `{ config: { image, pullPolicy } }`. Returns an `AvailabilityReport` — either `ready`, `needs-setup` with issues, or `unavailable` with a human-readable message and remediation. Staged checks run daemon → bundle volume → child network → image; first failing stage wins.

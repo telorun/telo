@@ -8,15 +8,34 @@ export interface RegistryServer {
   enabled: boolean;
 }
 
+/** A user-configured runner: an instance of an adapter *type* (`adapterId`)
+ *  with that adapter's opaque config. The user manages a list of these (add /
+ *  edit / remove / switch). */
+export interface RunnerInstance {
+  id: string;
+  /** Display label. Captured from the runner's advertised `displayName` (or the
+   *  adapter's generic name when the runner doesn't advertise one). */
+  name: string;
+  /** The runner's advertised description, shown under the name. */
+  description?: string;
+  /** Which adapter type drives this runner: "http-runner" | "tauri-docker". */
+  adapterId: string;
+  /** The adapter's opaque config (baseUrl, …). */
+  config: unknown;
+  /** Seeded, non-removable runner (the local docker singleton). */
+  builtIn?: boolean;
+}
+
 export interface AppSettings {
   registryServers: RegistryServer[];
-  /** Id of the run adapter the Run button uses. Each adapter's opaque config
-   *  lives under `runAdapterConfig[id]`; adapters resolve a fallback to their
-   *  `defaultConfig` when the key is missing, so partial-migration of older
-   *  persisted settings is safe. */
-  activeRunAdapterId: string;
-  runAdapterConfig: Record<string, unknown>;
+  /** The user's runners. The Run button uses the one whose id is
+   *  `activeRunnerId` (a single global selection). */
+  runners: RunnerInstance[];
+  activeRunnerId: string;
 }
+
+export const TELO_CLOUD_RUNNER_ID = "telo-cloud";
+export const LOCAL_DOCKER_RUNNER_ID = "local-docker";
 
 export interface AvailableKind {
   fullKind: string;
@@ -31,8 +50,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   registryServers: [
     { id: "default", url: "https://registry.telo.run", label: "Official Registry", enabled: true },
   ],
-  activeRunAdapterId: "tauri-docker",
-  runAdapterConfig: {},
+  runners: [
+    {
+      id: TELO_CLOUD_RUNNER_ID,
+      name: "Telo Cloud",
+      adapterId: "http-runner",
+      config: { baseUrl: "https://runner.telo.run" },
+    },
+  ],
+  activeRunnerId: TELO_CLOUD_RUNNER_ID,
 };
 
 export type ModuleKind = "Application" | "Library";

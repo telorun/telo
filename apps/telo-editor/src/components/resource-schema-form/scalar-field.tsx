@@ -9,7 +9,14 @@ interface ScalarFieldProps {
   onBlur: () => void;
 }
 
+/** Shared input chrome; `disabled:` variants render a server-enforced
+ *  (`readOnly`) field as a muted, non-editable control. */
+const INPUT_CLASS =
+  "w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500";
+
 export function ScalarField({ prop, value, kind, onValueChange, onBlur }: ScalarFieldProps) {
+  const readOnly = prop.readOnly === true;
+
   if (kind === "string" && prop["x-telo-widget"] === "code") {
     return (
       <CodeField prop={prop} value={value} onValueChange={onValueChange} onBlur={onBlur} />
@@ -24,7 +31,8 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
         value={selected}
         onChange={(e) => onValueChange(e.target.value || undefined)}
         onBlur={onBlur}
-        className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
+        disabled={readOnly}
+        className={INPUT_CLASS}
       >
         <option value="">(unset)</option>
         {options.map((option) => (
@@ -44,7 +52,8 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
           checked={Boolean(value)}
           onChange={(e) => onValueChange(e.target.checked)}
           onBlur={onBlur}
-          className="accent-zinc-700 dark:accent-zinc-300"
+          disabled={readOnly}
+          className="accent-zinc-700 disabled:cursor-not-allowed dark:accent-zinc-300"
         />
         Enabled
       </label>
@@ -71,7 +80,8 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
           onValueChange(Number.isFinite(parsed) ? parsed : null);
         }}
         onBlur={onBlur}
-        className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
+        disabled={readOnly}
+        className={INPUT_CLASS}
       />
     );
   }
@@ -86,7 +96,8 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
       // an explicit empty string.
       onChange={(e) => onValueChange(e.target.value)}
       onBlur={onBlur}
-      className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
+      disabled={readOnly}
+      className={INPUT_CLASS}
     />
   );
 }

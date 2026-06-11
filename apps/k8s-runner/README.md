@@ -3,9 +3,12 @@
 HTTP service that runs Telo Applications as sandboxed **Kubernetes Pods**. A
 backend over [`@telorun/runner-core`](../../packages/runner-core), sibling to
 [`docker-runner`](../docker-runner) — it presents the identical `/v1` session
-contract (`/v1/health`, `/v1/probe`, `/v1/sessions`, `/v1/sessions/:id/events`
-SSE, `/v1/sessions/:id/io` WS) but spawns a Pod per session instead of a
-container.
+contract (`/v1/health`, `/v1/capabilities`, `/v1/probe`, `/v1/sessions`,
+`/v1/sessions/:id/events` SSE, `/v1/sessions/:id/io` WS) but spawns a Pod per
+session instead of a container. On `/v1/capabilities` it advertises `image` /
+`pullPolicy` as **`readOnly`** (server-enforced — the runner serves untrusted
+code under a hard-ceiling policy), so the editor lets the user edit only the
+runner URL.
 
 ## ⚠️ Security posture
 

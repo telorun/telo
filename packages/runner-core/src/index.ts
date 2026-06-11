@@ -2,6 +2,7 @@ export * from "./contract.js";
 export * from "./backend.js";
 export * from "./config.js";
 export * from "./server.js";
+export { sessionConfigSchema, type SessionConfigSchemaOptions } from "./capabilities-schema.js";
 export { extractDependencyKey, type DependencyKey } from "./dependency-key.js";
 
 export {
@@ -16,6 +17,7 @@ export { ByteRingBuffer, type BufferedBytes } from "./session/byte-ring-buffer.j
 export { normalizeBundlePath, validateSessionId, BundlePathError } from "./session/bundle-path.js";
 export { streamSessionEvents, type SseStreamArgs } from "./sse/channel.js";
 export { healthRoute } from "./routes/health.js";
+export { capabilitiesRoute } from "./routes/capabilities.js";
 export { probeRoute, type ProbeRouteDeps } from "./routes/probe.js";
 export { sessionsRoute, type SessionsRouteDeps } from "./routes/sessions.js";
 export { ioRoute, type IoRouteDeps } from "./routes/io.js";

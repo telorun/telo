@@ -7,6 +7,7 @@ import {
 } from "@telorun/runner-core";
 
 import packageJson from "../package.json" with { type: "json" };
+import { dockerRunnerCapabilities } from "./capabilities.js";
 import { loadRunnerConfig, RunnerConfigError, type RunnerConfig } from "./config.js";
 import { createDockerClient, type DockerClient } from "./docker/client.js";
 import { createDockerBackend } from "./docker/backend.js";
@@ -33,6 +34,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     backend,
     config: deps.runnerConfig,
     version: VERSION,
+    capabilities: dockerRunnerCapabilities,
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     registry: deps.registry,
   });
