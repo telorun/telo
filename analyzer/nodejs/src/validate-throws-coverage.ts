@@ -1,6 +1,6 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
-import type { AliasResolver } from "./alias-resolver.js";
+import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   createResolveCtx,
@@ -490,16 +490,28 @@ export function validateThrowsCoverage(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   env: Environment,
+  aliasesByModule: Map<string, AliasResolver> = new Map(),
+  rootModules: Set<string> = new Set(),
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
 
-  const resolveCtx = createResolveCtx(manifests, defs, aliases);
+  const resolveCtx = createResolveCtx(manifests, defs, aliases, aliasesByModule, rootModules);
+
+  // The alias resolver for a manifest's own lexical scope — an imported library's
+  // resolver when it owns the manifest, else undefined (fall back to root aliases).
+  const scopeResolverFor = (m: ResourceManifest): AliasResolver | undefined =>
+    scopeResolverForModule(
+      (m.metadata as { module?: string } | undefined)?.module,
+      rootModules,
+      aliasesByModule,
+    );
 
   for (const manifest of manifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
     if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") continue;
-    const resolvedKind = aliases.resolveKind(manifest.kind);
+    const scopeResolver = scopeResolverFor(manifest);
+    const resolvedKind = scopeResolver?.resolveKind(manifest.kind) ?? aliases.resolveKind(manifest.kind);
     const definition =
       defs.resolve(manifest.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
     if (!definition?.schema) continue;
@@ -519,7 +531,7 @@ export function validateThrowsCoverage(
           ...checkCatchAllPlacement(entries, resource, "catches", filePath, arrayPath),
         );
         const handlerRef = resolveHandlerRef(siblingData[catchesFor]);
-        const union = handlerRefUnion(handlerRef, manifests, resolveCtx);
+        const union = handlerRefUnion(handlerRef, manifests, resolveCtx, scopeResolver);
         diagnostics.push(
           ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath, env),
         );
@@ -539,20 +551,24 @@ function handlerRefUnion(
   handlerRef: { kind: string; name?: string } | null,
   manifests: ResourceManifest[],
   ctx: ReturnType<typeof createResolveCtx>,
+  scopeResolver: AliasResolver | undefined,
 ): ThrowsUnion {
   if (!handlerRef) return { codes: new Map(), unbounded: false };
   if (handlerRef.name) {
-    const resolvedKind = ctx.aliases.resolveKind(handlerRef.kind);
+    const resolvedKind = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
     const targetManifest = manifests.find(
       (m) =>
         m.metadata?.name === handlerRef.name &&
         (m.kind === handlerRef.kind ||
           m.kind === resolvedKind ||
+          scopeResolver?.resolveKind(m.kind) === handlerRef.kind ||
           ctx.aliases.resolveKind(m.kind) === handlerRef.kind),
     );
     if (targetManifest) return resolveThrowsUnion(targetManifest, ctx);
   }
-  const resolved = ctx.aliases.resolveKind(handlerRef.kind);
+  // No named target — fall back to the handler kind's own declared codes,
+  // resolving the kind in the owner's lexical scope first, then root aliases.
+  const resolved = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
   const def =
     ctx.defs.resolve(handlerRef.kind) ?? (resolved ? ctx.defs.resolve(resolved) : undefined);
   if (!def?.throws) return { codes: new Map(), unbounded: false };

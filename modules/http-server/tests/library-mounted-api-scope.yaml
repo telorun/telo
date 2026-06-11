@@ -1,0 +1,94 @@
+kind: Telo.Application
+metadata:
+  name: LibraryMountedApiScopeTest
+  version: 1.0.0
+  description: |
+    Regression test: an Http.Api defined in a library (scope-lib) is mounted by
+    an Http.Server in this consumer app. The library's route handlers — an inline
+    `kind:` definition and a `!ref` — use the LIBRARY's import alias `JS`. This
+    app imports javascript under a DIFFERENT alias (`Runner`) and never declares
+    `JS`, so if the handlers were resolved in the consumer's import scope they
+    would fail (UNDEFINED_KIND statically; an unresolved, non-invokable handler at
+    runtime). Anonymous children must inherit the lexical scope of the document
+    that declares them.
+imports:
+  Lib: ./__fixtures__/scope-lib
+  Http: ../
+  Runner: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Runner.Script
+metadata: { name: Fetch }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    return { status: r.status, body: await r.text() };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+    required: [ url ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      body: { type: string }
+    required: [ status, body ]
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8952
+    baseUrl: http://127.0.0.1:8952
+    logger: false
+    mounts:
+      - path: /
+        mount: !ref Lib.Api
+targets:
+  - !ref Server
+steps:
+  - name: HitInline
+    inputs:
+      url: http://127.0.0.1:8952/inline
+    invoke: !ref Fetch
+  - name: AssertInline
+    inputs:
+      status: "${{ steps.HitInline.result.status }}"
+      body: "${{ steps.HitInline.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body: { const: '{"message":"inline handler in scope-lib"}' }
+        required: [ status, body ]
+
+  - name: HitRef
+    inputs:
+      url: http://127.0.0.1:8952/ref
+    invoke: !ref Fetch
+  - name: AssertRef
+    inputs:
+      status: "${{ steps.HitRef.result.status }}"
+      body: "${{ steps.HitRef.result.body }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body: { const: '{"message":"ref handler in scope-lib"}' }
+        required: [ status, body ]
