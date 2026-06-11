@@ -1,0 +1,29 @@
+kind: Telo.Library
+metadata:
+  name: import-default-lib
+  version: 1.0.0
+imports:
+  Sql: ../../../../modules/sql
+variables:
+  dbFile:
+    type: string
+    default: ":memory:"
+exports:
+  resources: [ Db, Migrate ]
+---
+# `file` reads the contract var `dbFile`. The importer provides no override, so it
+# must resolve to the library default ":memory:" — not a missing key.
+kind: Sql.SqliteConnection
+metadata:
+  name: Db
+file: "${{ variables.dbFile }}"
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection: !ref Db
+migrations:
+  20260601_seed:
+    statements:
+      - "CREATE TABLE marker (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+      - "INSERT INTO marker (id, name) VALUES (1, 'seeded')"

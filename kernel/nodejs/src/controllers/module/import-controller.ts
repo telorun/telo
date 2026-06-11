@@ -121,10 +121,22 @@ export async function create(
   // no resources/env/ports in import inputs — is enforced by the analyzer, not here;
   // a `${{ resources.X }}` slipping past analysis (skipValidation / programmatic
   // load) would evaluate at runtime rather than being rejected.
-  const importVariables =
-    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {};
-  const importSecrets =
-    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {};
+  // Defaults declared on the library's own `variables` / `secrets` contract fill
+  // any input the importer didn't override — the import-time analogue of the root
+  // Application's env defaulting (`resolveApplicationEnv`). Child modules are
+  // isolated from the host environment, so there is no env lookup here: the value
+  // is the importer's override, else the library default. Without this a contract
+  // var with a default but no override reaches a `${{ variables.X }}` template as
+  // a missing key, even though analysis validated the reference against the
+  // (defaulted) contract.
+  const importVariables = applyDefaults(
+    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {},
+    moduleManifest.variables ?? {},
+  );
+  const importSecrets = applyDefaults(
+    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {},
+    moduleManifest.secrets ?? {},
+  );
   const childCtx = new ModuleContext(
     ctx.moduleContext.source,
     importVariables,
@@ -273,6 +285,26 @@ export async function create(
       await child.teardownResources();
     },
   };
+}
+
+/**
+ * Fill in library-declared `default:` values for any input the importer left
+ * unset. Mirrors the root Application's env defaulting: a provided value (incl.
+ * an explicit `null`) wins; otherwise the contract default applies. Returns a new
+ * object — the resolved input map is never mutated in place.
+ */
+function applyDefaults(
+  provided: Record<string, unknown>,
+  schemaDefs: Record<string, any>,
+): Record<string, unknown> {
+  const out = { ...provided };
+  for (const [key, def] of Object.entries(schemaDefs)) {
+    if (typeof def !== "object" || def === null || !("default" in def)) continue;
+    if (out[key] === undefined || out[key] === null) {
+      out[key] = def.default;
+    }
+  }
+  return out;
 }
 
 function validateRequiredInputs(

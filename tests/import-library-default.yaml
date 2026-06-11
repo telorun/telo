@@ -1,0 +1,34 @@
+# A library declares `variables.dbFile` with a `default:` and is imported with NO
+# override. The default must materialize in the child scope so the library's
+# `${{ variables.dbFile }}` resolves — regression for the import controller
+# silently dropping library defaults (the var reached the template as `{}`).
+kind: Telo.Application
+metadata:
+  name: ImportLibraryDefault
+  version: 1.0.0
+imports:
+  Lib:
+    source: ./__fixtures__/import-default/lib
+  Sql: ../modules/sql
+  Assert: ../modules/assert
+  Run: ../modules/run
+targets:
+  - !ref Lib.Migrate
+  - !ref Verify
+---
+kind: Run.Sequence
+metadata:
+  name: Verify
+steps:
+  - name: Select
+    inputs:
+      sql: "SELECT name FROM marker WHERE id = 1"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Lib.Db
+  - name: AssertSeeded
+    inputs:
+      actual: "${{ steps.Select.result.rows[0].name }}"
+      expected: "seeded"
+    invoke:
+      kind: Assert.Equals
