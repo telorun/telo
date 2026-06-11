@@ -133,8 +133,15 @@ export class LocalManifestCacheSource implements ManifestSource {
   private readonly cacheRoot: string;
   private readonly registryUrl: string;
 
-  constructor(entryDir: string, registryUrl: string = DEFAULT_REGISTRY_URL) {
-    this.cacheRoot = path.join(entryDir, CACHE_SUBDIR);
+  constructor(
+    entryDir: string,
+    registryUrl: string = DEFAULT_REGISTRY_URL,
+    manifestsDir?: string,
+  ) {
+    // `manifestsDir` is the resolved manifest-cache directory threaded from a
+    // single `resolveCacheRoot` (honours `TELO_CACHE_DIR`); when absent we fall
+    // back to the entry-anchored default so library/test callers are unchanged.
+    this.cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
     this.registryUrl = registryUrl;
   }
 
@@ -189,8 +196,9 @@ export function cachePathForCanonical(
   canonicalSource: string,
   entryDir: string,
   registryUrl: string,
+  manifestsDir?: string,
 ): string | null {
-  const cacheRoot = path.join(entryDir, CACHE_SUBDIR);
+  const cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
   return cachePathForUrl(canonicalSource, cacheRoot, registryUrl);
 }
 
@@ -210,6 +218,7 @@ export async function writeManifestCache(
   graph: LoadedGraph,
   entryDir: string,
   registryUrl: string = DEFAULT_REGISTRY_URL,
+  manifestsDir?: string,
 ): Promise<string[]> {
   const written: string[] = [];
   const seen = new Set<string>();
@@ -220,7 +229,7 @@ export async function writeManifestCache(
       if (seen.has(file.source)) continue;
       seen.add(file.source);
 
-      const target = cachePathForCanonical(file.source, entryDir, registryUrl);
+      const target = cachePathForCanonical(file.source, entryDir, registryUrl, manifestsDir);
       if (!target) continue;
 
       await fs.mkdir(path.dirname(target), { recursive: true });
@@ -253,4 +262,20 @@ export function resolveEntryDir(entryPath: string): string | null {
   } catch {
     return path.dirname(absolute);
   }
+}
+
+/** The single `.telo` cache root for an entry, resolved once and threaded to
+ *  every consumer (manifest cache, compiled validators, analysis stamp, npm
+ *  install root) so none of them re-derive it or read the env independently.
+ *
+ *  `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its deps into)
+ *  wins; otherwise the root sits beside the entry at `<entry-dir>/.telo`.
+ *  Returns `null` for http(s) entries with no local anchor (disk cache skipped).
+ *  Consumers append the conventional subdirs: `manifests/`, `manifests/__validators/`,
+ *  `npm/`. */
+export function resolveCacheRoot(entryPath: string): string | null {
+  const override = process.env.TELO_CACHE_DIR;
+  if (override && override.trim()) return path.resolve(override.trim());
+  const entryDir = resolveEntryDir(entryPath);
+  return entryDir ? path.join(entryDir, ".telo") : null;
 }

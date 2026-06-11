@@ -97,6 +97,14 @@ export interface NpmControllerLoaderOptions {
    * `pkg-name` cli command resolves it from its argument.
    */
   entryUrl?: string;
+  /**
+   * Explicit install root, threaded from the kernel's single `resolveCacheRoot`
+   * (`<cache-root>/npm`). When set it overrides the entry-anchored
+   * `computeInstallRoot`, so a relocated `TELO_CACHE_DIR` (e.g. a prebuilt
+   * image baking deps at `/telo-cache`) is honoured without this loader reading
+   * the env itself.
+   */
+  installRoot?: string;
 }
 
 /**
@@ -127,6 +135,8 @@ export interface NpmControllerLoaderOptions {
  */
 export class NpmControllerLoader {
   private readonly entryUrl?: string;
+  /** Threaded install root (`<cache-root>/npm`); overrides `computeInstallRoot`. */
+  private readonly installRootOverride?: string;
 
   /**
    * Per-process cache of "this controller's package + version is already
@@ -164,6 +174,7 @@ export class NpmControllerLoader {
 
   constructor(options: NpmControllerLoaderOptions = {}) {
     this.entryUrl = options.entryUrl;
+    this.installRootOverride = options.installRoot;
   }
 
   async load(purl: string, baseUri: string): Promise<NpmLoadResult> {
@@ -219,7 +230,7 @@ export class NpmControllerLoader {
       );
     }
     const entryUrlStr = this.entryUrl;
-    const installRoot = computeInstallRoot(entryUrlStr);
+    const installRoot = this.installRootOverride ?? computeInstallRoot(entryUrlStr);
 
     // Build the install-root package.json: kernel-runtime deps as `file:` refs
     // pointing at the kernel-side realpath. Modules declare these names as

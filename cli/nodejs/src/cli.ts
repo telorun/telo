@@ -42,6 +42,12 @@ cli
     default: false,
     describe: "Watch manifest files and reload on change",
   })
+  .option("cache-write", {
+    type: "boolean",
+    default: true,
+    describe:
+      "Persist the analysis/validator cache to disk. Use --no-cache-write for an ephemeral, read-only run (validates in-memory, reads the baked cache but never writes it).",
+  })
   .demandCommand(1, "Please specify a command or path to run")
   .strict()
   .help()

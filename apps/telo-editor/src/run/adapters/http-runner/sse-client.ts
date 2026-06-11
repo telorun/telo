@@ -60,6 +60,13 @@ export function openSseClient(deps: SseClientDeps): SseClient {
       }
     }
   };
+  const handleProgress = (e: MessageEvent): void => {
+    const parsed = parseRunEvent(e.data);
+    if (parsed) {
+      persistId(storageKey, e.lastEventId);
+      deps.onEvent(parsed);
+    }
+  };
   const handleGap = (): void => {
     deps.onEvent({
       type: "stderr",
@@ -79,6 +86,7 @@ export function openSseClient(deps: SseClientDeps): SseClient {
   source.addEventListener("stdout", handleStdout);
   source.addEventListener("stderr", handleStderr);
   source.addEventListener("status", handleStatus);
+  source.addEventListener("progress", handleProgress);
   source.addEventListener("gap", handleGap);
   source.addEventListener("error", handleError);
 
@@ -88,6 +96,7 @@ export function openSseClient(deps: SseClientDeps): SseClient {
     source.removeEventListener("stdout", handleStdout);
     source.removeEventListener("stderr", handleStderr);
     source.removeEventListener("status", handleStatus);
+    source.removeEventListener("progress", handleProgress);
     source.removeEventListener("gap", handleGap);
     source.removeEventListener("error", handleError);
     source.close();
@@ -109,7 +118,12 @@ function parseRunEvent(raw: string): RunEvent | null {
 function isRunEvent(value: unknown): value is RunEvent {
   if (!value || typeof value !== "object") return false;
   const v = value as { type?: unknown };
-  return v.type === "stdout" || v.type === "stderr" || v.type === "status";
+  return (
+    v.type === "stdout" ||
+    v.type === "stderr" ||
+    v.type === "status" ||
+    v.type === "progress"
+  );
 }
 
 function readPersistedId(key: string): number | null {

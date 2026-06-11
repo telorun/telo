@@ -70,10 +70,18 @@ export type RunStatus =
   | { kind: "failed"; message: string }
   | { kind: "stopped" };
 
+/**
+ * Coarse phase a session passes through while coming up, carried on `progress`
+ * events. Additive to the status enum: `RunStatus` stays `starting` until the
+ * workload is actually up; these messages drive the editor's spinner + step feed.
+ */
+export type RunPhase = "build" | "provision" | "boot";
+
 export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
-  | { type: "status"; status: RunStatus };
+  | { type: "status"; status: RunStatus }
+  | { type: "progress"; phase: RunPhase; message: string; done?: boolean };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

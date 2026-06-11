@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react";
+
 import type { RunStatus } from "../types";
 
 interface Props {
@@ -6,10 +8,14 @@ interface Props {
 
 export function RunStatusChip({ status }: Props) {
   const { label, className } = describe(status);
+  // A session is still coming up while `starting` — show a spinner so a slow
+  // build / pod bootstrap reads as progress rather than a stall.
+  const spinning = status.kind === "starting";
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${className}`}
     >
+      {spinning && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
       {label}
     </span>
   );

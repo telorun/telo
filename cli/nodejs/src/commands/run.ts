@@ -2,6 +2,7 @@ import {
   Kernel,
   LocalFileSource,
   LocalManifestCacheSource,
+  resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
   type RuntimeDiagnostic,
@@ -151,6 +152,8 @@ type RunArgv = {
   debug: boolean;
   snapshotOnExit: boolean;
   watch: boolean;
+  /** `--no-cache-write`: read the baked cache but never persist derived entries. */
+  cacheWrite: boolean;
   registryUrl?: string;
   "--"?: string[];
 };
@@ -162,18 +165,25 @@ function registryUrlFor(argv: RunArgv): string {
   return argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? "https://registry.telo.run";
 }
 
-async function buildKernel(argv: RunArgv, log: Logger): Promise<Kernel> {
+async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null): Promise<Kernel> {
   const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
   // The manifest cache (populated by `telo install`) wins over the registry
   // / HTTP sources so production images boot without any registry network
   // I/O. A missing cache file falls through transparently — dev runs and
   // ad-hoc invocations work unchanged.
   const sources: ManifestSource[] = [new LocalFileSource()];
-  const entryDir = resolveEntryDir(argv.path);
-  if (entryDir) {
+  // `cacheRoot` is resolved once per invocation (honours TELO_CACHE_DIR) and
+  // threaded here, to the kernel, and to persistManifestCache.
+  if (cacheRoot) {
     // Pass the same registry URL the kernel will use so the cache source's
     // URL→path mapping matches what `telo install` wrote.
-    sources.push(new LocalManifestCacheSource(entryDir, registryUrlFor(argv)));
+    sources.push(
+      new LocalManifestCacheSource(
+        resolveEntryDir(argv.path) ?? "",
+        registryUrlFor(argv),
+        path.join(cacheRoot, "manifests"),
+      ),
+    );
   }
   const kernel = new Kernel({ argv: argv["--"], registryUrl, sources });
   // Pretty controller-download progress. With --verbose, always render
@@ -199,13 +209,24 @@ async function buildKernel(argv: RunArgv, log: Logger): Promise<Kernel> {
  * read-only filesystems (e.g. baked Docker images) we surface the error but do
  * not abort — caching is an optimization.
  */
-async function persistManifestCache(argv: RunArgv, kernel: Kernel, log: Logger): Promise<void> {
-  const entryDir = resolveEntryDir(argv.path);
-  if (!entryDir) return;
+async function persistManifestCache(
+  argv: RunArgv,
+  kernel: Kernel,
+  log: Logger,
+  cacheRoot: string | null,
+): Promise<void> {
+  // `--no-cache-write`: never write to the (read-only / baked) cache.
+  if (!argv.cacheWrite) return;
+  if (!cacheRoot) return;
   const graph = kernel.getLoadedGraph();
   if (!graph) return;
   try {
-    await writeManifestCache(graph, entryDir, registryUrlFor(argv));
+    await writeManifestCache(
+      graph,
+      resolveEntryDir(argv.path) ?? "",
+      registryUrlFor(argv),
+      path.join(cacheRoot, "manifests"),
+    );
   } catch (err) {
     // Warnings belong on stderr — stdout is reserved for the manifest's own
     // output (consumers may pipe `telo run` into jq / a downstream process).
@@ -248,8 +269,11 @@ export async function run(argv: RunArgv): Promise<void> {
     return;
   }
 
+  // Resolve the `.telo` cache root once per invocation, then thread it.
+  const cacheRoot = resolveCacheRoot(argv.path);
+
   try {
-    const kernel = await buildKernel(argv, log);
+    const kernel = await buildKernel(argv, log, cacheRoot);
     const shutdown = () => {
       // Cooperatively cancel the boot run first (so honoring targets / in-flight
       // invoke trees stop early), then unblock the idle wait for graceful exit.
@@ -260,8 +284,11 @@ export async function run(argv: RunArgv): Promise<void> {
     process.once("SIGTERM", shutdown);
 
     loadEnvFiles(argv.path);
-    await kernel.load(argv.path);
-    await persistManifestCache(argv, kernel, log);
+    await kernel.load(argv.path, {
+      cacheDir: cacheRoot,
+      writeCache: argv.cacheWrite,
+    });
+    await persistManifestCache(argv, kernel, log, cacheRoot);
 
     await kernel.start();
     if (kernel.exitCode !== 0) {
@@ -282,6 +309,8 @@ export async function run(argv: RunArgv): Promise<void> {
  */
 async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   loadEnvFiles(argv.path);
+  // Resolve the `.telo` cache root once per invocation, then thread it.
+  const cacheRoot = resolveCacheRoot(argv.path);
 
   let stopping = false;
   let signalChange: (() => void) | null = null;
@@ -308,7 +337,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   watchers.sync(new Set([entryFilePath(argv.path)]));
 
   while (!stopping) {
-    const kernel = await buildKernel(argv, log);
+    const kernel = await buildKernel(argv, log, cacheRoot);
     currentKernel = kernel;
     // Hold the kernel alive across the cycle so apps without their own hold
     // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
@@ -320,8 +349,11 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
     });
 
     try {
-      await kernel.load(argv.path);
-      await persistManifestCache(argv, kernel, log);
+      await kernel.load(argv.path, {
+        cacheDir: cacheRoot,
+        writeCache: argv.cacheWrite,
+      });
+      await persistManifestCache(argv, kernel, log, cacheRoot);
       const count = watchers.sync(collectWatchFiles(kernel));
       log.info(`[watch] watching ${count} file(s)`);
 
@@ -368,6 +400,7 @@ export function runCommand(yargs: Argv): Argv {
       // known telo flags.
       const knownBooleanFlags = new Set([
         "--verbose", "--debug", "--snapshot-on-exit", "--watch", "-w",
+        "--cache-write", "--no-cache-write",
         "--help", "--version",
       ]);
       const knownValuedFlags = new Set(["--registry-url"]);

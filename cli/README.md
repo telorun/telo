@@ -220,8 +220,11 @@ Load and run a Telo manifest.
 
 - `--watch, -w` - Watch manifest file(s) for changes and restart automatically
 - `--verbose, -v` - Enable verbose logging
+- `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
 - `--help, -h` - Show help message
 - `--version` - Show version number
+
+The cache root defaults to `<manifest-dir>/.telo`; set `TELO_CACHE_DIR` to relocate it (resolved once and used for the manifest cache, compiled validators, analysis stamp, and npm install root alike).
 
 ## Examples
 

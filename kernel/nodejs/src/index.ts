@@ -5,6 +5,7 @@ export { LocalFileSource } from "./manifest-sources/local-file-source.js";
 export {
   LocalManifestCacheSource,
   cachePathForCanonical,
+  resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
 } from "./manifest-sources/local-manifest-cache-source.js";

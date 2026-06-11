@@ -10,6 +10,7 @@ import { SessionRegistry } from "@telorun/runner-core";
 import {
   makeFakeDocker,
   makeRunnerConfig,
+  waitFor,
   type FakeDockerBehavior,
 } from "../test-helpers.js";
 
@@ -46,6 +47,24 @@ const VALID_START_BODY = {
   config: { image: "telorun/telo:nodejs", pullPolicy: "missing" as const },
 };
 
+/**
+ * POST a session and wait for the background `backend.start()` to settle — i.e.
+ * it created the container (`_lastCreateOpts`) or surfaced a terminal `failed`
+ * status. The route returns 201 before start runs, so tests that inspect start's
+ * side effects (or its failure) must wait for it.
+ */
+async function startSession(h: TestHarness, payload: object = VALID_START_BODY) {
+  const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload });
+  if (res.statusCode === 201) {
+    const { sessionId } = res.json() as { sessionId: string };
+    await waitFor(
+      () => h.docker._lastCreateOpts != null || h.registry.get(sessionId)?.status.kind === "failed",
+      "start settled",
+    );
+  }
+  return res;
+}
+
 describe("POST /v1/sessions", () => {
   let h: TestHarness;
 
@@ -71,11 +90,7 @@ describe("POST /v1/sessions", () => {
 
   it("writes bundle files to disk under bundleRoot/<sessionId>", async () => {
     h = await buildHarness();
-    const res = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: VALID_START_BODY,
-    });
+    const res = await startSession(h);
     const { sessionId } = res.json() as { sessionId: string };
     const written = await readFile(join(h.bundleRoot, sessionId, "telo.yaml"), "utf8");
     expect(written).toBe("kind: Telo.Application\n");
@@ -83,11 +98,7 @@ describe("POST /v1/sessions", () => {
 
   it("names the container telo-run-<sessionId> and bind-mounts the bundle volume", async () => {
     h = await buildHarness();
-    const res = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: VALID_START_BODY,
-    });
+    const res = await startSession(h);
     const { sessionId } = res.json() as { sessionId: string };
     const opts = h.docker._lastCreateOpts;
     expect(opts?.name).toBe(`telo-run-${sessionId}`);
@@ -102,13 +113,9 @@ describe("POST /v1/sessions", () => {
     // Seed runner process env with a noise var to prove it doesn't leak.
     process.env.RUNNER_SECRET_KEY = "should-not-leak";
     h = await buildHarness();
-    await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: {
-        ...VALID_START_BODY,
-        env: { FOO: "bar", BAZ: "qux" },
-      },
+    await startSession(h, {
+      ...VALID_START_BODY,
+      env: { FOO: "bar", BAZ: "qux" },
     });
     delete process.env.RUNNER_SECRET_KEY;
 
@@ -130,20 +137,16 @@ describe("POST /v1/sessions", () => {
     it("uses runner's TELO_REGISTRY_URL when neither body.env nor body.config.registryUrl provides one", async () => {
       process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
       h = await buildHarness();
-      await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+      await startSession(h);
       expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://runner-default:3000");
     });
 
     it("body.config.registryUrl overrides the runner's TELO_REGISTRY_URL", async () => {
       process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
       h = await buildHarness();
-      await h.app.inject({
-        method: "POST",
-        url: "/v1/sessions",
-        payload: {
-          ...VALID_START_BODY,
-          config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
-        },
+      await startSession(h, {
+        ...VALID_START_BODY,
+        config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
       });
       const envArr = h.docker._lastCreateOpts?.Env ?? [];
       expect(envArr).toContain("TELO_REGISTRY_URL=http://client-override:4000");
@@ -153,14 +156,10 @@ describe("POST /v1/sessions", () => {
     it("body.env TELO_REGISTRY_URL wins over body.config.registryUrl and runner env", async () => {
       process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
       h = await buildHarness();
-      await h.app.inject({
-        method: "POST",
-        url: "/v1/sessions",
-        payload: {
-          ...VALID_START_BODY,
-          env: { ...VALID_START_BODY.env, TELO_REGISTRY_URL: "http://body-env:5000" },
-          config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
-        },
+      await startSession(h, {
+        ...VALID_START_BODY,
+        env: { ...VALID_START_BODY.env, TELO_REGISTRY_URL: "http://body-env:5000" },
+        config: { ...VALID_START_BODY.config, registryUrl: "http://client-override:4000" },
       });
       const envArr = h.docker._lastCreateOpts?.Env ?? [];
       expect(envArr).toContain("TELO_REGISTRY_URL=http://body-env:5000");
@@ -170,7 +169,7 @@ describe("POST /v1/sessions", () => {
 
     it("does not set TELO_REGISTRY_URL when no source provides one", async () => {
       h = await buildHarness();
-      await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+      await startSession(h);
       const envArr = h.docker._lastCreateOpts?.Env ?? [];
       expect(envArr.some((e) => e.startsWith("TELO_REGISTRY_URL="))).toBe(false);
     });
@@ -178,26 +177,18 @@ describe("POST /v1/sessions", () => {
     it("treats whitespace-only body.config.registryUrl as unset and falls back to runner env", async () => {
       process.env.TELO_REGISTRY_URL = "http://runner-default:3000";
       h = await buildHarness();
-      await h.app.inject({
-        method: "POST",
-        url: "/v1/sessions",
-        payload: {
-          ...VALID_START_BODY,
-          config: { ...VALID_START_BODY.config, registryUrl: "   " },
-        },
+      await startSession(h, {
+        ...VALID_START_BODY,
+        config: { ...VALID_START_BODY.config, registryUrl: "   " },
       });
       expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://runner-default:3000");
     });
 
     it("trims body.config.registryUrl before forwarding", async () => {
       h = await buildHarness();
-      await h.app.inject({
-        method: "POST",
-        url: "/v1/sessions",
-        payload: {
-          ...VALID_START_BODY,
-          config: { ...VALID_START_BODY.config, registryUrl: "  http://client:4000\n" },
-        },
+      await startSession(h, {
+        ...VALID_START_BODY,
+        config: { ...VALID_START_BODY.config, registryUrl: "  http://client:4000\n" },
       });
       expect(h.docker._lastCreateOpts?.Env ?? []).toContain("TELO_REGISTRY_URL=http://client:4000");
     });
@@ -214,7 +205,16 @@ describe("POST /v1/sessions", () => {
     expect(second.json()).toMatchObject({ error: "too_many_sessions" });
   });
 
-  it("returns 502 pull_failed / inspect when pullPolicy=never and image is absent", async () => {
+  // A start failure now surfaces as a terminal `failed` status on the stream,
+  // not an HTTP error — the 201 is sent before backend.start() runs.
+  async function expectFailedStatus(sessionId: string, stage: string): Promise<void> {
+    await waitFor(() => h.registry.get(sessionId)?.status.kind === "failed", `failed:${stage}`);
+    const status = h.registry.get(sessionId)?.status;
+    expect(status?.kind).toBe("failed");
+    if (status?.kind === "failed") expect(status.message).toContain(stage);
+  }
+
+  it("reports a failed status at stage `inspect` when pullPolicy=never and image is absent", async () => {
     h = await buildHarness({
       inspectImage: async () => {
         throw new Error("image not found");
@@ -225,14 +225,11 @@ describe("POST /v1/sessions", () => {
       url: "/v1/sessions",
       payload: { ...VALID_START_BODY, config: { image: "nope:latest", pullPolicy: "never" } },
     });
-    expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({
-      error: "pull_failed",
-      stage: "inspect",
-    });
+    expect(res.statusCode).toBe(201);
+    await expectFailedStatus((res.json() as { sessionId: string }).sessionId, "inspect");
   });
 
-  it("returns 502 pull_failed / pull when docker.pull rejects", async () => {
+  it("reports a failed status at stage `pull` when docker.pull rejects", async () => {
     h = await buildHarness({
       pull: async () => {
         throw new Error("registry unreachable");
@@ -243,14 +240,11 @@ describe("POST /v1/sessions", () => {
       url: "/v1/sessions",
       payload: { ...VALID_START_BODY, config: { image: "foo:bar", pullPolicy: "always" } },
     });
-    expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({
-      error: "pull_failed",
-      stage: "pull",
-    });
+    expect(res.statusCode).toBe(201);
+    await expectFailedStatus((res.json() as { sessionId: string }).sessionId, "pull");
   });
 
-  it("returns 503 start_failed / create when createContainer rejects", async () => {
+  it("reports a failed status at stage `create` when createContainer rejects", async () => {
     h = await buildHarness({
       createContainer: async () => {
         throw new Error("no such image");
@@ -261,11 +255,8 @@ describe("POST /v1/sessions", () => {
       url: "/v1/sessions",
       payload: VALID_START_BODY,
     });
-    expect(res.statusCode).toBe(503);
-    expect(res.json()).toMatchObject({
-      error: "start_failed",
-      stage: "create",
-    });
+    expect(res.statusCode).toBe(201);
+    await expectFailedStatus((res.json() as { sessionId: string }).sessionId, "create");
   });
 
   it("rejects invalid bundle paths with 400", async () => {
@@ -383,17 +374,15 @@ describe("DELETE /v1/sessions/:id", () => {
       },
     });
 
-    const startPromise = h.app.inject({
+    // The route returns 201 immediately; backend.start() runs in the background
+    // and is blocked on the pull.
+    const startRes = await h.app.inject({
       method: "POST",
       url: "/v1/sessions",
       payload: { ...VALID_START_BODY, config: { image: "x:y", pullPolicy: "always" } },
     });
-
-    // Wait for the registry to see the (still-starting) session, then DELETE.
-    await new Promise((r) => setTimeout(r, 20));
-    const sessionIds = h.registry.list().map((e) => e.sessionId);
-    expect(sessionIds).toHaveLength(1);
-    const sessionId = sessionIds[0]!;
+    expect(startRes.statusCode).toBe(201);
+    const sessionId = (startRes.json() as { sessionId: string }).sessionId;
 
     const deleteRes = await h.app.inject({
       method: "DELETE",
@@ -402,11 +391,10 @@ describe("DELETE /v1/sessions/:id", () => {
     expect(deleteRes.statusCode).toBe(204);
     expect(h.registry.get(sessionId)?.userStopped).toBe(true);
 
-    // Now release the pull; spawnSession completes, and the race-fix must kill
-    // the freshly-created container.
+    // Now release the pull; the background start completes, and the race-fix
+    // must kill the freshly-created container.
     releasePull!();
-    const startRes = await startPromise;
-    expect(startRes.statusCode).toBe(201);
+    await waitFor(() => killCalls >= 1, "container killed");
     expect(killCalls).toBeGreaterThanOrEqual(1);
   });
 });

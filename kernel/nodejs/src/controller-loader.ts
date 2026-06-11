@@ -55,6 +55,10 @@ export interface ControllerLoaderOptions {
    * (cargo loader has its own per-crate cache and does not need this).
    */
   entryUrl?: string;
+  /** Explicit npm install root (`<cache-root>/npm`), threaded from the kernel's
+   *  single `resolveCacheRoot`. Overrides the entry-anchored default so a
+   *  relocated `TELO_CACHE_DIR` is honoured. */
+  installRoot?: string;
 }
 
 /**
@@ -82,7 +86,10 @@ export class ControllerLoader {
 
   constructor(options: ControllerLoaderOptions = {}) {
     this.emit = options.emit;
-    this.npmLoader = new NpmControllerLoader({ entryUrl: options.entryUrl });
+    this.npmLoader = new NpmControllerLoader({
+      entryUrl: options.entryUrl,
+      installRoot: options.installRoot,
+    });
     this.napiLoader = new NapiControllerLoader();
     this.bundleLoader = new BundleControllerLoader();
   }

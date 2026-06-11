@@ -3,6 +3,7 @@ import type {
   PortMapping,
   ProbeConfig,
   RunBundle,
+  RunPhase,
   RunStatus,
   SessionConfig,
 } from "./contract.js";
@@ -48,6 +49,10 @@ export interface BackendStartSpec {
   /** Emit a lifecycle status. The backend drives `starting` → `running` →
    *  terminal (`exited`/`failed`/`stopped`). */
   onStatus(status: RunStatus): void;
+  /** Emit a progress message for a coming-up phase (build / provision / boot).
+   *  Additive to status — surfaces what's happening while the session is still
+   *  `starting`, driving the editor's spinner + step feed. */
+  onProgress(phase: RunPhase, message: string, done?: boolean): void;
   /** Raw merged stdout/stderr (PTY) bytes from the workload. */
   onOutput(chunk: Buffer): void;
   /** True once a user stop / shutdown has been requested — lets the backend

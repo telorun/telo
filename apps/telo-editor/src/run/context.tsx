@@ -14,6 +14,7 @@ import {
   isTerminal,
   type RunAdapter,
   type RunEvent,
+  type RunPhase,
   type RunRequest,
   type RunSession,
   type RunStatus,
@@ -46,6 +47,9 @@ export interface RunRecord {
    *  TerminalBuffer itself is in the runtime side table — read via
    *  `getTerminal(id)`. */
   hasTerminal: boolean;
+  /** Latest coming-up progress (build/provision/boot) while the session is
+   *  still `starting`. Cleared once status reaches `running` or terminal. */
+  progress: { phase: RunPhase; message: string } | null;
   /** Captured output for log-only adapters (no `io` channel). */
   lines: LogLine[];
   truncated: boolean;
@@ -231,6 +235,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         status: session.getStatus(),
         startedAt: Date.now(),
         hasTerminal: terminal !== null,
+        progress: null,
         lines: [],
         truncated: false,
       };
@@ -334,7 +339,23 @@ function applyRunEvent(
   updateRecord: (runId: string, mut: (record: RunRecord) => RunRecord) => void,
 ): void {
   if (event.type === "status") {
-    updateRecord(runId, (record) => ({ ...record, status: event.status }));
+    // Reaching running/terminal ends the coming-up phase — drop the spinner feed.
+    const clearProgress = event.status.kind !== "starting";
+    updateRecord(runId, (record) => ({
+      ...record,
+      status: event.status,
+      progress: clearProgress ? null : record.progress,
+    }));
+    return;
+  }
+
+  if (event.type === "progress") {
+    updateRecord(runId, (record) =>
+      // A progress frame arriving after the workload is up is stale — ignore it.
+      record.status.kind === "starting"
+        ? { ...record, progress: { phase: event.phase, message: event.message } }
+        : record,
+    );
     return;
   }
 

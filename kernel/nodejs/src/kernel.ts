@@ -40,7 +40,9 @@ import {
   readAnalysisStamp,
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
-import { resolveEntryDir } from "./manifest-sources/local-manifest-cache-source.js";
+import {
+  resolveCacheRoot,
+} from "./manifest-sources/local-manifest-cache-source.js";
 import {
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
@@ -169,6 +171,9 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
+  /** The `.telo` cache root for this load, resolved once in `load()` and
+   *  threaded to the validator, analysis stamp, and npm install root. */
+  private _cacheRoot?: string | null;
   private _loadedGraph?: LoadedGraph;
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
@@ -319,18 +324,32 @@ export class Kernel implements IKernel {
    * session rootfs — hits the stamp and skips the validation walk entirely
    * instead of failing to write the caches on every boot.
    */
-  async load(url: string, options?: { analyzeOnly?: boolean }): Promise<void> {
+  async load(
+    url: string,
+    options?: { analyzeOnly?: boolean; cacheDir?: string | null; writeCache?: boolean },
+  ): Promise<void> {
     const sourceUrl = await this.loader.resolveEntryPoint(url);
     this._entryUrl = sourceUrl;
-    // Point the shared schema validator at the entry-anchored cache so
-    // compiled AJV validators are persisted (standalone CJS) under
-    // `<entry-dir>/.telo/manifests/__validators/`. Memory- or HTTP-rooted
-    // entries skip the cache; their schema compiles stay in-process only.
-    const validatorCacheDir = resolveEntryDir(sourceUrl);
+    // Resolve the `.telo` cache root ONCE and thread it to every consumer
+    // (validators, analysis stamp, npm install root) — no consumer re-derives
+    // it or reads the env independently. A caller (the CLI) may pass `cacheDir`
+    // so the env is read exactly once per invocation; otherwise resolve here.
+    const cacheRoot =
+      options?.cacheDir !== undefined ? options.cacheDir : resolveCacheRoot(sourceUrl);
+    this._cacheRoot = cacheRoot;
+    const manifestsDir = cacheRoot ? `${cacheRoot}/manifests` : undefined;
+    // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
+    // READ-only: compiled validators and the analysis stamp are still loaded
+    // from disk, but never written back — so an ephemeral, read-only session
+    // rootfs validates in-memory without touching the baked cache.
+    const writeCache = options?.writeCache !== false;
+    // Point the shared schema validator at the cache so compiled AJV validators
+    // are loaded (and, when writable, persisted) under
+    // `<cache-root>/manifests/__validators/`. Memory-/HTTP-rooted entries skip
+    // the cache; their schema compiles stay in-process only.
     this.sharedSchemaValidator.setCacheDir(
-      validatorCacheDir
-        ? `${validatorCacheDir}/.telo/manifests/__validators`
-        : undefined,
+      manifestsDir ? `${manifestsDir}/__validators` : undefined,
+      { write: writeCache },
     );
     this.rootContext = new ModuleContext(
       sourceUrl,
@@ -393,9 +412,10 @@ export class Kernel implements IKernel {
     // and inline-resource normalisation still runs — only the diagnostic
     // passes are elided. Memory- / HTTP-rooted entries have no
     // local stamp store and always re-validate.
-    const entryDir = resolveEntryDir(sourceUrl);
     const analysisSignature = computeAnalysisSignature(analysisGraph);
-    const stamp = entryDir ? await readAnalysisStamp(entryDir) : undefined;
+    const stamp = manifestsDir
+      ? await readAnalysisStamp("", manifestsDir)
+      : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
     const errors = this.analyzer.analyzeErrors(
       staticManifests,
@@ -416,13 +436,13 @@ export class Kernel implements IKernel {
         })),
       );
     }
-    if (entryDir && !skipValidation) {
+    if (manifestsDir && writeCache && !skipValidation) {
       // Best-effort: stamp the verdict so subsequent loads hit the fast
       // path. A read-only filesystem (baked Docker image) reports the
       // failure on stderr and keeps running — the lookup above will
-      // simply miss next time.
+      // simply miss next time. Skipped under `--no-cache-write`.
       try {
-        await writeAnalysisStamp(entryDir, analysisSignature);
+        await writeAnalysisStamp("", analysisSignature, manifestsDir);
       } catch (err) {
         this.stderr.write(
           `[telo:kernel] analysis stamp write failed: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -742,6 +762,12 @@ export class Kernel implements IKernel {
    */
   getEntryUrl(): string | undefined {
     return this._entryUrl;
+  }
+
+  /** The npm install root for this load (`<cache-root>/npm`), threaded to the
+   *  controller loader so it doesn't re-derive it from the entry URL. */
+  getInstallRoot(): string | undefined {
+    return this._cacheRoot ? `${this._cacheRoot}/npm` : undefined;
   }
 
   /** Authored `kind` of a declared resource by name, from the static manifest
