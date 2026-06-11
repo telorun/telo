@@ -12,6 +12,10 @@ imports:
 targets:
   - !ref SetupDb
   - !ref Server
+ports:
+  http:
+    env: PORT
+    default: 8844
 ---
 kind: Sql.SqliteConnection
 metadata:
@@ -60,8 +64,8 @@ kind: Http.Server
 metadata:
   name: Server
 baseUrl: http://localhost:8844
-port: 8844
-logger: false
+port: !cel "ports.http"
+logger: true
 openapi:
   info:
     title: Feedback API (Repository)

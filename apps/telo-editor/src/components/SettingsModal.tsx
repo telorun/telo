@@ -77,17 +77,10 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
             Run
           </p>
           <RunSettingsSection
-            activeAdapterId={settings.activeRunAdapterId}
-            runAdapterConfig={settings.runAdapterConfig}
-            onChangeActiveAdapter={(id) =>
-              onChange({ ...settings, activeRunAdapterId: id })
-            }
-            onChangeConfig={(id, config) =>
-              onChange({
-                ...settings,
-                runAdapterConfig: { ...settings.runAdapterConfig, [id]: config },
-              })
-            }
+            runners={settings.runners}
+            activeRunnerId={settings.activeRunnerId}
+            onChangeRunners={(runners) => onChange({ ...settings, runners })}
+            onChangeActiveRunner={(id) => onChange({ ...settings, activeRunnerId: id })}
           />
         </div>
 

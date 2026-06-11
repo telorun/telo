@@ -1,113 +1,190 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+
 import { Button } from "../../components/ui/button";
+import type { RunnerInstance } from "../../model";
 import { registry } from "../registry";
-import type { AvailabilityReport, ConfigIssue, RunAdapter } from "../types";
-import { AdapterConfigForm } from "./AdapterConfigForm";
+import type { AvailabilityReport, ConfigIssue, RunAdapter, RunnerCapabilities } from "../types";
+import { RunnerEditDialog } from "./RunnerEditDialog";
+
+const HTTP_RUNNER_ADAPTER_ID = "http-runner";
 
 interface RunSettingsSectionProps {
-  activeAdapterId: string;
-  runAdapterConfig: Record<string, unknown>;
-  onChangeActiveAdapter: (id: string) => void;
-  onChangeConfig: (id: string, config: unknown) => void;
+  runners: RunnerInstance[];
+  activeRunnerId: string;
+  onChangeRunners: (runners: RunnerInstance[]) => void;
+  onChangeActiveRunner: (id: string) => void;
 }
 
-export function RunSettingsSection({
-  activeAdapterId,
-  runAdapterConfig,
-  onChangeActiveAdapter,
-  onChangeConfig,
-}: RunSettingsSectionProps) {
-  const adapters = registry.list();
-  const activeAdapter = registry.get(activeAdapterId);
-  const activeConfig =
-    (runAdapterConfig[activeAdapterId] as unknown) ?? activeAdapter?.defaultConfig;
+type DialogState =
+  | { mode: "closed" }
+  | { mode: "add" }
+  | { mode: "edit"; runner: RunnerInstance };
 
-  if (adapters.length === 0) {
+export function RunSettingsSection({
+  runners,
+  activeRunnerId,
+  onChangeRunners,
+  onChangeActiveRunner,
+}: RunSettingsSectionProps) {
+  const [dialog, setDialog] = useState<DialogState>({ mode: "closed" });
+  const addAdapter = registry.get(HTTP_RUNNER_ADAPTER_ID);
+  // Edit resolves the adapter from the runner's own type (robust if more
+  // user-addable adapter types appear); add always uses the http-runner type.
+  const dialogAdapter =
+    dialog.mode === "edit" ? registry.get(dialog.runner.adapterId) : addAdapter;
+
+  function handleRemove(id: string) {
+    const next = runners.filter((r) => r.id !== id);
+    onChangeRunners(next);
+    if (id === activeRunnerId && next.length > 0) onChangeActiveRunner(next[0]!.id);
+  }
+
+  function handleSave(name: string, description: string | undefined, config: unknown) {
+    if (dialog.mode === "edit") {
+      onChangeRunners(
+        runners.map((r) =>
+          r.id === dialog.runner.id ? { ...r, name, description, config } : r,
+        ),
+      );
+    } else if (dialog.mode === "add") {
+      const runner: RunnerInstance = {
+        id: crypto.randomUUID(),
+        name,
+        description,
+        adapterId: HTTP_RUNNER_ADAPTER_ID,
+        config,
+      };
+      onChangeRunners([...runners, runner]);
+      onChangeActiveRunner(runner.id);
+    }
+  }
+
+  if (runners.length === 0) {
     return (
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        {isTauri()
-          ? "No run adapters are registered."
-          : "Run adapters are only available in the desktop app."}
-      </p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">No runners configured.</p>
     );
   }
 
   return (
     <div className="flex flex-col gap-2">
-      {adapters.map((adapter) => (
-        <AdapterRow
-          key={adapter.id}
-          adapter={adapter}
-          selected={adapter.id === activeAdapterId}
-          config={runAdapterConfig[adapter.id] ?? adapter.defaultConfig}
-          onSelect={() => onChangeActiveAdapter(adapter.id)}
-          onChangeConfig={(cfg) => onChangeConfig(adapter.id, cfg)}
+      {runners.map((runner) => (
+        <RunnerRow
+          key={runner.id}
+          runner={runner}
+          selected={runner.id === activeRunnerId}
+          canRemove={!runner.builtIn && runners.length > 1}
+          onSelect={() => onChangeActiveRunner(runner.id)}
+          onEdit={() => setDialog({ mode: "edit", runner })}
+          onRemove={() => handleRemove(runner.id)}
         />
       ))}
-      {activeAdapter == null && activeConfig == null && (
-        // Selected adapter id points at nothing the registry knows about —
-        // can happen if the user's persisted setting references an adapter
-        // that was removed. The list above offers them an alternative to
-        // switch to.
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          Saved adapter &quot;{activeAdapterId}&quot; is not available. Pick another above.
-        </p>
+
+      {addAdapter && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setDialog({ mode: "add" })}
+        >
+          <Plus className="size-3.5" /> Add runner
+        </Button>
+      )}
+
+      {dialog.mode !== "closed" && dialogAdapter && (
+        <RunnerEditDialog
+          open
+          onOpenChange={(open) => !open && setDialog({ mode: "closed" })}
+          adapter={dialogAdapter}
+          isEdit={dialog.mode === "edit"}
+          initialName={dialog.mode === "edit" ? dialog.runner.name : undefined}
+          initialDescription={dialog.mode === "edit" ? dialog.runner.description : undefined}
+          initialConfig={dialog.mode === "edit" ? dialog.runner.config : undefined}
+          onSave={handleSave}
+        />
       )}
     </div>
   );
 }
 
-interface AdapterRowProps<Config> {
-  adapter: RunAdapter<Config>;
+interface RunnerRowProps {
+  runner: RunnerInstance;
   selected: boolean;
-  config: unknown;
+  canRemove: boolean;
   onSelect: () => void;
-  onChangeConfig: (config: Config) => void;
+  onEdit: () => void;
+  onRemove: () => void;
 }
 
-function AdapterRow<Config>({
-  adapter,
-  selected,
-  config,
-  onSelect,
-  onChangeConfig,
-}: AdapterRowProps<Config>) {
-  const typedConfig = config as Config;
+function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: RunnerRowProps) {
+  const adapter = registry.get(runner.adapterId) as RunAdapter<unknown> | undefined;
   const [report, setReport] = useState<AvailabilityReport | null>(null);
   const [checking, setChecking] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
+  const [caps, setCaps] = useState<RunnerCapabilities | null>(null);
+  const [capsLoading, setCapsLoading] = useState(false);
+
+  const baseUrl = runnerUrl(runner);
+
+  // Fetch the runner's own advertised name/description so the row shows what the
+  // runner reports — not a stored placeholder. Adapters without a capabilities
+  // endpoint (tauri-docker) skip this and fall back to the adapter's own labels.
+  useEffect(() => {
+    if (!adapter?.fetchCapabilities) {
+      setCaps(null);
+      setCapsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCapsLoading(true);
+    adapter
+      .fetchCapabilities(runner.config)
+      .then((next) => {
+        if (!cancelled) setCaps(next);
+      })
+      .catch(() => {
+        // Unreachable / malformed — the availability badge surfaces the fault;
+        // here we just fall back to the runner's stored / generic label.
+        if (!cancelled) setCaps(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCapsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adapter, baseUrl]);
+
+  const title = caps?.displayName ?? runner.name ?? adapter?.displayName ?? "Runner";
+  const description =
+    caps?.description ??
+    (adapter && !adapter.fetchCapabilities ? adapter.description : runner.description);
 
   const probe = useCallback(async () => {
+    if (!adapter) return;
     setChecking(true);
     setProbeError(null);
     try {
-      const syncIssues = adapter.validateConfig(typedConfig);
+      const syncIssues = adapter.validateConfig(runner.config);
       if (syncIssues.length > 0) {
-        // Skip the async probe if config is syntactically incomplete — the
-        // probe would likely fail in a less actionable way.
         setReport({ status: "needs-setup", issues: syncIssues });
         return;
       }
-      const result = await adapter.isAvailable(typedConfig);
-      setReport(result);
+      setReport(await adapter.isAvailable(runner.config));
     } catch (err) {
       setProbeError(err instanceof Error ? err.message : String(err));
       setReport(null);
     } finally {
       setChecking(false);
     }
-  }, [adapter, typedConfig]);
+  }, [adapter, runner.config]);
 
-  // Probe on first selection. Don't auto-probe on every config keystroke —
-  // docker version is slow and noisy; the user triggers Recheck after edits.
   useEffect(() => {
     if (!selected) return;
     void probe();
-    // Intentionally depending only on `selected` + `adapter.id`: config
-    // changes are picked up via Recheck so the UX is predictable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, adapter.id]);
+  }, [selected, runner.id]);
 
   return (
     <div
@@ -117,55 +194,71 @@ function AdapterRow<Config>({
           : "border-zinc-100 dark:border-zinc-800"
       } bg-zinc-50 dark:bg-zinc-900`}
     >
-      <label className="flex cursor-pointer items-start gap-2 p-3">
+      <div className="flex items-start gap-2 p-3">
         <input
           type="radio"
           checked={selected}
           onChange={onSelect}
           className="mt-0.5 shrink-0 accent-zinc-700 dark:accent-zinc-300"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 cursor-pointer" onClick={onSelect}>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              {adapter.displayName}
-            </span>
+            {capsLoading ? (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                <Loader2 className="size-3.5 animate-spin" /> Loading…
+              </span>
+            ) : (
+              <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{title}</span>
+            )}
             {selected && (
-              <AvailabilityBadge
-                report={report}
-                checking={checking}
-                probeError={probeError}
-              />
+              <AvailabilityBadge report={report} checking={checking} probeError={probeError} />
             )}
           </div>
-          {adapter.description && (
-            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-              {adapter.description}
-            </p>
+          {!capsLoading && description && (
+            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
           )}
+          <p className="mt-0.5 truncate text-xs text-zinc-400 dark:text-zinc-500">{baseUrl}</p>
         </div>
-      </label>
+        {!runner.builtIn && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="shrink-0 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
+            onClick={onEdit}
+            aria-label="Edit runner"
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        )}
+        {canRemove && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="shrink-0 text-zinc-400 hover:text-red-600 dark:text-zinc-500 dark:hover:text-red-400"
+            onClick={onRemove}
+            aria-label="Remove runner"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        )}
+      </div>
 
       {selected && (
-        <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
-          <AdapterConfigForm<Config>
-            adapter={adapter}
-            value={typedConfig}
-            onChange={onChangeConfig}
-          />
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <AvailabilitySummary
-              report={report}
-              checking={checking}
-              probeError={probeError}
-            />
-            <Button size="sm" variant="outline" onClick={probe} disabled={checking}>
-              {checking ? "Checking…" : "Recheck"}
-            </Button>
-          </div>
+        <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          <AvailabilitySummary report={report} checking={checking} probeError={probeError} />
+          <Button size="sm" variant="outline" onClick={probe} disabled={checking || !adapter}>
+            {checking ? "Checking…" : "Recheck"}
+          </Button>
         </div>
       )}
     </div>
   );
+}
+
+function runnerUrl(runner: RunnerInstance): string {
+  const config = runner.config as Record<string, unknown> | undefined;
+  const baseUrl = config && typeof config.baseUrl === "string" ? config.baseUrl : null;
+  return baseUrl ?? runner.adapterId;
 }
 
 interface StatusProps {
@@ -179,21 +272,20 @@ function AvailabilityBadge({ report, checking, probeError }: StatusProps) {
   if (probeError) return <Badge label="Probe failed" tone="error" />;
   if (!report) return <Badge label="—" tone="neutral" />;
   if (report.status === "ready") return <Badge label="Ready" tone="success" />;
-  if (report.status === "needs-setup")
-    return <Badge label="Setup required" tone="warning" />;
+  if (report.status === "needs-setup") return <Badge label="Setup required" tone="warning" />;
   return <Badge label="Unavailable" tone="error" />;
 }
 
 function AvailabilitySummary({ report, checking, probeError }: StatusProps) {
   if (checking) {
-    return <p className="text-xs text-zinc-500 dark:text-zinc-400">Checking adapter…</p>;
+    return <p className="text-xs text-zinc-500 dark:text-zinc-400">Checking runner…</p>;
   }
   if (probeError) {
     return <p className="text-xs text-red-600 dark:text-red-400">Probe failed: {probeError}</p>;
   }
   if (!report) return <p className="text-xs text-zinc-400 dark:text-zinc-500">Not checked yet.</p>;
   if (report.status === "ready") {
-    return <p className="text-xs text-green-700 dark:text-green-400">Adapter ready.</p>;
+    return <p className="text-xs text-green-700 dark:text-green-400">Runner ready.</p>;
   }
   if (report.status === "needs-setup") {
     return (

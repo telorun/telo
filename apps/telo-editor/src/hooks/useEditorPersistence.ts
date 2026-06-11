@@ -1,5 +1,7 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings, EditorState, EditorTab, ViewId } from "../model";
+import { normalizeRunnerSettings } from "../run/runners";
 import { loadPersistedState, loadSettings, saveSettings, saveState } from "../storage";
 
 export interface PersistedEditorState {
@@ -55,9 +57,10 @@ export function useEditorPersistence(
 
     const savedSettings = loadSettings();
     // Merge with defaults so older persisted shapes inherit fields added in
-    // later editor versions (e.g. activeRunAdapterId was introduced after
-    // registryServers — pre-existing installs must not land with it missing).
-    if (savedSettings) setSettings({ ...defaultSettings, ...savedSettings });
+    // later editor versions, then normalize the runner list (migrate the legacy
+    // adapter-keyed config, seed built-ins, fix the active selection).
+    const merged = savedSettings ? { ...defaultSettings, ...savedSettings } : defaultSettings;
+    setSettings(normalizeRunnerSettings(merged, isTauri()));
 
     isHydrated.current = true;
   }, []);

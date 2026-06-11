@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractDeclaredEnvEntries } from "./declared-env";
+import { extractDeclaredEnvEntries, findMissingRequiredEnv } from "./declared-env";
 
 describe("extractDeclaredEnvEntries", () => {
   it("returns variables and secrets rows for an Application", () => {
@@ -88,5 +88,39 @@ describe("extractDeclaredEnvEntries", () => {
     expect(rows[0]?.constraints).toContain("object{cert, key}");
     expect(rows[1]?.constraints).toContain("array of string");
     expect(rows[1]?.constraints).toContain("min items 1");
+  });
+});
+
+describe("findMissingRequiredEnv", () => {
+  const manifest = {
+    kind: "Application" as const,
+    variables: {
+      port: { env: "PORT", type: "integer", default: 3000 },
+      region: { env: "REGION", type: "string" },
+    },
+    secrets: {
+      apiKey: { env: "API_KEY", type: "string" },
+    },
+  };
+
+  it("flags required entries (no default) with no supplied value", () => {
+    const missing = findMissingRequiredEnv(manifest, {});
+    expect(missing.map((e) => e.envVar)).toEqual(["REGION", "API_KEY"]);
+  });
+
+  it("treats a blank/whitespace value as missing", () => {
+    const missing = findMissingRequiredEnv(manifest, { REGION: "  ", API_KEY: "k" });
+    expect(missing.map((e) => e.envVar)).toEqual(["REGION"]);
+  });
+
+  it("ignores entries that have a default or a supplied value", () => {
+    const missing = findMissingRequiredEnv(manifest, { REGION: "eu", API_KEY: "k" });
+    expect(missing).toEqual([]);
+  });
+
+  it("returns nothing for a Library manifest", () => {
+    expect(findMissingRequiredEnv({ kind: "Library", variables: manifest.variables }, {})).toEqual(
+      [],
+    );
   });
 });

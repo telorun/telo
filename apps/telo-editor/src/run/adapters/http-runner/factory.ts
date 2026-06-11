@@ -6,10 +6,11 @@ import {
   type ConfigIssue,
   type RunAdapter,
   type RunEvent,
+  type RunnerCapabilities,
   type RunSession,
   type RunStatus,
 } from "../../types";
-import { makeDockerApiIo } from "./io-client";
+import { makeHttpRunnerIo } from "./io-client";
 import { openSseClient } from "./sse-client";
 
 const HEALTH_TIMEOUT_MS = 2_000;
@@ -63,6 +64,29 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       if (baseUrlIssue) issues.push(baseUrlIssue);
       if (opts.validateExtra) issues.push(...opts.validateExtra(config));
       return issues;
+    },
+
+    async fetchCapabilities(config): Promise<RunnerCapabilities | null> {
+      if (validateBaseUrl(config.baseUrl)) return null;
+      const base = trimTrailingSlash(config.baseUrl);
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(`${base}/v1/capabilities`, { method: "GET" }, HEALTH_TIMEOUT_MS);
+      } catch {
+        // Unreachable — distinct from a present-but-endpoint-less runner.
+        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
+      }
+      // 404 = endpoint legitimately absent (older runner) → fall back quietly.
+      if (res.status === 404) return null;
+      // Any other non-OK is a real misconfiguration, not graceful absence.
+      if (!res.ok) {
+        throw new Error(`Runner returned HTTP ${res.status} on /v1/capabilities.`);
+      }
+      try {
+        return (await res.json()) as RunnerCapabilities;
+      } catch {
+        throw new Error("Runner returned a malformed /v1/capabilities document.");
+      }
     },
 
     async isAvailable(config): Promise<AvailabilityReport> {
@@ -160,7 +184,7 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       });
 
       const wsBase = base.replace(/^http(s?):/i, "ws$1:");
-      const io = makeDockerApiIo({ url: `${wsBase}/v1/sessions/${sessionId}/io`, sessionId });
+      const io = makeHttpRunnerIo({ url: `${wsBase}/v1/sessions/${sessionId}/io`, sessionId });
 
       return {
         id: sessionId,

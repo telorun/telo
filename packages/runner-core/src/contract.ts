@@ -7,6 +7,33 @@
 
 export type PullPolicy = "missing" | "always" | "never";
 
+/**
+ * What a runner advertises about itself on `GET /v1/capabilities`. The editor
+ * fetches this to render a generic runner config form — instead of hardcoding
+ * per-backend fields — so the runner is the authority on its own config surface.
+ * `config.schema` is a JSON Schema describing the editable `SessionConfig` fields
+ * (each property carries its own `default`); server-enforced fields are marked
+ * `readOnly` with the enforced value as their `default`. `baseUrl` is never in
+ * this schema — the client owns it (you need it to reach the runner).
+ */
+export interface RunnerCapabilities {
+  displayName: string;
+  description: string;
+  config: { schema: JsonSchema };
+  features: RunnerFeatures;
+}
+
+export interface RunnerFeatures {
+  /** Runner exposes a live PTY byte channel (`/v1/sessions/:id/io`). */
+  io: boolean;
+  /** Runner can publish workload ports back to the client. */
+  ports: boolean;
+}
+
+/** A JSON Schema document, kept structurally open so runner-core need not depend
+ *  on a JSON-Schema type package. The editor treats it as `JSONSchema7`. */
+export type JsonSchema = Record<string, unknown>;
+
 export interface ProbeConfig {
   image: string;
   pullPolicy: PullPolicy;

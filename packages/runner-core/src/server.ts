@@ -4,6 +4,8 @@ import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
 import type { RunnerCoreConfig } from "./config.js";
+import type { RunnerCapabilities } from "./contract.js";
+import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
@@ -15,6 +17,9 @@ export interface ServerDeps {
   config: RunnerCoreConfig;
   /** The concrete runner's package version, surfaced on /v1/health. */
   version: string;
+  /** The runner's self-description + editable config schema, served on
+   *  /v1/capabilities so the editor renders a generic runner config form. */
+  capabilities: RunnerCapabilities;
   /** Runner's default registry URL, passed to workloads as TELO_REGISTRY_URL. */
   defaultRegistryUrl?: string;
   registry?: SessionRegistry;
@@ -49,6 +54,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     });
 
   await app.register(healthRoute(deps.version));
+  await app.register(capabilitiesRoute(deps.capabilities));
   await app.register(probeRoute({ backend: deps.backend }));
   await app.register(
     sessionsRoute({
