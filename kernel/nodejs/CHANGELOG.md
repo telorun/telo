@@ -1,5 +1,40 @@
 # @telorun/kernel
 
+## 0.26.1
+
+### Patch Changes
+
+- 5973024: Fix scope resolution for route handlers of an `Http.Api` (or any composer) that
+  is defined in a library and mounted/consumed by another module. The library's
+  inline `kind:` handlers and their `!ref`s are anonymous children of the
+  declaring document and now resolve against that library's import map rather than
+  the consumer's.
+
+  - Analyzer: top-level kind validation and throws-union/`catches:` coverage now
+    resolve a resource's kind aliases in its own `metadata.module` scope (falling
+    back to the consumer's), mirroring the existing nested-inline and reference
+    paths. This removes false `UNDEFINED_KIND` and `UNBOUNDED_UNION_NEEDS_CATCHALL`
+    diagnostics for imported-library handlers.
+  - Kernel: imported libraries now initialize their resources in dependency
+    (topological) order, like the root context, so a dependent (e.g. an `Http.Api`
+    whose inline handler is extracted to a sibling resource) no longer runs Phase 5
+    injection before its dependency is created — which previously left the handler
+    ref unresolved and produced `ERR_RESOURCE_NOT_INVOKABLE` at request time. A
+    circular dependency purely among a library's own resources (invisible to the
+    root graph) is now surfaced as `ERR_CIRCULAR_DEPENDENCY`, mirroring the root.
+
+- a592710: Apply a `Telo.Library`'s declared `variables` / `secrets` `default:` values when
+  the importer provides no override. Previously the import controller seeded the
+  child scope only from the importer-supplied inputs, so a contract variable with a
+  `default:` but no override reached the library's `${{ variables.X }}` templates as
+  a missing key (`No such key: X` — value was an empty object `{}`), even though
+  static analysis validated the reference against the defaulted contract. This
+  mirrors the root Application's env defaulting; child modules remain isolated from
+  the host environment, so the resolved value is the importer's override else the
+  library default.
+- Updated dependencies [5973024]
+  - @telorun/analyzer@0.23.1
+
 ## 0.26.0
 
 ### Minor Changes
