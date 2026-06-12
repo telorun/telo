@@ -6,7 +6,8 @@ metadata:
   description: >-
     S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, RustFS).
     `S3.Bucket` configures a bucket handle; `S3.Put`, `S3.Get` (streams object
-    bytes), `S3.List`, and `S3.Delete` operate on it.
+    bytes), `S3.List`, `S3.Delete`, and `S3.PresignedUrl` (time-limited
+    download/upload links) operate on it.
 exports:
   kinds:
     - Bucket
@@ -14,6 +15,7 @@ exports:
     - Put
     - Get
     - Delete
+    - PresignedUrl
 ---
 kind: Telo.Definition
 metadata:
@@ -237,4 +239,102 @@ outputType:
         type: string
     required:
       - key
+    additionalProperties: false
+---
+# PresignedUrl: a time-limited link for an object, via SigV4 query presigning
+# — GET for downloads, PUT for browser-direct uploads.
+#
+# Pure local crypto — no request leaves the process, and the object's
+# existence is not checked: a GET URL for a missing key simply 404s when
+# used. Anyone holding the URL can use it until it expires.
+kind: Telo.Definition
+metadata:
+  name: PresignedUrl
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/s3@0.4.0?local_path=./nodejs#s3-presigned-url
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        key is empty, expiresIn is not an integer between 1 and 604800
+        seconds, or contentType is supplied for a get operation.
+    ERR_INVALID_REFERENCE:
+      description: bucketRef does not resolve to a live S3.Bucket resource at invoke time.
+schema:
+  type: object
+  examples:
+    - bucketRef: !ref Store
+      expiresIn: 3600
+  properties:
+    bucketRef:
+      title: Bucket
+      description: Reference to an S3.Bucket resource (local, or imported via `!ref Alias.name`).
+      x-telo-ref: "std/s3#Bucket"
+    operation:
+      title: Operation
+      type: string
+      enum: [ get, put ]
+      default: get
+      description: >-
+        What the link authorizes — get (download) or put (browser-direct
+        upload). Runtime inputs.operation takes precedence when set.
+    expiresIn:
+      title: Expires In
+      type: integer
+      minimum: 1
+      maximum: 604800
+      default: 900
+      description: >-
+        Link lifetime in seconds (SigV4 caps presigned URLs at 7 days =
+        604800). Runtime inputs.expiresIn takes precedence when set.
+  required:
+    - bucketRef
+  additionalProperties: false
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    examples:
+      - key: reports/2026-06.pdf
+    properties:
+      key:
+        title: Key
+        description: Object key path inside the bucket.
+        type: string
+        minLength: 1
+      operation:
+        title: Operation
+        type: string
+        enum: [ get, put ]
+        description: What the link authorizes. Takes precedence over the resource-level operation.
+      expiresIn:
+        title: Expires In
+        type: integer
+        minimum: 1
+        maximum: 604800
+        description: Link lifetime in seconds. Takes precedence over the resource-level expiresIn.
+      contentType:
+        title: Content Type
+        type: string
+        description: >-
+          put only — bakes the Content-Type into the signature, so the
+          uploader must send exactly this header. Rejected for get.
+    required:
+      - key
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: Time-limited URL authorizing the requested operation on the object.
+      expiresAt:
+        type: string
+        description: ISO 8601 timestamp the URL stops working at.
+    required:
+      - url
+      - expiresAt
     additionalProperties: false
