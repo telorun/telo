@@ -105,6 +105,13 @@ projects:
       - path: modules/http-server/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
+  - label: image
+    key: image
+    changelog: modules/image/CHANGELOG.md
+    replacements:
+      - path: modules/image/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: javascript
     key: javascript
     changelog: modules/javascript/CHANGELOG.md

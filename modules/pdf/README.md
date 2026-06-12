@@ -1,6 +1,6 @@
 # PDF
 
-Rasterize PDF pages to PNG images and author editable AcroForm fields at
+Rasterize PDF pages to images (PNG/JPEG/WebP) and author editable AcroForm fields at
 measured coordinates. Rendering uses pdf.js on a server-side canvas; field
 writing uses pdf-lib.
 
@@ -8,9 +8,9 @@ writing uses pdf-lib.
 
 - **One coordinate space** — both kinds speak pixels of the rendered image,
   top-left origin, at a render `scale`. Coordinates measured on a
-  `Pdf.Rasterizer` image (by a vision model or a human) feed `Pdf.FormFields`
-  unchanged; the conversion to PDF user space (points, bottom-left origin)
-  happens inside the controller. The rasterizer reports the `scale` it
+  `Pdf.Rasterizer` image (by a vision model, an `Image.Overlay` preview, or a
+  human) feed `Pdf.FormFields` unchanged; the conversion to PDF user space
+  (points, bottom-left origin) happens inside the controller. The rasterizer reports the `scale` it
   rendered at, so the contract is wirable — pass `result.scale` into the
   `Pdf.FormFields` invocation instead of keeping two config values in sync.
 - **Bytes in, bytes out** — both kinds take and produce buffered `Uint8Array`
@@ -24,7 +24,7 @@ writing uses pdf-lib.
 
 | Kind | Purpose |
 | --- | --- |
-| `Pdf.Rasterizer` | Render one page of a PDF to PNG bytes plus pixel dimensions and page count. |
+| `Pdf.Rasterizer` | Render one page of a PDF to image bytes (png/jpeg/webp) plus pixel dimensions and page count. |
 | `Pdf.FormFields` | Add editable AcroForm fields (text, checkbox) to a PDF at rendered-image pixel coordinates. |
 
 ## Example

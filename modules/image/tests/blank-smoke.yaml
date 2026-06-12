@@ -1,0 +1,168 @@
+kind: Telo.Application
+metadata:
+  name: ImageBlankSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Image.Blank — produces a 120×80 canvas and asserts the
+    output is a PNG with the requested dimensions, mediaType, and that a
+    per-invocation color is accepted. A second sequence asserts a jpeg format
+    override yields image/jpeg with the JPEG magic bytes. Further sequences
+    assert that a zero width, an unrecognized CSS color, a bad format, and an
+    out-of-range quality raise ERR_INVALID_INPUT (canvas would otherwise
+    silently keep its previous fill color or clamp the quality).
+imports:
+  Image: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestBlank
+  - !ref TestJpegFormat
+  - !ref TestZeroWidth
+  - !ref TestBadColor
+  - !ref TestBadFormat
+  - !ref TestBadQuality
+---
+kind: Image.Blank
+metadata: { name: Canvas }
+---
+kind: JS.Script
+metadata: { name: DetectFormat }
+code: |
+  async function main(input) {
+    const b = input.image;
+    const png = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+    const jpeg = b[0] === 0xff && b[1] === 0xd8;
+    return { magic: png ? "png" : jpeg ? "jpeg" : "other" };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestBlank }
+steps:
+  - name: Blank
+    inputs: { width: 120, height: 80, color: "#003366" }
+    invoke: !ref Canvas
+  - name: Detect
+    inputs:
+      image: "${{ steps.Blank.result.image }}"
+    invoke: !ref DetectFormat
+  - name: AssertBlank
+    inputs:
+      width: "${{ steps.Blank.result.width }}"
+      height: "${{ steps.Blank.result.height }}"
+      mediaType: "${{ steps.Blank.result.mediaType }}"
+      magic: "${{ steps.Detect.result.magic }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          width: { const: 120 }
+          height: { const: 80 }
+          mediaType: { const: image/png }
+          magic: { const: png }
+        required: [ width, height, mediaType, magic ]
+---
+kind: Run.Sequence
+metadata: { name: TestJpegFormat }
+steps:
+  - name: Blank
+    inputs: { width: 120, height: 80, format: jpeg, quality: 70 }
+    invoke: !ref Canvas
+  - name: Detect
+    inputs:
+      image: "${{ steps.Blank.result.image }}"
+    invoke: !ref DetectFormat
+  - name: AssertJpeg
+    inputs:
+      mediaType: "${{ steps.Blank.result.mediaType }}"
+      magic: "${{ steps.Detect.result.magic }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          mediaType: { const: image/jpeg }
+          magic: { const: jpeg }
+        required: [ mediaType, magic ]
+---
+kind: Run.Sequence
+metadata: { name: TestZeroWidth }
+steps:
+  - name: TryBlank
+    try:
+      - name: Blank
+        inputs: { width: 0, height: 80 }
+        invoke: !ref Canvas
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestBadColor }
+steps:
+  - name: TryBlank
+    try:
+      - name: Blank
+        inputs: { width: 8, height: 8, color: not-a-color }
+        invoke: !ref Canvas
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestBadFormat }
+steps:
+  - name: TryBlank
+    try:
+      - name: Blank
+        inputs: { width: 8, height: 8, format: tiff }
+        invoke: !ref Canvas
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestBadQuality }
+steps:
+  - name: TryBlank
+    try:
+      # Library would silently clamp 150 → 100; the controller rejects it.
+      - name: Blank
+        inputs: { width: 8, height: 8, format: jpeg, quality: 150 }
+        invoke: !ref Canvas
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
