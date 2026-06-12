@@ -1,0 +1,125 @@
+kind: Telo.Application
+metadata:
+  name: PdfRasterizerSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Pdf.Rasterizer — renders page 1 of the hermetic two-page
+    fixture PDF at scale 2 and asserts the rendered dimensions (300×200 pt →
+    600×400 px), the page count, the reported scale, and the PNG magic bytes.
+    Further sequences assert that out-of-range pages — above the page count
+    and below 1 — raise ERR_INVALID_INPUT.
+imports:
+  Pdf: ../
+  Fixture: ./__fixtures__/sample-form.yaml
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestRenderPage
+  - !ref TestPageOutOfRange
+  - !ref TestPageBelowOne
+---
+kind: Pdf.Rasterizer
+metadata: { name: Render }
+scale: 2
+---
+kind: JS.Script
+metadata: { name: CheckPngMagic }
+code: |
+  async function main(input) {
+    const img = input.image;
+    return {
+      isPng:
+        img instanceof Uint8Array &&
+        img[0] === 0x89 && img[1] === 0x50 && img[2] === 0x4e && img[3] === 0x47,
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestRenderPage }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: Render
+    inputs:
+      data: "${{ steps.Fixture.result.data }}"
+      page: 1
+    invoke: !ref Render
+  - name: AssertDimensions
+    inputs:
+      width: "${{ steps.Render.result.width }}"
+      height: "${{ steps.Render.result.height }}"
+      pageCount: "${{ steps.Render.result.pageCount }}"
+      scale: "${{ steps.Render.result.scale }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          width: { const: 600 }
+          height: { const: 400 }
+          pageCount: { const: 2 }
+          scale: { const: 2 }
+        required: [ width, height, pageCount, scale ]
+  - name: CheckPng
+    inputs:
+      image: "${{ steps.Render.result.image }}"
+    invoke: !ref CheckPngMagic
+  - name: AssertPng
+    inputs:
+      isPng: "${{ steps.CheckPng.result.isPng }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          isPng: { const: true }
+        required: [ isPng ]
+---
+kind: Run.Sequence
+metadata: { name: TestPageOutOfRange }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: TryRender
+    try:
+      - name: Render
+        inputs:
+          data: "${{ steps.Fixture.result.data }}"
+          page: 9
+        invoke: !ref Render
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestPageBelowOne }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: TryRender
+    try:
+      - name: Render
+        inputs:
+          data: "${{ steps.Fixture.result.data }}"
+          page: 0
+        invoke: !ref Render
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]

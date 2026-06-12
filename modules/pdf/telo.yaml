@@ -1,0 +1,185 @@
+kind: Telo.Library
+metadata:
+  name: pdf
+  namespace: std
+  version: 0.1.0
+  description: |
+    PDF primitives — rasterize pages to PNG images and author editable
+    AcroForm fields at measured coordinates. Both kinds share one coordinate
+    space: pixels of the rendered image, top-left origin, at the configured
+    render scale.
+exports:
+  kinds:
+    - Rasterizer
+    - FormFields
+---
+# Rasterizer: PDF bytes → one page as a PNG image.
+#
+# Renders with pdf.js onto a server-side canvas. The reported width/height are
+# the rendered pixel dimensions at the configured scale — the coordinate space
+# downstream consumers (e.g. Pdf.FormFields, Image.Overlay) measure against.
+kind: Telo.Definition
+metadata:
+  name: Rasterizer
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/pdf@0.1.0?local_path=./nodejs#rasterizer
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: data is not a Uint8Array, is not parseable as a PDF, or page is out of range.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      data:
+        type: object
+        description: Buffered PDF bytes (a Uint8Array, e.g. the `bytes` produced by Octet.Decoder).
+      page:
+        type: integer
+        minimum: 1
+        default: 1
+        description: 1-based page number to render.
+    required: [ data ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      image:
+        type: object
+        description: Rendered page as buffered PNG bytes (a Uint8Array).
+      width:
+        type: integer
+        description: Rendered image width in pixels (page width × scale).
+      height:
+        type: integer
+        description: Rendered image height in pixels (page height × scale).
+      pageCount:
+        type: integer
+        description: Total number of pages in the document.
+      scale:
+        type: number
+        description: >-
+          The render scale the image was produced at — wire it into a
+          Pdf.FormFields invocation's `scale` so the coordinate contract is a
+          value, not a convention.
+    required: [ image, width, height, pageCount, scale ]
+    additionalProperties: false
+schema:
+  type: object
+  examples:
+    - scale: 2
+  properties:
+    scale:
+      title: Scale
+      type: number
+      exclusiveMinimum: 0
+      maximum: 8
+      default: 1
+      description: >-
+        Render scale over the PDF's native size (1 ≈ 72 DPI). Pin to the same
+        value as the Pdf.FormFields consuming the measured coordinates.
+  additionalProperties: false
+---
+# FormFields: PDF bytes + field placements → PDF bytes with editable AcroForm fields.
+#
+# Coordinates are pixels of the image Pdf.Rasterizer renders at the same
+# `scale`, origin top-left — the conversion to PDF user space (points,
+# bottom-left origin) happens inside the controller, so manifests and vision
+# models never translate coordinates.
+kind: Telo.Definition
+metadata:
+  name: FormFields
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/pdf@0.1.0?local_path=./nodejs#form-fields
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        data is not a Uint8Array or not parseable as a PDF, a field's page is
+        out of range, a field name collides (within the input or with an
+        existing document field), or a box falls outside the page bounds.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      data:
+        type: object
+        description: Buffered PDF bytes (a Uint8Array).
+      fields:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+              minLength: 1
+              description: AcroForm field name; must be unique within the document.
+            type:
+              type: string
+              enum: [ text, checkbox ]
+              description: Field widget type.
+            page:
+              type: integer
+              minimum: 1
+              description: 1-based page number the field sits on.
+            x:
+              type: number
+              minimum: 0
+              description: Left edge in rendered-image pixels (top-left origin).
+            y:
+              type: number
+              minimum: 0
+              description: Top edge in rendered-image pixels (top-left origin).
+            width:
+              type: number
+              exclusiveMinimum: 0
+              description: Box width in rendered-image pixels.
+            height:
+              type: number
+              exclusiveMinimum: 0
+              description: Box height in rendered-image pixels.
+          required: [ name, type, page, x, y, width, height ]
+          additionalProperties: false
+      scale:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 8
+        description: >-
+          The render scale the pixel coordinates were measured at — wire the
+          producing render step's `result.scale` here. Takes precedence over
+          the resource-level `scale` when set.
+    required: [ data, fields ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      data:
+        type: object
+        description: New PDF as buffered bytes (a Uint8Array) with the AcroForm fields added.
+    required: [ data ]
+    additionalProperties: false
+schema:
+  type: object
+  examples:
+    - scale: 2
+  properties:
+    scale:
+      title: Scale
+      type: number
+      exclusiveMinimum: 0
+      maximum: 8
+      default: 1
+      description: >-
+        The render scale the incoming pixel coordinates were measured at —
+        must match the Pdf.Rasterizer that produced the image. Runtime
+        `inputs.scale` takes precedence when set.
+  additionalProperties: false
