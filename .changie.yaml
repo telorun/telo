@@ -147,6 +147,13 @@ projects:
       - path: modules/octet-codec/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: pdf
+    key: pdf
+    changelog: modules/pdf/CHANGELOG.md
+    replacements:
+      - path: modules/pdf/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: plain-text-codec
     key: plain-text-codec
     changelog: modules/plain-text-codec/CHANGELOG.md

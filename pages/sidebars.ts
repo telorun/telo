@@ -278,6 +278,15 @@ const sidebars: SidebarsConfig = {
                     { type: "doc", id: "modules/s3/docs/delete", label: "S3.Delete" },
                   ],
                 },
+                {
+                  type: "category",
+                  label: "PDF",
+                  items: [
+                    { type: "doc", id: "modules/pdf/README", label: "Overview" },
+                    { type: "doc", id: "modules/pdf/docs/rasterizer", label: "Pdf.Rasterizer" },
+                    { type: "doc", id: "modules/pdf/docs/form-fields", label: "Pdf.FormFields" },
+                  ],
+                },
                 { type: "doc", id: "modules/type/README", label: "Type" },
                 {
                   type: "category",

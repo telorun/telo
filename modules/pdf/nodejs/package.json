@@ -1,0 +1,65 @@
+{
+  "name": "@telorun/pdf",
+  "version": "0.1.0",
+  "description": "PDF primitives — rasterize pages to PNG images and author editable AcroForm fields.",
+  "keywords": [
+    "telo",
+    "pdf",
+    "rasterize",
+    "acroform"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/pdf/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./rasterizer": {
+      "types": "./dist/rasterizer-controller.d.ts",
+      "bun": "./src/rasterizer-controller.ts",
+      "import": "./dist/rasterizer-controller.js"
+    },
+    "./form-fields": {
+      "types": "./dist/form-fields-controller.d.ts",
+      "bun": "./src/form-fields-controller.ts",
+      "import": "./dist/form-fields-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.0.227"
+  }
+}

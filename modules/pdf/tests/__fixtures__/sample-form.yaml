@@ -1,0 +1,23 @@
+kind: Telo.Library
+metadata:
+  name: pdf-test-fixtures
+  version: 0.1.0
+  description: |
+    Shared fixture for std/pdf tests — a hermetic two-page PDF (300×200 pt per
+    page, generated once with pdf-lib: page 1 reads "First name:" / "Email:",
+    page 2 reads "Subscribe to newsletter:"), embedded as base64 and decoded
+    to a Uint8Array by a JS.Script.
+imports:
+  JS: ../../../javascript
+exports:
+  resources:
+    - SampleFormPdf
+---
+kind: JS.Script
+metadata:
+  name: SampleFormPdf
+code: |
+  async function main() {
+    const b64 = "JVBERi0xLjcKJYGBgYEKCjYgMCBvYmoKPDwKL0ZpbHRlciAvRmxhdGVEZWNvZGUKL0xlbmd0aCAxMjkKPj4Kc3RyZWFtCnicdY29CgJBDIT7PEVqQUxyu0kW5MCfAwsbIS8gcoriFSfi87uKlXAMfNXMfCOsAwg/eVxgsevvr/55PR3nRsWTk3lBThhnkMo98LfKKBWZMAZYJtViYo0lIe2Udau5WbUYN4gZdAEHGKcspY7UJatPWuhnyfWXtejm7/sNrAQq1QplbmRzdHJlYW0KZW5kb2JqCgo4IDAgb2JqCjw8Ci9GaWx0ZXIgL0ZsYXRlRGVjb2RlCi9MZW5ndGggMTE4Cj4+CnN0cmVhbQp4nB2KQQoCQQwE7/2KnAUxk5kkuyCCyooHL0I+ILLKih4U8f1GaaiG6n5iE2D65XXFYj/eP+N7Op/mwswda98ZlUZxgSQPKP9rIUkoUzyw1Opq4tWqi/UmpsLebCdsg6l7Ltvslk5d6npFcUPMMASO+AI/5BvRCmVuZHN0cmVhbQplbmRvYmoKCjkgMCBvYmoKPDwKL0ZpbHRlciAvRmxhdGVEZWNvZGUKL1R5cGUgL09ialN0bQovTiA2Ci9GaXJzdCAzMgovTGVuZ3RoIDM5Nwo+PgpzdHJlYW0KeJzVU81L7DAQv+evmOPzIJmmbZLKsrAf7Xsg8kQFRfFQ27BUlkTarOh/70y7ungQD/IOjzJNZuY3X8kvCSAoyBFSsBlkkKcWctAKwYBVBmYzIa9enxzI83rjBiFPu3aAO8IgXBCG//dCrsLOR1BiPheHiFUd623YiCkUEga/I8770O4a18OsKqsK0SCizkg0olrTuiIpSBTp5FOW9iQm2wvZTIqYLshXTaLNFMP+EZvv40taCasZs56wmZ30j7pcq5xyqO/6KeZCnoV2XUcHv9YnCpVGnagkT4skvz2i4+hdHcP/O9zYfxf8lxN+uucq+Cjk5e4hjiobEyGX9eDYA/KP2z672DW1kKVvQtv5Dcjrzi/80L0bPmdkwjBtekfxE2/khRvCrm+ISIwbM/PmI/mxwcLS5MYWxOMx5OArTKa0Vbm2ex+Vkzd/Hx5dM6ZhtXyJvy8jTzwZ2Hbm2q5ehhdiPNJH5wx0Rsz4hfch8ksY2e8jdcqa3r+In4/DxLCYF1b/45btoeU3Jkv/CQplbmRzdHJlYW0KZW5kb2JqCgoxMCAwIG9iago8PAovU2l6ZSAxMQovUm9vdCAyIDAgUgovSW5mbyAzIDAgUgovRmlsdGVyIC9GbGF0ZURlY29kZQovVHlwZSAvWFJlZgovTGVuZ3RoIDQ3Ci9XIFsgMSAyIDIgXQovSW5kZXggWyAwIDExIF0KPj4Kc3RyZWFtCnicJcmxFQAQEETBv3cEMoVrQGuaOfZJJhmgKhhgZMKkaWL+6OKAtB+54AKEmARnCmVuZHN0cmVhbQplbmRvYmoKCnN0YXJ0eHJlZgo5MDgKJSVFT0Y=";
+    return { data: new Uint8Array(Buffer.from(b64, "base64")) };
+  }

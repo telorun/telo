@@ -1,0 +1,162 @@
+kind: Telo.Application
+metadata:
+  name: PdfFormFieldsSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Pdf.FormFields — renders page 1 of the hermetic fixture
+    PDF, then adds a text field (page 1) and a checkbox (page 2) with the
+    scale wired from the render result (the wirable coordinate contract),
+    and proves the output: re-rasterizing it shows the document still parses
+    with both pages intact, and re-adding the same field name raises
+    ERR_INVALID_INPUT, which proves the field actually persisted into the
+    document. Further sequences assert the out-of-bounds-box,
+    negative-coordinate, and page-out-of-range diagnostics.
+imports:
+  Pdf: ../
+  Fixture: ./__fixtures__/sample-form.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestAddFields
+  - !ref TestBoxOutOfBounds
+  - !ref TestNegativeCoordinates
+  - !ref TestPageOutOfRange
+---
+kind: Pdf.Rasterizer
+metadata: { name: Render }
+scale: 2
+---
+kind: Pdf.FormFields
+metadata: { name: AddFields }
+scale: 2
+---
+kind: Run.Sequence
+metadata: { name: TestAddFields }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: Page
+    inputs:
+      data: "${{ steps.Fixture.result.data }}"
+      page: 1
+    invoke: !ref Render
+  - name: Fielded
+    inputs:
+      data: "${{ steps.Fixture.result.data }}"
+      scale: "${{ steps.Page.result.scale }}"
+      fields:
+        - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
+        - { name: subscribe, type: checkbox, page: 2, x: 240, y: 64, width: 40, height: 40 }
+    invoke: !ref AddFields
+  - name: ReRender
+    inputs:
+      data: "${{ steps.Fielded.result.data }}"
+      page: 2
+    invoke: !ref Render
+  - name: AssertStillValidPdf
+    inputs:
+      width: "${{ steps.ReRender.result.width }}"
+      pageCount: "${{ steps.ReRender.result.pageCount }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          width: { const: 600 }
+          pageCount: { const: 2 }
+        required: [ width, pageCount ]
+  - name: TryDuplicate
+    try:
+      - name: Duplicate
+        inputs:
+          data: "${{ steps.Fielded.result.data }}"
+          fields:
+            - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
+        invoke: !ref AddFields
+    catch:
+      - name: CaughtDuplicate
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestBoxOutOfBounds }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: TryOutOfBounds
+    try:
+      # Page is 300×200 pt → 600×400 px at scale 2; x 500 + width 200 overflows.
+      - name: OutOfBounds
+        inputs:
+          data: "${{ steps.Fixture.result.data }}"
+          fields:
+            - { name: oob, type: text, page: 1, x: 500, y: 64, width: 200, height: 40 }
+        invoke: !ref AddFields
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestNegativeCoordinates }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: TryNegative
+    try:
+      - name: Negative
+        inputs:
+          data: "${{ steps.Fixture.result.data }}"
+          fields:
+            - { name: neg, type: text, page: 1, x: -10, y: 64, width: 100, height: 40 }
+        invoke: !ref AddFields
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestPageOutOfRange }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: TryBadPage
+    try:
+      - name: BadPage
+        inputs:
+          data: "${{ steps.Fixture.result.data }}"
+          fields:
+            - { name: late, type: text, page: 9, x: 10, y: 10, width: 40, height: 20 }
+        invoke: !ref AddFields
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
