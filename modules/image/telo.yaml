@@ -1,0 +1,252 @@
+kind: Telo.Library
+metadata:
+  name: image
+  namespace: std
+  version: 0.1.0
+  description: |
+    Image primitives — draw labelled rectangles onto an image
+    (`Image.Overlay`), the visualization half of vision-grounding loops:
+    render, let a model propose boxes, draw them, look again. Coordinates are
+    pixels, top-left origin.
+exports:
+  kinds:
+    - Blank
+    - Overlay
+---
+# Blank: a solid-color canvas → encoded image bytes. The seed of an image
+# pipeline — compose diagrams with Image.Overlay, or use it as a hermetic test
+# fixture instead of embedding base64 images.
+kind: Telo.Definition
+metadata:
+  name: Blank
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/image@0.1.0?local_path=./nodejs#blank
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        width/height is not an integer between 1 and 16384, color is not a
+        recognized CSS color, format is not png/jpeg/webp, or quality is not
+        an integer between 1 and 100.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    examples:
+      - width: 120
+        height: 80
+    properties:
+      width:
+        type: integer
+        minimum: 1
+        maximum: 16384
+        description: Canvas width in pixels.
+      height:
+        type: integer
+        minimum: 1
+        maximum: 16384
+        description: Canvas height in pixels.
+      color:
+        type: string
+        description: CSS fill color. Takes precedence over the resource-level color.
+      format:
+        type: string
+        enum: [ png, jpeg, webp ]
+        description: Output image format. Takes precedence over the resource-level format.
+      quality:
+        type: integer
+        minimum: 1
+        maximum: 100
+        description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+    required: [ width, height ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      image:
+        type: object
+        description: Solid-color canvas as buffered image bytes (a Uint8Array) in the chosen format.
+      width:
+        type: integer
+        description: Canvas width in pixels (echoed back).
+      height:
+        type: integer
+        description: Canvas height in pixels (echoed back).
+      mediaType:
+        type: string
+        description: MIME type of the encoded image (image/png, image/jpeg, or image/webp).
+    required: [ image, width, height, mediaType ]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    color:
+      title: Color
+      type: string
+      default: "#FFFFFF"
+      description: CSS fill color. Runtime inputs.color takes precedence when set.
+    format:
+      title: Format
+      type: string
+      enum: [ png, jpeg, webp ]
+      default: png
+      description: Output image format. Runtime inputs.format takes precedence when set.
+    quality:
+      title: Quality
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 80
+      description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+  additionalProperties: false
+---
+# Overlay: image bytes + labelled rectangles → annotated image bytes (PNG).
+#
+# Visualization, not mutation: shapes are drawn as given and clipped at the
+# image edges — a box that hangs off the canvas renders partially, because
+# showing a wrong proposal is the point of a review loop. Only non-finite
+# coordinates or non-positive sizes are rejected.
+kind: Telo.Definition
+metadata:
+  name: Overlay
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/image@0.1.0?local_path=./nodejs#overlay
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        image is not a Uint8Array or not decodable as an image, a shape has
+        non-finite coordinates or non-positive width/height, format is not
+        png/jpeg/webp, or quality is not an integer between 1 and 100.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      image:
+        type: object
+        description: Buffered image bytes (PNG, JPEG, or WebP — anything the canvas decoder reads).
+      shapes:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          properties:
+            x:
+              type: number
+              description: Left edge in pixels (top-left origin). May exceed the image bounds; the drawing is clipped.
+            y:
+              type: number
+              description: Top edge in pixels (top-left origin). May exceed the image bounds; the drawing is clipped.
+            width:
+              type: number
+              exclusiveMinimum: 0
+              description: Box width in pixels.
+            height:
+              type: number
+              exclusiveMinimum: 0
+              description: Box height in pixels.
+            label:
+              type: string
+              description: Optional tag drawn at the box's anchor corner.
+            color:
+              type: string
+              description: Optional per-shape override of the stroke (and label background) color.
+          required: [ x, y, width, height ]
+          additionalProperties: false
+      format:
+        type: string
+        enum: [ png, jpeg, webp ]
+        description: Output image format. Takes precedence over the resource-level format.
+      quality:
+        type: integer
+        minimum: 1
+        maximum: 100
+        description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+    required: [ image, shapes ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      image:
+        type: object
+        description: Annotated image as buffered image bytes (a Uint8Array) in the chosen format.
+      width:
+        type: integer
+        description: Image width in pixels (unchanged from the input).
+      height:
+        type: integer
+        description: Image height in pixels (unchanged from the input).
+      mediaType:
+        type: string
+        description: MIME type of the encoded image (image/png, image/jpeg, or image/webp).
+    required: [ image, width, height, mediaType ]
+    additionalProperties: false
+schema:
+  type: object
+  examples:
+    - stroke: { color: "#FF3B30", width: 3 }
+      label: { color: "#FFFFFF", placement: top-left }
+  properties:
+    stroke:
+      title: Stroke
+      type: object
+      properties:
+        color:
+          title: Color
+          type: string
+          default: "#FF3B30"
+          description: CSS color of the rectangle outline (per-shape `color` overrides it).
+        width:
+          title: Width
+          type: number
+          exclusiveMinimum: 0
+          default: 3
+          description: Outline thickness in pixels.
+      additionalProperties: false
+    label:
+      title: Label
+      type: object
+      properties:
+        color:
+          title: Color
+          type: string
+          default: "#FFFFFF"
+          description: CSS color of the label text.
+        background:
+          title: Background
+          type: string
+          description: CSS color behind the label text. Defaults to the shape's stroke color.
+        size:
+          title: Size
+          type: number
+          exclusiveMinimum: 0
+          default: 14
+          description: Label font size in pixels.
+        placement:
+          title: Placement
+          type: string
+          enum: [ top-left, top-right, bottom-left, bottom-right ]
+          default: top-left
+          description: Which corner of the rectangle the label tab anchors to (drawn outside the box, clamped into the image).
+      additionalProperties: false
+    format:
+      title: Format
+      type: string
+      enum: [ png, jpeg, webp ]
+      default: png
+      description: Output image format. Runtime inputs.format takes precedence when set.
+    quality:
+      title: Quality
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 80
+      description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+  additionalProperties: false

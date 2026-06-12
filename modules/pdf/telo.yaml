@@ -27,7 +27,10 @@ controllers:
 throws:
   codes:
     ERR_INVALID_INPUT:
-      description: data is not a Uint8Array, is not parseable as a PDF, or page is out of range.
+      description: >-
+        data is not a Uint8Array, is not parseable as a PDF, page is out of
+        range, format is not png/jpeg/webp, or quality is not an integer
+        between 1 and 100.
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -41,6 +44,15 @@ inputType:
         minimum: 1
         default: 1
         description: 1-based page number to render.
+      format:
+        type: string
+        enum: [ png, jpeg, webp ]
+        description: Output image format. Takes precedence over the resource-level format.
+      quality:
+        type: integer
+        minimum: 1
+        maximum: 100
+        description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
     required: [ data ]
     additionalProperties: false
 outputType:
@@ -50,7 +62,7 @@ outputType:
     properties:
       image:
         type: object
-        description: Rendered page as buffered PNG bytes (a Uint8Array).
+        description: Rendered page as buffered image bytes (a Uint8Array) in the chosen format.
       width:
         type: integer
         description: Rendered image width in pixels (page width × scale).
@@ -66,7 +78,12 @@ outputType:
           The render scale the image was produced at — wire it into a
           Pdf.FormFields invocation's `scale` so the coordinate contract is a
           value, not a convention.
-    required: [ image, width, height, pageCount, scale ]
+      mediaType:
+        type: string
+        description: >-
+          MIME type of the encoded image (image/png, image/jpeg, or
+          image/webp) — wire it into a vision message's image part.
+    required: [ image, width, height, pageCount, scale, mediaType ]
     additionalProperties: false
 schema:
   type: object
@@ -82,6 +99,21 @@ schema:
       description: >-
         Render scale over the PDF's native size (1 ≈ 72 DPI). Pin to the same
         value as the Pdf.FormFields consuming the measured coordinates.
+    format:
+      title: Format
+      type: string
+      enum: [ png, jpeg, webp ]
+      default: png
+      description: >-
+        Output image format. png keeps text and lines crisp; jpeg/webp shrink
+        the payload for a vision model. Runtime inputs.format takes precedence.
+    quality:
+      title: Quality
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 80
+      description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
   additionalProperties: false
 ---
 # FormFields: PDF bytes + field placements → PDF bytes with editable AcroForm fields.

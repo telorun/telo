@@ -285,6 +285,15 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: "category",
+                  label: "Image",
+                  items: [
+                    { type: "doc", id: "modules/image/README", label: "Overview" },
+                    { type: "doc", id: "modules/image/docs/blank", label: "Image.Blank" },
+                    { type: "doc", id: "modules/image/docs/overlay", label: "Image.Overlay" },
+                  ],
+                },
+                {
+                  type: "category",
                   label: "PDF",
                   items: [
                     { type: "doc", id: "modules/pdf/README", label: "Overview" },

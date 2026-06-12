@@ -16,6 +16,7 @@ imports:
   Assert: ../../assert
 targets:
   - !ref TestRenderPage
+  - !ref TestJpegFormat
   - !ref TestPageOutOfRange
   - !ref TestPageBelowOne
 ---
@@ -24,15 +25,13 @@ metadata: { name: Render }
 scale: 2
 ---
 kind: JS.Script
-metadata: { name: CheckPngMagic }
+metadata: { name: DetectFormat }
 code: |
   async function main(input) {
-    const img = input.image;
-    return {
-      isPng:
-        img instanceof Uint8Array &&
-        img[0] === 0x89 && img[1] === 0x50 && img[2] === 0x4e && img[3] === 0x47,
-    };
+    const b = input.image;
+    const png = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+    const jpeg = b[0] === 0xff && b[1] === 0xd8;
+    return { magic: png ? "png" : jpeg ? "jpeg" : "other" };
   }
 ---
 kind: Run.Sequence
@@ -51,6 +50,7 @@ steps:
       height: "${{ steps.Render.result.height }}"
       pageCount: "${{ steps.Render.result.pageCount }}"
       scale: "${{ steps.Render.result.scale }}"
+      mediaType: "${{ steps.Render.result.mediaType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -60,21 +60,51 @@ steps:
           height: { const: 400 }
           pageCount: { const: 2 }
           scale: { const: 2 }
-        required: [ width, height, pageCount, scale ]
-  - name: CheckPng
+          mediaType: { const: image/png }
+        required: [ width, height, pageCount, scale, mediaType ]
+  - name: Detect
     inputs:
       image: "${{ steps.Render.result.image }}"
-    invoke: !ref CheckPngMagic
+    invoke: !ref DetectFormat
   - name: AssertPng
     inputs:
-      isPng: "${{ steps.CheckPng.result.isPng }}"
+      magic: "${{ steps.Detect.result.magic }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties:
-          isPng: { const: true }
-        required: [ isPng ]
+          magic: { const: png }
+        required: [ magic ]
+---
+kind: Run.Sequence
+metadata: { name: TestJpegFormat }
+steps:
+  - name: Fixture
+    invoke: !ref Fixture.SampleFormPdf
+  - name: Render
+    inputs:
+      data: "${{ steps.Fixture.result.data }}"
+      page: 1
+      format: jpeg
+      quality: 70
+    invoke: !ref Render
+  - name: Detect
+    inputs:
+      image: "${{ steps.Render.result.image }}"
+    invoke: !ref DetectFormat
+  - name: AssertJpeg
+    inputs:
+      mediaType: "${{ steps.Render.result.mediaType }}"
+      magic: "${{ steps.Detect.result.magic }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          mediaType: { const: image/jpeg }
+          magic: { const: jpeg }
+        required: [ mediaType, magic ]
 ---
 kind: Run.Sequence
 metadata: { name: TestPageOutOfRange }

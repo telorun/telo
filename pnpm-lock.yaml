@@ -630,6 +630,22 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/image/nodejs:
+    dependencies:
+      '@napi-rs/canvas':
+        specifier: ^1.0.0
+        version: 1.0.0
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/javascript/nodejs:
     devDependencies:
       '@telorun/sdk':

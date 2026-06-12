@@ -1,0 +1,153 @@
+kind: Telo.Application
+metadata:
+  name: ImageOverlaySmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Image.Overlay — draws a labelled box and an off-canvas box
+    (clipped, not rejected) onto a 120×80 Image.Blank canvas and asserts the
+    output is a PNG with unchanged dimensions. Further sequences assert that
+    a zero-width shape and undecodable bytes raise ERR_INVALID_INPUT.
+imports:
+  Image: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestOverlay
+  - !ref TestZeroWidthShape
+  - !ref TestUndecodableBytes
+---
+kind: Image.Blank
+metadata: { name: Canvas }
+---
+kind: Image.Overlay
+metadata: { name: Draw }
+stroke: { color: "#FF3B30", width: 3 }
+label: { color: "#FFFFFF", placement: top-left }
+---
+kind: JS.Script
+metadata: { name: CheckPngMagic }
+code: |
+  async function main(input) {
+    const img = input.image;
+    return {
+      isPng:
+        img instanceof Uint8Array &&
+        img[0] === 0x89 && img[1] === 0x50 && img[2] === 0x4e && img[3] === 0x47,
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestOverlay }
+steps:
+  - name: Fixture
+    inputs: { width: 120, height: 80 }
+    invoke: !ref Canvas
+  - name: Draw
+    inputs:
+      image: "${{ steps.Fixture.result.image }}"
+      shapes:
+        - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
+        - { x: 100, y: 60, width: 40, height: 40, color: "#0000FF" }
+    invoke: !ref Draw
+  - name: AssertDimensions
+    inputs:
+      width: "${{ steps.Draw.result.width }}"
+      height: "${{ steps.Draw.result.height }}"
+      mediaType: "${{ steps.Draw.result.mediaType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          width: { const: 120 }
+          height: { const: 80 }
+          mediaType: { const: image/png }
+        required: [ width, height, mediaType ]
+  - name: CheckPng
+    inputs:
+      image: "${{ steps.Draw.result.image }}"
+    invoke: !ref CheckPngMagic
+  - name: AssertPng
+    inputs:
+      isPng: "${{ steps.CheckPng.result.isPng }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          isPng: { const: true }
+        required: [ isPng ]
+  - name: DrawWebp
+    inputs:
+      image: "${{ steps.Fixture.result.image }}"
+      shapes:
+        - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
+      format: webp
+    invoke: !ref Draw
+  - name: AssertWebp
+    inputs:
+      mediaType: "${{ steps.DrawWebp.result.mediaType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          mediaType: { const: image/webp }
+        required: [ mediaType ]
+---
+kind: Run.Sequence
+metadata: { name: TestZeroWidthShape }
+steps:
+  - name: Fixture
+    inputs: { width: 120, height: 80 }
+    invoke: !ref Canvas
+  - name: TryDraw
+    try:
+      - name: Draw
+        inputs:
+          image: "${{ steps.Fixture.result.image }}"
+          shapes:
+            - { x: 10, y: 10, width: 0, height: 10 }
+        invoke: !ref Draw
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestUndecodableBytes }
+steps:
+  - name: NotAnImage
+    invoke:
+      kind: JS.Script
+      code: |
+        async function main() {
+          return { image: new Uint8Array([1, 2, 3, 4]) };
+        }
+  - name: TryDraw
+    try:
+      - name: Draw
+        inputs:
+          image: "${{ steps.NotAnImage.result.image }}"
+          shapes:
+            - { x: 0, y: 0, width: 5, height: 5 }
+        invoke: !ref Draw
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
