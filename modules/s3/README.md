@@ -18,6 +18,7 @@ Read and write objects in an S3-compatible bucket from a Telo manifest. Targets 
 | `S3.Get` | Fetch an object's bytes by key. |
 | `S3.List` | List keys under a prefix. |
 | `S3.Delete` | Remove an object by key (idempotent). |
+| `S3.PresignedUrl` | Mint a time-limited download or upload link for a key (SigV4 query presigning, no network). |
 
 ## Example
 
@@ -46,3 +47,4 @@ body: !cel "resources.GenerateReport.bytes"
 - [`S3.Get`](docs/get.md)
 - [`S3.List`](docs/list.md)
 - [`S3.Delete`](docs/delete.md)
+- [`S3.PresignedUrl`](docs/presigned-url.md)

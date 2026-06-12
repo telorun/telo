@@ -1,0 +1,193 @@
+kind: Telo.Application
+metadata:
+  name: S3PresignedUrlSmokeTest
+  version: 1.0.0
+  description: |
+    Hermetic smoke test for S3.PresignedUrl — presigning is pure local SigV4
+    crypto, so no request leaves the process and the bucket endpoint is a
+    dummy. Asserts the URL targets the bucket's endpoint and key and carries
+    the SigV4 query parameters (expiry, credential, signature), that a
+    runtime expiresIn overrides the resource default, that a put operation
+    signs the Content-Type header, and that an empty key, an out-of-range
+    expiry, and contentType-on-get raise ERR_INVALID_INPUT.
+imports:
+  S3: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestPresign
+  - !ref TestPresignPut
+  - !ref TestEmptyKey
+  - !ref TestExpiryOutOfRange
+  - !ref TestContentTypeOnGet
+---
+kind: S3.Bucket
+metadata: { name: Store }
+bucketName: docs
+endpoint: https://s3.example.test
+accessKeyId: AKIATEST
+secretAccessKey: test-secret
+---
+kind: S3.PresignedUrl
+metadata: { name: Share }
+bucketRef: !ref Store
+expiresIn: 3600
+---
+kind: JS.Script
+metadata: { name: ParseUrl }
+code: |
+  async function main(input) {
+    const u = new URL(input.url);
+    return {
+      host: u.host,
+      path: u.pathname,
+      expires: u.searchParams.get("X-Amz-Expires"),
+      hasSignature: u.searchParams.get("X-Amz-Signature") !== null,
+      accessKey: (u.searchParams.get("X-Amz-Credential") ?? "").split("/")[0],
+      signedHeaders: u.searchParams.get("X-Amz-SignedHeaders"),
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: TestPresign }
+steps:
+  - name: Sign
+    inputs:
+      key: reports/2026-06.pdf
+    invoke: !ref Share
+  - name: Parse
+    inputs:
+      url: "${{ steps.Sign.result.url }}"
+    invoke: !ref ParseUrl
+  - name: AssertUrl
+    inputs:
+      host: "${{ steps.Parse.result.host }}"
+      path: "${{ steps.Parse.result.path }}"
+      expires: "${{ steps.Parse.result.expires }}"
+      hasSignature: "${{ steps.Parse.result.hasSignature }}"
+      accessKey: "${{ steps.Parse.result.accessKey }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          host: { const: docs.s3.example.test }
+          path: { const: /reports/2026-06.pdf }
+          expires: { const: "3600" }
+          hasSignature: { const: true }
+          accessKey: { const: AKIATEST }
+        required: [ host, path, expires, hasSignature, accessKey ]
+  - name: SignOverride
+    inputs:
+      key: reports/2026-06.pdf
+      expiresIn: 60
+    invoke: !ref Share
+  - name: ParseOverride
+    inputs:
+      url: "${{ steps.SignOverride.result.url }}"
+    invoke: !ref ParseUrl
+  - name: AssertOverride
+    inputs:
+      expires: "${{ steps.ParseOverride.result.expires }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          expires: { const: "60" }
+        required: [ expires ]
+---
+kind: Run.Sequence
+metadata: { name: TestPresignPut }
+steps:
+  - name: Sign
+    inputs:
+      key: incoming/upload.pdf
+      operation: put
+      contentType: application/pdf
+    invoke: !ref Share
+  - name: Parse
+    inputs:
+      url: "${{ steps.Sign.result.url }}"
+    invoke: !ref ParseUrl
+  - name: AssertPut
+    inputs:
+      path: "${{ steps.Parse.result.path }}"
+      hasSignature: "${{ steps.Parse.result.hasSignature }}"
+      signedHeaders: "${{ steps.Parse.result.signedHeaders }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          path: { const: /incoming/upload.pdf }
+          hasSignature: { const: true }
+          signedHeaders: { const: content-type;host }
+        required: [ path, hasSignature, signedHeaders ]
+---
+kind: Run.Sequence
+metadata: { name: TestContentTypeOnGet }
+steps:
+  - name: TrySign
+    try:
+      - name: Sign
+        inputs:
+          key: reports/2026-06.pdf
+          contentType: application/pdf
+        invoke: !ref Share
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestEmptyKey }
+steps:
+  - name: TrySign
+    try:
+      - name: Sign
+        inputs:
+          key: ""
+        invoke: !ref Share
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]
+---
+kind: Run.Sequence
+metadata: { name: TestExpiryOutOfRange }
+steps:
+  - name: TrySign
+    try:
+      # 604801 exceeds the 7-day SigV4 cap.
+      - name: Sign
+        inputs:
+          key: reports/2026-06.pdf
+          expiresIn: 604801
+        invoke: !ref Share
+    catch:
+      - name: Caught
+        inputs:
+          code: "${{ error.code }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_INVALID_INPUT }
+            required: [ code ]

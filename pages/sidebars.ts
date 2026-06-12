@@ -276,6 +276,11 @@ const sidebars: SidebarsConfig = {
                     { type: "doc", id: "modules/s3/docs/get", label: "S3.Get" },
                     { type: "doc", id: "modules/s3/docs/list", label: "S3.List" },
                     { type: "doc", id: "modules/s3/docs/delete", label: "S3.Delete" },
+                    {
+                      type: "doc",
+                      id: "modules/s3/docs/presigned-url",
+                      label: "S3.PresignedUrl",
+                    },
                   ],
                 },
                 {

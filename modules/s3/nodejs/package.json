@@ -40,6 +40,10 @@
     "./s3-delete": {
       "bun": "./src/s3-delete-controller.ts",
       "import": "./dist/s3-delete-controller.js"
+    },
+    "./s3-presigned-url": {
+      "bun": "./src/s3-presigned-url-controller.ts",
+      "import": "./dist/s3-presigned-url-controller.js"
     }
   },
   "files": [
@@ -52,7 +56,8 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.1067.0",
+    "@aws-sdk/s3-request-presigner": "^3.1067.0",
     "@sinclair/typebox": "^0.34.48"
   },
   "devDependencies": {
