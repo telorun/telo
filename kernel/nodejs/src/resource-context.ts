@@ -6,7 +6,6 @@ import {
   RuntimeError,
   RuntimeResource,
   createCancellationSource,
-  isCompiledValue,
   type CancellationSource,
   type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
@@ -17,6 +16,7 @@ import {
   type TypeRule,
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { stripCompiledValues } from "./schema-compiled-values.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -421,15 +421,3 @@ export class ResourceContextImpl implements ResourceContext {
   }
 }
 
-function stripCompiledValues(v: unknown): unknown {
-  if (isCompiledValue(v)) return "";
-  if (Array.isArray(v)) return v.map(stripCompiledValues);
-  if (v !== null && typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = stripCompiledValues(val);
-    }
-    return out;
-  }
-  return v;
-}

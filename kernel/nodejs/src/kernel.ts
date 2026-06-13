@@ -13,7 +13,6 @@ import {
   ControllerPolicy,
   createCancellationSource,
   Kernel as IKernel,
-  isCompiledValue,
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
@@ -28,13 +27,16 @@ import {
   type LoadOptions,
   type ParsedArgs,
 } from "@telorun/sdk";
-import { createHash, createHmac } from "node:crypto";
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
-import { EventStream } from "./event-stream.js";
 import { EventBus } from "./events.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
+import { nodeCelHandlers } from "./cel-handlers.js";
+import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
+import { buildEvalPaths } from "./eval-paths.js";
+import { stripCompiledValues } from "./schema-compiled-values.js";
+import { injectAtPath } from "./dependency-injection.js";
 import {
   computeAnalysisSignature,
   readAnalysisStamp,
@@ -75,43 +77,6 @@ function throwInvalidState(operation: string, reason: string): never {
   );
 }
 
-/** Translate embedder `InvokeOptions` (external signal / absolute deadline)
- *  into a seeded cancellation source, or `undefined` when nothing was requested
- *  so the dispatch path stays on its allocation-free sentinel. The caller
- *  disposes the returned source once the invoke settles. */
-function seedInvokeSource(opts?: InvokeOptions): CancellationSource | undefined {
-  if (!opts?.signal && opts?.deadlineAt === undefined) return undefined;
-  const source = createCancellationSource();
-  if (opts.deadlineAt !== undefined) source.cancelAt(opts.deadlineAt);
-  const signal = opts.signal;
-  if (signal && !signal.aborted) {
-    const onAbort = () => source.cancel(String(signal.reason ?? "aborted"));
-    signal.addEventListener("abort", onAbort, { once: true });
-    // Detach from the (possibly long-lived) external signal on dispose so the
-    // listener — which captures the source — doesn't pin it until the signal
-    // eventually aborts (or forever if it never does).
-    const baseDispose = source.dispose.bind(source);
-    source.dispose = () => {
-      signal.removeEventListener("abort", onAbort);
-      baseDispose();
-    };
-  } else if (signal?.aborted) {
-    source.cancel(String(signal.reason ?? "aborted"));
-  }
-  return source;
-}
-
-function parseRef(ref: string): { kind: string; name: string } {
-  const lastDot = ref.lastIndexOf(".");
-  if (lastDot <= 0 || lastDot === ref.length - 1) {
-    throw new RuntimeError(
-      "ERR_INVALID_VALUE",
-      `Invalid resource reference '${ref}': expected '<Kind>.<Name>' (e.g. 'Http.Server.Main') or pass { kind, name } directly.`,
-    );
-  }
-  return { kind: ref.slice(0, lastDot), name: ref.slice(lastDot + 1) };
-}
-
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
   stdout?: NodeJS.WritableStream;
@@ -133,36 +98,12 @@ export interface KernelOptions {
  * Kernel: Central orchestrator managing lifecycle and message bus
  * Handles resource loading, initialization, and execution through controllers
  */
-/** Node implementations of the host-injected CEL functions (`crypto` / `Buffer`).
- *  The kernel wires these into the analyzer + loader; the CLI reuses them for
- *  `telo cel eval` so its results match a real run. */
-export const nodeCelHandlers = {
-  sha256: (s: string) => createHash("sha256").update(s).digest("hex"),
-  md5: (s: string) => createHash("md5").update(s).digest("hex"),
-  sha1: (s: string) => createHash("sha1").update(s).digest("hex"),
-  sha512: (s: string) => createHash("sha512").update(s).digest("hex"),
-  hmac: (algorithm: string, key: string, message: string) =>
-    createHmac(algorithm, key).update(message).digest("hex"),
-  base64Encode: (s: string) => Buffer.from(s, "utf8").toString("base64"),
-  base64Decode: (s: string) => Buffer.from(s, "base64").toString("utf8"),
-  // cel-js represents int / uint as BigInt — JSON.stringify throws on BigInts,
-  // so coerce them down to Number unconditionally. CEL int is i64 and JS Number
-  // is f64, so values outside ±2^53 lose precision; that's accepted behaviour
-  // for Telo manifests, which never carry > 2^53 integer values in practice.
-  // JSON.stringify returns undefined for top-level undefined / function / symbol
-  // — the CEL signature is `json(dyn): string`, so coerce that to "null" rather
-  // than break the contract. (CEL `null` already serializes to "null".)
-  json: (value: unknown) =>
-    JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? Number(v) : v)) ?? "null",
-};
-
 export class Kernel implements IKernel {
   private readonly loader: Loader;
   private readonly analyzer = new StaticAnalyzer({ celHandlers: nodeCelHandlers });
   private readonly registry = new AnalysisRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
-  private eventStream: EventStream = new EventStream();
 
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
@@ -204,7 +145,6 @@ export class Kernel implements IKernel {
     for (const source of options.sources) {
       this.loader.register(source);
     }
-    this.setupEventStreaming();
   }
 
   async registerController(
@@ -864,12 +804,7 @@ export class Kernel implements IKernel {
    * ModuleContext ancestor. Falls back to rootContext if none found.
    */
   private findModuleContext(ctx: IEvaluationContext): IModuleContext {
-    let current: IEvaluationContext | undefined = ctx;
-    while (current) {
-      if (current instanceof ModuleContext) return current;
-      current = current.parent;
-    }
-    return this.rootContext;
+    return findEnclosingModule(ctx) ?? this.rootContext;
   }
 
   private createResourceContext(
@@ -1059,256 +994,4 @@ export class Kernel implements IKernel {
       },
     );
   }
-
-  /**
-   * Enable event streaming to a file (JSONL format)
-   */
-  async enableEventStream(filePath: string): Promise<void> {
-    await this.eventStream.enable(filePath);
-  }
-
-  /**
-   * Disable event streaming
-   */
-  disableEventStream(): void {
-    this.eventStream.disable();
-  }
-
-  /**
-   * Get the event stream for testing and inspection
-   */
-  getEventStream(): EventStream {
-    return this.eventStream;
-  }
-
-  /**
-   * Setup event streaming hook to capture all events
-   */
-  private setupEventStreaming(): void {
-    const originalEmit = this.eventBus.emit.bind(this.eventBus);
-    this.eventBus.emit = async (event: string, payload?: any) => {
-      if (this.eventStream.isEnabledStream()) {
-        await this.eventStream.log(event, payload);
-      }
-      return originalEmit(event, payload);
-    };
-  }
-}
-
-/** Returns a schema-appropriate placeholder value for a CompiledValue field. */
-function placeholderForSchema(schema: Record<string, unknown>): unknown {
-  if (schema.default !== undefined) return schema.default;
-  switch (schema.type) {
-    case "integer":
-    case "number":
-      return (schema.minimum as number | undefined) ?? 0;
-    case "boolean":
-      return false;
-    case "array":
-      return [];
-    case "object":
-      return {};
-    default:
-      return "";
-  }
-}
-
-/** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
-function resolveSchemaRef(
-  schema: Record<string, unknown>,
-  root: Record<string, unknown>,
-): Record<string, unknown> {
-  if (
-    schema.$ref &&
-    typeof schema.$ref === "string" &&
-    (schema.$ref as string).startsWith("#/$defs/")
-  ) {
-    const defName = (schema.$ref as string).slice("#/$defs/".length);
-    const defs = root.$defs as Record<string, Record<string, unknown>> | undefined;
-    const resolved = defs?.[defName];
-    if (resolved) return resolved;
-  }
-  return schema;
-}
-
-/** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
-function collectSchemaProperties(
-  schema: Record<string, unknown>,
-): Record<string, Record<string, unknown>> {
-  const props: Record<string, Record<string, unknown>> = {
-    ...((schema.properties ?? {}) as Record<string, Record<string, unknown>>),
-  };
-  for (const sub of (schema.oneOf ?? schema.anyOf ?? []) as Record<string, unknown>[]) {
-    if (sub && typeof sub === "object" && sub.properties) {
-      for (const [k, v] of Object.entries(
-        sub.properties as Record<string, Record<string, unknown>>,
-      )) {
-        if (!(k in props)) props[k] = v;
-      }
-    }
-  }
-  return props;
-}
-
-/** Replaces CompiledValue wrappers with schema-appropriate placeholders for schema validation.
- *  Template strings were compiled from YAML at load time; this restores a shape
- *  that AJV can validate without evaluating expressions. */
-function stripCompiledValues(
-  v: unknown,
-  schema: Record<string, unknown> = {},
-  rootSchema?: Record<string, unknown>,
-): unknown {
-  const root = rootSchema ?? schema;
-  const resolved = resolveSchemaRef(schema, root);
-
-  if (isCompiledValue(v)) return placeholderForSchema(resolved);
-  if (Array.isArray(v)) {
-    const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
-    return v.map((item) => stripCompiledValues(item, itemSchema, root));
-  }
-  if (v !== null && typeof v === "object") {
-    const props = collectSchemaProperties(resolved);
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = stripCompiledValues(val, props[k] ?? {}, root);
-    }
-    return out;
-  }
-  return v;
-}
-
-/**
- * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal).
- * For each leaf value that looks like a {kind, name} reference, calls getInstance(name)
- * and replaces the value in-place with the returned live ResourceInstance.
- * Values where getInstance returns undefined are left unchanged.
- */
-/**
- * Traverses a definition schema and collects all paths annotated with `x-telo-eval`.
- * Root-level `x-telo-eval` produces the `"**"` wildcard (expand all fields).
- * Property-level annotations produce the dot-notation path to that property.
- */
-function buildEvalPaths(schema: Record<string, any>): { compile: string[]; runtime: string[] } {
-  const compile: string[] = [];
-  const runtime: string[] = [];
-
-  if (schema["x-telo-eval"] === "compile") compile.push("**");
-  else if (schema["x-telo-eval"] === "runtime") runtime.push("**");
-
-  if (schema.properties) {
-    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      collectEvalPathsNode(propSchema, key, compile, runtime);
-    }
-  }
-
-  return { compile, runtime };
-}
-
-function collectEvalPathsNode(
-  node: Record<string, any>,
-  path: string,
-  compile: string[],
-  runtime: string[],
-): void {
-  if (node["x-telo-eval"] === "compile") {
-    compile.push(path);
-    return;
-  }
-  if (node["x-telo-eval"] === "runtime") {
-    runtime.push(path);
-    return;
-  }
-  if (node.properties) {
-    for (const [key, propSchema] of Object.entries(node.properties as Record<string, any>)) {
-      collectEvalPathsNode(propSchema, `${path}.${key}`, compile, runtime);
-    }
-  }
-}
-
-function injectAtPath(
-  resource: ResourceManifest,
-  fieldPath: string,
-  getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
-): void {
-  const parts = fieldPath.split(".");
-
-  // Resolve a {kind, name, alias?} reference to its live instance. A non-`Self` alias is a
-  // cross-module reference into an import's published exports; if that import hasn't
-  // finished init() yet the instance is absent, so we throw to defer this resource to a
-  // later pass of the multi-pass init loop (which catches and retries) rather than leaving
-  // the ref unresolved. Local refs (no alias) that miss are left for topo ordering / later
-  // diagnostics, matching prior behaviour.
-  function resolveInto(ref: Record<string, unknown>): ResourceInstance | undefined {
-    const alias = typeof ref.alias === "string" ? ref.alias : undefined;
-    const instance = getInstance(ref.name as string, alias);
-    if (!instance && alias && alias !== "Self") {
-      throw new RuntimeError(
-        "ERR_CROSS_MODULE_REF_PENDING",
-        `Cross-module reference '${alias}.${String(ref.name)}' is not available yet (import not initialized)`,
-      );
-    }
-    return instance;
-  }
-
-  function traverse(obj: unknown, partsLeft: string[]): void {
-    if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
-    const [head, ...rest] = partsLeft;
-
-    // Map iteration: descend into every value of the current object (used for
-    // schema fields with `additionalProperties` like `content[mime]`).
-    if (head === "{}") {
-      const container = obj as Record<string, unknown>;
-      for (const mapKey of Object.keys(container)) {
-        const elem = container[mapKey];
-        if (!elem || typeof elem !== "object") continue;
-        if (rest.length === 0) {
-          const ref = elem as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) container[mapKey] = instance;
-          }
-        } else {
-          traverse(elem, rest);
-        }
-      }
-      return;
-    }
-
-    const isArr = head.endsWith("[]");
-    const key = isArr ? head.slice(0, -2) : head;
-    const container = obj as Record<string, unknown>;
-    const val = container[key];
-    if (val == null) return;
-
-    if (isArr) {
-      if (!Array.isArray(val)) return;
-      for (let i = 0; i < val.length; i++) {
-        const elem = val[i];
-        if (!elem || typeof elem !== "object") continue;
-        if (rest.length === 0) {
-          const ref = elem as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) val[i] = instance;
-          }
-        } else {
-          traverse(elem, rest);
-        }
-      }
-    } else {
-      if (rest.length === 0) {
-        if (val && typeof val === "object" && !Array.isArray(val)) {
-          const ref = val as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) container[key] = instance;
-          }
-        }
-      } else {
-        traverse(val, rest);
-      }
-    }
-  }
-
-  traverse(resource, parts);
 }

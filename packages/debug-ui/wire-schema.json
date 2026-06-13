@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://telo.run/schemas/debug-event.json",
+  "title": "Telo debug event",
+  "description": "One event in the Telo debug wire format. A kernel runtime (Node, Rust, Go) serializes each emitted event to this shape; it is delivered one-per-line over SSE (`/events`) and JSONL (`/events.jsonl`). Producers reduce payload values to wire-safe forms first: a byte buffer (any file kind) is offloaded to a content-addressed blob store and becomes a `WireBlob` pointer (bytes fetched on demand from `/blobs/<id>`); a resolved `!ref` becomes `{ kind, name }`; any other live or unrepresentable value (controller instance, stream, client, function, bigint) becomes a `\"[Marker]\"` string; a reference cycle becomes `\"[Circular]\"`; everything else stays plain JSON.",
+  "$defs": {
+    "WireBlob": {
+      "title": "Blob pointer",
+      "description": "A binary value offloaded from the payload. `$blob` is a path relative to the producer origin; the consumer fetches it from `/blobs/<id>`. The object key the WireBlob sits under is preserved.",
+      "type": "object",
+      "required": ["$blob", "mediaType", "byteLength"],
+      "properties": {
+        "$blob": { "type": "string", "description": "Relative blob path, e.g. `blobs/95594b4044bf8d8d`." },
+        "mediaType": { "type": "string", "description": "Sniffed content type, or `application/octet-stream`." },
+        "byteLength": { "type": "integer", "minimum": 0, "description": "Original buffer size in bytes." }
+      }
+    }
+  },
+  "type": "object",
+  "required": ["timestamp", "event"],
+  "additionalProperties": true,
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 time the producer emitted the event."
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+      "description": "Dotted event name, e.g. `Server.Listening` or `MyKind.MyName.Invoked`."
+    },
+    "payload": {
+      "description": "Event payload, already reduced to wire-safe values. No fixed shape."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional producer-attached metadata (namespace, resource, kind, name, …).",
+      "additionalProperties": true
+    }
+  }
+}

@@ -10,6 +10,7 @@ docs/cel-reference.md
 Thumbs.db
 .telo-debug/
 .telo/
+.telo.debug.jsonl
 .cache
 .env.local
 /.env
@@ -21,6 +22,7 @@ Thumbs.db
 # NodeJS
 node_modules/
 dist
+app-dist
 
 # Python
 python/__pycache__/

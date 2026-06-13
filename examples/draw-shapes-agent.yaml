@@ -39,7 +39,7 @@ variables:
   modelId:
     env: MODEL
     type: string
-    default: gpt-4o-mini
+    default: gpt-5.2
   s3Bucket:
     env: S3_BUCKET
     type: string

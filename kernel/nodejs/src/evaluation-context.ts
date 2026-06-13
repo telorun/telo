@@ -22,6 +22,53 @@ import { RuntimeError } from "@telorun/sdk";
 
 export { resourceKey };
 
+/** An edge in the resource dependency graph: a resolved `!ref` target. */
+type ResourceRef = { kind: string; name: string; alias?: string };
+
+/** A pure resolved reference is a `{ kind, name, alias? }` object and nothing
+ *  else — the shape `resolveRefSentinels` produces (Phase 2.5). An inline
+ *  definition (`{ kind, ...config }`) carries extra keys and is its own node, so
+ *  it is not an edge here; a live `ResourceInstance` (injected at Phase 5) has
+ *  methods, never this exact key set. */
+function isResolvedRef(value: unknown): value is ResourceRef {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.kind !== "string" || typeof v.name !== "string") return false;
+  return Object.keys(v).every((k) => k === "kind" || k === "name" || k === "alias");
+}
+
+/**
+ * Walk a resource manifest's config and collect every resolved `{kind, name,
+ * alias?}` reference it points at — the outbound edges for the dependency graph.
+ * Called at create time, before Phase-5 injection swaps refs for live instances,
+ * so the targets are still inspectable plain objects (and there are no instance
+ * cycles to guard against). `metadata` is skipped (it holds the resource's own
+ * identity, never refs); ref leaves are not descended into. Deduped by alias+name.
+ */
+function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
+  const found = new Map<string, ResourceRef>();
+  const visit = (value: unknown): void => {
+    if (isResolvedRef(value)) {
+      const key = `${value.alias ?? ""}::${value.name}`;
+      if (!found.has(key)) found.set(key, { kind: value.kind, name: value.name, ...(value.alias ? { alias: value.alias } : {}) });
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+    } else if (value && typeof value === "object") {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (k === "metadata") continue;
+        visit(v);
+      }
+    }
+  };
+  for (const [k, v] of Object.entries(resource as Record<string, unknown>)) {
+    if (k === "kind" || k === "metadata") continue;
+    visit(v);
+  }
+  return [...found.values()];
+}
+
 /**
  * Kernel-internal propagation of the current invocation tree's cancellation
  * scope. NEVER the controller-facing contract — controllers always receive the
@@ -270,6 +317,14 @@ export class EvaluationContext implements IEvaluationContext {
             if (idx >= 0) this.pendingResources.splice(idx, 1);
             errors.delete(name);
             progress = true;
+            await this.emit(`${created.resource.kind}.${created.resource.metadata.name}.Created`, {
+              resource: {
+                kind: created.resource.kind,
+                name: created.resource.metadata.name,
+                module: created.resource.metadata.module,
+              },
+              dependencies: collectResourceRefs(created.resource),
+            });
           }
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
@@ -297,6 +352,9 @@ export class EvaluationContext implements IEvaluationContext {
           this.createdInstances.delete(name);
           errors.delete(name);
           progress = true;
+          await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
+            resource: { kind: resource.kind, name: resource.metadata.name },
+          });
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
           errors.set(name, formatErrorForDiagnostic(error));
