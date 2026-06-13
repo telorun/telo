@@ -1,3 +1,4 @@
+import type { ManifestSource } from "@telorun/analyzer";
 import {
   Kernel,
   LocalFileSource,
@@ -7,14 +8,19 @@ import {
   writeManifestCache,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
-import type { ManifestSource } from "@telorun/analyzer";
+import type { RuntimeEvent } from "@telorun/sdk";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
-import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { attachControllerProgress } from "../controller-progress.js";
+import { DebugEventSubscriber } from "../debug-event-subscriber.js";
+import { serializeEvent } from "../debug-serialize.js";
+import { DebugServer } from "../debug-server.js";
+import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { canOpenBrowser, openBrowser } from "../open-browser.js";
+import { resolveUiBundle } from "../ui-fetch.js";
 
 /**
  * Load .env and .env.local from the manifest's directory into process.env.
@@ -149,7 +155,13 @@ function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & Watch
 type RunArgv = {
   path: string;
   verbose: boolean;
+  /** `--debug`: write the `.telo.debug.jsonl` event log. No network, no UI. */
   debug: boolean;
+  /** `--inspect[=[host:]port]`: start the live inspection endpoint. `undefined`
+   *  when the flag is absent; the (possibly empty) string value otherwise. */
+  inspect?: string;
+  /** `--no-open`: with `--inspect`, don't auto-open the UI in a browser. */
+  open: boolean;
   snapshotOnExit: boolean;
   watch: boolean;
   /** `--no-cache-write`: read the baked cache but never persist derived entries. */
@@ -158,11 +170,110 @@ type RunArgv = {
   "--"?: string[];
 };
 
+const DEFAULT_INSPECT_HOST = "127.0.0.1";
+const DEFAULT_INSPECT_PORT = 9230;
+
+/** Parse `--inspect`'s value: `""` → defaults, `"9300"` → port only,
+ *  `"host:9300"` / `"[::1]:9300"` → both, `"host"` → host only. */
+function parseInspectTarget(value: string): { host: string; port: number } {
+  const v = value.trim();
+  if (!v) return { host: DEFAULT_INSPECT_HOST, port: DEFAULT_INSPECT_PORT };
+  const bracket = v.match(/^\[(.+)\]:(\d+)$/);
+  if (bracket) return { host: bracket[1], port: Number(bracket[2]) };
+  if (/^\d+$/.test(v)) return { host: DEFAULT_INSPECT_HOST, port: Number(v) };
+  const idx = v.lastIndexOf(":");
+  if (idx >= 0) {
+    const portStr = v.slice(idx + 1);
+    return {
+      host: v.slice(0, idx) || DEFAULT_INSPECT_HOST,
+      port: /^\d+$/.test(portStr) ? Number(portStr) : DEFAULT_INSPECT_PORT,
+    };
+  }
+  return { host: v, port: DEFAULT_INSPECT_PORT };
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
 function registryUrlFor(argv: RunArgv): string {
   // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
   // RegistrySource default. The kernel itself does no env lookup — programmatic
   // callers (tests, SDK) pass registryUrl explicitly when they need one.
   return argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? "https://registry.telo.run";
+}
+
+/** An observability session composing two independent sinks: the `--debug` JSONL
+ *  file and the `--inspect` live endpoint. Created once per CLI process; `attach`
+ *  wires a (re)built kernel's `*` tap to whichever sinks are enabled, `stop` tears
+ *  the endpoint down. Keeping one endpoint alive across watch reloads means the
+ *  browser's SSE connection is never dropped — the new kernel's events flow into
+ *  the stream the UI is already watching, instead of the UI seeing termination. */
+type DebugSession = {
+  attach: (kernel: Kernel) => void;
+  stop: () => void;
+};
+
+/**
+ * Stand up the enabled sinks once per CLI process: `--debug` opens the JSONL file
+ * sink; `--inspect` starts the live endpoint (loopback by default) and serves the
+ * on-demand UI. The two compose — either, both, or (when neither flag is set) the
+ * caller skips this entirely. A watch session re-attaches each rebuilt kernel via
+ * {@link DebugSession.attach} rather than recreating sinks, so the endpoint's port
+ * stays stable and the replay buffer + JSONL persist across reloads.
+ */
+async function startDebugSession(
+  argv: RunArgv,
+  log: Logger,
+  cacheRoot: string | null,
+): Promise<DebugSession> {
+  let fileSink: DebugEventSubscriber | undefined;
+  let eventLogPath: string | undefined;
+  if (argv.debug) {
+    // Stream next to the manifest by default (cwd fallback for URL entries).
+    const debugDir = resolveEntryDir(argv.path) ?? process.cwd();
+    eventLogPath = path.join(debugDir, ".telo.debug.jsonl");
+    fileSink = new DebugEventSubscriber(eventLogPath);
+    await fileSink.open();
+    log.info(`Debug log: ${eventLogPath}`);
+  }
+
+  let server: DebugServer | undefined;
+  if (argv.inspect !== undefined) {
+    const { host, port } = parseInspectTarget(argv.inspect);
+    if (!isLoopbackHost(host)) {
+      log.info(
+        log.warn(
+          `[inspect] binding ${host}:${port} — the inspection endpoint streams event ` +
+            `payloads (which can include secrets) to anyone who can reach this address.`,
+        ),
+      );
+    }
+    const uiHtmlPath = (await resolveUiBundle(cacheRoot)) ?? undefined;
+    server = new DebugServer({ host, port, jsonlPath: eventLogPath, uiHtmlPath });
+    await server.start();
+    log.info(`Inspect:   ${server.url}`);
+    // Open the UI once; reloads re-attach to the same endpoint, so no new tab.
+    // Skipped on CI / headless boxes.
+    if (argv.open && canOpenBrowser()) {
+      openBrowser(server.url);
+    }
+  }
+
+  return {
+    attach(kernel: Kernel): void {
+      // One `*` tap, serialized once, fanned to whichever sinks are enabled. The
+      // kernel knows nothing of debug/inspect — it's a plain event listener.
+      kernel.on("*", (event: RuntimeEvent) => {
+        const line = serializeEvent(event.name, event.payload, event.metadata, server?.blobStore);
+        void fileSink?.write(line);
+        server?.push(line);
+      });
+    },
+    stop(): void {
+      server?.stop();
+    },
+  };
 }
 
 async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null): Promise<Kernel> {
@@ -190,13 +301,6 @@ async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null)
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
   // so CI and the docker service stay silent.
   attachControllerProgress(kernel, log, { force: argv.verbose });
-
-  if (argv.debug) {
-    const debugDir = path.join(process.cwd(), ".telo-debug");
-    const eventStreamPath = path.join(debugDir, "events.jsonl");
-    await kernel.enableEventStream(eventStreamPath);
-    log.info(`Event stream enabled: ${eventStreamPath}`);
-  }
   return kernel;
 }
 
@@ -271,9 +375,14 @@ export async function run(argv: RunArgv): Promise<void> {
 
   // Resolve the `.telo` cache root once per invocation, then thread it.
   const cacheRoot = resolveCacheRoot(argv.path);
+  const debug =
+    argv.debug || argv.inspect !== undefined
+      ? await startDebugSession(argv, log, cacheRoot)
+      : undefined;
 
   try {
     const kernel = await buildKernel(argv, log, cacheRoot);
+    debug?.attach(kernel);
     const shutdown = () => {
       // Cooperatively cancel the boot run first (so honoring targets / in-flight
       // invoke trees stop early), then unblock the idle wait for graceful exit.
@@ -291,10 +400,15 @@ export async function run(argv: RunArgv): Promise<void> {
     await persistManifestCache(argv, kernel, log, cacheRoot);
 
     await kernel.start();
+    // start() resolves once the app is idle/torn down (incl. via the SIGINT
+    // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
+    // don't keep the process alive past here.
+    debug?.stop();
     if (kernel.exitCode !== 0) {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
+    debug?.stop();
     reportError(argv, error, log);
     process.exit(1);
   }
@@ -311,6 +425,12 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   loadEnvFiles(argv.path);
   // Resolve the `.telo` cache root once per invocation, then thread it.
   const cacheRoot = resolveCacheRoot(argv.path);
+  // One inspect endpoint for the whole watch session — reloads re-attach the
+  // rebuilt kernel to it (see startDebugSession), so the UI connection survives.
+  const debug =
+    argv.debug || argv.inspect !== undefined
+      ? await startDebugSession(argv, log, cacheRoot)
+      : undefined;
 
   let stopping = false;
   let signalChange: (() => void) | null = null;
@@ -325,6 +445,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
     stopping = true;
     log.info("\n[watch] stopping...");
     watchers.cleanup();
+    debug?.stop();
     currentKernel?.cancel("interrupted");
     currentKernel?.forceIdle();
     signalChange?.();
@@ -338,6 +459,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
 
   while (!stopping) {
     const kernel = await buildKernel(argv, log, cacheRoot);
+    debug?.attach(kernel);
     currentKernel = kernel;
     // Hold the kernel alive across the cycle so apps without their own hold
     // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
@@ -392,6 +514,20 @@ export function runCommand(yargs: Argv): Argv {
           describe:
             "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
         })
+        .option("debug", {
+          type: "boolean",
+          describe: "Write a .telo.debug.jsonl event log next to the manifest.",
+        })
+        .option("inspect", {
+          type: "string",
+          describe:
+            "Start the live inspection endpoint. Optional [host:]port (default 127.0.0.1:9230).",
+        })
+        .option("open", {
+          type: "boolean",
+          default: true,
+          describe: "With --inspect, auto-open the UI in a browser. Use --no-open to suppress.",
+        })
         .strict(false),
     async (argv) => {
       // Everything after the manifest path that isn't a known telo flag
@@ -400,10 +536,12 @@ export function runCommand(yargs: Argv): Argv {
       // known telo flags.
       const knownBooleanFlags = new Set([
         "--verbose", "--debug", "--snapshot-on-exit", "--watch", "-w",
-        "--cache-write", "--no-cache-write",
+        "--cache-write", "--no-cache-write", "--open", "--no-open",
         "--help", "--version",
       ]);
-      const knownValuedFlags = new Set(["--registry-url"]);
+      // `--inspect` is valued ([host:]port). The valued-flag branch below skips
+      // the `=` form and the space form alike, so neither leaks into kernel argv.
+      const knownValuedFlags = new Set(["--registry-url", "--inspect"]);
       const rawArgs = process.argv;
       const pathIdx = rawArgs.indexOf(argv.path as string);
       const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];
