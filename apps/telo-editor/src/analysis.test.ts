@@ -163,7 +163,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(httpImport?.resolvedPath).toBe("/ws/http/telo.yaml");
     expect(workspace.modules.has("/ws/http/telo.yaml")).toBe(true);
 
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
 
     // Collect every diagnostic across resource/file buckets.
     const all: Array<{ code?: string; message: string }> = [];
@@ -246,7 +246,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       "/ws/console/telo.yaml",
     );
 
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
 
     const all: Array<{ code?: string; message: string }> = [];
     for (const fileMap of diagnostics.byResource.values()) {
@@ -327,7 +327,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       `imported library should be registered at ${httpImport?.resolvedPath}`,
     ).toBe(true);
 
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
 
     const all: Array<{ code?: string; message: string }> = [];
     for (const fileMap of diagnostics.byResource.values()) {
@@ -343,6 +343,95 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(
       undefinedKind,
       `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
+    ).toHaveLength(0);
+  });
+
+  it("resolves x-telo-schema-from across a registry module's transitive INLINE import", async () => {
+    // Regression: a registry module (`outer`) importing another registry module
+    // (`inner`) via an inline `imports:` map, where `outer`'s definition anchors
+    // an `x-telo-schema-from` at `Inner.<Kind>`. The editor used to never stamp
+    // `resolvedModuleName` for the transitive inline import, so the alias
+    // resolved to the version-suffixed source (`inner@1.0.0.Request`) and emitted
+    // a false-positive SCHEMA_FROM_MISSING_PATH. Driving the analyzer's own
+    // loadGraph + flattenForAnalyzer resolves identity exactly like `telo check`.
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata: { name: app, version: 1.0.0 }",
+        "imports:",
+        "  Outer: std/outer@1.0.0",
+        "---",
+        "kind: Outer.Api",
+        "metadata: { name: MyApi }",
+        "routes:",
+        "  - request: { path: /x, method: POST }",
+        "",
+      ].join("\n"),
+    };
+
+    const registryFiles: Record<string, Record<string, string>> = {
+      "std/outer@1.0.0": {
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata: { name: outer, namespace: std, version: 1.0.0 }",
+          "imports:",
+          "  Inner: std/inner@1.0.0",
+          "exports:",
+          "  kinds: [ Api ]",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: Api }",
+          "capability: Telo.Mount",
+          "controllers: { pkg:npm: '@telorun/outer' }",
+          "schema:",
+          "  type: object",
+          "  properties:",
+          "    routes:",
+          "      type: array",
+          "      items:",
+          "        type: object",
+          "        properties:",
+          "          request:",
+          '            x-telo-schema-from: "Inner.Request/$defs/Matcher"',
+          "",
+        ].join("\n"),
+      },
+      "std/inner@1.0.0": {
+        "telo.yaml": [
+          "kind: Telo.Library",
+          "metadata: { name: inner, namespace: std, version: 1.0.0 }",
+          "exports:",
+          "  kinds: [ Request ]",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: Request }",
+          "capability: Telo.Type",
+          "schema:",
+          "  type: object",
+          "  $defs:",
+          "    Matcher:",
+          "      type: object",
+          "      properties: { path: { type: string }, method: { type: string } }",
+          "",
+        ].join("\n"),
+      },
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const registry = inMemoryRegistry(registryFiles);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values())
+      for (const list of fileMap.values()) for (const d of list) all.push({ code: d.code, message: d.message });
+    for (const list of diagnostics.byFile.values())
+      for (const d of list) all.push({ code: d.code, message: d.message });
+
+    const schemaFrom = all.filter((d) => d.code === "SCHEMA_FROM_MISSING_PATH");
+    expect(
+      schemaFrom,
+      `expected no SCHEMA_FROM_MISSING_PATH; got: ${JSON.stringify(schemaFrom, null, 2)}`,
     ).toHaveLength(0);
   });
 
@@ -404,7 +493,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
     const registry = inMemoryRegistry(registryFiles);
     const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
 
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
 
     const regFile = "registry://std/bad@1.0.0/telo.yaml";
     const onRegistryFile: Array<{ code?: string; message: string }> = [];
@@ -500,7 +589,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
 
     const adapter = inMemoryAdapter(files);
     const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
 
     const all: Array<{ code?: string; message: string }> = [];
     for (const fileMap of diagnostics.byResource.values()) {
@@ -651,7 +740,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
     const adapter = inMemoryAdapter(files);
     const registry = inMemoryRegistry(registryFiles);
     const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
 
     const all: Array<{ code?: string; message: string }> = [];
     for (const fileMap of diagnostics.byResource.values()) {
@@ -742,7 +831,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(workspace.modules.has("registry://std/widget@1.0.0/telo.yaml")).toBe(true);
     expect(workspace.modules.has("registry://std/widget@2.0.0/telo.yaml")).toBe(true);
 
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
 
     const violations: Array<{ message: string }> = [];
     for (const fileMap of diagnostics.byResource.values()) {
@@ -805,7 +894,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
 
     const adapter = inMemoryAdapter(files);
     const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
 
     const appDup = diagnostics.byResource.get("/ws/app/telo.yaml")?.get("dup");
     const modDup = diagnostics.byResource.get("/ws/mod/telo.yaml")?.get("dup");
@@ -846,7 +935,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
 
     const adapter = inMemoryAdapter(files);
     const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = analyzeWorkspace(workspace);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
 
     const byResource = diagnostics.byResource.get("/ws/app/telo.yaml");
     expect(byResource).toBeTruthy();

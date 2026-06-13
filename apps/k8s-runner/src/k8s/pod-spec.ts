@@ -20,7 +20,16 @@ export interface BuildPodArgs {
   /** Tokenized, single-use URL the body-delivery initContainer fetches the
    *  session bundle tarball from (`BundleStore.stageSessionBundle`). */
   bundleUrl: string;
+  /** When true, run the workload with `--inspect` so the runner can relay its
+   *  kernel debug stream. Binds `0.0.0.0:<INSPECT_PORT>` (reachable only by the
+   *  runner over the cluster pod network — never exposed via Service/Ingress). */
+  inspect: boolean;
 }
+
+/** Port the workload's `--inspect` server binds inside the session container.
+ *  Reached by the runner over the cluster pod network (`http://<podIP>:<port>`);
+ *  never declared as a Service port — only the runner relays the stream out. */
+export const INSPECT_PORT = 9230;
 
 const APP_DIR = "/app";
 const WORK_DIR = "/work";
@@ -123,7 +132,15 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
           // touching the read-only cache. WORK_DIR is a writable emptyDir cwd so
           // the workload's relative paths resolve under readOnlyRootFilesystem.
           workingDir: WORK_DIR,
-          command: ["telo", "run", `${APP_DIR}/${args.entryRelativePath}`, "--no-cache-write"],
+          // 0.0.0.0 (not the CLI's loopback default) lets the runner reach the
+          // debug server across the pod network; the port is never published.
+          command: [
+            "telo",
+            "run",
+            `${APP_DIR}/${args.entryRelativePath}`,
+            "--no-cache-write",
+            ...(args.inspect ? ["--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"] : []),
+          ],
           env: envVars,
           stdin: true,
           stdinOnce: false,

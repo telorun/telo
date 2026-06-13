@@ -46,8 +46,10 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           ports: spec.ports,
           bundleVolume: deps.bundleVolume,
           childNetwork: deps.childNetwork,
+          inspect: spec.inspect,
           onStatus: spec.onStatus,
           onOutput: spec.onOutput,
+          onDebug: spec.onDebug,
           isUserStopped: spec.isUserStopped,
         });
       } catch (err) {

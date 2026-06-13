@@ -200,13 +200,23 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Debounced analysis: re-analyze whenever the workspace changes
+  // Debounced analysis: re-analyze whenever the workspace changes. Held while
+  // external dependencies are still streaming in, so the first paint doesn't
+  // flash transient "unresolved import" diagnostics — analysis runs once the
+  // dependency merge clears `dependenciesPending` (which produces a new
+  // workspace and re-triggers this effect).
   useEffect(() => {
-    if (!state.workspace) return;
+    if (!state.workspace || state.workspace.dependenciesPending) return;
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     const workspace = state.workspace;
-    analysisTimerRef.current = setTimeout(() => {
-      const diagnostics = analyzeWorkspace(workspace);
+    analysisTimerRef.current = setTimeout(async () => {
+      const manifestAdapter = manifestAdapterRef.current;
+      if (!manifestAdapter) return;
+      const diagnostics = await analyzeWorkspace(
+        workspace,
+        manifestAdapter,
+        createRegistryAdapters(settings),
+      );
       setState((s) => {
         if (s.workspace !== workspace) return s;
         return { ...s, diagnostics };

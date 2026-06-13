@@ -177,6 +177,12 @@ export interface Workspace {
    *  Enables O(1) lookup from a canvas edit to the AST node to mutate.
    *  Rebuilt from scratch on every change to `documents`. */
   resourceDocIndex: Map<string, Map<string, { filePath: string; docIndex: number }>>;
+  /** True while external (registry/remote/library) dependency graphs are still
+   *  being fetched in the background. The workspace renders immediately with
+   *  only its local modules; imported-library kinds and full diagnostics stream
+   *  in once enrichment completes and this clears. Analysis is held while true
+   *  so transient "unresolved import" errors don't flash on first paint. */
+  dependenciesPending?: boolean;
 }
 
 /** Mutation surface for a workspace. Read ops come from the ManifestSource

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
 
+import { isEventFrame } from "@telorun/debug-wire";
 import type { RunnerBackend } from "../backend.js";
 import { SessionStartError, type StartSessionRequest } from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
@@ -63,6 +64,7 @@ const startBodySchema = {
         registryUrl: { type: "string", minLength: 1 },
       },
     },
+    inspect: { type: "boolean" },
   },
 } as const;
 
@@ -188,10 +190,18 @@ async function startSession(
       env: sessionEnv,
       ports: body.ports ?? [],
       config: body.config,
+      inspect: body.inspect ?? false,
       onStatus: (status) => deps.registry.emit(sessionId, { type: "status", status }),
       onProgress: (phase, message, done) =>
         deps.registry.emit(sessionId, { type: "progress", phase, message, done }),
       onOutput: (chunk) => deps.registry.pushBytes(sessionId, chunk),
+      // Relay only kernel *event* frames to the client. stdout/stderr already
+      // arrive over the byte channel (onOutput), so forwarding log frames would
+      // double the traffic and let log spam evict lifecycle events from the
+      // byte-capped replay buffer. The editor discards relayed logs anyway.
+      onDebug: (frame) => {
+        if (isEventFrame(frame)) deps.registry.emit(sessionId, { type: "debug", frame });
+      },
       isUserStopped: () => entry.userStopped,
     })
     .then(async (session) => {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDiagnosticsContext } from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
+import { useMonacoTheme } from "../../../theme/color-mode";
 import { moduleParseError, parseModuleDocument } from "../../../yaml-document";
 import { toMonacoMarker } from "./markers";
 import { registerYamlCompletions } from "./register-completion";
@@ -74,6 +75,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
   // clear error markers per tab.
   const editorsRef = useRef<Record<string, MonacoEditor>>({});
   const monacoRef = useRef<Monaco | null>(null);
+  const monacoTheme = useMonacoTheme();
 
   // Keep tabStates in sync with external (form-edit) ModuleDocument.text
   // changes. Rule: a non-dirty tab tracks the AST; a dirty tab owns its
@@ -362,6 +364,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
           <Editor
             key={file.filePath}
             height="100%"
+            theme={monacoTheme}
             language="yaml"
             defaultValue={displayText}
             onChange={(value) => handleChange(file.filePath, value)}
@@ -431,6 +434,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
               <Editor
                 key={file.filePath}
                 height="100%"
+                theme={monacoTheme}
                 language="yaml"
                 defaultValue={displayText}
                 onChange={(value) => handleChange(file.filePath, value)}

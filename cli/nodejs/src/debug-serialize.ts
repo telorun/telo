@@ -2,7 +2,7 @@ import type { LruBlobStore } from "./blob-store.js";
 
 /**
  * The Node producer's implementation of the Telo debug wire format (see
- * `@telorun/debug-ui` `wire.ts` / `wire-schema.json` for the language-neutral
+ * `@telorun/debug-wire` `wire.ts` / `wire-schema.json` for the language-neutral
  * contract). Both debug sinks — the JSONL file and the live SSE server — encode
  * through here, so a file line and a streamed frame are byte-identical.
  *
@@ -112,10 +112,25 @@ export function serializeEvent(
   blobStore?: LruBlobStore,
 ): string {
   const entry: Record<string, unknown> = {
+    kind: "event",
     timestamp: new Date().toISOString(),
     event,
   };
   if (payload !== undefined) entry.payload = payload;
   if (metadata && Object.keys(metadata).length > 0) entry.metadata = metadata;
   return JSON.stringify(toWire(entry, blobStore, new WeakSet<object>()));
+}
+
+/**
+ * Serialize one stdout/stderr line to a wire-format `log` frame (no trailing
+ * newline). Log lines are plain text, so unlike {@link serializeEvent} there is
+ * no payload to reduce — the line travels verbatim, ANSI escapes intact.
+ */
+export function serializeLog(stream: "stdout" | "stderr", line: string): string {
+  return JSON.stringify({
+    kind: "log",
+    timestamp: new Date().toISOString(),
+    stream,
+    line,
+  });
 }

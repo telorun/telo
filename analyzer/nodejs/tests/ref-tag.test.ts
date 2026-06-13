@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { createAjv } from "../src/schema-compat.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
@@ -53,20 +54,28 @@ describe("`!ref` sentinel at a top-level ref slot", () => {
     } as unknown as ResourceManifest;
 
     const analyzer = new StaticAnalyzer();
-    // `withSyntheticPositions` returns a new array with cloned `metadata` on
-    // any manifests it stamps, so the analyzer's in-place sentinel
-    // substitution lands on the stamped copy — assert against that, not the
-    // pre-stamp original.
+    const registry = new AnalysisRegistry();
     const stamped = withSyntheticPositions([...base, knownScript, dispatcher]);
-    const diags = analyzer.analyze(stamped);
+    const diags = analyzer.analyze(stamped, undefined, registry);
     const unresolved = diags.find((d) => d.code === "UNRESOLVED_REFERENCE");
     expect(unresolved).toBeUndefined();
 
-    const stampedDispatcher = stamped.find((m) => m.metadata.name === "Main");
-    expect((stampedDispatcher as { handler?: unknown }).handler).toEqual({
+    // The sentinel is resolved on `normalize()`'s returned array — the analyzer
+    // never mutates its input, so the resolution lands on the clone, not on
+    // `stamped`.
+    const normalized = analyzer.normalize(stamped, registry);
+    const normalizedDispatcher = normalized.find((m) => m.metadata.name === "Main");
+    expect((normalizedDispatcher as { handler?: unknown }).handler).toEqual({
       kind: "std.Script",
       name: "DoStuff",
     });
+
+    // Immutability boundary: the caller's manifest still carries the raw `!ref`
+    // sentinel, untouched by analysis.
+    const inputDispatcher = stamped.find((m) => m.metadata.name === "Main");
+    expect((inputDispatcher as { handler?: unknown }).handler).toEqual(
+      makeTaggedSentinel("ref", "DoStuff"),
+    );
   });
 
   it("emits UNRESOLVED_REFERENCE when the sentinel points at a missing name", () => {

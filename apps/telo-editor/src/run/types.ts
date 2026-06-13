@@ -1,3 +1,4 @@
+import type { DebugFrame } from "@telorun/debug-wire";
 import type { JSONSchema7 } from "json-schema";
 import type { PortMapping } from "../model";
 
@@ -108,7 +109,12 @@ export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
   | { type: "status"; status: RunStatus }
-  | { type: "progress"; phase: RunPhase; message: string; done?: boolean };
+  | { type: "progress"; phase: RunPhase; message: string; done?: boolean }
+  /** A frame from the workload's kernel debug stream (event or log line). The
+   *  adapter sources it differently per backend (relayed by a remote runner, or
+   *  a direct loopback SSE for the local runner), but RunView consumes it the
+   *  same way regardless. */
+  | { type: "debug"; frame: DebugFrame };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

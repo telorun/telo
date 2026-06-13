@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://telo.run/schemas/debug-frame.json",
+  "title": "Telo debug frame",
+  "description": "One frame in the Telo debug wire format, delivered one-per-line over SSE (`/events`) and JSONL (`/events.jsonl`). A frame is either a kernel event (`kind: \"event\"`) or a line of the runtime's stdout/stderr (`kind: \"log\"`); consumers route on `kind` and treat a missing `kind` as an event. Event payloads are reduced to wire-safe forms first: a byte buffer (any file kind) is offloaded to a content-addressed blob store and becomes a `WireBlob` pointer (bytes fetched on demand from `/blobs/<id>`); a resolved `!ref` becomes `{ kind, name }`; any other live or unrepresentable value (controller instance, stream, client, function, bigint) becomes a `\"[Marker]\"` string; a reference cycle becomes `\"[Circular]\"`; everything else stays plain JSON.",
+  "$defs": {
+    "WireBlob": {
+      "title": "Blob pointer",
+      "description": "A binary value offloaded from the payload. `$blob` is a path relative to the producer origin; the consumer fetches it from `/blobs/<id>`. The object key the WireBlob sits under is preserved.",
+      "type": "object",
+      "required": ["$blob", "mediaType", "byteLength"],
+      "properties": {
+        "$blob": { "type": "string", "description": "Relative blob path, e.g. `blobs/95594b4044bf8d8d`." },
+        "mediaType": { "type": "string", "description": "Sniffed content type, or `application/octet-stream`." },
+        "byteLength": { "type": "integer", "minimum": 0, "description": "Original buffer size in bytes." }
+      }
+    },
+    "DebugEvent": {
+      "title": "Event frame",
+      "description": "A kernel event. `kind` is optional for back-compat with legacy event-only streams.",
+      "type": "object",
+      "required": ["timestamp", "event"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "event" },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 time the producer emitted the event."
+        },
+        "event": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Dotted event name, e.g. `Server.Listening` or `MyKind.MyName.Invoked`."
+        },
+        "payload": {
+          "description": "Event payload, already reduced to wire-safe values. No fixed shape."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Optional producer-attached metadata (namespace, resource, kind, name, …).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "DebugLog": {
+      "title": "Log frame",
+      "description": "One line of the runtime's standard output/error.",
+      "type": "object",
+      "required": ["kind", "timestamp", "stream", "line"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "log" },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 time the producer wrote the line."
+        },
+        "stream": {
+          "enum": ["stdout", "stderr"],
+          "description": "Which standard stream the line came from."
+        },
+        "line": {
+          "type": "string",
+          "description": "The line text (no trailing newline). ANSI escapes are preserved."
+        }
+      }
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/DebugLog" }, { "$ref": "#/$defs/DebugEvent" }]
+}

@@ -7,6 +7,8 @@ import {
   createRegistryAdapters,
   createVirtualWorkspaceAdapter,
   loadWorkspace,
+  loadWorkspaceDependencies,
+  mergeWorkspaceDependencies,
   normalizePath,
   openWorkspaceDirectory,
   readManifestUrlParam,
@@ -188,19 +190,77 @@ export function useWorkspaceLifecycle({
   // browser localStorage). Shared by the mount-time auto-restore and the
   // overwrite-cancel fallback. `shouldAbort` lets the mount effect bail if it
   // unmounts mid-load.
+  // Fetches the workspace's external dependency graphs in the background and
+  // folds them into the live workspace (which was rendered with local modules
+  // only). Guards entirely on the functional setState — the merge runs only if
+  // the same workspace is still open and still awaiting deps — rather than on a
+  // restore-effect `shouldAbort` flag, which flips `true` the moment the first
+  // `setState` re-triggers that effect (it would otherwise strand the workspace
+  // on `dependenciesPending` forever). Local edits made during the fetch are
+  // preserved — the merge keeps `current` modules and only adds dep modules. On
+  // failure the pending flag is cleared so analysis runs and surfaces the
+  // genuine unresolved-import errors.
+  function enrichWorkspaceDependencies(
+    base: Workspace,
+    manifestAdapter: ManifestSource,
+    workspaceAdapter: WorkspaceAdapter,
+    registryAdapters: ManifestSource[],
+  ) {
+    loadWorkspaceDependencies(base, manifestAdapter, workspaceAdapter, registryAdapters)
+      .then((deps) => {
+        setState((s) => {
+          if (
+            !s.workspace ||
+            s.workspace.rootDir !== base.rootDir ||
+            !s.workspace.dependenciesPending
+          ) {
+            return s;
+          }
+          return { ...s, workspace: mergeWorkspaceDependencies(s.workspace, deps, manifestAdapter) };
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to load workspace dependencies:", err);
+        setState((s) =>
+          s.workspace && s.workspace.rootDir === base.rootDir && s.workspace.dependenciesPending
+            ? { ...s, workspace: { ...s.workspace, dependenciesPending: false } }
+            : s,
+        );
+      });
+  }
+
   async function restoreLastWorkspace(shouldAbort?: () => boolean) {
     if (!persistedHint?.rootDir) return;
     const reopened = reopenWorkspaceAt(persistedHint.rootDir);
     if (!reopened) return;
     manifestAdapterRef.current = reopened.manifestAdapter;
     workspaceAdapterRef.current = reopened.workspaceAdapter;
-    const workspace = await loadWorkspace(
-      reopened.rootDir,
+    const registryAdapters = createRegistryAdapters(settings);
+    // Load only the workspace's own modules first (external dependency graphs —
+    // by far the slowest, most variable part of the load — are deferred and
+    // streamed in below) and walk the file tree in parallel, so the workspace
+    // and explorer paint as fast as the local modules can be parsed.
+    const [workspace, fileTree] = await Promise.all([
+      loadWorkspace(
+        reopened.rootDir,
+        reopened.manifestAdapter,
+        reopened.workspaceAdapter,
+        registryAdapters,
+        { deferExternalDeps: true },
+      ),
+      buildFileTree(reopened.rootDir, reopened.workspaceAdapter).catch((err) => {
+        console.error("Failed to build file tree:", err);
+        return [] as FileNode[];
+      }),
+    ]);
+    if (shouldAbort?.()) return;
+    setFileTree(fileTree);
+    enrichWorkspaceDependencies(
+      workspace,
       reopened.manifestAdapter,
       reopened.workspaceAdapter,
-      createRegistryAdapters(settings),
+      registryAdapters,
     );
-    if (shouldAbort?.()) return;
     const nextActiveModulePath =
       persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
         ? persistedHint.activeModulePath

@@ -1,5 +1,6 @@
-import { ChevronDown, Redo2, Undo2 } from "lucide-react";
+import { ChevronDown, Monitor, Moon, Redo2, Sun, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
+import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import type { RunRecord, RunStatus } from "../run";
 import { RunStatusChip } from "../run";
@@ -158,10 +159,39 @@ export function TopBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <ThemeToggleButton />
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
         </Button>
       </div>
     </div>
+  );
+}
+
+const NEXT_PREFERENCE: Record<ThemePreference, ThemePreference> = {
+  system: "light",
+  light: "dark",
+  dark: "system",
+};
+const PREFERENCE_ICON: Record<ThemePreference, typeof Monitor> = {
+  system: Monitor,
+  light: Sun,
+  dark: Moon,
+};
+
+/** Cycles the editor's color mode: system → light → dark. */
+function ThemeToggleButton() {
+  const { preference, setPreference } = useColorModeControls();
+  const Icon = PREFERENCE_ICON[preference];
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={() => setPreference(NEXT_PREFERENCE[preference])}
+      title={`Theme: ${preference} (click to change)`}
+      aria-label={`Theme: ${preference}`}
+    >
+      <Icon />
+    </Button>
   );
 }

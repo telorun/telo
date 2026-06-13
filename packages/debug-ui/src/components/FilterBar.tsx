@@ -4,25 +4,15 @@ export interface FilterBarProps {
   filter: EventFilter;
   onChange: (filter: EventFilter) => void;
   suffixes: string[];
-  status: "connecting" | "open" | "closed";
-  paused: boolean;
-  onTogglePause: () => void;
-  onClear: () => void;
   total: number;
   shown: number;
+  paused: boolean;
 }
 
-export function FilterBar({
-  filter,
-  onChange,
-  suffixes,
-  status,
-  paused,
-  onTogglePause,
-  onClear,
-  total,
-  shown,
-}: FilterBarProps) {
+/** Event-filtering controls for the Events tab: free-text search, kind/resource
+ *  substring, and suffix facets. Connection status and pause/clear live on the
+ *  shared {@link DebugPanel} tab bar, not here. */
+export function FilterBar({ filter, onChange, suffixes, total, shown, paused }: FilterBarProps) {
   const active = new Set(filter.suffixes ?? []);
 
   function toggleSuffix(suffix: string) {
@@ -35,7 +25,6 @@ export function FilterBar({
   return (
     <div className="tdbg-bar">
       <div className="tdbg-bar-row">
-        <span className={`tdbg-status tdbg-status-${status}`} title={`stream ${status}`} />
         <input
           className="tdbg-search"
           placeholder="Search event name or payload…"
@@ -48,12 +37,6 @@ export function FilterBar({
           value={filter.kind ?? ""}
           onChange={(e) => onChange({ ...filter, kind: e.target.value || undefined })}
         />
-        <button className="tdbg-btn" onClick={onTogglePause}>
-          {paused ? "Resume" : "Pause"}
-        </button>
-        <button className="tdbg-btn" onClick={onClear}>
-          Clear
-        </button>
         <span className="tdbg-counts">
           {shown === total ? `${total}` : `${shown} / ${total}`} events
           {paused ? " · paused" : ""}

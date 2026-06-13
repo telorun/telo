@@ -1,3 +1,5 @@
+import type { DebugFrame } from "@telorun/debug-wire";
+
 import type {
   AvailabilityReport,
   PortMapping,
@@ -45,6 +47,10 @@ export interface BackendStartSpec {
   env: Record<string, string>;
   ports: PortMapping[];
   config: SessionConfig;
+  /** When true, launch the workload with `--inspect` and relay its kernel debug
+   *  stream via `onDebug`. The inspect endpoint stays reachable only by the
+   *  runner — never published outward. */
+  inspect: boolean;
 
   /** Emit a lifecycle status. The backend drives `starting` → `running` →
    *  terminal (`exited`/`failed`/`stopped`). */
@@ -55,6 +61,9 @@ export interface BackendStartSpec {
   onProgress(phase: RunPhase, message: string, done?: boolean): void;
   /** Raw merged stdout/stderr (PTY) bytes from the workload. */
   onOutput(chunk: Buffer): void;
+  /** A frame relayed from the workload's kernel debug stream. Only called when
+   *  `inspect` is true and the backend has connected to the inspect endpoint. */
+  onDebug(frame: DebugFrame): void;
   /** True once a user stop / shutdown has been requested — lets the backend
    *  classify a kill as `stopped` rather than `failed`. */
   isUserStopped(): boolean;

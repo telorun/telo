@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { type DebugFrame, isLogFrame } from "@telorun/debug-wire";
+
 import { TerminalBuffer } from "./terminal-buffer";
 import {
   isTerminal,
@@ -21,6 +23,8 @@ import {
 } from "./types";
 
 const MAX_LOG_LINES = 10_000;
+/** Ring cap on buffered debug frames (events + log lines) held per run. */
+const MAX_DEBUG_FRAMES = 5_000;
 /** Per-application run history cap. Oldest runs beyond this are evicted and
  *  their runtime (session + transcript) torn down. */
 const MAX_RUNS_PER_APP = 10;
@@ -53,6 +57,13 @@ export interface RunRecord {
   /** Captured output for log-only adapters (no `io` channel). */
   lines: LogLine[];
   truncated: boolean;
+  /** Frames from the workload's kernel debug stream (events + log lines), fed
+   *  to the Debug panel's Logs / Events tabs. Newest appended; capped. */
+  debugFrames: DebugFrame[];
+  /** Total frames ever appended (incl. evicted ones). Monotonic — the sequence
+   *  of `debugFrames[0]` is `debugFrameSeq - debugFrames.length`. Lets the view
+   *  track a "cleared" boundary that survives ring-buffer eviction. */
+  debugFrameSeq: number;
 }
 
 /** Unavailable/setup-required banner shown in RunView when a run failed to
@@ -238,6 +249,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
         progress: null,
         lines: [],
         truncated: false,
+        debugFrames: [],
+        debugFrameSeq: 0,
       };
 
       const runtime: RunRuntime = {
@@ -359,6 +372,14 @@ function applyRunEvent(
     return;
   }
 
+  if (event.type === "debug") {
+    // The editor shows logs through the run's terminal / LogStream slot, so only
+    // relayed *event* frames feed the Events tab; relayed log frames are dropped.
+    if (isLogFrame(event.frame)) return;
+    updateRecord(runId, (record) => appendDebugFrames(record, [event.frame]));
+    return;
+  }
+
   // Terminal adapters render their bytes through the TerminalBuffer (the `io`
   // channel); their stdout/stderr events are not shown as lines, so skip them
   // to avoid duplicating output.
@@ -381,4 +402,17 @@ function applyRunEvent(
     const overflow = combined.length - MAX_LOG_LINES;
     return { ...record, lines: combined.slice(overflow), truncated: true };
   });
+}
+
+/** Append debug frames to a record, ring-capped at {@link MAX_DEBUG_FRAMES}.
+ *  `debugFrameSeq` counts every frame ever appended (even evicted ones) so the
+ *  view's cleared/paused boundary stays correct after eviction. */
+function appendDebugFrames(record: RunRecord, frames: DebugFrame[]): RunRecord {
+  const combined = [...record.debugFrames, ...frames];
+  const overflow = combined.length - MAX_DEBUG_FRAMES;
+  return {
+    ...record,
+    debugFrames: overflow > 0 ? combined.slice(overflow) : combined,
+    debugFrameSeq: record.debugFrameSeq + frames.length,
+  };
 }

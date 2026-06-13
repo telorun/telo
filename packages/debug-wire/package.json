@@ -1,0 +1,45 @@
+{
+  "name": "@telorun/debug-wire",
+  "version": "0.0.0",
+  "description": "The Telo debug wire format: language-neutral frame contract (kernel events + log lines) shared by the producer, runner, editor, and debug UI.",
+  "keywords": [
+    "telo",
+    "debug",
+    "wire",
+    "events",
+    "logs"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "packages/debug-wire"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wire-schema.json": "./wire-schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "wire-schema.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

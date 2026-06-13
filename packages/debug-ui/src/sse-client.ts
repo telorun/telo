@@ -1,7 +1,8 @@
-import type { DebugEvent } from "./wire.js";
+import type { DebugFrame } from "./wire.js";
 
 export interface DebugStreamHandlers {
-  onEvent: (event: DebugEvent) => void;
+  /** One frame off the stream — a kernel event or a log line (route on `kind`). */
+  onFrame: (frame: DebugFrame) => void;
   /** Connection state changes — drives a status indicator. */
   onStatus?: (status: "connecting" | "open" | "closed") => void;
 }
@@ -24,7 +25,7 @@ export function connectDebugStream(url: string, handlers: DebugStreamHandlers): 
   source.onmessage = (msg) => {
     if (!msg.data) return;
     try {
-      handlers.onEvent(JSON.parse(msg.data) as DebugEvent);
+      handlers.onFrame(JSON.parse(msg.data) as DebugFrame);
     } catch {
       // A malformed frame shouldn't kill the stream; skip it.
     }

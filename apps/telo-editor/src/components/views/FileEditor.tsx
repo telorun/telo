@@ -3,6 +3,7 @@ import { FileWarning } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isBinaryFile, languageForFile } from "../../file-types";
 import { pathBasename } from "../../loader/paths";
+import { useMonacoTheme } from "../../theme/color-mode";
 
 const DEBOUNCE_MS = 500;
 
@@ -19,6 +20,7 @@ interface FileEditorProps {
  *  next file's content; an unsaved buffer is flushed on unmount. */
 export function FileEditor({ filePath, readFile, saveFile }: FileEditorProps) {
   const binary = isBinaryFile(filePath);
+  const monacoTheme = useMonacoTheme();
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,6 +115,7 @@ export function FileEditor({ filePath, readFile, saveFile }: FileEditorProps) {
       <div className="min-h-0 flex-1">
         <Editor
           height="100%"
+          theme={monacoTheme}
           language={languageForFile(filePath)}
           defaultValue={text}
           onChange={handleChange}

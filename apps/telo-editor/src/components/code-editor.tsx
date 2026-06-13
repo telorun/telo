@@ -2,6 +2,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import type { languages } from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useMonacoTheme } from "../theme/color-mode";
 
 interface CodeEditorProps {
   value: string;
@@ -55,6 +56,7 @@ export function CodeEditor({
   useEffect(() => {
     onBlurRef.current = onBlur;
   }, [onBlur]);
+  const monacoTheme = useMonacoTheme();
 
   type Editor = Parameters<OnMount>[0];
   const [handles, setHandles] = useState<{ editor: Editor; monaco: Monaco } | null>(null);
@@ -83,6 +85,7 @@ export function CodeEditor({
     >
       <Editor
         height={height}
+        theme={monacoTheme}
         value={value}
         onChange={(next) => onValueChange(next ?? "")}
         onMount={handleMount}

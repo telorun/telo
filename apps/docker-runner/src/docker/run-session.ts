@@ -1,11 +1,17 @@
 import type {
   BackendSession,
+  DebugFrame,
   PortMapping,
   RunnerEndpoint,
   SessionConfig,
   StartFailureStage,
 } from "@telorun/runner-core";
-import { SessionStartError } from "@telorun/runner-core";
+import { relayDebugStream, SessionStartError } from "@telorun/runner-core";
+
+/** Port the workload's `--inspect` server binds inside the container. Reached
+ *  by the runner over the child network (`http://<container>:<port>/events`);
+ *  never published to a host port — only the runner relays the stream out. */
+const INSPECT_PORT = 9230;
 
 /** Hijacked attach options accepted by dockerode: with `Tty: true` on the
  *  container, the daemon returns a single duplex stream — bytes flow both
@@ -75,8 +81,10 @@ export interface SpawnSessionArgs {
   ports: PortMapping[];
   bundleVolume: string;
   childNetwork: string;
+  inspect: boolean;
   onStatus: (status: import("@telorun/runner-core").RunStatus) => void;
   onOutput: (chunk: Buffer) => void;
+  onDebug: (frame: DebugFrame) => void;
   isUserStopped: () => boolean;
 }
 
@@ -105,12 +113,27 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
   args.onStatus({ kind: "starting" });
   args.onStatus({ kind: "running", endpoints: buildEndpoints(args.ports) });
 
+  // When inspect is on, subscribe to the workload's in-container inspect SSE
+  // (reachable by name over the child network, never host-published) and relay
+  // each frame out. Connect-retries while the kernel boots are expected, not
+  // errors — relayDebugStream polls until the endpoint answers or we abort.
+  const debugAbort = new AbortController();
+  if (args.inspect) {
+    void relayDebugStream({
+      url: `http://${args.containerName}:${INSPECT_PORT}/events`,
+      onFrame: args.onDebug,
+      signal: debugAbort.signal,
+    });
+  }
+
   const done = container.wait().then(
     (info) => {
+      debugAbort.abort();
       args.onStatus(resolveExitStatus(info, args.isUserStopped()));
       endQuietly(ptyStream);
     },
     (err) => {
+      debugAbort.abort();
       args.onStatus({ kind: "failed", message: `failed to await container: ${errMessage(err)}` });
       endQuietly(ptyStream);
     },
@@ -130,7 +153,10 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
       });
     },
     done,
-    stop: () => stopContainer(container),
+    stop: () => {
+      debugAbort.abort();
+      return stopContainer(container);
+    },
   };
 }
 
@@ -198,10 +224,16 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   // Tty + OpenStdin + StdinOnce=false + the four Attach* flags yield a hijacked
   // attach duplex carrying the PTY byte stream both ways. Without OpenStdin the
   // container's stdin is detached at /dev/null and user input never reaches it.
+  // Inspect appends `--inspect 0.0.0.0:<port> --no-open` to the telo args so the
+  // kernel serves its debug stream on the child network. 0.0.0.0 (not the CLI's
+  // loopback default) lets the runner reach it across the container boundary.
+  const cmd = args.inspect
+    ? [args.entryRelativePath, "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"]
+    : [args.entryRelativePath];
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,
-    Cmd: [args.entryRelativePath],
+    Cmd: cmd,
     WorkingDir: args.workingDir,
     Env: envArray,
     Tty: true,

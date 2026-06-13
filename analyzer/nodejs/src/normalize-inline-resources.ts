@@ -15,6 +15,22 @@ function sanitizeName(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
+/** Deep-clones a manifest value tree so the in-place rewrites this module and
+ *  `resolveRefSentinels` perform never reach caller-owned objects. Compiled-CEL
+ *  nodes (`{__compiled, source, call?}`) are opaque leaves carrying functions —
+ *  copied by reference, never descended into — matching how `resolveRefSentinels`
+ *  and `manifest-visitor` short-circuit on `__compiled`. */
+function cloneForMutation(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if ((value as { __compiled?: unknown }).__compiled) return value;
+  if (Array.isArray(value)) return value.map(cloneForMutation);
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    out[key] = cloneForMutation((value as Record<string, unknown>)[key]);
+  }
+  return out;
+}
+
 /**
  * Phase 2 — Inline resource normalization.
  *
@@ -29,8 +45,9 @@ function sanitizeName(raw: string): string {
  *   e.g. TestBasicAddition_steps_AddTwoNumbers_invoke
  *        TestBasicAddition_steps_0_invoke  (when step has no name)
  *
- * Returns a new array containing the original manifests (mutated in-place) plus all
- * extracted manifests. The original array is not mutated.
+ * Returns a new array of deep-cloned manifests (the rewrites land on the clones)
+ * plus all extracted manifests. The caller's manifests — array and elements — are
+ * never mutated; this is the analyzer's immutability boundary.
  */
 export function normalizeInlineResources(
   resources: ResourceManifest[],
@@ -38,10 +55,17 @@ export function normalizeInlineResources(
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
 ): ResourceManifest[] {
-  const result = [...resources];
+  // Deep-clone the input so this pass — and `resolveRefSentinels`, which runs on
+  // this output — never mutate caller-owned manifests. `extractInlinesAtPath`
+  // rewrites inline ref slots in place, so without cloning we'd corrupt shared
+  // state such as the editor's `LoadedFile.manifests` parse cache (a reused
+  // sentinel would be rewritten to `{kind, name}`, later misread as an authored
+  // reference form). The clone is the analyzer's immutability boundary.
+  const result = resources.map(cloneForMutation) as ResourceManifest[];
 
   // Queue: all non-system resources with a name. Extracted resources are appended.
-  const queue = resources.filter(
+  // Filter the CLONES (not the originals) so traversal mutates copies.
+  const queue = result.filter(
     (r): r is ResourceManifest & { metadata: { name: string } } =>
       typeof r.metadata?.name === "string" && !!r.kind && !SYSTEM_KINDS.has(r.kind),
   );
