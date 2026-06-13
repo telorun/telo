@@ -1,5 +1,21 @@
 # @telorun/ai-mcp
 
+## 0.5.0
+
+### Minor Changes
+
+- e398d4d: Normalize MCP tool-result content into Ai content parts. An MCP `tools/call` result
+  array is translated block-by-block — a text block stays a text part, and an **image**
+  block (`{ type: "image", data, mimeType }`) becomes an Ai image part with its `mimeType`
+  renamed to the contract's `mediaType`, so a vision MCP tool's image reaches the model as
+  an image part instead of a JSON-stringified blob. A result containing any unrecognized
+  block kind (resource link, audio, …) is handed back untouched, as before.
+
+### Patch Changes
+
+- Updated dependencies [e398d4d]
+  - @telorun/ai@0.6.0
+
 ## 0.4.1
 
 ### Patch Changes

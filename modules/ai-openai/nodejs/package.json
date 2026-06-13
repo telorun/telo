@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai-openai",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Telo Ai.OpenaiModel — OpenAI-compatible provider for Ai.Model (direct /chat/completions HTTP API, no vendor SDK).",
   "keywords": [
     "telo",

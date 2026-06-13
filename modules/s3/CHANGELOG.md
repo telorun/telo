@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-06-07
+## 0.6.0 - 2026-06-13
+### Added
+* Update controller @telorun/s3 to 0.5.0.## 0.5.0 - 2026-06-07
 ### Added
 * Module `description` and schema `examples:` for registry / MCP discovery (`search_modules` + `get_module_manifest`).
 * Bucket reference slots use the unified `!ref` form; the legacy inline `{kind, name}` / string ref shapes are no longer advertised in the schema.## 0.4.0 - 2026-06-07

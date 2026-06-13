@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-mcp
   namespace: std
-  version: 0.4.1
+  version: 0.5.0
   description: MCP bridge for Ai.ToolProvider — exposes an MCP server's tools to an Ai.Agent.
 imports:
   # Import @telorun/ai for the Ai.ToolProvider abstract this definition implements.
@@ -24,7 +24,7 @@ metadata:
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:
-  - pkg:npm/@telorun/ai-mcp@0.4.1?local_path=./nodejs#tool-provider
+  - pkg:npm/@telorun/ai-mcp@0.5.0?local_path=./nodejs#tool-provider
 schema:
   type: object
   properties:

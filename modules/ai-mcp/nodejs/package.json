@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai-mcp",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Telo AiMcp.ToolProvider — bridges an MCP server to the Ai.ToolProvider contract so its tools are discoverable by an Ai.Agent.",
   "keywords": [
     "telo",
