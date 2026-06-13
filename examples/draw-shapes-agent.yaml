@@ -1,0 +1,383 @@
+# Draw-shapes agent — an HTTP API where an AI vision agent draws shapes on an image.
+#
+#   POST /v1/drawings  { "prompt": "a red square top-left and a blue circle box centered" }
+#   → 201 { "url": "<presigned S3 GET url>", "expiresAt": "...", "summary": "..." }
+#
+# How it works: the handler mints a document id, then invokes one Ai.Agent. The agent
+# has a single tool, `draw`, that renders rectangles onto a blank 1024×768 canvas,
+# stores the PNG in S3 under the document id, and returns the rendered image straight
+# back to the model as an image tool result. The model looks at what it drew, adjusts,
+# and redraws until the layout matches the request — the visual feedback loop that the
+# multimodal tool-result support makes possible. After the agent converges, the handler
+# presigns the (overwritten) object and returns the link. The model only ever passes the
+# document id and the shape list; the bytes never ride through it.
+#
+# Run it (needs a vision-capable OpenAI model and an S3-compatible store, e.g. MinIO):
+#   OPENAI_API_KEY=sk-...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...  \
+#   S3_ENDPOINT=http://localhost:9000  S3_BUCKET=telo-draw  \
+#   pnpm run telo ./examples/draw-shapes-agent.yaml
+kind: Telo.Application
+metadata:
+  name: DrawShapesAgent
+  version: 1.0.0
+  description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
+imports:
+  Http: ../modules/http-server
+  Ai: ../modules/ai
+  AiOpenai: ../modules/ai-openai
+  Image: ../modules/image
+  S3: ../modules/s3
+  Run: ../modules/run
+  Js: ../modules/javascript
+targets:
+  - !ref Server
+ports:
+  http:
+    env: PORT
+    default: 8080
+variables:
+  modelId:
+    env: MODEL
+    type: string
+    default: gpt-4o-mini
+  s3Bucket:
+    env: S3_BUCKET
+    type: string
+    default: telo-draw
+  s3Endpoint:
+    env: S3_ENDPOINT
+    type: string
+    default: http://localhost:9000
+  s3ForcePathStyle:
+    env: S3_FORCE_PATH_STYLE
+    type: boolean
+    default: true
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+  s3AccessKeyId:
+    env: S3_ACCESS_KEY_ID
+    type: string
+  s3SecretAccessKey:
+    env: S3_SECRET_ACCESS_KEY
+    type: string
+---
+kind: AiOpenai.OpenaiModel
+metadata:
+  name: VisionModel
+model: "${{ variables.modelId }}"
+apiKey: "${{ secrets.openaiApiKey }}"
+options:
+  temperature: 0.2
+---
+kind: S3.Bucket
+metadata:
+  name: Store
+bucketName: "${{ variables.s3Bucket }}"
+endpoint: "${{ variables.s3Endpoint }}"
+accessKeyId: "${{ secrets.s3AccessKeyId }}"
+secretAccessKey: "${{ secrets.s3SecretAccessKey }}"
+forcePathStyle: "${{ variables.s3ForcePathStyle }}"
+createIfMissing: true
+---
+# Blank canvas seed — regenerated deterministically on every draw, so the field set
+# (the shapes) is the only state that changes between turns.
+kind: Image.Blank
+metadata:
+  name: Canvas
+color: "#FFFFFF"
+---
+kind: Image.Overlay
+metadata:
+  name: DrawBoxes
+stroke:
+  color: "#1D4ED8"
+  width: 3
+label:
+  color: "#FFFFFF"
+  background: "#1D4ED8"
+  placement: top-left
+---
+kind: S3.Put
+metadata:
+  name: PutObject
+bucketRef: !ref Store
+---
+kind: S3.PresignedUrl
+metadata:
+  name: PresignGet
+bucketRef: !ref Store
+operation: get
+expiresIn: 3600
+---
+# The unique object key for one request. uuidv4() (a CEL function) supplies the
+# randomness; the script only shapes it into a key, captured as a step result so the
+# handler can hand the SAME id to the agent and later presign it.
+kind: Js.Script
+metadata:
+  name: MakeId
+code: |
+  function main({ seed }) {
+    return { documentId: "drawings/" + seed + ".png" };
+  }
+---
+# The composite tool the agent calls: render shapes → store → return the image. A
+# Run.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.
+kind: Run.Sequence
+metadata:
+  name: DrawTool
+inputs:
+  documentId: { type: string }
+  shapes:
+    type: array
+    items:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        label: { type: string }
+        color: { type: string }
+      required: [x, y, width, height]
+steps:
+  - name: Blank
+    invoke: !ref Canvas
+    inputs:
+      width: 1024
+      height: 768
+  - name: Mark
+    invoke: !ref DrawBoxes
+    inputs:
+      image: "${{ steps.Blank.result.image }}"
+      shapes: "${{ inputs.shapes }}"
+  - name: Store
+    invoke: !ref PutObject
+    inputs:
+      key: "${{ inputs.documentId }}"
+      body: "${{ steps.Mark.result.image }}"
+      contentType: "${{ steps.Mark.result.mediaType }}"
+outputs:
+  image: "${{ steps.Mark.result.image }}"
+  mediaType: "${{ steps.Mark.result.mediaType }}"
+---
+# Independent reviewer for the validation loop. A vision Ai.Text that is shown the
+# rendered image (in a multimodal user message) and the original request, and judges
+# whether they match — a second opinion the drawing agent must satisfy before finishing.
+kind: Ai.Text
+metadata:
+  name: Critic
+model: !ref VisionModel
+system: |
+  You are a strict visual QA reviewer. You are given a drawing request and the
+  rendered image. If the image satisfies the request, reply with exactly: PASS
+  Otherwise reply with: FAIL — followed by a short, concrete list of what to change
+  (box positions, sizes, missing or extra boxes, labels, colors).
+options:
+  temperature: 0
+---
+# The `validate` tool: re-render the current shapes and have the Critic review the
+# image against the request. Re-rendering from the same shapes is deterministic, so
+# the reviewed image is identical to what `draw` stored.
+kind: Run.Sequence
+metadata:
+  name: ValidateTool
+inputs:
+  request: { type: string }
+  shapes:
+    type: array
+    items:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        label: { type: string }
+        color: { type: string }
+      required: [x, y, width, height]
+steps:
+  - name: Blank
+    invoke: !ref Canvas
+    inputs:
+      width: 1024
+      height: 768
+  - name: Mark
+    invoke: !ref DrawBoxes
+    inputs:
+      image: "${{ steps.Blank.result.image }}"
+      shapes: "${{ inputs.shapes }}"
+  - name: Review
+    invoke: !ref Critic
+    inputs:
+      messages:
+        - role: user
+          content:
+            - type: text
+              text: "${{ 'Drawing request: ' + inputs.request + '. Does the rendered image satisfy it? Reply PASS, or FAIL with concrete fixes.' }}"
+            - type: image
+              data: "${{ steps.Mark.result.image }}"
+              mediaType: "${{ steps.Mark.result.mediaType }}"
+outputs:
+  verdict: "${{ steps.Review.result.text }}"
+---
+kind: Ai.Tools
+metadata:
+  name: DrawTools
+tools:
+  - tool: !ref DrawTool
+    name: draw
+    description: >-
+      Render the given rectangles onto a blank 1024×768 canvas and save it. Returns
+      the rendered image so you can check placement. Call it repeatedly with the FULL
+      shape list until the drawing matches the request; the last call is what is saved.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [documentId, shapes]
+      properties:
+        documentId:
+          type: string
+          description: The document id from your task. Pass it unchanged on every call.
+        shapes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [x, y, width, height]
+            properties:
+              x: { type: number, description: "Left edge in pixels (0–1024)." }
+              y: { type: number, description: "Top edge in pixels (0–768)." }
+              width: { type: number, description: "Box width in pixels." }
+              height: { type: number, description: "Box height in pixels." }
+              label: { type: string, description: "Optional caption drawn at the box corner." }
+              color: { type: string, description: "Optional CSS color for this box." }
+    # Hand the rendered PNG back to the model as an image content part.
+    result: "${{ {'type': 'image', 'data': result.image, 'mediaType': result.mediaType} }}"
+  - tool: !ref ValidateTool
+    name: validate
+    description: >-
+      Independently check whether the current shapes produce an image that satisfies
+      the request. Pass the original request text and the FULL shape list. Returns
+      PASS, or FAIL with concrete fixes. Call this after draw; only finish on PASS.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [request, shapes]
+      properties:
+        request:
+          type: string
+          description: The original drawing request, verbatim.
+        shapes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [x, y, width, height]
+            properties:
+              x: { type: number }
+              y: { type: number }
+              width: { type: number }
+              height: { type: number }
+              label: { type: string }
+              color: { type: string }
+    result: "${{ result.verdict }}"
+---
+kind: Ai.Agent
+metadata:
+  name: ShapeArtist
+model: !ref VisionModel
+system: |
+  You place rectangles on a 1024×768 canvas to satisfy a drawing request.
+  Coordinates are pixels, with the origin at the top-left.
+
+  For each request:
+  1. Decide the rectangles — position, size, and an optional label and color each.
+  2. Call `draw` with the FULL list of rectangles plus the documentId you were given.
+  3. Look at the returned image, then call `validate` with the original request and
+     the same shape list to get an independent review.
+  4. If `validate` returns FAIL, apply its fixes, call `draw` again with the corrected
+     full list, and validate again. Repeat until it passes.
+  5. Only once `validate` returns PASS, stop and briefly describe what you drew.
+
+  Always pass the documentId unchanged. The last `draw` call is the one that is saved.
+maxSteps: 16
+toolProviders:
+  - provider: !ref DrawTools
+---
+# HTTP handler: mint an id → run the agent (id carried in the prompt) → presign the key.
+kind: Run.Sequence
+metadata:
+  name: HandleDraw
+inputs:
+  prompt: { type: string }
+steps:
+  - name: GenId
+    invoke: !ref MakeId
+    inputs:
+      seed: "${{ uuidv4() }}"
+  - name: Draw
+    invoke: !ref ShapeArtist
+    inputs:
+      prompt: "${{ 'Document id: ' + steps.GenId.result.documentId + '. Drawing request: ' + inputs.prompt }}"
+  - name: Link
+    invoke: !ref PresignGet
+    inputs:
+      key: "${{ steps.GenId.result.documentId }}"
+outputs:
+  url: "${{ steps.Link.result.url }}"
+  expiresAt: "${{ steps.Link.result.expiresAt }}"
+  summary: "${{ steps.Draw.result.text }}"
+---
+kind: Http.Server
+metadata:
+  name: Server
+port: !cel "ports.http"
+logger: true
+baseUrl: "http://localhost:${{ports.http}}"
+openapi:
+  info:
+    title: Draw Shapes Agent
+    version: 1.0.0
+mounts:
+  - path: /v1
+    mount: !ref DrawRoutes
+---
+kind: Http.Api
+metadata:
+  name: DrawRoutes
+routes:
+  - request:
+      path: /drawings
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            prompt:
+              type: string
+              minLength: 1
+          required: [prompt]
+    handler: !ref HandleDraw
+    inputs:
+      prompt: "${{ request.body.prompt }}"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body:
+              url: "${{ result.url }}"
+              expiresAt: "${{ result.expiresAt }}"
+              summary: "${{ result.summary }}"
+    catches:
+      # Catch-all: covers the handler's declared throws and the agent's runtime
+      # failures (e.g. ERR_AGENT_MAX_STEPS when it can't converge within maxSteps).
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: "${{ error.message }}"
+              code: "${{ error.code }}"

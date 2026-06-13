@@ -82,7 +82,7 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 - `text` — the model's final answer.
 - `usage` — token usage summed across every model call in the loop.
 - `finishReason` — from the final turn.
-- `steps` — one entry per turn that called tools: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. Failures appear here too (not swallowed).
+- `steps` — one entry per turn that called tools: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
 
 ## See also
 

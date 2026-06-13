@@ -26,6 +26,10 @@
     "./sequence": {
       "bun": "./src/sequence.ts",
       "import": "./dist/sequence.js"
+    },
+    "./value": {
+      "bun": "./src/value.ts",
+      "import": "./dist/value.js"
     }
   },
   "scripts": {

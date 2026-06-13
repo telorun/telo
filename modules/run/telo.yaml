@@ -7,6 +7,7 @@ metadata:
 exports:
   kinds:
     - Sequence
+    - Value
 ---
 kind: Telo.Definition
 metadata:
@@ -318,3 +319,48 @@ schema:
       outputs:
         name: !cel "steps.fetchUser.result.rows[0].name"
         postCount: !cel "steps.count.result.rows[0].n"
+---
+kind: Telo.Definition
+metadata:
+  name: Value
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/run@0.6.0?local_path=./nodejs#value
+schema:
+  type: object
+  properties:
+    inputs:
+      title: Inputs
+      description: >-
+        The value's input contract: a JSON Schema property map (name → schema),
+        NOT values. Each key declares one input the resource accepts; an empty
+        schema `{}` declares an untyped (dyn) input. Callers supply actual
+        values at invoke time (an `Ai.Tools` entry, a parent `Run.Sequence`
+        step, an `Http.Api` route), and `value` reads them as `!cel "inputs.x"`.
+      type: object
+      additionalProperties: true
+    value:
+      title: Value
+      description: >-
+        A CEL expression — or a structure (map / array) with `!cel` leaves —
+        evaluated at invoke time over `inputs`. Its result becomes the
+        resource's invoke result and may be any shape (object, array, scalar).
+        The declarative replacement for a `Js.Script` that only shapes a value
+        (concat, field mapping, a constant literal) with no I/O or branching.
+      x-telo-context:
+        type: object
+        properties:
+          inputs:
+            type: object
+            x-telo-context-from: "inputs"
+  required:
+    - value
+  examples:
+    - inputs:
+        a: { type: number }
+        b: { type: number }
+      value:
+        product: !cel "inputs.a * inputs.b"
+    - value:
+        - { type: text, text: page rendered }
+        - { type: image, data: aGVsbG8=, mediaType: image/png }

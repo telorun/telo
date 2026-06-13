@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: TextMessageContentPartsTest
+  version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestContentParts
+---
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+---
+kind: Ai.Text
+metadata:
+  name: Texter
+model: !ref Echo
+---
+kind: Run.Sequence
+metadata:
+  name: TestContentParts
+steps:
+  # A multimodal user message: a text part plus an image part (base64 bytes). The
+  # widened `content` schema accepts the array; the echo flattens it to its text.
+  - name: Invoke
+    inputs:
+      messages:
+        - role: user
+          content:
+            - { type: text, text: "describe this" }
+            - { type: image, data: "aGVsbG8=", mediaType: "image/png" }
+    invoke: !ref Texter
+  - name: AssertText
+    inputs:
+      text: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { type: string, const: describe this }
+        required: [text]

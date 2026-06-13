@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: AgentImageToolResultTest
+  version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestImageToolResult
+---
+# Echo emits a deterministic tool call on the first turn, then echoes whatever text
+# the tool result carried on the second turn (its image part is ignored by the echo).
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+emitToolCall:
+  name: snapshot
+  arguments: {}
+---
+# A vision-style tool: returns multimodal content parts (a text part plus an image
+# part with base64 bytes) instead of a plain value — the shape Image.Overlay /
+# Pdf.Rasterizer tool results take in the form-agent workflow. A constant value, so
+# `value` is a plain literal with no `inputs` and no CEL.
+kind: Run.Value
+metadata:
+  name: Snapshot
+value:
+  - { type: text, text: page rendered }
+  - { type: image, data: aGVsbG8=, mediaType: image/png }
+---
+kind: Ai.Tools
+metadata:
+  name: VisionTools
+tools:
+  - tool: !ref Snapshot
+    name: snapshot
+    description: Render the current page and return it as an image.
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
+---
+kind: Ai.Agent
+metadata:
+  name: VisionAgent
+model: !ref Echo
+system: "Use tools to inspect the document."
+toolProviders:
+  - provider: !ref VisionTools
+---
+kind: Run.Sequence
+metadata:
+  name: TestImageToolResult
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "look at the page"
+    invoke: !ref VisionAgent
+  # Turn 1 → tool call snapshot() → tool returns content parts → carried into the
+  # `tool` message and the trace untouched (NOT JSON-stringified). Turn 2 → Echo
+  # flattens the tool message content to its text part → "page rendered".
+  - name: AssertParts
+    inputs:
+      content: "${{ steps.Invoke.result.steps[0].toolResults[0].content }}"
+      textType: "${{ steps.Invoke.result.steps[0].toolResults[0].content[0].type }}"
+      imageType: "${{ steps.Invoke.result.steps[0].toolResults[0].content[1].type }}"
+      mediaType: "${{ steps.Invoke.result.steps[0].toolResults[0].content[1].mediaType }}"
+      finalText: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          content:
+            type: array
+            minItems: 2
+          textType: { type: string, const: text }
+          imageType: { type: string, const: image }
+          mediaType: { type: string, const: image/png }
+          finalText: { type: string, const: page rendered }
+        required: [content, textType, imageType, mediaType, finalText]

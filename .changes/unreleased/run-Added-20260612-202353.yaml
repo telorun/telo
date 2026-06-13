@@ -1,0 +1,4 @@
+project: run
+kind: Added
+body: 'Add Run.Value: a declarative invocable that returns a CEL-evaluated value (or a constant), replacing Js.Script for pure value shaping.'
+time: 2026-06-12T20:23:53.984264156Z

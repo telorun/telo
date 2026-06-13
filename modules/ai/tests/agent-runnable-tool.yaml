@@ -1,0 +1,90 @@
+kind: Telo.Application
+metadata:
+  name: AgentRunnableToolTest
+  version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestRunnableTool
+---
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+emitToolCall:
+  name: compute
+  arguments: { n: 21 }
+---
+kind: Run.Value
+metadata:
+  name: Doubler
+inputs:
+  n: { type: integer }
+value:
+  doubled: "${{ double(inputs.n) * 2.0 }}"
+---
+# A Run.Sequence (Telo.Runnable with callable inputs/outputs) wrapped as a tool —
+# the composite-tool case the widened Ai.Tools `tool` slot enables. The whole
+# pipeline is dispatched as a single tool the model can call.
+kind: Run.Sequence
+metadata:
+  name: ComputePipeline
+inputs:
+  n: { type: integer }
+steps:
+  - name: Double
+    invoke: !ref Doubler
+    inputs:
+      n: "${{ inputs.n }}"
+outputs:
+  doubled: "${{ steps.Double.result.doubled }}"
+---
+kind: Ai.Tools
+metadata:
+  name: PipelineTools
+tools:
+  - tool: !ref ComputePipeline
+    name: compute
+    description: Double a number through a pipeline.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [n]
+      properties:
+        n: { type: integer }
+    result: "${{ result.doubled }}"
+---
+kind: Ai.Agent
+metadata:
+  name: PipelineAgent
+model: !ref Echo
+toolProviders:
+  - provider: !ref PipelineTools
+---
+kind: Run.Sequence
+metadata:
+  name: TestRunnableTool
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "double 21"
+    invoke: !ref PipelineAgent
+  # Turn 1 → tool call compute(n:21) → ComputePipeline runs Doubler → {doubled:42},
+  # the `result:` mapping yields 42 → tool message content "42". Turn 2 → Echo
+  # echoes that content as the final answer.
+  - name: AssertResult
+    inputs:
+      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
+      toolResult: "${{ steps.Invoke.result.steps[0].toolResults[0].content }}"
+      finalText: "${{ steps.Invoke.result.text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          toolName: { type: string, const: compute }
+          toolResult: { type: string, const: "42" }
+          finalText: { type: string, const: "42" }
+        required: [toolName, toolResult, finalText]
