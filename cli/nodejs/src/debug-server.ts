@@ -1,5 +1,6 @@
 import * as http from "http";
 import * as fsp from "fs/promises";
+import type { AppEndpoint } from "@telorun/debug-ui";
 import { LruBlobStore } from "./blob-store.js";
 
 /** The debug wire protocol this server speaks, advertised at `/json/version` so a
@@ -39,6 +40,7 @@ export class DebugServer {
   private readonly bufferSize: number;
   private readonly host: string;
   private _url = "";
+  private _endpoints: AppEndpoint[] = [];
 
   /** Binary payloads are offloaded here and served at `/blobs/:id`; the serializer
    *  emits pointers into the event log. */
@@ -52,6 +54,14 @@ export class DebugServer {
 
   get url(): string {
     return this._url;
+  }
+
+  /** Advertise where the running app is reachable; the UI fetches these from the
+   *  `/json/version` handshake and renders them as links. Hosts are left blank —
+   *  the producer can't know which hostname the viewer used, so the UI fills them
+   *  from its own origin. Updatable across watch reloads. */
+  setEndpoints(endpoints: AppEndpoint[]): void {
+    this._endpoints = endpoints;
   }
 
   /** Start listening on the configured host (loopback by default). Resolves once
@@ -142,7 +152,11 @@ export class DebugServer {
    *  consumer can confirm it speaks this server's wire format before connecting. */
   private handleVersion(res: http.ServerResponse): void {
     res
-      .writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" })
+      .writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+      })
       .end(
         JSON.stringify({
           protocol: PROTOCOL,
@@ -151,6 +165,7 @@ export class DebugServer {
           events: "/events",
           eventsLog: "/events.jsonl",
           blobs: "/blobs/",
+          appEndpoints: this._endpoints,
         }),
       );
   }
@@ -160,6 +175,10 @@ export class DebugServer {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
+      // The server is loopback-bound (the real boundary); CORS only governs
+      // which browser origins may read it. `*` lets an embedding webview (the
+      // editor's debug panel) consume the stream cross-origin.
+      "Access-Control-Allow-Origin": "*",
     });
     // Replay history, then stream live.
     for (const line of this.buffer) res.write(`data: ${line}\n\n`);
@@ -191,6 +210,7 @@ export class DebugServer {
         "Content-Type": blob.mediaType,
         "Cache-Control": "no-store",
         "Content-Length": String(blob.bytes.byteLength),
+        "Access-Control-Allow-Origin": "*",
       })
       .end(blob.bytes);
   }

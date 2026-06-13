@@ -5,6 +5,8 @@
  * how the bundle is delivered) live behind the `RunnerBackend` interface.
  */
 
+import type { DebugFrame } from "@telorun/debug-wire";
+
 export type PullPolicy = "missing" | "always" | "never";
 
 /**
@@ -88,6 +90,11 @@ export interface StartSessionRequest {
   env: Record<string, string>;
   ports?: PortMapping[];
   config: SessionConfig;
+  /** Request the kernel debug stream. When true the runner launches the
+   *  workload with `--inspect`, subscribes to the in-workload inspect endpoint
+   *  (reachable only by the runner — never published outward), and relays each
+   *  frame to the client as a `debug` {@link RunEvent}. */
+  inspect?: boolean;
 }
 
 export type RunStatus =
@@ -108,7 +115,10 @@ export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
   | { type: "status"; status: RunStatus }
-  | { type: "progress"; phase: RunPhase; message: string; done?: boolean };
+  | { type: "progress"; phase: RunPhase; message: string; done?: boolean }
+  /** A frame relayed from the workload's kernel debug stream (kernel event or
+   *  log line). Only emitted when the session was started with `inspect`. */
+  | { type: "debug"; frame: DebugFrame };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

@@ -149,6 +149,12 @@ importers:
       '@telorun/analyzer':
         specifier: workspace:*
         version: link:../../analyzer/nodejs
+      '@telorun/debug-ui':
+        specifier: workspace:*
+        version: link:../../packages/debug-ui
+      '@telorun/debug-wire':
+        specifier: workspace:*
+        version: link:../../packages/debug-wire
       '@telorun/ide-support':
         specifier: workspace:*
         version: link:../../packages/ide-support
@@ -1003,6 +1009,13 @@ importers:
         version: 5.9.3
 
   packages/debug-ui:
+    dependencies:
+      '@telorun/debug-wire':
+        specifier: workspace:*
+        version: link:../debug-wire
+      lucide-react:
+        specifier: ^1.8.0
+        version: 1.8.0(react@19.2.3)
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1035,6 +1048,15 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  packages/debug-wire:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   packages/ide-support:
     dependencies:
       '@telorun/analyzer':
@@ -1059,6 +1081,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.0.1
         version: 11.2.0
+      '@telorun/debug-wire':
+        specifier: workspace:*
+        version: link:../debug-wire
       fastify:
         specifier: ^5.7.2
         version: 5.7.2

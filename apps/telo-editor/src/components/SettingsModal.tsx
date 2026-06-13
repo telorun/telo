@@ -13,7 +13,7 @@ interface SettingsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   settings: AppSettings
-  onChange: (settings: AppSettings) => void
+  onChange: React.Dispatch<React.SetStateAction<AppSettings>>
 }
 
 export function SettingsModal({ open, onOpenChange, settings, onChange }: SettingsModalProps) {
@@ -22,19 +22,19 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
   const [urlError, setUrlError] = useState<string | null>(null)
 
   function handleToggle(id: string) {
-    onChange({
-      ...settings,
-      registryServers: settings.registryServers.map(s =>
-        s.id === id ? { ...s, enabled: !s.enabled } : s
+    onChange(s => ({
+      ...s,
+      registryServers: s.registryServers.map(server =>
+        server.id === id ? { ...server, enabled: !server.enabled } : server
       ),
-    })
+    }))
   }
 
   function handleDelete(id: string) {
-    onChange({
-      ...settings,
-      registryServers: settings.registryServers.filter(s => s.id !== id),
-    })
+    onChange(s => ({
+      ...s,
+      registryServers: s.registryServers.filter(server => server.id !== id),
+    }))
   }
 
   function handleAdd() {
@@ -55,7 +55,7 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
       label: newLabel.trim() || undefined,
       enabled: true,
     }
-    onChange({ ...settings, registryServers: [...settings.registryServers, server] })
+    onChange(s => ({ ...s, registryServers: [...s.registryServers, server] }))
     setNewUrl('')
     setNewLabel('')
     setUrlError(null)
@@ -79,8 +79,8 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
           <RunSettingsSection
             runners={settings.runners}
             activeRunnerId={settings.activeRunnerId}
-            onChangeRunners={(runners) => onChange({ ...settings, runners })}
-            onChangeActiveRunner={(id) => onChange({ ...settings, activeRunnerId: id })}
+            onChangeRunners={(runners) => onChange((s) => ({ ...s, runners }))}
+            onChangeActiveRunner={(id) => onChange((s) => ({ ...s, activeRunnerId: id }))}
           />
         </div>
 

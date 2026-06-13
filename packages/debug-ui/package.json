@@ -49,6 +49,10 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "@telorun/debug-wire": "workspace:*",
+    "lucide-react": "^1.8.0"
+  },
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18"

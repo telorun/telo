@@ -1,6 +1,13 @@
+import type { DebugFrame } from "@telorun/debug-wire";
+import { DebugPanel } from "@telorun/debug-ui/components";
+import { useRef, useState } from "react";
+
 import { Button } from "../../components/ui/button";
+import { useColorMode } from "../../theme/color-mode";
 import { useRun } from "../context";
-import { isTerminal, type RunnerEndpoint } from "../types";
+import type { RunRecord } from "../context";
+import type { TerminalBuffer } from "../terminal-buffer";
+import { isTerminal } from "../types";
 import { AdapterUnavailable } from "./AdapterUnavailable";
 import { LogStream } from "./LogStream";
 import { RunStatusChip } from "./RunStatusChip";
@@ -64,9 +71,6 @@ export function RunView() {
           {selectedRun.adapterDisplayName}
         </span>
         <RunStatusChip status={selectedRun.status} />
-        {selectedRun.status.kind === "running" && (
-          <EndpointChips endpoints={selectedRun.status.endpoints ?? []} />
-        )}
         {selectedRun.status.kind === "starting" && selectedRun.progress && (
           <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
             {selectedRun.progress.message}
@@ -85,55 +89,59 @@ export function RunView() {
           ×
         </Button>
       </div>
-      <div className="flex flex-1 overflow-hidden">
-        {terminal ? (
-          <TerminalView
-            key={selectedRun.id}
-            terminal={terminal}
-            inputDisabled={isTerminal(selectedRun.status)}
-          />
-        ) : (
-          <LogStream lines={selectedRun.lines} truncated={selectedRun.truncated} />
-        )}
-      </div>
+      <RunDebugPanel run={selectedRun} terminal={terminal} />
     </div>
   );
 }
 
-function EndpointChips({ endpoints }: { endpoints: RunnerEndpoint[] }) {
-  if (endpoints.length === 0) return null;
+/** The run view is the shared debug-ui panel: its Logs tab hosts the run's own
+ *  interactive terminal (xterm + stdin) — or, for log-only adapters, the read-only
+ *  LogStream — and its Events tab shows the relayed kernel events. Pause freezes
+ *  the events view against a snapshot; clear hides frames seen so far. (Blob
+ *  payloads aren't resolvable in the embed yet — the workload's blob endpoint
+ *  isn't reachable from the editor; events + logs work.) */
+function RunDebugPanel({ run, terminal }: { run: RunRecord; terminal: TerminalBuffer | null }) {
+  const [paused, setPaused] = useState(false);
+  // The sequence of the most recent Clear, not an index — `debugFrames` is a ring
+  // buffer, so absolute indices drift as old frames evict. Frames with sequence
+  // `>= clearedSeq` are shown.
+  const [clearedSeq, setClearedSeq] = useState(0);
+  const snapshot = useRef<DebugFrame[]>([]);
+  const colorMode = useColorMode();
+
+  const status: "connecting" | "open" | "closed" =
+    run.status.kind === "running" ? "open" : isTerminal(run.status) ? "closed" : "connecting";
+  const endpoints = run.status.kind === "running" ? run.status.endpoints : undefined;
+
+  // Map the cleared sequence to an offset into the current (possibly-evicted)
+  // window. `firstSeq` is the sequence of `debugFrames[0]`; clamp to 0 so a
+  // boundary that has already scrolled out of the window shows everything kept.
+  const firstSeq = run.debugFrameSeq - run.debugFrames.length;
+  const offset = Math.max(0, clearedSeq - firstSeq);
+  const liveFrames = offset > 0 ? run.debugFrames.slice(offset) : run.debugFrames;
+  if (!paused) snapshot.current = liveFrames;
+  const frames = paused ? snapshot.current : liveFrames;
+
+  const logsSlot = terminal ? (
+    <TerminalView key={run.id} terminal={terminal} inputDisabled={isTerminal(run.status)} />
+  ) : (
+    <LogStream lines={run.lines} truncated={run.truncated} />
+  );
+
   return (
-    <div className="flex items-center gap-1.5">
-      {endpoints.map((endpoint) => {
-        const label = `${formatHost(endpoint.host)}:${endpoint.port}`;
-        if (endpoint.protocol === "tcp") {
-          return (
-            <a
-              key={`${endpoint.host}:${endpoint.port}/${endpoint.protocol}`}
-              href={`http://${label}`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[10px] text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-            >
-              {label}
-            </a>
-          );
-        }
-        return (
-          <span
-            key={`${endpoint.host}:${endpoint.port}/${endpoint.protocol}`}
-            className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[10px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-          >
-            {label}/{endpoint.protocol}
-          </span>
-        );
-      })}
-    </div>
+    <DebugPanel
+      frames={frames}
+      revision={frames.length}
+      status={status}
+      paused={paused}
+      onTogglePause={() => setPaused((p) => !p)}
+      onClear={() => setClearedSeq(run.debugFrameSeq)}
+      resolveBlobUrl={(rel: string) => rel}
+      logsSlot={logsSlot}
+      defaultTab="logs"
+      endpoints={endpoints}
+      theme={colorMode}
+    />
   );
 }
 
-function formatHost(host: string): string {
-  // IPv6 literals need bracketing when paired with a port.
-  if (host.includes(":") && !host.startsWith("[")) return `[${host}]`;
-  return host;
-}

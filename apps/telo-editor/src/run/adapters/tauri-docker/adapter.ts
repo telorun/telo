@@ -1,3 +1,4 @@
+import type { DebugFrame } from "@telorun/debug-wire";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -44,6 +45,10 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
     const subscribers = new Set<(event: RunEvent) => void>();
     let cleanupDone = false;
     let unlisteners: UnlistenFn[] = [];
+    // The local runner is all-loopback (no ingress / public exposure), so the
+    // editor reads the workload's `--inspect` SSE directly from the published
+    // 127.0.0.1 port — the same `debug` RunEvents a remote runner would relay.
+    let debugSource: EventSource | null = null;
 
     function emit(event: RunEvent) {
       for (const listener of subscribers) listener(event);
@@ -52,6 +57,8 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
     function cleanup() {
       if (cleanupDone) return;
       cleanupDone = true;
+      debugSource?.close();
+      debugSource = null;
       for (const u of unlisteners) {
         try {
           u();
@@ -72,6 +79,12 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
         emit({ type: "status", status: currentStatus });
         if (isTerminal(currentStatus)) cleanup();
       }),
+      listen<{ url: string }>(`run:${sessionId}:debug-endpoint`, (e) => {
+        if (debugSource) return;
+        debugSource = openDebugStream(e.payload.url, (frame) =>
+          emit({ type: "debug", frame }),
+        );
+      }),
     ]);
 
     // Construct the byte-stream Channel before invoking run_start. The
@@ -88,6 +101,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
         ports: request.ports ?? [],
         config,
         ioChannel: channel,
+        inspect: true,
       });
     } catch (err) {
       cleanup();
@@ -114,3 +128,20 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
     };
   },
 };
+
+/** Open an SSE connection to a workload's `--inspect` endpoint and deliver each
+ *  parsed frame. The Rust side announces the (loopback) base URL once the
+ *  container's published debug port is up. */
+function openDebugStream(baseUrl: string, onFrame: (frame: DebugFrame) => void): EventSource {
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const source = new EventSource(new URL("events", base).toString());
+  source.onmessage = (msg) => {
+    if (!msg.data) return;
+    try {
+      onFrame(JSON.parse(msg.data) as DebugFrame);
+    } catch {
+      // A malformed frame shouldn't kill the stream; skip it.
+    }
+  };
+  return source;
+}

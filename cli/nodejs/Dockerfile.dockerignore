@@ -6,6 +6,7 @@
 !sdk/nodejs
 !scripts
 !packages/ide-support
+!packages/debug-wire
 !packages/debug-ui
 !package.json
 !pnpm-*

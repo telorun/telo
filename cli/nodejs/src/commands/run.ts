@@ -16,8 +16,9 @@ import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
 import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
-import { serializeEvent } from "../debug-serialize.js";
+import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
+import { teeStdio } from "../stdio-tee.js";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { resolveUiBundle } from "../ui-fetch.js";
@@ -211,6 +212,10 @@ function registryUrlFor(argv: RunArgv): string {
  *  the stream the UI is already watching, instead of the UI seeing termination. */
 type DebugSession = {
   attach: (kernel: Kernel) => void;
+  /** Called once the kernel has loaded: publishes the app's resolved ports to the
+   *  inspection endpoint and opens the UI the first time (deferred to here so the
+   *  browser's discovery handshake already sees the endpoints). */
+  markReady: (kernel: Kernel) => void;
   stop: () => void;
 };
 
@@ -253,12 +258,26 @@ async function startDebugSession(
     server = new DebugServer({ host, port, jsonlPath: eventLogPath, uiHtmlPath });
     await server.start();
     log.info(`Inspect:   ${server.url}`);
-    // Open the UI once; reloads re-attach to the same endpoint, so no new tab.
-    // Skipped on CI / headless boxes.
-    if (argv.open && canOpenBrowser()) {
-      openBrowser(server.url);
-    }
   }
+
+  // Open the UI once (markReady), after the first load resolves the app's ports —
+  // so the browser's discovery handshake already carries the app endpoints.
+  // Reloads re-attach to the same endpoint, so no new tab. Skipped on CI/headless.
+  let opened = false;
+  const openUi = (): void => {
+    if (opened || !server || !argv.open || !canOpenBrowser()) return;
+    opened = true;
+    openBrowser(server.url);
+  };
+
+  // Tee stdout/stderr into the same sinks so the stream carries the run's output
+  // (`log` frames) alongside kernel events. The terminal is untouched. Installed
+  // once per process; restored on stop so the wrapping never outlives the session.
+  const stopTee = teeStdio((stream, line) => {
+    const wireLine = serializeLog(stream, line);
+    void fileSink?.write(wireLine);
+    server?.push(wireLine);
+  });
 
   return {
     attach(kernel: Kernel): void {
@@ -270,7 +289,14 @@ async function startDebugSession(
         server?.push(line);
       });
     },
+    markReady(kernel: Kernel): void {
+      server?.setEndpoints(
+        kernel.getResolvedPorts().map(({ port, protocol }) => ({ host: "", port, protocol })),
+      );
+      openUi();
+    },
     stop(): void {
+      stopTee();
       server?.stop();
     },
   };
@@ -398,6 +424,7 @@ export async function run(argv: RunArgv): Promise<void> {
       writeCache: argv.cacheWrite,
     });
     await persistManifestCache(argv, kernel, log, cacheRoot);
+    debug?.markReady(kernel);
 
     await kernel.start();
     // start() resolves once the app is idle/torn down (incl. via the SIGINT
@@ -476,6 +503,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
         writeCache: argv.cacheWrite,
       });
       await persistManifestCache(argv, kernel, log, cacheRoot);
+      debug?.markReady(kernel);
       const count = watchers.sync(collectWatchFiles(kernel));
       log.info(`[watch] watching ${count} file(s)`);
 

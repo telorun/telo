@@ -140,6 +140,9 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
             env: request.env ?? {},
             ports: request.ports ?? [],
             config: opts.buildRequestConfig(config),
+            // Always request the debug stream so the run view's Debug panel is
+            // populated; the runner relays it over this same session stream.
+            inspect: true,
           }),
         },
         opts.startTimeoutMs,

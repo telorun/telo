@@ -23,6 +23,7 @@ pub async fn run_start(
     ports: Option<Vec<PortMapping>>,
     config: TauriDockerConfig,
     io_channel: Channel<Vec<u8>>,
+    inspect: Option<bool>,
 ) -> Result<(), String> {
     let workdir = BundleWorkdir::write(&bundle)
         .map_err(|e| format!("Failed to write bundle tempdir: {e}"))?;
@@ -38,6 +39,7 @@ pub async fn run_start(
         ports.unwrap_or_default(),
         config,
         io_channel,
+        inspect.unwrap_or(false),
     )
     .await
 }

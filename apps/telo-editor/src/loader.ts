@@ -146,81 +146,212 @@ export async function scanWorkspace(
  * `loadGraph`) as the single source of truth for parsed text, AST, and
  * positions. The editor never re-parses the same file: every
  * `ModuleDocument` is projected from a `LoadedFile` produced by the Loader.
+ *
+ * With `opts.deferExternalDeps`, only the workspace's own (local) modules are
+ * loaded so the editor can render immediately; external dependency graphs are
+ * fetched separately via `loadWorkspaceDependencies` and folded in with
+ * `mergeWorkspaceDependencies`. The returned workspace carries
+ * `dependenciesPending: true` until that merge happens.
  */
 export async function loadWorkspace(
   rootDir: string,
   manifestAdapter: ManifestSource,
   workspaceAdapter: WorkspaceAdapter,
   extraAdapters: ManifestSource[] = [],
+  opts: { deferExternalDeps?: boolean } = {},
 ): Promise<Workspace> {
   const modulePaths = await scanWorkspace(rootDir, workspaceAdapter);
 
   const modules = new Map<string, ParsedManifest>();
-  const importGraph = new Map<string, Set<string>>();
-  const importedBy = new Map<string, Set<string>>();
   const documents = new Map<string, ModuleDocument>();
 
   const loader = createEditorLoader(manifestAdapter, extraAdapters);
 
   // Phase 1: load each workspace module via the analyzer Loader. Each
   // `LoadedModule` carries the owner file plus every `include:`-expanded
-  // partial as fully-parsed `LoadedFile`s — no separate populate pass.
-  for (const filePath of modulePaths) {
-    try {
-      const lm = await loader.loadModule(filePath);
-      registerLoadedModule(lm, documents, modules, filePath);
-    } catch (err) {
-      console.error(`Failed to load workspace module ${filePath}:`, err);
-      modules.set(filePath, await buildFailureManifest(filePath, err, workspaceAdapter));
-    }
+  // partial as fully-parsed `LoadedFile`s — no separate populate pass. The
+  // per-file loads run concurrently (disk/parse-bound, independent); results
+  // are registered in `modulePaths` order so the shared maps stay
+  // deterministic and race-free.
+  const loadedModules = await Promise.all(
+    modulePaths.map(
+      async (
+        filePath,
+      ): Promise<
+        | { filePath: string; lm: LoadedModule }
+        | { filePath: string; failure: ParsedManifest }
+      > => {
+        try {
+          return { filePath, lm: await loader.loadModule(filePath) };
+        } catch (err) {
+          console.error(`Failed to load workspace module ${filePath}:`, err);
+          return { filePath, failure: await buildFailureManifest(filePath, err, workspaceAdapter) };
+        }
+      },
+    ),
+  );
+  for (const entry of loadedModules) {
+    if ("lm" in entry) registerLoadedModule(entry.lm, documents, modules, entry.filePath);
+    else modules.set(entry.filePath, entry.failure);
   }
 
-  // Phase 2a: load external (registry/remote) import targets via `loadGraph`.
-  // The Loader's source chain handles registry URLs natively; the editor no
-  // longer needs an in-memory adapter or chained adapter to bridge between
-  // local and remote sources. Failures surface as placeholder
-  // ParsedManifests so the importer UI can show the error inline.
-  //
-  // Registry/remote sources may resolve a raw input ref (`std/foo@1.0.0`) to
-  // a different canonical URL (e.g. `registry://std/foo@1.0.0/telo.yaml`).
-  // Phase 2b needs that canonical URL to set `resolvedPath` so it matches
-  // the `modules` map's key — otherwise `analyzeWorkspace` looks up the
-  // imported library's identity by the raw ref and misses, leaving every
-  // imported `Telo.Definition` invisible to alias resolution.
+  // Phase 2a: load external (registry/remote/library) dependency graphs. When
+  // `deferExternalDeps` is set the caller renders the workspace with only its
+  // local modules and streams these in later via `loadWorkspaceDependencies` —
+  // external fetches dominate (and vary wildly with) load time, so keeping them
+  // off the first-paint path is the difference between ~100ms and 1s+.
+  const canonicalByRawInput = opts.deferExternalDeps
+    ? new Map<string, string>()
+    : await loadExternalDeps(modules, loader, manifestAdapter, workspaceAdapter, modules, documents);
+
+  return finalizeWorkspace(
+    rootDir,
+    modules,
+    documents,
+    manifestAdapter,
+    canonicalByRawInput,
+    opts.deferExternalDeps ?? false,
+  );
+}
+
+/** The external dependency graphs fetched for a workspace, ready to be merged
+ *  into the already-rendered local workspace. */
+export interface WorkspaceDependencies {
+  depModules: Map<string, ParsedManifest>;
+  depDocuments: Map<string, ModuleDocument>;
+  canonicalByRawInput: Map<string, string>;
+}
+
+/** Background companion to `loadWorkspace(..., { deferExternalDeps: true })`:
+ *  fetches every external dependency graph the local modules import, into fresh
+ *  maps that `mergeWorkspaceDependencies` folds into the live workspace without
+ *  disturbing local edits made while the fetch was in flight. */
+export async function loadWorkspaceDependencies(
+  base: Workspace,
+  manifestAdapter: ManifestSource,
+  workspaceAdapter: WorkspaceAdapter,
+  extraAdapters: ManifestSource[] = [],
+): Promise<WorkspaceDependencies> {
+  const loader = createEditorLoader(manifestAdapter, extraAdapters);
+  const depModules = new Map<string, ParsedManifest>();
+  const depDocuments = new Map<string, ModuleDocument>();
+  const canonicalByRawInput = await loadExternalDeps(
+    base.modules,
+    loader,
+    manifestAdapter,
+    workspaceAdapter,
+    depModules,
+    depDocuments,
+  );
+  return { depModules, depDocuments, canonicalByRawInput };
+}
+
+/** Folds background-loaded dependency graphs into the current workspace.
+ *  Local modules in `current` win (preserving edits made during the fetch);
+ *  only dep modules/documents not already present are added, then import wiring
+ *  and the resource index are rebuilt with the canonical paths now known. */
+export function mergeWorkspaceDependencies(
+  current: Workspace,
+  deps: WorkspaceDependencies,
+  manifestAdapter: ManifestSource,
+): Workspace {
+  const modules = new Map(current.modules);
+  for (const [key, value] of deps.depModules) if (!modules.has(key)) modules.set(key, value);
+  const documents = new Map(current.documents);
+  for (const [key, value] of deps.depDocuments) if (!documents.has(key)) documents.set(key, value);
+  return finalizeWorkspace(current.rootDir, modules, documents, manifestAdapter, deps.canonicalByRawInput, false);
+}
+
+/**
+ * Fetches every external (registry/remote/library) dependency graph imported by
+ * `knownModules`, registering newly-discovered modules into `outModules` /
+ * `outDocuments`. `local` imports normally point at a scanned `telo.yaml`
+ * module (already in `knownModules`, skipped); a local import that isn't
+ * scanned — e.g. a flat sibling file copied in by a remote-open cascade — is
+ * loaded here too, read through the local adapter.
+ *
+ * Registry/remote sources may resolve a raw input ref (`std/foo@1.0.0`) to a
+ * different canonical URL (e.g. `registry://std/foo@1.0.0/telo.yaml`). The
+ * returned `canonicalByRawInput` map lets `finalizeWorkspace` set each import's
+ * `resolvedPath` to the canonical key — otherwise `analyzeWorkspace` looks up
+ * the imported library's identity by the raw ref and misses, leaving every
+ * imported `Telo.Definition` invisible to alias resolution.
+ */
+async function loadExternalDeps(
+  knownModules: Map<string, ParsedManifest>,
+  loader: ReturnType<typeof createEditorLoader>,
+  manifestAdapter: ManifestSource,
+  workspaceAdapter: WorkspaceAdapter,
+  outModules: Map<string, ParsedManifest>,
+  outDocuments: Map<string, ModuleDocument>,
+): Promise<Map<string, string>> {
   const canonicalByRawInput = new Map<string, string>();
-  for (const parsed of modules.values()) {
+  const has = (path: string) => knownModules.has(path) || outModules.has(path);
+
+  const externalDepPaths: string[] = [];
+  const seenDeps = new Set<string>();
+  for (const parsed of knownModules.values()) {
     for (const imp of parsed.imports) {
-      // `local` imports normally point at a scanned `telo.yaml` module (already
-      // in `modules`, skipped by the has-check below). A local import that
-      // isn't scanned — e.g. a flat sibling file copied in by a remote-open
-      // cascade — is loaded here just like an external one, reading the file
-      // through the local adapter.
       const depPath = resolveDepPath(manifestAdapter, parsed.filePath, imp.source);
-      if (modules.has(depPath)) continue;
-      try {
-        const graph = await loader.loadGraph(depPath);
-        canonicalByRawInput.set(depPath, graph.rootSource);
-        for (const [, subModule] of graph.modules) {
-          const subOwner = subModule.owner.source;
-          if (!modules.has(subOwner)) {
-            registerLoadedModule(subModule, documents, modules, subOwner);
-          }
-        }
-        for (const e of graph.errors) {
-          if (modules.has(e.url)) continue;
-          modules.set(e.url, await buildFailureManifest(e.url, e.error, workspaceAdapter));
-        }
-      } catch (err) {
-        if (!modules.has(depPath)) {
-          modules.set(depPath, await buildFailureManifest(depPath, err, workspaceAdapter));
-        }
-      }
+      if (has(depPath) || seenDeps.has(depPath)) continue;
+      seenDeps.add(depPath);
+      externalDepPaths.push(depPath);
     }
   }
+  // Fetch each dep's sub-graph concurrently (network/IO-bound, independent),
+  // then register results sequentially so cross-graph overlap is deduped by
+  // the `has` check.
+  const loadedGraphs = await Promise.all(
+    externalDepPaths.map(
+      async (
+        depPath,
+      ): Promise<
+        | { depPath: string; graph: Awaited<ReturnType<typeof loader.loadGraph>> }
+        | { depPath: string; error: unknown }
+      > => {
+        try {
+          return { depPath, graph: await loader.loadGraph(depPath) };
+        } catch (err) {
+          return { depPath, error: err };
+        }
+      },
+    ),
+  );
+  for (const entry of loadedGraphs) {
+    if ("graph" in entry) {
+      const { depPath, graph } = entry;
+      canonicalByRawInput.set(depPath, graph.rootSource);
+      for (const [, subModule] of graph.modules) {
+        const subOwner = subModule.owner.source;
+        if (!has(subOwner)) registerLoadedModule(subModule, outDocuments, outModules, subOwner);
+      }
+      for (const e of graph.errors) {
+        if (has(e.url)) continue;
+        outModules.set(e.url, await buildFailureManifest(e.url, e.error, workspaceAdapter));
+      }
+    } else if (!has(entry.depPath)) {
+      outModules.set(
+        entry.depPath,
+        await buildFailureManifest(entry.depPath, entry.error, workspaceAdapter),
+      );
+    }
+  }
+  return canonicalByRawInput;
+}
 
-  // Phase 2b: rebuild each module's imports with resolvedPath set, and wire
-  // up graph edges. For registry/remote imports use the canonical URL learned
-  // in Phase 2a; for everything else `resolveDepPath` is the canonical key.
+/** Phase 2b + index: rebuild each module's imports with `resolvedPath` set
+ *  (using the canonical URLs learned while loading dep graphs) and wire up the
+ *  import graph edges, then build the resource→document index. */
+function finalizeWorkspace(
+  rootDir: string,
+  modules: Map<string, ParsedManifest>,
+  documents: Map<string, ModuleDocument>,
+  manifestAdapter: ManifestSource,
+  canonicalByRawInput: Map<string, string>,
+  dependenciesPending: boolean,
+): Workspace {
+  const importGraph = new Map<string, Set<string>>();
+  const importedBy = new Map<string, Set<string>>();
   for (const [filePath, parsed] of [...modules.entries()]) {
     const deps = new Set<string>();
     const resolvedImports = parsed.imports.map((imp) => {
@@ -236,7 +367,16 @@ export async function loadWorkspace(
   }
 
   const resourceDocIndex = buildResourceDocIndex(modules, documents);
-  return { rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
+  const workspace: Workspace = {
+    rootDir,
+    modules,
+    importGraph,
+    importedBy,
+    documents,
+    resourceDocIndex,
+  };
+  if (dependenciesPending) workspace.dependenciesPending = true;
+  return workspace;
 }
 
 /** Project a `LoadedModule` (owner + partials) into the editor's

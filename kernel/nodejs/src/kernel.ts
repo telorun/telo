@@ -112,6 +112,10 @@ export class Kernel implements IKernel {
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
+  /** Root Application `ports:` resolved in `load()` — integer + declared protocol
+   *  per name. Surfaced via {@link getResolvedPorts} so a host can advertise where
+   *  the running app is reachable. */
+  private _resolvedPorts: Array<{ name: string; port: number; protocol: "tcp" | "udp" }> = [];
   /** The `.telo` cache root for this load, resolved once in `load()` and
    *  threaded to the validator, analysis stamp, and npm install root. */
   private _cacheRoot?: string | null;
@@ -509,7 +513,25 @@ export class Kernel implements IKernel {
       if (Object.keys(ports).length > 0) {
         this.rootContext.setPorts(ports);
       }
+      const portDecls = (rootApplicationManifest as { ports?: Record<string, { protocol?: string }> })
+        .ports ?? {};
+      this._resolvedPorts = Object.entries(ports).map(([name, port]) => ({
+        name,
+        port,
+        protocol: portDecls[name]?.protocol === "udp" ? "udp" : "tcp",
+      }));
     }
+  }
+
+  /**
+   * Resolved inbound ports from the root Application's `ports:` block, available
+   * after {@link load}. Each carries the resolved integer and its declared
+   * protocol; empty when the root declares no ports (or isn't an Application).
+   * Surfaced so a host (e.g. the CLI inspection endpoint) can tell the debug UI
+   * where the running app is reachable.
+   */
+  getResolvedPorts(): ReadonlyArray<{ name: string; port: number; protocol: "tcp" | "udp" }> {
+    return this._resolvedPorts;
   }
 
   /**

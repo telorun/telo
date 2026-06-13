@@ -12,6 +12,10 @@ use tokio::process::Command;
 use super::bundle::BundleWorkdir;
 use super::session::{SessionEntry, SessionRegistry};
 
+/// Port the workload's `--inspect` server binds inside the container. Published
+/// only to host loopback (`127.0.0.1`) — the local editor reads it directly.
+const INSPECT_PORT: u16 = 9230;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TauriDockerConfig {
@@ -78,10 +82,14 @@ pub async fn start(
     ports: Vec<PortMapping>,
     config: TauriDockerConfig,
     io_channel: Channel<Vec<u8>>,
+    inspect: bool,
 ) -> Result<(), String> {
     let container_name = format!("telo-run-{session_id}");
     let mount_spec = format!("{}:/srv", bundle_dir.path().display());
     let entry_arg = format!("./{}", entry_relative_path.trim_start_matches("./"));
+    // When inspecting, publish the in-container debug port to a free host
+    // loopback port; the editor connects its debug panel straight to it.
+    let inspect_host_port = if inspect { pick_free_loopback_port() } else { None };
 
     let mut cmd = Command::new("docker");
     // `-it` allocates a PTY on the container (stdout/stderr merge, line
@@ -114,8 +122,19 @@ pub async fn start(
             mapping.protocol.as_str()
         ));
     }
+    if let Some(host_port) = inspect_host_port {
+        cmd.arg("-p")
+            .arg(format!("127.0.0.1:{host_port}:{INSPECT_PORT}"));
+    }
     cmd.arg(&config.image);
     cmd.arg(&entry_arg);
+    if inspect {
+        // 0.0.0.0 (not the CLI's loopback default) so the published port reaches
+        // the kernel's debug server across the container boundary.
+        cmd.arg("--inspect")
+            .arg(format!("0.0.0.0:{INSPECT_PORT}"))
+            .arg("--no-open");
+    }
 
     apply_docker_host(&mut cmd, config.docker_host.as_deref());
 
@@ -184,6 +203,15 @@ pub async fn start(
 
     let endpoints = build_endpoints(&ports, config.docker_host.as_deref());
     emit_status(&app, &session_id, &RunStatus::Running { endpoints });
+
+    // Announce the debug endpoint so the editor's debug panel can attach. The
+    // workload's debug port is published to host loopback only.
+    if let Some(host_port) = inspect_host_port {
+        let _ = app.emit(
+            &format!("run:{session_id}:debug-endpoint"),
+            serde_json::json!({ "url": format!("http://127.0.0.1:{host_port}") }),
+        );
+    }
 
     let exit_app = app.clone();
     let exit_registry = registry.clone();
@@ -298,6 +326,16 @@ pub async fn kill_all(sessions: Vec<(String, Option<String>)>) {
         apply_docker_host(&mut cmd, docker_host.as_deref());
         let _ = cmd.output().await;
     }
+}
+
+/// Grab a free host loopback port by binding `:0` and reading the assigned
+/// port, then releasing it. Mildly racy (another process could claim it before
+/// docker publishes), but adequate for a local single-user dev runner.
+fn pick_free_loopback_port() -> Option<u16> {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .ok()
+        .and_then(|listener| listener.local_addr().ok())
+        .map(|addr| addr.port())
 }
 
 fn apply_docker_host(cmd: &mut Command, docker_host: Option<&str>) {

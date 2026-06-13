@@ -1,213 +1,40 @@
 import {
   AnalysisRegistry,
   StaticAnalyzer,
-  buildDocumentPositions,
-  forwardReExportManifests,
-  inlineImportManifests,
-  isModuleKind,
-  reExportSpecsFromExports,
-  resolveExportedKinds,
-  selectModuleManifestsForAnalysis,
-  stampReExportedKinds,
+  flattenForAnalyzer,
   type DocumentPosition,
-  type ReExportSpec,
+  type LoadedGraph,
+  type ManifestSource,
 } from "@telorun/analyzer";
-import type { ResourceManifest } from "@telorun/sdk";
 import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
-import { isWorkspaceModule, normalizePath } from "./loader";
-import type { ModuleDocument, ParsedImport, Workspace } from "./model";
+import { isWorkspaceModule } from "./loader";
+import { createEditorLoader } from "./loader/subgraph";
+import { createWorkspaceDocumentSource } from "./loader/workspace-source";
+import type { Workspace } from "./model";
 
-interface EnrichedMetadata {
-  name: string;
-  source?: string;
-  resolvedModuleName?: string;
-  resolvedNamespace?: string | null;
-  module?: string;
-  [key: string]: unknown;
-}
-
-/** Per-resource position lookup table built alongside the manifest list.
- *  `analyzeWorkspace` reads positions from this map (keyed by
- *  `${source}::${name}`) instead of the manifest's metadata, so the
- *  non-enumerable `positionIndex` smuggling on metadata is no longer
- *  required for the editor's diagnostic-routing path. */
+/** Per-resource position lookup table built from the analysis graph, keyed by
+ *  `${source}::${kind}::${name}`. `analyzeClosure` reads positions from this
+ *  map to recover diagnostic ranges the analyzer didn't inline. */
 type PositionMap = Map<string, DocumentPosition>;
 
-/**
- * Converts all modules in the Workspace to ResourceManifest[], enriching
- * Telo.Import documents with resolvedModuleName/resolvedNamespace so the
- * analyzer can correctly register import aliases and module identities.
- *
- * Iterates `workspace.modules` (not `workspace.documents` directly) so
- * analysis preserves the per-module grouping the analyzer expects — each
- * module's owner + partial docs are flattened into a single module-scoped
- * batch, mirroring what the analyzer Loader produces on its own path.
- *
- * Partial-file discovery reads `manifest.resources[].sourceFile` to rebuild
- * the set of files that belong to the module; no re-expansion of
- * `include:` patterns is required because Phase 1 already populated
- * `workspace.documents` for every tracked partial.
- */
-function toAnalysisManifests(
-  app: Workspace,
-  root: string,
-  includeOwners?: Set<string>,
-): { manifests: ResourceManifest[]; positions: PositionMap } {
-  const result: ResourceManifest[] = [];
+/** Build the position side-table from a loaded graph. Mirrors the keys the
+ *  diagnostic router looks up (`${file.source}::${kind}::${name}`). */
+function buildPositionMap(graph: LoadedGraph): PositionMap {
   const positions: PositionMap = new Map();
-
-  // Accumulated for transitive re-export forwarding (mirrors the CLI's flattenForAnalyzer):
-  // re-export specs from each library's `exports.resources`, plus the data to map an
-  // import alias to its target module name.
-  const reExportSpecs: ReExportSpec[] = [];
-  const kindModules: Array<{ module: string; exportsKinds: string[] }> = [];
-  const importsByModule = new Map<string, ParsedImport[]>();
-  const moduleNameByPath = new Map<string, string>();
-  for (const [ownerPath, m] of app.modules) {
-    moduleNameByPath.set(normalizePath(ownerPath), m.metadata.name);
-  }
-
-  for (const [ownerPath, manifest] of app.modules) {
-    if (includeOwners && !includeOwners.has(ownerPath)) continue;
-    const ownerKey = normalizePath(ownerPath);
-    const ownerDoc = app.documents.get(ownerKey);
-    if (!ownerDoc) continue;
-
-    const ownerModuleName = manifest.metadata.name;
-    importsByModule.set(ownerModuleName, manifest.imports);
-
-    const partialKeys = new Set<string>();
-    for (const r of manifest.resources) {
-      if (r.sourceFile) {
-        const key = normalizePath(r.sourceFile);
-        if (key !== ownerKey) partialKeys.add(key);
-      }
-    }
-
-    // Emit each module's docs into its own batch, then apply the import-boundary
-    // rule shared with the CLI's `flattenForAnalyzer`: the closure root stays
-    // fully local; every imported module forwards only its definitions/abstracts/
-    // imports plus `exports.resources` instances (flagged `forwardedExport`).
-    // Positions are recorded for every emitted doc — dropped manifests simply
-    // leave unused lookup entries.
-    const moduleManifests: ResourceManifest[] = [];
-    emitDocsFor(ownerDoc, ownerPath, ownerModuleName, moduleManifests, positions);
-    for (const partialKey of partialKeys) {
-      const partialDoc = app.documents.get(partialKey);
-      if (!partialDoc) continue;
-      emitDocsFor(partialDoc, partialDoc.filePath, ownerModuleName, moduleManifests, positions);
-    }
-
-    result.push(...selectModuleManifestsForAnalysis(moduleManifests, ownerPath === root));
-
-    // Collect re-export specs from this library's `exports` (imported modules only; the root
-    // Application has no exports). Forwarded after the loop once every module's own exports
-    // are in `result`.
-    if (ownerPath !== root) {
-      const libDoc = moduleManifests.find((mm) => isModuleKind(mm.kind)) as
-        | (ResourceManifest & { exports?: { resources?: unknown[]; kinds?: string[] } })
-        | undefined;
-      if (libDoc?.metadata?.name) {
-        const moduleName = libDoc.metadata.name as string;
-        reExportSpecs.push(...reExportSpecsFromExports(moduleName, libDoc.exports?.resources));
-        kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds ?? [] });
+  for (const mod of graph.modules.values()) {
+    for (const file of [mod.owner, ...mod.partials]) {
+      for (let i = 0; i < file.manifests.length; i++) {
+        const m = file.manifests[i];
+        if (!m) continue;
+        const kind = (m as { kind?: unknown }).kind;
+        const name = (m.metadata as { name?: unknown } | undefined)?.name;
+        if (typeof kind === "string" && typeof name === "string" && name) {
+          positions.set(`${file.source}::${kind}::${name}`, file.positions[i]);
+        }
       }
     }
   }
-
-  const aliasToModule = (module: string, alias: string): string | undefined => {
-    const imp = importsByModule.get(module)?.find((i) => i.name === alias);
-    return imp?.resolvedPath ? moduleNameByPath.get(normalizePath(imp.resolvedPath)) : undefined;
-  };
-  forwardReExportManifests(result, reExportSpecs, aliasToModule);
-
-  // Resolve re-exported kinds and stamp them onto the synthetic Telo.Import manifests, mirroring
-  // flattenForAnalyzer so the editor's diagnostics match `telo check`.
-  const exportedKinds = resolveExportedKinds(kindModules, aliasToModule);
-  const imports: Array<{ manifest: ResourceManifest; targetModule: string }> = [];
-  for (const m of result) {
-    if (m.kind !== "Telo.Import") continue;
-    const ownerMod = (m.metadata as { module?: string } | undefined)?.module;
-    const alias = m.metadata?.name as string | undefined;
-    const target = ownerMod && alias ? aliasToModule(ownerMod, alias) : undefined;
-    if (target) imports.push({ manifest: m, targetModule: target });
-  }
-  stampReExportedKinds(imports, exportedKinds);
-
-  return { manifests: result, positions };
-}
-
-function emitDocsFor(
-  modDoc: ModuleDocument,
-  filePath: string,
-  ownerModuleName: string | undefined,
-  out: ResourceManifest[],
-  positionsOut: PositionMap,
-): void {
-  // When the file is dirty the AST has been mutated in place, so manifest
-  // shapes and positions must be re-derived from the current docs. Otherwise
-  // reuse the LoadedFile's cached snapshot.
-  const docs = modDoc.loaded.documents;
-  const positionList = modDoc.dirty
-    ? buildDocumentPositions(modDoc.loaded.text, docs)
-    : modDoc.loaded.positions;
-  const cachedManifests = modDoc.dirty ? null : modDoc.loaded.manifests;
-
-  for (let i = 0; i < docs.length; i++) {
-    const projected =
-      cachedManifests?.[i] ??
-      (docs[i].toJSON() as Record<string, unknown> | null);
-    if (!projected || typeof projected !== "object") continue;
-
-    const existingMeta = (projected as { metadata?: EnrichedMetadata }).metadata;
-    const { sourceLine } = positionList[i];
-    const meta: EnrichedMetadata = {
-      ...(existingMeta ?? {}),
-      name: existingMeta?.name ?? "",
-      source: filePath,
-      sourceLine,
-    };
-
-    if (
-      ownerModuleName &&
-      !meta.module &&
-      (projected as { kind?: string }).kind !== "Telo.Library" &&
-      (projected as { kind?: string }).kind !== "Telo.Application"
-    ) {
-      meta.module = ownerModuleName;
-    }
-
-    const stamped = { ...projected, metadata: meta } as ResourceManifest;
-    out.push(stamped);
-    const projectedKind = (projected as { kind?: string }).kind;
-    if (typeof meta.name === "string" && meta.name && typeof projectedKind === "string") {
-      positionsOut.set(`${filePath}::${projectedKind}::${meta.name}`, positionList[i]);
-    }
-
-    // Desugar the module doc's inline `imports:` map into synthetic Telo.Import
-    // manifests so the analyzer resolves inline imports exactly like authored
-    // docs. The editor's round-trip view never sees these — they exist only in
-    // this analysis projection. Mirrors the kernel/analyzer Loader's
-    // `desugarImports`, which the editor's document-based path bypasses.
-    if (isModuleKind(projectedKind)) {
-      for (const synth of inlineImportManifests(stamped, positionList[i])) {
-        const synthName = synth.manifest.metadata.name as string;
-        out.push({
-          ...synth.manifest,
-          // `module` scopes alias resolution and the DUPLICATE_IMPORT_ALIAS check
-          // to the declaring module — without it a library's inline imports would
-          // look like root-scope imports (the kernel path gets this from stampFile).
-          metadata: {
-            ...synth.manifest.metadata,
-            source: filePath,
-            sourceLine: synth.position.sourceLine,
-            ...(ownerModuleName ? { module: ownerModuleName } : {}),
-          },
-        } as ResourceManifest);
-        positionsOut.set(`${filePath}::Telo.Import::${synthName}`, synth.position);
-      }
-    }
-  }
+  return positions;
 }
 
 /** Sentinel key used in `WorkspaceDiagnostics.byFile` when the analyzer emits
@@ -232,37 +59,6 @@ export interface WorkspaceDiagnostics {
    *  never share — and thus never overwrite — each other's definitions. The
    *  Monaco completion provider selects the registry for the active module. */
   registryByFile: Map<string, AnalysisRegistry>;
-}
-
-/**
- * Runs static analysis on the entire Workspace and returns diagnostics
- * routed into resource-scoped and file-scoped buckets.
- *
- * Routing rules:
- *   1. `data.resource.{kind,name}` resolves via sourceByManifest → byResource.
- *   2. `data.filePath` present → byFile[filePath].
- *   3. Else → byFile[UNKNOWN_FILE_KEY].
- *
- * The file-scoped bucket replaces the pre-`diagnostics-everywhere` behavior
- * of silently dropping unscoped diagnostics — notably MISSING_KIND_OR_NAME
- * on manifests that never reach a resource identity.
- */
-/** Transitive import closure of `root` over the workspace import graph,
- *  including `root` itself. Each closure is a self-consistent version set:
- *  an Application picks specific library versions, so its closure can never
- *  contain two versions of the same module — which is exactly what keeps the
- *  per-closure AnalysisRegistry free of name collisions. */
-function computeClosure(root: string, importGraph: Map<string, Set<string>>): Set<string> {
-  const out = new Set<string>();
-  const queue = [root];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (out.has(current)) continue;
-    out.add(current);
-    const deps = importGraph.get(current);
-    if (deps) for (const d of deps) if (!out.has(d)) queue.push(d);
-  }
-  return out;
 }
 
 /** The set of modules that anchor an independent analysis context: every
@@ -292,8 +88,13 @@ interface MergeAccumulators {
   externalFilesClaimed: Set<string>;
 }
 
-/** Analyzes a single closure — rooted at `root` — with its own registry and
- *  merges the results into the shared accumulators.
+/** Analyzes a single closure — the graph rooted at `root` — with its own
+ *  registry and merges the results into the shared accumulators.
+ *
+ *  The manifest list and resolved module identity come straight from the
+ *  analyzer's `flattenForAnalyzer(graph)` — the same flatten the CLI's
+ *  `telo check` runs — so the editor no longer re-derives forwarding,
+ *  re-export, or `resolvedModuleName` stamping on its own.
  *
  *  Diagnostics for a WORKSPACE file are emitted only by the closure where that
  *  file is the root (its owner + `include:` partials), never by a consumer
@@ -308,54 +109,27 @@ interface MergeAccumulators {
  *  them (`externalFilesClaimed` enforces first-closure-wins). */
 function analyzeClosure(
   app: Workspace,
-  root: string,
-  closurePaths: Set<string>,
+  graph: LoadedGraph,
   acc: MergeAccumulators,
 ): void {
-  const { manifests, positions } = toAnalysisManifests(app, root, closurePaths);
-
-  // Enrich Telo.Import metadata with resolved module identity from the
-  // cross-module projection (workspace.modules).
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const meta = m.metadata as EnrichedMetadata;
-    const ownerSource = meta.source;
-    if (!ownerSource) continue;
-    const ownerManifest = app.modules.get(ownerSource);
-    const imp = ownerManifest?.imports.find((i) => i.name === meta.name);
-    const resolvedPath = imp?.resolvedPath;
-    if (!resolvedPath) continue;
-    const importedModule = app.modules.get(resolvedPath);
-    if (!importedModule) continue;
-    meta.resolvedModuleName = importedModule.metadata.name;
-    meta.resolvedNamespace = importedModule.metadata.namespace ?? null;
-  }
+  const manifests = flattenForAnalyzer(graph);
+  const positions = buildPositionMap(graph);
 
   const analyzer = new StaticAnalyzer();
   const registry = new AnalysisRegistry();
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
-  // Files local to this closure's root (owner + partials), keyed by the same
-  // `metadata.source` values `toAnalysisManifests` stamps (owner → root path,
-  // partial → its document filePath).
+  // Files local to this closure's root: the entry module's owner + its
+  // `include:` partials, keyed by the same `metadata.source` values
+  // `flattenForAnalyzer` stamps (each file's canonical source).
   const rootLocalFiles = new Set<string>();
-  const rootManifest = app.modules.get(root);
-  if (rootManifest) {
-    rootLocalFiles.add(root);
-    const rootKey = normalizePath(root);
-    for (const r of rootManifest.resources) {
-      if (!r.sourceFile) continue;
-      const key = normalizePath(r.sourceFile);
-      if (key === rootKey) continue;
-      const partialDoc = app.documents.get(key);
-      if (partialDoc) rootLocalFiles.add(partialDoc.filePath);
-    }
-  }
+  rootLocalFiles.add(graph.entry.owner.source);
+  for (const p of graph.entry.partials) rootLocalFiles.add(p.source);
 
   const sourceByManifest = new Map<string, string>();
   const closureFiles = new Set<string>();
   for (const m of manifests) {
-    const source = (m.metadata as EnrichedMetadata).source;
+    const source = (m.metadata as { source?: string }).source;
     if (source) {
       sourceByManifest.set(`${m.kind}/${m.metadata.name}`, source);
       closureFiles.add(source);
@@ -453,7 +227,26 @@ function analyzeClosure(
   }
 }
 
-export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
+/**
+ * Runs static analysis on the entire Workspace and returns diagnostics routed
+ * into resource-scoped and file-scoped buckets.
+ *
+ * Each workspace-local module anchors its own analysis closure. For each, the
+ * editor drives the analyzer's own `Loader.loadGraph` + `flattenForAnalyzer`
+ * pipeline — the exact one `telo check` uses — over an in-memory source backed
+ * by the editor's live `documents` (so unsaved edits are analyzed and inline
+ * imports are followed + flattened identically to the CLI). The editor no
+ * longer maintains a parallel flatten/forwarding/identity implementation.
+ *
+ * Async because `loadGraph` reads through the source chain (the in-memory
+ * documents, then the manifest + registry adapters for any transitive
+ * dependency not yet open in the workspace).
+ */
+export async function analyzeWorkspace(
+  app: Workspace,
+  manifestAdapter: ManifestSource,
+  registryAdapters: ManifestSource[] = [],
+): Promise<WorkspaceDiagnostics> {
   const acc: MergeAccumulators = {
     byResource: new Map(),
     byFile: new Map(),
@@ -462,8 +255,21 @@ export function analyzeWorkspace(app: Workspace): WorkspaceDiagnostics {
     externalFilesClaimed: new Set(),
   };
 
+  // One loader for the whole pass: its file cache parses each shared dependency
+  // once across closures. A fresh loader per `analyzeWorkspace` call means the
+  // next analysis re-reads current content (reflecting edits) from the source.
+  const loader = createEditorLoader(manifestAdapter, registryAdapters);
+  loader.register(createWorkspaceDocumentSource(app.documents, manifestAdapter));
+
   for (const root of computeClosureRoots(app)) {
-    analyzeClosure(app, root, computeClosure(root, app.importGraph), acc);
+    let graph: LoadedGraph;
+    try {
+      graph = await loader.loadGraph(root, { desugarImports: true });
+    } catch (err) {
+      console.error(`Failed to load analysis graph for ${root}:`, err);
+      continue;
+    }
+    analyzeClosure(app, graph, acc);
   }
 
   return {

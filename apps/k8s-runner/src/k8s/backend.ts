@@ -9,7 +9,7 @@ import type {
   RunStatus,
   RunnerBackend,
 } from "@telorun/runner-core";
-import { SessionStartError } from "@telorun/runner-core";
+import { relayDebugStream, SessionStartError } from "@telorun/runner-core";
 
 import type { BundleStore } from "../bundle-store.js";
 import type { K8sRunnerConfig } from "../config.js";
@@ -17,7 +17,7 @@ import { clampLimits } from "../limits.js";
 import type { KubeClient } from "./client.js";
 import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
-import { buildSessionPod } from "./pod-spec.js";
+import { buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
 
 /** Minimal surface of the websocket client-node's Attach returns. */
 interface ResizableSocket {
@@ -106,6 +106,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       limits,
       image,
       bundleUrl,
+      inspect: spec.inspect,
     });
 
     let podUid: string;
@@ -125,6 +126,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     let socket: ResizableSocket | undefined;
     let abortWatch: () => void = () => {};
     let startDeadline: NodeJS.Timeout | undefined;
+    let podIP: string | undefined;
+    const debugAbort = new AbortController();
 
     const stdin = new PassThrough();
     const stdout = new Writable({
@@ -146,6 +149,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       finished = true;
       clearStartDeadline();
       abortWatch();
+      debugAbort.abort();
       bundleStore.drop(spec.sessionId);
       spec.onStatus(status);
       try {
@@ -187,6 +191,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       }
       if (phase === "Running" && !runningSeen) {
         runningSeen = true;
+        podIP = podStatus(obj)?.podIP;
         clearStartDeadline();
         resolveRunning();
         flipRunning();
@@ -284,6 +289,28 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       await createIngress(deps, spec.sessionId, podName, podUid, spec.ports).catch((err) => {
         spec.onOutput(Buffer.from(`\r\n[runner] failed to create ingress: ${msg(err)}\r\n`));
       });
+    }
+
+    // When inspect is on, relay the workload's in-pod kernel debug stream out
+    // over `onDebug`. Reached by pod IP over the cluster network — the inspect
+    // port is never published via Service/Ingress. The Running watch event
+    // usually carries `podIP`; if it lagged, read the pod once to recover it.
+    if (spec.inspect) {
+      if (!podIP) {
+        podIP = await kube.core
+          .readNamespacedPod({ name: podName, namespace: ns })
+          .then((p) => podStatus(p)?.podIP)
+          .catch(() => undefined);
+      }
+      if (podIP) {
+        void relayDebugStream({
+          url: `http://${podIP}:${INSPECT_PORT}/events`,
+          onFrame: spec.onDebug,
+          signal: debugAbort.signal,
+        });
+      } else {
+        spec.onOutput(Buffer.from("\r\n[runner] debug stream unavailable: pod IP unknown\r\n"));
+      }
     }
 
     // `flipRunning` already announced `running` from the watch's Running
