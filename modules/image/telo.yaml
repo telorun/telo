@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: image
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Image primitives — draw labelled rectangles onto an image
     (`Image.Overlay`), the visualization half of vision-grounding loops:
@@ -21,7 +21,7 @@ metadata:
   name: Blank
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/image@0.1.0?local_path=./nodejs#blank
+  - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#blank
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -114,7 +114,7 @@ metadata:
   name: Overlay
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/image@0.1.0?local_path=./nodejs#overlay
+  - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#overlay
 throws:
   codes:
     ERR_INVALID_INPUT:

@@ -1,5 +1,7 @@
 # Changelog
-## 0.6.0 - 2026-06-07
+## 0.7.0 - 2026-06-13
+### Added
+* Update controller @telorun/ai to 0.6.0.## 0.6.0 - 2026-06-07
 ### Added
 * Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.
 * Schema examples reference resources with the unified `!ref` form.## 0.5.0 - 2026-06-05

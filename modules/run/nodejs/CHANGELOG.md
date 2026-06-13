@@ -1,5 +1,15 @@
 # @telorun/run
 
+## 0.7.0
+
+### Minor Changes
+
+- e398d4d: Add `Run.Value`, a pure value/binding invocable. It returns a CEL expression — or
+  a structure with CEL leaves, or a plain constant — evaluated over the caller's
+  `inputs`, with no JavaScript. It is the declarative, type-safe replacement for a
+  `Js.Script` that only shapes a value (concat, field mapping, arithmetic, a constant
+  literal); I/O and branching still belong in `Js.Script`.
+
 ## 0.6.0
 
 ### Minor Changes

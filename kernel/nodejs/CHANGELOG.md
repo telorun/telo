@@ -1,5 +1,40 @@
 # @telorun/kernel
 
+## 0.27.0
+
+### Minor Changes
+
+- 9ef48a6: Move the `--debug` event log out of the kernel into the CLI. The kernel no
+  longer monkeypatches `EventBus.emit` with an always-installed streaming wrapper;
+  debugging is now a plain `kernel.on("*", …)` subscriber (`DebugEventSubscriber`,
+  attached by the CLI only when `--debug` is set). A normal run registers no `*`
+  listener, so the event bus carries zero added overhead.
+
+  Serialization is cycle- and value-safe and logs only plain data. Stream-bearing
+  payloads (e.g. an Invocable's `{ outputs: { output: Stream } }`) whose
+  async-generator closures form reference cycles previously threw `cannot serialize
+cyclic structures` and dropped the event. Live runtime objects — a resolved
+  `!ref` is a controller instance whose `.ctx` back-references the whole Kernel —
+  previously serialized into multi-megabyte heap dumps. Now: a resolved `!ref`
+  renders as the `{ kind, name }` reference it stands for; every other live object
+  collapses to a one-token `[ClassName]` / `[Stream]` / `[Circular]` marker;
+  object/array literals still log in full.
+
+  BREAKING (kernel public API): `EventStream`, `Kernel.enableEventStream`,
+  `Kernel.disableEventStream`, and `Kernel.getEventStream` are removed. The CLI was
+  the only consumer.
+
+- 9ef48a6: Emit symmetric resource lifecycle events during init. Each resource now emits
+  `<Kind>.<Name>.Created` after its instance is constructed and
+  `<Kind>.<Name>.Initialized` after `init()` + `snapshot()` complete, mirroring the
+  existing `<Kind>.<Name>.Teardown`. The debug event stream previously showed only
+  teardown for individual resources, never their creation/initialization.
+
+  The `Created` event advertises the resource — `{ resource: { kind, name, module },
+dependencies: [{ kind, name, alias? }] }` — where `dependencies` are the resolved
+  `!ref` targets in the resource's config. This is the data a debug-UI resource
+  graph is built from.
+
 ## 0.26.1
 
 ### Patch Changes

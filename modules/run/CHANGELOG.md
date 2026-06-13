@@ -1,5 +1,8 @@
 # Changelog
-## 0.8.0 - 2026-06-07
+## 0.9.0 - 2026-06-13
+### Added
+* Update controller @telorun/run to 0.7.0.
+* Add Run.Value: a declarative invocable that returns a CEL-evaluated value (or a constant), replacing Js.Script for pure value shaping.## 0.8.0 - 2026-06-07
 ### Added
 * Update controller @telorun/run to 0.6.0.
 * Step `invoke` examples reference resources with the unified `!ref` form.## 0.7.0 - 2026-06-06
