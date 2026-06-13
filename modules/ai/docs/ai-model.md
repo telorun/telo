@@ -37,9 +37,16 @@ The shapes below are language-neutral; each language SDK exposes them as that la
 | field | type | notes |
 | --- | --- | --- |
 | `role` | `system` \| `user` \| `assistant` \| `tool` | `tool` carries a tool-call result back to the model |
-| `content` | string | |
+| `content` | string \| `ContentPart[]` | a plain string, or content parts for multimodal turns (see below) |
 | `toolCalls` | list of `ToolCall` (optional) | present on assistant turns that requested tools |
 | `toolCallId` | string (optional) | on `tool` turns — which call this answers |
+
+**`ContentPart`** — a multimodal content element. `content` may be a plain string (the common case) or an array of parts:
+
+- `{ type: "text", text: string }`
+- `{ type: "image", data: Uint8Array | string, mediaType: string }` — `data` is raw bytes (runtime, e.g. a tool result) or a base64 string (manifest-authored). The provider normalizes either to its wire shape (OpenAI: a `data:<mediaType>;base64,…` image URL).
+
+Image content is additive: plain-string messages are unchanged, and a provider that can't carry images in a given message position (e.g. OpenAI `tool` messages) reshapes them in translation.
 
 **`ToolCall`** — `{ id: string, name: string, arguments: object }`.
 **`ToolDefinition`** — `{ name: string, description?: string, parameters: object }` (JSON Schema for the args).

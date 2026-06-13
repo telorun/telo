@@ -67,6 +67,13 @@ OpenAI `finish_reason` values map into the Ai contract:
 
 Tool calls are advertised as OpenAI `tools: [{ type: "function", function: { name, description, parameters } }]` (no `execute` — the agent runs tools itself). The model's `tool_calls` come back with `arguments` as a JSON string; the provider parses each into the `ToolCall.arguments` object. Malformed argument JSON surfaces as an error rather than a silent empty object.
 
+## Multimodal content
+
+Message `content` may be a string or [content parts](../../ai/docs/ai-model.md) (text + image). The provider translates them into OpenAI's wire shapes:
+
+- A **user** message with parts becomes an OpenAI content array — text parts → `{ type: "text", text }`, image parts → `{ type: "image_url", image_url: { url } }`, where `url` is a `data:<mediaType>;base64,…` URL built from the part's bytes (or its base64 string). **System** messages can't carry images, so any parts are flattened to their text.
+- A **tool** message can't carry images in OpenAI chat completions. When a tool answered with an image, the provider emits the `tool` message with a short text placeholder (its text parts, if any) and then a **synthetic follow-up `user` message** holding the image parts — the documented OpenAI pattern. The Ai contract stays provider-neutral; only this translation differs (an image-native provider would map the same parts into its own tool-result blocks).
+
 ## Options
 
 `options` use **camelCase** (the Telo manifest convention). Each top-level key is normalized to the OpenAI snake_case wire parameter before the request is sent (`maxTokens` → `max_tokens`, `topP` → `top_p`):

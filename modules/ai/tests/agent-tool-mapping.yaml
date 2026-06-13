@@ -5,7 +5,6 @@ metadata:
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
-  Js: ../../javascript
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -20,11 +19,13 @@ emitToolCall:
 ---
 # Greeter's input shape ({ target }) diverges from the model-facing parameters
 # ({ who }); the tool entry's `inputs:`/`result:` mappings bridge the gap.
-kind: Js.Script
+kind: Run.Value
 metadata:
   name: Greeter
-code: |
-  function main({ target }) { return { greeting: "Hello, " + target + "!" }; }
+inputs:
+  target: { type: string }
+value:
+  greeting: "${{ 'Hello, ' + inputs.target + '!' }}"
 ---
 kind: Ai.Tools
 metadata:

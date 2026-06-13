@@ -1,4 +1,5 @@
 import { redact } from "@telorun/ai/redact";
+import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai/content";
 import type {
   AiModelInstance,
   CompletionResult,
@@ -84,29 +85,104 @@ function mapUsage(u: OpenAiUsage | undefined): Usage {
   };
 }
 
+type OpenAiContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 type OpenAiRequestMessage =
-  | { role: "system" | "user"; content: string }
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | OpenAiContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: OpenAiToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
+/** Render an image part as an OpenAI data URL. Runtime tool results carry raw bytes
+ *  (the stdlib binary convention); manifest-authored parts carry a base64 string. */
+function imageDataUrl(part: ImagePart): string {
+  const base64 =
+    typeof part.data === "string" ? part.data : Buffer.from(part.data).toString("base64");
+  return `data:${part.mediaType};base64,${base64}`;
+}
+
+function toImageUrlPart(part: ImagePart): OpenAiContentPart {
+  return { type: "image_url", image_url: { url: imageDataUrl(part) } };
+}
+
+function imageParts(content: MessageContent): ImagePart[] {
+  if (typeof content === "string") return [];
+  return content.filter(isImagePart);
+}
+
+/** Translate message content for a role that can carry images (user). A plain string
+ *  passes through; content parts become the OpenAI multimodal part array. */
+function translateContent(content: MessageContent): string | OpenAiContentPart[] {
+  if (typeof content === "string") return content;
+  return content.map((p) =>
+    p.type === "image" ? toImageUrlPart(p) : { type: "text", text: p.text },
+  );
+}
+
 function translateMessages(messages: Message[]): OpenAiRequestMessage[] {
-  return messages.map((m): OpenAiRequestMessage => {
-    if (m.role === "tool") {
-      return { role: "tool", tool_call_id: m.toolCallId ?? "", content: m.content };
+  const out: OpenAiRequestMessage[] = [];
+  // OpenAI requires every `tool` message answering an assistant's tool_calls to be
+  // contiguous, before any other role. An image-bearing tool result can't carry the
+  // image in the tool message, so it needs a synthetic `user` message — but those
+  // must be buffered and flushed AFTER the whole run of tool messages, never inline,
+  // or a turn with multiple image tool results interleaves tool/user/tool/user and
+  // OpenAI rejects it with a 400.
+  let pendingImageMessages: OpenAiRequestMessage[] = [];
+  const flushPendingImages = () => {
+    if (pendingImageMessages.length > 0) {
+      out.push(...pendingImageMessages);
+      pendingImageMessages = [];
     }
+  };
+
+  for (const m of messages) {
+    if (m.role === "tool") {
+      const images = imageParts(m.content);
+      const text = contentToText(m.content);
+      out.push({
+        role: "tool",
+        tool_call_id: m.toolCallId ?? "",
+        // Text placeholder in the tool message; the image rides the buffered user
+        // message flushed once this run of tool messages ends.
+        content:
+          images.length === 0
+            ? text
+            : text || "(tool returned image content — see the following message)",
+      });
+      if (images.length > 0) {
+        pendingImageMessages.push({ role: "user", content: images.map(toImageUrlPart) });
+      }
+      continue;
+    }
+    // Any non-tool message ends the contiguous tool run — flush buffered image
+    // carriers ahead of it so they sit after the tool messages, not between them.
+    flushPendingImages();
     if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      return {
+      const text = contentToText(m.content);
+      out.push({
         role: "assistant",
-        content: m.content ? m.content : null,
+        content: text ? text : null,
         tool_calls: m.toolCalls.map((c) => ({
           id: c.id,
           type: "function",
           function: { name: c.name, arguments: JSON.stringify(c.arguments ?? {}) },
         })),
-      };
+      });
+      continue;
     }
-    return { role: m.role, content: m.content } as OpenAiRequestMessage;
-  });
+    if (m.role === "system") {
+      // System messages don't carry images; flatten any parts to their text.
+      out.push({ role: "system", content: contentToText(m.content) });
+      continue;
+    }
+    out.push({ role: m.role, content: translateContent(m.content) } as OpenAiRequestMessage);
+  }
+  // The conversation handed to the provider ends with the tool results of the last
+  // turn, so flush any images buffered from that trailing run.
+  flushPendingImages();
+  return out;
 }
 
 /** Build the OpenAI `tools` array from our model-facing tool definitions. The

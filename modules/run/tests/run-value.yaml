@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: RunValueTest
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref TestObject
+  - !ref TestConstant
+  - !ref TestScalar
+---
+# Object result shaped from inputs — the value-binding case (concat + arithmetic).
+kind: Run.Value
+metadata:
+  name: Shape
+inputs:
+  name: { type: string }
+  a: { type: number }
+  b: { type: number }
+value:
+  greeting: "${{ 'Hello, ' + inputs.name + '!' }}"
+  product: "${{ inputs.a * inputs.b }}"
+---
+# Constant result with no inputs — a plain literal array, any shape.
+kind: Run.Value
+metadata:
+  name: Parts
+value:
+  - { type: text, text: page rendered }
+  - { type: image, data: aGVsbG8=, mediaType: image/png }
+---
+# Scalar result — `value` need not be an object.
+kind: Run.Value
+metadata:
+  name: Answer
+inputs:
+  n: { type: integer }
+value: "${{ double(inputs.n) * 2.0 }}"
+---
+kind: Run.Sequence
+metadata:
+  name: TestObject
+steps:
+  - name: shape
+    invoke: !ref Shape
+    inputs: { name: telo, a: 6, b: 7 }
+  - name: verify
+    inputs:
+      greeting: "${{ steps.shape.result.greeting }}"
+      product: "${{ steps.shape.result.product }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          greeting: { const: "Hello, telo!" }
+          product: { const: 42 }
+        required: [ greeting, product ]
+---
+kind: Run.Sequence
+metadata:
+  name: TestConstant
+steps:
+  - name: parts
+    invoke: !ref Parts
+  - name: verify
+    inputs:
+      type0: "${{ steps.parts.result[0].type }}"
+      type1: "${{ steps.parts.result[1].type }}"
+      media: "${{ steps.parts.result[1].mediaType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          type0: { const: text }
+          type1: { const: image }
+          media: { const: image/png }
+        required: [ type0, type1, media ]
+---
+kind: Run.Sequence
+metadata:
+  name: TestScalar
+steps:
+  - name: answer
+    invoke: !ref Answer
+    inputs: { n: 21 }
+  - name: verify
+    inputs:
+      doubled: "${{ steps.answer.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          doubled: { const: 42 }
+        required: [ doubled ]

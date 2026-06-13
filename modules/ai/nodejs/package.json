@@ -70,6 +70,11 @@
       "types": "./dist/types.d.ts",
       "bun": "./src/types.ts",
       "import": "./dist/types.js"
+    },
+    "./content": {
+      "types": "./dist/content.d.ts",
+      "bun": "./src/content.ts",
+      "import": "./dist/content.js"
     }
   },
   "files": [

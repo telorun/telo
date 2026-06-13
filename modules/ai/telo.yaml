@@ -53,7 +53,27 @@ inputType:
           type: object
           properties:
             role: { type: string, enum: [system, user, assistant] }
-            content: { type: string }
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  minItems: 1
+                  items:
+                    oneOf:
+                      - type: object
+                        additionalProperties: false
+                        required: [type, text]
+                        properties:
+                          type: { type: string, const: text }
+                          text: { type: string }
+                      - type: object
+                        additionalProperties: false
+                        required: [type, data, mediaType]
+                        properties:
+                          type: { type: string, const: image }
+                          data:
+                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
+                          mediaType: { type: string }
           required: [role, content]
           additionalProperties: false
       system: { type: string }
@@ -131,7 +151,27 @@ inputType:
           type: object
           properties:
             role: { type: string, enum: [system, user, assistant] }
-            content: { type: string }
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  minItems: 1
+                  items:
+                    oneOf:
+                      - type: object
+                        additionalProperties: false
+                        required: [type, text]
+                        properties:
+                          type: { type: string, const: text }
+                          text: { type: string }
+                      - type: object
+                        additionalProperties: false
+                        required: [type, data, mediaType]
+                        properties:
+                          type: { type: string, const: image }
+                          data:
+                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
+                          mediaType: { type: string }
           required: [role, content]
           additionalProperties: false
       system: { type: string }
@@ -207,8 +247,13 @@ schema:
         properties:
           tool:
             title: Tool
-            description: Reference to any Telo.Invocable to expose as a tool.
-            x-telo-ref: "telo#Invocable"
+            description: |
+              Reference to any Telo.Invocable or Telo.Runnable to expose as a tool.
+              A Run.Sequence (a Runnable with callable inputs/outputs) can wrap a
+              multi-step pipeline as a single tool.
+            anyOf:
+              - x-telo-ref: "telo#Invocable"
+              - x-telo-ref: "telo#Runnable"
           name:
             title: Name
             description: Tool name the model sees. Defaults to the referenced resource name.
@@ -292,7 +337,27 @@ inputType:
           type: object
           properties:
             role: { type: string, enum: [system, user, assistant, tool] }
-            content: { type: string }
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  minItems: 1
+                  items:
+                    oneOf:
+                      - type: object
+                        additionalProperties: false
+                        required: [type, text]
+                        properties:
+                          type: { type: string, const: text }
+                          text: { type: string }
+                      - type: object
+                        additionalProperties: false
+                        required: [type, data, mediaType]
+                        properties:
+                          type: { type: string, const: image }
+                          data:
+                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
+                          mediaType: { type: string }
           required: [role, content]
           additionalProperties: false
       system: { type: string }

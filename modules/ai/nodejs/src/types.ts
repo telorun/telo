@@ -8,9 +8,12 @@
  * tool-use loop) import them to type the injected `resource.model`.
  */
 
+import type { MessageContent } from "./content.js";
+
+export type { ContentPart, ImagePart, MessageContent, TextPart } from "./content.js";
+
 /** Message roles supported by the core contract. `tool` carries a tool-call result
- *  back to the model (paired with `toolCallId`). Multimodal content is out of scope
- *  for v1 — widening `content` to `string | ContentPart[]` later is non-breaking. */
+ *  back to the model (paired with `toolCallId`). */
 export type Role = "system" | "user" | "assistant" | "tool";
 
 /** A tool call requested by the model (on output) or replayed to it (on an assistant
@@ -23,16 +26,17 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
-/** One turn in the conversation. `content` is a string today; widening to a
- *  `string | ContentPart[]` union for multimodal support is non-breaking.
+/** One turn in the conversation. `content` is either a plain string or an array of
+ *  content parts (text + image) for multimodal turns — see `MessageContent`.
  *
  *  - assistant turns may carry `toolCalls` (the model asked to invoke tools);
  *    `content` may be empty in that case.
- *  - `tool` turns carry `toolCallId` (which call this answers) and put the
- *    stringified tool result in `content`. */
+ *  - `tool` turns carry `toolCallId` (which call this answers) and put the tool
+ *    result in `content` — a string, or content parts when the tool returned an
+ *    image (a vision tool result). */
 export interface Message {
   role: Role;
-  content: string;
+  content: MessageContent;
   /** Present on assistant turns that requested tool calls. */
   toolCalls?: ToolCall[];
   /** Present on `tool` turns — the id of the call this message answers. */
@@ -129,6 +133,10 @@ export interface ToolDescriptor {
  *
  * `Ai.Tools` (static list, in @telorun/ai) and `AiMcp.ToolProvider` (MCP discovery, in
  * @telorun/ai-mcp) both implement it; the agent never knows which.
+ *
+ * `callTool` may return a plain value (stringified back to the model), a string, or
+ * multimodal content parts (`MessageContent` / `ContentPart[]`) when the tool answers
+ * with an image — the agent carries parts through the `tool` message untouched.
  */
 export interface AiToolProviderInstance {
   listTools(): Promise<ToolDescriptor[]> | ToolDescriptor[];

@@ -1,5 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { contentToText } from "./content.js";
 import type {
   AiModelInstance,
   CompletionResult,
@@ -73,15 +74,14 @@ class AiEchoModel implements ResourceInstance, AiModelInstance {
 
   private buildEchoText(messages: Message[]): string {
     const last = messages[messages.length - 1];
-    const content = typeof last?.content === "string" ? last.content : "";
-    return content + (this.resource.suffix ?? "");
+    return contentToText(last?.content) + (this.resource.suffix ?? "");
   }
 
   private maybeThrow(messages: Message[]): void {
     const rule = this.resource.failOn;
     if (!rule) return;
     const last = messages[messages.length - 1];
-    if (typeof last?.content === "string" && last.content === rule.message) {
+    if (contentToText(last?.content) === rule.message) {
       throw new InvokeError(rule.code, rule.reason);
     }
   }

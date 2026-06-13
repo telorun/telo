@@ -47,7 +47,8 @@ steps:
       prompt: "echo hi please"
     invoke: !ref Assistant
   # Discovery → tools/list → echo_text. Echo calls it → tools/call → content echoed
-  # back. The agent JSON-stringifies the MCP content array as the tool result.
+  # back. The MCP `content` array is itself content parts, so the agent carries the
+  # text part through and the (text) model flattens it to "echoed: hi".
   - name: AssertText
     inputs:
       text: "${{ steps.Invoke.result.text }}"
@@ -59,7 +60,7 @@ steps:
         properties:
           text:
             type: string
-            const: '[{"type":"text","text":"echoed: hi"}]'
+            const: 'echoed: hi'
           toolName:
             type: string
             const: echo_text

@@ -1,5 +1,6 @@
 import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { isContentPart, isContentParts, type MessageContent } from "./content.js";
 import type {
   AiModelInstance,
   AiToolProviderInstance,
@@ -48,7 +49,12 @@ interface AiAgentInputs {
 interface StepTrace {
   text: string;
   toolCalls: ToolCall[];
-  toolResults: Array<{ toolCallId: string; name: string; content: string; error?: boolean }>;
+  toolResults: Array<{
+    toolCallId: string;
+    name: string;
+    content: MessageContent;
+    error?: boolean;
+  }>;
 }
 
 interface AiAgentOutput {
@@ -61,6 +67,17 @@ interface AiAgentOutput {
 interface Dispatch {
   provider: AiToolProviderInstance;
   bareName: string;
+}
+
+/** Normalize a tool's return value into message content. A string passes through;
+ *  content parts (a single part or an array) are carried untouched so an image tool
+ *  result reaches the model intact; anything else is JSON-stringified, the historical
+ *  default for structured tool output. */
+function toToolContent(output: unknown): MessageContent {
+  if (typeof output === "string") return output;
+  if (isContentParts(output)) return output;
+  if (isContentPart(output)) return [output];
+  return JSON.stringify(output);
 }
 
 class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
@@ -169,7 +186,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     dispatch: Map<string, Dispatch>,
     onToolError: "feedback" | "throw",
     trace: StepTrace,
-  ): Promise<string> {
+  ): Promise<MessageContent> {
     const name = this.resource.metadata.name;
     const target = dispatch.get(call.name);
     if (!target) {
@@ -185,7 +202,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     }
     try {
       const output = await target.provider.callTool(target.bareName, call.arguments);
-      const content = typeof output === "string" ? output : JSON.stringify(output);
+      const content = toToolContent(output);
       trace.toolResults.push({ toolCallId: call.id, name: call.name, content });
       return content;
     } catch (err) {

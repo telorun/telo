@@ -323,6 +323,11 @@ const sidebars: SidebarsConfig = {
                     { type: "doc", id: "modules/run/README", label: "Overview" },
                     {
                       type: "doc",
+                      id: "modules/run/docs/value",
+                      label: "Run.Value",
+                    },
+                    {
+                      type: "doc",
                       id: "modules/run/docs/structured-errors",
                       label: "Structured Errors",
                     },

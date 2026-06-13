@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpImageToolResultTest
+  version: 1.0.0
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestMcpImage
+---
+kind: Stub.StubClient
+metadata:
+  name: McpServer
+---
+kind: AiMcp.ToolProvider
+metadata:
+  name: ServerTools
+client: !ref McpServer
+---
+# Echo requests the image tool on the first turn, then echoes whatever text the tool
+# result carried on the second (its image part is ignored by the text echo).
+kind: AiEcho.EchoModel
+metadata:
+  name: Echo
+emitToolCall:
+  name: snapshot_image
+  arguments: {}
+---
+kind: Ai.Agent
+metadata:
+  name: Assistant
+model: !ref Echo
+toolProviders:
+  - provider: !ref ServerTools
+---
+kind: Run.Sequence
+metadata:
+  name: TestMcpImage
+steps:
+  - name: Invoke
+    inputs:
+      prompt: "snapshot the page"
+    invoke: !ref Assistant
+  # tools/call returns an MCP image block ({ type: image, data, mimeType }). The
+  # provider normalizes mimeType → mediaType so it reaches the model as an image part
+  # (not a JSON-stringified blob), carried untouched into the step trace.
+  - name: AssertImage
+    inputs:
+      imageType: "${{ steps.Invoke.result.steps[0].toolResults[0].content[0].type }}"
+      mediaType: "${{ steps.Invoke.result.steps[0].toolResults[0].content[0].mediaType }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          imageType: { type: string, const: image }
+          mediaType: { type: string, const: image/png }
+        required: [imageType, mediaType]
