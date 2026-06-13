@@ -1,5 +1,12 @@
 # @telorun/runner-core
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [d59e847]
+  - @telorun/debug-wire@0.1.0
+
 ## 0.2.0
 
 ### Minor Changes

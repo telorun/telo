@@ -1,5 +1,63 @@
 # @telorun/debug-ui
 
+## 0.2.0
+
+### Minor Changes
+
+- d59e847: Debug stream now carries **logs as well as events**, and the editor embeds the
+  debug UI.
+
+  - New `@telorun/debug-wire` package: the language-neutral frame contract shared
+    by the producer, the runner, the editor, and the debug UI. A stream now carries
+    two discriminated frame kinds on one channel — `kind: "event"` (kernel events)
+    and `kind: "log"` (one stdout/stderr line). Browser-safe; `wire-schema.json` is
+    the source of truth a non-TypeScript producer conforms to. `@telorun/debug-ui`
+    re-exports its types.
+  - `@telorun/cli`: `--inspect` / `--debug` now tee the run's stdout/stderr into the
+    stream as `log` frames (the terminal is untouched; the tee is restored on stop).
+    The inspect server adds permissive CORS so an embedding webview can read it.
+  - `@telorun/debug-ui`: the watcher is now a **Logs / Events** tab split over one
+    frame stream (`DebugPanel` + `LogView`); `DebugWatcher` wraps it for the
+    standalone app. `connectDebugStream` delivers `DebugFrame`s routed by `kind`.
+    Components take a `theme` prop (`"light" | "dark" | "system"`, default
+    `"system"` — follows `prefers-color-scheme` live); `DebugPanel` also takes a
+    `logsSlot` (an embedding host can render its own interactive terminal in the
+    Logs tab) and a `defaultTab`. When **no** `theme` is supplied the panel owns
+    its mode and shows a system/light/dark toggle in its header; when a host
+    passes `theme`, the host owns it and the toggle is hidden.
+
+  The editor (private) embeds `DebugPanel` in the run view's Debug tab: remote
+  HTTP/k8s runners relay frames over the existing `/v1/sessions/:id/events`
+  transport (the security/ingress boundary), while the local runner reads the
+  workload's loopback `--inspect` port directly — both surface identical `debug`
+  run events. Blob payloads aren't resolvable in the editor embed yet (the
+  workload's blob endpoint isn't reachable from the editor); events and logs work.
+
+- d59e847: Debug UI now links to the running application's exposed ports.
+
+  - `@telorun/debug-ui`: `DebugPanel` takes an `endpoints` prop and renders each as
+    a link in its header (tcp → clickable `http://host:port`, udp → plain label).
+    New `AppEndpoint` type + `endpointHref` / `endpointLabel` helpers (browser-safe,
+    no runner/kernel dependency). The standalone `DebugWatcher` sources endpoints
+    from the producer's `/json/version` handshake, filling a blank host from the
+    page origin so the link points where the viewer reached the server (localhost
+    locally, the bound host remotely).
+  - `@telorun/kernel`: new `Kernel.getResolvedPorts()` — the root Application's
+    resolved `ports:` (integer + declared protocol per name), available after
+    `load()`. Empty when the root declares no ports.
+  - `@telorun/cli`: the `--inspect` server advertises the app's resolved ports as
+    `appEndpoints` in its `/json/version` handshake. The UI now opens once the
+    ports are known (deferred from server start to first load), so the discovery
+    handshake already carries the endpoints.
+
+  The editor (private) renders the same links inside `DebugPanel` from its resolved
+  run endpoints, replacing the separate chips in the run-view header.
+
+### Patch Changes
+
+- Updated dependencies [d59e847]
+  - @telorun/debug-wire@0.1.0
+
 ## 0.1.0
 
 ### Minor Changes
