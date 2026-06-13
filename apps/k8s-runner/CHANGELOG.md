@@ -1,5 +1,11 @@
 # @telorun/k8s-runner
 
+## 0.2.1
+
+### Patch Changes
+
+- @telorun/runner-core@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
