@@ -8,6 +8,9 @@ exports:
   kinds:
     - Sequence
     - Value
+    - Loop
+    - Iteration
+    - Projection
 ---
 kind: Telo.Definition
 metadata:
@@ -222,7 +225,7 @@ schema:
         - title: throw
           description: >-
             Throws an InvokeError unconditionally. Works inside catch blocks via CEL
-            (e.g. code set to `"${{ error.code }}"`).
+            (e.g. code set to `!cel "error.code"`).
           properties:
             throw:
               title: Throw
@@ -364,3 +367,884 @@ schema:
     - value:
         - { type: text, text: page rendered }
         - { type: image, data: aGVsbG8=, mediaType: image/png }
+---
+kind: Telo.Definition
+metadata:
+  name: Iteration
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/run@0.7.0?local_path=./nodejs#iteration
+throws:
+  inherit: true
+schema:
+  type: object
+  $defs:
+    bodyStep:
+      title: Step
+      description: Single executable step or control-flow block. No while block — the kind is itself the loop.
+      type: object
+      properties:
+        name:
+          title: Name
+          description: Unique step name.
+          type: string
+      oneOf:
+        - title: invoke
+          description: Invokes an invocable or runnable resource.
+          properties:
+            invoke:
+              title: Invoke
+              description: Resource to invoke for this step.
+              x-telo-topology-role: invoke
+              type: object
+              anyOf:
+                - title: Invocable
+                  description: Reference to an invocable resource.
+                  x-telo-ref: "telo#Invocable"
+                - title: Runnable
+                  description: Reference to a runnable resource.
+                  x-telo-ref: "telo#Runnable"
+            inputs:
+              title: Inputs
+              description: Inputs passed to the invoked resource.
+              x-telo-topology-role: inputs
+              type: object
+              additionalProperties: true
+            retry:
+              title: Retry
+              description: Retry policy for step invocation.
+              type: object
+              properties:
+                attempts:
+                  title: Attempts
+                  description: Maximum retry attempts.
+                  type: integer
+                delay:
+                  title: Delay
+                  description: Delay between retries.
+                  type: string
+          required:
+            - invoke
+        - title: if/then/else
+          description: Conditional branch; executes then or else based on a boolean expression.
+          properties:
+            if:
+              title: If
+              description: CEL boolean expression; true executes then, false executes else.
+              x-telo-topology-role: predicate
+              type: boolean
+            elseif:
+              title: Else If
+              description: Additional condition-branch pairs evaluated when if is false.
+              x-telo-topology-role: branch-list
+              type: array
+              items:
+                type: object
+                properties:
+                  if:
+                    title: If
+                    description: CEL boolean expression for this else-if branch.
+                    x-telo-topology-role: predicate
+                    type: boolean
+                  then:
+                    title: Then
+                    description: Steps executed when this else-if condition is true.
+                    x-telo-topology-role: branch
+                    type: array
+                    items:
+                      $ref: "#/$defs/bodyStep"
+                required:
+                  - if
+                  - then
+            then:
+              title: Then
+              description: Steps executed when if evaluates true.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            else:
+              title: Else
+              description: Steps executed when if (and all elseif conditions) evaluate false.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - if
+            - then
+        - title: switch/cases/default
+          description: Multi-branch dispatch; matches a value expression against case keys.
+          properties:
+            switch:
+              title: Switch
+              description: CEL expression; result matched against case keys.
+              x-telo-topology-role: discriminator
+              type: string
+            cases:
+              title: Cases
+              description: Map of value to step list; executed when switch matches the key.
+              x-telo-topology-role: case-map
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  $ref: "#/$defs/bodyStep"
+            default:
+              title: Default
+              description: Steps executed when no case matches.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - switch
+            - cases
+        - title: try/catch/finally
+          description: Error boundary; executes try steps and handles failure via catch and finally.
+          properties:
+            try:
+              title: Try
+              description: Steps executed; halts on first failure and jumps to catch.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            catch:
+              title: Catch
+              description: Steps executed when try fails; receives error context.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: object
+                description: The caught failure (always present inside catch).
+                properties: &iterationErrorProps
+                  code:
+                    description: Structured error code; INTERNAL_ERROR for plain errors.
+                    type: string
+                  message:
+                    description: Human-readable error message.
+                    type: string
+                  step:
+                    description: Name of the step that threw.
+                    type: string
+                  data:
+                    description: Structured payload from an InvokeError, else undefined.
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            finally:
+              title: Finally
+              description: Steps always executed after try/catch regardless of outcome.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: ["object", "null"]
+                description: The caught failure, or null when try (and catch) succeeded.
+                properties: *iterationErrorProps
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - try
+        - title: throw
+          description: Throws an InvokeError unconditionally.
+          properties:
+            throw:
+              title: Throw
+              description: InvokeError descriptor; code is required, message/data optional.
+              type: object
+              properties:
+                code:
+                  title: Code
+                  description: Structured error code; uppercase SNAKE_CASE by convention.
+                  type: string
+                message:
+                  title: Message
+                  description: Human-readable error message. Defaults to code when omitted.
+                  type: string
+                data:
+                  title: Data
+                  description: Optional structured payload attached to the error.
+              required:
+                - code
+          required:
+            - throw
+      required:
+        - name
+  properties:
+    inputs:
+      title: Inputs
+      description: >-
+        The iteration's input contract: a JSON Schema property map (name →
+        schema), NOT values. Callers supply values at invoke time; the body
+        reads them as `!cel "inputs.<name>"`.
+      type: object
+      additionalProperties: true
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array iterated over.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    concurrency:
+      title: Concurrency
+      description: Maximum number of elements processed at once; 1 (default) runs strictly ordered.
+      type: integer
+      minimum: 1
+      default: 1
+    catches:
+      title: Catches
+      description: >-
+        Whole-operation error contract. Maps a throw that escapes the entire
+        iteration to a fallback result; an unmatched throw propagates (fail-fast).
+      x-telo-error-context:
+        type: object
+        description: The escaped failure (sees error and inputs).
+        properties: *iterationErrorProps
+        additionalProperties: false
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+      type: array
+      items:
+        title: Catch Entry
+        type: object
+        properties:
+          when:
+            title: When
+            description: CEL condition selecting this entry (sees error and inputs).
+            type: boolean
+          value:
+            title: Value
+            description: Fallback result returned when this entry matches.
+    steps:
+      title: Steps
+      description: Body run once per element of collection. Sees item, index, items.
+      x-telo-topology-role: steps
+      x-telo-step-context:
+        invoke: invoke
+        outputType: outputType
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+      type: array
+      items:
+        $ref: "#/$defs/bodyStep"
+  required:
+    - collection
+    - steps
+  examples:
+    - collection: !cel "inputs.users"
+      concurrency: 5
+      steps:
+        - name: send
+          invoke: !ref SendEmail
+          inputs:
+            to: !cel "item.email"
+---
+kind: Telo.Definition
+metadata:
+  name: Projection
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/run@0.7.0?local_path=./nodejs#projection
+throws:
+  inherit: true
+schema:
+  type: object
+  $defs:
+    bodyStep:
+      title: Step
+      description: Single executable step or control-flow block. No while block — the kind is itself the loop.
+      type: object
+      properties:
+        name:
+          title: Name
+          description: Unique step name.
+          type: string
+      oneOf:
+        - title: invoke
+          description: Invokes an invocable or runnable resource.
+          properties:
+            invoke:
+              title: Invoke
+              description: Resource to invoke for this step.
+              x-telo-topology-role: invoke
+              type: object
+              anyOf:
+                - title: Invocable
+                  description: Reference to an invocable resource.
+                  x-telo-ref: "telo#Invocable"
+                - title: Runnable
+                  description: Reference to a runnable resource.
+                  x-telo-ref: "telo#Runnable"
+            inputs:
+              title: Inputs
+              description: Inputs passed to the invoked resource.
+              x-telo-topology-role: inputs
+              type: object
+              additionalProperties: true
+            retry:
+              title: Retry
+              description: Retry policy for step invocation.
+              type: object
+              properties:
+                attempts:
+                  title: Attempts
+                  description: Maximum retry attempts.
+                  type: integer
+                delay:
+                  title: Delay
+                  description: Delay between retries.
+                  type: string
+          required:
+            - invoke
+        - title: if/then/else
+          description: Conditional branch; executes then or else based on a boolean expression.
+          properties:
+            if:
+              title: If
+              description: CEL boolean expression; true executes then, false executes else.
+              x-telo-topology-role: predicate
+              type: boolean
+            elseif:
+              title: Else If
+              description: Additional condition-branch pairs evaluated when if is false.
+              x-telo-topology-role: branch-list
+              type: array
+              items:
+                type: object
+                properties:
+                  if:
+                    title: If
+                    description: CEL boolean expression for this else-if branch.
+                    x-telo-topology-role: predicate
+                    type: boolean
+                  then:
+                    title: Then
+                    description: Steps executed when this else-if condition is true.
+                    x-telo-topology-role: branch
+                    type: array
+                    items:
+                      $ref: "#/$defs/bodyStep"
+                required:
+                  - if
+                  - then
+            then:
+              title: Then
+              description: Steps executed when if evaluates true.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            else:
+              title: Else
+              description: Steps executed when if (and all elseif conditions) evaluate false.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - if
+            - then
+        - title: switch/cases/default
+          description: Multi-branch dispatch; matches a value expression against case keys.
+          properties:
+            switch:
+              title: Switch
+              description: CEL expression; result matched against case keys.
+              x-telo-topology-role: discriminator
+              type: string
+            cases:
+              title: Cases
+              description: Map of value to step list; executed when switch matches the key.
+              x-telo-topology-role: case-map
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  $ref: "#/$defs/bodyStep"
+            default:
+              title: Default
+              description: Steps executed when no case matches.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - switch
+            - cases
+        - title: try/catch/finally
+          description: Error boundary; executes try steps and handles failure via catch and finally.
+          properties:
+            try:
+              title: Try
+              description: Steps executed; halts on first failure and jumps to catch.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            catch:
+              title: Catch
+              description: Steps executed when try fails; receives error context.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: object
+                description: The caught failure (always present inside catch).
+                properties: &projectionErrorProps
+                  code:
+                    description: Structured error code; INTERNAL_ERROR for plain errors.
+                    type: string
+                  message:
+                    description: Human-readable error message.
+                    type: string
+                  step:
+                    description: Name of the step that threw.
+                    type: string
+                  data:
+                    description: Structured payload from an InvokeError, else undefined.
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            finally:
+              title: Finally
+              description: Steps always executed after try/catch regardless of outcome.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: ["object", "null"]
+                description: The caught failure, or null when try (and catch) succeeded.
+                properties: *projectionErrorProps
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - try
+        - title: throw
+          description: Throws an InvokeError unconditionally.
+          properties:
+            throw:
+              title: Throw
+              description: InvokeError descriptor; code is required, message/data optional.
+              type: object
+              properties:
+                code:
+                  title: Code
+                  description: Structured error code; uppercase SNAKE_CASE by convention.
+                  type: string
+                message:
+                  title: Message
+                  description: Human-readable error message. Defaults to code when omitted.
+                  type: string
+                data:
+                  title: Data
+                  description: Optional structured payload attached to the error.
+              required:
+                - code
+          required:
+            - throw
+      required:
+        - name
+  properties:
+    inputs:
+      title: Inputs
+      description: >-
+        The projection's input contract: a JSON Schema property map (name →
+        schema), NOT values. The body reads them as `!cel "inputs.<name>"`.
+      type: object
+      additionalProperties: true
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array projected over.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    concurrency:
+      title: Concurrency
+      description: Maximum number of elements processed at once; 1 (default) runs strictly ordered.
+      type: integer
+      minimum: 1
+      default: 1
+    catches:
+      title: Catches
+      description: >-
+        Whole-operation error contract. Maps a throw that escapes the entire
+        projection to a fallback result; an unmatched throw propagates (fail-fast).
+      x-telo-error-context:
+        type: object
+        description: The escaped failure (sees error and inputs).
+        properties: *projectionErrorProps
+        additionalProperties: false
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+      type: array
+      items:
+        title: Catch Entry
+        type: object
+        properties:
+          when:
+            title: When
+            description: CEL condition selecting this entry (sees error and inputs).
+            type: boolean
+          value:
+            title: Value
+            description: Fallback result returned when this entry matches.
+    steps:
+      title: Steps
+      description: Body run once per element of collection. Sees item, index, items.
+      x-telo-topology-role: steps
+      x-telo-step-context:
+        invoke: invoke
+        outputType: outputType
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+      type: array
+      items:
+        $ref: "#/$defs/bodyStep"
+    outputs:
+      title: Outputs
+      description: >-
+        A CEL map (key → expression) evaluated per element over `steps.*`, `item`,
+        `index`, `items`, and `inputs`. Each element's value is collected into the
+        result array (input order preserved). Omit to collect the raw step map.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+  required:
+    - collection
+    - steps
+  examples:
+    - collection: !cel "inputs.ids"
+      concurrency: 8
+      steps:
+        - name: fetch
+          invoke: !ref FetchRecord
+          inputs:
+            id: !cel "item"
+      outputs:
+        id: !cel "item"
+        name: !cel "steps.fetch.result.name"
+---
+kind: Telo.Definition
+metadata:
+  name: Loop
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/run@0.7.0?local_path=./nodejs#loop
+throws:
+  inherit: true
+schema:
+  type: object
+  $defs:
+    bodyStep:
+      title: Step
+      description: Single executable step or control-flow block. No while block — the kind is itself the loop.
+      type: object
+      properties:
+        name:
+          title: Name
+          description: Unique step name.
+          type: string
+      oneOf:
+        - title: invoke
+          description: Invokes an invocable or runnable resource.
+          properties:
+            invoke:
+              title: Invoke
+              description: Resource to invoke for this step.
+              x-telo-topology-role: invoke
+              type: object
+              anyOf:
+                - title: Invocable
+                  description: Reference to an invocable resource.
+                  x-telo-ref: "telo#Invocable"
+                - title: Runnable
+                  description: Reference to a runnable resource.
+                  x-telo-ref: "telo#Runnable"
+            inputs:
+              title: Inputs
+              description: Inputs passed to the invoked resource.
+              x-telo-topology-role: inputs
+              type: object
+              additionalProperties: true
+            retry:
+              title: Retry
+              description: Retry policy for step invocation.
+              type: object
+              properties:
+                attempts:
+                  title: Attempts
+                  description: Maximum retry attempts.
+                  type: integer
+                delay:
+                  title: Delay
+                  description: Delay between retries.
+                  type: string
+          required:
+            - invoke
+        - title: if/then/else
+          description: Conditional branch; executes then or else based on a boolean expression.
+          properties:
+            if:
+              title: If
+              description: CEL boolean expression; true executes then, false executes else.
+              x-telo-topology-role: predicate
+              type: boolean
+            elseif:
+              title: Else If
+              description: Additional condition-branch pairs evaluated when if is false.
+              x-telo-topology-role: branch-list
+              type: array
+              items:
+                type: object
+                properties:
+                  if:
+                    title: If
+                    description: CEL boolean expression for this else-if branch.
+                    x-telo-topology-role: predicate
+                    type: boolean
+                  then:
+                    title: Then
+                    description: Steps executed when this else-if condition is true.
+                    x-telo-topology-role: branch
+                    type: array
+                    items:
+                      $ref: "#/$defs/bodyStep"
+                required:
+                  - if
+                  - then
+            then:
+              title: Then
+              description: Steps executed when if evaluates true.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            else:
+              title: Else
+              description: Steps executed when if (and all elseif conditions) evaluate false.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - if
+            - then
+        - title: switch/cases/default
+          description: Multi-branch dispatch; matches a value expression against case keys.
+          properties:
+            switch:
+              title: Switch
+              description: CEL expression; result matched against case keys.
+              x-telo-topology-role: discriminator
+              type: string
+            cases:
+              title: Cases
+              description: Map of value to step list; executed when switch matches the key.
+              x-telo-topology-role: case-map
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  $ref: "#/$defs/bodyStep"
+            default:
+              title: Default
+              description: Steps executed when no case matches.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - switch
+            - cases
+        - title: try/catch/finally
+          description: Error boundary; executes try steps and handles failure via catch and finally.
+          properties:
+            try:
+              title: Try
+              description: Steps executed; halts on first failure and jumps to catch.
+              x-telo-topology-role: branch
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            catch:
+              title: Catch
+              description: Steps executed when try fails; receives error context.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: object
+                description: The caught failure (always present inside catch).
+                properties: &loopErrorProps
+                  code:
+                    description: Structured error code; INTERNAL_ERROR for plain errors.
+                    type: string
+                  message:
+                    description: Human-readable error message.
+                    type: string
+                  step:
+                    description: Name of the step that threw.
+                    type: string
+                  data:
+                    description: Structured payload from an InvokeError, else undefined.
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+            finally:
+              title: Finally
+              description: Steps always executed after try/catch regardless of outcome.
+              x-telo-topology-role: branch
+              x-telo-error-context:
+                type: ["object", "null"]
+                description: The caught failure, or null when try (and catch) succeeded.
+                properties: *loopErrorProps
+                additionalProperties: false
+              type: array
+              items:
+                $ref: "#/$defs/bodyStep"
+          required:
+            - try
+        - title: throw
+          description: Throws an InvokeError unconditionally.
+          properties:
+            throw:
+              title: Throw
+              description: InvokeError descriptor; code is required, message/data optional.
+              type: object
+              properties:
+                code:
+                  title: Code
+                  description: Structured error code; uppercase SNAKE_CASE by convention.
+                  type: string
+                message:
+                  title: Message
+                  description: Human-readable error message. Defaults to code when omitted.
+                  type: string
+                data:
+                  title: Data
+                  description: Optional structured payload attached to the error.
+              required:
+                - code
+          required:
+            - throw
+      required:
+        - name
+  properties:
+    inputs:
+      title: Inputs
+      description: >-
+        The loop's input contract: a JSON Schema property map (name → schema),
+        NOT values. The body reads them as `!cel "inputs.<name>"`.
+      type: object
+      additionalProperties: true
+    condition:
+      title: Condition
+      description: >-
+        CEL boolean evaluated before each iteration; the loop continues while it
+        is true. Sees iteration (0-based count), previous (prior iteration's step
+        map, null on the first), and inputs.
+      type: boolean
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          iteration: { type: integer }
+          previous: {}
+    maxIterations:
+      title: Max Iterations
+      description: CEL integer cap on the number of iterations. At least one of condition or maxIterations is required.
+      type: integer
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    catches:
+      title: Catches
+      description: >-
+        Whole-operation error contract. Maps a throw that escapes the loop to a
+        fallback result; an unmatched throw propagates (fail-fast).
+      x-telo-error-context:
+        type: object
+        description: The escaped failure (sees error and inputs).
+        properties: *loopErrorProps
+        additionalProperties: false
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+      type: array
+      items:
+        title: Catch Entry
+        type: object
+        properties:
+          when:
+            title: When
+            description: CEL condition selecting this entry (sees error and inputs).
+            type: boolean
+          value:
+            title: Value
+            description: Fallback result returned when this entry matches.
+    steps:
+      title: Steps
+      description: Body run each iteration. Sees iteration and previous.
+      x-telo-topology-role: steps
+      x-telo-step-context:
+        invoke: invoke
+        outputType: outputType
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          iteration: { type: integer }
+          previous: {}
+      type: array
+      items:
+        $ref: "#/$defs/bodyStep"
+    outputs:
+      title: Outputs
+      description: >-
+        A CEL map evaluated after the loop over the final state — `steps.*` (the
+        last iteration), iteration (final count), previous, and inputs. Its value
+        becomes the loop's result. Omit to return the last iteration's step map.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          iteration: { type: integer }
+          previous: {}
+  required:
+    - steps
+  examples:
+    - condition: !cel "previous == null || !previous.check.result.ready"
+      maxIterations: 10
+      steps:
+        - name: check
+          invoke: !ref GetStatus
+          inputs:
+            id: !cel "inputs.jobId"

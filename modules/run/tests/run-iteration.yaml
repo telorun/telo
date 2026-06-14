@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: RunIteration
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref NotifyEach
+  - !ref ExpectEvents
+---
+kind: Run.Iteration
+metadata:
+  name: NotifyEach
+collection: !cel "['a', 'b', 'c']"
+steps:
+  - name: Notify
+    inputs:
+      who: !cel "item"
+      idx: !cel "index"
+    invoke:
+      kind: Run.Value
+      inputs:
+        who: {}
+        idx: {}
+      value:
+        notified: !cel "inputs.who"
+        at: !cel "inputs.idx"
+---
+kind: Assert.Events
+metadata:
+  name: ExpectEvents
+filter:
+  - type: "*"
+expect:
+  - event: Run.Value.*.Invoked
+    payload:
+      outputs: { notified: a, at: 0 }
+  - event: Run.Value.*.Invoked
+    payload:
+      outputs: { notified: b, at: 1 }
+  - event: Run.Value.*.Invoked
+    payload:
+      outputs: { notified: c, at: 2 }

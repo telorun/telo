@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: RunInvalidCollection
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref Verify
+---
+# `collection` flows from an untyped input, so the analyzer can't reject it
+# statically; at runtime it resolves to a non-array and the controller throws
+# INVALID_COLLECTION. (A statically-typed non-array collection is a separate,
+# compile-time SCHEMA_VIOLATION — see analyzer coverage.)
+kind: Run.Iteration
+metadata:
+  name: BadIteration
+inputs:
+  thing: {}
+collection: !cel "inputs.thing"
+steps:
+  - name: noop
+    invoke:
+      kind: Run.Value
+      value:
+        ok: true
+---
+kind: Run.Projection
+metadata:
+  name: BadProjection
+inputs:
+  thing: {}
+collection: !cel "inputs.thing"
+steps:
+  - name: noop
+    invoke:
+      kind: Run.Value
+      value:
+        ok: true
+---
+kind: Run.Sequence
+metadata:
+  name: Verify
+steps:
+  - name: iterationFails
+    try:
+      - name: run
+        invoke: !ref BadIteration
+        inputs:
+          thing: 42
+    catch:
+      - name: assertIteration
+        inputs:
+          code: !cel "error.code"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { type: string, const: INVALID_COLLECTION }
+  - name: projectionFails
+    try:
+      - name: run
+        invoke: !ref BadProjection
+        inputs:
+          thing: "not an array"
+    catch:
+      - name: assertProjection
+        inputs:
+          code: !cel "error.code"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { type: string, const: INVALID_COLLECTION }

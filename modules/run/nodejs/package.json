@@ -30,6 +30,18 @@
     "./value": {
       "bun": "./src/value.ts",
       "import": "./dist/value.js"
+    },
+    "./loop": {
+      "bun": "./src/loop.ts",
+      "import": "./dist/loop.js"
+    },
+    "./iteration": {
+      "bun": "./src/iteration.ts",
+      "import": "./dist/iteration.js"
+    },
+    "./projection": {
+      "bun": "./src/projection.ts",
+      "import": "./dist/projection.js"
     }
   },
   "scripts": {
