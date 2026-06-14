@@ -20,6 +20,19 @@ export type ControllerResolveSource =
   | "cargo-build"
   | "bundle";
 
+/**
+ * A controller candidate that has been *resolved* (verified hostable: package
+ * installed / bundle present / crate located) but not yet imported/evaluated.
+ * `importInstance` performs the deferred — and expensive — module load; lazy
+ * controller loading calls it on the kind's first instantiation. `purl`/`source`
+ * are known at resolve time and carried for the load-time events.
+ */
+export interface ResolvedController {
+  purl: string;
+  source: ControllerResolveSource;
+  importInstance: () => Promise<ControllerInstance>;
+}
+
 export type ControllerLoaderEvent =
   | { name: "ControllerLoading"; payload: { purl: string } }
   | {
@@ -151,18 +164,74 @@ export class ControllerLoader {
     throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", aggregated);
   }
 
+  /**
+   * Resolve a controller without importing it: pick the first candidate this
+   * environment can host (same ordering + env-missing fallback as {@link load}),
+   * verify it's present, and return a {@link ResolvedController} whose
+   * `importInstance` defers the actual import/eval. Used by lazy controller
+   * loading so a `Telo.Definition` fails fast at boot when its controller can't
+   * load at all, while the expensive import is paid only on first instantiation.
+   *
+   * Silent by design — no lifecycle events here; the caller emits
+   * ControllerLoading/Loaded around `importInstance` so the events fire when the
+   * load actually happens. A total resolution failure throws (the boot-time
+   * fail-fast), mirroring {@link load}'s aggregated error.
+   */
+  async resolve(
+    purlCandidates: string[],
+    baseUri: string,
+    policy?: ControllerPolicy,
+  ): Promise<ResolvedController> {
+    if (!purlCandidates || purlCandidates.length === 0) {
+      throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", "Missing controller PURL candidates");
+    }
+    const effectivePolicy = policy ?? DEFAULT_POLICY;
+    const ordered = orderCandidates(purlCandidates, effectivePolicy);
+    if (ordered.length === 0) {
+      throw new RuntimeError(
+        "ERR_CONTROLLER_NOT_FOUND",
+        `No controllers match runtime selection [${effectivePolicy.load.join(", ")}]; declared: ${purlCandidates.join(", ")}`,
+      );
+    }
+    const errors: string[] = [];
+    for (const purl of ordered) {
+      try {
+        const { source, importInstance } = await this.dispatchResolveOne(purl, baseUri);
+        return { purl, source, importInstance };
+      } catch (err) {
+        if (err instanceof ControllerEnvMissingError) {
+          errors.push(`${purl}: ${err.message}`);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new RuntimeError(
+      "ERR_CONTROLLER_NOT_FOUND",
+      `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`,
+    );
+  }
+
   private async dispatchOne(
     purl: string,
     baseUri: string,
   ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
+    const { source, importInstance } = await this.dispatchResolveOne(purl, baseUri);
+    return { instance: await importInstance(), source };
+  }
+
+  private async dispatchResolveOne(
+    purl: string,
+    baseUri: string,
+  ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     if (purl.startsWith("pkg:npm")) {
-      return this.npmLoader.load(purl, baseUri);
+      return this.npmLoader.resolve(purl, baseUri);
     }
     if (purl.startsWith("pkg:cargo")) {
-      return this.napiLoader.load(purl, baseUri);
+      return this.napiLoader.resolve(purl, baseUri);
     }
     if (purl.startsWith("pkg:telo")) {
-      return this.bundleLoader.load(purl, baseUri);
+      return this.bundleLoader.resolve(purl, baseUri);
     }
     throw new ControllerEnvMissingError(`Unsupported PURL scheme: ${purl}`);
   }

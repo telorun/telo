@@ -1,0 +1,61 @@
+kind: Telo.Library
+metadata:
+  name: lazy-controller
+  namespace: telo-test
+  version: 1.0.0
+exports:
+  kinds:
+    - Echo
+    - NeverUsed
+---
+# Backed by a working bundle. Instantiated by the app, so its controller is
+# imported on first instantiation.
+kind: Telo.Definition
+metadata:
+  name: Echo
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#echo
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [ text ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [ text ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+---
+# Backed by a bundle whose module throws on import. The controller RESOLVES
+# (the file exists, format is hostable) so eager-resolve at definition-init
+# passes, but the import is deferred — and never happens, because the app
+# instantiates no resource of this kind. Boot must succeed.
+kind: Telo.Definition
+metadata:
+  name: NeverUsed
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./boom.mjs#boom
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+schema:
+  type: object
+  additionalProperties: false

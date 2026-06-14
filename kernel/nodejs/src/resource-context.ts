@@ -332,6 +332,21 @@ export class ResourceContextImpl implements ResourceContext {
     await this.kernel.registerController(moduleName, kindName, controllerInstance, fingerprint);
   }
 
+  /**
+   * Register a deferred controller under the declaring module's policy
+   * fingerprint (same keying as `registerController`). Internal to the kernel's
+   * lazy controller loading — not part of the public SDK `ResourceContext`
+   * surface; the only caller is the `Telo.Definition` controller.
+   */
+  registerLazyController(
+    moduleName: string,
+    kindName: string,
+    load: () => Promise<void>,
+  ): void {
+    const fingerprint = policyFingerprint(this.moduleContext.getControllerPolicy());
+    this.kernel.registerLazyController(moduleName, kindName, fingerprint, load);
+  }
+
   registerDefinition(def: any) {
     this.kernel.registerResourceDefinition(def);
   }

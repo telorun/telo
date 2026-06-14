@@ -12,9 +12,21 @@ const DEFAULT_FINGERPRINT = "default";
  * lock out the second. Definitions remain kind-only; only the loaded
  * controller instance is policy-scoped.
  */
+/**
+ * A controller whose definition has been resolved but whose module is not yet
+ * imported. `load()` performs the import + `registerController` (firing the
+ * controller's `register()` hook); `loading` single-flights concurrent
+ * instantiations of the same kind through one import.
+ */
+interface LazyControllerEntry {
+  load: () => Promise<void>;
+  loading?: Promise<void>;
+}
+
 export class ControllerRegistry {
   private controllersByKind: Map<string, Map<string, ControllerInstance>> = new Map();
   private definitionsByKind: Map<string, ResourceDefinition> = new Map();
+  private lazyByKind: Map<string, Map<string, LazyControllerEntry>> = new Map();
 
   /**
    * Register a controller definition
@@ -142,5 +154,56 @@ export class ControllerRegistry {
       this.controllersByKind.set(kind, byFp);
     }
     byFp.set(fingerprint, wrappedController);
+  }
+
+  /**
+   * Register a deferred controller for a (kind, fingerprint). The definition's
+   * metadata is already registered (so analysis/refs work); the controller
+   * module itself is imported lazily by {@link takeLazyController} on the kind's
+   * first instantiation. Mirrors `registerController`'s fingerprint keying.
+   */
+  registerLazyController(
+    kind: string,
+    fingerprint: string,
+    load: () => Promise<void>,
+  ): void {
+    if (!this.definitionsByKind.has(kind)) {
+      throw new Error(`Cannot register lazy controller for kind ${kind} without definition`);
+    }
+    let byFp = this.lazyByKind.get(kind);
+    if (!byFp) {
+      byFp = new Map();
+      this.lazyByKind.set(kind, byFp);
+    }
+    byFp.set(fingerprint, { load });
+  }
+
+  /**
+   * Drive the deferred import for a (kind, fingerprint) if one is registered,
+   * single-flighting concurrent callers through the same import. Returns true
+   * when a lazy entry existed (after its `load()` has completed and the
+   * controller is registered), false when there is none — letting the caller
+   * fall through to its existing "no controller" handling. Same fingerprint
+   * fallback order as `getControllerOrUndefined`.
+   */
+  async takeLazyController(
+    kind: string,
+    fingerprint: string = DEFAULT_FINGERPRINT,
+  ): Promise<boolean> {
+    const byFp = this.lazyByKind.get(kind);
+    if (!byFp) return false;
+    const entry =
+      byFp.get(fingerprint) ?? byFp.get(DEFAULT_FINGERPRINT) ?? byFp.values().next().value;
+    if (!entry) return false;
+    if (!entry.loading) {
+      // Reset on failure so a later instantiation re-attempts and re-surfaces
+      // the error rather than awaiting a cached rejection forever.
+      entry.loading = entry.load().catch((err) => {
+        entry.loading = undefined;
+        throw err;
+      });
+    }
+    await entry.loading;
+    return true;
   }
 }

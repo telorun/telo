@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata:
+  name: LazyControllerSkipsUnused
+  version: 1.0.0
+  description: |
+    Proves lazy controller loading: a definition (NeverUsed) whose bundle throws
+    on import is imported by the library but never instantiated by this app. The
+    controller resolves at definition-init (the file exists), but its import is
+    deferred — and, because no resource of that kind is instantiated, never
+    happens. The app boots and runs the Echo kind, whose controller IS imported
+    on first instantiation. Under eager loading the NeverUsed import would crash
+    boot.
+imports:
+  Lazy: ./__fixtures__/lazy-controller/telo.yaml
+  Assert: ../modules/assert
+targets:
+  - name: DoEcho
+    inputs:
+      text: "hi"
+    invoke: !ref Echoer
+  - name: Check
+    inputs:
+      text: "${{ steps.DoEcho.result.text }}"
+    invoke: !ref AssertText
+---
+kind: Lazy.Echo
+metadata: { name: Echoer }
+---
+kind: Assert.Schema
+metadata: { name: AssertText }
+schema:
+  type: object
+  properties:
+    text: { const: "hi" }
+  required: [ text ]
