@@ -1,0 +1,77 @@
+kind: Telo.Application
+metadata:
+  name: RunLoop
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref VerifyLoop
+---
+kind: Run.Loop
+metadata:
+  name: CountToThree
+condition: !cel "iteration < 3"
+maxIterations: 10
+steps:
+  - name: Tick
+    inputs:
+      n: !cel "iteration"
+    invoke:
+      kind: Run.Value
+      inputs:
+        n: {}
+      value:
+        seen: !cel "inputs.n"
+outputs:
+  total: !cel "iteration"
+  last: !cel "previous.Tick.result.seen"
+---
+# maxIterations flows from an untyped input; a runtime-resolved non-number must
+# surface INVALID_LOOP rather than silently no-op (NaN cap → zero iterations).
+kind: Run.Loop
+metadata:
+  name: BadCap
+inputs:
+  cap: {}
+maxIterations: !cel "inputs.cap"
+steps:
+  - name: Tick
+    invoke:
+      kind: Run.Value
+      value:
+        ok: true
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyLoop
+steps:
+  - name: Run
+    invoke: !ref CountToThree
+  - name: Check
+    inputs:
+      total: !cel "steps.Run.result.total"
+      last: !cel "steps.Run.result.last"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          total: { type: number, const: 3 }
+          last: { type: number, const: 2 }
+  - name: BadCapFails
+    try:
+      - name: run
+        invoke: !ref BadCap
+        inputs:
+          cap: "not a number"
+    catch:
+      - name: assertBadCap
+        inputs:
+          code: !cel "error.code"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              code: { type: string, const: INVALID_LOOP }

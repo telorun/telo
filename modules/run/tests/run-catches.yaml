@@ -1,0 +1,58 @@
+kind: Telo.Application
+metadata:
+  name: RunCatches
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref VerifyCatches
+---
+# A throw that escapes the whole projection is mapped to a fallback result by
+# the kind-level `catches`; an unmatched throw would propagate (fail-fast).
+kind: Run.Projection
+metadata:
+  name: MightFail
+collection: !cel "[1, 2, 3]"
+steps:
+  - name: Guard
+    if: !cel "item == 2"
+    then:
+      - name: Boom
+        throw:
+          code: BAD_ITEM
+          message: "item 2 is bad"
+  - name: Keep
+    inputs:
+      n: !cel "item"
+    invoke:
+      kind: Run.Value
+      inputs:
+        n: {}
+      value:
+        ok: !cel "double(inputs.n)"
+outputs:
+  ok: !cel "steps.Keep.result.ok"
+catches:
+  - when: !cel "error.code == 'BAD_ITEM'"
+    value:
+      fallback: true
+      failedWith: !cel "error.code"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyCatches
+steps:
+  - name: Project
+    invoke: !ref MightFail
+  - name: Check
+    inputs:
+      result: !cel "steps.Project.result"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            type: object
+            const: { fallback: true, failedWith: BAD_ITEM }

@@ -328,6 +328,21 @@ const sidebars: SidebarsConfig = {
                     },
                     {
                       type: "doc",
+                      id: "modules/run/docs/loop",
+                      label: "Run.Loop",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/run/docs/iteration",
+                      label: "Run.Iteration",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/run/docs/projection",
+                      label: "Run.Projection",
+                    },
+                    {
+                      type: "doc",
                       id: "modules/run/docs/structured-errors",
                       label: "Structured Errors",
                     },

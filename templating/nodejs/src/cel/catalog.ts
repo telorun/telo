@@ -73,6 +73,11 @@ const minMax = (list: unknown[], isMin: boolean): unknown => {
   return best;
 };
 
+/** Ensure a regex replaces every match: append the global flag unless the
+ *  caller already passed it. */
+const withGlobal = (flags?: string): string =>
+  flags && flags.includes("g") ? flags : `${flags ?? ""}g`;
+
 const sortList = (list: unknown[]): unknown[] =>
   [...list].sort((a, b) => {
     if (typeof a === "number" || typeof a === "bigint") {
@@ -195,6 +200,26 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     hostBacked: false,
     build: () => (list: unknown[]) => sortList(list),
   },
+  {
+    name: "range",
+    signature: "range(int): list<int>",
+    category: "collection",
+    summary: "Integers [0, n-1] (empty for n <= 0); materializes indices for an unknown-length list.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (n: unknown) =>
+      Array.from({ length: Math.max(0, Math.trunc(num(n))) }, (_unused, i) => BigInt(i)),
+  },
+  {
+    name: "enumerate",
+    signature: "enumerate(list): list",
+    category: "collection",
+    summary: "Pair each element with its zero-based position as {index, value}.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (list: unknown[]) =>
+      list.map((value, i) => ({ index: BigInt(i), value })),
+  },
   // Strings
   {
     name: "lower",
@@ -240,6 +265,66 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     deterministic: true,
     hostBacked: false,
     build: () => (s: string, sep: string) => s.split(sep),
+  },
+  {
+    name: "regexReplace",
+    signature: "regexReplace(string, string, string, string?): string",
+    category: "string",
+    summary: "Replace every regex match with a replacement ($1 backrefs); flags like 'i', 'm', 's'.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, pattern: string, replacement: string, flags?: string) =>
+      s.replace(new RegExp(pattern, withGlobal(flags)), replacement),
+  },
+  {
+    name: "regexExtract",
+    signature: "regexExtract(string, string): string",
+    category: "string",
+    summary: "First whole match of a regex, or '' when there is none.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, pattern: string) => s.match(new RegExp(pattern))?.[0] ?? "",
+  },
+  {
+    name: "regexExtractAll",
+    signature: "regexExtractAll(string, string): list<string>",
+    category: "string",
+    summary: "Every whole match of a regex, in order.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, pattern: string) =>
+      [...s.matchAll(new RegExp(pattern, "g"))].map((m) => m[0]),
+  },
+  {
+    name: "regexGroups",
+    signature: "regexGroups(string, string): list<string>",
+    category: "string",
+    summary: "Capture groups of the first regex match (empty list when there is no match).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, pattern: string) => {
+      const m = s.match(new RegExp(pattern));
+      return m ? m.slice(1).map((g) => g ?? "") : [];
+    },
+  },
+  {
+    name: "trimPrefix",
+    signature: "trimPrefix(string, string): string",
+    category: "string",
+    summary: "Strip a leading prefix if present.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, prefix: string) => (s.startsWith(prefix) ? s.slice(prefix.length) : s),
+  },
+  {
+    name: "trimSuffix",
+    signature: "trimSuffix(string, string): string",
+    category: "string",
+    summary: "Strip a trailing suffix if present.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string, suffix: string) =>
+      suffix && s.endsWith(suffix) ? s.slice(0, s.length - suffix.length) : s,
   },
   // Math
   {

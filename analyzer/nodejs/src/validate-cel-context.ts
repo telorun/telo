@@ -61,6 +61,65 @@ export function resolveTypeFieldToSchema(
   return undefined;
 }
 
+/** Pull the raw expression source from a CEL field value — a compiled value
+ *  (`{ source }`), or a string (`!cel "x"` or `"${{ x }}"`). Strips a lone
+ *  `${{ }}` wrapper. Returns null when no source is recoverable. */
+function celExprSource(raw: unknown): string | null {
+  let s: string | undefined;
+  if (typeof raw === "string") s = raw;
+  else if (raw && typeof raw === "object" && typeof (raw as Record<string, any>).source === "string")
+    s = (raw as Record<string, any>).source;
+  if (s == null) return null;
+  const exact = s.match(/^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/);
+  return (exact ? exact[1] : s).trim();
+}
+
+/** Member-access chain for a bare dotted-identifier expression
+ *  (`inputs.user.tags` → ["inputs","user","tags"]). Returns null for anything
+ *  else (literals, calls, indexing, comprehensions) — those are not statically
+ *  reducible to a single typed path. */
+function purePathChain(raw: unknown): string[] | null {
+  const expr = celExprSource(raw);
+  if (expr == null) return null;
+  if (!/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(expr)) return null;
+  return expr.split(".");
+}
+
+/** Walk a member-access chain through a JSON Schema (descending `properties`)
+ *  and return the terminal node, or undefined when the path leaves typed schema. */
+function schemaAtChain(
+  chain: string[],
+  root: Record<string, any>,
+): Record<string, any> | undefined {
+  let cur: Record<string, any> | undefined = root;
+  for (const key of chain) {
+    if (!cur || typeof cur !== "object") return undefined;
+    const props = cur.properties as Record<string, any> | undefined;
+    if (!props || !(key in props)) return undefined;
+    cur = props[key] as Record<string, any>;
+  }
+  return cur && typeof cur === "object" ? cur : undefined;
+}
+
+/** The element schema of a sibling collection expression, when statically known.
+ *  Resolves `inputs.*` chains against the resource's `inputs:` contract and
+ *  returns the array's `items`. Returns undefined for non-chain or untyped
+ *  collections (caller substitutes `dyn`). */
+function resolveCollectionElementSchema(
+  manifestRoot: Record<string, any>,
+  field: string,
+): Record<string, any> | undefined {
+  const chain = purePathChain(manifestRoot?.[field]);
+  if (!chain || chain[0] !== "inputs") return undefined;
+  const contract = manifestRoot.inputs;
+  if (!contract || typeof contract !== "object") return undefined;
+  const terminal = schemaAtChain(chain.slice(1), { type: "object", properties: contract });
+  if (terminal && terminal.type === "array" && terminal.items && typeof terminal.items === "object") {
+    return terminal.items as Record<string, any>;
+  }
+  return undefined;
+}
+
 /**
  * Returns true when a CEL expression path (from walkCelExpressions, e.g. "routes[0].inputs.q")
  * falls within the scope of a context (e.g. "$.routes[*].inputs").
@@ -160,6 +219,17 @@ export function resolveContextAnnotations(
       properties: { ...(schema.properties ?? {}), ...(resolved ?? {}) },
       additionalProperties: false,
     };
+  }
+
+  // Element typing: derive a variable's schema from the element type of a sibling
+  // collection expression (e.g. `item` from `collection`). Resolves only when the
+  // collection is a member-access chain into the resource's typed `inputs` contract
+  // (the common, statically-knowable case); list literals, comprehensions, and
+  // untyped sources fall back to `dyn` so a wrong element type is never invented.
+  const elementFrom = schema["x-telo-context-element-from"] as string | undefined;
+  if (elementFrom) {
+    const items = resolveCollectionElementSchema(manifestRoot, elementFrom);
+    return items ?? {};
   }
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;

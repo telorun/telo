@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: RunProjection
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref VerifyProjection
+---
+kind: Run.Projection
+metadata:
+  name: DoubleEach
+collection: !cel "[1, 2, 3]"
+steps:
+  - name: Double
+    inputs:
+      n: !cel "item"
+    invoke:
+      kind: Run.Value
+      inputs:
+        n: {}
+      value:
+        doubled: !cel "double(inputs.n) * 2.0"
+outputs:
+  value: !cel "steps.Double.result.doubled"
+  at: !cel "index"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyProjection
+steps:
+  - name: Project
+    invoke: !ref DoubleEach
+  - name: Check
+    inputs:
+      result: !cel "steps.Project.result"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            type: array
+            const:
+              - { value: 2, at: 0 }
+              - { value: 4, at: 1 }
+              - { value: 6, at: 2 }
