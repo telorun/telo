@@ -8,6 +8,7 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { promisify } from "util";
+import { tryBuildControllerBundle } from "./bundle-builder.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
 
@@ -882,6 +883,10 @@ async function loadFromInstall(
   const packageRoot = path.join(installRoot, "node_modules", alias);
   const entry = subpath ? `./${subpath}` : ".";
   const entryFile = await resolvePackageEntry(packageRoot, entry);
+  // Transparent bundling: import a single esbuild bundle of the entry (one file
+  // vs a cold loose `node_modules` tree) when available; otherwise the loose
+  // entry. Pure accelerator — `null` on any miss, so behavior is unchanged.
+  const target = (await tryBuildControllerBundle(installRoot, entryFile)) ?? entryFile;
   // ESM dynamic `import()` accepts either a relative specifier or a `file://`
   // URL — but NOT a bare absolute filesystem path. On POSIX the `/abs/path`
   // form works by happy accident; on Windows `C:\path\to\file.js` is rejected
@@ -891,7 +896,7 @@ async function loadFromInstall(
   // Dynamic `import()` always resolves to a module namespace object on
   // success; it never returns null/undefined. The only meaningful contract
   // check is whether the module exports at least one of the controller hooks.
-  const instance = await import(pathToFileURL(entryFile).href);
+  const instance = await import(pathToFileURL(target).href);
   if (!instance.create && !instance.register) {
     throw new Error(
       `Invalid controller loaded from "${purl}": exports neither create() nor register()`,

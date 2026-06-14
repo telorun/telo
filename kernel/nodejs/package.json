@@ -70,6 +70,9 @@
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   },
+  "optionalDependencies": {
+    "esbuild": "^0.28.1"
+  },
   "peerDependencies": {
     "@telorun/sdk": "*"
   }
