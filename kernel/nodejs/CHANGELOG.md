@@ -1,5 +1,18 @@
 # @telorun/kernel
 
+## 0.30.0
+
+### Minor Changes
+
+- cce2caa: Transparent npm-controller bundling, on by default (kill-switch: `TELO_CONTROLLER_BUNDLE=0`). The npm loader collapses a controller's loose `node_modules` dependency tree into one esbuild bundle, written next to the controller's entry, so cold-start import reads a single file instead of hundreds — cutting the boot latency that dominates baked images. The controller PURL is unchanged (`pkg:npm/...`); bundling is a load-time cache over npm resolution, not a delivery format. Native packages (and the `@telorun/*` framework + the realm `@telorun/sdk`) are auto-externalized and resolve at runtime through the entry's own `node_modules`, so the full install is kept and externals can't diverge. It's a pure accelerator: esbuild is an optional dependency imported on demand, and any miss falls back to the loose import with identical behavior — esbuild absent, a read-only cache, a symlinked (`local_path`) dev install whose realpath escapes the install root, a CJS controller entry (whose named exports esbuild can't lift), an unbundleable controller, or a controller whose bundle would resolve assets relative to its own directory (`import.meta.url` / `__dirname`), which can't be safely relocated. Cached bundles are re-checked against that last guard on load, so an unsafe one self-heals to the loose import.
+
+### Patch Changes
+
+- Updated dependencies [aaa760d]
+- Updated dependencies [aaa760d]
+  - @telorun/analyzer@0.24.0
+  - @telorun/templating@0.9.0
+
 ## 0.29.0
 
 ### Minor Changes
