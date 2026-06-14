@@ -70,31 +70,56 @@ produces state another resource consumes during init. Committed invariant:
 instantiation.** Implementation audits existing controllers' `register()` usage
 against this; any that violate it keep importing eagerly at Definition.init.
 
-### Phase 2 — Per-controller bundles with native externals (publish + build)
+### Phase 2 — Transparent npm-controller bundling (kernel)
 
-Builds directly on [bundle-controllers.md](./bundle-controllers.md)
-(`pkg:telo/local/js` delivery, `BundleControllerLoader`, realm symlinks,
-registry tar.gz, esbuild publish path). Two deltas:
+A purely kernel-side load-time optimization layered on the npm loader. The
+controller PURL stays `pkg:npm/...` **everywhere — locally and after publish**;
+there is no `pkg:telo` rewrite, no `nativeDependencies` field, and no publish /
+registry change. Bundling is an accelerator over npm resolution, transparent to
+authors and consumers.
 
-- **Per-controller granularity.** The publish bundler emits **one bundle per
-  controller export** (`pkg:telo/local/js?path=…#export`), not one per module —
-  so importing the SQLite kind never drags Postgres in. Per-module / whole-app
-  bundles are rejected: they re-couple kinds and defeat lazy loading.
-- **Native-external hybrid** (supersedes that plan's "refuse non-bundleable
-  deps" stance). The bundler inlines the **pure-JS closure** and marks native
-  packages (`*.node` deps + a module-declared native allowlist) **external**,
-  alongside the already-external realm names. A bundled module declares its
-  native deps in its manifest; `telo install` npm-installs **only those** into
-  `/telo-cache/npm`, and `ensureRealmSymlinks`
-  ([bundle-loader.ts](../src/controller-loaders/bundle-loader.ts)) is extended to
-  link the declared natives next to the bundle so the bare `import` resolves.
-  Native binaries are fetched by npm **at build time only** (leveraging
-  prebuild-install / prebuildify / node-gyp); the runtime stays hermetic — the
-  `.node` is baked into the image and just `dlopen`s.
+How it works, per controller (subpath):
 
-Net: `pg` (pure JS) collapses to one file; `better-sqlite3` stays a single
-external `dlopen` (irreducible); pure-JS modules (`console`, `run`) need no npm
-install at all.
+- **Inspect → build → import.** After the npm loader installs / verifies the
+  package (unchanged — the full dependency tree lands in `.telo/npm` as today),
+  the import step checks for a cached bundle keyed by `(package, version,
+  subpath)`. Present → `import()` it. Absent, with esbuild available on a writable
+  cache → **build it** (esbuild the package's resolved entry for that subpath)
+  into `.telo/npm/.telo-bundles/<alias>.mjs`, then import. esbuild absent, or a
+  read-only FS with no cached bundle → **fall back to today's loose
+  `loadFromInstall`**. A pure accelerator that never blocks.
+- **Externals auto-detected at bundle time.** An esbuild plugin marks a bare
+  import **external** when its resolved package ships a `.node` (or carries
+  `gypfile` / `binary` / prebuild markers); the realm names
+  (`REALM_COLLAPSE_NAMES`) are always external. Everything else inlines. No
+  declaration — the native set is read from the **real installed tree**. Because
+  the **full npm install is kept**, every auto-externalized native is already on
+  disk: externals ⊆ install **by construction**, so the externals/install
+  divergence that forced the old declared-allowlist apparatus simply cannot occur.
+- **Externals resolve for free.** The cached bundle lives *inside* the install
+  root (`.telo/npm/.telo-bundles/`), so Node's normal walk-up resolves both
+  `@telorun/sdk` (realm) and the native externals from the existing
+  `.telo/npm/node_modules`. No symlink bridge.
+- **Parity is automatic.** The bundle is built from the *same pinned npm package*
+  (`pkg:npm/...@version`) in every environment, so "works under `telo run`" and
+  "works after publish" are the same bytes by construction — nothing to keep in
+  sync, no sandboxing tricks, no smoke-import gate. A `local_path` dev build vs a
+  registry build differ only as far as the *source* already differs today (the
+  existing npm-publish reality), never because bundling introduced a new path.
+- **Where it builds.** `telo install` builds the bundles into the bake (writable),
+  so the runtime imports a single baked file. `telo run` builds-on-demand and
+  caches when writable. Composes with Phase 1: only *instantiated* kinds are ever
+  imported, and each such import reads one bundle instead of a cold loose tree.
+
+Tradeoff: the **full npm tree stays on disk** beside the bundle (`pg`'s loose
+files, unused). The latency win (import one bundle, not hundreds of cold files)
+is fully preserved; the disk-slimming of the earlier `pkg:telo` design is dropped
+as an optional future follow-on (prune inlined-JS deps post-bundle), not needed
+for the goal.
+
+Net: `pg`'s ~2.6s cold import collapses to one bundled file; `better-sqlite3`
+stays a single external `dlopen` from the installed tree; the controller PURL and
+the publish flow are untouched.
 
 ## Decisions
 
@@ -125,20 +150,46 @@ install at all.
   analysis today — analyzability is unaffected. The committed invariant is no
   cross-kind `register()` effects consumed before that kind's first
   instantiation, verified by auditing existing controllers; violators stay eager.
-- **Per-controller bundles, never per-module / whole-app.** A single bundle that
-  pulls every kind in evaluates them all on import — eager by construction,
-  exactly what we're removing.
-- **Native deps stay external + npm-installed at build time.** esbuild can't
-  inline a platform/ABI-specific `.node`, and reimplementing prebuilt-binary
-  fetch + ABI selection is large and fragile. npm at build time handles every
-  native flavor uniformly and the runtime is hermetic regardless. Rejected, noted
-  as future: npm-free prebuildify tarball-extract (partial — fails for
-  prebuild-install packages) and Telo-owned `pkg:telo/local/napi` delivery
-  (applies only to Telo-authored controllers; a separate large initiative).
-- **`telo install` unchanged for the cache.** Keeps the bake hermetic and the
-  change small; slimming the install to natives-only is an optional follow-on,
-  not required for the latency win (the bundle's import-time win lands whether or
-  not `pg` is still on disk).
+- **Bundling is transparent over npm — the PURL never changes.** A controller is
+  `pkg:npm/...` locally and after publish; the bundle is a load-time cache the
+  loader builds and consults, not a delivery format. Rejected the `pkg:telo` +
+  publish-rewrite design: it gave the *same controller two PURLs* (source locally,
+  bundle after publish), which is exactly the divergence — and the surprise — we
+  set out to remove. As a bonus this drops the entire publish / registry tar.gz /
+  consumer-extraction body of work and the dependence on bundle-controllers.md
+  steps 5–7.
+- **Per-controller (subpath) bundles, never per-module / whole-app.** A single
+  bundle that pulls every kind in evaluates them all on import — eager by
+  construction, exactly what Phase 1 removes. One bundle per controller subpath
+  composes with lazy loading.
+- **Natives auto-detected, full install kept — no declaration.** The esbuild
+  plugin externalizes any package that ships a `.node` (read from the real
+  installed tree); the full npm install stays on disk, so every external is
+  present and externals ⊆ install by construction. Rejected the declared
+  `nativeDependencies` allowlist + slimmed install: it created an externals-vs-
+  install gap (review point 3) that only existed *because* the install was
+  slimmed. Keeping the full install makes auto-detection safe and the declaration
+  redundant. Accepted tradeoff: inlined-JS deps sit unused on disk; pruning them
+  is an optional future slim, not needed for the latency win.
+- **Parity is structural, not enforced.** Building from the same pinned npm
+  package in every environment makes local and published execution identical bytes
+  by construction — so there's no need for a smoke-import gate, sandboxed
+  resolution, or build-once-ship-the-bundle machinery (all of which the old design
+  needed precisely because it ran source one way and a bundle another). No bundle
+  is ever shipped in a registry artifact; each environment builds its own from the
+  pinned package and gets the same result.
+- **The bundler lives in the kernel, esbuild lazy-optional.** It sits in the npm
+  loader's import step, beside the loaders that already build on the fly
+  (`npm install`, `cargo build`), so programmatic `Kernel` users get bundling too
+  — not a CLI-only capability. esbuild is imported on demand and env-misses to the
+  loose-import fallback if absent, so consumers that can't or won't bundle still
+  run. Rejected `@telorun/cli` home: it would strand programmatic users and split
+  the build-on-the-fly symmetry the npm/napi loaders establish.
+- **`telo install` keeps the full install; it additionally builds bundles.**
+  Phase 1 does not touch `telo install`. Phase 2 leaves the npm install exactly as
+  today (full tree) and adds a bundle-build pass into the bake, so the runtime
+  imports one baked file per used controller. No native-fetch or slimming change —
+  the natives are already in the full install.
 - **Plan lives in `kernel/nodejs/plans/`** — lazy loading (the load-bearing
   piece) is kernel-centric, and the bundling delta extends the kernel-side
   `bundle-controllers.md`.
@@ -149,24 +200,29 @@ A manifest imports `@telorun/sql` (which declares both Postgres and SQLite
 connection kinds) but instantiates only SQLite:
 
 - **Boot:** the kernel registers both connection definitions (metadata only). It
-  instantiates the SQLite connection → lazy-loads *that* controller's
-  `pkg:telo/local/js` bundle (one file) and `dlopen`s the external
-  `better-sqlite3` from the baked npm tree. The Postgres controller and `pg` are
-  **never imported**.
+  instantiates the SQLite connection → lazy-loads *that* controller, importing its
+  cached bundle (`.telo/npm/.telo-bundles/...`, one file) and `dlopen`ing the
+  external `better-sqlite3` from `.telo/npm/node_modules`. The Postgres controller
+  and `pg` are **never imported**. The controller PURL is the same
+  `pkg:npm/@telorun/sql@...` it always was.
 - **Latency:** the ~2.6s `pg` cold import disappears entirely (never loaded); the
   SQLite path drops from a loose-file tree to one bundle + one native `dlopen`.
-- **Same app on a future non-Node kernel:** lazy loading still applies; the
-  `pkg:telo/local/js` bundle env-misses and the candidate list falls through to a
-  format that kernel can host — no kernel-specific code.
+- **No esbuild present (or read-only, no cached bundle):** the loader falls back
+  to today's loose `loadFromInstall` — slower, but identical behavior. Lazy
+  loading still skips `pg` regardless.
 
 ## Sequencing
 
 1. **Phase 1 lazy loading** — independent of bundling, ships first, helps every
    runtime immediately. Land + test before touching the bundle path.
-2. **Phase 2 per-controller + native-external bundling** — extends
-   `bundle-controllers.md` steps 5-7 (CLI publish bundler, consumer cache
-   extraction) with per-export emit, the native allowlist, natives-only
-   `telo install`, and the extended symlink bridge.
+2. **Phase 2 transparent npm-controller bundling** — kernel-only, no publish /
+   registry work (independent of bundle-controllers.md steps 5–7). Lands as:
+   (a) `buildControllerBundle()` in the kernel — esbuild (lazy-optional) with the
+   native-externalizing plugin, content-addressed output under
+   `.telo/npm/.telo-bundles/`; (b) the npm loader's import step inspects for a
+   cached bundle and builds-on-demand, falling back to loose `loadFromInstall`;
+   (c) `telo install` adds the bundle-build pass to the bake. The PURL, publish
+   flow, and manifest schema are untouched.
 
 ## Testing
 
@@ -179,10 +235,19 @@ connection kinds) but instantiates only SQLite:
   still bakes every definition schema with no controller imported; audit that no
   shipped controller's `register()` has effects consumed before its kind's first
   instantiation.
-- **Publish/build (Phase 2):** per-export bundles emitted; a controller with a
-  declared native dep externalizes it (bundle does not inline the `.node`);
-  `telo install` installs only the declared natives; the symlink bridge resolves
-  both realm names and natives next to the bundle.
+- **Bundling (Phase 2):** a controller with a third-party JS dep bundles to one
+  file that inlines the dep and resolves `@telorun/sdk` correctly (`Stream`
+  identity preserved); a controller with a native dep externalizes it (the bundle
+  does not inline the `.node`) and the native `dlopen`s from `.telo/npm` at import;
+  the bundle is content-addressed by `(package, version, subpath)` and reused on
+  the second load.
+- **Fallback (Phase 2):** with esbuild absent, or a read-only FS and no cached
+  bundle, the loader serves the loose `loadFromInstall` path with identical
+  behavior — bundling never blocks a run.
+- **Parity (Phase 2):** the bundle built under `telo run` is byte-identical to the
+  one `telo install` bakes for the same pinned package (same `(package, version,
+  subpath)` → same content hash); the PURL is unchanged across both.
 - **End-to-end:** a SQLite-only manifest boots without `pg` being imported
-  (event stream shows no Postgres controller load); a Postgres manifest still
-  works via its bundle + external `pg`.
+  (event stream shows no Postgres controller load) and runs from the SQLite
+  bundle + external `better-sqlite3`; a Postgres manifest works via its bundle +
+  external `pg`.
