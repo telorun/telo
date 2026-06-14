@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -420,5 +421,96 @@ describe("POST /v1/sessions entry path validation", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: "invalid_bundle" });
+  });
+});
+
+describe("POST /v1/sessions terms enforcement", () => {
+  let h: TestHarness;
+
+  beforeEach(() => {
+    process.env.RUNNER_TERMS_VERSION = "2024-01";
+    process.env.RUNNER_TERMS_TITLE = "Test terms";
+    process.env.RUNNER_TERMS_BODY = "Be excellent to each other.";
+  });
+
+  afterEach(async () => {
+    if (h) await teardownHarness(h);
+    delete process.env.RUNNER_TERMS_VERSION;
+    delete process.env.RUNNER_TERMS_TITLE;
+    delete process.env.RUNNER_TERMS_BODY;
+    delete process.env.RUNNER_TERMS_FILE;
+  });
+
+  it("rejects a session with 428 + the terms when unacknowledged", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    expect(res.statusCode).toBe(428);
+    expect(res.json()).toMatchObject({
+      error: "terms_required",
+      terms: { version: "2024-01", title: "Test terms" },
+    });
+  });
+
+  it("rejects a stale accepted version", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      headers: { "x-telo-accepted-terms": "old-version" },
+      payload: VALID_START_BODY,
+    });
+    expect(res.statusCode).toBe(428);
+  });
+
+  it("starts when the accepted version matches", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      headers: { "x-telo-accepted-terms": "2024-01" },
+      payload: VALID_START_BODY,
+    });
+    expect(res.statusCode).toBe(201);
+    await waitFor(() => h.docker._lastCreateOpts != null, "start settled");
+  });
+
+  it("defaults the version to a content hash when none is set, and enforces it", async () => {
+    delete process.env.RUNNER_TERMS_VERSION;
+    const expected = createHash("sha256")
+      .update(process.env.RUNNER_TERMS_BODY!)
+      .digest("hex")
+      .slice(0, 12);
+    h = await buildHarness();
+
+    const rejected = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    expect(rejected.statusCode).toBe(428);
+    expect((rejected.json() as { terms: { version: string } }).terms.version).toBe(expected);
+
+    const accepted = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      headers: { "x-telo-accepted-terms": expected },
+      payload: VALID_START_BODY,
+    });
+    expect(accepted.statusCode).toBe(201);
+    await waitFor(() => h.docker._lastCreateOpts != null, "start settled");
+  });
+
+  it("reads the agreement body from RUNNER_TERMS_FILE", async () => {
+    delete process.env.RUNNER_TERMS_VERSION;
+    delete process.env.RUNNER_TERMS_BODY;
+    const dir = await mkdtemp(join(tmpdir(), "docker-runner-terms-"));
+    const file = join(dir, "terms.md");
+    const body = "# Cloud agreement\n\nUse at your own risk.";
+    await writeFile(file, body, "utf8");
+    process.env.RUNNER_TERMS_FILE = file;
+    try {
+      h = await buildHarness();
+      const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+      expect(res.statusCode).toBe(428);
+      expect((res.json() as { terms: { body: string } }).terms.body).toBe(body);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

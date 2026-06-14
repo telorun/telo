@@ -69,7 +69,7 @@ export class SessionRegistry {
    * duplicate insertion. Throws SessionLimitError if we're at capacity.
    */
   register(args: { sessionId: string }): SessionEntry {
-    if (this.sessions.size >= this.deps.maxSessions) {
+    if (this.sessions.size >= this.deps.maxSessions && !this.evictOldestTerminal()) {
       throw new SessionLimitError(
         `runner is at its configured max of ${this.deps.maxSessions} concurrent sessions`,
       );
@@ -145,6 +145,20 @@ export class SessionRegistry {
     if (!entry) throw new SessionEvictedError(`session '${sessionId}' not in registry`);
     entry.emitter.on(EVENT_EMITTED, listener);
     return () => entry.emitter.off(EVENT_EMITTED, listener);
+  }
+
+  /** Free a slot at capacity by removing the oldest already-terminated session
+   *  (by exit time). Retained exited sessions are history kept for re-attach, so
+   *  they yield to a new run rather than blocking it; live sessions are never
+   *  evicted. Returns false when every session is still live. */
+  private evictOldestTerminal(): boolean {
+    let oldest: SessionEntry | undefined;
+    for (const entry of this.sessions.values()) {
+      if (entry.exitedAt === null) continue;
+      if (!oldest || entry.exitedAt < oldest.exitedAt!) oldest = entry;
+    }
+    if (!oldest) return false;
+    return this.remove(oldest.sessionId);
   }
 
   private scheduleEviction(entry: SessionEntry): void {

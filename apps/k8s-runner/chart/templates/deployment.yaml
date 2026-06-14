@@ -40,6 +40,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.runner.terms.enabled }}
+            - name: terms
+              mountPath: /etc/telo/terms
+              readOnly: true
+            {{- end }}
           ports:
             - containerPort: {{ .Values.runner.port }}
           env:
@@ -108,6 +113,16 @@ spec:
               value: "{{ .Values.limits.maxTtlSeconds }}"
             - name: RUNNER_MAX_EPHEMERAL_STORAGE
               value: {{ .Values.limits.maxEphemeralStorage | quote }}
+            {{- if .Values.runner.terms.enabled }}
+            - name: RUNNER_TERMS_FILE
+              value: /etc/telo/terms/terms.md
+            - name: RUNNER_TERMS_TITLE
+              value: {{ .Values.runner.terms.title | quote }}
+            {{- if .Values.runner.terms.version }}
+            - name: RUNNER_TERMS_VERSION
+              value: {{ .Values.runner.terms.version | quote }}
+            {{- end }}
+            {{- end }}
           resources:
             {{- toYaml .Values.runner.resources | nindent 12 }}
           readinessProbe:
@@ -126,6 +141,11 @@ spec:
         # Writable scratch so readOnlyRootFilesystem doesn't break the runtime.
         - name: tmp
           emptyDir: {}
+        {{- if .Values.runner.terms.enabled }}
+        - name: terms
+          configMap:
+            name: {{ include "telo-k8s-runner.name" . }}-terms
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

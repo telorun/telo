@@ -24,6 +24,7 @@ export function RunView() {
     unavailableRun,
     isStarting,
     stopRun,
+    removeRun,
     closeRunView,
     getTerminal,
   } = useRun();
@@ -89,6 +90,24 @@ export function RunView() {
           ×
         </Button>
       </div>
+      {selectedRun.historyUnavailable && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+          <span className="flex-1">
+            This run's history is no longer available on the runner — it expired or
+            the runner restarted.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              removeRun(selectedRun.id);
+              closeRunView();
+            }}
+          >
+            Remove from history
+          </Button>
+        </div>
+      )}
       <RunDebugPanel run={selectedRun} terminal={terminal} />
     </div>
   );

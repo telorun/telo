@@ -23,7 +23,23 @@ export interface RunAdapter<Config = unknown> {
 
   isAvailable(config: Config): Promise<AvailabilityReport>;
 
+  /** The runner's usage agreement that must be accepted before a session may
+   *  start, or `null` when this runner has none (e.g. local development). The
+   *  runner enforces it server-side; the editor surfaces it and records the
+   *  user's acceptance. Adapters whose runner has no terms concept omit this. */
+  getTerms?(config: Config): Promise<RunnerTerms | null>;
+
   start(request: RunRequest, config: Config): Promise<RunSession>;
+
+  /** Re-establish a session that already exists on the runner, identified by the
+   *  `sessionId` persisted in the editor's run index across a page reload.
+   *  Reconciles the session's current status, then replays its console output +
+   *  inspection events from the start so the rehydrated record is refilled.
+   *  Resolves to `null` when the session no longer exists on the runner (evicted
+   *  past its TTL, or the runner restarted) — the caller keeps the history entry
+   *  but marks it unavailable. Only adapters whose runner outlives the editor
+   *  page implement this. */
+  attach?(sessionId: string, config: Config): Promise<RunSession | null>;
 }
 
 /** A runner's self-description, fetched from `GET /v1/capabilities`. Mirrors
@@ -35,6 +51,27 @@ export interface RunnerCapabilities {
   /** Advertised by every runner; reserved for future editor use (e.g. hiding
    *  the terminal when `io` is false). Not consumed yet. */
   features: { io: boolean; ports: boolean };
+  /** Operator-defined usage agreement enforced before a session starts; absent
+   *  when the runner has none. */
+  terms?: RunnerTerms;
+}
+
+/** A runner's usage agreement. Mirrors `RunnerTerms` in `@telorun/runner-core`.
+ *  `version` is opaque/operator-controlled — a change re-prompts acceptance. */
+export interface RunnerTerms {
+  version: string;
+  title: string;
+  body: string;
+}
+
+/** Thrown by `start` when the runner rejects a session because the terms haven't
+ *  been acknowledged (HTTP 428). Carries the runner's current terms so the caller
+ *  can surface the gate and retry. */
+export class TermsRequiredError extends Error {
+  constructor(readonly terms: RunnerTerms) {
+    super("Runner requires accepting its terms before running.");
+    this.name = "TermsRequiredError";
+  }
 }
 
 export type AvailabilityReport =
@@ -51,6 +88,9 @@ export interface RunRequest {
   bundle: RunBundle;
   env?: Record<string, string>;
   ports?: PortMapping[];
+  /** The terms version the user accepted for this runner, sent to the runner so
+   *  it lets the session start. Omitted when the runner has no terms. */
+  acceptedTermsVersion?: string;
 }
 
 export interface RunBundle {

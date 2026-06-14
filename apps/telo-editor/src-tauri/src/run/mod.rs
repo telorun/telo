@@ -45,6 +45,17 @@ pub async fn run_start(
 }
 
 #[tauri::command]
+pub async fn run_reattach(
+    app: AppHandle,
+    registry: State<'_, SessionRegistry>,
+    session_id: String,
+    io_channel: Channel<Vec<u8>>,
+) -> Result<bool, String> {
+    let registry = registry.inner().clone();
+    docker::reattach(app, registry, session_id, io_channel).await
+}
+
+#[tauri::command]
 pub async fn run_stop(
     registry: State<'_, SessionRegistry>,
     session_id: String,

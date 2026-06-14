@@ -1,5 +1,6 @@
 import {
   buildServer as coreBuildServer,
+  loadTermsFromEnv,
   stopAllSessions,
   type RunnerBackend,
   type ServerHandle,
@@ -25,7 +26,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     backend: deps.backend,
     config: deps.config,
     version: VERSION,
-    capabilities: kubernetesRunnerCapabilities(deps.config.defaultImage),
+    capabilities: kubernetesRunnerCapabilities(
+      deps.config.defaultImage,
+      loadTermsFromEnv(process.env),
+    ),
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
   });
   // Mount the internal, tokenized fetch route on the same app so a build Job's

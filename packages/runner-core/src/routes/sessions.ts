@@ -4,7 +4,12 @@ import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify"
 
 import { isEventFrame } from "@telorun/debug-wire";
 import type { RunnerBackend } from "../backend.js";
-import { SessionStartError, type StartSessionRequest } from "../contract.js";
+import {
+  ACCEPTED_TERMS_HEADER,
+  SessionStartError,
+  type RunnerTerms,
+  type StartSessionRequest,
+} from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
 import { SessionLimitError, type SessionRegistry } from "../session/registry.js";
 import { streamSessionEvents } from "../sse/channel.js";
@@ -16,6 +21,9 @@ export interface SessionsRouteDeps {
   /** The runner's own default registry URL, surfaced to the workload as
    *  TELO_REGISTRY_URL when the request doesn't override it. */
   defaultRegistryUrl?: string;
+  /** When set, a session may only start if the client acknowledges this exact
+   *  terms version via the `x-telo-accepted-terms` header. */
+  terms?: RunnerTerms;
 }
 
 const startBodySchema = {
@@ -73,7 +81,20 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
     app.post<{ Body: StartSessionRequest }>(
       "/v1/sessions",
       { schema: { body: startBodySchema } },
-      async (req, reply) => startSession(app, deps, req.body, reply),
+      async (req, reply) => {
+        // Terms enforcement — the server is the source of truth, so a client that
+        // skips the editor gate still can't start a session without acknowledging
+        // the current terms version.
+        if (deps.terms) {
+          const raw = req.headers[ACCEPTED_TERMS_HEADER];
+          const accepted = Array.isArray(raw) ? raw[0] : raw;
+          if (accepted !== deps.terms.version) {
+            reply.code(428).send({ error: "terms_required", terms: deps.terms });
+            return;
+          }
+        }
+        return startSession(app, deps, req.body, reply);
+      },
     );
 
     app.get<{ Params: { id: string } }>("/v1/sessions/:id", async (req, reply) => {

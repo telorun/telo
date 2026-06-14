@@ -11,6 +11,8 @@ import {
 
 import { type DebugFrame, isLogFrame } from "@telorun/debug-wire";
 
+import { registry } from "./registry";
+import { loadRunIndex, saveRunIndex, type PersistedRunEntry } from "./run-index";
 import { TerminalBuffer } from "./terminal-buffer";
 import {
   isTerminal,
@@ -64,6 +66,11 @@ export interface RunRecord {
    *  of `debugFrames[0]` is `debugFrameSeq - debugFrames.length`. Lets the view
    *  track a "cleared" boundary that survives ring-buffer eviction. */
   debugFrameSeq: number;
+  /** Set when a run restored from the index could not be re-attached — the
+   *  session is gone from the runner (evicted past its TTL / runner restarted)
+   *  or its adapter can't resume. The list keeps the entry; the view shows a
+   *  note instead of trying to stream. */
+  historyUnavailable?: boolean;
 }
 
 /** Unavailable/setup-required banner shown in RunView when a run failed to
@@ -102,6 +109,10 @@ interface RunContextValue {
     request: RunRequest;
   }): Promise<void>;
   stopRun(runId: string): Promise<void>;
+  /** Drop a run from history: tears down its runtime, forgets its re-attach
+   *  metadata, and removes it from the persisted index. Used to clear a run
+   *  whose history is no longer available on the runner. */
+  removeRun(runId: string): void;
   selectRun(runId: string): void;
   openRunView(): void;
   closeRunView(): void;
@@ -126,27 +137,70 @@ export function useRun(): RunContextValue {
 }
 
 export function RunProvider({ children }: { children: ReactNode }) {
-  const [runsByApp, setRunsByApp] = useState<Map<string, RunRecord[]>>(new Map());
+  // Re-attach metadata, keyed by run id: which adapter ran the session and the
+  // config (e.g. runner baseUrl) needed to reconnect to it after a reload. Held
+  // in a ref so it is available to the persist effect synchronously, before any
+  // state-driven effect can run and clobber the stored config.
+  const attachMeta = useRef<Map<string, { adapterId: string; config: unknown }>>(new Map());
+
+  // Seed the run list from the persisted index so a page reload restores history.
+  const [runsByApp, setRunsByApp] = useState<Map<string, RunRecord[]>>(() => {
+    const byApp = new Map<string, RunRecord[]>();
+    for (const entry of loadRunIndex()) {
+      attachMeta.current.set(entry.id, { adapterId: entry.adapterId, config: entry.config });
+      const list = byApp.get(entry.appPath) ?? [];
+      list.push(shellFromEntry(entry));
+      byApp.set(entry.appPath, list);
+    }
+    for (const [appPath, list] of byApp) {
+      list.sort((a, b) => b.startedAt - a.startedAt);
+      byApp.set(appPath, list.slice(0, MAX_RUNS_PER_APP));
+    }
+    return byApp;
+  });
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [unavailableRun, setUnavailableRun] = useState<UnavailableRun | null>(null);
   const [isRunViewOpen, setIsRunViewOpen] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  // Terminal buffers keyed by run id, held in STATE (not just the runtime ref)
+  // so the view re-renders reactively when a buffer appears — load-bearing for
+  // resume, where the buffer is attached asynchronously after the record already
+  // exists, and a ref read on the next render isn't a reliable trigger.
+  const [terminals, setTerminals] = useState<Map<string, TerminalBuffer>>(new Map());
 
   // Live run objects, keyed by run id. Reconciled against `runsByApp` so a run
   // that leaves React state (eviction) has its session/transcript torn down.
   const runtimes = useRef<Map<string, RunRuntime>>(new Map());
+  // Runs whose re-attach is in flight, to dedupe concurrent attach attempts.
+  const attaching = useRef<Set<string>>(new Set());
 
-  const disposeRuntime = useCallback((runId: string) => {
-    const rt = runtimes.current.get(runId);
-    if (!rt) return;
-    runtimes.current.delete(runId);
-    rt.unsubscribe();
-    // Evicting a still-running run must not leak the underlying container.
-    if (!isTerminal(rt.session.getStatus())) {
-      void rt.session.stop().catch(() => undefined);
-    }
-    rt.terminal?.dispose();
+  /** Publish (or clear) a run's terminal buffer into reactive state so the view
+   *  picks it up. Pass `null` to remove it. */
+  const setTerminal = useCallback((runId: string, terminal: TerminalBuffer | null) => {
+    setTerminals((prev) => {
+      if (terminal === null && !prev.has(runId)) return prev;
+      const next = new Map(prev);
+      if (terminal === null) next.delete(runId);
+      else next.set(runId, terminal);
+      return next;
+    });
   }, []);
+
+  const disposeRuntime = useCallback(
+    (runId: string) => {
+      const rt = runtimes.current.get(runId);
+      if (!rt) return;
+      runtimes.current.delete(runId);
+      rt.unsubscribe();
+      // Evicting a still-running run must not leak the underlying container.
+      if (!isTerminal(rt.session.getStatus())) {
+        void rt.session.stop().catch(() => undefined);
+      }
+      rt.terminal?.dispose();
+      setTerminal(runId, null);
+    },
+    [setTerminal],
+  );
 
   const updateRecord = useCallback(
     (runId: string, mut: (record: RunRecord) => RunRecord) => {
@@ -166,14 +220,40 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Tear down runtimes whose record left state (evicted past the per-app cap).
+  // Tear down runtimes whose record left state (evicted past the per-app cap)
+  // and forget their re-attach metadata.
   useEffect(() => {
     const live = new Set<string>();
     for (const records of runsByApp.values()) for (const r of records) live.add(r.id);
     for (const id of [...runtimes.current.keys()]) {
       if (!live.has(id)) disposeRuntime(id);
     }
+    for (const id of [...attachMeta.current.keys()]) {
+      if (!live.has(id)) attachMeta.current.delete(id);
+    }
   }, [runsByApp, disposeRuntime]);
+
+  // Mirror the run list to the persisted index so the next reload can restore it.
+  // Bodies (logs/events) are never stored — only the pointer + last-known status.
+  useEffect(() => {
+    const entries: PersistedRunEntry[] = [];
+    for (const [appPath, records] of runsByApp) {
+      for (const record of records) {
+        const meta = attachMeta.current.get(record.id);
+        entries.push({
+          id: record.id,
+          appPath,
+          adapterId: record.adapterId,
+          adapterDisplayName: record.adapterDisplayName,
+          hasTerminal: record.hasTerminal,
+          startedAt: record.startedAt,
+          status: record.status,
+          config: meta?.config,
+        });
+      }
+    }
+    saveRunIndex(entries);
+  }, [runsByApp]);
 
   // On provider teardown, stop every live session and detach subscriptions.
   useEffect(() => {
@@ -186,11 +266,65 @@ export function RunProvider({ children }: { children: ReactNode }) {
   const closeRunView = useCallback(() => setIsRunViewOpen(false), []);
   const openRunView = useCallback(() => setIsRunViewOpen(true), []);
 
-  const selectRun = useCallback((runId: string) => {
-    setUnavailableRun(null);
-    setSelectedRunId(runId);
-    setIsRunViewOpen(true);
-  }, []);
+  // Re-establish a run restored from the index: reconnect to the still-live
+  // session on the runner and replay its history. No-op once a runtime exists
+  // (freshly started runs, or an already-attached one). Marks the record
+  // unavailable when the session is gone or its adapter can't resume.
+  const ensureAttached = useCallback(
+    async (runId: string) => {
+      if (runtimes.current.has(runId) || attaching.current.has(runId)) return;
+      const meta = attachMeta.current.get(runId);
+      if (!meta) return;
+      const adapter = registry.get(meta.adapterId);
+      if (!adapter?.attach) {
+        updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
+        return;
+      }
+      attaching.current.add(runId);
+      try {
+        const session = await adapter.attach(runId, meta.config);
+        if (!session) {
+          updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
+          return;
+        }
+        const terminal = session.io ? new TerminalBuffer(session.io) : null;
+        const runtime: RunRuntime = {
+          session,
+          terminal,
+          unsubscribe: () => undefined,
+          lineId: 0,
+          partial: { stdout: "", stderr: "" },
+        };
+        runtimes.current.set(runId, runtime);
+        if (terminal) setTerminal(runId, terminal);
+        runtime.unsubscribe = session.subscribe((event) => {
+          applyRunEvent(event, runId, runtime, terminal !== null, updateRecord);
+        });
+        updateRecord(runId, (record) => ({
+          ...record,
+          status: session.getStatus(),
+          hasTerminal: terminal !== null,
+          historyUnavailable: false,
+        }));
+      } catch (err) {
+        console.warn("run attach failed:", err);
+        updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
+      } finally {
+        attaching.current.delete(runId);
+      }
+    },
+    [updateRecord, setTerminal],
+  );
+
+  const selectRun = useCallback(
+    (runId: string) => {
+      setUnavailableRun(null);
+      setSelectedRunId(runId);
+      setIsRunViewOpen(true);
+      void ensureAttached(runId);
+    },
+    [ensureAttached],
+  );
 
   const showUnavailable = useCallback((run: UnavailableRun) => {
     setUnavailableRun(run);
@@ -208,6 +342,27 @@ export function RunProvider({ children }: { children: ReactNode }) {
       // status via the subscription — let that drive UI state.
       console.warn("run_stop invoke failed:", err);
     }
+  }, []);
+
+  const removeRun = useCallback((runId: string) => {
+    // Clearing the selection first means RunView falls back to its empty state
+    // for a removed run that was on screen. The runsByApp change drives the rest:
+    // the eviction effect disposes any runtime + forgets its re-attach metadata,
+    // and the persist effect rewrites the index without it.
+    setSelectedRunId((cur) => (cur === runId ? null : cur));
+    setRunsByApp((prev) => {
+      let found = false;
+      const next = new Map(prev);
+      for (const [appPath, records] of prev) {
+        if (!records.some((r) => r.id === runId)) continue;
+        found = true;
+        next.set(
+          appPath,
+          records.filter((r) => r.id !== runId),
+        );
+      }
+      return found ? next : prev;
+    });
   }, []);
 
   const startRun = useCallback(
@@ -261,6 +416,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
         partial: { stdout: "", stderr: "" },
       };
       runtimes.current.set(record.id, runtime);
+      if (terminal) setTerminal(record.id, terminal);
+      attachMeta.current.set(record.id, { adapterId: adapter.id, config });
       runtime.unsubscribe = session.subscribe((event) => {
         applyRunEvent(event, record.id, runtime, terminal !== null, updateRecord);
       });
@@ -274,7 +431,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       setSelectedRunId(record.id);
       setIsStarting(false);
     },
-    [updateRecord],
+    [updateRecord, setTerminal],
   );
 
   const selectedRun = useMemo<RunRecord | null>(() => {
@@ -302,8 +459,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [runsByApp],
   );
   const getTerminal = useCallback(
-    (runId: string) => runtimes.current.get(runId)?.terminal ?? null,
-    [],
+    (runId: string) => terminals.get(runId) ?? null,
+    [terminals],
   );
 
   const value = useMemo<RunContextValue>(
@@ -314,6 +471,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       isStarting,
       startRun,
       stopRun,
+      removeRun,
       selectRun,
       openRunView,
       closeRunView,
@@ -330,6 +488,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       isStarting,
       startRun,
       stopRun,
+      removeRun,
       selectRun,
       openRunView,
       closeRunView,
@@ -342,6 +501,26 @@ export function RunProvider({ children }: { children: ReactNode }) {
   );
 
   return <RunContextValue.Provider value={value}>{children}</RunContextValue.Provider>;
+}
+
+/** Build an empty display record from a persisted index entry. Bodies (lines,
+ *  debug frames, terminal scrollback) stay empty until the run is selected and
+ *  re-attached, which replays them from the runner. */
+function shellFromEntry(entry: PersistedRunEntry): RunRecord {
+  return {
+    id: entry.id,
+    appPath: entry.appPath,
+    adapterId: entry.adapterId,
+    adapterDisplayName: entry.adapterDisplayName,
+    status: entry.status,
+    startedAt: entry.startedAt,
+    hasTerminal: entry.hasTerminal,
+    progress: null,
+    lines: [],
+    truncated: false,
+    debugFrames: [],
+    debugFrameSeq: 0,
+  };
 }
 
 function applyRunEvent(
