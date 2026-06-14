@@ -22,9 +22,13 @@ Optional, with defaults:
 | `PORT` | `8061` | HTTP listen port |
 | `BUNDLE_ROOT` | `/bundles` | Path inside the runner where bundles are written; must match the named-volume mount path |
 | `LOG_LEVEL` | `info` | Pino log level |
-| `RUNNER_MAX_SESSIONS` | `8` | Hard cap on concurrent sessions (rejected with 409 over cap) |
-| `RUNNER_EXIT_TTL_MS` | `300000` | How long exited sessions stay in the registry before eviction |
+| `RUNNER_MAX_SESSIONS` | `32` | Cap on retained sessions; at capacity the oldest exited session is evicted, and only an all-live runner rejects with 409 |
+| `RUNNER_EXIT_TTL_MS` | `14400000` | How long exited sessions stay in the registry (so the editor can re-attach and replay their history after a reload) before eviction |
 | `RUNNER_REPLAY_BUFFER_BYTES` | `5000000` | Per-session SSE replay buffer cap |
+| `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — the natural fit for a bind-mounted file. Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup |
+| `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set. Terms stay disabled unless one of these is set |
+| `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
+| `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
 
 ## Standalone
 

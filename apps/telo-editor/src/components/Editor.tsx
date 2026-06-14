@@ -48,8 +48,10 @@ import {
   buildRunBundle,
   registry as runRegistry,
   RunView,
+  TermsRequiredError,
   useRun,
 } from "../run";
+import type { RunnerTerms } from "../run";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { findMissingRequiredEnv } from "./views/deployment/declared-env";
 import type { DeclaredEnvEntry } from "./views/deployment/DeclaredEnvEditor";
@@ -82,7 +84,9 @@ import { setActiveRegistry } from "./views/source/register-completion";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
+import { TermsGateDialog } from "./TermsGateDialog";
 import { TopBar } from "./TopBar";
+import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
 import { refTargetName } from "./views/topology/overview-graph";
 import type { RefWrite } from "./views/topology/application-canvas-model";
@@ -130,6 +134,13 @@ export function Editor() {
   const runContext = useRun();
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The pending terms gate: the runner's terms, the runner they belong to, and
+  // the run to resume once accepted. Null when no gate is shown.
+  const [termsGate, setTermsGate] = useState<{
+    terms: RunnerTerms;
+    runnerId: string;
+    filePath: string;
+  } | null>(null);
   const [missingEnv, setMissingEnv] = useState<DeclaredEnvEntry[] | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -380,6 +391,26 @@ export function Editor() {
       return;
     }
 
+    // Terms gate: the runner is the authority on whether running requires
+    // accepting an agreement. Fetch its terms (runner reachable — availability is
+    // ready here); if present and not yet accepted for this runner+version, show
+    // the gate and stop. The accepted version rides along on the run request and
+    // is enforced server-side.
+    let terms: RunnerTerms | null = null;
+    try {
+      terms = (await adapter.getTerms?.(config)) ?? null;
+    } catch (err) {
+      setError(
+        `Failed to read runner terms: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    if (terms && !isTermsAcceptedFor(runner.id, terms.version)) {
+      setTermsGate({ terms, runnerId: runner.id, filePath });
+      return;
+    }
+    const acceptedTermsVersion = terms?.version;
+
     const liveRun = runContext.liveRunForApp(filePath);
     if (liveRun) {
       const proceed = window.confirm("Stop the current run and start a new one?");
@@ -427,9 +458,21 @@ export function Editor() {
         appPath: filePath,
         adapter,
         config,
-        request: { bundle, env: environment.env, ports: environment.ports },
+        request: {
+          bundle,
+          env: environment.env,
+          ports: environment.ports,
+          acceptedTermsVersion,
+        },
       });
     } catch (err) {
+      // Safety net: the runner enforces terms server-side, so even if the gate
+      // was skipped (e.g. the version changed since we fetched it) it can reject
+      // with the current terms — surface the gate and let the user retry.
+      if (err instanceof TermsRequiredError) {
+        setTermsGate({ terms: err.terms, runnerId: runner.id, filePath });
+        return;
+      }
       setError(
         `Failed to start run: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -1330,6 +1373,17 @@ export function Editor() {
         onOpenChange={setCreateResourceOpen}
         kinds={availableKinds}
         onCreate={handleCreateResource}
+      />
+      <TermsGateDialog
+        terms={termsGate?.terms ?? null}
+        onAccept={() => {
+          if (!termsGate) return;
+          acceptTermsFor(termsGate.runnerId, termsGate.terms.version);
+          const { filePath } = termsGate;
+          setTermsGate(null);
+          void handleRunModuleRef.current(filePath);
+        }}
+        onDecline={() => setTermsGate(null)}
       />
       <AlertDialog open={pendingImport !== null} onOpenChange={onImportDialogOpenChange}>
         <AlertDialogContent className="sm:max-w-md">

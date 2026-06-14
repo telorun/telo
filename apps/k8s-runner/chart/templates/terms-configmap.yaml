@@ -1,0 +1,15 @@
+{{- if .Values.runner.terms.enabled }}
+# The runner's usage agreement, mounted as a file and pointed at by
+# RUNNER_TERMS_FILE. The runner advertises it on /v1/capabilities and rejects
+# sessions until the client accepts this version (a content hash by default).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}-terms
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+data:
+  terms.md: |-
+    {{- .Values.runner.terms.body | nindent 4 }}
+{{- end }}

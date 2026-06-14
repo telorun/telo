@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use super::bundle::BundleWorkdir;
-use super::session::{SessionEntry, SessionRegistry};
+use super::session::{OutputHub, SessionEntry, SessionRegistry};
 
 /// Port the workload's `--inspect` server binds inside the container. Published
 /// only to host loopback (`127.0.0.1`) — the local editor reads it directly.
@@ -177,6 +177,16 @@ pub async fn start(
     let user_stop = Arc::new(AtomicBool::new(false));
     let stdin_handle = Arc::new(tokio::sync::Mutex::new(Some(stdin)));
 
+    let endpoints = build_endpoints(&ports, config.docker_host.as_deref());
+    let inspect_url = inspect_host_port.map(|port| format!("http://127.0.0.1:{port}"));
+
+    // The hub owns the seam between the container's byte stream and the editor
+    // webview. The reader tasks push into it for the container's whole lifetime,
+    // so the stdout pipe is never dropped while the workload runs — a webview
+    // reload can't SIGPIPE `docker run` and tear the container down. A later
+    // `reattach` swaps in a fresh Channel and replays the buffered scrollback.
+    let hub = OutputHub::new_shared(io_channel);
+
     registry.insert(
         session_id.clone(),
         SessionEntry {
@@ -184,32 +194,33 @@ pub async fn start(
             docker_host: config.docker_host.clone(),
             user_stop: user_stop.clone(),
             stdin: stdin_handle,
+            output: hub.clone(),
+            endpoints: endpoints.clone(),
+            inspect_url: inspect_url.clone(),
             _bundle: bundle_dir,
         },
     );
 
-    // Single Channel for both stdout (PTY-merged container output) and
-    // stderr (docker CLI diagnostics) — semantically the same byte stream
-    // the user would see running `docker run` interactively.
+    // Single hub for both stdout (PTY-merged container output) and stderr
+    // (docker CLI diagnostics) — semantically the same byte stream the user
+    // would see running `docker run` interactively.
     //
-    // The two reader tasks send concurrently into one Channel<Vec<u8>>. A
-    // single `read()` is delivered as one channel message, so per-message
-    // atomicity is preserved, but a logical line that spans multiple reads
-    // (or a stderr line that lands between two stdout chunks) can interleave.
-    // Accepted for v1: in normal operation the docker-CLI stderr is empty,
-    // and matches what a user sees running `docker run` in a terminal.
-    spawn_byte_reader(stdout, io_channel.clone());
-    spawn_byte_reader(stderr, io_channel);
+    // The two reader tasks push concurrently into one hub. A single `read()`
+    // becomes one buffered chunk, so per-chunk atomicity is preserved, but a
+    // logical line spanning multiple reads (or a stderr line between two stdout
+    // chunks) can interleave. Accepted for v1: in normal operation the docker-CLI
+    // stderr is empty, and matches what a user sees running `docker run`.
+    spawn_byte_reader(stdout, hub.clone());
+    spawn_byte_reader(stderr, hub);
 
-    let endpoints = build_endpoints(&ports, config.docker_host.as_deref());
     emit_status(&app, &session_id, &RunStatus::Running { endpoints });
 
     // Announce the debug endpoint so the editor's debug panel can attach. The
     // workload's debug port is published to host loopback only.
-    if let Some(host_port) = inspect_host_port {
+    if let Some(url) = &inspect_url {
         let _ = app.emit(
             &format!("run:{session_id}:debug-endpoint"),
-            serde_json::json!({ "url": format!("http://127.0.0.1:{host_port}") }),
+            serde_json::json!({ "url": url }),
         );
     }
 
@@ -240,6 +251,49 @@ pub async fn start(
     });
 
     Ok(())
+}
+
+/// Re-bind a session that survived a webview reload to a fresh output Channel.
+///
+/// The editor process (and thus the `SessionRegistry` + the container) outlives
+/// the webview, so a reload only loses the JS-side Channel and event listeners.
+/// This replays the buffered scrollback into the new Channel, makes it live, and
+/// re-announces status + the debug endpoint so the editor restores the run.
+/// Stdin keeps flowing through the original `docker run` pipe (`run_send_input`),
+/// so the terminal stays interactive. Returns `false` when the session is gone
+/// (exited and removed, or the editor process restarted) — the editor then marks
+/// the run's history unavailable.
+pub async fn reattach(
+    app: AppHandle,
+    registry: SessionRegistry,
+    session_id: String,
+    io_channel: Channel<Vec<u8>>,
+) -> Result<bool, String> {
+    let Some(info) = registry.reattach_info(&session_id) else {
+        return Ok(false);
+    };
+
+    // Replay scrollback into the fresh Channel and make it the live subscriber.
+    info.output.lock().unwrap().attach(io_channel);
+
+    // Restore the running banner and reconnect the debug panel, mirroring the
+    // tail of `start`. The session's own exit-waiter remains the source of truth
+    // for the eventual terminal status, so we don't emit one here.
+    emit_status(
+        &app,
+        &session_id,
+        &RunStatus::Running {
+            endpoints: info.endpoints,
+        },
+    );
+    if let Some(url) = &info.inspect_url {
+        let _ = app.emit(
+            &format!("run:{session_id}:debug-endpoint"),
+            serde_json::json!({ "url": url }),
+        );
+    }
+
+    Ok(true)
 }
 
 pub async fn stop(registry: SessionRegistry, session_id: String) -> Result<(), String> {
@@ -348,7 +402,7 @@ fn apply_docker_host(cmd: &mut Command, docker_host: Option<&str>) {
 
 fn spawn_byte_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     mut reader: R,
-    channel: Channel<Vec<u8>>,
+    hub: Arc<Mutex<OutputHub>>,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut buf = vec![0u8; 8192];
@@ -356,15 +410,14 @@ fn spawn_byte_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
             match reader.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    // Send raw bytes through the Tauri Channel; the JS side
-                    // attaches its handler at construction so no message is
-                    // lost between spawn and the first delivery. Tauri JSON-
-                    // encodes Vec<u8> as a number array on the wire — the JS
-                    // adapter normalises that back to Uint8Array.
-                    if channel.send(buf[..n].to_vec()).is_err() {
-                        // Webview gone — channel send fails, no point continuing.
-                        break;
-                    }
+                    // Push into the hub, which forwards to the live webview
+                    // Channel (if any) and retains a capped transcript. The
+                    // reader runs until the pipe closes (container exit) — never
+                    // bailing when the webview goes away — so the pipe stays open
+                    // and the container survives a reload. The hub JSON-encodes
+                    // Vec<u8> as a number array on the wire; the JS adapter
+                    // normalises that back to Uint8Array.
+                    hub.lock().unwrap().push(buf[..n].to_vec());
                 }
                 Err(_) => break,
             }

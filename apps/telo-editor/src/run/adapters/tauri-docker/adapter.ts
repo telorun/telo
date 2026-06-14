@@ -40,58 +40,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
 
   async start(request, config): Promise<RunSession> {
     const sessionId = crypto.randomUUID();
-
-    let currentStatus: RunStatus = { kind: "starting" };
-    const subscribers = new Set<(event: RunEvent) => void>();
-    let cleanupDone = false;
-    let unlisteners: UnlistenFn[] = [];
-    // The local runner is all-loopback (no ingress / public exposure), so the
-    // editor reads the workload's `--inspect` SSE directly from the published
-    // 127.0.0.1 port — the same `debug` RunEvents a remote runner would relay.
-    let debugSource: EventSource | null = null;
-
-    function emit(event: RunEvent) {
-      for (const listener of subscribers) listener(event);
-    }
-
-    function cleanup() {
-      if (cleanupDone) return;
-      cleanupDone = true;
-      debugSource?.close();
-      debugSource = null;
-      for (const u of unlisteners) {
-        try {
-          u();
-        } catch {
-          // Unlisten can fail if the event system is already torn down on
-          // window close — safe to ignore.
-        }
-      }
-      unlisteners = [];
-    }
-
-    // Listeners MUST be registered before the `run_start` invoke — the Rust
-    // side emits `Starting`/`Running` synchronously during the handler, and
-    // Tauri events have no buffering for unregistered listeners.
-    unlisteners = await Promise.all([
-      listen<RunStatus>(`run:${sessionId}:status`, (e) => {
-        currentStatus = e.payload;
-        emit({ type: "status", status: currentStatus });
-        if (isTerminal(currentStatus)) cleanup();
-      }),
-      listen<{ url: string }>(`run:${sessionId}:debug-endpoint`, (e) => {
-        if (debugSource) return;
-        debugSource = openDebugStream(e.payload.url, (frame) =>
-          emit({ type: "debug", frame }),
-        );
-      }),
-    ]);
-
-    // Construct the byte-stream Channel before invoking run_start. The
-    // bootstrap installs a buffering onmessage handler at construction so
-    // bytes the Rust reader emits during start-up are not lost — they are
-    // replayed when the consumer (TerminalView) calls io.open().
-    const { io, channel } = makeTauriDockerIo(sessionId);
+    const scaffold = await buildTauriSession(sessionId, { kind: "starting" });
 
     try {
       await invoke("run_start", {
@@ -100,34 +49,131 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
         env: request.env ?? {},
         ports: request.ports ?? [],
         config,
-        ioChannel: channel,
+        ioChannel: scaffold.channel,
         inspect: true,
       });
     } catch (err) {
-      cleanup();
+      scaffold.cleanup();
       throw err instanceof Error ? err : new Error(String(err));
     }
 
-    return {
-      id: sessionId,
-      getStatus: () => currentStatus,
-      subscribe(listener) {
-        subscribers.add(listener);
-        return () => {
-          subscribers.delete(listener);
-        };
-      },
-      io,
-      async stop() {
-        await invoke("run_stop", { sessionId });
-        // The exit task on the Rust side emits the terminal status event,
-        // which triggers cleanup via the status listener above. We don't
-        // need to wait here — callers who want the final status should
-        // subscribe before calling stop.
-      },
-    };
+    return scaffold.session;
+  },
+
+  async attach(sessionId): Promise<RunSession | null> {
+    // The container outlives a webview reload (the Rust process keeps it alive),
+    // so re-attach by id — the registry holds everything needed. A running
+    // session is assumed; the Rust side re-emits the real status + debug endpoint.
+    const scaffold = await buildTauriSession(sessionId, { kind: "running" });
+
+    let attached: boolean;
+    try {
+      attached = await invoke<boolean>("run_reattach", {
+        sessionId,
+        ioChannel: scaffold.channel,
+      });
+    } catch (err) {
+      scaffold.cleanup();
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+
+    // The session is gone (exited and removed, or the editor process restarted).
+    if (!attached) {
+      scaffold.cleanup();
+      return null;
+    }
+
+    return scaffold.session;
   },
 };
+
+interface TauriSessionScaffold {
+  session: RunSession;
+  /** Tauri Channel to hand to `run_start` / `run_reattach`. */
+  channel: ReturnType<typeof makeTauriDockerIo>["channel"];
+  cleanup: () => void;
+}
+
+/** Wires the status + debug-endpoint listeners and the byte-stream Channel for a
+ *  local docker session, shared by `start` (fresh run) and `attach` (resume after
+ *  reload). The two differ only in the Rust command they invoke with the returned
+ *  channel; the resulting `RunSession` is identical. */
+async function buildTauriSession(
+  sessionId: string,
+  initialStatus: RunStatus,
+): Promise<TauriSessionScaffold> {
+  let currentStatus: RunStatus = initialStatus;
+  const subscribers = new Set<(event: RunEvent) => void>();
+  let cleanupDone = false;
+  let unlisteners: UnlistenFn[] = [];
+  // The local runner is all-loopback (no ingress / public exposure), so the
+  // editor reads the workload's `--inspect` SSE directly from the published
+  // 127.0.0.1 port — the same `debug` RunEvents a remote runner would relay.
+  let debugSource: EventSource | null = null;
+
+  function emit(event: RunEvent) {
+    for (const listener of subscribers) listener(event);
+  }
+
+  function cleanup() {
+    if (cleanupDone) return;
+    cleanupDone = true;
+    debugSource?.close();
+    debugSource = null;
+    for (const u of unlisteners) {
+      try {
+        u();
+      } catch {
+        // Unlisten can fail if the event system is already torn down on
+        // window close — safe to ignore.
+      }
+    }
+    unlisteners = [];
+  }
+
+  // Listeners MUST be registered before the invoke — the Rust side emits status
+  // (and the debug endpoint) synchronously during the handler, and Tauri events
+  // have no buffering for unregistered listeners.
+  unlisteners = await Promise.all([
+    listen<RunStatus>(`run:${sessionId}:status`, (e) => {
+      currentStatus = e.payload;
+      emit({ type: "status", status: currentStatus });
+      if (isTerminal(currentStatus)) cleanup();
+    }),
+    listen<{ url: string }>(`run:${sessionId}:debug-endpoint`, (e) => {
+      if (debugSource) return;
+      debugSource = openDebugStream(e.payload.url, (frame) =>
+        emit({ type: "debug", frame }),
+      );
+    }),
+  ]);
+
+  // Construct the byte-stream Channel before invoking. The bootstrap installs a
+  // buffering onmessage handler at construction so bytes the Rust reader emits
+  // (or replays as scrollback) before the consumer (TerminalView) calls
+  // io.open() are not lost.
+  const { io, channel } = makeTauriDockerIo(sessionId);
+
+  const session: RunSession = {
+    id: sessionId,
+    getStatus: () => currentStatus,
+    subscribe(listener) {
+      subscribers.add(listener);
+      return () => {
+        subscribers.delete(listener);
+      };
+    },
+    io,
+    async stop() {
+      await invoke("run_stop", { sessionId });
+      // The exit task on the Rust side emits the terminal status event, which
+      // triggers cleanup via the status listener above. We don't need to wait
+      // here — callers who want the final status should subscribe before stop.
+    },
+  };
+
+  return { session, channel, cleanup };
+}
 
 /** Open an SSE connection to a workload's `--inspect` endpoint and deliver each
  *  parsed frame. The Rust side announces the (loopback) base URL once the

@@ -11,8 +11,9 @@ FROM development AS build
 COPY . .
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm run --filter @telorun/runner-core build
-RUN pnpm run --filter @telorun/k8s-runner build
+# `...` builds the @telorun/runner-core + @telorun/debug-wire workspace
+# dependencies first; without it tsc / the runtime can't resolve their dist.
+RUN pnpm run --filter @telorun/k8s-runner... build
 # pnpm deploy produces a self-contained, hoisted node_modules for a single
 # workspace package at /out, rewriting workspace:* deps and pruning devDeps.
 RUN pnpm deploy --legacy --filter=@telorun/k8s-runner --prod /out

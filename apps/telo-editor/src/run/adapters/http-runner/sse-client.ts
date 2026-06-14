@@ -11,6 +11,11 @@ export interface SseClientDeps {
   sessionId: string;
   onEvent: (event: RunEvent) => void;
   onError: (err: Error) => void;
+  /** Resume from the very start (lastEventId=0), replaying the runner's full
+   *  buffered history regardless of any per-tab checkpoint. Used when re-attaching
+   *  to a session after a page reload, where the in-memory record is empty and
+   *  must be refilled from scratch. */
+  replayFromStart?: boolean;
 }
 
 /**
@@ -28,9 +33,16 @@ export function openSseClient(deps: SseClientDeps): SseClient {
   const storageKey = `${STORAGE_PREFIX}${deps.sessionId}`;
 
   const url = new URL(deps.url, window.location.href);
-  const persisted = readPersistedId(storageKey);
-  if (persisted !== null && url.searchParams.get("lastEventId") === null) {
-    url.searchParams.set("lastEventId", String(persisted));
+  if (deps.replayFromStart) {
+    // Cold re-attach: replay the full event history and drop the stale per-tab
+    // checkpoint so it can't shadow the from-zero replay.
+    url.searchParams.set("lastEventId", "0");
+    clearPersistedId(storageKey);
+  } else {
+    const persisted = readPersistedId(storageKey);
+    if (persisted !== null && url.searchParams.get("lastEventId") === null) {
+      url.searchParams.set("lastEventId", String(persisted));
+    }
   }
 
   const source = new EventSource(url.toString(), { withCredentials: false });
@@ -154,5 +166,13 @@ function persistId(key: string, raw: string): void {
   } catch {
     // sessionStorage can be disabled/full — resume will simply not work,
     // which is the same as v1 degraded mode.
+  }
+}
+
+function clearPersistedId(key: string): void {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    /* sessionStorage unavailable — nothing to clear */
   }
 }

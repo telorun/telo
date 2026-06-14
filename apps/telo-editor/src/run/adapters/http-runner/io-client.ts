@@ -11,6 +11,10 @@ const TERMINAL_CLOSE_CODES = new Set<number>([1000, 1001, 1005, 4403, 4404, 4410
 interface IoClientDeps {
   url: string;
   sessionId: string;
+  /** Replay the PTY transcript from the start (lastSeq=0), ignoring any per-tab
+   *  checkpoint. Used when re-attaching after a page reload so the terminal
+   *  scrollback is restored into a fresh xterm. */
+  replayFromStart?: boolean;
 }
 
 interface ServerControlFrame {
@@ -44,7 +48,16 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
       // We persist the largest one we've consumed so a reconnect (or a
       // fresh tab via sessionStorage) tells the server where to resume,
       // and so duplicate frames during replay/queue-drain are skipped.
-      let lastSeq = readPersistedSeq(storageKey);
+      // On a cold re-attach we replay the whole transcript from zero, so the
+      // leftover per-tab checkpoint is stale — drop it so it can't suppress the
+      // replay (and so any reconnect within this attach also starts clean).
+      let lastSeq: number;
+      if (deps.replayFromStart) {
+        lastSeq = 0;
+        clearPersistedSeq(storageKey);
+      } else {
+        lastSeq = readPersistedSeq(storageKey);
+      }
 
       const sendQueue: Uint8Array[] = [];
       const controlQueue: string[] = [];
@@ -67,6 +80,11 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
         const url = new URL(deps.url);
         if (lastSeq > 0) {
           url.searchParams.set("lastSeq", String(lastSeq));
+        } else if (deps.replayFromStart) {
+          // Explicit "from zero" so the runner replays the full transcript,
+          // mirroring the SSE client's `lastEventId=0` — never rely on the
+          // server's absent-param default.
+          url.searchParams.set("lastSeq", "0");
         }
 
         const ws = new WebSocket(url.toString());
@@ -193,5 +211,13 @@ function persistSeq(key: string, seq: number): void {
     window.sessionStorage.setItem(key, String(seq));
   } catch {
     // sessionStorage can be disabled/full — replay degrades to "from zero".
+  }
+}
+
+function clearPersistedSeq(key: string): void {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    /* sessionStorage unavailable — nothing to clear */
   }
 }

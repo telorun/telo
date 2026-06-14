@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import {
   buildServer as coreBuildServer,
+  loadTermsFromEnv,
   stopAllSessions,
   type ServerHandle,
   type SessionRegistry,
@@ -34,7 +35,9 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     backend,
     config: deps.runnerConfig,
     version: VERSION,
-    capabilities: dockerRunnerCapabilities,
+    // Terms are opt-in via RUNNER_TERMS_* — a local docker-runner ships with
+    // none (no gate); an operator can still require them by setting the env.
+    capabilities: { ...dockerRunnerCapabilities, terms: loadTermsFromEnv(process.env) },
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     registry: deps.registry,
   });

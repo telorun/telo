@@ -16,6 +16,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             run::run_start,
+            run::run_reattach,
             run::run_stop,
             run::run_send_input,
             run::run_close_input,

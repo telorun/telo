@@ -26,7 +26,38 @@ runner:
   # would double-manage pods). The Deployment hard-codes replicas: 1.
   port: 8062
   logLevel: info
-  maxSessions: 8
+  # Cap on retained sessions (live + recently-exited, kept for editor re-attach).
+  # At capacity the oldest exited session is evicted before a new run is rejected,
+  # so this is a history-depth knob, not just a concurrency cap. Matches the code
+  # default and pairs with resourceQuota.pods (live sessions each hold one pod).
+  maxSessions: 32
+  # Usage agreement shown + enforced before a session starts. When enabled, the
+  # chart mounts `body` as a file and points RUNNER_TERMS_FILE at it; the runner
+  # then rejects sessions (428) until the client acknowledges this version. The
+  # version defaults to a content hash, so editing `body` auto-re-prompts every
+  # client — set `version` only to control material-change vs. typo.
+  terms:
+    enabled: false
+    title: "Before you run"
+    version: ""
+    body: |
+      This runner executes Telo applications in a sandbox for development and
+      evaluation. By running an Application you acknowledge:
+
+      - Not for production. This runner and its sessions are for development,
+        prototyping, and evaluation — not for production workloads or handling
+        real user data.
+      - Everything is ephemeral. Sessions, containers, console output,
+        inspection events, and any data they produce are temporary and may be
+        evicted, stopped, or deleted at any time without notice. Do not rely on
+        them for storage.
+      - Your manifests execute code. Running an Application starts processes on
+        this runner. Only run manifests and images you trust.
+      - No secrets or sensitive data. Do not put real credentials, personal
+        data, or anything confidential into manifests, variables, or workloads
+        run here.
+      - No warranty. The software is provided "as is", without warranty of any
+        kind, and is used at your own risk.
   resources:
     limits:
       cpu: "500m"

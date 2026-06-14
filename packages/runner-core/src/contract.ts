@@ -23,7 +23,24 @@ export interface RunnerCapabilities {
   description: string;
   config: { schema: JsonSchema };
   features: RunnerFeatures;
+  /** A usage agreement the operator requires before a session may start.
+   *  Omitted (or undefined) when this runner has no terms — e.g. a local
+   *  development runner. The runner ENFORCES it: `POST /v1/sessions` is rejected
+   *  with `428 terms_required` unless the client sends `x-telo-accepted-terms`
+   *  matching `terms.version`. The editor surfaces it and records acceptance. */
+  terms?: RunnerTerms;
 }
+
+/** An operator-defined agreement. `version` is opaque and operator-controlled;
+ *  bumping it re-prompts every client. `body` is plain text / markdown. */
+export interface RunnerTerms {
+  version: string;
+  title: string;
+  body: string;
+}
+
+/** HTTP header carrying the accepted terms version on `POST /v1/sessions`. */
+export const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
 export interface RunnerFeatures {
   /** Runner exposes a live PTY byte channel (`/v1/sessions/:id/io`). */

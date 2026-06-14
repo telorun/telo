@@ -4,6 +4,43 @@ const KEY = "telo-editor-v2";
 const SETTINGS_KEY = "telo-editor-settings-v1";
 const LEGACY_KEYS = ["telo-editor-v1"];
 
+const TERMS_KEY = "telo-editor-accepted-terms";
+
+/** Accepted terms versions, keyed by runner id. Each runner advertises its own
+ *  terms + version; acceptance is recorded per runner so switching runners (or
+ *  the operator bumping the version) re-prompts. */
+type AcceptedTermsMap = Record<string, string>;
+
+function loadAcceptedTerms(): AcceptedTermsMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(TERMS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as AcceptedTermsMap;
+  } catch {
+    return {};
+  }
+}
+
+/** Whether `version` of `runnerId`'s terms has been accepted. Read synchronously
+ *  so the run flow can gate without a flash. */
+export function isTermsAcceptedFor(runnerId: string, version: string): boolean {
+  return loadAcceptedTerms()[runnerId] === version;
+}
+
+export function acceptTermsFor(runnerId: string, version: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const map = loadAcceptedTerms();
+    map[runnerId] = version;
+    window.localStorage.setItem(TERMS_KEY, JSON.stringify(map));
+  } catch {
+    /* localStorage unavailable — the gate will simply show again next time */
+  }
+}
+
 const VALID_VIEWS: Set<string> = new Set<ViewId>([
   "topology",
   "imports",

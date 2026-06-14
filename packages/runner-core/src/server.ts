@@ -62,6 +62,9 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       registry,
       corsOrigins: deps.config.corsOrigins,
       defaultRegistryUrl: deps.defaultRegistryUrl,
+      // The capabilities document is the single source of the runner's terms;
+      // the session route enforces what /v1/capabilities advertises.
+      terms: deps.capabilities.terms,
     }),
   );
   await app.register(ioRoute({ registry, corsOrigins: deps.config.corsOrigins }));

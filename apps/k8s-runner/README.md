@@ -81,7 +81,12 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_MAX_MEMORY` | `100Mi` | Memory ceiling |
 | `RUNNER_MAX_TTL_SECONDS` | `3600` | Wall-clock TTL (Pod `activeDeadlineSeconds`) |
 | `RUNNER_MAX_EPHEMERAL_STORAGE` | `512Mi` | Per-Pod ephemeral-storage ceiling |
-| `RUNNER_MAX_SESSIONS` | `8` | Global concurrent-session backstop |
+| `RUNNER_MAX_SESSIONS` | `32` | Global session backstop; at capacity the oldest exited session is evicted before a new run is rejected |
+| `RUNNER_EXIT_TTL_MS` | `14400000` | How long exited sessions stay in the registry (so the editor can re-attach and replay their history after a reload) before eviction |
+| `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — mount it from a `ConfigMap` (e.g. `/etc/telo/terms.md`). Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup. The public cloud should set this |
+| `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |
+| `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
+| `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
 
 ### Image build (required)
 

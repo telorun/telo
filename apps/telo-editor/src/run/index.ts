@@ -14,10 +14,12 @@ export type {
   RunIoConnection,
   RunIoHandlers,
   RunnerCapabilities,
+  RunnerTerms,
   RunRequest,
   RunSession,
   RunStatus,
 } from "./types";
+export { TermsRequiredError } from "./types";
 export { buildRunBundle } from "./bundle";
 export { registry } from "./registry";
 export { RunSettingsSection } from "./ui/RunSettingsSection";

@@ -2,11 +2,13 @@ import type { JSONSchema7 } from "json-schema";
 
 import {
   isTerminal,
+  TermsRequiredError,
   type AvailabilityReport,
   type ConfigIssue,
   type RunAdapter,
   type RunEvent,
   type RunnerCapabilities,
+  type RunnerTerms,
   type RunSession,
   type RunStatus,
 } from "../../types";
@@ -14,6 +16,11 @@ import { makeHttpRunnerIo } from "./io-client";
 import { openSseClient } from "./sse-client";
 
 const HEALTH_TIMEOUT_MS = 2_000;
+
+/** Wire header carrying the accepted terms version (mirrors runner-core's
+ *  `ACCEPTED_TERMS_HEADER`). Kept as a local constant so editor code doesn't
+ *  depend on the Node-only `@telorun/runner-core` package. */
+const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
 interface CreateSessionResponse {
   sessionId: string;
@@ -126,15 +133,41 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       return (await probeRes.json()) as AvailabilityReport;
     },
 
+    async getTerms(config): Promise<RunnerTerms | null> {
+      if (validateBaseUrl(config.baseUrl)) return null;
+      const base = trimTrailingSlash(config.baseUrl);
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(`${base}/v1/capabilities`, { method: "GET" }, HEALTH_TIMEOUT_MS);
+      } catch {
+        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
+      }
+      // 404 = older runner without capabilities → treat as no terms.
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`Runner returned HTTP ${res.status} on /v1/capabilities.`);
+      }
+      try {
+        return ((await res.json()) as RunnerCapabilities).terms ?? null;
+      } catch {
+        throw new Error("Runner returned a malformed /v1/capabilities document.");
+      }
+    },
+
     async start(request, config): Promise<RunSession> {
       const base = trimTrailingSlash(config.baseUrl);
       const runnerHost = extractHost(config.baseUrl);
+
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (request.acceptedTermsVersion) {
+        headers[ACCEPTED_TERMS_HEADER] = request.acceptedTermsVersion;
+      }
 
       const createRes = await fetchWithTimeout(
         `${base}/v1/sessions`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers,
           body: JSON.stringify({
             bundle: request.bundle,
             env: request.env ?? {},
@@ -148,6 +181,19 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
         opts.startTimeoutMs,
       );
 
+      // The runner enforces its terms — if unacknowledged it replies 428 with the
+      // current terms. Surface them so the caller can gate and retry.
+      if (createRes.status === 428) {
+        let payload: { terms?: RunnerTerms } | null = null;
+        try {
+          payload = (await createRes.json()) as { terms?: RunnerTerms };
+        } catch {
+          // fall through to a generic error below
+        }
+        if (payload?.terms) throw new TermsRequiredError(payload.terms);
+        throw new Error("Runner requires accepting its terms before running.");
+      }
+
       if (!createRes.ok) {
         let err: ErrorResponse | null = null;
         try {
@@ -160,54 +206,117 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       }
 
       const { sessionId, streamUrl } = (await createRes.json()) as CreateSessionResponse;
-
-      let currentStatus: RunStatus = { kind: "starting" };
-      const subscribers = new Set<(event: RunEvent) => void>();
-      const emit = (event: RunEvent): void => {
-        for (const sub of subscribers) sub(event);
-      };
-
-      const client = openSseClient({
-        url: `${base}${streamUrl}`,
+      return buildSession({
+        base,
+        runnerHost,
         sessionId,
-        onEvent: (event) => {
-          const next =
-            event.type === "status"
-              ? { ...event, status: fillEndpointHost(event.status, runnerHost) }
-              : event;
-          if (next.type === "status") currentStatus = next.status;
-          emit(next);
-        },
-        onError: () => {
-          if (isTerminal(currentStatus)) return;
-          const failed: RunStatus = { kind: "failed", message: "Runner stream closed unexpectedly." };
-          currentStatus = failed;
-          emit({ type: "status", status: failed });
-        },
+        streamUrl,
+        initialStatus: { kind: "starting" },
       });
+    },
 
-      const wsBase = base.replace(/^http(s?):/i, "ws$1:");
-      const io = makeHttpRunnerIo({ url: `${wsBase}/v1/sessions/${sessionId}/io`, sessionId });
+    async attach(sessionId, config): Promise<RunSession | null> {
+      const base = trimTrailingSlash(config.baseUrl);
+      const runnerHost = extractHost(config.baseUrl);
 
-      return {
-        id: sessionId,
-        getStatus: () => currentStatus,
-        subscribe(listener) {
-          subscribers.add(listener);
-          return () => {
-            subscribers.delete(listener);
-          };
-        },
-        io,
-        async stop() {
-          try {
-            await fetchWithTimeout(`${base}/v1/sessions/${sessionId}`, { method: "DELETE" }, HEALTH_TIMEOUT_MS * 3);
-          } catch (err) {
-            client.close();
-            throw err;
-          }
-        },
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(
+          `${base}/v1/sessions/${sessionId}`,
+          { method: "GET" },
+          HEALTH_TIMEOUT_MS * 3,
+        );
+      } catch {
+        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
+      }
+      // The session is gone — evicted past its TTL, or the runner restarted.
+      // The caller keeps the history entry but marks it unavailable.
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`Runner returned HTTP ${res.status} on /v1/sessions/${sessionId}.`);
+      }
+      const { status } = (await res.json()) as { status: RunStatus };
+
+      return buildSession({
+        base,
+        runnerHost,
+        sessionId,
+        streamUrl: `/v1/sessions/${sessionId}/events`,
+        initialStatus: fillEndpointHost(status, runnerHost),
+        // The re-hydrated record is empty, so replay console + events from the
+        // start instead of from the prior tab's checkpoint.
+        replayFromStart: true,
+      });
+    },
+  };
+}
+
+interface BuildSessionArgs {
+  base: string;
+  runnerHost: string;
+  sessionId: string;
+  streamUrl: string;
+  initialStatus: RunStatus;
+  replayFromStart?: boolean;
+}
+
+/** Wires the SSE event stream + WebSocket PTY channel for a session that already
+ *  exists on the runner, shared by `start` (fresh POST) and `attach` (resume
+ *  after reload). The only difference between the two is where the session id
+ *  comes from and whether replay starts from zero. */
+function buildSession(args: BuildSessionArgs): RunSession {
+  const { base, runnerHost, sessionId, streamUrl, initialStatus, replayFromStart } = args;
+
+  let currentStatus: RunStatus = initialStatus;
+  const subscribers = new Set<(event: RunEvent) => void>();
+  const emit = (event: RunEvent): void => {
+    for (const sub of subscribers) sub(event);
+  };
+
+  const client = openSseClient({
+    url: `${base}${streamUrl}`,
+    sessionId,
+    replayFromStart,
+    onEvent: (event) => {
+      const next =
+        event.type === "status"
+          ? { ...event, status: fillEndpointHost(event.status, runnerHost) }
+          : event;
+      if (next.type === "status") currentStatus = next.status;
+      emit(next);
+    },
+    onError: () => {
+      if (isTerminal(currentStatus)) return;
+      const failed: RunStatus = { kind: "failed", message: "Runner stream closed unexpectedly." };
+      currentStatus = failed;
+      emit({ type: "status", status: failed });
+    },
+  });
+
+  const wsBase = base.replace(/^http(s?):/i, "ws$1:");
+  const io = makeHttpRunnerIo({
+    url: `${wsBase}/v1/sessions/${sessionId}/io`,
+    sessionId,
+    replayFromStart,
+  });
+
+  return {
+    id: sessionId,
+    getStatus: () => currentStatus,
+    subscribe(listener) {
+      subscribers.add(listener);
+      return () => {
+        subscribers.delete(listener);
       };
+    },
+    io,
+    async stop() {
+      try {
+        await fetchWithTimeout(`${base}/v1/sessions/${sessionId}`, { method: "DELETE" }, HEALTH_TIMEOUT_MS * 3);
+      } catch (err) {
+        client.close();
+        throw err;
+      }
     },
   };
 }
