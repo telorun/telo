@@ -46,28 +46,61 @@ class ResourceDefinition implements ResourceInstance {
       );
       return;
     }
-    // The loader owns ControllerLoading / ControllerLoaded / ControllerLoadFailed
-    // emission so it can fire one event per attempted candidate (env-missing
-    // fallback chains), and so the payload can include the actually-picked PURL,
-    // which branch resolved it (`source`), and timing — none of which are known
-    // here at the call site.
     const loader = new ControllerLoader({
-      emit: (e) => ctx.emit(e.name, e.payload),
       entryUrl: ctx.getEntryUrl(),
       installRoot: ctx.getInstallRoot(),
     });
-    const controllerInstance = await loader.load(
+    // Eager resolve — verify the controller is hostable now (so a broken
+    // `controllers:` candidate fails fast at boot), but defer the expensive
+    // import/eval and the controller's `register()` to the kind's first
+    // instantiation. Definitions whose kind is never instantiated never import.
+    const resolved = await loader.resolve(
       this.resource.controllers,
       this.resource.metadata.source,
       ctx.getControllerPolicy(),
     );
     ctx.registerDefinition(this.resource);
-    await ctx.registerController(
-      this.resource.metadata.module,
-      this.resource.metadata.name,
-      controllerInstance,
+
+    const moduleName = this.resource.metadata.module;
+    const kindName = this.resource.metadata.name;
+    // Emitted here (not in the loader) so ControllerLoading / ControllerLoaded /
+    // ControllerLoadFailed — and the import duration — surface when the load
+    // actually happens (first instantiation), with the resolved PURL + source.
+    (ctx as unknown as LazyControllerHost).registerLazyController(
+      moduleName,
+      kindName,
+      async () => {
+        await ctx.emit("ControllerLoading", { purl: resolved.purl });
+        const startedAt = Date.now();
+        const instance = await resolved.importInstance().catch(async (err) => {
+          await ctx.emit("ControllerLoadFailed", {
+            purl: resolved.purl,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        });
+        await ctx.registerController(moduleName, kindName, instance);
+        await ctx.emit("ControllerLoaded", {
+          purl: resolved.purl,
+          source: resolved.source,
+          durationMs: Date.now() - startedAt,
+        });
+      },
     );
   }
+}
+
+/**
+ * Kernel-internal hook the concrete `ResourceContextImpl` exposes for lazy
+ * controller loading — deliberately off the public SDK `ResourceContext`
+ * surface, since only this controller uses it.
+ */
+interface LazyControllerHost {
+  registerLazyController(
+    moduleName: string,
+    kindName: string,
+    load: () => Promise<void>,
+  ): void;
 }
 
 export function register(ctx: ControllerContext): void {

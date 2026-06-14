@@ -166,6 +166,21 @@ export class Kernel implements IKernel {
   }
 
   /**
+   * Register a deferred controller. The definition is already registered; the
+   * controller module is imported (and `register()` fired, via the `load` thunk
+   * calling back into `registerController`) only on the kind's first
+   * instantiation — see `_createInstance` / `ControllerRegistry.takeLazyController`.
+   */
+  registerLazyController(
+    moduleName: string,
+    kindName: string,
+    fingerprint: string,
+    load: () => Promise<void>,
+  ): void {
+    this.controllers.registerLazyController(`${moduleName}.${kindName}`, fingerprint, load);
+  }
+
+  /**
    * Register a resource definition with the controller registry
    */
   registerResourceDefinition(definition: ResourceDefinition): void {
@@ -902,7 +917,16 @@ export class Kernel implements IKernel {
     const resolvedKind = (findEnclosingModule(evalContext) ?? this.rootContext).resolveKind(kind);
 
     const fingerprint = policyFingerprint(findEnclosingPolicy(evalContext));
-    const controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
+    let controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
+    if (!controller) {
+      // Lazy controller loading: the kind's Telo.Definition registered a deferred
+      // controller (resolved but not imported). Import + register it now, on this
+      // first instantiation, then re-resolve. A kind with no lazy entry (abstract,
+      // or genuinely unknown) falls through to the error below unchanged.
+      if (await this.controllers.takeLazyController(resolvedKind, fingerprint)) {
+        controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
+      }
+    }
     if (!controller) {
       const kindInfo =
         resolvedKind !== kind ? `'${kind}' (resolved to '${resolvedKind}')` : `'${kind}'`;

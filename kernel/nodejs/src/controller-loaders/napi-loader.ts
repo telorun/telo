@@ -123,6 +123,21 @@ export class NapiControllerLoader {
    * though all exports come from one linked dylib.
    */
   async load(purl: string, baseUri: string): Promise<NapiLoadResult> {
+    const { source, importInstance } = await this.resolve(purl, baseUri);
+    return { instance: await importInstance(), source };
+  }
+
+  /**
+   * Resolve without building: validate the PURL and confirm the crate's
+   * `local_path` exists (the fail-fast checks), then defer the cargo build +
+   * dylib load — the expensive part — into the returned `importInstance` thunk.
+   * A cache hit resolves instantly. Used by lazy controller loading so the build
+   * is paid on the kind's first instantiation, not at boot.
+   */
+  async resolve(
+    purl: string,
+    baseUri: string,
+  ): Promise<{ source: NapiResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     const [, , name, , qualifiers, entry] = PackageURL.parseString(purl);
     const localPath = (qualifiers as any)?.get("local_path");
 
@@ -149,38 +164,44 @@ export class NapiControllerLoader {
     // can leave napi finalize callbacks racing and crash Node.
     const canonicalCratePath = await fs.realpath(cratePath);
     const cacheKey = canonicalCratePath;
-    const cached = _napiModuleCache.get(cacheKey);
-    if (cached) {
-      return { instance: project(cached, entry, cratePath), source: "cache" };
+    if (_napiModuleCache.has(cacheKey)) {
+      return {
+        source: "cache",
+        importInstance: async () => project(_napiModuleCache.get(cacheKey), entry, cratePath),
+      };
     }
 
-    // Concurrent callers for the same crate await one shared build. They
-    // report `local` (not `cache`): they paid the same wall-clock cost as
-    // the originator, just by sharing one cargo invocation rather than
-    // running their own. Reporting `cache` here would mislead metrics/event
-    // consumers into thinking it was a sub-ms hit.
-    const existingInFlight = _napiInFlight.get(cacheKey);
-    if (existingInFlight) {
-      const { rawModule } = await existingInFlight;
-      return { instance: project(rawModule, entry, cratePath), source: "local" };
-    }
-
-    const buildPromise = this.buildAndLoad(cratePath, name ?? "", cacheKey);
-    _napiInFlight.set(cacheKey, buildPromise);
-    let rawModule: any;
-    let nodePath: string;
-    try {
-      ({ rawModule, nodePath } = await buildPromise);
-    } finally {
-      _napiInFlight.delete(cacheKey);
-    }
-    // `local` rather than `cargo-build` because the only mode currently
-    // wired up is `local_path` dev-mode — cargo's incremental cache means
-    // every run after the first is ~50ms of cargo-startup with no real
-    // compilation, conceptually the same as the npm `local_path` branch
-    // that just imports source already on disk. Distribution mode (when
-    // implemented) will return `cargo-build` from its own branch.
-    return { instance: project(rawModule, entry, nodePath), source: "local" };
+    // `local` rather than `cargo-build` because the only mode currently wired up
+    // is `local_path` dev-mode — see the original note below. The thunk re-checks
+    // the module cache and the in-flight gate because resolve() and the deferred
+    // import can be separated in time (another instantiation may have built the
+    // crate in between).
+    const crateName = name ?? "";
+    const build = this.buildAndLoad.bind(this);
+    return {
+      source: "local",
+      importInstance: async () => {
+        const cached = _napiModuleCache.get(cacheKey);
+        if (cached) return project(cached, entry, cratePath);
+        // Concurrent callers for the same crate await one shared build, sharing
+        // one cargo invocation rather than each running their own.
+        const existingInFlight = _napiInFlight.get(cacheKey);
+        if (existingInFlight) {
+          const { rawModule } = await existingInFlight;
+          return project(rawModule, entry, cratePath);
+        }
+        const buildPromise = build(cratePath, crateName, cacheKey);
+        _napiInFlight.set(cacheKey, buildPromise);
+        let rawModule: any;
+        let nodePath: string;
+        try {
+          ({ rawModule, nodePath } = await buildPromise);
+        } finally {
+          _napiInFlight.delete(cacheKey);
+        }
+        return project(rawModule, entry, nodePath);
+      },
+    };
   }
 
   private async buildAndLoad(

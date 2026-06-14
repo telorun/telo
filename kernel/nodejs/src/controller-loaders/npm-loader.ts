@@ -178,6 +178,20 @@ export class NpmControllerLoader {
   }
 
   async load(purl: string, baseUri: string): Promise<NpmLoadResult> {
+    const { source, importInstance } = await this.resolve(purl, baseUri);
+    return { instance: await importInstance(), source };
+  }
+
+  /**
+   * Resolve without importing: materialize the install root and install/verify
+   * the package (the cheap, cache-hit-fast part that fails fast if the package
+   * is absent), but defer `loadFromInstall` — the actual `import()`/eval, which
+   * is the expensive cold-start cost — into the returned `importInstance` thunk.
+   */
+  async resolve(
+    purl: string,
+    baseUri: string,
+  ): Promise<{ source: NpmResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     const parsed = PackageURL.fromString(purl);
     if (!parsed.name) {
       throw new Error(`Invalid PURL '${purl}': missing package name`);
@@ -197,8 +211,11 @@ export class NpmControllerLoader {
       resolved.kind,
       version,
     );
-    const instance = await loadFromInstall(installRoot, alias, parsed.subpath ?? null, purl);
-    return { instance, source };
+    const subpath = parsed.subpath ?? null;
+    return {
+      source,
+      importInstance: () => loadFromInstall(installRoot, alias, subpath, purl),
+    };
   }
 
   /**

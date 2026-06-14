@@ -141,6 +141,20 @@ export class BundleControllerLoader {
     purl: string,
     baseUri: string,
   ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
+    const { source, importInstance } = await this.resolve(purl, baseUri);
+    return { instance: await importInstance(), source };
+  }
+
+  /**
+   * Resolve without importing: parse + validate the PURL, confirm the bundle
+   * file exists and its format is hostable, and ensure the realm symlinks — all
+   * cheap, fail-fast checks — but defer the bundle `import()` (the eval cost)
+   * into the returned `importInstance` thunk. Used by lazy controller loading.
+   */
+  async resolve(
+    purl: string,
+    baseUri: string,
+  ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let parsed: PackageURL;
     try {
       parsed = PackageURL.fromString(purl);
@@ -196,26 +210,31 @@ export class BundleControllerLoader {
     // importing the bundle, so authors write normal imports.
     await ensureRealmSymlinks(path.dirname(absFile));
 
-    // A broken bundle (syntax / failed import) is a real user-code failure —
-    // let it propagate rather than masking it as env-missing.
-    const mod = (await import(pathToFileURL(absFile).href)) as Record<string, ControllerInstance>;
     const fragment = parsed.subpath;
-    // Distinguish "no such export" from "export isn't a controller" so the error
-    // points at the actual problem (mirrors the napi loader's project()).
-    if (fragment && !(fragment in mod)) {
-      throw new RuntimeError(
-        "ERR_CONTROLLER_INVALID",
-        `Bundled controller "${purl}": module "${absFile}" has no export named "${fragment}"`,
-      );
-    }
-    const instance = fragment ? mod[fragment] : (mod as unknown as ControllerInstance);
-    if (!instance || (!instance.create && !instance.register)) {
-      throw new RuntimeError(
-        "ERR_CONTROLLER_INVALID",
-        `Bundled controller "${purl}" exports neither create() nor register()` +
-          (fragment ? ` at fragment "#${fragment}"` : ""),
-      );
-    }
-    return { instance, source: "bundle" };
+    return {
+      source: "bundle",
+      importInstance: async () => {
+        // A broken bundle (syntax / failed import) is a real user-code failure —
+        // let it propagate rather than masking it as env-missing.
+        const mod = (await import(pathToFileURL(absFile).href)) as Record<string, ControllerInstance>;
+        // Distinguish "no such export" from "export isn't a controller" so the
+        // error points at the actual problem (mirrors the napi loader's project()).
+        if (fragment && !(fragment in mod)) {
+          throw new RuntimeError(
+            "ERR_CONTROLLER_INVALID",
+            `Bundled controller "${purl}": module "${absFile}" has no export named "${fragment}"`,
+          );
+        }
+        const instance = fragment ? mod[fragment] : (mod as unknown as ControllerInstance);
+        if (!instance || (!instance.create && !instance.register)) {
+          throw new RuntimeError(
+            "ERR_CONTROLLER_INVALID",
+            `Bundled controller "${purl}" exports neither create() nor register()` +
+              (fragment ? ` at fragment "#${fragment}"` : ""),
+          );
+        }
+        return instance;
+      },
+    };
   }
 }
