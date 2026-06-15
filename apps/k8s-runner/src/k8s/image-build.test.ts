@@ -91,6 +91,14 @@ describe("computeImageTag — dependency-closure addressing", () => {
   it("produces a 32-char lowercase hex tag", () => {
     expect(computeImageTag(tagInputs())).toMatch(/^[0-9a-f]{32}$/);
   });
+
+  it("changes with the base digest so a moved moving-tag rebuilds", () => {
+    const noDigest = computeImageTag(tagInputs());
+    const pinned = computeImageTag(tagInputs({ baseDigest: "sha256:aaa" }));
+    const moved = computeImageTag(tagInputs({ baseDigest: "sha256:bbb" }));
+    expect(pinned).not.toBe(noDigest);
+    expect(moved).not.toBe(pinned);
+  });
 });
 
 describe("imageRef", () => {

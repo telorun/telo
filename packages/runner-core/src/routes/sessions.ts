@@ -8,6 +8,7 @@ import {
   ACCEPTED_TERMS_HEADER,
   SessionStartError,
   type RunnerTerms,
+  type SessionConfig,
   type StartSessionRequest,
 } from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
@@ -24,6 +25,11 @@ export interface SessionsRouteDeps {
   /** When set, a session may only start if the client acknowledges this exact
    *  terms version via the `x-telo-accepted-terms` header. */
   terms?: RunnerTerms;
+  /** Backend-supplied config gate. Returns an error message to reject the
+   *  request with `400 invalid_config`, or `undefined` to accept. The runner is
+   *  the source of truth, so this re-checks what `/v1/capabilities` advertises
+   *  (e.g. an `image` allowlist) against a client that skipped the editor. */
+  validateConfig?: (config: SessionConfig) => string | undefined;
 }
 
 const startBodySchema = {
@@ -166,6 +172,16 @@ async function startSession(
       return;
     }
     throw err;
+  }
+
+  // Backend config gate (e.g. an image allowlist). The advertised capabilities
+  // constrain the editor; this enforces the same against any client.
+  if (deps.validateConfig) {
+    const message = deps.validateConfig(body.config);
+    if (message) {
+      reply.code(400).send({ error: "invalid_config", message });
+      return;
+    }
   }
 
   let entry: ReturnType<SessionRegistry["register"]>;

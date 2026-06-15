@@ -3,6 +3,14 @@ export * from "./backend.js";
 export * from "./config.js";
 export * from "./server.js";
 export { sessionConfigSchema, type SessionConfigSchemaOptions } from "./capabilities-schema.js";
+export {
+  BaseImageCatalog,
+  filterTags,
+  parseDockerHubRef,
+  resolveTagDigest,
+  type TagFilter,
+  type BaseImageCatalogOptions,
+} from "./base-image-catalog.js";
 export { extractDependencyKey, type DependencyKey } from "./dependency-key.js";
 
 export {

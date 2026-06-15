@@ -32,6 +32,14 @@ export function parsePositiveInt(
   return n;
 }
 
+export function parseBool(raw: string | undefined, fallback: boolean, field: string): boolean {
+  const v = raw?.trim().toLowerCase();
+  if (v === undefined || v === "") return fallback;
+  if (v === "true" || v === "1" || v === "yes") return true;
+  if (v === "false" || v === "0" || v === "no") return false;
+  throw new RunnerConfigError(`${field} must be a boolean (true/false), got '${raw}'.`);
+}
+
 export function parsePort(raw: string | undefined, fallback: number): number {
   const portStr = raw ?? String(fallback);
   const port = Number(portStr);

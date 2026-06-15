@@ -75,12 +75,35 @@ limits:
   maxEphemeralStorage: "512Mi"
 
 session:
-  # Image spawned for each run.
+  # Image spawned for each run. Always offered in the picker below and used as
+  # the fallback when the Docker Hub catalog is unreachable.
   image: "telorun/node:latest-slim"
   # Small image for the bundle-fetch initContainer (needs wget + tar).
   initImage: "busybox:stable"
   # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
   runtimeClass: ""
+  # Base-image picker advertised on /v1/capabilities. The runner resolves the
+  # menu from a Docker Hub repo's tags (filtered), shows it as an editable
+  # `image` dropdown in the editor, and re-validates the chosen image server-side
+  # (a non-editor client can't widen the set). `session.image` is always offered.
+  # Disable to lock `image` to `session.image` (e.g. air-gapped clusters).
+  baseImages:
+    enabled: true
+    # namespace/repository queried on Docker Hub.
+    repository: "telorun/node"
+    # Keep only pinned MAJOR.MINOR.PATCH[-variant] tags (drops latest, 0, 0.30…).
+    pinnedOnly: true
+    # Drop commit-hash tags (sha-<hex> / bare hex).
+    excludeSha: true
+    # Drop semver prereleases (0.30.1-rc.1, -alpha); -slim/-rust-* are kept.
+    excludePrerelease: true
+    # Optional regex a tag must match / must not match (escape hatch). Empty → off.
+    include: ""
+    exclude: ""
+    # Cap on advertised tags (newest first).
+    limit: 20
+    # Re-fetch cadence, in seconds.
+    refreshSeconds: 3600
 
 # On-cluster image build (REQUIRED — there is no in-pod install fallback). The
 # runner prebuilds a self-contained per-app image (controllers + module manifests
