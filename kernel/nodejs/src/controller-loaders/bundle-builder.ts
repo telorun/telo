@@ -164,8 +164,20 @@ const buildsInFlight = new Map<string, Promise<string | null>>();
 let tmpCounter = 0;
 
 /** A bundle that anchors path resolution to its own directory (esbuild rewrites
- *  `__dirname`/`__filename` to `import.meta.url`) can't be safely relocated. */
+ *  `__dirname`/`__filename` to `import.meta.url`) can't be safely relocated.
+ *  Tested against esbuild's raw output only — the {@link REQUIRE_BANNER} (which
+ *  also names `import.meta.url`) is prepended after this guard, so it never trips
+ *  it. */
 const DIR_RELATIVE = /import\.meta\.url|\b__dirname\b|\b__filename\b/;
+
+/** Prepended to every ESM bundle: defines `require` in the module scope so
+ *  esbuild's `__require` shim (emitted for `require(...)` calls inside bundled
+ *  CJS deps) falls through to the real require instead of throwing
+ *  "Dynamic require of X is not supported" — which it would in a `.mjs` ESM
+ *  module, where `require` is otherwise undefined. */
+const REQUIRE_BANNER =
+  'import { createRequire as __teloCreateRequire } from "node:module";\n' +
+  "const require = __teloCreateRequire(import.meta.url);\n";
 
 /** A cached bundle is usable only when its `.ok` sidecar is present — written
  *  once after the build passed the safety guard. Checking the marker (two stats)
@@ -217,7 +229,7 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
       }
       return null;
     }
-    await fs.writeFile(tmpFile, out.contents);
+    await fs.writeFile(tmpFile, REQUIRE_BANNER + out.text);
     await fs.rename(tmpFile, bundleFile);
     // Marker written last: its presence means "this bundle built and passed the
     // safety guard", so cache hits trust it without re-reading the bundle.
