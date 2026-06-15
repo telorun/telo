@@ -254,8 +254,17 @@ async function startDebugSession(
         ),
       );
     }
-    const uiHtmlPath = (await resolveUiBundle(cacheRoot)) ?? undefined;
-    server = new DebugServer({ host, port, jsonlPath: eventLogPath, uiHtmlPath });
+    const ui = await resolveUiBundle(cacheRoot);
+    if (ui.kind === "unavailable") {
+      log.info(log.warn(`[inspect] debug UI unavailable — ${ui.reason}`));
+    }
+    server = new DebugServer({
+      host,
+      port,
+      jsonlPath: eventLogPath,
+      uiHtmlPath: ui.kind === "ok" ? ui.path : undefined,
+      uiUnavailableReason: ui.kind === "unavailable" ? ui.reason : undefined,
+    });
     await server.start();
     log.info(`Inspect:   ${server.url}`);
   }

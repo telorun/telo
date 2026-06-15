@@ -6,9 +6,9 @@ metadata:
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
 imports:
   Http: std/http-server@0.11.0
-  Sql: std/sql@0.9.0
+  Sql: std/sql@0.9.1
   SqlRepository: std/sql-repository@0.3.0
-  Run: std/run@0.8.0
+  Run: std/run@0.10.0
 targets:
   - !ref SetupDb
   - !ref Server

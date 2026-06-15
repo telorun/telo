@@ -28,6 +28,7 @@ Follow this strictly:
 - When working on a plan, when a decision is made then remove the decision section entirely, not just mark it as decided. The plan should reflect the current state of the world, not a history of how we got here.
 - `JS.Script` in manifests is a last resort. Before reaching for it, check whether the work belongs in a new generic stdlib resource (composes with the existing kind library, reusable across consumers, type-safe at the manifest level). A `JS.Script` is acceptable when (a) the logic is one-off and demonstrably not reusable, or (b) it bridges to a Node-specific API the kernel doesn't yet expose. In every other case, propose a new resource kind first and ask before adding inline JS.
 - never add Docusaurus or any other rendering-tool annotations (`sidebar_label`, `sidebar_position`, `description`, etc.) to `README.md` files. Docusaurus-specific labels and ordering belong in `pages/sidebars.ts`; other markdown files under `docs/` may keep frontmatter where it's actually consumed.
+- keep your communication concise and to the point; avoid unnecessary preambles, or apologies. Focus on the task at hand and the specific changes being made. If you need to explain a complex decision, do so.
 
 ## Architecture
 

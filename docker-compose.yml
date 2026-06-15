@@ -99,6 +99,11 @@ services:
       BUNDLE_ROOT: /bundles
       BUNDLE_VOLUME: telo_runner-bundles
       RUNNER_CHILD_NETWORK: telo_default
+      # Base URL of the Caddy proxy that fronts session containers. The runner
+      # announces per-port URLs (http://<port>-<sessionId>.run.telo.localhost:8060)
+      # so the editor links to the reachable app, not the runner host. The proxy
+      # routes these to telo-run-<sessionId> on the shared network (see Caddyfile).
+      RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:8060
       # Fallback registry URL injected into spawned containers when the
       # editor/client does not pass one in config.registryUrl.
       TELO_REGISTRY_URL: http://registry:3000

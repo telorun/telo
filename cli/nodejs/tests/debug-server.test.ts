@@ -35,3 +35,34 @@ describe("DebugServer /json/version handshake", () => {
     expect(info.appEndpoints).toEqual([]);
   });
 });
+
+describe("DebugServer UI availability", () => {
+  let server: DebugServer | undefined;
+
+  afterEach(() => {
+    server?.stop();
+    server = undefined;
+  });
+
+  it("renders the unavailable reason (incl. the fetch URL) in the 503", async () => {
+    const reason = "could not fetch the debug UI from https://cdn.jsdelivr.net/npm/@telorun/debug-ui@0.2.0/app-single/index.html — HTTP 404 Not Found.";
+    server = new DebugServer({ uiUnavailableReason: reason });
+    await server.start();
+
+    const res = await fetch(`${server.url}/`);
+    const body = await res.text();
+
+    expect(res.status).toBe(503);
+    expect(body).toContain("https://cdn.jsdelivr.net/npm/@telorun/debug-ui@0.2.0");
+    expect(body).toContain("HTTP 404 Not Found");
+  });
+
+  it("keeps the live endpoint working even when the UI is unavailable", async () => {
+    server = new DebugServer({ uiUnavailableReason: "nope" });
+    await server.start();
+
+    const info = await fetch(`${server.url}/json/version`).then((r) => r.json());
+
+    expect(info.protocol).toBe("telo-debug");
+  });
+});

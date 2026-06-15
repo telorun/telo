@@ -206,3 +206,26 @@ request:
           description: "Validation schema for the request payload"
   required: ["path", "method"]
 ```
+
+### 5. External URL & OpenAPI `servers`
+
+A server is usually reached through a reverse proxy / ingress, so its own bound
+`host:port` is not the URL clients use. The generated OpenAPI `servers` block MUST
+follow this resolution, identically across runtimes (Node/Rust/Go) — the inputs
+are standard HTTP, never a framework's proxy-config object:
+
+| Manifest | `servers[].url` |
+| --- | --- |
+| `baseUrl: <url>` | `<url><mountPrefix>` — explicit, fixed; wins over everything |
+| `trustForwardedHeaders: true` | `<X-Forwarded-Proto>://<X-Forwarded-Host><mountPrefix>`, derived per request |
+| neither (default) | `<mountPrefix>` — **relative**; the client resolves it against the origin the document was loaded from |
+
+- The default is **relative** so the document is correct behind any proxy, ingress,
+  or origin with zero configuration.
+- `trustForwardedHeaders` is a **boolean** on purpose: the only portable cross-runtime
+  signal is the standard `X-Forwarded-Proto` / `X-Forwarded-Host` (RFC 7239 `Forwarded`)
+  headers. Fine-grained "trusted proxy IP/CIDR/hop" lists are framework-specific and
+  MUST NOT leak into the manifest. Default `false`; only enable behind a trusted proxy
+  (a client with direct network access could otherwise spoof the headers).
+- When `trustForwardedHeaders` is set, the request protocol/host exposed to handlers
+  MUST also reflect the forwarded headers.

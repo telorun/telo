@@ -131,11 +131,16 @@ export interface RunnerEndpoint {
   host: string;
   port: number;
   protocol: "tcp" | "udp";
+  /** Fully-qualified URL when the runner already knows it (proxy / ingress);
+   *  preferred over deriving `http://host:port`. */
+  url?: string;
 }
 
 export type RunStatus =
   | { kind: "starting" }
-  | { kind: "running"; endpoints?: RunnerEndpoint[] }
+  /** `inspectUrl` is the kernel inspection UI fronted by a proxy, set only when
+   *  the run used `inspect` and the runner exposes it; absent otherwise. */
+  | { kind: "running"; endpoints?: RunnerEndpoint[]; inspectUrl?: string }
   | { kind: "exited"; code: number }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };

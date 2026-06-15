@@ -45,6 +45,7 @@ type HttpServerResource = RuntimeResource & {
   host?: string;
   port?: number;
   baseUrl?: string;
+  trustForwardedHeaders?: boolean;
   logger?: boolean;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
@@ -83,6 +84,7 @@ class HttpServer implements ResourceInstance {
   private readonly host: string;
   private readonly port: number;
   private readonly baseUrl: string;
+  private readonly trustForwardedHeaders: boolean;
   private readonly resource: HttpServerResource;
   private readonly ctx: ResourceContext;
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
@@ -97,6 +99,7 @@ class HttpServer implements ResourceInstance {
     this.host = resource.host || "0.0.0.0";
     this.port = Number(resource.port || 0);
     this.baseUrl = resource.baseUrl ?? `http://${this.host}:${this.port}`;
+    this.trustForwardedHeaders = resource.trustForwardedHeaders === true;
     this.resolvedNotFoundHandler = resolvedNotFoundHandler;
 
     if (!this.port) {
@@ -104,6 +107,9 @@ class HttpServer implements ResourceInstance {
     }
     this.app = Fastify({
       logger: resource.logger,
+      // Honour X-Forwarded-Proto / X-Forwarded-Host so request.protocol/host (and
+      // the OpenAPI servers derived from them) reflect a fronting proxy's URL.
+      trustProxy: this.trustForwardedHeaders,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });
   }
@@ -172,16 +178,15 @@ class HttpServer implements ResourceInstance {
       throw error;
     });
     if (this.resource.openapi) {
-      const servers = [];
-      // const routesByName = new Map<string, HttpRouteResource>();
       const mounts = this.resource.mounts || [];
-      const prefixes = new Set();
-      for (const mount of mounts) {
-        prefixes.add(mount.path || "");
-      }
-      for (const prefix of prefixes) {
-        servers.push({ url: this.baseUrl + prefix });
-      }
+      const prefixes = [...new Set(mounts.map((mount) => mount.path || ""))];
+      // Server URL precedence: an explicit `baseUrl` is an absolute, fixed
+      // override; otherwise the URLs are relative (just the mount prefix) so the
+      // doc is correct behind any proxy/ingress/origin without configuration —
+      // the client resolves them against wherever the reference was loaded.
+      const servers = prefixes.map((prefix) => ({
+        url: this.resource.baseUrl ? this.resource.baseUrl + prefix : prefix || "/",
+      }));
       await this.app.register(swagger, {
         openapi: {
           openapi: "3.0.0",
@@ -189,8 +194,43 @@ class HttpServer implements ResourceInstance {
           servers,
         },
       });
+      const referencePrefix = "/reference";
+      // `trustForwardedHeaders` (and no fixed baseUrl) upgrades the relative
+      // default to absolute URLs built per-request from the now-trusted
+      // X-Forwarded-* headers, so the served spec advertises the real proxy URL.
+      if (this.trustForwardedHeaders && !this.resource.baseUrl) {
+        // Couples to the Scalar plugin's default spec endpoint
+        // (`<routePrefix>/openapi.json`); if it ever served the doc elsewhere the
+        // rewrite would no-op and the relative default would still apply. The
+        // `openapi-server-url` integration test guards this path.
+        const specPath = `${referencePrefix}/openapi.json`;
+        this.app.addHook("onSend", async (request, reply, payload) => {
+          if (request.url.split("?")[0] !== specPath) return payload;
+          const text =
+            typeof payload === "string"
+              ? payload
+              : Buffer.isBuffer(payload)
+                ? payload.toString("utf8")
+                : null;
+          if (text === null) return payload;
+          try {
+            const doc = JSON.parse(text);
+            if (doc && typeof doc === "object" && Array.isArray(doc.servers)) {
+              doc.servers = prefixes.map((prefix) => ({
+                url: `${request.protocol}://${request.host}${prefix}`,
+              }));
+              const out = JSON.stringify(doc);
+              reply.header("content-length", Buffer.byteLength(out));
+              return out;
+            }
+          } catch {
+            // Not a JSON document we can rewrite — leave the response untouched.
+          }
+          return payload;
+        });
+      }
       await this.app.register(apiReference, {
-        routePrefix: "/reference",
+        routePrefix: referencePrefix,
       });
     }
   }
