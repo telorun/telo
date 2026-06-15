@@ -116,7 +116,10 @@ export interface StartSessionRequest {
 
 export type RunStatus =
   | { kind: "starting" }
-  | { kind: "running"; endpoints?: RunnerEndpoint[] }
+  /** `inspectUrl` is the kernel debug/inspection UI fronted by a proxy (set only
+   *  when the session ran with `inspect` and the runner has a public base URL);
+   *  absent when the inspect endpoint isn't externally reachable. */
+  | { kind: "running"; endpoints?: RunnerEndpoint[]; inspectUrl?: string }
   | { kind: "exited"; code: number }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };

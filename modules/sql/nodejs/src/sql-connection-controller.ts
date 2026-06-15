@@ -226,11 +226,12 @@ export async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
     }
   }
 
-  if (typeof Bun !== "undefined") {
-    const { openDatabase } = await import("./sqlite-driver-bun.js");
-    return openDatabase(file);
-  }
-
-  const { openDatabase } = await import("./sqlite-driver-node.js");
+  // Route through the package's own `./sqlite-driver` subpath export so the
+  // resolver selects the driver per runtime (Bun → bun:sqlite, Node →
+  // better-sqlite3). A manual `typeof Bun` check with relative imports gets
+  // flattened by the controller bundler into an unconditional top-level
+  // `import "bun:sqlite"`, which Node's ESM loader rejects before the guard
+  // runs; an external `@telorun/*` specifier stays a deferred dynamic import.
+  const { openDatabase } = await import("@telorun/sql/sqlite-driver");
   return openDatabase(file);
 }

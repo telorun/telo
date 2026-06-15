@@ -14,6 +14,16 @@ http://runner.telo.localhost:8060 {
 	reverse_proxy runner:8061
 }
 
+# Per-session app endpoints. The runner announces URLs of the form
+# http://<port>-<sessionId>.run.telo.localhost:8060 (RUNNER_PUBLIC_BASE_URL); a
+# single wildcard label carries both because `*.host` matches exactly one label.
+# Split it back out and proxy to the session container by name on the shared
+# network — no per-session config, docker DNS resolves `telo-run-<sessionId>`.
+http://*.run.telo.localhost:8060 {
+	@app header_regexp app Host ^(\d+)-(.+)\.run\.telo\.localhost(?::\d+)?$
+	reverse_proxy @app telo-run-{re.app.2}:{re.app.1}
+}
+
 http://pages.telo.localhost:8060 {
 	reverse_proxy pages:3000
 }

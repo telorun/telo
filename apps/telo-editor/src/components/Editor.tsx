@@ -32,7 +32,6 @@ import type { CanvasViewport, ModuleDocument } from "../model";
 import type {
   EditorState,
   ModuleKind,
-  PortMapping,
   Selection,
   ViewId,
   Workspace,
@@ -42,8 +41,8 @@ import { DEFAULT_SETTINGS } from "../model";
 import {
   readActiveEnvironment,
   setActiveEnvironmentEnv,
-  setActiveEnvironmentPorts,
 } from "../deployment";
+import { resolveDeclaredPorts } from "./views/deployment/declared-ports";
 import {
   buildRunBundle,
   registry as runRegistry,
@@ -461,7 +460,7 @@ export function Editor() {
         request: {
           bundle,
           env: environment.env,
-          ports: environment.ports,
+          ports: resolveDeclaredPorts(manifest, environment.env),
           acceptedTermsVersion,
         },
       });
@@ -1033,15 +1032,6 @@ export function Editor() {
     }));
   }
 
-  function handleSetDeploymentPorts(ports: PortMapping[]) {
-    const appPath = state.activeModulePath;
-    if (!appPath) return;
-    setState((s) => ({
-      ...s,
-      deploymentsByApp: setActiveEnvironmentPorts(s.deploymentsByApp, appPath, ports),
-    }));
-  }
-
   /** Commits a source-view edit for one file in the active module. Replaces
    *  that file's `ModuleDocument` with a fresh parse, re-derives the
    *  ParsedManifest from the updated AST, reconciles imports whose source
@@ -1336,7 +1326,6 @@ export function Editor() {
                           state.activeModulePath,
                         ),
                         onSetEnvVars: handleSetDeploymentEnvVars,
-                        onSetPorts: handleSetDeploymentPorts,
                       },
                       revealRequest: state.sourceRevealRequest,
                       canvasViewport: state.activeModulePath

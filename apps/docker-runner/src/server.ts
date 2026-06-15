@@ -29,6 +29,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     bundleRoot: deps.runnerConfig.bundleRoot,
     bundleVolume: deps.runnerConfig.bundleVolume,
     childNetwork: deps.runnerConfig.childNetwork,
+    publicBaseUrl: deps.runnerConfig.publicBaseUrl,
   });
 
   return coreBuildServer({

@@ -21,8 +21,18 @@ export function endpointHref(endpoint: AppEndpoint): string | null {
   return `http://${formatHost(endpoint.host)}:${endpoint.port}`;
 }
 
-/** Display label for an endpoint, e.g. `localhost:8080` or `:9000/udp`. */
+/** Display label for an endpoint, e.g. `localhost:8080` or `:9000/udp`. When the
+ *  endpoint carries an absolute `url`, label with that url's authority so the text
+ *  matches the link actually opened — `host`/`port` may be display-only values
+ *  (e.g. a proxy/ingress whose `host` isn't itself routable). */
 export function endpointLabel(endpoint: AppEndpoint): string {
+  if (endpoint.url) {
+    try {
+      return new URL(endpoint.url).host;
+    } catch {
+      // Malformed url — fall back to host:port below.
+    }
+  }
   const host = endpoint.host ? formatHost(endpoint.host) : "";
   const base = `${host}:${endpoint.port}`;
   return endpoint.protocol === "tcp" ? base : `${base}/udp`;

@@ -1,0 +1,139 @@
+kind: Telo.Application
+metadata:
+  name: OpenApiServerUrlTest
+  version: 1.0.0
+  description: |
+    Http.Server OpenAPI `servers` URL resolution:
+      - relative (the mount prefix) by default, so it resolves against whatever
+        origin loaded the docs,
+      - absolute from X-Forwarded-Proto / X-Forwarded-Host when
+        `trustForwardedHeaders` is on.
+imports:
+  Http: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+  Type: ../../type
+targets:
+  - !ref Test
+---
+# Fetch the served OpenAPI document and surface its first server URL, so the
+# assertion compares a plain string instead of indexing a dynamic body.
+kind: JS.Script
+metadata: { name: FetchServerUrl }
+code: |
+  async function main({ url, headers }) {
+    const r = await fetch(url, { headers: headers || {} });
+    const body = await r.json();
+    const serverUrl = (body && body.servers && body.servers[0] && body.servers[0].url) || "";
+    return { status: r.status, serverUrl };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+      headers: { type: object, additionalProperties: { type: string } }
+    required: [ url ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      serverUrl: { type: string }
+    required: [ status, serverUrl ]
+---
+kind: JS.Script
+metadata: { name: Ping }
+code: |
+  async function main() { return { ok: true }; }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { ok: { type: boolean } }
+    required: [ ok ]
+---
+kind: Http.Api
+metadata: { name: ApiRelative }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref Ping
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: "${{ result.ok }}" }
+---
+kind: Http.Api
+metadata: { name: ApiForwarded }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref Ping
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: "${{ result.ok }}" }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: RelativeServer }
+    host: 127.0.0.1
+    port: 8961
+    logger: false
+    openapi:
+      info: { title: RelativeServer, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref ApiRelative
+  - kind: Http.Server
+    metadata: { name: ForwardedServer }
+    host: 127.0.0.1
+    port: 8962
+    logger: false
+    trustForwardedHeaders: true
+    openapi:
+      info: { title: ForwardedServer, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref ApiForwarded
+targets:
+  - !ref RelativeServer
+  - !ref ForwardedServer
+steps:
+  - name: HitRelative
+    inputs:
+      url: http://127.0.0.1:8961/reference/openapi.json
+    invoke: !ref FetchServerUrl
+  - name: AssertRelative
+    inputs:
+      serverUrl: "${{ steps.HitRelative.result.serverUrl }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          serverUrl: { const: "/v1" }
+        required: [ serverUrl ]
+  - name: HitForwarded
+    inputs:
+      url: http://127.0.0.1:8962/reference/openapi.json
+      headers:
+        X-Forwarded-Host: api.example.com
+        X-Forwarded-Proto: https
+    invoke: !ref FetchServerUrl
+  - name: AssertForwarded
+    inputs:
+      serverUrl: "${{ steps.HitForwarded.result.serverUrl }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          serverUrl: { const: "https://api.example.com/v1" }
+        required: [ serverUrl ]

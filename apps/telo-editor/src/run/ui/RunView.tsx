@@ -1,5 +1,6 @@
 import type { DebugFrame } from "@telorun/debug-wire";
 import { DebugPanel } from "@telorun/debug-ui/components";
+import { Bug } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "../../components/ui/button";
@@ -72,6 +73,18 @@ export function RunView() {
           {selectedRun.adapterDisplayName}
         </span>
         <RunStatusChip status={selectedRun.status} />
+        {selectedRun.status.kind === "running" && selectedRun.status.inspectUrl && (
+          <a
+            href={selectedRun.status.inspectUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open inspection UI"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            <Bug size={13} aria-hidden />
+            Inspect
+          </a>
+        )}
         {selectedRun.status.kind === "starting" && selectedRun.progress && (
           <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
             {selectedRun.progress.message}
@@ -90,6 +103,12 @@ export function RunView() {
           ×
         </Button>
       </div>
+      {selectedRun.status.kind === "failed" && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          <span className="font-medium">Run failed:</span>
+          <span className="flex-1 break-words font-mono">{selectedRun.status.message}</span>
+        </div>
+      )}
       {selectedRun.historyUnavailable && (
         <div className="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           <span className="flex-1">

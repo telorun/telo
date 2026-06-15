@@ -9,6 +9,7 @@ export interface DockerBackendDeps {
   bundleRoot: string;
   bundleVolume: string;
   childNetwork: string;
+  publicBaseUrl?: string;
 }
 
 /**
@@ -38,12 +39,14 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
         return await spawnDockerSession({
           docker: deps.docker,
           containerName,
+          sessionId: spec.sessionId,
           image: spec.config.image,
           pullPolicy: spec.config.pullPolicy,
           entryRelativePath: `./${spec.entryRelativePath}`,
           workingDir,
           env: spec.env,
           ports: spec.ports,
+          publicBaseUrl: deps.publicBaseUrl,
           bundleVolume: deps.bundleVolume,
           childNetwork: deps.childNetwork,
           inspect: spec.inspect,

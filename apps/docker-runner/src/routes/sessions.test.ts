@@ -514,3 +514,111 @@ describe("POST /v1/sessions terms enforcement", () => {
     }
   });
 });
+
+describe("running-status endpoints", () => {
+  let h: TestHarness;
+  afterEach(async () => {
+    if (h) await teardownHarness(h);
+  });
+
+  async function runningStatus(h: TestHarness, ports: object[]) {
+    const res = await startSession(h, { ...VALID_START_BODY, ports });
+    const { sessionId } = res.json() as { sessionId: string };
+    await waitFor(() => h.registry.get(sessionId)?.status.kind === "running", "running");
+    const status = h.registry.get(sessionId)?.status;
+    return { sessionId, status };
+  }
+
+  it("announces a routable url per tcp port when RUNNER_PUBLIC_BASE_URL is set", async () => {
+    h = await buildHarness({}, { publicBaseUrl: "http://run.telo.localhost:8060" });
+    const { sessionId, status } = await runningStatus(h, [{ port: 4444, protocol: "tcp" }]);
+    expect(status).toEqual({
+      kind: "running",
+      endpoints: [
+        {
+          host: `${sessionId}.run.telo.localhost`,
+          port: 4444,
+          protocol: "tcp",
+          url: `http://4444-${sessionId}.run.telo.localhost:8060`,
+        },
+      ],
+    });
+  });
+
+  it("leaves endpoints host-less when no public base URL is configured", async () => {
+    h = await buildHarness();
+    const { status } = await runningStatus(h, [{ port: 4444, protocol: "tcp" }]);
+    expect(status).toEqual({
+      kind: "running",
+      endpoints: [{ host: "", port: 4444, protocol: "tcp" }],
+    });
+  });
+
+  it("does not route udp ports through the proxy", async () => {
+    h = await buildHarness({}, { publicBaseUrl: "http://run.telo.localhost:8060" });
+    const { status } = await runningStatus(h, [{ port: 5000, protocol: "udp" }]);
+    expect(status).toEqual({
+      kind: "running",
+      endpoints: [{ host: "", port: 5000, protocol: "udp" }],
+    });
+  });
+});
+
+describe("host port publishing", () => {
+  let h: TestHarness;
+  afterEach(async () => {
+    if (h) await teardownHarness(h);
+  });
+
+  it("skips host port bindings when a public base URL is configured", async () => {
+    h = await buildHarness({}, { publicBaseUrl: "http://run.telo.localhost:8060" });
+    await startSession(h, { ...VALID_START_BODY, ports: [{ port: 4444, protocol: "tcp" }] });
+    const opts = h.docker._lastCreateOpts;
+    expect(opts?.ExposedPorts).toEqual({ "4444/tcp": {} });
+    expect(opts?.HostConfig.PortBindings).toBeUndefined();
+  });
+
+  it("publishes host port bindings when no public base URL is configured", async () => {
+    h = await buildHarness();
+    await startSession(h, { ...VALID_START_BODY, ports: [{ port: 4444, protocol: "tcp" }] });
+    const opts = h.docker._lastCreateOpts;
+    expect(opts?.ExposedPorts).toEqual({ "4444/tcp": {} });
+    expect(opts?.HostConfig.PortBindings).toEqual({
+      "4444/tcp": [{ HostIp: "", HostPort: "4444" }],
+    });
+  });
+});
+
+describe("inspection URL", () => {
+  let h: TestHarness;
+  afterEach(async () => {
+    if (h) await teardownHarness(h);
+  });
+
+  async function running(payload: object) {
+    const res = await startSession(h, payload);
+    const { sessionId } = res.json() as { sessionId: string };
+    await waitFor(() => h.registry.get(sessionId)?.status.kind === "running", "running");
+    const status = h.registry.get(sessionId)?.status;
+    if (status?.kind !== "running") throw new Error("expected running status");
+    return { sessionId, status };
+  }
+
+  it("announces a proxy-routed inspect url when inspect + public base URL are set", async () => {
+    h = await buildHarness({}, { publicBaseUrl: "http://run.telo.localhost:8060" });
+    const { sessionId, status } = await running({ ...VALID_START_BODY, inspect: true });
+    expect(status.inspectUrl).toBe(`http://9230-${sessionId}.run.telo.localhost:8060`);
+  });
+
+  it("omits the inspect url when inspect is not requested", async () => {
+    h = await buildHarness({}, { publicBaseUrl: "http://run.telo.localhost:8060" });
+    const { status } = await running(VALID_START_BODY);
+    expect(status.inspectUrl).toBeUndefined();
+  });
+
+  it("omits the inspect url when no public base URL is configured", async () => {
+    h = await buildHarness();
+    const { status } = await running({ ...VALID_START_BODY, inspect: true });
+    expect(status.inspectUrl).toBeUndefined();
+  });
+});

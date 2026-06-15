@@ -31,11 +31,14 @@ function readOwnPackageJson(): Record<string, any> | null {
   }
 }
 
-/** The `@telorun/debug-ui` version this CLI was published against. In the
- *  monorepo the pin is `workspace:*` (no concrete version) — but there the devDep
- *  resolves on disk, so this is only consulted for the cache/fetch paths an end
- *  user hits, where `pnpm publish` has rewritten it to an exact version. */
+/** The `@telorun/debug-ui` version to fetch. `TELO_DEBUG_UI_VERSION` wins (set by
+ *  container images, where `pnpm deploy` — unlike `pnpm publish` — leaves the pin
+ *  as `workspace:*`); otherwise read the CLI's own manifest, where the npm-publish
+ *  flow has rewritten the devDep to an exact version. Returns null when neither
+ *  yields a concrete version. */
 function pinnedUiVersion(): string | null {
+  const fromEnv = process.env.TELO_DEBUG_UI_VERSION?.trim();
+  if (fromEnv) return fromEnv;
   const pkg = readOwnPackageJson();
   const raw = pkg?.devDependencies?.[UI_PACKAGE] ?? pkg?.dependencies?.[UI_PACKAGE];
   if (typeof raw !== "string") return null;
@@ -43,45 +46,69 @@ function pinnedUiVersion(): string | null {
   return /^\d/.test(version) ? version : null;
 }
 
-/** Resolve the on-demand single-file debug UI to an absolute path, first hit
- *  wins so local development never touches the network:
+/** Outcome of resolving the debug UI bundle. `unavailable` carries a human
+ *  `reason` — surfaced verbatim (e.g. the exact fetch URL that failed) rather than
+ *  collapsed to a silent null, so the inspect endpoint's 503 says *why*. */
+export type UiBundleResolution =
+  | { kind: "ok"; path: string }
+  | { kind: "unavailable"; reason: string };
+
+/** Resolve the on-demand single-file debug UI, first hit wins so local
+ *  development never touches the network:
  *
  *    1. `TELO_DEBUG_UI_PATH`         — explicit override (any local build).
  *    2. devDep on disk               — present in the monorepo, absent in a
  *                                      production install.
  *    3. `<cacheRoot>/debug-ui/<ver>` — a previous fetch.
- *    4. jsDelivr                     — fetch the pinned version, cache, serve.
+ *    4. CDN (jsDelivr / `TELO_DEBUG_UI_URL`) — fetch the pinned version, cache.
  *
- *  Returns `null` when nothing resolves (offline + uncached): the inspect
- *  endpoint still works headless, only the served UI is absent.
+ *  When nothing resolves the inspect endpoint still works headless; the returned
+ *  `reason` explains the gap (missing version, no cache dir, or a failed fetch
+ *  with its URL and status) so the failure is never silent.
  */
-export async function resolveUiBundle(cacheRoot: string | null): Promise<string | null> {
+export async function resolveUiBundle(cacheRoot: string | null): Promise<UiBundleResolution> {
   const override = process.env.TELO_DEBUG_UI_PATH;
-  if (override && fs.existsSync(override)) return override;
+  if (override) {
+    if (fs.existsSync(override)) return { kind: "ok", path: override };
+    return {
+      kind: "unavailable",
+      reason: `TELO_DEBUG_UI_PATH is set to '${override}', but no file exists there.`,
+    };
+  }
 
   try {
     const resolved = require.resolve(`${UI_PACKAGE}/${UI_ASSET}`);
-    if (fs.existsSync(resolved)) return resolved;
+    if (fs.existsSync(resolved)) return { kind: "ok", path: resolved };
   } catch {
     // Not installed (production CLI strips the devDep) — fall through to fetch.
   }
 
   const version = pinnedUiVersion();
-  if (!version || !cacheRoot) return null;
+  if (!version) {
+    return {
+      kind: "unavailable",
+      reason: `cannot determine which ${UI_PACKAGE} version to fetch — set TELO_DEBUG_UI_VERSION or TELO_DEBUG_UI_PATH.`,
+    };
+  }
+  if (!cacheRoot) {
+    return { kind: "unavailable", reason: "no cache directory is available to store the fetched debug UI." };
+  }
 
   const cached = path.join(cacheRoot, "debug-ui", version, "index.html");
-  if (fs.existsSync(cached)) return cached;
+  if (fs.existsSync(cached)) return { kind: "ok", path: cached };
 
   const base = process.env.TELO_DEBUG_UI_URL ?? DEFAULT_CDN_BASE;
   const url = `${base}/${UI_PACKAGE}@${version}/${UI_ASSET}`;
   try {
     const res = await fetch(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return { kind: "unavailable", reason: `could not fetch the debug UI from ${url} — HTTP ${res.status} ${res.statusText}.` };
+    }
     const body = Buffer.from(await res.arrayBuffer());
     await fsp.mkdir(path.dirname(cached), { recursive: true });
     await fsp.writeFile(cached, body);
-    return cached;
-  } catch {
-    return null;
+    return { kind: "ok", path: cached };
+  } catch (err) {
+    return { kind: "unavailable", reason: `could not fetch the debug UI from ${url} — ${(err as Error).message}.` };
   }
 }

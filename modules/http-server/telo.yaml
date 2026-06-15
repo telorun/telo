@@ -46,6 +46,18 @@ schema:
       description: External base URL used in generated links.
       type: "string"
       x-telo-eval: compile
+    trustForwardedHeaders:
+      title: Trust Forwarded Headers
+      description: >-
+        Trust the standard X-Forwarded-Proto / X-Forwarded-Host (RFC 7239)
+        headers from a fronting proxy. When true, the request protocol/host and
+        the OpenAPI `servers` URL reflect the proxy/ingress URL the client used.
+        Without it the OpenAPI `servers` is relative and resolves against the
+        origin the docs were loaded from. Default false; only enable behind a
+        trusted proxy.
+      type: "boolean"
+      x-telo-eval: compile
+      default: false
     logger:
       title: Logger
       description: Enable or disable request logging.

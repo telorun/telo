@@ -18,6 +18,9 @@ export interface DebugServerOptions {
   /** Absolute path to the single-file debug UI (`resolveUiBundle`). When absent,
    *  the endpoint runs headless and `/` returns a "UI not available" notice. */
   uiHtmlPath?: string;
+  /** Why the UI bundle is absent — rendered verbatim in the `/` 503 (e.g. the
+   *  exact fetch URL that failed) so the failure is explicit, not generic. */
+  uiUnavailableReason?: string;
   /** Replay ring-buffer size. Default 5000. */
   bufferSize?: number;
 }
@@ -234,11 +237,12 @@ export class DebugServer {
    *  itself (SSE / JSONL / blobs / version) keeps working headless. */
   private async handleUi(res: http.ServerResponse): Promise<void> {
     if (!this.options.uiHtmlPath) {
+      const detail = this.options.uiUnavailableReason ?? "the UI bundle could not be resolved or fetched.";
       res
         .writeHead(503, { "Content-Type": "text/html; charset=utf-8" })
         .end(
           "<h1>Debug UI not available</h1><p>The endpoint is live at <code>/events</code>; " +
-            "the UI bundle could not be resolved or fetched.</p>",
+            `${escapeHtml(detail)}</p>`,
         );
       return;
     }
@@ -249,4 +253,13 @@ export class DebugServer {
       res.writeHead(404).end("not found");
     }
   }
+}
+
+/** Minimal HTML-text escape for interpolating a diagnostic (which may contain a
+ *  URL) into the 503 body without opening an injection hole. */
+function escapeHtml(text: string): string {
+  return text.replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c,
+  );
 }

@@ -4,7 +4,6 @@ import type {
   DeploymentEnvironment,
   ModuleDocument,
   ModuleViewData,
-  PortMapping,
   RegistryServer,
   Selection,
   SourceRevealRequest,
@@ -62,7 +61,6 @@ export interface ViewProps {
   deployment: {
     activeEnvironment: DeploymentEnvironment;
     onSetEnvVars: (env: Record<string, string>) => void;
-    onSetPorts: (ports: PortMapping[]) => void;
   };
   /** When set, SourceView opens the given tab and reveals the range. The
    *  nonce lets repeated clicks on the same diagnostic re-fire the reveal

@@ -27,6 +27,11 @@ COPY . /build
 RUN --mount=type=cache,target=/pnpm pnpm install --frozen-lockfile
 RUN pnpm --filter=@telorun/cli... run build
 RUN pnpm --filter=@telorun/cli --prod deploy --legacy /deploy
+# `pnpm deploy` (unlike `pnpm publish`) leaves the `@telorun/debug-ui` devDep
+# pinned at `workspace:*`, so the runtime CLI can't derive a version to fetch the
+# on-demand inspect UI. Rewrite it to the concrete built version (what publish
+# does) so `resolveUiBundle` fetches + caches the bundle from the CDN on first use.
+RUN node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('/build/packages/debug-ui/package.json','utf8')).version;const p='/deploy/package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));(pkg.devDependencies||(pkg.devDependencies={}))['@telorun/debug-ui']=v;fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n');"
 
 FROM node:24-trixie AS lean
 

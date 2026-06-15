@@ -73,12 +73,14 @@ export interface CreateContainerOpts {
 export interface SpawnSessionArgs {
   docker: SessionDockerClient;
   containerName: string;
+  sessionId: string;
   image: string;
   pullPolicy: SessionConfig["pullPolicy"];
   entryRelativePath: string;
   workingDir: string;
   env: Record<string, string>;
   ports: PortMapping[];
+  publicBaseUrl?: string;
   bundleVolume: string;
   childNetwork: string;
   inspect: boolean;
@@ -111,7 +113,11 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
   }
 
   args.onStatus({ kind: "starting" });
-  args.onStatus({ kind: "running", endpoints: buildEndpoints(args.ports) });
+  args.onStatus({
+    kind: "running",
+    endpoints: buildEndpoints(args.sessionId, args.ports, args.publicBaseUrl),
+    inspectUrl: args.inspect ? buildInspectUrl(args.sessionId, args.publicBaseUrl) : undefined,
+  });
 
   // When inspect is on, subscribe to the workload's in-container inspect SSE
   // (reachable by name over the child network, never host-published) and relay
@@ -220,7 +226,7 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
     "CLICOLOR_FORCE=1",
     ...Object.entries(args.env).map(([k, v]) => `${k}=${v}`),
   ];
-  const { exposedPorts, portBindings } = buildPortBindings(args.ports);
+  const { exposedPorts, portBindings } = buildPortBindings(args.ports, !args.publicBaseUrl);
   // Tty + OpenStdin + StdinOnce=false + the four Attach* flags yield a hijacked
   // attach duplex carrying the PTY byte stream both ways. Without OpenStdin the
   // container's stdin is detached at /dev/null and user input never reaches it.
@@ -257,7 +263,17 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   }
 }
 
-function buildPortBindings(ports: PortMapping[]): {
+/** Container port config. When `publishToHost` is true (no proxy in front) the
+ *  app port is bound to the same host port — the only way to reach it. When a
+ *  proxy fronts sessions (RUNNER_PUBLIC_BASE_URL set), host publishing is skipped:
+ *  the proxy reaches the container by name over the shared network, so binding
+ *  host ports is both redundant and a collision source (two sessions on one port,
+ *  leftover containers). The container still listens on its port — `ExposedPorts`
+ *  documents it and intra-network reachability needs no binding. */
+function buildPortBindings(
+  ports: PortMapping[],
+  publishToHost: boolean,
+): {
   exposedPorts?: Record<string, Record<string, never>>;
   portBindings?: Record<string, Array<{ HostIp: string; HostPort: string }>>;
 } {
@@ -267,16 +283,51 @@ function buildPortBindings(ports: PortMapping[]): {
   for (const { port, protocol } of ports) {
     const key = `${port}/${protocol}`;
     exposedPorts[key] = {};
-    portBindings[key] = [{ HostIp: "", HostPort: String(port) }];
+    if (publishToHost) portBindings[key] = [{ HostIp: "", HostPort: String(port) }];
   }
-  return { exposedPorts, portBindings };
+  return publishToHost ? { exposedPorts, portBindings } : { exposedPorts };
 }
 
-/** Endpoints announced on the `running` status. `host` is left blank — the
- *  runner does not know the hostname clients used; the client adapter fills it
- *  from its configured baseUrl. */
-function buildEndpoints(ports: PortMapping[]): RunnerEndpoint[] {
-  return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
+/** Endpoints announced on the `running` status.
+ *
+ *  Without a public base URL, `host` is left blank — the runner does not know
+ *  the hostname clients used; the client adapter fills it from its configured
+ *  baseUrl.
+ *
+ *  With `RUNNER_PUBLIC_BASE_URL` set, each tcp port also gets an absolute `url`
+ *  routed through a host-matching proxy (e.g. Caddy) that fronts the session
+ *  container by name. The app port and session id ride as a single leading
+ *  subdomain label (`<port>-<sessionId>`), because a `*.host` wildcard matches
+ *  exactly one label — the proxy splits it back into the upstream
+ *  `telo-run-<sessionId>:<port>`. udp ports aren't http-routable, so they keep
+ *  the host-less form. */
+function buildEndpoints(
+  sessionId: string,
+  ports: PortMapping[],
+  publicBaseUrl: string | undefined,
+): RunnerEndpoint[] {
+  const base = publicBaseUrl ? new URL(publicBaseUrl) : null;
+  return ports.map((p) => {
+    if (!base || p.protocol !== "tcp") {
+      return { host: "", port: p.port, protocol: p.protocol };
+    }
+    return {
+      host: `${sessionId}.${base.hostname}`,
+      port: p.port,
+      protocol: p.protocol,
+      url: `${base.protocol}//${p.port}-${sessionId}.${base.host}`,
+    };
+  });
+}
+
+/** URL of the kernel inspection UI when proxy-routed. The inspect server listens
+ *  on `INSPECT_PORT` inside the container, so it rides the same `<port>-<sessionId>`
+ *  wildcard route as app ports — no separate proxy rule. Returns undefined without
+ *  a public base URL (the inspect endpoint is then only reachable by the runner). */
+function buildInspectUrl(sessionId: string, publicBaseUrl: string | undefined): string | undefined {
+  if (!publicBaseUrl) return undefined;
+  const base = new URL(publicBaseUrl);
+  return `${base.protocol}//${INSPECT_PORT}-${sessionId}.${base.host}`;
 }
 
 async function attachContainer(container: SessionDockerContainer): Promise<NodeJS.ReadWriteStream> {
