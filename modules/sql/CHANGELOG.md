@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.1 - 2026-06-10
+## 0.9.2 - 2026-06-15
+### Fixed
+* Update controller @telorun/sql to 0.7.2.## 0.9.1 - 2026-06-10
 ### Fixed
 * Update controller @telorun/sql to 0.7.1.## 0.9.0 - 2026-06-07
 ### Added

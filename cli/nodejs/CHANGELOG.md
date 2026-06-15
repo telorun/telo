@@ -1,5 +1,16 @@
 # @telorun/cli
 
+## 0.30.1
+
+### Patch Changes
+
+- b1dd65c: Inspect debug UI: surface an explicit failure (including the exact fetch URL and HTTP status / error) when the on-demand UI bundle can't be resolved or fetched, instead of a generic "not available" notice — the reason is shown in the endpoint's 503 and logged at startup. Add a `TELO_DEBUG_UI_VERSION` override so the version to fetch can be set when the CLI manifest doesn't carry a concrete one (e.g. container images built via `pnpm deploy`, where `workspace:*` isn't rewritten).
+- Updated dependencies [0c16f41]
+  - @telorun/templating@0.10.0
+  - @telorun/analyzer@0.24.1
+  - @telorun/kernel@0.30.1
+  - @telorun/ide-support@0.4.27
+
 ## 0.30.0
 
 ### Patch Changes
