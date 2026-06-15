@@ -1,5 +1,7 @@
 # Changelog
-## 0.11.0 - 2026-06-07
+## 0.12.0 - 2026-06-15
+### Added
+* Update controller @telorun/http-server to 0.11.0.## 0.11.0 - 2026-06-07
 ### Added
 * Update controller @telorun/http-server to 0.10.0.
 * Module `description` and schema `examples:` for registry / MCP discovery (`search_modules` + `get_module_manifest`).

@@ -1,5 +1,11 @@
 # @telorun/assert
 
+## 0.7.14
+
+### Patch Changes
+
+- @telorun/analyzer@0.24.1
+
 ## 0.7.13
 
 ### Patch Changes
