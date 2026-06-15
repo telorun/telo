@@ -1,0 +1,209 @@
+kind: Telo.Application
+metadata:
+  name: CelStdlibTest
+  version: 1.0.0
+  description: |
+    Behavioural tests for the CEL standard-library functions (the catalog in
+    @telorun/templating), evaluated with !cel and checked via Assert.Equals.
+    Int-returning expressions are wrapped in json()/string() because CEL ints are
+    BigInt (Assert serializes to JSON); strings, lists, bools and doubles assert
+    directly. Non-deterministic time/uuid functions assert format/validity.
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+targets:
+  - !ref Strings
+  - !ref Collections
+  - !ref Indexing
+  - !ref Math
+  - !ref Json
+  - !ref Encoding
+  - !ref Hashing
+  - !ref NullHandling
+  - !ref NonDeterministic
+---
+kind: Run.Sequence
+metadata: { name: Strings }
+steps:
+  - name: Lower
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "lower('ABC')", expected: "abc" }
+  - name: Upper
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "upper('abc')", expected: "ABC" }
+  - name: Trim
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "trim('  hi  ')", expected: "hi" }
+  - name: ReplaceLiteralSubstring
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "replace('a.b.c', '.', '-')", expected: "a-b-c" }
+  - name: Split
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "split('a,b,c', ',')", expected: ["a", "b", "c"] }
+  - name: TrimPrefix
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "trimPrefix('foobar', 'foo')", expected: "bar" }
+  - name: TrimPrefixAbsent
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "trimPrefix('foobar', 'xyz')", expected: "foobar" }
+  - name: TrimSuffix
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "trimSuffix('line.', '.')", expected: "line" }
+---
+kind: Run.Sequence
+metadata: { name: Collections }
+steps:
+  - name: Join
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "join(['a','b','c'], '-')", expected: "a-b-c" }
+  - name: Keys
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "sort(keys({'b':'1','a':'2'}))", expected: ["a", "b"] }
+  - name: Values
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "sort(values({'a':'x','b':'y'}))", expected: ["x", "y"] }
+  - name: Distinct
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "distinct(['a','a','b','c','b'])", expected: ["a", "b", "c"] }
+  - name: Reverse
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "reverse(['a','b','c'])", expected: ["c", "b", "a"] }
+  - name: Flatten
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "flatten([['a','b'],['c']])", expected: ["a", "b", "c"] }
+  - name: Sort
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "sort(['c','a','b'])", expected: ["a", "b", "c"] }
+---
+kind: Run.Sequence
+metadata: { name: Indexing }
+steps:
+  - name: Range
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "json(range(3))", expected: "[0,1,2]" }
+  - name: RangeEmpty
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "json(range(0))", expected: "[]" }
+  - name: Enumerate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "json(enumerate(['x','y']))"
+      expected: '[{"index":0,"value":"x"},{"index":1,"value":"y"}]'
+  - name: RangeMapNumberLines
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "range(size(['a','b','c'])).map(i, string(i + 1) + ': ' + ['a','b','c'][i])"
+      expected: ["1: a", "2: b", "3: c"]
+---
+kind: Run.Sequence
+metadata: { name: Math }
+steps:
+  - name: Abs
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "abs(-7.5)", expected: 7.5 }
+  - name: Floor
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "floor(3.7)", expected: 3.0 }
+  - name: Ceil
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "ceil(3.2)", expected: 4.0 }
+  - name: Round
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "round(3.5)", expected: 4.0 }
+  - name: Min
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "string(min([3, 1, 2]))", expected: "1" }
+  - name: Max
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "string(max([3, 1, 2]))", expected: "3" }
+---
+kind: Run.Sequence
+metadata: { name: Json }
+steps:
+  - name: Serialize
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "json({'a': 1})", expected: '{"a":1}' }
+  - name: ParseRoundTrip
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "json(parseJson('{\"n\":42}'))", expected: '{"n":42}' }
+---
+kind: Run.Sequence
+metadata: { name: Encoding }
+steps:
+  - name: Base64Encode
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "base64Encode('hello')", expected: "aGVsbG8=" }
+  - name: Base64Decode
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "base64Decode('aGVsbG8=')", expected: "hello" }
+  - name: UrlEncode
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "urlEncode('a b&c=d')", expected: "a%20b%26c%3Dd" }
+  - name: UrlDecode
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "urlDecode('a%20b')", expected: "a b" }
+---
+kind: Run.Sequence
+metadata: { name: Hashing }
+steps:
+  - name: Sha256
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "sha256('hello')"
+      expected: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  - name: Md5
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "md5('hello')", expected: "5d41402abc4b2a76b9719d911017c592" }
+  - name: Sha1
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "sha1('hello')", expected: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d" }
+  - name: Sha512
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "sha512('hello')"
+      expected: "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043"
+  - name: Hmac
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "hmac('sha256', 'key', 'hello')"
+      expected: "9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"
+---
+kind: Run.Sequence
+metadata: { name: NullHandling }
+steps:
+  - name: DefaultUsesFallbackOnNull
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "default(null, 'fallback')", expected: "fallback" }
+  - name: DefaultKeepsValue
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "default('value', 'fallback')", expected: "value" }
+  - name: CoalesceFirstNonNull
+    # dyn() makes the list homogeneous (dyn) so it type-checks; CEL list literals
+    # must otherwise be one type, which a null+string mix is not.
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "coalesce([dyn(null), dyn(null), dyn('first')])", expected: "first" }
+---
+kind: Run.Sequence
+metadata: { name: NonDeterministic }
+steps:
+  - name: UuidValidateTrue
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "uuidValidate('550e8400-e29b-41d4-a716-446655440000')", expected: true }
+  - name: UuidValidateFalse
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "uuidValidate('not-a-uuid')", expected: false }
+  - name: GeneratedUuidIsValid
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "uuidValidate(uuidv4())", expected: true }
+  - name: UuidVersion
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "string(uuidVersion('550e8400-e29b-41d4-a716-446655440000'))", expected: "4" }
+  - name: NowMillisPositive
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "nowMillis() > 0", expected: true }
+  - name: NowIsoFormat
+    invoke: { kind: Assert.Matches }
+    inputs: { actual: !cel "nowIso()", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" }
+  - name: TodayFormat
+    invoke: { kind: Assert.Matches }
+    inputs: { actual: !cel "today()", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }

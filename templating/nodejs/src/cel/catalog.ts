@@ -1,3 +1,4 @@
+import { RE2JS } from "re2js";
 import { v1, v3, v4, v5, v6, v7, validate as uuidValidate, version as uuidVersion } from "uuid";
 
 /** Host-injected functions that need platform APIs the templating package must
@@ -14,6 +15,47 @@ export interface CelHandlers {
   base64Decode: (s: string) => string;
   json: (value: unknown) => string;
 }
+
+/** RE2 regex engine for the CEL `regex*` functions — `re2js`, a pure-JS port of
+ *  Google's RE2. The dialect is RE2 (linear-time, no backtracking, ReDoS-safe) —
+ *  never JS `RegExp` — so a manifest's regex behaves the same across runtimes.
+ *  Flags map a trailing option string to RE2 flags; inline `(?s)` etc. work in
+ *  the pattern too.
+ *
+ *  Why pure-JS and not a native RE2:
+ *  - The Rust `regex` crate via napi (N-API) is faster, but shipping it means a
+ *    cross-platform prebuild matrix + per-triple npm packages — a whole release
+ *    subsystem for one function family.
+ *  - The `re2` npm package (Google's C++ RE2) is simpler to depend on, but it's a
+ *    nan/V8 addon and **does not load under Bun** (incomplete V8 C++ ABI →
+ *    `undefined symbol`). Telo's CLI and test suite run on Bun, so that's a
+ *    non-starter.
+ *  `re2js` is pure JS: zero native addons, runs identically on Node, Bun, and the
+ *  browser (keeps this package — and the analyzer — browser-safe), and needs no
+ *  prebuilds. The cost is throughput vs. native, which is irrelevant for the
+ *  small strings CEL manifests run regex over. */
+const RE2_FLAG: Record<string, number> = {
+  i: RE2JS.CASE_INSENSITIVE,
+  m: RE2JS.MULTILINE,
+  s: RE2JS.DOTALL,
+};
+
+const compileRe2 = (fn: string, pattern: string, flags?: string): RE2JS => {
+  let bits = 0;
+  for (const c of flags ?? "") {
+    if (c === "g") continue; // global is implicit in replaceAll / find-loop
+    const bit = RE2_FLAG[c];
+    if (bit === undefined) throw new Error(`${fn}: unknown regex flag '${c}' (supported: i, m, s)`);
+    bits |= bit;
+  }
+  try {
+    return RE2JS.compile(pattern, bits);
+  } catch (e) {
+    throw new Error(
+      `${fn}: invalid RE2 pattern ${JSON.stringify(pattern)}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+};
 
 export type CelFunctionCategory =
   | "conversion"
@@ -72,11 +114,6 @@ const minMax = (list: unknown[], isMin: boolean): unknown => {
   }
   return best;
 };
-
-/** Ensure a regex replaces every match: append the global flag unless the
- *  caller already passed it. */
-const withGlobal = (flags?: string): string =>
-  flags && flags.includes("g") ? flags : `${flags ?? ""}g`;
 
 const sortList = (list: unknown[]): unknown[] =>
   [...list].sort((a, b) => {
@@ -270,41 +307,51 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     name: "regexReplace",
     signature: "regexReplace(string, string, string, string?): string",
     category: "string",
-    summary: "Replace every regex match with a replacement ($1 backrefs); flags like 'i', 'm', 's'.",
+    summary:
+      "Replace every regex match (RE2 syntax) with a replacement ($1 backrefs); flags like 'i', 'm', 's'.",
     deterministic: true,
     hostBacked: false,
     build: () => (s: string, pattern: string, replacement: string, flags?: string) =>
-      s.replace(new RegExp(pattern, withGlobal(flags)), replacement),
+      compileRe2("regexReplace", pattern, flags).matcher(s).replaceAll(replacement),
   },
   {
     name: "regexExtract",
-    signature: "regexExtract(string, string): string",
+    signature: "regexExtract(string, string, string?): string",
     category: "string",
-    summary: "First whole match of a regex, or '' when there is none.",
+    summary: "First whole match of a regex (RE2 syntax), or '' when there is none.",
     deterministic: true,
     hostBacked: false,
-    build: () => (s: string, pattern: string) => s.match(new RegExp(pattern))?.[0] ?? "",
+    build: () => (s: string, pattern: string, flags?: string) => {
+      const m = compileRe2("regexExtract", pattern, flags).matcher(s);
+      return m.find() ? (m.group() ?? "") : "";
+    },
   },
   {
     name: "regexExtractAll",
-    signature: "regexExtractAll(string, string): list<string>",
+    signature: "regexExtractAll(string, string, string?): list<string>",
     category: "string",
-    summary: "Every whole match of a regex, in order.",
+    summary: "Every whole match of a regex (RE2 syntax), in order.",
     deterministic: true,
     hostBacked: false,
-    build: () => (s: string, pattern: string) =>
-      [...s.matchAll(new RegExp(pattern, "g"))].map((m) => m[0]),
+    build: () => (s: string, pattern: string, flags?: string) => {
+      const m = compileRe2("regexExtractAll", pattern, flags).matcher(s);
+      const out: string[] = [];
+      while (m.find()) out.push(m.group() ?? "");
+      return out;
+    },
   },
   {
     name: "regexGroups",
-    signature: "regexGroups(string, string): list<string>",
+    signature: "regexGroups(string, string, string?): list<string>",
     category: "string",
-    summary: "Capture groups of the first regex match (empty list when there is no match).",
+    summary:
+      "Capture groups of the first regex match (RE2 syntax); empty list when there is no match.",
     deterministic: true,
     hostBacked: false,
-    build: () => (s: string, pattern: string) => {
-      const m = s.match(new RegExp(pattern));
-      return m ? m.slice(1).map((g) => g ?? "") : [];
+    build: () => (s: string, pattern: string, flags?: string) => {
+      const m = compileRe2("regexGroups", pattern, flags).matcher(s);
+      if (!m.find()) return [];
+      return Array.from({ length: m.groupCount() }, (_unused, i) => m.group(i + 1) ?? "");
     },
   },
   {

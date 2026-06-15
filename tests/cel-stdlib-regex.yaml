@@ -1,0 +1,89 @@
+kind: Telo.Application
+metadata:
+  name: CelStdlibRegexTest
+  version: 1.0.0
+  description: |
+    CEL stdlib regex functions — regexReplace / regexExtract / regexExtractAll /
+    regexGroups — backed by re2js (a pure-JS RE2 port). Asserts RE2 semantics:
+    every-match replace, $1 backrefs, the i/s flags, inline (?s) dotall, capture
+    groups, and the empty results for no-match. Each expression is evaluated with
+    !cel and deep-equality-checked via Assert.Equals.
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+targets:
+  - !ref TestReplace
+  - !ref TestExtract
+  - !ref TestExtractAll
+  - !ref TestGroups
+---
+kind: Run.Sequence
+metadata: { name: TestReplace }
+steps:
+  - name: ReplacesEveryMatch
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexReplace('a1b2', '[0-9]', '#')"
+      expected: "a#b#"
+  - name: Backref
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexReplace('John Smith', '([a-zA-Z]+) ([a-zA-Z]+)', '$2 $1')"
+      expected: "Smith John"
+  - name: CaseInsensitiveFlag
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexReplace('HELLO', 'hello', 'hi', 'i')"
+      expected: "hi"
+  - name: InlineDotall
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexReplace('a\\nb', '(?s)a.b', 'Z')"
+      expected: "Z"
+  - name: DotallFlag
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexReplace('a\\nb', 'a.b', 'Z', 's')"
+      expected: "Z"
+---
+kind: Run.Sequence
+metadata: { name: TestExtract }
+steps:
+  - name: FirstMatch
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexExtract('id=42;', '[0-9]+')"
+      expected: "42"
+  - name: NoMatchIsEmpty
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexExtract('none', '[0-9]+')"
+      expected: ""
+---
+kind: Run.Sequence
+metadata: { name: TestExtractAll }
+steps:
+  - name: EveryMatchInOrder
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexExtractAll('a1b2c3', '[0-9]')"
+      expected: ["1", "2", "3"]
+  - name: NoneIsEmptyList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexExtractAll('abc', '[0-9]')"
+      expected: []
+---
+kind: Run.Sequence
+metadata: { name: TestGroups }
+steps:
+  - name: CaptureGroups
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexGroups('2026-06-14', '([0-9]+)-([0-9]+)-([0-9]+)')"
+      expected: ["2026", "06", "14"]
+  - name: NoMatchIsEmptyList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "regexGroups('x', '([0-9]+)')"
+      expected: []
