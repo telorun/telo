@@ -48,6 +48,17 @@ describe("controller bundling", () => {
     // the named `create`).
     await write("node_modules/cjsctrl/package.json", JSON.stringify({ name: "cjsctrl", version: "1.0.0", main: "index.js" }));
     await write("node_modules/cjsctrl/index.js", `module.exports = { create: async () => ({ ok: true }) };`);
+    // A CJS dep that `require()`s a Node builtin — bundled into the ESM output as
+    // esbuild's `__require("events")` shim, which throws "Dynamic require of
+    // events is not supported" in a `.mjs` unless the bundle's banner defines
+    // `require`. This is the tar-stream / yaml failure shape.
+    await write("node_modules/cjsreq/package.json", JSON.stringify({ name: "cjsreq", version: "1.0.0", main: "index.js" }));
+    await write(
+      "node_modules/cjsreq/index.js",
+      `const { EventEmitter } = require("events");\nmodule.exports = { ping: () => new EventEmitter() instanceof EventEmitter };`,
+    );
+    await write("node_modules/ctrl-cjsdep/package.json", JSON.stringify({ name: "ctrl-cjsdep", version: "1.0.0", type: "module", main: "index.js" }));
+    await write("node_modules/ctrl-cjsdep/index.js", `import dep from "cjsreq";\nexport function create() { return { ok: dep.ping() }; }`);
     // A native dep (ships a `prebuilds/` dir) that must be externalized, not inlined.
     await write("node_modules/nativedep/package.json", JSON.stringify({ name: "nativedep", version: "1.0.0", type: "module", main: "index.js" }));
     await write("node_modules/nativedep/index.js", `export const NATIVE_MARKER = "NATIVE_INLINED";`);
@@ -104,6 +115,18 @@ describe("controller bundling", () => {
   it("skips a CJS controller entry (esbuild can't lift its named exports)", async () => {
     const entry = path.join(root, "node_modules/cjsctrl/index.js");
     expect(await tryBuildControllerBundle(root, entry)).toBeNull();
+  });
+
+  it("lets a bundled CJS dep's require() of a builtin work (createRequire banner)", async () => {
+    const entry = path.join(root, "node_modules/ctrl-cjsdep/index.js");
+    const bundle = await tryBuildControllerBundle(root, entry);
+    expect(bundle).toBeTruthy();
+    const code = await fs.readFile(bundle!, "utf8");
+    expect(code).toContain("createRequire"); // banner present
+    // Without the banner this import throws "Dynamic require of "events" is not
+    // supported" — the original tar-stream / yaml failure.
+    const mod = await import(pathToFileURL(bundle!).href);
+    expect((await mod.create()).ok).toBe(true);
   });
 
   it("externalizes native deps instead of inlining them", async () => {
