@@ -1,6 +1,6 @@
 {
   "name": "@telorun/k8s-runner",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Telo Kubernetes Runner - HTTP service that runs Telo Applications as sandboxed Kubernetes Pods. A backend over @telorun/runner-core, sibling to docker-runner.",
   "keywords": [
