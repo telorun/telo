@@ -4,7 +4,7 @@ import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
 import type { RunnerCoreConfig } from "./config.js";
-import type { RunnerCapabilities } from "./contract.js";
+import type { RunnerCapabilities, SessionConfig } from "./contract.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
@@ -18,10 +18,15 @@ export interface ServerDeps {
   /** The concrete runner's package version, surfaced on /v1/health. */
   version: string;
   /** The runner's self-description + editable config schema, served on
-   *  /v1/capabilities so the editor renders a generic runner config form. */
-  capabilities: RunnerCapabilities;
+   *  /v1/capabilities so the editor renders a generic runner config form. A
+   *  getter is re-resolved per request — use it when the config surface changes
+   *  at runtime (e.g. a base-image catalog refreshed from a registry). */
+  capabilities: RunnerCapabilities | (() => RunnerCapabilities);
   /** Runner's default registry URL, passed to workloads as TELO_REGISTRY_URL. */
   defaultRegistryUrl?: string;
+  /** Backend config gate, enforced on `POST /v1/sessions` before the workload
+   *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`. */
+  validateConfig?: (config: SessionConfig) => string | undefined;
   registry?: SessionRegistry;
 }
 
@@ -53,6 +58,11 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       replayBufferBytes: deps.config.replayBufferBytes,
     });
 
+  // Terms are stable across the process — resolve the capabilities once for them
+  // even when `capabilities` is a getter (the route still re-resolves per request).
+  const capabilitiesValue =
+    typeof deps.capabilities === "function" ? deps.capabilities() : deps.capabilities;
+
   await app.register(healthRoute(deps.version));
   await app.register(capabilitiesRoute(deps.capabilities));
   await app.register(probeRoute({ backend: deps.backend }));
@@ -62,9 +72,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       registry,
       corsOrigins: deps.config.corsOrigins,
       defaultRegistryUrl: deps.defaultRegistryUrl,
+      validateConfig: deps.validateConfig,
       // The capabilities document is the single source of the runner's terms;
       // the session route enforces what /v1/capabilities advertises.
-      terms: deps.capabilities.terms,
+      terms: capabilitiesValue.terms,
     }),
   );
   await app.register(ioRoute({ registry, corsOrigins: deps.config.corsOrigins }));

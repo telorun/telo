@@ -73,7 +73,7 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_SELF_URL` | _(required)_ | Runner's in-cluster base URL (bundle fetch) |
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
-| `RUNNER_IMAGE` | `telorun/node:latest-slim` | Image spawned per run |
+| `RUNNER_IMAGE` | `telorun/node:latest-slim` | Default base image; always offered in the picker and the fallback when the catalog is unreachable |
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
 | `RUNNER_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
@@ -87,6 +87,35 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
+
+### Base-image picker
+
+The runner advertises a menu of base images on `/v1/capabilities`, resolved from
+a Docker Hub repo's tags (filtered) and cached. The editor renders it as an
+editable `image` dropdown; the chosen image is **re-validated server-side**
+against the same list, so a client that skips the editor can't widen the set.
+`RUNNER_IMAGE` is always offered and is the fallback when Docker Hub is
+unreachable. Disable the catalog to lock `image` to `RUNNER_IMAGE`.
+
+Pinned tags (e.g. `0.30.1-slim`) are immutable. A picked **moving** tag like
+`latest-slim` only refreshes when the session's `pullPolicy` is `always`: the
+build then pins the per-app image to the base's current digest, so a moved tag
+yields a new image and rebuilds (otherwise the cached build — keyed on the tag
+string — is reused). Movement detection reads the digest from Docker Hub, so a
+base hosted elsewhere (GHCR, a private registry) can't be tracked — `always`
+degrades to reusing the cached build for it, same as `missing` / `never`.
+
+| Env | Default | Purpose |
+| --- | --- | --- |
+| `RUNNER_BASE_IMAGE_CATALOG_ENABLED` | `true` | Resolve + advertise the picker; `false` locks `image` to `RUNNER_IMAGE` |
+| `RUNNER_BASE_IMAGE_REPO` | `telorun/node` | `namespace/repository` queried on Docker Hub |
+| `RUNNER_BASE_IMAGE_PINNED_ONLY` | `true` | Keep only pinned `MAJOR.MINOR.PATCH[-variant]` tags (drops `latest`, `0`, `0.30`) |
+| `RUNNER_BASE_IMAGE_EXCLUDE_SHA` | `true` | Drop commit-hash tags |
+| `RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE` | `true` | Drop semver prereleases (`-rc.1`, `-alpha`); `-slim` / `-rust-*` variants are kept |
+| `RUNNER_BASE_IMAGE_INCLUDE` | _(unset)_ | Regex a tag must match (escape hatch) |
+| `RUNNER_BASE_IMAGE_EXCLUDE` | _(unset)_ | Regex that drops a matching tag (escape hatch) |
+| `RUNNER_BASE_IMAGE_LIMIT` | `20` | Cap on advertised tags (newest first) |
+| `RUNNER_BASE_IMAGE_REFRESH_SECONDS` | `3600` | Catalog re-fetch cadence |
 
 ### Image build (required)
 

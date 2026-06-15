@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type { V1Job } from "@kubernetes/client-node";
-import type { RunBundle } from "@telorun/runner-core";
-import { SessionStartError, extractDependencyKey } from "@telorun/runner-core";
+import type { PullPolicy, RunBundle } from "@telorun/runner-core";
+import { SessionStartError, extractDependencyKey, resolveTagDigest } from "@telorun/runner-core";
 
 import type { ImageBuildConfig } from "../config.js";
 import type { BundleStore } from "../bundle-store.js";
@@ -17,6 +17,10 @@ export interface ImageTagInputs {
   bundle: RunBundle;
   /** Base image the per-app image is built FROM. */
   baseImage: string;
+  /** Resolved digest of `baseImage`, folded into the tag so a moved moving-tag
+   *  (e.g. `latest-slim`) yields a fresh tag and rebuilds. Set only under the
+   *  `always` pull policy; omitted → keyed on the base TAG STRING alone. */
+  baseDigest?: string;
   /** Telo module registry baked into the build (affects resolved manifests). */
   teloRegistryUrl: string;
 }
@@ -39,6 +43,7 @@ export function computeImageTag(inputs: ImageTagInputs): string {
   const key = extractDependencyKey(inputs.bundle);
   const h = createHash("sha256");
   h.update("base\0" + inputs.baseImage + "\0");
+  if (inputs.baseDigest) h.update("base-digest\0" + inputs.baseDigest + "\0");
   h.update("telo-registry\0" + inputs.teloRegistryUrl + "\0");
   for (const source of key.importSources) h.update("import\0" + source + "\0");
   for (const locator of key.controllerLocators) h.update("controller\0" + locator + "\0");
@@ -197,6 +202,10 @@ export interface EnsureImageArgs {
   bundle: RunBundle;
   entryRelativePath: string;
   baseImage: string;
+  /** Base-image freshness. `always` pins the per-app image to the base's current
+   *  Docker Hub digest so a moved moving-tag rebuilds; `missing` / `never` (and
+   *  `always` on a base whose digest can't be resolved) reuse the cached build. */
+  pullPolicy: PullPolicy;
   /** Build-phase progress for the editor feed. */
   onProgress?: (message: string, done?: boolean) => void;
 }
@@ -216,9 +225,28 @@ export async function ensureSessionImage(
   deps: EnsureImageDeps,
   args: EnsureImageArgs,
 ): Promise<string> {
+  // Under the `always` pull policy, pin the per-app image to the base image's
+  // CURRENT digest: a moved moving-tag (latest-slim) then yields a fresh tag and
+  // rebuilds. Movement detection is Docker-Hub-only — if the digest can't be
+  // resolved (a non-Hub base, or a transient Hub failure) the build can't tell
+  // the base moved and reuses the cached image, so `always` degrades to
+  // `missing` for that base. We deliberately do NOT force a rebuild on an
+  // unresolved digest: the per-app tag would be unchanged, so the rebuild would
+  // overwrite the same `repo:tag` — which nodes pulling `IfNotPresent` never
+  // re-pull, and a peer build for that tag would be reused via 409 anyway. So a
+  // tagless rebuild buys no freshness; only a changed digest does.
+  let baseDigest: string | undefined;
+  if (args.pullPolicy === "always") {
+    baseDigest = await resolveTagDigest(args.baseImage, {
+      onError: (err) =>
+        args.onProgress?.(`Base image freshness check failed (${msg(err)}); using cached image`),
+    });
+  }
+
   const tag = computeImageTag({
     bundle: args.bundle,
     baseImage: args.baseImage,
+    baseDigest,
     teloRegistryUrl: deps.build.teloRegistryUrl,
   });
   const ref = imageRef(deps.build, tag);

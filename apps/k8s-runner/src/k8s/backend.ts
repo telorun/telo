@@ -88,6 +88,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         bundle: spec.bundle,
         entryRelativePath: spec.entryRelativePath,
         baseImage: spec.config.image || config.defaultImage,
+        pullPolicy: spec.config.pullPolicy,
         onProgress: (message, done) => spec.onProgress("build", message, done),
       },
     );

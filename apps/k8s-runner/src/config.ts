@@ -1,11 +1,32 @@
 import {
   loadCoreConfig,
+  parseBool,
   parsePositiveInt,
   RunnerConfigError,
   type RunnerCoreConfig,
+  type TagFilter,
 } from "@telorun/runner-core";
 
 export { RunnerConfigError };
+
+/**
+ * Base-image catalog settings. The runner resolves the menu of base images a
+ * session may pick from `telorun/node`'s Docker Hub tags (configurable repo),
+ * filtered to taste, and advertises it as an editable `image` picker. The
+ * configured `defaultImage` is always offered (and is the fallback when Docker
+ * Hub is unreachable). Disable to lock `image` to `defaultImage` (the old
+ * server-enforced behaviour) — e.g. an air-gapped cluster.
+ */
+export interface BaseImageCatalogConfig {
+  enabled: boolean;
+  /** `namespace/repository` queried on Docker Hub, e.g. `telorun/node`. */
+  repository: string;
+  filter: TagFilter;
+  /** Cap on advertised tags (newest first). */
+  limit: number;
+  /** Background refresh cadence in ms. */
+  refreshIntervalMs: number;
+}
 
 /**
  * Resource limits the runner will ever grant. These are HARD CEILINGS, not
@@ -75,9 +96,49 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
   limits: LimitCeilings;
+  /** Menu of base images a session may pick (advertised as the `image` enum). */
+  baseImageCatalog: BaseImageCatalogConfig;
 }
 
 const DEFAULT_PORT = 8062;
+
+/** Compile a single optional regex env var into a one-element `RegExp[]`. */
+function parseTagRegex(raw: string | undefined, field: string): RegExp[] | undefined {
+  const v = raw?.trim();
+  if (!v) return undefined;
+  try {
+    return [new RegExp(v)];
+  } catch (err) {
+    throw new RunnerConfigError(
+      `${field} is not a valid regular expression: ${(err as Error).message}`,
+    );
+  }
+}
+
+function loadBaseImageCatalogConfig(env: NodeJS.ProcessEnv): BaseImageCatalogConfig {
+  return {
+    enabled: parseBool(env.RUNNER_BASE_IMAGE_CATALOG_ENABLED, true, "RUNNER_BASE_IMAGE_CATALOG_ENABLED"),
+    repository: env.RUNNER_BASE_IMAGE_REPO?.trim() || "telorun/node",
+    filter: {
+      pinnedOnly: parseBool(env.RUNNER_BASE_IMAGE_PINNED_ONLY, true, "RUNNER_BASE_IMAGE_PINNED_ONLY"),
+      excludeSha: parseBool(env.RUNNER_BASE_IMAGE_EXCLUDE_SHA, true, "RUNNER_BASE_IMAGE_EXCLUDE_SHA"),
+      excludePrerelease: parseBool(
+        env.RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE,
+        true,
+        "RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE",
+      ),
+      include: parseTagRegex(env.RUNNER_BASE_IMAGE_INCLUDE, "RUNNER_BASE_IMAGE_INCLUDE"),
+      exclude: parseTagRegex(env.RUNNER_BASE_IMAGE_EXCLUDE, "RUNNER_BASE_IMAGE_EXCLUDE"),
+    },
+    limit: parsePositiveInt(env.RUNNER_BASE_IMAGE_LIMIT, 20, "RUNNER_BASE_IMAGE_LIMIT"),
+    refreshIntervalMs:
+      parsePositiveInt(
+        env.RUNNER_BASE_IMAGE_REFRESH_SECONDS,
+        3600,
+        "RUNNER_BASE_IMAGE_REFRESH_SECONDS",
+      ) * 1000,
+  };
+}
 
 export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
   const selfUrl = env.RUNNER_SELF_URL?.trim();
@@ -130,5 +191,6 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
       ttlSeconds: parsePositiveInt(env.RUNNER_MAX_TTL_SECONDS, 3600, "RUNNER_MAX_TTL_SECONDS"),
       ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "512Mi",
     },
+    baseImageCatalog: loadBaseImageCatalogConfig(env),
   };
 }
