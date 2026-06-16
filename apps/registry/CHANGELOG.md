@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.1 - 2026-06-06
+## 0.4.2 - 2026-06-16
+### Fixed
+* Upgrade imports: http-server@0.12.0, s3@0.6.0, sql@0.9.2, run@0.10.0## 0.4.1 - 2026-06-06
 ### Fixed
 * Compact the MCP server instructions to a ~2KB router. Clients truncate the instructions field at 2048 bytes, so the previous long form was silently cut — agents never received most of it. It now points to https://telo.run/llms.txt, https://telo.run/examples.md, and the build-generated https://telo.run/cel.md (plus telo cel functions / telo cel eval) instead of inlining the full CEL/kind reference.## 0.4.0 - 2026-06-06
 ### Added
