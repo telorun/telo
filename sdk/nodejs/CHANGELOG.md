@@ -1,5 +1,11 @@
 # @telorun/sdk
 
+## 0.31.0
+
+### Minor Changes
+
+- b41012f: sdk: `InvokeContext` gains optional `invocationId` + `parentInvocationId` (the trace correlation a controller can read while a debug consumer is attached). `EmitEvent` gains an optional `metadata` argument, and a new `Tracer` type + `EvaluationContext.tracer` slot expose the kernel's invocation tracer. All additive — existing call sites are unaffected.
+
 ## 0.26.0
 
 ### Minor Changes

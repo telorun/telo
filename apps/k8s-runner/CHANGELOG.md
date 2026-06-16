@@ -1,5 +1,16 @@
 # @telorun/k8s-runner
 
+## 0.5.0
+
+### Minor Changes
+
+- bc2eeff: k8s-runner: per-session Ingress now exposes every tcp port under its own host `<port>-<sessionId>.<domain>` (one Ingress rule per port), matching the docker runner's proxy scheme — previously only the first port was routed. The port rides as a leading label, so each host stays a single label under the base domain and remains compatible with a single-label wildcard cert. Announced endpoints carry a `url` for each tcp port; udp ports stay host-less.
+
+### Patch Changes
+
+- Updated dependencies [bc2eeff]
+  - @telorun/runner-core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
