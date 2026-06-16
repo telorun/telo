@@ -50,7 +50,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@telorun/debug-wire": "workspace:*",
+    "@xyflow/react": "^12.10.2",
     "lucide-react": "^1.8.0"
   },
   "peerDependencies": {

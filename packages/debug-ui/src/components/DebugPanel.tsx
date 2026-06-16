@@ -4,6 +4,7 @@ import { distinctSuffixes, type EventFilter, matchesFilter } from "../filter.js"
 import { type DebugTheme, loadStoredTheme, storeTheme, useResolvedTheme } from "../theme.js";
 import { type DebugEvent, type DebugFrame, isLogFrame } from "../wire.js";
 import { EndpointLinks } from "./EndpointLinks.js";
+import { EventGraph } from "./EventGraph.js";
 import { EventTable } from "./EventTable.js";
 import { FilterBar } from "./FilterBar.js";
 import { LogView } from "./LogView.js";
@@ -26,7 +27,7 @@ export interface DebugPanelProps {
    *  {@link LogView} — e.g. the editor injects its interactive terminal here so
    *  the panel is writable. Standalone hosts omit it and get the log line view. */
   logsSlot?: ReactNode;
-  /** Which tab is shown first. Default `"events"`; the editor opens on `"logs"`
+  /** Which tab is shown first. Default `"graph"`; the editor opens on `"logs"`
    *  so its interactive terminal is front-and-centre. */
   defaultTab?: Tab;
   /** Exposed addresses of the running application, rendered as links in the
@@ -38,7 +39,7 @@ export interface DebugPanelProps {
   theme?: DebugTheme;
 }
 
-type Tab = "events" | "logs";
+type Tab = "events" | "graph" | "logs";
 
 /**
  * The presentation half of the debug watcher: a Logs / Events tab split over one
@@ -55,7 +56,7 @@ export function DebugPanel({
   onClear,
   resolveBlobUrl,
   logsSlot,
-  defaultTab = "events",
+  defaultTab = "graph",
   endpoints,
   theme,
 }: DebugPanelProps) {
@@ -90,6 +91,12 @@ export function DebugPanel({
       <div className="tdbg-tabs">
         <span className={`tdbg-status tdbg-status-${status}`} title={`stream ${status}`} />
         <button
+          className={`tdbg-tab${tab === "graph" ? " tdbg-tab-on" : ""}`}
+          onClick={() => setTab("graph")}
+        >
+          Graph
+        </button>
+        <button
           className={`tdbg-tab${tab === "events" ? " tdbg-tab-on" : ""}`}
           onClick={() => setTab("events")}
         >
@@ -123,6 +130,8 @@ export function DebugPanel({
           />
           <EventTable events={visible} resolveUrl={resolveBlobUrl} />
         </>
+      ) : tab === "graph" ? (
+        <EventGraph events={events} resolveUrl={resolveBlobUrl} />
       ) : logsSlot ? (
         <div className="tdbg-slot">{logsSlot}</div>
       ) : (

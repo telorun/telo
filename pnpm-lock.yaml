@@ -1014,9 +1014,15 @@ importers:
 
   packages/debug-ui:
     dependencies:
+      '@dagrejs/dagre':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@telorun/debug-wire':
         specifier: workspace:*
         version: link:../debug-wire
+      '@xyflow/react':
+        specifier: ^12.10.2
+        version: 12.10.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       lucide-react:
         specifier: ^1.8.0
         version: 1.8.0(react@19.2.3)

@@ -30,6 +30,7 @@ import {
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
+import { KernelTracer } from "./tracing.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
@@ -104,6 +105,7 @@ export class Kernel implements IKernel {
   private readonly registry = new AnalysisRegistry();
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
+  private readonly tracer = new KernelTracer();
 
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
@@ -317,9 +319,10 @@ export class Kernel implements IKernel {
       {},
       [],
       this._createInstance.bind(this),
-      (event, payload) => this.eventBus.emit(event, payload),
+      (event, payload, metadata) => this.eventBus.emit(event, payload, metadata),
       this.env,
     );
+    this.rootContext.tracer = this.tracer;
     // Initialize built-in Runtime definitions first
     await this.loadBuiltinDefinitions();
 
@@ -815,6 +818,16 @@ export class Kernel implements IKernel {
 
   hasEventHandlers(event: string): boolean {
     return this.eventBus.hasHandlers(event);
+  }
+
+  /**
+   * Turn invocation tracing on/off. A debug consumer (the CLI debug server) flips
+   * it on while attached: invocations then mint monotonic ids and emit
+   * `invocationId` / `parentInvocationId` in event metadata, so the consumer can
+   * rebuild the call tree. Off by default — zero overhead when nobody is watching.
+   */
+  setTracing(enabled: boolean): void {
+    this.tracer.enabled = enabled;
   }
 
   on(event: string, handler: (event: RuntimeEvent) => void | Promise<void>): void {

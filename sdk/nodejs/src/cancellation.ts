@@ -41,6 +41,13 @@ export interface CancellationToken {
  */
 export interface InvokeContext {
   readonly cancellation: CancellationToken;
+  /** Monotonic id minted by the kernel for this invocation — present only while
+   *  tracing is active (a debug consumer is attached). Lets controllers correlate
+   *  their work with the debug stream. */
+  readonly invocationId?: number;
+  /** The {@link invocationId} of the invocation that dispatched this one, or
+   *  `undefined` at a trace root. Reconstructs the call tree on the consumer. */
+  readonly parentInvocationId?: number;
 }
 
 export interface CancellationSource {

@@ -19,3 +19,19 @@ export { type EventFilter, matchesFilter, distinctSuffixes } from "./filter.js";
 export type { DebugTheme } from "./theme.js";
 export { type DebugStreamHandlers, connectDebugStream } from "./sse-client.js";
 export { type FoundBlob, collectBlobs, blobDimensions, formatBytes } from "./media.js";
+export {
+  type GraphState,
+  type GraphNode,
+  type GraphEdge,
+  type NodeStatus,
+  type InvokeOutcome,
+  type InvokeRecord,
+  type Invocation,
+  type TraceState,
+  type TraceNode,
+  type TraceEdge,
+  type TraceSubgraph,
+  deriveGraph,
+  deriveInvocations,
+  traceSubgraph,
+} from "./graph.js";

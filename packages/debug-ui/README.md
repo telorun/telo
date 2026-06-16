@@ -1,9 +1,24 @@
 # @telorun/debug-ui
 
 Browser-safe building blocks for watching a running Telo app's debug stream:
-**filter logic**, an **SSE client**, and **React components** (a **Logs / Events**
-tab split) — plus a standalone single-page app, built both multi-file
-(`app-dist/`) and as one self-contained file (`app-single/index.html`).
+**filter logic**, an **SSE client**, a **graph model**, and **React components**
+(a **Logs / Events / Graph** tab split) — plus a standalone single-page app, built
+both multi-file (`app-dist/`) and as one self-contained file
+(`app-single/index.html`).
+
+The **Graph** view has two modes. Its left rail lists every traced **invocation**;
+selecting one scopes the canvas to just the resources that took part in that call,
+wired by the real parent→child **call edges** (reconstructed from event
+`metadata.invocationId` / `parentInvocationId`), each node showing its
+**inputs → outputs**. With nothing selected, the canvas shows the live **resource
+topology**: a node is born gray on `Created`, brightens on `Initialized`, and
+pulses on each invocation. The folds from frames to nodes/edges are the pure,
+testable `deriveGraph` (topology) and `deriveInvocations` + `traceSubgraph`
+(traces); the component adds [`@xyflow/react`](https://reactflow.dev) + dagre
+layout on top.
+
+Traces require the producer to be tracing — the CLI turns it on automatically
+under `telo run --inspect` (or `--debug`).
 
 The **wire format** itself lives in [`@telorun/debug-wire`](../debug-wire); this
 package re-exports its types. A stream carries two frame kinds: `kind: "event"`
@@ -91,8 +106,8 @@ it only writes the `.telo.debug.jsonl` event log.
 ```ts
 // Logic — framework-agnostic, browser-safe
 import { connectDebugStream, matchesFilter, distinctSuffixes, isWireRef, eventSuffix,
-         isLogFrame, endpointHref, type DebugFrame, type EventFilter,
-         type AppEndpoint } from "@telorun/debug-ui";
+         isLogFrame, endpointHref, deriveGraph, type DebugFrame, type EventFilter,
+         type GraphState, type AppEndpoint } from "@telorun/debug-ui";
 
 // React components — for the standalone app and the editor panel
 import { DebugWatcher, DebugPanel } from "@telorun/debug-ui/components";
@@ -112,4 +127,4 @@ import { DebugWatcher, DebugPanel } from "@telorun/debug-ui/components";
   The single file is what the CLI fetches on demand (hosted on npm, delivered via
   jsDelivr) and serves; in the monorepo the CLI resolves it directly from this
   package, so a local build is testable without any network.
-- `pnpm --filter @telorun/debug-ui test` — unit tests (filter logic).
+- `pnpm --filter @telorun/debug-ui test` — unit tests (filter + graph logic).

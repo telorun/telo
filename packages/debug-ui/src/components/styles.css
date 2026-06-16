@@ -327,3 +327,273 @@
 .tdbg-log-stderr .tdbg-logtext {
   color: var(--tdbg-bad);
 }
+
+/* ── Graph view ─────────────────────────────────────────────────────────── */
+.tdbg-graph {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.tdbg-graph-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+/* Theme xyflow chrome to the panel palette (v12 CSS variables). */
+.tdbg-graph .react-flow {
+  --xy-edge-stroke-default: var(--tdbg-muted);
+  --xy-background-pattern-dots-color-default: var(--tdbg-line);
+  --xy-controls-button-background-color-default: var(--tdbg-panel);
+  --xy-controls-button-background-color-hover-default: var(--tdbg-bg);
+  --xy-controls-button-color-default: var(--tdbg-text);
+  --xy-controls-button-color-hover-default: var(--tdbg-accent);
+  --xy-controls-button-border-color-default: var(--tdbg-line);
+  background: var(--tdbg-bg);
+}
+
+.tdbg-node {
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--tdbg-line);
+  border-radius: 7px;
+  background: var(--tdbg-panel);
+  color: var(--tdbg-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    opacity 0.2s;
+}
+.tdbg-node-created {
+  opacity: 0.7;
+}
+.tdbg-node-initialized {
+  border-color: var(--tdbg-good);
+}
+.tdbg-node-torndown {
+  opacity: 0.4;
+  border-style: dashed;
+}
+.tdbg-node-sel {
+  border-color: var(--tdbg-accent);
+  box-shadow: 0 0 0 1px var(--tdbg-accent);
+}
+.tdbg-node-handle {
+  width: 7px;
+  height: 7px;
+  border: none;
+  background: var(--tdbg-muted);
+}
+.tdbg-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tdbg-node-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--tdbg-muted);
+}
+.tdbg-node-dot-initialized {
+  background: var(--tdbg-good);
+}
+.tdbg-node-dot-torndown {
+  background: var(--tdbg-bad);
+}
+.tdbg-node-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tdbg-node-count {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--tdbg-good-bg);
+  color: var(--tdbg-good);
+  font-size: 11px;
+}
+.tdbg-node-count-bad {
+  background: var(--tdbg-bad-bg);
+  color: var(--tdbg-bad);
+}
+.tdbg-node-kind {
+  margin-top: 1px;
+  color: var(--tdbg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tdbg-node-pulse-ok {
+  animation: tdbg-pulse-ok 0.65s ease-out;
+}
+.tdbg-node-pulse-bad {
+  animation: tdbg-pulse-bad 0.65s ease-out;
+}
+@keyframes tdbg-pulse-ok {
+  0% {
+    box-shadow: 0 0 0 0 var(--tdbg-good);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+@keyframes tdbg-pulse-bad {
+  0% {
+    box-shadow: 0 0 0 0 var(--tdbg-bad);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+.tdbg-suffix-created {
+  background: var(--tdbg-line);
+  color: var(--tdbg-muted);
+}
+.tdbg-suffix-torndown {
+  background: var(--tdbg-bad-bg);
+  color: var(--tdbg-bad);
+}
+
+.tdbg-graph-detail {
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--tdbg-line);
+  background: var(--tdbg-panel);
+}
+.tdbg-graph-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--tdbg-line);
+}
+.tdbg-graph-detail-head .tdbg-node-name {
+  flex: 1;
+}
+.tdbg-graph-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.tdbg-graph-detail-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tdbg-graph-detail-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 8px;
+  color: var(--tdbg-muted);
+}
+.tdbg-graph-detail-label {
+  padding: 8px 10px 2px;
+  color: var(--tdbg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Invocation list (left rail of the Graph view). */
+.tdbg-trace-list {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--tdbg-line);
+  background: var(--tdbg-panel);
+}
+.tdbg-trace-list-head {
+  position: sticky;
+  top: 0;
+  padding: 8px 10px;
+  background: var(--tdbg-panel);
+  border-bottom: 1px solid var(--tdbg-line);
+  color: var(--tdbg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tdbg-trace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--tdbg-line);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.tdbg-trace-row:hover {
+  background: var(--tdbg-bg);
+}
+.tdbg-trace-row-on {
+  background: var(--tdbg-bg);
+  box-shadow: inset 2px 0 0 var(--tdbg-accent);
+}
+.tdbg-trace-row .tdbg-node-name {
+  flex: 1;
+}
+.tdbg-trace-calls {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tdbg-line);
+  color: var(--tdbg-muted);
+  font-size: 11px;
+}
+.tdbg-trace-empty {
+  padding: 12px 10px;
+  color: var(--tdbg-muted);
+  font-size: 12px;
+}
+
+.tdbg-node-root {
+  border-color: var(--tdbg-accent);
+}
+.tdbg-node-bad {
+  border-color: var(--tdbg-bad);
+}
+.tdbg-node-roottag {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(79, 156, 240, 0.18);
+  color: var(--tdbg-accent);
+  font-size: 10px;
+}
+
+.tdbg-graph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--tdbg-text);
+  background: var(--tdbg-panel);
+  border: 1px solid var(--tdbg-line);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.tdbg-graph-toggle input {
+  cursor: pointer;
+}
