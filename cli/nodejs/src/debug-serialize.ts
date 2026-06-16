@@ -18,13 +18,21 @@ import type { LruBlobStore } from "./blob-store.js";
  *    a store, a `"[Bytes <n>]"` marker.
  *  - a resolved `!ref` (a controller instance) → the `{ kind, name }` it stands for.
  *  - a value with `toJSON` (e.g. `Date`) → its `toJSON()` result.
+ *  - a bigint → a plain number when it fits a JS safe integer (CEL models small
+ *    integers as bigint, so `${{ size(x) }}` reads as `3`, not `[BigInt 3]`),
+ *    otherwise its decimal digits as a string so no precision is lost.
  *  - any other live object (context, stream, client, Node handle) — and values
- *    JSON can't represent (functions, bigint) → a one-token `[Marker]`.
+ *    JSON can't represent (functions) → a one-token `[Marker]`.
  *  - a reference cycle → `[Circular]`.
  *  - everything else → plain JSON.
  */
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+
 function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<object>): unknown {
-  if (typeof value === "bigint") return `[BigInt ${value}]`;
+  if (typeof value === "bigint") {
+    return value >= MIN_SAFE_BIGINT && value <= MAX_SAFE_BIGINT ? Number(value) : value.toString();
+  }
   if (typeof value === "function") {
     return `[Function ${(value as { name?: string }).name || "anonymous"}]`;
   }
@@ -41,28 +49,35 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
     return `[Bytes ${value.byteLength}]`;
   }
 
+  // Path-scoped cycle detection: a value is "circular" only while it is an
+  // ancestor on the current descent. Removing it on the way back up means a value
+  // reachable by two sibling paths (a shared reference / DAG, not a cycle) still
+  // serializes fully — only a true back-edge to an ancestor becomes "[Circular]".
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((v) => toWire(v, store, seen));
+    }
 
-  if (Array.isArray(value)) {
-    return value.map((v) => toWire(v, store, seen));
+    const toJSON = (value as { toJSON?: unknown }).toJSON;
+    if (typeof toJSON === "function") {
+      return toWire((toJSON as () => unknown).call(value), store, seen);
+    }
+
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      const ref = resourceRefOf(value);
+      if (ref) return ref;
+      return `[${(value as object).constructor?.name || "Object"}]`;
+    }
+
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = toWire(v, store, seen);
+    return out;
+  } finally {
+    seen.delete(value);
   }
-
-  const toJSON = (value as { toJSON?: unknown }).toJSON;
-  if (typeof toJSON === "function") {
-    return toWire((toJSON as () => unknown).call(value), store, seen);
-  }
-
-  const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) {
-    const ref = resourceRefOf(value);
-    if (ref) return ref;
-    return `[${(value as object).constructor?.name || "Object"}]`;
-  }
-
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) out[k] = toWire(v, store, seen);
-  return out;
 }
 
 /**

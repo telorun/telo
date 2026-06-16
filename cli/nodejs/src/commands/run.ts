@@ -290,6 +290,9 @@ async function startDebugSession(
 
   return {
     attach(kernel: Kernel): void {
+      // A consumer is attached → turn on invocation tracing so events carry
+      // `invocationId` / `parentInvocationId` and the UI can rebuild call trees.
+      kernel.setTracing(true);
       // One `*` tap, serialized once, fanned to whichever sinks are enabled. The
       // kernel knows nothing of debug/inspect — it's a plain event listener.
       kernel.on("*", (event: RuntimeEvent) => {

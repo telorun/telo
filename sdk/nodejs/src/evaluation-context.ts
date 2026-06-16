@@ -4,7 +4,22 @@ import type { ResourceInstance } from "./resource-instance.js";
 import type { ResourceManifest } from "./resource-manifest.js";
 import type { ResourceDefinition } from "./types.js";
 
-export type EmitEvent = (event: string, payload?: any) => void | Promise<void>;
+export type EmitEvent = (
+  event: string,
+  payload?: any,
+  metadata?: Record<string, any>,
+) => void | Promise<void>;
+
+/**
+ * Per-kernel invocation tracer. Mints monotonic invocation ids and carries the
+ * gate that turns tracing on (a debug consumer is attached). Owned by the kernel,
+ * injected into the context tree; `enabled === false` is the zero-overhead default.
+ */
+export interface Tracer {
+  readonly enabled: boolean;
+  /** Mint the next monotonic invocation id (unique within the kernel run). */
+  next(): number;
+}
 
 /** Four-stage resource lifecycle defined in resource-lifecycle.md */
 export type LifecycleState = "Pending" | "Validated" | "Initialized" | "Draining" | "Teardown";
@@ -82,6 +97,10 @@ export interface EvaluationContext {
   /** Looks up a registered resource definition by fully-qualified kind.
    *  Set by the kernel; used for declared-throw-union checks. */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;
+
+  /** Per-kernel invocation tracer. Set by the kernel on the root context and
+   *  propagated through `spawnChild`; drives invocation-id minting in `invoke`. */
+  tracer?: Tracer;
 
   readonly createInstance: InstanceFactory;
   readonly context: Record<string, unknown>;

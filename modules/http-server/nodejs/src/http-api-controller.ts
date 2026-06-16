@@ -137,13 +137,14 @@ export class HttpServerApi implements ResourceInstance {
             | string
             | undefined
         )?.toString();
-        const resolvedInputs: Record<string, any> = route.inputs
+        // The handler receives the resolved inputs directly: a templated handler's
+        // `${{ inputs.X }}` reads these as its `inputs` bag, and a plain invocable
+        // reads the fields off its argument. (This previously also nested a second
+        // `inputs: resolvedInputs` copy — which nothing read, and which surfaced as
+        // duplicated data in the debug trace.)
+        const invokeInput: Record<string, any> = route.inputs
           ? ((this.ctx.moduleContext.expandWith(route.inputs, requestContext) as any) ?? {})
           : requestContext;
-        const invokeInput: Record<string, any> = {
-          ...resolvedInputs,
-          inputs: resolvedInputs,
-        };
 
         const sink = fastifyReplySink(reply);
 

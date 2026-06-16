@@ -17,6 +17,7 @@ import {
   type RuntimeDiagnostic,
   type ScopeContext,
   type ScopeHandle,
+  type Tracer,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 
@@ -179,6 +180,12 @@ export class EvaluationContext implements IEvaluationContext {
    */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;
 
+  /**
+   * Per-kernel invocation tracer. Set by the kernel on the root context and
+   * propagated through spawnChild(); gates invocation-id minting in runInvoke().
+   */
+  tracer?: Tracer;
+
   constructor(
     readonly source: string,
     context: Record<string, unknown>,
@@ -258,6 +265,9 @@ export class EvaluationContext implements IEvaluationContext {
     }
     if (this.getDefinition && !child.getDefinition) {
       child.getDefinition = this.getDefinition;
+    }
+    if (this.tracer && !child.tracer) {
+      child.tracer = this.tracer;
     }
     return child;
   }
@@ -605,13 +615,31 @@ export class EvaluationContext implements IEvaluationContext {
     // tree token; otherwise open a fresh, never-cancellable scope. The token
     // reaches the controller only as the explicit argument below.
     const ambient = cancellationStore.getStore();
-    const invokeCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
-    const token = invokeCtx.cancellation;
+    const baseCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
+    const token = baseCtx.cancellation;
+
+    // Tracing gate (a debug consumer is attached): mint a monotonic id for this
+    // invocation, parent it to the ambient one, and ride both on every event's
+    // `metadata` so the consumer can rebuild the call tree. Off by default —
+    // `tracedCtx` stays `baseCtx` and the fast `=== ambient` skip is preserved.
+    const tracing = this.tracer?.enabled === true;
+    const invocationId = tracing ? this.tracer!.next() : undefined;
+    // Parent precedence mirrors the token: an explicit seed `ctx` wins, then the
+    // ambient (ALS) invocation. A caller threading its own `ctx.invocationId` thus
+    // has it honored as the parent, not silently dropped for the ALS value.
+    const parentInvocationId = ctx?.invocationId ?? ambient?.invocationId;
+    const meta = tracing ? { invocationId, parentInvocationId } : undefined;
+    // When tracing, a fresh context carries the new id down the tree so nested
+    // invokes read it as their parent; it is never `=== ambient`, so the call
+    // always (re)establishes the ALS scope.
+    const invokeCtx: InvokeContext = tracing
+      ? { cancellation: token, invocationId, parentInvocationId }
+      : baseCtx;
 
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
     // refused without ever touching the controller.
     if (token.isCancelled) {
-      await this.emit(`${kind}.${name}.InvokeCancelled`, { reason: token.reason });
+      await this.emit(`${kind}.${name}.InvokeCancelled`, { inputs, reason: token.reason }, meta);
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
         `Invoke ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
@@ -633,35 +661,37 @@ export class EvaluationContext implements IEvaluationContext {
       const outputs = await (invokeCtx === ambient
         ? call()
         : cancellationStore.run(invokeCtx, call));
-      await this.emit(`${kind}.${name}.Invoked`, { outputs });
+      await this.emit(`${kind}.${name}.Invoked`, { inputs, outputs }, meta);
       return outputs;
     } catch (err) {
       // Cooperative mid-flight cancellation (`throwIfCancelled`) joins the same
       // observable event family rather than masquerading as a rejection/failure.
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
-        await this.emit(`${kind}.${name}.InvokeCancelled`, { reason });
+        await this.emit(`${kind}.${name}.InvokeCancelled`, { inputs, reason }, meta);
         throw err;
       }
       if (isInvokeError(err)) {
-        const payload = { code: err.code, message: err.message, data: err.data };
-        await this.emit(`${kind}.${name}.InvokeRejected`, payload);
+        const payload = { inputs, code: err.code, message: err.message, data: err.data };
+        await this.emit(`${kind}.${name}.InvokeRejected`, payload, meta);
         const declaredCodes = this.getDeclaredThrowCodes(kind);
         if (declaredCodes && !declaredCodes.has(err.code)) {
-          await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload);
+          await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload, meta);
         }
         throw err;
       }
       if (err instanceof Error) {
-        await this.emit(`${kind}.${name}.InvokeFailed`, {
-          name: err.name,
-          message: err.message,
-        });
+        await this.emit(
+          `${kind}.${name}.InvokeFailed`,
+          { inputs, name: err.name, message: err.message },
+          meta,
+        );
       } else {
-        await this.emit(`${kind}.${name}.InvokeFailed`, {
-          name: "UnknownError",
-          message: String(err),
-        });
+        await this.emit(
+          `${kind}.${name}.InvokeFailed`,
+          { inputs, name: "UnknownError", message: String(err) },
+          meta,
+        );
       }
       // Already enriched at an inner invoke: keep the innermost (most
       // specific) resource as the failure location.
