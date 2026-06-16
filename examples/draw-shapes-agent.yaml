@@ -337,7 +337,6 @@ metadata:
   name: Server
 port: !cel "ports.http"
 logger: true
-baseUrl: "http://localhost:${{ports.http}}"
 openapi:
   info:
     title: Draw Shapes Agent

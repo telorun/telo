@@ -45,15 +45,38 @@ export function buildSessionService(
   };
 }
 
+/** Host fronting a single tcp port: `<port>-<sessionId>.<domain>`. The port
+ *  rides as a leading label (no dots), so it stays a single label under the base
+ *  domain — matching the docker runner's proxy scheme and compatible with a
+ *  single-label wildcard cert (`*.<domain>`). */
+function hostForPort(config: K8sRunnerConfig, sessionId: string, port: number): string {
+  return `${port}-${sessionId}.${config.ingressBaseDomain}`;
+}
+
 export function buildSessionIngress(
   config: K8sRunnerConfig,
   sessionId: string,
   serviceName: string,
   podName: string,
   podUid: string,
-  port: number,
-): { ingress: V1Ingress; host: string } {
-  const host = `${sessionId}.${config.ingressBaseDomain}`;
+  ports: PortMapping[],
+): { ingress: V1Ingress; hosts: string[] } {
+  // Only tcp ports are HTTP-routable; one host rule per port to the matching
+  // service port, mirroring the docker runner's per-port URLs.
+  const rules = ports
+    .filter((p) => p.protocol === "tcp")
+    .map((p) => ({
+      host: hostForPort(config, sessionId, p.port),
+      http: {
+        paths: [
+          {
+            path: "/",
+            pathType: "Prefix" as const,
+            backend: { service: { name: serviceName, port: { number: p.port } } },
+          },
+        ],
+      },
+    }));
   const ingress: V1Ingress = {
     apiVersion: "networking.k8s.io/v1",
     kind: "Ingress",
@@ -65,30 +88,17 @@ export function buildSessionIngress(
     },
     spec: {
       ...(config.ingressClassName ? { ingressClassName: config.ingressClassName } : {}),
-      rules: [
-        {
-          host,
-          http: {
-            paths: [
-              {
-                path: "/",
-                pathType: "Prefix",
-                backend: { service: { name: serviceName, port: { number: port } } },
-              },
-            ],
-          },
-        },
-      ],
+      rules,
     },
   };
-  return { ingress, host };
+  return { ingress, hosts: rules.map((r) => r.host) };
 }
 
-/** Endpoints announced on the `running` status. Only the FIRST port is fronted
- *  by the per-session HTTP Ingress (a single service backend, served on 443), so
- *  only it carries an external `url`. Additional ports are not externally routed
- *  — they get host/port for information but no url. Without an ingress base
- *  domain, host is left blank for the client adapter to fill (parity with docker). */
+/** Endpoints announced on the `running` status. Every tcp port is fronted by its
+ *  own per-session Ingress host (`<port>-<sessionId>.<domain>`, served on 443) and
+ *  carries an external `url`. udp ports aren't HTTP-routable, so they keep the
+ *  host-less form. Without an ingress base domain, host is left blank for the
+ *  client adapter to fill (parity with docker). */
 export function endpointsFor(
   config: K8sRunnerConfig,
   sessionId: string,
@@ -97,10 +107,11 @@ export function endpointsFor(
   if (!config.ingressBaseDomain || ports.length === 0) {
     return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
   }
-  const host = `${sessionId}.${config.ingressBaseDomain}`;
-  return ports.map((p, i) =>
-    i === 0
-      ? { host, port: p.port, protocol: p.protocol, url: `https://${host}` }
-      : { host: "", port: p.port, protocol: p.protocol },
-  );
+  return ports.map((p) => {
+    if (p.protocol !== "tcp") {
+      return { host: "", port: p.port, protocol: p.protocol };
+    }
+    const host = hostForPort(config, sessionId, p.port);
+    return { host, port: p.port, protocol: p.protocol, url: `https://${host}` };
+  });
 }

@@ -83,7 +83,7 @@ describe("POST /v1/sessions", () => {
 
     expect(res.statusCode).toBe(201);
     const body = res.json() as { sessionId: string; streamUrl: string; createdAt: string };
-    expect(body.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(body.sessionId).toMatch(/^[a-z2-7]{12}$/);
     expect(body.streamUrl).toBe(`/v1/sessions/${body.sessionId}/events`);
     expect(body.createdAt).toEqual(expect.any(String));
     expect(h.registry.has(body.sessionId)).toBe(true);

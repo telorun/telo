@@ -25,7 +25,6 @@ ports:
 kind: Http.Server
 metadata:
   name: ExampleServer
-baseUrl: http://localhost:${{ ports.http }}
 port: !cel "ports.http"
 logger: true
 openapi:

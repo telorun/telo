@@ -17,6 +17,7 @@ import {
   type TauriDockerConfig,
 } from "./config-schema";
 import { makeTauriDockerIo } from "./io-client";
+import { generateSessionId } from "./session-id";
 
 export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
   id: "tauri-docker",
@@ -39,7 +40,7 @@ export const tauriDockerAdapter: RunAdapter<TauriDockerConfig> = {
   },
 
   async start(request, config): Promise<RunSession> {
-    const sessionId = crypto.randomUUID();
+    const sessionId = generateSessionId();
     const scaffold = await buildTauriSession(sessionId, { kind: "starting" });
 
     try {

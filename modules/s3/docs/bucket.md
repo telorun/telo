@@ -19,7 +19,7 @@ Declares an S3-compatible bucket. Constructs and owns the S3 client used by `S3.
 kind: Telo.Application
 metadata: { name: storage, version: 1.0.0 }
 imports:
-  S3: std/s3@0.5.0
+  S3: std/s3@0.6.0
 ---
 kind: S3.Bucket
 metadata:

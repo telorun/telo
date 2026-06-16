@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
 
 import { isEventFrame } from "@telorun/debug-wire";
@@ -12,6 +10,7 @@ import {
   type StartSessionRequest,
 } from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
+import { generateSessionId } from "../session/session-id.js";
 import { SessionLimitError, type SessionRegistry } from "../session/registry.js";
 import { streamSessionEvents } from "../sse/channel.js";
 
@@ -156,7 +155,7 @@ async function startSession(
   body: StartSessionRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  const sessionId = randomUUID();
+  const sessionId = generateSessionId();
 
   let entryRelative: string;
   try {
