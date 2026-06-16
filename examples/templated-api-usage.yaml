@@ -14,12 +14,18 @@ metadata:
 imports:
   Http: std/http-server@0.11.0
   Templated: ./templated-api.yaml
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8845
+targets:
+  - !ref TemplatedApiServer
 ---
 kind: Http.Server
 metadata:
   name: TemplatedApiServer
-baseUrl: http://localhost:8845
-port: 8845
+port: !cel "ports.http"
 logger: true
 openapi:
   info:

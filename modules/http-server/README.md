@@ -24,7 +24,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 kind: Telo.Application
 metadata: { name: hello-http, version: 1.0.0 }
 imports:
-  Http: std/http-server@0.11.0
+  Http: std/http-server@0.12.0
   JS: std/javascript@0.5.0
 targets: [ !ref Server ]
 ---

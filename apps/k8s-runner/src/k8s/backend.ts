@@ -380,15 +380,16 @@ async function createIngress(
   const ns = config.sessionNamespace;
   const service = buildSessionService(config, sessionId, podName, podUid, ports);
   await kube.core.createNamespacedService({ namespace: ns, body: service });
-  const primary = ports[0]!;
   const { ingress } = buildSessionIngress(
     config,
     sessionId,
     service.metadata!.name!,
     podName,
     podUid,
-    primary.port,
+    ports,
   );
+  // No tcp ports → no HTTP-routable rules; the Service still exists for any udp.
+  if (!ingress.spec?.rules?.length) return;
   await kube.networking.createNamespacedIngress({ namespace: ns, body: ingress });
 }
 

@@ -123,7 +123,7 @@ Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` t
 
 ```
 Installing 20 controllers for apps/my-app/telo.yaml
-  ✓  pkg:npm/@telorun/http-server@0.10.0?local_path=./nodejs#http-server
+  ✓  pkg:npm/@telorun/http-server@0.11.0?local_path=./nodejs#http-server
   ✓  pkg:npm/@telorun/http-client@0.6.0?local_path=./nodejs#http-client
   ...
 
@@ -237,7 +237,7 @@ kind: Telo.Application
 metadata:
   name: Example
 imports:
-  HttpServer: std/http-server@0.11.0
+  HttpServer: std/http-server@0.12.0
   JavaScript: std/javascript@0.5.0
 targets:
   - Server

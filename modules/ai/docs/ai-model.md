@@ -109,7 +109,7 @@ metadata:
   version: 1.0.0
 imports:
   # Pull in the abstract so `Ai` is an alias for `extends:` below.
-  Ai: std/ai@0.6.0
+  Ai: std/ai@0.7.0
 exports:
   kinds:
     - <Provider>Model
