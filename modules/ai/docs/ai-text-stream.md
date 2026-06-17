@@ -15,8 +15,8 @@ sidebar_label: Ai.TextStream
 kind: Telo.Application
 metadata: { name: chat, version: 1.0.0 }
 imports:
-  Ai: std/ai@0.7.0
-  AiOpenai: std/ai-openai@0.8.0
+  Ai: std/ai@<version>
+  AiOpenai: std/ai-openai@<version>
 ---
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
@@ -68,7 +68,7 @@ Pipe `result.output` through a format-codec encoder. Each encoder produces `{ ou
 kind: Telo.Application
 metadata: { name: chat, version: 1.0.0 }
 imports:
-  Ndjson: std/ndjson-codec@0.4.1
+  Ndjson: std/ndjson-codec@<version>
 ---
 kind: Ndjson.Encoder
 metadata: { name: NdjsonEnc }

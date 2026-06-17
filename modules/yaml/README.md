@@ -21,8 +21,8 @@ Batch YAML parsing for Telo manifests. Multi-document-aware, returns plain JS va
 kind: Telo.Application
 metadata: { name: parse-demo }
 imports:
-  Yaml: std/yaml@0.4.1
-  Run: std/run@0.10.0
+  Yaml: std/yaml@<version>
+  Run: std/run@<version>
 targets: [ !ref ParseExample ]
 ---
 kind: Run.Sequence
