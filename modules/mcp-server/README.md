@@ -26,8 +26,8 @@ Model Context Protocol (MCP) server resource kinds for Telo: stdio and Streamabl
 kind: Telo.Application
 metadata: { name: my-stdio-mcp, version: 1.0.0 }
 imports:
-  Mcp: std/mcp-server@0.7.0
-  JS: std/javascript@0.5.0
+  Mcp: std/mcp-server@<version>
+  JS: std/javascript@<version>
 targets: [ !ref Server ]
 ---
 kind: Mcp.StdioServer

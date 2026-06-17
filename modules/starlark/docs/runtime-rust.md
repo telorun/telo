@@ -25,7 +25,7 @@ kind: Telo.Application
 metadata: { name: my-app, version: 1.0.0 }
 imports:
   Starlark:
-    source: std/starlark@0.6.0
+    source: std/starlark@<version>
     runtime: rust
 ```
 

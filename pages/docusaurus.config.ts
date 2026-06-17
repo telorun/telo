@@ -5,6 +5,7 @@ import type { Config } from "@docusaurus/types";
 
 import { generateCelReference } from "./lib/generate-cel-reference";
 import { generateExamplesIndex } from "./lib/generate-examples-index";
+import remarkVersions from "./plugins/remark-versions";
 import sidebars from "./sidebars";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -133,6 +134,7 @@ const config: Config = {
           routeBasePath: "/",
           include: docInclude,
           sidebarPath: "./sidebars.ts",
+          remarkPlugins: [remarkVersions],
         },
         blog: false,
         theme: {

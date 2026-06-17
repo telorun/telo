@@ -43,8 +43,8 @@ metadata:
   name: HelloConsole
   version: 1.0.0
 imports:
-  Run: std/run@0.10.0
-  Console: std/console@0.9.0
+  Run: std/run@<version>
+  Console: std/console@<version>
 targets:
   - Main
 ---

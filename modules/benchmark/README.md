@@ -24,8 +24,8 @@ metadata:
   name: api-load
   version: 1.0.0
 imports:
-  Benchmark: std/benchmark@0.4.1
-  HttpClient: std/http-client@0.7.0
+  Benchmark: std/benchmark@<version>
+  HttpClient: std/http-client@<version>
 ---
 kind: HttpClient.Client
 metadata:

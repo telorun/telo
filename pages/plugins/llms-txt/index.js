@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const matter = require("gray-matter");
+const { substituteVersions } = require("../../lib/version-map");
 
 /**
  * Docusaurus plugin that generates llms.txt, llms-full.txt, and per-page
@@ -192,7 +193,10 @@ function resolveDoc(
   if (!fs.existsSync(srcFile)) return null;
 
   const raw = fs.readFileSync(srcFile, "utf8");
-  const { data: frontmatter, content } = matter(raw);
+  const { data: frontmatter, content: rawContent } = matter(raw);
+  // Mirror the remark-versions substitution applied to the rendered site, so
+  // the generated markdown companions and llms.txt carry real versions too.
+  const content = substituteVersions(rawContent, undefined, srcFile);
 
   const rawTitle =
     label ||
