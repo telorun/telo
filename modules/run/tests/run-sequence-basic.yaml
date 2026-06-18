@@ -41,10 +41,12 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: JavaScript.Script.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: JavaScript.Script }
       outputs:
         sum: 8
-  - event: Assert.Schema.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Assert.Schema }
       outputs: true

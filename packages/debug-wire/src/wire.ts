@@ -18,7 +18,9 @@ export interface DebugEvent {
   kind?: "event";
   /** ISO-8601 timestamp set by the producer when the event was emitted. */
   timestamp: string;
-  /** Dotted event name, e.g. `Server.Listening`, `MyKind.MyName.Invoked`. */
+  /** Dotted event name. Lifecycle events carry the kind (`MyKind.MyName.Created`);
+   *  dispatch events drop it (`myName.Invoked`) and carry `{kind,name}` in the
+   *  payload (see {@link TracePayload}). */
   event: string;
   /** Arbitrary event payload, already reduced to wire-safe values (see encoding rules). */
   payload?: unknown;
@@ -64,6 +66,42 @@ export function isEventFrame(frame: DebugFrame): frame is DebugEvent {
 export interface WireRef {
   kind: string;
   name: string;
+}
+
+/**
+ * The payload every capability *dispatch* event carries (invoke / run / provide).
+ * The language-neutral trace contract: a consumer rebuilds the call tree purely
+ * from these fields and never parses the dotted event name.
+ *  - `spanId` / `parentSpanId` — present only while the producer is tracing;
+ *    `parentSpanId` is absent at a trace root. The call tree is built from these.
+ *  - `capability` — which capability method ran.
+ *  - `phase` — `"start"` (in-flight, no `outcome`) or `"end"` (terminal).
+ *  - `outcome` — terminal result; absent on a `start` event.
+ *  - `ref` — the kind+name the event name no longer encodes.
+ * Capability-specific detail (`inputs`, `outputs`, error `code`/`message`/`data`,
+ * cancellation `reason`) rides alongside these as plain payload fields.
+ */
+export interface TracePayload {
+  /** Groups all spans of one trace — minted at the root, inherited by descendants
+   *  (OpenTelemetry `trace_id`). Present only while the producer is tracing. */
+  traceId?: string;
+  spanId?: number;
+  parentSpanId?: number;
+  /** Which capability ran. `"request"` is an inbound-boundary span (an HTTP
+   *  request) — maps to an OTel SERVER span; the others are INTERNAL. */
+  capability: "invoke" | "run" | "provide" | "request";
+  phase: "start" | "end";
+  outcome?: "ok" | "failed" | "rejected" | "cancelled";
+  ref: WireRef;
+  /** Human label for the span (e.g. a route `"POST /feedback"`). */
+  label?: string;
+  /** Structured span attributes (e.g. `{ method, path }`) — map to OTel attributes. */
+  attributes?: Record<string, unknown>;
+  /** On a trace's *root* span: a redacted snapshot of the CEL root scope available
+   *  to the trace — `{ variables, secrets (masked), resources, ports }`. Lets a
+   *  consumer see what data the execution could reference. Wire-encoded like any
+   *  payload value; secret values are masked at the source. */
+  context?: Record<string, unknown>;
 }
 
 /**

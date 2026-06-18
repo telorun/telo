@@ -132,6 +132,9 @@ export class Kernel implements IKernel {
   // SIGINT (before runTargets) still has a source to cancel, which the run then
   // observes via the pre-dispatch gate.
   private _bootCancellation?: CancellationSource;
+  // Root application name — labels the boot `targets` trace span so the app
+  // appears as the trace root with its targets nested beneath.
+  private _appName?: string;
 
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
@@ -511,6 +514,7 @@ export class Kernel implements IKernel {
         this.rootContext.setTargets(rawTargets as BootTarget[]);
         if (manifest.kind === "Telo.Application") {
           rootApplicationManifest = manifest;
+          this._appName = (manifest.metadata as { name?: string } | undefined)?.name;
         }
       }
       this.rootContext.registerManifest(manifest);
@@ -638,7 +642,7 @@ export class Kernel implements IKernel {
     this._targetsRan = true;
 
     await this.eventBus.emit("Kernel.Starting", {});
-    await this.rootContext.runTargets(this.bootCancellation.context);
+    await this.rootContext.runTargets(this.bootCancellation.context, this._appName);
     await this.eventBus.emit("Kernel.Started", {});
   }
 

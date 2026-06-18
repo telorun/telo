@@ -12,6 +12,8 @@ import {
   type InvokeContext,
   type LoadOptions,
   type ModuleContext,
+  type OpenSpan,
+  type OpenSpanOptions,
   type ParsedArgs,
   type TypeRule,
 } from "@telorun/sdk";
@@ -155,6 +157,10 @@ export class ResourceContextImpl implements ResourceContext {
     return createCancellationSource();
   }
 
+  openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {
+    return this.moduleContext.openSpan(base, opts);
+  }
+
   invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
     return this.moduleContext.invoke(kind, name, inputs);
   }
@@ -223,7 +229,7 @@ export class ResourceContextImpl implements ResourceContext {
     // analyzer's field-map walker descends `oneOf`/`anyOf` variant
     // properties but intentionally early-returns on `$ref` (see
     // `analyzer/nodejs/src/reference-field-map.ts`). Enabling the `$ref`
-    // descent regresses the kernel's `<Kind>.<Name>.Invoked` event
+    // descent regresses the kernel's `<name>.Invoked` event
     // emission for kinds (notably `Run.Sequence`) whose controllers
     // call `instance.invoke()` directly on Phase-5-injected instances;
     // the walker fix needs to land together with routing those callers

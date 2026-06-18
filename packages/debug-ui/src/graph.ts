@@ -7,18 +7,19 @@ import { type DebugEvent, type DebugFrame, eventSuffix, isLogFrame } from "./wir
  * tracks each node's lifecycle status and most-recent invocation. The component
  * layer adds positions (dagre) and rendering.
  *
- * Three event families drive it, all named `<Kind>.<Name>.<Suffix>`:
- *  - `.Created`     → a node appears (status `created`); its payload carries the
- *                     resolved `{kind,name}` and the `dependencies` (the edges).
- *  - `.Initialized` → the node flips to `initialized`.
- *  - `.Teardown`    → the node flips to `torndown`.
- *  - invocation suffixes (`Invoked`, `InvokeFailed`, `InvokeRejected[.Undeclared]`,
- *    `InvokeCancelled`, `RunCancelled`) → record the call's outcome, inputs and
- *    outputs on the matching node.
+ * Two event families drive it:
+ *  - Lifecycle events `<Kind>.<Name>.{Created,Initialized,Teardown}` — a node
+ *    appears (its payload carries the resolved `{kind,name}` and `dependencies`),
+ *    then flips to `initialized` / `torndown`.
+ *  - Dispatch (trace) events — every capability call emits a structured payload
+ *    `{ spanId, parentSpanId, capability, phase, outcome, ref:{kind,name}, … }`.
+ *    The consumer reads the *payload*, never the dotted name: `ref` locates the
+ *    node, `outcome` records the result. Terminal events carry an `outcome`;
+ *    `phase:"start"` events carry none and are skipped here.
  *
- * When the producer has tracing on, invocation events also carry
- * `metadata.invocationId` / `metadata.parentInvocationId`; {@link deriveInvocations}
- * folds those into the call tree behind the invocation list + scoped trace graph.
+ * When the producer has tracing on, dispatch events also carry `spanId` /
+ * `parentSpanId`; {@link deriveInvocations} folds those into the call tree behind
+ * the invocation list + scoped trace graph.
  */
 
 export type NodeStatus = "created" | "initialized" | "torndown";
@@ -28,7 +29,7 @@ export type InvokeOutcome = "ok" | "failed" | "rejected" | "cancelled";
 /** The most recent invocation observed for a node. */
 export interface InvokeRecord {
   outcome: InvokeOutcome;
-  /** The suffix part after `<Kind>.<Name>.` (e.g. `Invoked`, `InvokeFailed`). */
+  /** The terminal event's suffix (`Invoked`, `InvokeFailed`, …) — for display only. */
   suffix: string;
   timestamp: string;
   /** The dispatched inputs (present on every invocation event the kernel emits). */
@@ -85,12 +86,32 @@ function asResource(payload: unknown): WireResourceRef | undefined {
   return undefined;
 }
 
-function classify(suffix: string): InvokeOutcome | undefined {
-  if (suffix === "Invoked") return "ok";
-  if (suffix.startsWith("InvokeFailed")) return "failed";
-  if (suffix.startsWith("InvokeRejected")) return "rejected";
-  if (suffix === "InvokeCancelled" || suffix === "RunCancelled") return "cancelled";
+/** The resolved `{kind,name}` a dispatch event's payload carries under `ref`. */
+function readRef(payload: Record<string, unknown> | undefined): { kind: string; name: string } | undefined {
+  const ref = payload?.ref;
+  if (ref && typeof ref === "object") {
+    const { kind, name } = ref as Record<string, unknown>;
+    if (typeof kind === "string" && typeof name === "string") return { kind, name };
+  }
   return undefined;
+}
+
+/** Narrow a payload `outcome` to a known {@link InvokeOutcome}. Absent on
+ *  `phase:"start"` events, so they are naturally skipped by callers. */
+function asOutcome(value: unknown): InvokeOutcome | undefined {
+  return value === "ok" || value === "failed" || value === "rejected" || value === "cancelled"
+    ? value
+    : undefined;
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function asCapability(value: unknown): SpanCapability | undefined {
+  return value === "invoke" || value === "run" || value === "provide" || value === "request"
+    ? value
+    : undefined;
 }
 
 /**
@@ -145,19 +166,19 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
       return;
     }
 
-    // Invocation events share `parseInvocationEvent` with the trace fold — nodes
-    // are name-keyed, so the parsed resource name resolves the target directly.
-    const parsed = parseInvocationEvent(event.event);
-    const node = parsed ? nodes.get(parsed.name) : undefined;
-    if (!parsed || !node) return;
-    const outcome = classify(parsed.suffix);
-    if (!outcome) return;
+    // Dispatch (trace) events: the payload's `ref.name` resolves the target node
+    // directly (nodes are name-keyed). `phase:"start"` events carry no `outcome`
+    // and are skipped — only terminal events record a result.
+    const p = (event.payload ?? undefined) as Record<string, unknown> | undefined;
+    const ref = readRef(p);
+    const outcome = asOutcome(p?.outcome);
+    const node = ref ? nodes.get(ref.name) : undefined;
+    if (!node || !outcome) return;
     node.invokeCount += 1;
     node.lastActivitySeq = seq;
-    const p = (event.payload ?? undefined) as Record<string, unknown> | undefined;
     node.lastInvoke = {
       outcome,
-      suffix: parsed.suffix,
+      suffix: eventSuffix(event.event),
       timestamp: event.timestamp,
       inputs: p && "inputs" in p ? p.inputs : undefined,
       outputs: p && "outputs" in p ? p.outputs : undefined,
@@ -170,15 +191,28 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
 
 // ── Invocation traces ──────────────────────────────────────────────────────
 
-/** One invocation — a single dispatched call, identified by its `invocationId`. */
+/** Which capability the span represents. `"request"` is an inbound-boundary span. */
+export type SpanCapability = "invoke" | "run" | "provide" | "request";
+
+/** One invocation — a single dispatched call, identified by its `spanId`. */
 export interface Invocation {
   id: number;
   parentId?: number;
+  /** Trace this span belongs to — present while tracing; groups the call tree. */
+  traceId?: string;
   kind: string;
   name: string;
+  capability?: SpanCapability;
   outcome: InvokeOutcome;
-  /** The event suffix (`Invoked`, `InvokeFailed`, …). */
+  /** The terminal event's suffix (`Invoked`, `InvokeFailed`, …) — for display only. */
   suffix: string;
+  /** Human label (e.g. a route `"POST /feedback"`), for `request` spans. */
+  label?: string;
+  /** Structured span attributes (e.g. `{ method, path }`). */
+  attributes?: Record<string, unknown>;
+  /** On a trace root: the redacted CEL root scope (variables / secrets / resources
+   *  / ports) the trace could reference. */
+  context?: Record<string, unknown>;
   timestamp: string;
   inputs?: unknown;
   outputs?: unknown;
@@ -195,39 +229,12 @@ export interface TraceState {
   roots: Invocation[];
 }
 
-/** Known invocation suffixes, longest first so `InvokeRejected.Undeclared` wins
- *  over `InvokeRejected`. */
-const INVOKE_SUFFIXES = [
-  "InvokeRejected.Undeclared",
-  "InvokeCancelled",
-  "InvokeRejected",
-  "InvokeFailed",
-  "Invoked",
-  "RunCancelled",
-] as const;
-
-/** Split a dotted invocation event into `{ kind, name, suffix }` by stripping a
- *  known trailing suffix — self-contained, no node registry needed. */
-function parseInvocationEvent(event: string): { kind: string; name: string; suffix: string } | undefined {
-  for (const suffix of INVOKE_SUFFIXES) {
-    if (event.endsWith(`.${suffix}`)) {
-      const head = event.slice(0, event.length - suffix.length - 1);
-      const dot = head.lastIndexOf(".");
-      if (dot <= 0) return undefined;
-      return { kind: head.slice(0, dot), name: head.slice(dot + 1), suffix };
-    }
-  }
-  return undefined;
-}
-
-function metaId(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
-}
-
 /**
- * Fold the invocation events that carry `metadata.invocationId` into a call tree.
- * Each invocation appears once (the `.Undeclared` rejection echo is deduped by id,
- * keeping the primary event). Empty when the producer isn't tracing.
+ * Fold the dispatch events that carry a `spanId` into a call tree. Each
+ * invocation appears once — keyed by `spanId`, the first terminal event wins, so
+ * the `InvokeRejected.Undeclared` echo (same id, emitted after `InvokeRejected`)
+ * is deduped. `phase:"start"` events carry no `outcome` and are skipped. Empty
+ * when the producer isn't tracing (no `spanId`).
  */
 export function deriveInvocations(frames: readonly DebugFrame[]): TraceState {
   const byId = new Map<number, Invocation>();
@@ -237,22 +244,33 @@ export function deriveInvocations(frames: readonly DebugFrame[]): TraceState {
   for (const frame of frames) {
     if (isLogFrame(frame)) continue;
     const event = frame as DebugEvent;
-    const id = metaId((event.metadata as Record<string, unknown> | undefined)?.invocationId);
-    if (id === undefined || byId.has(id)) continue;
-    const parsed = parseInvocationEvent(event.event);
-    if (!parsed) continue;
-    const outcome = classify(parsed.suffix);
-    if (!outcome) continue;
-
-    const parentId = metaId((event.metadata as Record<string, unknown>).parentInvocationId);
     const p = (event.payload ?? undefined) as Record<string, unknown> | undefined;
+    const id = num(p?.spanId);
+    if (id === undefined || byId.has(id)) continue;
+    const outcome = asOutcome(p?.outcome);
+    if (!outcome) continue;
+    const ref = readRef(p);
+    if (!ref) continue;
+
+    const parentId = num(p?.parentSpanId);
     const invocation: Invocation = {
       id,
       parentId,
-      kind: parsed.kind,
-      name: parsed.name,
+      traceId: typeof p?.traceId === "string" ? p.traceId : undefined,
+      kind: ref.kind,
+      name: ref.name,
+      capability: asCapability(p?.capability),
       outcome,
-      suffix: parsed.suffix,
+      suffix: eventSuffix(event.event),
+      label: typeof p?.label === "string" ? p.label : undefined,
+      attributes:
+        p?.attributes && typeof p.attributes === "object"
+          ? (p.attributes as Record<string, unknown>)
+          : undefined,
+      context:
+        p?.context && typeof p.context === "object"
+          ? (p.context as Record<string, unknown>)
+          : undefined,
       timestamp: event.timestamp,
       inputs: p && "inputs" in p ? p.inputs : undefined,
       outputs: p && "outputs" in p ? p.outputs : undefined,
@@ -278,6 +296,8 @@ export interface TraceNode {
   id: string;
   kind: string;
   name: string;
+  /** Human label from the span (e.g. a route `"POST /feedback"`), if any. */
+  label?: string;
   isRoot: boolean;
   invocations: Invocation[];
 }
@@ -313,7 +333,15 @@ export function traceSubgraph(trace: TraceState, rootId: number): TraceSubgraph 
     const key = resourceKey(inv);
     const node = nodes.get(key);
     if (node) node.invocations.push(inv);
-    else nodes.set(key, { id: key, kind: inv.kind, name: inv.name, isRoot: id === rootId, invocations: [inv] });
+    else
+      nodes.set(key, {
+        id: key,
+        kind: inv.kind,
+        name: inv.name,
+        label: inv.label,
+        isRoot: id === rootId,
+        invocations: [inv],
+      });
 
     for (const childId of trace.childrenOf.get(id) ?? []) {
       const child = trace.byId.get(childId);

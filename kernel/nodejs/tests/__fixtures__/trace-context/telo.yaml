@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: TraceContextApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+variables:
+  greeting:
+    env: TRACE_CTX_GREETING
+    type: string
+    default: hello
+secrets:
+  apiKey:
+    env: TRACE_CTX_API_KEY
+    type: string
+    default: super-secret-value
+---
+kind: JS.Script
+metadata:
+  name: Echo
+code: |
+  function main(input) { return { echoed: input.value }; }

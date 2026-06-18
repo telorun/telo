@@ -114,12 +114,12 @@ function TraceFlowNode({ data }: NodeProps<Node<TraceNodeData>>) {
       <Handle type="target" position={Position.Left} className="tdbg-node-handle" />
       <div className="tdbg-node-head">
         {node.isRoot && <span className="tdbg-node-roottag">root</span>}
-        <span className="tdbg-node-name">{node.name}</span>
+        <span className="tdbg-node-name">{node.label ?? node.name}</span>
         <span className={badgeClass(last.outcome)}>
           {node.invocations.length > 1 ? `${node.invocations.length}×` : last.suffix}
         </span>
       </div>
-      <div className="tdbg-node-kind">{node.kind}</div>
+      <div className="tdbg-node-kind">{node.label ? `${node.kind} · ${node.name}` : node.kind}</div>
       <Handle type="source" position={Position.Right} className="tdbg-node-handle" />
     </div>
   );
@@ -420,6 +420,12 @@ function TraceNodeDetail({
               <span className="tdbg-muted">{inv.timestamp.slice(11, 23)}</span>
             </div>
             <InOut inv={inv} resolveUrl={resolveUrl} />
+            {inv.context !== undefined && (
+              <>
+                <div className="tdbg-graph-detail-label">Available context</div>
+                <PayloadInspector value={inv.context} resolveUrl={resolveUrl} />
+              </>
+            )}
           </div>
         ))}
       </div>

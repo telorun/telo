@@ -10,6 +10,8 @@ import {
   type InstanceFactory,
   type InvokeContext,
   type LifecycleState,
+  type OpenSpan,
+  type OpenSpanOptions,
   type PreInitHook,
   type ResourceDefinition,
   type ResourceInstance,
@@ -604,6 +606,50 @@ export class EvaluationContext implements IEvaluationContext {
     return this.runInvoke(kind, name, instance, inputs, ctx);
   }
 
+  /**
+   * Build the structured trace payload every capability dispatch emits. The
+   * event *name* stays human-meaningful (`<name>.Invoked`) for bus subscribers;
+   * everything a debug consumer needs to rebuild the call tree rides here, so the
+   * consumer never parses the dotted name. `spanId`/`parentSpanId` are the
+   * tracer's `invocationId`/`parentInvocationId` (present only while tracing);
+   * `ref` carries the kind+name the name no longer encodes; `detail` is the
+   * per-capability data (inputs/outputs, error fields, cancellation reason).
+   */
+  /**
+   * A redacted snapshot of the CEL root scope a debug consumer should see for a
+   * trace — `variables`, masked `secrets`, resource `snapshots`, `ports`. Attached
+   * to a trace's *root* span so the consumer can inspect what data the execution
+   * could reference (beyond its own inputs/outputs). Only a `ModuleContext` owns a
+   * root scope; child scopes return undefined. Host `env` is deliberately omitted
+   * (it is the raw process environment — too broad/sensitive to dump).
+   */
+  protected traceRootScope(): Record<string, unknown> | undefined {
+    return undefined;
+  }
+
+  protected tracePayload(
+    kind: string,
+    name: string,
+    spanId: number | undefined,
+    parentSpanId: number | undefined,
+    traceId: string | undefined,
+    capability: "invoke" | "run" | "provide" | "request",
+    phase: "start" | "end",
+    outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+    detail: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      traceId,
+      spanId,
+      parentSpanId,
+      capability,
+      phase,
+      ...(outcome !== undefined ? { outcome } : {}),
+      ref: { kind, name },
+      ...detail,
+    };
+  }
+
   private async runInvoke<TInputs>(
     kind: string,
     name: string,
@@ -619,32 +665,59 @@ export class EvaluationContext implements IEvaluationContext {
     const token = baseCtx.cancellation;
 
     // Tracing gate (a debug consumer is attached): mint a monotonic id for this
-    // invocation, parent it to the ambient one, and ride both on every event's
-    // `metadata` so the consumer can rebuild the call tree. Off by default —
-    // `tracedCtx` stays `baseCtx` and the fast `=== ambient` skip is preserved.
+    // invocation, parent it to the ambient one, and ride both in every event's
+    // payload so the consumer can rebuild the call tree. Off by default —
+    // `invokeCtx` stays `baseCtx` and the fast `=== ambient` skip is preserved.
     const tracing = this.tracer?.enabled === true;
     const invocationId = tracing ? this.tracer!.next() : undefined;
     // Parent precedence mirrors the token: an explicit seed `ctx` wins, then the
     // ambient (ALS) invocation. A caller threading its own `ctx.invocationId` thus
     // has it honored as the parent, not silently dropped for the ALS value.
     const parentInvocationId = ctx?.invocationId ?? ambient?.invocationId;
-    const meta = tracing ? { invocationId, parentInvocationId } : undefined;
+    // Inherit the trace from the parent (explicit ctx wins, then ambient); mint a
+    // fresh one only at a root. Carried on every span so an OTel exporter groups
+    // the trace without walking the parent chain.
+    const traceId = tracing
+      ? (ctx?.traceId ?? ambient?.traceId ?? this.tracer!.newTraceId())
+      : undefined;
+    // Capture the root CEL scope once, on the trace's root span's terminal event.
+    const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
+    const span = (
+      phase: "start" | "end",
+      outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+      detail: Record<string, unknown>,
+    ) =>
+      this.tracePayload(
+        kind,
+        name,
+        invocationId,
+        parentInvocationId,
+        traceId,
+        "invoke",
+        phase,
+        outcome,
+        phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
+      );
     // When tracing, a fresh context carries the new id down the tree so nested
     // invokes read it as their parent; it is never `=== ambient`, so the call
     // always (re)establishes the ALS scope.
     const invokeCtx: InvokeContext = tracing
-      ? { cancellation: token, invocationId, parentInvocationId }
+      ? { cancellation: token, invocationId, parentInvocationId, traceId }
       : baseCtx;
 
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
     // refused without ever touching the controller.
     if (token.isCancelled) {
-      await this.emit(`${kind}.${name}.InvokeCancelled`, { inputs, reason: token.reason }, meta);
+      await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason: token.reason }));
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
         `Invoke ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
       );
     }
+
+    // Start span — only under tracing, so non-traced behaviour stays exactly
+    // one terminal event per call (subscribers to `<name>.Invoked` are unaffected).
+    if (tracing) await this.emit(`${name}.Invoking`, span("start", undefined, { inputs }));
 
     try {
       // Only (re)establish the ALS scope when the token differs from the ambient
@@ -661,36 +734,34 @@ export class EvaluationContext implements IEvaluationContext {
       const outputs = await (invokeCtx === ambient
         ? call()
         : cancellationStore.run(invokeCtx, call));
-      await this.emit(`${kind}.${name}.Invoked`, { inputs, outputs }, meta);
+      await this.emit(`${name}.Invoked`, span("end", "ok", { inputs, outputs }));
       return outputs;
     } catch (err) {
       // Cooperative mid-flight cancellation (`throwIfCancelled`) joins the same
       // observable event family rather than masquerading as a rejection/failure.
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
-        await this.emit(`${kind}.${name}.InvokeCancelled`, { inputs, reason }, meta);
+        await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason }));
         throw err;
       }
       if (isInvokeError(err)) {
-        const payload = { inputs, code: err.code, message: err.message, data: err.data };
-        await this.emit(`${kind}.${name}.InvokeRejected`, payload, meta);
+        const detail = { inputs, code: err.code, message: err.message, data: err.data };
+        await this.emit(`${name}.InvokeRejected`, span("end", "rejected", detail));
         const declaredCodes = this.getDeclaredThrowCodes(kind);
         if (declaredCodes && !declaredCodes.has(err.code)) {
-          await this.emit(`${kind}.${name}.InvokeRejected.Undeclared`, payload, meta);
+          await this.emit(`${name}.InvokeRejected.Undeclared`, span("end", "rejected", detail));
         }
         throw err;
       }
       if (err instanceof Error) {
         await this.emit(
-          `${kind}.${name}.InvokeFailed`,
-          { inputs, name: err.name, message: err.message },
-          meta,
+          `${name}.InvokeFailed`,
+          span("end", "failed", { inputs, name: err.name, message: err.message }),
         );
       } else {
         await this.emit(
-          `${kind}.${name}.InvokeFailed`,
-          { inputs, name: "UnknownError", message: String(err) },
-          meta,
+          `${name}.InvokeFailed`,
+          span("end", "failed", { inputs, name: "UnknownError", message: String(err) }),
         );
       }
       // Already enriched at an inner invoke: keep the innermost (most
@@ -712,6 +783,26 @@ export class EvaluationContext implements IEvaluationContext {
     }
   }
 
+  /**
+   * The declared capability of a kind, or undefined if unknown. Definitions are
+   * keyed by their canonical `<module>.<Kind>`, but a resource carries the alias
+   * kind it was written with (`Http.Server`), so resolve the alias first.
+   * Best-effort: `resolveKind` exists only on a `ModuleContext` and throws for
+   * unqualified / ungated kinds, so guard and fall back to the raw kind.
+   */
+  /** Resolve an alias kind (`Http.Server`) to its canonical `<module>.<Kind>`.
+   *  Only a `ModuleContext` carries the import-alias table; the base returns the
+   *  kind unchanged. A typed seam (overridden in `ModuleContext`), matching the
+   *  `traceRootScope()` pattern, rather than reaching across the boundary. */
+  protected resolveKindSafe(kind: string): string {
+    return kind;
+  }
+
+  private capabilityOf(kind: string): string | undefined {
+    const resolved = this.resolveKindSafe(kind);
+    return this.getDefinition?.(resolved)?.capability ?? this.getDefinition?.(kind)?.capability;
+  }
+
   private getDeclaredThrowCodes(kind: string): Set<string> | null {
     if (!this.getDefinition) return null;
     const def = this.getDefinition(kind);
@@ -730,28 +821,178 @@ export class EvaluationContext implements IEvaluationContext {
 
   async run(name: string, ctx?: InvokeContext): Promise<void> {
     const entry = this.resourceInstances.get(name);
-    if (entry && typeof entry.instance.run === "function") {
-      const ambient = cancellationStore.getStore();
-      const invokeCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
-      const token = invokeCtx.cancellation;
-      // Refuse a target reached after the boot run was cancelled.
-      if (token.isCancelled) {
-        await this.emit(`${entry.resource.kind}.${name}.RunCancelled`, { reason: token.reason });
-        throw new RuntimeError(
-          "ERR_INVOKE_CANCELLED",
-          `Run ${entry.resource.kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
-        );
-      }
-      // Run inside the scope so the runnable's nested invokes inherit the token,
-      // and pass it explicitly so long-lived targets can observe cancellation.
-      // Skip the redundant `run` when the token is already the ambient one.
-      const call = () => (entry.instance.run as (c?: InvokeContext) => Promise<void>)(invokeCtx);
-      return invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call);
+    if (!(entry && typeof entry.instance.run === "function")) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_NOT_RUNNABLE",
+        `Resource ${name} is not runnable or not found. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+      );
     }
-    throw new RuntimeError(
-      "ERR_RESOURCE_NOT_RUNNABLE",
-      `Resource ${name} is not runnable or not found. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
-    );
+    return this.runInstance(entry.resource.kind as string, name, entry.instance, ctx);
+  }
+
+  /**
+   * Like run(), but the caller has already resolved the instance (e.g. a
+   * Phase-5-injected `!ref` boot target). Shares the single span-emitting path so
+   * a pre-resolved runnable is instrumented exactly like a by-name dispatch
+   * instead of escaping the chokepoint with a direct `instance.run()` call.
+   */
+  async runResolved(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    ctx?: InvokeContext,
+  ): Promise<void> {
+    if (typeof instance.run !== "function") {
+      throw new RuntimeError(
+        "ERR_RESOURCE_NOT_RUNNABLE",
+        `Resource ${kind}.${name} does not have a run method`,
+      );
+    }
+    return this.runInstance(kind, name, instance, ctx);
+  }
+
+  /**
+   * Open a trace span for an inbound boundary (an HTTP request). Mints a span
+   * that roots a fresh trace (or continues `opts.inbound`), emits its `start`,
+   * and returns a child context to thread into `invokeResolved` so the handler
+   * nests under it. A no-op pass-through when tracing is off.
+   */
+  async openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {
+    const ctx = base ?? UNCANCELLABLE_CONTEXT;
+    if (this.tracer?.enabled !== true) {
+      return { context: ctx, settle: async () => {} };
+    }
+    const spanId = this.tracer.next();
+    const traceId = opts.inbound?.traceId ?? this.tracer.newTraceId();
+    const parentSpanId = opts.inbound?.parentSpanId;
+    // A root request span (not continuing an upstream trace) carries the root scope.
+    const rootScope = parentSpanId === undefined ? this.traceRootScope() : undefined;
+    const detail = {
+      ...(opts.label !== undefined ? { label: opts.label } : {}),
+      ...(opts.attributes !== undefined ? { attributes: opts.attributes } : {}),
+    };
+    const payload = (
+      phase: "start" | "end",
+      outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+      extra: Record<string, unknown> = {},
+    ) =>
+      this.tracePayload(
+        opts.ref.kind,
+        opts.ref.name,
+        spanId,
+        parentSpanId,
+        traceId,
+        "request",
+        phase,
+        outcome,
+        { ...detail, ...extra },
+      );
+
+    await this.emit(`${opts.ref.name}.Requesting`, payload("start", undefined));
+    const context: InvokeContext = {
+      cancellation: ctx.cancellation,
+      invocationId: spanId,
+      parentInvocationId: parentSpanId,
+      traceId,
+    };
+    let settled = false;
+    return {
+      context,
+      settle: async (outcome, extra) => {
+        if (settled) return;
+        settled = true;
+        await this.emit(
+          `${opts.ref.name}.Request`,
+          payload("end", outcome, rootScope ? { ...extra, context: rootScope } : extra),
+        );
+      },
+    };
+  }
+
+  private async runInstance(
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    ctx?: InvokeContext,
+  ): Promise<void> {
+    const ambient = cancellationStore.getStore();
+    const baseCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
+    const token = baseCtx.cancellation;
+
+    // A long-lived Service's `run()` is not a one-shot dispatch: it stays pending
+    // for the process lifetime, so wrapping it in the cancellation/trace ALS scope
+    // would leak that scope onto every async resource the service creates (e.g. an
+    // HTTP server's listening socket → every inbound request callback). Such a
+    // service must NOT establish an ambient: its token reaches it via the explicit
+    // `run(invokeCtx)` argument (how it observes shutdown), and its externally
+    // triggered work then starts with a clean ambient — separate traces, no
+    // inherited cancellation. Runnables (one-shot, e.g. `Run.Sequence`) keep the
+    // ALS scope so their steps nest and inherit cancellation.
+    const isService = this.capabilityOf(kind) === "Telo.Service";
+
+    // Span instrumentation mirrors `runInvoke` — minting an id here makes
+    // Runnables (a `Run.Sequence` boot target) appear in the trace and re-parents
+    // their nested invokes. A long-lived Service emits only the `start` span (its
+    // `run()` resolves at teardown), the "running" signal a debug consumer wants.
+    const tracing = this.tracer?.enabled === true;
+    const invocationId = tracing ? this.tracer!.next() : undefined;
+    const parentInvocationId = ctx?.invocationId ?? ambient?.invocationId;
+    const traceId = tracing
+      ? (ctx?.traceId ?? ambient?.traceId ?? this.tracer!.newTraceId())
+      : undefined;
+    const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
+    const span = (
+      phase: "start" | "end",
+      outcome: "ok" | "failed" | "cancelled" | undefined,
+      detail: Record<string, unknown>,
+    ) =>
+      this.tracePayload(
+        kind,
+        name,
+        invocationId,
+        parentInvocationId,
+        traceId,
+        "run",
+        phase,
+        outcome,
+        phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
+      );
+    const invokeCtx: InvokeContext = tracing
+      ? { cancellation: token, invocationId, parentInvocationId, traceId }
+      : baseCtx;
+
+    // Refuse a target reached after the boot run was cancelled.
+    if (token.isCancelled) {
+      await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason: token.reason }));
+      throw new RuntimeError(
+        "ERR_INVOKE_CANCELLED",
+        `Run ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+      );
+    }
+
+    if (tracing) await this.emit(`${name}.Running`, span("start", undefined, {}));
+
+    try {
+      // Runnable: run inside the ALS scope so nested invokes inherit the token and
+      // trace id (skip the redundant `run` when the token is already ambient).
+      // Service: call directly with the explicit context and NO ambient scope, so
+      // its long-lived async work does not capture this scope.
+      const call = () => (instance.run as (c?: InvokeContext) => Promise<void>)(invokeCtx);
+      await (isService || invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call));
+      await this.emit(`${name}.Run`, span("end", "ok", {}));
+    } catch (err) {
+      if (isCancellationError(err)) {
+        const reason = err instanceof Error ? err.message : String(err);
+        await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason }));
+        throw err;
+      }
+      const detail =
+        err instanceof Error
+          ? { name: err.name, message: err.message }
+          : { name: "UnknownError", message: String(err) };
+      await this.emit(`${name}.RunFailed`, span("end", "failed", detail));
+      throw err;
+    }
   }
 
   /**

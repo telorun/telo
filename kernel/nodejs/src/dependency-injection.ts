@@ -1,4 +1,4 @@
-import { ResourceInstance, ResourceManifest, RuntimeError } from "@telorun/sdk";
+import { ResourceInstance, ResourceManifest, RuntimeError, stampRefIdentity } from "@telorun/sdk";
 
 /**
  * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal,
@@ -28,6 +28,12 @@ export function injectAtPath(
         "ERR_CROSS_MODULE_REF_PENDING",
         `Cross-module reference '${alias}.${String(ref.name)}' is not available yet (import not initialized)`,
       );
+    }
+    // Tag the instance with the kind+name it resolved from, so a consumer that
+    // holds only the bare instance (an invoke-step target) can dispatch it
+    // through the traced chokepoint rather than calling `.invoke()` directly.
+    if (instance && typeof ref.kind === "string" && typeof ref.name === "string") {
+      stampRefIdentity(instance, ref.kind, ref.name);
     }
     return instance;
   }

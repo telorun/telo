@@ -55,7 +55,7 @@ describe("invoke cancellation — kernel dispatch gate", () => {
   it("emits a scoped InvokeCancelled event when the gate refuses", async () => {
     const kernel = await bootKernel();
     let cancelledReason: unknown = "unset";
-    kernel.on("JS.Script.Echo.InvokeCancelled", (event) => {
+    kernel.on("Echo.InvokeCancelled", (event) => {
       cancelledReason = (event.payload as { reason?: unknown })?.reason;
     });
     const controller = new AbortController();

@@ -102,7 +102,7 @@ schema:
           event:
             title: Event
             type: string
-            description: Event name or wildcard pattern (e.g. "JavaScript.Script.*.Invoked")
+            description: Event name or wildcard pattern. Dispatch events are named "<name>.<Suffix>" (e.g. "*.Invoked"); match the kind via payload.ref.kind. Lifecycle events keep the kind (e.g. "Kind.name.Created").
           payload:
             title: Payload
             type: object

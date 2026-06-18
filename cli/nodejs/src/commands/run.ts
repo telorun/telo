@@ -18,9 +18,9 @@ import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
-import { teeStdio } from "../stdio-tee.js";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
+import { teeStdio } from "../stdio-tee.js";
 import { resolveUiBundle } from "../ui-fetch.js";
 
 /**
@@ -438,7 +438,25 @@ export async function run(argv: RunArgv): Promise<void> {
     await persistManifestCache(argv, kernel, log, cacheRoot);
     debug?.markReady(kernel);
 
-    await kernel.start();
+    // `--inspect` launches an inspector to look at the running app, so hold it
+    // open even after a one-shot app goes idle — otherwise it exits before it can
+    // be inspected. The kernel hold keeps `start()` from resolving, but a pending
+    // `waitForIdle()` promise doesn't keep the event loop alive and the inspect
+    // server unrefs its socket — so ref a timer to keep the process up. SIGINT's
+    // `forceIdle()` resolves `start()`, then we clear the timer for a clean exit.
+    // (`--debug` is a fire-and-forget log; it keeps exiting on idle as before.)
+    let inspectKeepAlive: ReturnType<typeof setInterval> | undefined;
+    if (argv.inspect !== undefined) {
+      kernel.acquireHold("inspect");
+      inspectKeepAlive = setInterval(() => {}, 2 ** 30);
+      log.info("[inspect] holding the application open — press Ctrl+C to exit");
+    }
+
+    try {
+      await kernel.start();
+    } finally {
+      if (inspectKeepAlive) clearInterval(inspectKeepAlive);
+    }
     // start() resolves once the app is idle/torn down (incl. via the SIGINT
     // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
     // don't keep the process alive past here.

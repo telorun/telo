@@ -64,9 +64,13 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: Starlark.Script.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref:
+        kind: Starlark.Script
       outputs:
         result: 84
-  - event: Console.WriteLine.*.Invoked
-    payload: {}
+  - event: "*.Invoked"
+    payload:
+      ref:
+        kind: Console.WriteLine
