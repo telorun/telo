@@ -48,6 +48,7 @@ describe("http-server request cancellation", () => {
       invokeResolved: (_kind: string, _name: string, h: typeof handler, input: unknown, c: unknown) =>
         h.invoke(input, c as { cancellation?: any }),
       emitEvent: () => {},
+      openSpan: async (base: unknown) => ({ context: base, settle: async () => {} }),
     } as unknown as Parameters<typeof create>[1];
 
     const resource = {

@@ -70,6 +70,11 @@ export class EventBus {
   }
 
   async emit(event: string, payload?: any, metadata?: any): Promise<void> {
+    // O(1) idle short-circuit: with no subscriber at all — the common case when
+    // no debug consumer is attached — emitting costs a single integer compare,
+    // no map walk and no allocation. This is what keeps routing every dispatch
+    // through the instrumented chokepoint effectively free when nobody listens.
+    if (this.handlers.size === 0) return;
     const handlers: EventHandler[] = [];
     for (const [pattern, set] of this.handlers.entries()) {
       if (!this.matchesPattern(pattern, event)) {

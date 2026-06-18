@@ -15,50 +15,53 @@ async function bootKernel(): Promise<Kernel> {
   return kernel;
 }
 
-type Meta = Record<string, unknown> | undefined;
+type Payload = Record<string, unknown> | undefined;
 
-describe("invocation tracing — invocationId in event metadata", () => {
-  it("does not mint ids when tracing is off (default)", async () => {
+describe("invocation tracing — spanId in event payload", () => {
+  it("does not mint span ids when tracing is off (default)", async () => {
     const kernel = await bootKernel();
-    let meta: Meta = { sentinel: true };
-    kernel.on("JS.Script.Echo.Invoked", (event) => {
-      meta = event.metadata;
+    let payload: Payload;
+    kernel.on("Echo.Invoked", (event) => {
+      payload = event.payload as Payload;
     });
 
     await kernel.invoke("JS.Script.Echo", { value: 1 });
-    expect(meta).toBeUndefined();
+    expect(payload?.spanId).toBeUndefined();
+    // The structured payload is still present; only the trace ids are absent.
+    expect(payload?.ref).toMatchObject({ name: "Echo" });
 
     await kernel.teardown();
   });
 
-  it("rides a monotonic invocationId on every invocation event when tracing is on", async () => {
+  it("rides a monotonic spanId on every dispatch event when tracing is on", async () => {
     const kernel = await bootKernel();
     kernel.setTracing(true);
-    const metas: Meta[] = [];
-    kernel.on("JS.Script.Echo.Invoked", (event) => {
-      metas.push(event.metadata);
+    const payloads: Payload[] = [];
+    kernel.on("Echo.Invoked", (event) => {
+      payloads.push(event.payload as Payload);
     });
 
     await kernel.invoke("JS.Script.Echo", { value: 1 });
     await kernel.invoke("JS.Script.Echo", { value: 2 });
 
-    expect(typeof metas[0]?.invocationId).toBe("number");
+    expect(typeof payloads[0]?.spanId).toBe("number");
+    expect(payloads[0]).toMatchObject({ capability: "invoke", phase: "end", outcome: "ok" });
     // A root invoke has no parent.
-    expect(metas[0]?.parentInvocationId).toBeUndefined();
+    expect(payloads[0]?.parentSpanId).toBeUndefined();
     // Monotonic across invocations.
-    expect(metas[1]!.invocationId as number).toBeGreaterThan(metas[0]!.invocationId as number);
+    expect(payloads[1]!.spanId as number).toBeGreaterThan(payloads[0]!.spanId as number);
 
     await kernel.teardown();
   });
 
-  it("parents a nested sub-invoke to its caller's invocationId", async () => {
+  it("parents a nested sub-invoke to its caller's spanId", async () => {
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const rootContext = (kernel as unknown as { rootContext: any }).rootContext;
 
-    const byEvent = new Map<string, Meta>();
+    const byEvent = new Map<string, Payload>();
     kernel.on("*", (event) => {
-      if (event.name.endsWith(".Invoked")) byEvent.set(event.name, event.metadata);
+      if (event.name.endsWith(".Invoked")) byEvent.set(event.name, event.payload as Payload);
     });
 
     // A composing controller whose nested invoke passes no context — it inherits
@@ -78,12 +81,12 @@ describe("invocation tracing — invocationId in event metadata", () => {
     const source = createCancellationSource();
     await rootContext.invokeResolved("Test.Outer", "Outer", outer, {}, source.context);
 
-    const outerMeta = byEvent.get("Test.Outer.Outer.Invoked");
-    const echoMeta = byEvent.get("JS.Script.Echo.Invoked");
-    expect(typeof outerMeta?.invocationId).toBe("number");
+    const outerPayload = byEvent.get("Outer.Invoked");
+    const echoPayload = byEvent.get("Echo.Invoked");
+    expect(typeof outerPayload?.spanId).toBe("number");
     // Outer is the trace root; Echo's parent is Outer.
-    expect(outerMeta?.parentInvocationId).toBeUndefined();
-    expect(echoMeta?.parentInvocationId).toBe(outerMeta?.invocationId);
+    expect(outerPayload?.parentSpanId).toBeUndefined();
+    expect(echoPayload?.parentSpanId).toBe(outerPayload?.spanId);
 
     await kernel.teardown();
   });

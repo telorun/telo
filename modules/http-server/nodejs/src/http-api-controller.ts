@@ -59,6 +59,7 @@ export class HttpServerApi implements ResourceInstance {
     private readonly ctx: ResourceContext,
     readonly manifest: HttpApiManifest,
     private readonly handlerRefs: WeakMap<object, HandlerRef>,
+    private readonly apiName: string,
   ) {}
 
   async init() {}
@@ -159,6 +160,15 @@ export class HttpServerApi implements ResourceInstance {
           if (!reply.sent) cancellation.cancel("client-disconnect");
         });
 
+        // Open a request span rooting this request's own trace: the handler (and
+        // its nested invokes) nest under it, and it's labelled with the route so
+        // the trace shows the actual method+path, attributed to this Http.Api.
+        const span = await this.ctx.openSpan(cancellation.context, {
+          ref: { kind: "Http.Api", name: this.apiName },
+          label: `${route.request.method} ${route.request.path}`,
+          attributes: { method: route.request.method, path: route.request.path },
+        });
+
         let result: unknown;
         try {
           result = handler
@@ -167,15 +177,20 @@ export class HttpServerApi implements ResourceInstance {
                 handlerName,
                 handler,
                 invokeInput,
-                cancellation.context,
+                span.context,
               )
             : undefined;
         } catch (err) {
           if (isCancellationError(err)) {
+            await span.settle("cancelled");
             if (!reply.sent) reply.code(499).send();
             return;
           }
-          if (!isInvokeError(err)) throw err;
+          if (!isInvokeError(err)) {
+            await span.settle("failed");
+            throw err;
+          }
+          await span.settle("rejected");
           return dispatchCatches(
             route.catches,
             { code: err.code, message: err.message, data: err.data },
@@ -187,6 +202,7 @@ export class HttpServerApi implements ResourceInstance {
           );
         }
 
+        await span.settle("ok");
         return dispatchReturns(
           route.returns,
           result,
@@ -232,7 +248,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
       handlerRefs.set(route, { kind: "", name: h });
     }
   }
-  return new HttpServerApi(ctx, resource, handlerRefs);
+  return new HttpServerApi(ctx, resource, handlerRefs, resource?.metadata?.name ?? "");
 }
 
 /**

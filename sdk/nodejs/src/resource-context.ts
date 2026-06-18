@@ -1,4 +1,4 @@
-import type { CancellationSource, InvokeContext } from "./cancellation.js";
+import type { CancellationSource, InvokeContext, OpenSpan, OpenSpanOptions } from "./cancellation.js";
 import { ControllerContext } from "./controller-context.js";
 import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -49,6 +49,13 @@ export interface ResourceContext extends ControllerContext {
    *  lambda budget). Pass `source.context` into `invokeResolved` to scope an
    *  invocation tree to it. */
   createCancellationSource(): CancellationSource;
+  /** Open a trace span for an inbound boundary (an HTTP request, a queue message).
+   *  Returns a child {@link InvokeContext} to thread into `invokeResolved` so the
+   *  handler nests under this span, plus `settle` to close it with an outcome.
+   *  The span roots a fresh trace unless `inbound` continues an upstream one
+   *  (e.g. a W3C `traceparent`). A no-op (returns `base` unchanged) when tracing
+   *  is off. */
+  openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
   invokeResolved<TInputs>(
     kind: string,

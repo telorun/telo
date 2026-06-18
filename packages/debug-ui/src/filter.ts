@@ -23,8 +23,12 @@ export function matchesFilter(event: DebugEvent, filter: EventFilter): boolean {
   if (suffixes.length > 0 && !suffixes.includes(eventSuffix(event.event))) {
     return false;
   }
-  if (filter.kind && !event.event.toLowerCase().includes(filter.kind.toLowerCase())) {
-    return false;
+  if (filter.kind) {
+    // Lifecycle events carry the kind in the dotted name; dispatch (trace) events
+    // carry it in `payload.ref.kind` (the name dropped the kind prefix). Match either.
+    const refKind = (event.payload as { ref?: { kind?: unknown } } | undefined)?.ref?.kind;
+    const haystack = `${event.event} ${typeof refKind === "string" ? refKind : ""}`.toLowerCase();
+    if (!haystack.includes(filter.kind.toLowerCase())) return false;
   }
   if (filter.text) {
     const needle = filter.text.toLowerCase();

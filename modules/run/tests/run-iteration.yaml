@@ -33,12 +33,15 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: Run.Value.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Run.Value }
       outputs: { notified: a, at: 0 }
-  - event: Run.Value.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Run.Value }
       outputs: { notified: b, at: 1 }
-  - event: Run.Value.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Run.Value }
       outputs: { notified: c, at: 2 }

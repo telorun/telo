@@ -48,6 +48,36 @@ export interface InvokeContext {
   /** The {@link invocationId} of the invocation that dispatched this one, or
    *  `undefined` at a trace root. Reconstructs the call tree on the consumer. */
   readonly parentInvocationId?: number;
+  /** The trace this invocation belongs to — minted at the root span and inherited
+   *  by every descendant. Present only while tracing. Groups all spans of one
+   *  trace the way OpenTelemetry's `trace_id` does (an exporter maps it directly),
+   *  independent of the parent chain. */
+  readonly traceId?: string;
+}
+
+/** Terminal status of a span — maps to OpenTelemetry span status. */
+export type SpanOutcome = "ok" | "failed" | "rejected" | "cancelled";
+
+/** Options for {@link ResourceContext.openSpan}. */
+export interface OpenSpanOptions {
+  /** The resource the span is attributed to (an inbound transport's listener,
+   *  e.g. the `Http.Api`). Becomes the span's `ref`. */
+  ref: { kind: string; name: string };
+  /** Human label for the span (e.g. `"POST /feedback"`). */
+  label?: string;
+  /** Structured attributes (e.g. `{ method, path }`). Map to OTel span attributes. */
+  attributes?: Record<string, unknown>;
+  /** Continue an upstream distributed trace instead of rooting a new one — e.g.
+   *  seeded from a W3C `traceparent` header. */
+  inbound?: { traceId: string; parentSpanId?: number };
+}
+
+/** Handle returned by {@link ResourceContext.openSpan}. */
+export interface OpenSpan {
+  /** Thread into `invokeResolved` so the handler nests under the span. */
+  readonly context: InvokeContext;
+  /** Close the span with an outcome (emits the span's `end` event). */
+  settle(outcome: SpanOutcome, detail?: Record<string, unknown>): Promise<void>;
 }
 
 export interface CancellationSource {

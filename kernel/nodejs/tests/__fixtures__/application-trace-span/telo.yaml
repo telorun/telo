@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: AppTraceSpanApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+  Run: ../../../../../modules/run
+targets:
+  - !ref Seq
+---
+kind: Run.Sequence
+metadata:
+  name: Seq
+steps:
+  - name: DoEcho
+    invoke: !ref Echo
+    inputs: { value: 7 }
+---
+kind: JS.Script
+metadata:
+  name: Echo
+code: |
+  function main(input) { return { echoed: input.value }; }

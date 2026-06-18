@@ -12,6 +12,19 @@ const ev = (event: string, payload?: unknown): DebugFrame => ({
 const created = (kind: string, name: string, deps: { kind: string; name: string }[] = []) =>
   ev(`${kind}.${name}.Created`, { resource: { kind, name }, dependencies: deps });
 
+type Outcome = "ok" | "failed" | "rejected" | "cancelled";
+
+/** A terminal dispatch (trace) event: the name drops the kind, the payload carries
+ *  the structured trace contract `{ capability, phase, outcome, ref, … }`. */
+const disp = (
+  name: string,
+  kind: string,
+  outcome: Outcome,
+  suffix: string,
+  detail: Record<string, unknown> = {},
+): DebugFrame =>
+  ev(`${name}.${suffix}`, { capability: "invoke", phase: "end", outcome, ref: { kind, name }, ...detail });
+
 describe("deriveGraph", () => {
   it("creates a gray (created) node on Created", () => {
     const { nodes } = deriveGraph([created("Http.Server", "api")]);
@@ -52,7 +65,7 @@ describe("deriveGraph", () => {
   it("records an ok invocation with inputs and outputs", () => {
     const { nodes } = deriveGraph([
       created("Js.Script", "echo"),
-      ev("Js.Script.echo.Invoked", { inputs: { msg: "hi" }, outputs: { echoed: "hi" } }),
+      disp("echo", "Js.Script", "ok", "Invoked", { inputs: { msg: "hi" }, outputs: { echoed: "hi" } }),
     ]);
     expect(nodes[0].invokeCount).toBe(1);
     expect(nodes[0].lastInvoke).toMatchObject({
@@ -63,18 +76,27 @@ describe("deriveGraph", () => {
     });
   });
 
-  it("classifies failure, rejection and cancellation outcomes", () => {
+  it("skips a phase:start event (no outcome) — only terminal events count", () => {
+    const { nodes } = deriveGraph([
+      created("Js.Script", "echo"),
+      ev("echo.Invoking", { capability: "invoke", phase: "start", ref: { kind: "Js.Script", name: "echo" }, inputs: {} }),
+    ]);
+    expect(nodes[0].invokeCount).toBe(0);
+    expect(nodes[0].lastInvoke).toBeUndefined();
+  });
+
+  it("records failure, rejection and cancellation outcomes from the payload", () => {
     const base = created("Js.Script", "x");
     expect(
-      deriveGraph([base, ev("Js.Script.x.InvokeFailed", { inputs: {}, name: "Error", message: "boom" })])
+      deriveGraph([base, disp("x", "Js.Script", "failed", "InvokeFailed", { inputs: {}, name: "Error", message: "boom" })])
         .nodes[0].lastInvoke?.outcome,
     ).toBe("failed");
     expect(
-      deriveGraph([base, ev("Js.Script.x.InvokeRejected", { inputs: {}, code: "E", message: "no" })])
+      deriveGraph([base, disp("x", "Js.Script", "rejected", "InvokeRejected", { inputs: {}, code: "E", message: "no" })])
         .nodes[0].lastInvoke?.outcome,
     ).toBe("rejected");
     expect(
-      deriveGraph([base, ev("Js.Script.x.InvokeCancelled", { inputs: {}, reason: "stop" })])
+      deriveGraph([base, disp("x", "Js.Script", "cancelled", "InvokeCancelled", { inputs: {}, reason: "stop" })])
         .nodes[0].lastInvoke?.outcome,
     ).toBe("cancelled");
   });
@@ -82,29 +104,27 @@ describe("deriveGraph", () => {
   it("treats InvokeRejected.Undeclared as a rejection on the right node", () => {
     const { nodes } = deriveGraph([
       created("Js.Script", "x"),
-      ev("Js.Script.x.InvokeRejected.Undeclared", { inputs: {}, code: "E", message: "no" }),
+      disp("x", "Js.Script", "rejected", "InvokeRejected.Undeclared", { inputs: {}, code: "E", message: "no" }),
     ]);
-    expect(nodes[0].lastInvoke).toMatchObject({ outcome: "rejected", suffix: "InvokeRejected.Undeclared" });
+    expect(nodes[0].lastInvoke).toMatchObject({ outcome: "rejected", suffix: "Undeclared" });
   });
 
   it("counts repeated invocations and advances the activity index", () => {
     const { nodes } = deriveGraph([
       created("Js.Script", "x"),
-      ev("Js.Script.x.Invoked", { inputs: {}, outputs: 1 }),
-      ev("Js.Script.x.Invoked", { inputs: {}, outputs: 2 }),
+      disp("x", "Js.Script", "ok", "Invoked", { inputs: {}, outputs: 1 }),
+      disp("x", "Js.Script", "ok", "Invoked", { inputs: {}, outputs: 2 }),
     ]);
     expect(nodes[0].invokeCount).toBe(2);
     expect(nodes[0].lastInvoke?.outputs).toBe(2);
     expect(nodes[0].lastActivitySeq).toBeGreaterThan(0);
   });
 
-  it("attributes an invocation to the longest matching resource prefix", () => {
-    // `Http.Server.api` and `Http.Server.api.sub` share a prefix; the event must
-    // land on the deeper node, not the shorter one.
+  it("attributes an invocation to the resource named in the payload ref", () => {
     const { nodes } = deriveGraph([
       created("Http.Server", "api"),
       created("Http.Server.api", "sub"),
-      ev("Http.Server.api.sub.Invoked", { inputs: {}, outputs: "ok" }),
+      disp("sub", "Http.Server.api", "ok", "Invoked", { inputs: {}, outputs: "ok" }),
     ]);
     expect(nodes.find((n) => n.name === "sub")?.invokeCount).toBe(1);
     expect(nodes.find((n) => n.name === "api")?.invokeCount).toBe(0);
@@ -121,46 +141,54 @@ describe("deriveGraph", () => {
   });
 });
 
+/** A terminal dispatch event carrying trace ids — `spanId` / `parentSpanId`. */
 const inv = (
-  event: string,
-  invocationId: number,
-  parentInvocationId: number | undefined,
-  payload: unknown,
-): DebugFrame => ({
-  timestamp: `2026-01-01T00:00:00.${String(seq++).padStart(3, "0")}Z`,
-  event,
-  payload,
-  metadata: { invocationId, ...(parentInvocationId !== undefined ? { parentInvocationId } : {}) },
-});
+  name: string,
+  kind: string,
+  spanId: number,
+  parentSpanId: number | undefined,
+  outcome: Outcome,
+  suffix: string,
+  detail: Record<string, unknown> = {},
+): DebugFrame =>
+  ev(`${name}.${suffix}`, {
+    spanId,
+    parentSpanId,
+    capability: "invoke",
+    phase: "end",
+    outcome,
+    ref: { kind, name },
+    ...detail,
+  });
 
 describe("deriveInvocations", () => {
-  it("is empty when events carry no invocation metadata (tracing off)", () => {
-    const t = deriveInvocations([ev("Js.Script.x.Invoked", { outputs: 1 })]);
+  it("is empty when events carry no span ids (tracing off)", () => {
+    const t = deriveInvocations([disp("x", "Js.Script", "ok", "Invoked", { outputs: 1 })]);
     expect(t.roots).toHaveLength(0);
     expect(t.byId.size).toBe(0);
   });
 
   it("collects a root invocation with its resource, inputs and outputs", () => {
-    const t = deriveInvocations([inv("Http.Server.api.Invoked", 1, undefined, { inputs: { a: 1 }, outputs: "ok" })]);
+    const t = deriveInvocations([inv("api", "Http.Server", 1, undefined, "ok", "Invoked", { inputs: { a: 1 }, outputs: "ok" })]);
     expect(t.roots).toHaveLength(1);
     expect(t.roots[0]).toMatchObject({ id: 1, kind: "Http.Server", name: "api", outcome: "ok", inputs: { a: 1 }, outputs: "ok" });
   });
 
   it("links children to parents and keeps only roots at the top", () => {
     const t = deriveInvocations([
-      inv("A.root.Invoked", 1, undefined, { outputs: 1 }),
-      inv("B.child.Invoked", 2, 1, { outputs: 2 }),
-      inv("C.grand.Invoked", 3, 2, { outputs: 3 }),
+      inv("root", "A", 1, undefined, "ok", "Invoked", { outputs: 1 }),
+      inv("child", "B", 2, 1, "ok", "Invoked", { outputs: 2 }),
+      inv("grand", "C", 3, 2, "ok", "Invoked", { outputs: 3 }),
     ]);
     expect(t.roots.map((r) => r.id)).toEqual([1]);
     expect(t.childrenOf.get(1)).toEqual([2]);
     expect(t.childrenOf.get(2)).toEqual([3]);
   });
 
-  it("dedupes the InvokeRejected.Undeclared echo by id", () => {
+  it("dedupes the InvokeRejected.Undeclared echo by id, keeping the primary", () => {
     const t = deriveInvocations([
-      inv("A.x.InvokeRejected", 1, undefined, { code: "E" }),
-      inv("A.x.InvokeRejected.Undeclared", 1, undefined, { code: "E" }),
+      inv("x", "A", 1, undefined, "rejected", "InvokeRejected", { code: "E" }),
+      inv("x", "A", 1, undefined, "rejected", "InvokeRejected.Undeclared", { code: "E" }),
     ]);
     expect(t.byId.size).toBe(1);
     expect(t.byId.get(1)).toMatchObject({ outcome: "rejected", suffix: "InvokeRejected" });
@@ -170,9 +198,9 @@ describe("deriveInvocations", () => {
 describe("traceSubgraph", () => {
   it("returns only the participating resources wired by call edges", () => {
     const t = deriveInvocations([
-      inv("A.root.Invoked", 1, undefined, { outputs: 1 }),
-      inv("B.child.Invoked", 2, 1, { outputs: 2 }),
-      inv("C.other.Invoked", 9, undefined, { outputs: 9 }), // a different trace
+      inv("root", "A", 1, undefined, "ok", "Invoked", { outputs: 1 }),
+      inv("child", "B", 2, 1, "ok", "Invoked", { outputs: 2 }),
+      inv("other", "C", 9, undefined, "ok", "Invoked", { outputs: 9 }), // a different trace
     ]);
     const g = traceSubgraph(t, 1);
     expect(g.nodes.map((n) => n.id).sort()).toEqual(["A.root", "B.child"]);
@@ -182,9 +210,9 @@ describe("traceSubgraph", () => {
 
   it("collapses repeated calls to one node holding every invocation", () => {
     const t = deriveInvocations([
-      inv("A.root.Invoked", 1, undefined, { outputs: 1 }),
-      inv("B.svc.Invoked", 2, 1, { outputs: 2 }),
-      inv("B.svc.Invoked", 3, 1, { outputs: 3 }),
+      inv("root", "A", 1, undefined, "ok", "Invoked", { outputs: 1 }),
+      inv("svc", "B", 2, 1, "ok", "Invoked", { outputs: 2 }),
+      inv("svc", "B", 3, 1, "ok", "Invoked", { outputs: 3 }),
     ]);
     const g = traceSubgraph(t, 1);
     const svc = g.nodes.find((n) => n.id === "B.svc");

@@ -23,7 +23,7 @@ type ResolvedRef = { kind: string; name: string; alias?: string };
  * Resolving a sentinel here does NOT cause Phase-5 injection: that pass is
  * driven by the field map, which still excludes step `invoke`s, so a resolved
  * step invoke stays `{kind, name}` and is dispatched through
- * `executeInvokeStep` (preserving `<Kind>.<Name>.Invoked` events) rather than
+ * `executeInvokeStep` (preserving `<name>.Invoked` events) rather than
  * being replaced with a live instance.
  *
  * Reference grammar — the tag's source string is split on the FIRST dot:

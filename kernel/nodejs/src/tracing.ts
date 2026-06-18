@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Tracer } from "@telorun/sdk";
 
 /**
@@ -16,5 +17,11 @@ export class KernelTracer implements Tracer {
   next(): number {
     this.#next += 1;
     return this.#next;
+  }
+
+  /** A fresh OTel-compatible 16-byte hex trace id. Globally unique, so a trace
+   *  stays identifiable once it crosses process boundaries. */
+  newTraceId(): string {
+    return randomBytes(16).toString("hex");
   }
 }

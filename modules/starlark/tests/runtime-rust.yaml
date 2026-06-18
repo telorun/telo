@@ -33,10 +33,12 @@ kind: Assert.Events
 metadata:
   name: VerifyRustMarker
 filter:
-  - type: "Starlark.Script.*.Invoked"
+  - type: "*.Invoked"
 expect:
-  - event: Starlark.Script.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref:
+        kind: Starlark.Script
       outputs:
         controller: rust
         input:

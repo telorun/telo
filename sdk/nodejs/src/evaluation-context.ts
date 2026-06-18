@@ -1,4 +1,4 @@
-import type { InvokeContext } from "./cancellation.js";
+import type { InvokeContext, OpenSpan, OpenSpanOptions } from "./cancellation.js";
 import type { ScopeHandle } from "./ref.js";
 import type { ResourceInstance } from "./resource-instance.js";
 import type { ResourceManifest } from "./resource-manifest.js";
@@ -19,6 +19,9 @@ export interface Tracer {
   readonly enabled: boolean;
   /** Mint the next monotonic invocation id (unique within the kernel run). */
   next(): number;
+  /** Mint a fresh trace id (OTel-compatible 16-byte hex) for a new root trace.
+   *  Children inherit it via {@link InvokeContext.traceId}. */
+  newTraceId(): string;
 }
 
 /** Four-stage resource lifecycle defined in resource-lifecycle.md */
@@ -124,6 +127,7 @@ export interface EvaluationContext {
     ctx?: InvokeContext,
   ): Promise<any>;
   run(name: string, ctx?: InvokeContext): Promise<void>;
+  openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
   expand(value: unknown): unknown;
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown;
   expandPaths(

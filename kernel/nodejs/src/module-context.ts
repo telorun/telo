@@ -1,4 +1,4 @@
-import { executeInvokeStep, RuntimeError } from "@telorun/sdk";
+import { executeInvokeStep, getRefIdentity, RuntimeError } from "@telorun/sdk";
 import type {
   BootTarget,
   ControllerPolicy,
@@ -432,6 +432,29 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return `${realModule}.${suffix}`;
   }
 
+  protected override resolveKindSafe(kind: string): string {
+    // `resolveKind` throws for unqualified / ungated kinds — an expected signal,
+    // not a failure: a capability probe that can't resolve falls back to the raw
+    // kind (lookup misses → treated as non-service → keeps its ALS scope).
+    try {
+      return this.resolveKind(kind);
+    } catch {
+      return kind;
+    }
+  }
+
+  protected override traceRootScope(): Record<string, unknown> {
+    // Mask secret values (keep keys so availability is visible, never the value).
+    const secrets: Record<string, unknown> = {};
+    for (const key of Object.keys(this._secrets)) secrets[key] = "[secret]";
+    return {
+      variables: this._variables,
+      secrets,
+      resources: this._resources,
+      ports: this._ports,
+    };
+  }
+
   private _rebuildContext(): void {
     this._context = {
       variables: this._variables,
@@ -473,26 +496,84 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     await super.run(name, ctx);
   }
 
-  async runTargets(ctx?: InvokeContext) {
+  async runTargets(ctx?: InvokeContext, appName?: string) {
+    // Open a trace span for the application's boot run so the app itself is a
+    // trace participant: every target dispatches under `targetCtx`, parenting to
+    // this span instead of becoming a detached root. The span is gated on tracing
+    // (zero cost otherwise) and rides the boot cancellation token unchanged.
+    const tracing = this.tracer?.enabled === true;
+    const appSpanId = tracing ? this.tracer!.next() : undefined;
+    // The boot run roots a fresh trace; targets inherit it via `targetCtx`.
+    const appTraceId = tracing ? this.tracer!.newTraceId() : undefined;
+    const appRootScope = tracing ? this.traceRootScope() : undefined;
+    const appLabel = appName ?? "application";
+    const appSpan = (
+      phase: "start" | "end",
+      outcome: "ok" | "failed" | "cancelled" | undefined,
+    ) =>
+      this.tracePayload(
+        "Telo.Application",
+        appLabel,
+        appSpanId,
+        undefined,
+        appTraceId,
+        "run",
+        phase,
+        outcome,
+        phase === "end" && appRootScope ? { context: appRootScope } : {},
+      );
+    const targetCtx: InvokeContext | undefined =
+      tracing && ctx
+        ? {
+            cancellation: ctx.cancellation,
+            invocationId: appSpanId,
+            parentInvocationId: undefined,
+            traceId: appTraceId,
+          }
+        : ctx;
+
     const steps: Record<string, unknown> = {};
     const stepCtx: InvokeStepContext = {
       expandValue: (value, context) => this.expandWith(value, context),
-      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs, ctx),
+      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs, targetCtx),
       invokeResolved: (kind, name, instance, inputs) =>
-        this.invokeResolved(kind, name, instance, inputs, ctx),
+        this.invokeResolved(kind, name, instance, inputs, targetCtx),
       resolveImportedInstance: (alias, name) => this.resolveImportedInstance(alias, name),
     };
-    // Mirror the local-run gate: refuse a target reached after the boot run was
-    // cancelled, then run the pre-resolved instance directly.
-    const runResolvedInstance = async (inst: ResourceInstance, label: string) => {
-      const token = ctx?.cancellation;
-      if (token?.isCancelled) {
-        throw new RuntimeError(
-          "ERR_INVOKE_CANCELLED",
-          `Run ${label} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
+    // Route a pre-resolved boot target through the instrumented chokepoint
+    // (`runResolved`) instead of calling `instance.run()` directly, so it emits a
+    // run span nested under the app. Kind/name come from the `!ref` identity the
+    // kernel stamped at injection, falling back to a positional label.
+    const runResolvedInstance = async (inst: ResourceInstance, kind: string, name: string) =>
+      this.runResolved(kind, name, inst, targetCtx);
+
+    if (tracing) await this.emit(`${appLabel}.Running`, appSpan("start", undefined));
+    try {
+      await this.dispatchTargets(stepCtx, steps, runResolvedInstance, targetCtx);
+      if (tracing) await this.emit(`${appLabel}.Run`, appSpan("end", "ok"));
+    } catch (err) {
+      if (tracing) {
+        const cancelled = (err as { code?: unknown })?.code === "ERR_INVOKE_CANCELLED";
+        await this.emit(
+          `${appLabel}.${cancelled ? "RunCancelled" : "RunFailed"}`,
+          appSpan("end", cancelled ? "cancelled" : "failed"),
         );
       }
-      await inst.run!(ctx);
+      throw err;
+    }
+  }
+
+  private async dispatchTargets(
+    stepCtx: InvokeStepContext,
+    steps: Record<string, unknown>,
+    runResolvedInstance: (inst: ResourceInstance, kind: string, name: string) => Promise<void>,
+    ctx?: InvokeContext,
+  ) {
+    // Recover the kind+name the kernel stamped onto a `!ref`-injected instance,
+    // so the run span is properly labelled; fall back to a positional name.
+    const idOf = (inst: ResourceInstance, fallbackName: string) => {
+      const id = getRefIdentity(inst as object);
+      return { kind: id?.kind ?? "", name: id?.name ?? fallbackName };
     };
     for (let i = 0; i < this.targets.length; i++) {
       const target = this.targets[i]!;
@@ -524,7 +605,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           // Phase 5 injection may have replaced the ref slot with the live
           // instance; run it directly.
           if (isRunnableInstance(ref)) {
-            await runResolvedInstance(ref, `target[${i}]`);
+            const id = idOf(ref, `target[${i}]`);
+            await runResolvedInstance(ref, id.kind, id.name);
           } else {
             const r =
               ref && typeof ref === "object"
@@ -537,7 +619,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
                   `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
                 );
               }
-              await runResolvedInstance(inst, `${r.alias}.${r.name}`);
+              await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", r.name);
             } else {
               await this.run(typeof ref === "string" ? ref : r!.name, ctx);
             }
@@ -550,7 +632,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       // so the common runtime shape here is a pre-resolved ResourceInstance;
       // fall back to the structural ref forms when injection left them in place.
       if (isRunnableInstance(target)) {
-        await runResolvedInstance(target, `target[${i}]`);
+        const id = idOf(target, `target[${i}]`);
+        await runResolvedInstance(target, id.kind, id.name);
         continue;
       }
       const bare = target as { name?: unknown; alias?: unknown };
@@ -561,7 +644,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
             `Boot target '${bare.alias}.${bare.name}' is not a runnable exported instance`,
           );
         }
-        await runResolvedInstance(inst, `${bare.alias}.${bare.name}`);
+        await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", bare.name);
         continue;
       }
       if (typeof bare.name === "string") {

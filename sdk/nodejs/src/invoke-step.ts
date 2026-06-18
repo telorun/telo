@@ -1,6 +1,6 @@
 import type { Invocable } from "./capabilities/invokable.js";
 import type { KindRef, ScopeContext } from "./ref.js";
-import type { ResourceInstance } from "./resource-instance.js";
+import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
 
 /** Retry policy for a single invoke step, passed through to `ctx.invoke`. */
 export interface InvokeStepRetry {
@@ -94,7 +94,14 @@ export async function executeInvokeStep(
   let result: unknown;
 
   if (raw && typeof (raw as Invocable).invoke === "function") {
-    result = await (raw as Invocable).invoke(inputs);
+    // A pre-injected live instance (a `!ref` resolved at Phase 5). Route it
+    // through the traced chokepoint using the identity the kernel stamped at
+    // injection, so the call is instrumented exactly like a by-name dispatch.
+    // A truly anonymous instance (no stamp) falls back to a direct call.
+    const identity = getRefIdentity(raw as object);
+    result = identity
+      ? await ctx.invokeResolved(identity.kind, identity.name, raw as ResourceInstance, inputs)
+      : await (raw as Invocable).invoke(inputs);
   } else {
     const ref = raw as KindRef<Invocable>;
     if (ref.alias && ref.alias !== "Self") {

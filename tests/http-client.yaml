@@ -149,19 +149,23 @@ metadata:
 filter:
   - type: "*"
 expect:
-  - event: Http.Request.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Http.Request }
       outputs:
         status: 200
-  - event: Http.Request.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Http.Request }
       outputs:
         status: 200
-  - event: Http.Request.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Http.Request }
       outputs:
         status: 201
-  - event: Http.Request.*.Invoked
+  - event: "*.Invoked"
     payload:
+      ref: { kind: Http.Request }
       outputs:
         status: 404
