@@ -1,5 +1,7 @@
 # Changelog
-## 0.12.1 - 2026-06-16
+## 0.13.0 - 2026-06-18
+### Added
+* Update controller @telorun/http-server to 0.12.0.## 0.12.1 - 2026-06-16
 ### Fixed
 * Update controller @telorun/http-server to 0.11.1.## 0.12.0 - 2026-06-15
 ### Added
