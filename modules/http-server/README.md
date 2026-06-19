@@ -210,15 +210,18 @@ request:
 ### 5. External URL & OpenAPI `servers`
 
 A server is usually reached through a reverse proxy / ingress, so its own bound
-`host:port` is not the URL clients use. The generated OpenAPI `servers` block MUST
-follow this resolution, identically across runtimes (Node/Rust/Go) — the inputs
-are standard HTTP, never a framework's proxy-config object:
+`host:port` is not the URL clients use. The generated OpenAPI `servers` block is a
+**single origin** — each operation is documented at its full `<mountPrefix><path>`,
+so different APIs mounted at different prefixes stay distinct (an `Http.Api` mounted
+at `/admin` is documented at `/admin/...`, never flattened to `/...`). The origin
+resolves identically across runtimes (Node/Rust/Go) — the inputs are standard HTTP,
+never a framework's proxy-config object:
 
 | Manifest | `servers[].url` |
 | --- | --- |
-| `baseUrl: <url>` | `<url><mountPrefix>` — explicit, fixed; wins over everything |
-| `trustForwardedHeaders: true` | `<X-Forwarded-Proto>://<X-Forwarded-Host><mountPrefix>`, derived per request |
-| neither (default) | `<mountPrefix>` — **relative**; the client resolves it against the origin the document was loaded from |
+| `baseUrl: <url>` | `<url>` — explicit, fixed; wins over everything |
+| `trustForwardedHeaders: true` | `<X-Forwarded-Proto>://<X-Forwarded-Host>`, derived per request |
+| neither (default) | `/` — **relative**; the client resolves it against the origin the document was loaded from |
 
 - The default is **relative** so the document is correct behind any proxy, ingress,
   or origin with zero configuration.

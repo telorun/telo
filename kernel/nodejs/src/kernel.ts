@@ -330,8 +330,8 @@ export class Kernel implements IKernel {
     await this.loadBuiltinDefinitions();
 
     // Phase 5: attach injection hook — fires between create() and init() for every resource
-    this.rootContext.preInitHook = (resource, getInstance) =>
-      this._injectDependencies(resource, getInstance);
+    this.rootContext.preInitHook = (resource, getInstance, isPending) =>
+      this._injectDependencies(resource, getInstance, isPending);
 
     // Expose definition lookup so invoke()/invokeResolved() can check thrown
     // InvokeError.code against the declared throw union (rule 9). Propagates
@@ -1017,6 +1017,17 @@ export class Kernel implements IKernel {
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 
+    // Fold the resource's fire-and-forget drain into its own teardown: tearing
+    // the resource down drains the background tasks it spawned (the kernel just
+    // calls teardown() — it tracks no tasks itself). A drain with no pending
+    // tasks is a no-op, so this is safe for every resource.
+    const ownerCtx = ctx as ResourceContextImpl;
+    const originalTeardown = instance.teardown?.bind(instance);
+    instance.teardown = async () => {
+      await ownerCtx.drainDetached();
+      if (originalTeardown) await originalTeardown();
+    };
+
     if (!runtime.length) return { instance, ctx, resource: processedResource };
 
     // Override invoke in-place so all lifecycle methods (init/invoke/teardown/snapshot)
@@ -1043,10 +1054,11 @@ export class Kernel implements IKernel {
   private _injectDependencies(
     resource: ResourceManifest,
     getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
+    isPending?: (name: string) => boolean,
   ): void {
     this.registry.iterateFieldEntries(
       resource,
-      (fieldPath) => injectAtPath(resource, fieldPath, getInstance),
+      (fieldPath) => injectAtPath(resource, fieldPath, getInstance, isPending),
       (fieldPath) => {
         const val = (resource as Record<string, unknown>)[fieldPath];
         if (Array.isArray(val)) {

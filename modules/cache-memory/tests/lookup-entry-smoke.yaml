@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: CacheMemorySmokeTest
+  version: 1.0.0
+  description: |
+    Writes a value via Cache.Entry with a fresh window, reads it back via
+    Cache.Lookup (asserting state=fresh + value), and confirms an absent key
+    reports state=miss.
+imports:
+  Cache: ../../cache
+  CacheMemory: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: Cache.Entry
+metadata: { name: Put }
+store: !ref Mem
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: Get }
+store: !ref Mem
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: write
+    invoke: !ref Put
+    inputs:
+      key: "greeting"
+      value: { hello: "world" }
+  - name: read
+    invoke: !ref Get
+    inputs:
+      key: "greeting"
+  - name: assertFresh
+    inputs:
+      state: "${{ steps.read.result.state }}"
+      hello: "${{ steps.read.result.value.hello }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state, hello]
+        properties:
+          state: { const: "fresh" }
+          hello: { const: "world" }
+  - name: readAbsent
+    invoke: !ref Get
+    inputs:
+      key: "nope"
+  - name: assertMiss
+    inputs:
+      state: "${{ steps.readAbsent.result.state }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state]
+        properties:
+          state: { const: "miss" }

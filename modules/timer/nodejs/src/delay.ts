@@ -1,5 +1,5 @@
 import type { ControllerContext, InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { ERR_INVOKE_CANCELLED, InvokeError } from "@telorun/sdk";
+import { ERR_INVOKE_CANCELLED, InvokeError, tryParseDurationMs } from "@telorun/sdk";
 
 interface DelayResource {
   metadata: { name: string; module?: string };
@@ -14,23 +14,15 @@ interface DelayOutputs {
   value: unknown;
 }
 
-const UNIT_MS: Record<string, number> = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 };
-
 function parseDuration(raw: unknown, name: string): number {
-  if (typeof raw !== "string") {
-    throw new InvokeError(
-      "ERR_INVALID_INPUT",
-      `Timer.Delay "${name}": 'duration' must be a string like "250ms", "2s", "1.5m", "1h".`,
-    );
-  }
-  const match = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/);
-  if (!match) {
+  const ms = typeof raw === "string" ? tryParseDurationMs(raw) : null;
+  if (ms === null) {
     throw new InvokeError(
       "ERR_INVALID_INPUT",
       `Timer.Delay "${name}": invalid duration ${JSON.stringify(raw)}; use a number with a unit, e.g. "250ms", "2s", "1.5m", "1h".`,
     );
   }
-  return parseFloat(match[1]) * UNIT_MS[match[2]];
+  return ms;
 }
 
 /**

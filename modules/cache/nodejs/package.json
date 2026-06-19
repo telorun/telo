@@ -1,0 +1,65 @@
+{
+  "name": "@telorun/cache",
+  "version": "0.1.0",
+  "description": "Telo cache module — Cache.Store abstract plus Lookup / Entry / View operating against any store.",
+  "keywords": [
+    "telo",
+    "cache",
+    "ttl",
+    "stale-while-revalidate"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/cache/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./lookup": {
+      "types": "./dist/lookup-controller.d.ts",
+      "bun": "./src/lookup-controller.ts",
+      "import": "./dist/lookup-controller.js"
+    },
+    "./entry": {
+      "types": "./dist/entry-controller.d.ts",
+      "bun": "./src/entry-controller.ts",
+      "import": "./dist/entry-controller.js"
+    },
+    "./view": {
+      "types": "./dist/view-controller.d.ts",
+      "bun": "./src/view-controller.ts",
+      "import": "./dist/view-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

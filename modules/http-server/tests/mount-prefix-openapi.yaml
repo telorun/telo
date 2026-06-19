@@ -1,0 +1,188 @@
+kind: Telo.Application
+metadata:
+  name: MountPrefixOpenApiTest
+  version: 1.0.0
+  description: |
+    Two DIFFERENT Http.Api are mounted at different prefixes (`/` and `/admin`),
+    each defining a route at the same declared path `/links`. Regression for the
+    mount-prefix bug: the actual API serves them at distinct paths (`/links` and
+    `/admin/links`), and the OpenAPI document must document them at those distinct
+    full paths under a single `/` server — not flatten both to `/links` with the
+    mount prefixes hoisted into `servers`.
+imports:
+  Http: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+  Type: ../../type
+targets:
+  - !ref Test
+---
+kind: JS.Script
+metadata: { name: RootList }
+code: |
+  async function main() { return { where: "root" }; }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { where: { type: string } }
+    required: [ where ]
+---
+kind: JS.Script
+metadata: { name: AdminList }
+code: |
+  async function main() { return { where: "admin" }; }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { where: { type: string } }
+    required: [ where ]
+---
+kind: Http.Api
+metadata: { name: RootApi }
+routes:
+  - request: { path: /links, method: GET }
+    handler: !ref RootList
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { where: "${{ result.where }}" }
+---
+kind: Http.Api
+metadata: { name: AdminApi }
+routes:
+  - request: { path: /links, method: GET }
+    handler: !ref AdminList
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { where: "${{ result.where }}" }
+---
+# Fetch a URL and parse JSON.
+kind: JS.Script
+metadata: { name: Fetch }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    return { status: r.status, body: await r.json() };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { url: { type: string } }
+    required: [ url ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      body: {}
+    required: [ status, body ]
+---
+# Read the OpenAPI doc and surface what the regression cares about.
+kind: JS.Script
+metadata: { name: InspectDoc }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    const doc = await r.json();
+    const paths = Object.keys(doc.paths || {});
+    return {
+      serverUrl: doc.servers?.[0]?.url ?? "",
+      serverCount: (doc.servers || []).length,
+      hasRoot: paths.includes("/links"),
+      hasAdmin: paths.includes("/admin/links"),
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { url: { type: string } }
+    required: [ url ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      serverUrl: { type: string }
+      serverCount: { type: integer }
+      hasRoot: { type: boolean }
+      hasAdmin: { type: boolean }
+    required: [ serverUrl, serverCount, hasRoot, hasAdmin ]
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8963
+    logger: false
+    openapi:
+      info: { title: MountPrefix, version: 1.0.0 }
+    mounts:
+      - path: /
+        mount: !ref RootApi
+      - path: /admin
+        mount: !ref AdminApi
+targets:
+  - !ref Server
+steps:
+  - name: HitRoot
+    inputs: { url: http://127.0.0.1:8963/links }
+    invoke: !ref Fetch
+  - name: AssertRoot
+    inputs:
+      status: "${{ steps.HitRoot.result.status }}"
+      where: "${{ steps.HitRoot.result.body.where }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          where: { const: "root" }
+        required: [ status, where ]
+
+  - name: HitAdmin
+    inputs: { url: http://127.0.0.1:8963/admin/links }
+    invoke: !ref Fetch
+  - name: AssertAdmin
+    inputs:
+      status: "${{ steps.HitAdmin.result.status }}"
+      where: "${{ steps.HitAdmin.result.body.where }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          where: { const: "admin" }
+        required: [ status, where ]
+
+  - name: Doc
+    inputs: { url: http://127.0.0.1:8963/reference/openapi.json }
+    invoke: !ref InspectDoc
+  - name: AssertDoc
+    inputs:
+      serverUrl: "${{ steps.Doc.result.serverUrl }}"
+      serverCount: "${{ steps.Doc.result.serverCount }}"
+      hasRoot: "${{ steps.Doc.result.hasRoot }}"
+      hasAdmin: "${{ steps.Doc.result.hasAdmin }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          serverUrl: { const: "/" }
+          serverCount: { const: 1 }
+          hasRoot: { const: true }
+          hasAdmin: { const: true }
+        required: [ serverUrl, serverCount, hasRoot, hasAdmin ]

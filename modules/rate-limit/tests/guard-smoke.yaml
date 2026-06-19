@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: RateLimitGuardSmokeTest
+  version: 1.0.0
+  description: |
+    With limit=2 per window, the first two requests for a key are allowed and
+    the third is denied; an empty key fails closed.
+imports:
+  RateLimit: ../
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: RateLimit.Guard
+metadata: { name: Limit }
+store: !ref Mem
+limit: 2
+window: "60s"
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: r1
+    invoke: !ref Limit
+    inputs: { key: "1.2.3.4" }
+  - name: r2
+    invoke: !ref Limit
+    inputs: { key: "1.2.3.4" }
+  - name: r3
+    invoke: !ref Limit
+    inputs: { key: "1.2.3.4" }
+  - name: empty
+    invoke: !ref Limit
+    inputs: { key: "" }
+  - name: assertVerdicts
+    inputs:
+      a1: "${{ steps.r1.result.allowed }}"
+      a2: "${{ steps.r2.result.allowed }}"
+      a3: "${{ steps.r3.result.allowed }}"
+      ae: "${{ steps.empty.result.allowed }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [a1, a2, a3, ae]
+        properties:
+          a1: { const: true }
+          a2: { const: true }
+          a3: { const: false }
+          ae: { const: false }

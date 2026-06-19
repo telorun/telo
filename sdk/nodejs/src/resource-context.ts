@@ -49,6 +49,13 @@ export interface ResourceContext extends ControllerContext {
    *  lambda budget). Pass `source.context` into `invokeResolved` to scope an
    *  invocation tree to it. */
   createCancellationSource(): CancellationSource;
+  /** Run `fn` detached from the caller's cancellation/trace scope: the ambient
+   *  request token + span are replaced with the uncancellable root, so request
+   *  teardown cannot abort the work and it does not nest under the request's
+   *  trace. Fire-and-forget — the call returns nothing; the task is tracked
+   *  against this resource and drained (bounded) when the resource tears down,
+   *  and a failure (no caller to throw to) is routed to the EventBus. */
+  runDetached(fn: () => Promise<unknown>): void;
   /** Open a trace span for an inbound boundary (an HTTP request, a queue message).
    *  Returns a child {@link InvokeContext} to thread into `invokeResolved` so the
    *  handler nests under this span, plus `settle` to close it with an outcome.

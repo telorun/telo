@@ -29,6 +29,10 @@ import { SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
+/** How long a resource's teardown waits for its in-flight detached tasks before
+ *  abandoning them (with a logged event). */
+const DETACHED_DRAIN_TIMEOUT_MS = 5000;
+
 export class ResourceContextImpl implements ResourceContext {
   readonly env: Record<string, string | undefined>;
   readonly stdin: NodeJS.ReadableStream;
@@ -155,6 +159,53 @@ export class ResourceContextImpl implements ResourceContext {
 
   createCancellationSource(): CancellationSource {
     return createCancellationSource();
+  }
+
+  /** In-flight fire-and-forget tasks this resource spawned. Owned here, not by
+   *  the kernel: the resource drains them in its own teardown (see
+   *  `drainDetached`), so background work is bounded by the resource's lifetime. */
+  private readonly pendingDetached = new Set<Promise<unknown>>();
+
+  runDetached(fn: () => Promise<unknown>): void {
+    // Fire-and-forget: a detached task has no caller to throw to, so route a
+    // failure to the EventBus rather than letting it go unhandled. We track the
+    // error-handled chain (not the raw promise) so teardown drains a task whose
+    // settlement is already observed here.
+    const tracked = this.moduleContext
+      .runDetached(fn) // bare scope-detach primitive
+      .catch(async (err: unknown) => {
+        const detail =
+          err instanceof Error ? { name: err.name, message: err.message } : { message: String(err) };
+        await this.emitEvent("background.task.error", { resource: this.metadata.name, error: detail });
+      })
+      .finally(() => {
+        this.pendingDetached.delete(tracked);
+      });
+    this.pendingDetached.add(tracked);
+  }
+
+  /**
+   * Await this resource's in-flight detached tasks, bounded by
+   * `DETACHED_DRAIN_TIMEOUT_MS`. Folded into the resource's teardown by the
+   * kernel, so tearing the resource down drains its background work (and its
+   * dependencies, torn down later in reverse order, are still alive meanwhile).
+   * Past the bound, remaining tasks are abandoned with a logged event rather
+   * than blocking shutdown.
+   */
+  async drainDetached(): Promise<void> {
+    if (this.pendingDetached.size === 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, DETACHED_DRAIN_TIMEOUT_MS);
+    });
+    await Promise.race([Promise.allSettled([...this.pendingDetached]), timeout]);
+    if (timer) clearTimeout(timer);
+    if (this.pendingDetached.size > 0) {
+      await this.emitEvent("background.task.abandoned", {
+        resource: this.metadata.name,
+        count: this.pendingDetached.size,
+      });
+    }
   }
 
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {

@@ -42,6 +42,10 @@
     "./projection": {
       "bun": "./src/projection.ts",
       "import": "./dist/projection.js"
+    },
+    "./detach": {
+      "bun": "./src/detach.ts",
+      "import": "./dist/detach.js"
     }
   },
   "scripts": {

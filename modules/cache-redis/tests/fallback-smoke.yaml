@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: CacheRedisFallbackSmokeTest
+  version: 1.0.0
+  description: |
+    Points CacheRedis.Store at an unreachable Redis with a CacheMemory.Store
+    fallback. Writes and reads still succeed (served by the fallback in degraded
+    mode), proving the degrade-to-fallback path without needing a live Redis.
+imports:
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  CacheRedis: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Fallback }
+---
+kind: CacheRedis.Store
+metadata: { name: Redis }
+url: "redis://127.0.0.1:6390"
+connectTimeout: "500ms"
+fallback: !ref Fallback
+---
+kind: Cache.Entry
+metadata: { name: Put }
+store: !ref Redis
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: Get }
+store: !ref Redis
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: write
+    invoke: !ref Put
+    inputs:
+      key: "k"
+      value: { ok: true }
+  - name: read
+    invoke: !ref Get
+    inputs:
+      key: "k"
+  - name: assert
+    inputs:
+      state: "${{ steps.read.result.state }}"
+      ok: "${{ steps.read.result.value.ok }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state, ok]
+        properties:
+          state: { const: "fresh" }
+          ok: { const: true }

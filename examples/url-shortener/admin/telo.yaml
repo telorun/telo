@@ -1,0 +1,72 @@
+kind: Telo.Library
+metadata:
+  name: url-shortener-admin
+  version: 1.0.0
+  description: |
+    Admin/analytics side of the URL shortener: list links with click counts and
+    fetch a single link's stats. Read-only over the shared SQLite database
+    (durable business data — distinct from operational telemetry). Exports
+    `Routes` for the app to mount under /admin.
+variables:
+  dbFile:
+    type: string
+    description: Path to the shared SQLite database file.
+imports:
+  Http: ../../../modules/http-server
+  Sql: std/sql@0.9.2
+  Database:
+    source: ../database
+    variables:
+      dbFile: !cel "variables.dbFile"
+exports:
+  resources:
+    - Routes
+---
+kind: Sql.Query
+metadata: { name: ListLinks }
+connection: !ref Database.connection
+---
+kind: Sql.Query
+metadata: { name: LinkStats }
+connection: !ref Database.connection
+---
+kind: Http.Api
+metadata: { name: Routes }
+routes:
+  - request:
+      path: /links
+      method: GET
+    handler: !ref ListLinks
+    inputs:
+      sql: "SELECT l.code, l.target, COUNT(c.id) AS clicks FROM links l LEFT JOIN clicks c ON c.code = l.code GROUP BY l.code, l.target ORDER BY clicks DESC"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: "${{ result.rows }}"
+
+  - request:
+      path: /links/{code}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [code]
+          properties:
+            code: { type: string }
+    handler: !ref LinkStats
+    inputs:
+      sql: "SELECT code, target, (SELECT COUNT(*) FROM clicks WHERE clicks.code = links.code) AS clicks FROM links WHERE code = ?"
+      bindings:
+        - "${{ request.params.code }}"
+    returns:
+      - status: 200
+        when: "${{ size(result.rows) > 0 }}"
+        content:
+          application/json:
+            body: "${{ result.rows[0] }}"
+      - status: 404
+        content:
+          application/json:
+            body: { ok: false, message: "Unknown short code" }

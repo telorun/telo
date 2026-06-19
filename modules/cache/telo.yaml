@@ -1,0 +1,196 @@
+kind: Telo.Library
+metadata:
+  name: cache
+  namespace: std
+  version: 0.1.0
+  description: |
+    The Cache.Store abstract — a backend-pluggable, freshness-aware key/value
+    cache — plus the Lookup / Entry invocables and the View read-through
+    decorator that operate against any store. Backend implementations
+    (cache-memory, cache-redis) live in their own modules and extend Store,
+    mirroring the codec / *-codec family.
+exports:
+  kinds:
+    - Store
+    - Lookup
+    - Entry
+    - View
+---
+# Cache.Store — the abstract backing store every cache backend implements. A
+# Telo.Provider: a configured store, NOT an operation you invoke. Consumers
+# (Cache.Lookup / Cache.Entry / Cache.View) reference it via
+# `x-telo-ref: "std/cache#Store"`; a concrete implementation
+# (CacheMemory.Store / CacheRedis.Store) satisfies the ref. The store owns
+# freshness: an entry written with a fresh window (`ttl`) and an optional stale
+# grace window (`staleTtl`) reports `fresh` until `ttl` elapses, `stale` until
+# `staleTtl` elapses, then `miss`.
+kind: Telo.Abstract
+metadata:
+  name: Store
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#lookup
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    additionalProperties: false
+    properties:
+      key:
+        type: string
+        description: Cache key to read.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [state]
+    additionalProperties: false
+    properties:
+      state:
+        type: string
+        enum: [miss, fresh, stale]
+        description: >-
+          `miss` (absent / expired past the stale window), `fresh` (within the
+          fresh window), or `stale` (past `ttl` but within `staleTtl`).
+      value:
+        description: The cached value, or null on `miss`.
+      age:
+        type: [integer, "null"]
+        description: Milliseconds since the entry was written, or null on `miss`.
+schema:
+  type: object
+  required: [store]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing cache store.
+      x-telo-ref: "std/cache#Store"
+---
+kind: Telo.Definition
+metadata:
+  name: Entry
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#entry
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [key, value]
+    additionalProperties: false
+    properties:
+      key:
+        type: string
+        description: Cache key to write.
+      value:
+        description: Value to store.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key:
+        type: string
+schema:
+  type: object
+  required: [store]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing cache store.
+      x-telo-ref: "std/cache#Store"
+    ttl:
+      title: TTL
+      type: string
+      default: "0s"
+      description: >-
+        Fresh window as a duration (`300s`, `5m`, `1h`, `50ms`). A lookup within
+        this window reports `fresh`. `0s` means the entry is never fresh.
+    staleTtl:
+      title: Stale TTL
+      type: string
+      default: "0s"
+      description: >-
+        Additional grace window past `ttl` during which a lookup reports
+        `stale` instead of `miss`. `0s` disables the stale window.
+---
+# Cache.View — read-through cache decorator. Wraps an invocable (`invoke:`) and
+# serves its result from `store`, refreshing per `revalidate`. Stacks as a
+# decorator: the leaf points `invoke:` at the wrapped target.
+kind: Telo.Definition
+metadata:
+  name: View
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#view
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    additionalProperties: true
+    properties:
+      key:
+        type: string
+        description: >-
+          Cache key. All inputs (including `key`) are forwarded to the wrapped
+          target on miss / revalidation.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [state]
+    additionalProperties: false
+    properties:
+      state:
+        type: string
+        enum: [miss, fresh, stale]
+        description: The cache outcome (what the store held), not the freshness of `value`.
+      value:
+        description: The served value — cached, or freshly loaded on miss / sync revalidation.
+      age:
+        type: [integer, "null"]
+        description: Milliseconds since the served entry was written, or null when freshly loaded.
+schema:
+  type: object
+  required: [store, invoke]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing cache store.
+      x-telo-ref: "std/cache#Store"
+    invoke:
+      title: Invoke
+      description: The wrapped source-of-truth invocable, called on miss / revalidation.
+      type: object
+      x-telo-ref: "telo#Invocable"
+    ttl:
+      title: TTL
+      type: string
+      default: "0s"
+      description: Fresh window (duration). A lookup within this window is `fresh`.
+    staleTtl:
+      title: Stale TTL
+      type: string
+      default: "0s"
+      description: Grace window past `ttl` during which the value is served `stale`.
+    revalidate:
+      title: Revalidate
+      type: string
+      enum: [background, sync, off]
+      default: sync
+      description: >-
+        On a stale hit: `background` serves stale and refreshes detached
+        (single-flight per key; the kernel drains it on teardown); `sync`
+        reloads before returning (stale-if-error fallback); `off` treats
+        stale as a miss.

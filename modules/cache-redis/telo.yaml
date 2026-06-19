@@ -1,0 +1,50 @@
+kind: Telo.Library
+metadata:
+  name: cache-redis
+  namespace: std
+  version: 0.1.0
+  description: |
+    CacheRedis.Store — a Redis-backed implementation of the Cache abstract, for
+    shared caching and rate-limit counters across instances. Accepts an optional
+    `fallback` store: when Redis is unreachable it degrades to the fallback
+    (e.g. a CacheMemory.Store), emits an observable degraded-mode event on the
+    EventBus, and recovers automatically when Redis returns.
+imports:
+  Cache: ../cache
+exports:
+  kinds:
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Provider
+extends: Cache.Store
+controllers:
+  - pkg:npm/@telorun/cache-redis@0.1.0?local_path=./nodejs#store
+schema:
+  type: object
+  required: [url]
+  additionalProperties: false
+  properties:
+    url:
+      title: URL
+      type: string
+      description: Redis connection URL, e.g. `redis://localhost:6379` or `rediss://…`.
+    fallback:
+      title: Fallback
+      description: >-
+        Optional Cache.Store served when Redis is unreachable (degraded mode).
+        Cache failover is safe — a miss just recomputes; the degradation is
+        logged and surfaced as a `cache.degraded` / `cache.recovered` event.
+      x-telo-ref: "std/cache#Store"
+    connectTimeout:
+      title: Connect Timeout
+      type: string
+      default: "2s"
+      description: How long to wait for a Redis connection before degrading (duration).
+    keyPrefix:
+      title: Key Prefix
+      type: string
+      default: ""
+      description: Prefix applied to every key (namespacing a shared Redis).

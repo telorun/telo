@@ -268,6 +268,16 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "modules/sql-repository/README", label: "SQL Repository" },
                 {
                   type: "category",
+                  label: "Cache",
+                  items: [
+                    { type: "doc", id: "modules/cache/README", label: "Overview" },
+                    { type: "doc", id: "modules/cache-memory/README", label: "Cache Memory" },
+                    { type: "doc", id: "modules/cache-redis/README", label: "Cache Redis" },
+                  ],
+                },
+                { type: "doc", id: "modules/rate-limit/README", label: "Rate Limit" },
+                {
+                  type: "category",
                   label: "S3",
                   items: [
                     { type: "doc", id: "modules/s3/README", label: "Overview" },
@@ -325,6 +335,11 @@ const sidebars: SidebarsConfig = {
                       type: "doc",
                       id: "modules/run/docs/value",
                       label: "Run.Value",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/run/docs/detach",
+                      label: "Run.Detach",
                     },
                     {
                       type: "doc",

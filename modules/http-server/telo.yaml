@@ -58,6 +58,16 @@ schema:
       type: "boolean"
       x-telo-eval: compile
       default: false
+    trustProxy:
+      title: Trust Proxy
+      description: >-
+        Trust a fronting proxy when deriving the canonical client address
+        (`request.ip`) and forwarded protocol/host. `true` trusts any hop;
+        an integer trusts that many proxy hops (the rightmost N entries of
+        X-Forwarded-For). Supersedes `trustForwardedHeaders` when set. Only
+        enable behind a trusted proxy — otherwise clients can spoof their IP.
+      type: ["boolean", "integer"]
+      x-telo-eval: compile
     logger:
       title: Logger
       description: Enable or disable request logging.
@@ -272,6 +282,7 @@ schema:
                   params: { type: object, additionalProperties: true }
                   path: { type: string }
                   method: { type: string }
+                  ip: { type: string }
         returns:
           x-telo-outcome-list: returns
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Returns"
@@ -347,6 +358,7 @@ schema:
                     params: { type: object, additionalProperties: true }
                     path: { type: string }
                     method: { type: string }
+                    ip: { type: string }
           handler:
             title: Handler
             description: Route handler — Invocable or Runnable.
@@ -383,6 +395,7 @@ schema:
                   properties:
                     path: { type: string }
                     method: { type: string }
+                    ip: { type: string }
                 result:
                   x-telo-context-ref-from: "handler/outputType"
                   type: object
@@ -494,6 +507,7 @@ schema:
                   properties:
                     path: { type: string }
                     method: { type: string }
+                    ip: { type: string }
                 error:
                   type: object
                   additionalProperties: false

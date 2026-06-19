@@ -1,0 +1,66 @@
+kind: Telo.Library
+metadata:
+  name: internal-handler-lib
+  version: 1.0.0
+  description: |
+    Regression fixture for cross-import handler injection. Defines an Http.Api
+    (`Api`) whose route handler is a `!ref` to a library-INTERNAL JavaScript.Script
+    (`Greet`). The handler's module (javascript) is imported only HERE, never by
+    the consumer — so the consumer preloads the Http.Api controller (it imports
+    http-server) but NOT the handler's controller. Mounting this Api must still
+    inject the live `Greet` instance across the import boundary.
+imports:
+  Http: ../../../
+  JS: ../../../../javascript
+  Type: ../../../../type
+exports:
+  resources:
+    - Api
+---
+kind: JS.Script
+metadata: { name: Greet }
+code: |
+  async function main({ name }) {
+    return { message: `Hello ${name}!` };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
+    required: [ name ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      message: { type: string }
+    required: [ message ]
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request:
+      path: /greet
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            name: { type: string }
+          required: [ name ]
+    handler: !ref Greet
+    inputs:
+      name: "${{ request.query.name }}"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+              required: [ message ]
+            body:
+              message: "${{ result.message }}"

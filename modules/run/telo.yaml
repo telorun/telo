@@ -11,6 +11,7 @@ exports:
     - Loop
     - Iteration
     - Projection
+    - Detach
 ---
 kind: Telo.Definition
 metadata:
@@ -1248,3 +1249,39 @@ schema:
           invoke: !ref GetStatus
           inputs:
             id: !cel "inputs.jobId"
+---
+# Run.Detach — generic fire-and-forget. Dispatches its wrapped `invoke:` target
+# detached (via the SDK's runDetached) and returns immediately, off the caller's
+# response path. The kernel tracks the task against this resource and drains it
+# on the resource's teardown; failures are routed to the EventBus.
+kind: Telo.Definition
+metadata:
+  name: Detach
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#detach
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Inputs passed through to the wrapped target at dispatch time.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      detached:
+        type: boolean
+        description: Always true — the task was dispatched in the background.
+schema:
+  type: object
+  required: [invoke]
+  additionalProperties: false
+  properties:
+    invoke:
+      title: Invoke
+      description: The invocable dispatched in the background.
+      type: object
+      x-telo-ref: "telo#Invocable"
