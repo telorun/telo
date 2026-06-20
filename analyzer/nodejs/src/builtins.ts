@@ -61,12 +61,28 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           items: {
             type: "object",
             additionalProperties: true,
+            // Resource bodies are `self`-only for config: per-call `inputs` is
+            // NOT in scope here. Each entry is a persistent child created once at
+            // init() and reused, so its config cannot depend on call-time data —
+            // that flows through the top-level `inputs:` sibling into the dispatch
+            // target's invoke().
+            //
+            // The exception is CEL the child's OWN controller evaluates later
+            // against a runtime context it owns (e.g. an Http.Api evaluating route
+            // CEL per request). Those `request` / `result` / `steps` / `error`
+            // variables are deferred — the template controller preserves them
+            // untouched (see resource-template-controller.ts) — so they are
+            // exposed here permissively. Their deep shape is the child kind's
+            // concern, not the template's, so they type as open values.
             "x-telo-context": {
               type: "object",
               additionalProperties: false,
               properties: {
                 self: { "x-telo-context-from-root": "schema" },
-                inputs: { "x-telo-context-from-root": "inputType" },
+                request: {},
+                result: {},
+                steps: {},
+                error: {},
               },
             },
           },
@@ -128,6 +144,41 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
               self: { "x-telo-context-from-root": "schema" },
             },
           },
+        },
+        // Mount dispatch: names the `resources:` entry (a Telo.Mount, e.g. an
+        // Http.Api) whose `register()` this definition delegates to. Same
+        // string / { kind, name } grammar as `invoke:`. The named child stays
+        // persistent so the produced mount's routes can `!ref` its siblings.
+        mount: {
+          oneOf: [
+            {
+              type: "string",
+              "x-telo-context": {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  self: { "x-telo-context-from-root": "schema" },
+                },
+              },
+            },
+            {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                kind: { type: "string" },
+                name: {
+                  type: "string",
+                  "x-telo-context": {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      self: { "x-telo-context-from-root": "schema" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
         },
         inputs: {
           type: "object",

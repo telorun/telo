@@ -274,6 +274,25 @@ export class EvaluationContext implements IEvaluationContext {
     return child;
   }
 
+  /** Spawn a fresh child context attached to this node — the isolated scope a
+   *  templated definition registers its `resources:` into. Rooting it on the
+   *  context that DEFINED the template (not the consumer that instantiated the
+   *  kind) is what makes the template's internal kind aliases and `!ref`s
+   *  resolve against the defining library's imports. Local sibling refs resolve
+   *  in the child; a cross-module `!ref Alias.name` delegates to this context's
+   *  imports (a plain child resolves none of its own). */
+  spawnChildContext(): EvaluationContext {
+    const child = new EvaluationContext(
+      this.source,
+      this.context,
+      this._createInstance,
+      this._secretValues,
+      this.emit,
+    );
+    child.resolveImportedInstance = (alias, name) => this.resolveImportedInstance(alias, name);
+    return this.spawnChild(child);
+  }
+
   /**
    * Resolve a cross-module exported instance (`!ref Alias.name`) to its live instance.
    * Overridable hook: the base context has no imports, so it returns undefined; ModuleContext

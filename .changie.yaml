@@ -98,6 +98,13 @@ projects:
       - path: modules/console/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: crud
+    key: crud
+    changelog: modules/crud/CHANGELOG.md
+    replacements:
+      - path: modules/crud/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: embedding
     key: embedding
     changelog: modules/embedding/CHANGELOG.md

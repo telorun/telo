@@ -118,6 +118,11 @@ export interface EvaluationContext {
   hasManifest(name: string): boolean;
   registerManifest(resource: ResourceManifest): void;
   spawnChild<T extends EvaluationContext>(child: T): T;
+  /** Spawn a fresh child context attached to this one — the isolated scope a
+   *  templated definition registers its `resources:` into. Rooted here so child
+   *  kinds/refs resolve against THIS context's imports (the defining library),
+   *  not the consumer's. */
+  spawnChildContext(): EvaluationContext;
   initializeResources(): Promise<void>;
   withManifests<T>(manifests: any[], fn: () => T): T;
   createScopeHandle(manifests: ResourceManifest[]): ScopeHandle;

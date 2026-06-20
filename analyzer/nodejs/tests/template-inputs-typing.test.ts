@@ -99,7 +99,10 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("exposes `inputs` inside `resources[]` template entries too", () => {
+  it("rejects `inputs` inside `resources[]` bodies — per-call data belongs in top-level `inputs:`", () => {
+    // Resource bodies are `self`-only: each entry is a persistent child created
+    // once at init() and reused, so it cannot depend on call-time `inputs`.
+    // Per-call data flows through the top-level `inputs:` sibling instead.
     const def: ResourceManifest = {
       kind: "Telo.Definition",
       metadata: { name: "Create", module: "repo" },
@@ -124,6 +127,9 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
-    expect(unknown).toEqual([]);
+    expect(unknown.length).toBeGreaterThanOrEqual(1);
+    expect(unknown[0].severity).toBe(DiagnosticSeverity.Error);
+    expect(unknown[0].message).toContain("inputs");
+    expect(unknown[0].data?.path).toBe("resources[0].inputs.sql");
   });
 });

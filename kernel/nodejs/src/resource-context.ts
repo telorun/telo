@@ -21,7 +21,6 @@ import { isRefSentinel } from "@telorun/templating";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { EvaluationContext } from "./evaluation-context.js";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { policyFingerprint } from "./runtime-registry.js";
@@ -454,14 +453,11 @@ export class ResourceContextImpl implements ResourceContext {
    * call initializeResources() to initialize them in isolation.
    */
   spawnChildContext(): IEvaluationContext {
-    const child = new EvaluationContext(
-      this.moduleContext.source,
-      this.moduleContext.context,
-      this.moduleContext.createInstance,
-      this.moduleContext.secretValues,
-      this.moduleContext.emit,
-    );
-    return this.moduleContext.spawnChild(child);
+    // One construction path: defer to the module context's own
+    // spawnChildContext(). Rooted on this resource's module context (the
+    // consumer scope); a templated definition that needs library-scoped
+    // resolution calls the defining library's context directly instead.
+    return this.moduleContext.spawnChildContext();
   }
 
   transientChild(context: Record<string, any>): IEvaluationContext {

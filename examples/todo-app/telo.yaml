@@ -3,13 +3,15 @@ metadata:
   name: todo-app
   version: 1.0.0
   description: |
-    A complete app served as one unit: a REST todo API (Http.Api backed by
-    SQLite) and the vanilla HTML/JS frontend that consumes it (Http.Static),
-    on a single port. Demonstrates pairing Http.Static with Http.Api.
+    A complete app served as one unit: the REST todo API and the vanilla HTML/JS
+    frontend that consumes it (Http.Static), on a single port. The whole REST
+    surface is one declarative Crud.Resource — list / read / create / update /
+    delete over the `todos` table — mounted alongside the static frontend.
 imports:
   Http: std/http-server@0.15.0
   Sql: std/sql@0.10.0
   SqlSqlite: std/sql-sqlite@0.2.0
+  Crud: std/crud@0.1.0
 targets:
   - !ref Migrate
   - !ref Server
@@ -42,11 +44,13 @@ migrations:
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
 ---
-# Shared SELECT / RETURNING handler — each route supplies its own `sql` + `bindings`.
-kind: Sql.Query
+# The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
+# serves GET / (list), GET /{id}, POST /, PUT /{id}, DELETE /{id}.
+kind: Crud.Resource
 metadata:
-  name: Query
+  name: Todos
 connection: !ref Db
+table: todos
 ---
 kind: Http.Server
 metadata:
@@ -59,8 +63,8 @@ openapi:
     title: Todo API
     version: 1.0.0
 mounts:
-  - path: /api
-    mount: !ref Api
+  - path: /api/todos
+    mount: !ref Todos
   - path: /
     mount: !ref Ui
 ---
@@ -68,100 +72,3 @@ kind: Http.Static
 metadata:
   name: Ui
 root: ./public
----
-kind: Http.Api
-metadata:
-  name: Api
-routes:
-  # List todos, newest first.
-  - request:
-      method: GET
-      path: /todos
-    handler: !ref Query
-    inputs:
-      sql: "SELECT id, text, done FROM todos ORDER BY id DESC"
-    returns:
-      - status: 200
-        content:
-          application/json:
-            body: "${{ result.rows }}"
-
-  # Create a todo.
-  - request:
-      method: POST
-      path: /todos
-      schema:
-        body:
-          type: object
-          required: [ text ]
-          properties:
-            text:
-              type: string
-              minLength: 1
-              description: The todo text.
-              examples: [ "Buy milk" ]
-    handler: !ref Query
-    inputs:
-      sql: "INSERT INTO todos (text) VALUES (?) RETURNING id, text, done"
-      bindings:
-        - "${{ request.body.text }}"
-    returns:
-      - status: 201
-        content:
-          application/json:
-            body: "${{ result.rows[0] }}"
-
-  # Toggle a todo's done flag, returning the updated row.
-  - request:
-      method: PATCH
-      path: /todos/{id}
-      schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id:
-              type: integer
-              description: Todo id.
-              examples: [ 1 ]
-    handler: !ref Query
-    inputs:
-      sql: "UPDATE todos SET done = 1 - done WHERE id = ? RETURNING id, text, done"
-      bindings:
-        - "${{ request.params.id }}"
-    returns:
-      - status: 200
-        when: "${{ size(result.rows) > 0 }}"
-        content:
-          application/json:
-            body: "${{ result.rows[0] }}"
-      - status: 404
-        content:
-          application/json:
-            body: { error: not_found }
-
-  # Delete a todo. RETURNING lets us tell "deleted" from "not found" by row count.
-  - request:
-      method: DELETE
-      path: /todos/{id}
-      schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id:
-              type: integer
-              description: Todo id.
-              examples: [ 1 ]
-    handler: !ref Query
-    inputs:
-      sql: "DELETE FROM todos WHERE id = ? RETURNING id"
-      bindings:
-        - "${{ request.params.id }}"
-    returns:
-      - status: 204
-        when: "${{ size(result.rows) > 0 }}"
-      - status: 404
-        content:
-          application/json:
-            body: { error: not_found }

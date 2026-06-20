@@ -19,7 +19,7 @@ function render(todos) {
     const label = document.createElement("span");
     label.className = "text";
     label.textContent = todo.text;
-    label.addEventListener("click", () => toggle(todo.id));
+    label.addEventListener("click", () => toggle(todo));
 
     const del = document.createElement("button");
     del.className = "del";
@@ -45,8 +45,12 @@ async function add(value) {
   await load();
 }
 
-async function toggle(id) {
-  await json(await fetch(`${api}/${id}`, { method: "PATCH" }));
+async function toggle(todo) {
+  await json(await fetch(`${api}/${todo.id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ done: todo.done ? 0 : 1 }),
+  }));
   await load();
 }
 

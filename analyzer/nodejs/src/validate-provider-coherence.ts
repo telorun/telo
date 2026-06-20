@@ -21,6 +21,14 @@ const SOURCE = "telo-analyzer";
  *    kind is registered but not a `Telo.Invocable`.
  *  - PROVIDER_MISSING_IMPLEMENTATION: definition with `capability: Telo.Provider`
  *    declares neither `controllers:` (TS-backed) nor `provide:` (template-backed).
+ *  - MOUNT_ON_NON_MOUNT: `mount:` declared on a definition whose `capability` is
+ *    not `Telo.Mount`.
+ *  - MOUNT_DISPATCHER_CONFLICT: `mount:` co-exists with another dispatch
+ *    entry-point (`invoke:` / `run:` / `provide:`).
+ *  - MOUNT_TARGET_UNKNOWN: `mount.name` does not resolve to an entry in
+ *    `resources:`.
+ *  - MOUNT_TARGET_NOT_MOUNTABLE: `mount.name` resolves to a resource whose kind
+ *    is registered but not a `Telo.Mount`.
  */
 export function validateProviderCoherence(
   manifests: ResourceManifest[],
@@ -52,12 +60,14 @@ export function validateProviderCoherence(
     const provide = md.provide;
     const invoke = md.invoke;
     const run = md.run;
+    const mount = md.mount;
     const controllers = md.controllers;
     const resources = md.resources;
 
     const hasProvide = provide !== undefined && provide !== null;
     const hasInvoke = invoke !== undefined && invoke !== null;
     const hasRun = run !== undefined && run !== null;
+    const hasMount = mount !== undefined && mount !== null;
     const hasControllers = Array.isArray(controllers) && controllers.length > 0;
 
     if (hasProvide && capability !== "Telo.Provider") {
@@ -142,6 +152,81 @@ export function validateProviderCoherence(
                   `${label}: 'provide.name: ${providedName}' resolves to a ${match.kind} ` +
                   `(capability '${targetCap}'); 'provide:' requires a Telo.Invocable target.`,
                 data: { resource, filePath, path: "provide.name" },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (hasMount && capability !== "Telo.Mount") {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "MOUNT_ON_NON_MOUNT",
+        source: SOURCE,
+        message:
+          `${label}: 'mount:' is only valid on definitions with 'capability: Telo.Mount' ` +
+          `(found '${capability ?? "<unset>"}'). Use 'invoke:' / 'run:' / 'provide:' for other capabilities.`,
+        data: { resource, filePath, path: "mount" },
+      });
+    }
+
+    if (hasMount && (hasInvoke || hasRun || hasProvide)) {
+      const conflict = hasInvoke ? "invoke" : hasRun ? "run" : "provide";
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "MOUNT_DISPATCHER_CONFLICT",
+        source: SOURCE,
+        message:
+          `${label}: 'mount:' cannot co-exist with '${conflict}:'. ` +
+          `A definition declares exactly one dispatch entry-point.`,
+        data: { resource, filePath, path: "mount" },
+      });
+    }
+
+    if (hasMount) {
+      // Resolve the target's name from either form: the bare string (the
+      // primary, documented form — `mount: api`) or the object's `name`. A CEL
+      // target (`${{ … }}`) can only be checked at runtime, so skip those.
+      let mountedName: string | undefined;
+      if (typeof mount === "string") {
+        if (!mount.includes("${{")) mountedName = mount;
+      } else if (typeof mount === "object" && !Array.isArray(mount)) {
+        const mountObj = mount as { name?: unknown };
+        if (typeof mountObj.name === "string" && !mountObj.name.includes("${{")) {
+          mountedName = mountObj.name;
+        }
+      }
+      const mountPath = typeof mount === "string" ? "mount" : "mount.name";
+      if (mountedName && Array.isArray(resources)) {
+        const match = resources.find((r) => {
+          const meta = (r as { metadata?: { name?: unknown } })?.metadata;
+          return typeof meta?.name === "string" && meta.name === mountedName;
+        }) as { kind?: unknown } | undefined;
+        if (!match) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "MOUNT_TARGET_UNKNOWN",
+            source: SOURCE,
+            message:
+              `${label}: '${mountPath}: ${mountedName}' does not match any entry's ` +
+              `metadata.name in 'resources:'.`,
+            data: { resource, filePath, path: mountPath },
+          });
+        } else if (typeof match.kind === "string") {
+          const resolvedKind = aliases.resolveKind(match.kind) ?? match.kind;
+          const targetDef = registry.resolve(resolvedKind) ?? registry.resolve(match.kind);
+          if (targetDef && targetDef.kind === "Telo.Definition") {
+            const targetCap = (targetDef as { capability?: unknown }).capability;
+            if (typeof targetCap === "string" && targetCap !== "Telo.Mount") {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "MOUNT_TARGET_NOT_MOUNTABLE",
+                source: SOURCE,
+                message:
+                  `${label}: '${mountPath}: ${mountedName}' resolves to a ${match.kind} ` +
+                  `(capability '${targetCap}'); 'mount:' requires a Telo.Mount target.`,
+                data: { resource, filePath, path: mountPath },
               });
             }
           }
