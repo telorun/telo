@@ -1,5 +1,25 @@
 # @telorun/http-server
 
+## 0.13.0
+
+### Minor Changes
+
+- 95f168e: Cache, rate-limit, and background-task primitives, plus a comprehensive URL-shortener example.
+
+  - New `cache` family: the backend-pluggable `Cache.Store` abstract with `Cache.Lookup` / `Cache.Entry` (freshness-aware: `ttl` fresh window + optional `staleTtl` grace window, `state` of `miss`/`fresh`/`stale`) and the `Cache.View` read-through decorator (single-flight background revalidation). Backends ship as `cache-memory` (`CacheMemory.Store`) and `cache-redis` (`CacheRedis.Store`, with observable degrade-to-`fallback`).
+  - New `rate-limit` module: `RateLimit.Guard`, a non-throwing sliding-window limiter whose counters live in any `Cache.Store`.
+  - `run` gains `Run.Detach` (generic, zero-config fire-and-forget).
+  - SDK + kernel: `ResourceContext.runDetached(fn)` runs a function detached from the caller's cancellation/trace scope; the kernel tracks each detached task against its owning resource and drains it (bounded) when that resource tears down, routing failures to the EventBus. Used by `Run.Detach` and `Cache.View`'s background revalidation.
+  - `http-server`: `Http.Server.trustProxy` and a derived `request.ip` in the handler CEL context (canonical client address for rate-limit keys).
+
+### Patch Changes
+
+- 95f168e: Fix OpenAPI documentation conflating routes from different mounts.
+
+  Each `Http.Api` route is now registered at its full `<mountPrefix><path>` instead of inside a Fastify `{ prefix }`-encapsulated context, and the generated OpenAPI `servers` block is a single origin (`baseUrl`, the forwarded host, or relative `/`) rather than one entry per mount prefix. Previously `@fastify/swagger` stripped each mount's prefix from the documented path while the prefixes were hoisted into `servers`, so different APIs mounted at different prefixes collapsed together — e.g. an `Http.Api` mounted at `/admin` was documented at `/links` instead of `/admin/links`. Actual request routing was unaffected; this corrects only the generated document.
+
+  - @telorun/http-dispatch@0.4.1
+
 ## 0.12.0
 
 ### Minor Changes

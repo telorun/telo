@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: cache-redis
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     CacheRedis.Store — a Redis-backed implementation of the Cache abstract, for
     shared caching and rate-limit counters across instances. Accepts an optional
@@ -21,7 +21,7 @@ metadata:
 capability: Telo.Provider
 extends: Cache.Store
 controllers:
-  - pkg:npm/@telorun/cache-redis@0.1.0?local_path=./nodejs#store
+  - pkg:npm/@telorun/cache-redis@0.2.0?local_path=./nodejs#store
 schema:
   type: object
   required: [url]

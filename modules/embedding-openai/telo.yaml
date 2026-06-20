@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: embedding-openai
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     EmbeddingOpenai.Model — OpenAI-compatible backend for the Embedding.Model
     abstract. Speaks the OpenAI /embeddings HTTP API directly (no vendor SDK),
@@ -21,7 +21,7 @@ metadata:
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:
-  - pkg:npm/@telorun/embedding-openai@0.1.0?local_path=./nodejs#model
+  - pkg:npm/@telorun/embedding-openai@0.2.0?local_path=./nodejs#model
 schema:
   type: object
   required: [model, apiKey]

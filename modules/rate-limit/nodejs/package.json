@@ -1,6 +1,6 @@
 {
   "name": "@telorun/rate-limit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo rate-limit module — sliding-window RateLimit.Guard backed by any Cache.Store.",
   "keywords": [
     "telo",

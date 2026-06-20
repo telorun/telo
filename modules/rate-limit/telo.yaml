@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: rate-limit
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     RateLimit.Guard — a transport-neutral sliding-window rate limiter. Counters
     live in any Cache.Store (cache-memory, cache-redis), so the limiter composes
@@ -20,7 +20,7 @@ metadata:
   name: Guard
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/rate-limit@0.1.0?local_path=./nodejs#guard
+  - pkg:npm/@telorun/rate-limit@0.2.0?local_path=./nodejs#guard
 inputType:
   kind: Type.JsonSchema
   schema:

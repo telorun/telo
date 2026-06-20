@@ -1,6 +1,6 @@
 {
   "name": "@telorun/timer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Telo timer module — time-based primitives. Timer.Delay waits a duration, then completes.",
   "keywords": [
     "telo",
