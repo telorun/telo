@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import { defaultRegistry, isTaggedSentinel } from "@telorun/templating";
 import { AliasResolver, scopeResolverForModule } from "./alias-resolver.js";
@@ -18,6 +19,8 @@ import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
+import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
+import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
@@ -800,6 +803,32 @@ export class StaticAnalyzer {
     // original and inline-extracted manifests have their sentinels resolved.
     resolveRefSentinels(allManifests, aliases, aliasesByModule);
 
+    // Phase 2.6: register each named `Telo.Type` resource's schema under its
+    // canonical module-scoped id (`telo://<module>/<name>`), validate
+    // `telo://Self|Alias/Type` schema refs resolve to one, then rewrite those
+    // refs to the canonical id so AJV resolves them at compile time. Register
+    // and validate BEFORE the rewrite, while the authored authority is intact.
+    for (const m of allManifests) {
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      if (!ownModule || !m.metadata?.name || typeof m.schema !== "object" || m.schema === null) {
+        continue;
+      }
+      const scopeResolver =
+        rootModules.has(ownModule) ? aliases : (aliasesByModule.get(ownModule) ?? new AliasResolver());
+      const canonicalKind = scopeResolver.resolveKind(m.kind as string) ?? (m.kind as string);
+      if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") continue;
+      defs.registerNamedTypeSchema(
+        canonicalTypeSchemaId(ownModule, m.metadata.name as string),
+        m.schema as Record<string, any>,
+      );
+    }
+    if (!options?.skipValidation) {
+      diagnostics.push(
+        ...validateSchemaTypeRefs(allManifests, defs, aliases, aliasesByModule, rootModules),
+      );
+    }
+    resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
+
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
     // hash-stamped `.validated.json` cache), skip the validation walk.
@@ -1350,6 +1379,10 @@ export class StaticAnalyzer {
     // inline-extracted manifests get their refs canonicalized to
     // {kind, name} for the kernel that consumes this output.
     resolveRefSentinels(normalized, ctx.aliases, ctx.aliasesByModule, crossModuleTargets ?? []);
+    // Canonicalize import-scoped schema `$ref`s (`telo://Self|Alias/Type`) so the
+    // kernel that executes this output compiles inputs/outputs against the same
+    // ids the type controllers register their schemas under.
+    resolveSchemaTypeRefs(normalized, ctx.aliases, ctx.aliasesByModule);
     return normalized;
   }
 

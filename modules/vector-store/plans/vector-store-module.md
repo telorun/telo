@@ -28,6 +28,8 @@ modules/vector-store/
   telo.yaml                  # Library + Store abstract + Record/Match/Removal
   README.md
   docs/vector-store.md
+  nodejs/src/store.ts        # VectorStoreHandle interface — the provider contract
+  nodejs/src/store-ref.ts    # resolveVectorStore(value, ctx) — ref resolution helper
   nodejs/src/record.ts
   nodejs/src/match.ts
   nodejs/src/removal.ts
@@ -60,6 +62,104 @@ capability: Telo.Provider
 
 Target of `extends:` (backends) and `x-telo-ref: "std/vector-store#Store"` (the
 `store` slot on every operation).
+
+### Provider contract (`nodejs/src/store.ts`)
+
+The load-bearing seam — the analogue of `cache`'s `CacheStore` interface. Every
+backend's `provide()` returns a value satisfying this interface; the core
+invocables depend on it and nothing backend-specific:
+
+```ts
+export interface VectorStoreHandle {
+  // Backend-declared expected vector length, or undefined if the backend does
+  // not constrain it. The backend is authoritative for enforcement (see below).
+  readonly dimensions?: number;
+  upsert(items: VectorRecord[]): Promise<{ ids: string[] }>;
+  query(vector: number[], opts: QueryOptions): Promise<{ matches: VectorMatch[] }>;
+  delete(opts: { ids?: string[]; metadataFilter?: Filter }): Promise<{ removed: number }>;
+}
+```
+
+The core invocables resolve the `store` slot through a
+`resolveVectorStore(this.resource.store, this.ctx)` helper
+(`nodejs/src/store-ref.ts`) — the direct analogue of cache's
+`resolveCacheStore`: a local `!ref` arrives Phase-5-injected as the live
+instance; a cross-module `!ref Alias.Store` arrives as `{ name, alias }` and
+routes through `ctx.moduleContext.resolveImportedInstance(alias, name)`.
+
+### Dimension validation lives in the backend
+
+`dimensions` is config on the **concrete backend**, not on the abstract — so the
+core invocables MUST NOT reach for it. Length enforcement is the backend's
+responsibility: `upsert`/`query` reject a vector whose length != the store's
+configured `dimensions` and throw a structured error. The handle exposes
+`dimensions` read-only purely so callers/analysis can introspect it; it is not a
+validation hook the core relies on. This keeps the core decoupled from any field
+a future backend (pgvector, qdrant) may define elsewhere or not at all.
+
+### Filter grammar (shared by `Match` and `Removal`)
+
+`metadataFilter` constrains records by their **metadata** (the `metadata` object
+passed to `Record`) — orthogonal to vector similarity, which `vector` + `topK` +
+`metric` handle. It is a **MongoDB-style filter** — a documented operator subset,
+the same shape Pinecone and Chroma expose and the query-document form used by the
+official MongoDB drivers in Node (`mongodb`), Rust (`mongodb`/`bson`), and Go
+(`mongo-driver`). Statically analyzable — declared **once** as a `Type.JsonSchema`
+named `MetadataFilter` and referenced by both `Match` and `Removal` with
+`metadataFilter: { $ref: "telo://Self/MetadataFilter" }` (the module-scoped
+schema reference; see the `type` module). Recursion inside the grammar uses a
+plain fragment (`$ref: "#"`):
+
+```yaml
+kind: Type.JsonSchema
+metadata: { name: MetadataFilter }
+schema:
+  type: object
+  minProperties: 1
+  $defs:
+    Scalar:
+      type: [string, number, boolean, "null"]
+    Condition:
+      oneOf:
+        - $ref: "#/$defs/Scalar"            # bare value = implicit $eq
+        - type: object
+          minProperties: 1
+          additionalProperties: false
+          properties:
+            $eq:  { $ref: "#/$defs/Scalar" }
+            $ne:  { $ref: "#/$defs/Scalar" }
+            $gt:  { type: number }
+            $gte: { type: number }
+            $lt:  { type: number }
+            $lte: { type: number }
+            $in:  { type: array, items: { $ref: "#/$defs/Scalar" } }
+            $nin: { type: array, items: { $ref: "#/$defs/Scalar" } }
+  properties:
+    $and: { type: array, minItems: 1, items: { $ref: "#" } }
+    $or:  { type: array, minItems: 1, items: { $ref: "#" } }
+    $not: { $ref: "#" }
+  additionalProperties: { $ref: "#/$defs/Condition" }       # any other key = metadata field
+```
+
+Semantics: top-level keys are ANDed; a bare scalar is `$eq`; `$and`/`$or` take
+filter arrays, `$not` negates a filter. No operator outside this set is allowed
+(`additionalProperties: false` on `Condition`), so an unsupported filter is a
+static error rather than silent per-backend divergence.
+
+**Portability invariants** (these are what make the shared abstract honest):
+
+- The operator set is capped at the **intersection** of what all intended
+  backends can push down natively. Flat metadata keys only — no dotted/nested
+  paths, regex, or `$exists` in v1, since those don't translate uniformly across
+  pgvector / qdrant / weaviate.
+- A backend that receives an operator it cannot translate to its native query
+  MUST **throw** a structured error — never silently ignore it, and never fall
+  back to in-memory post-filtering (which would diverge from another backend on
+  `topK` / pagination). Erroring keeps "same manifest, same result" true.
+- Each backend module documents its **operator → native mapping** table (memory
+  = evaluator, pgvector = `jsonb` predicates, qdrant = `must`/`should`, weaviate
+  = `where`). The table is the proof the subset is translatable before the
+  backend ships.
 
 ---
 
@@ -161,10 +261,9 @@ inputType:
     additionalProperties: false
     properties:
       vector: { type: array, items: { type: number } }
-      filter:
-        description: Backend-evaluated metadata filter.
-        type: object
-        additionalProperties: true
+      metadataFilter:
+        description: Metadata filter (MongoDB-style; see Filter grammar).
+        $ref: "telo://Self/MetadataFilter"
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -250,9 +349,9 @@ inputType:
         type: array
         minItems: 1
         items: { type: string }
-      filter:
-        type: object
-        additionalProperties: true
+      metadataFilter:
+        description: Metadata filter (MongoDB-style; see Filter grammar).
+        $ref: "telo://Self/MetadataFilter"
 outputType:
   kind: Type.JsonSchema
   schema:
@@ -429,12 +528,18 @@ targets:
 
 ## Controller notes
 
+- `store.ts` / `store-ref.ts` — the `VectorStoreHandle` interface and
+  `resolveVectorStore` helper (see Provider contract above). Shared by all three
+  invocables; the only thing future backends must satisfy.
 - `record.ts` / `match.ts` / `removal.ts` — `Telo.Invocable`s; each resolves the
-  `store` provider and calls its `upsert` / `query` / `delete`. Reject vectors
-  whose length != the store's declared `dimensions`. Errors propagate.
+  `store` via `resolveVectorStore` and delegates to `upsert` / `query` /
+  `delete`. No dimension logic here — the core is decoupled from backend config.
+  Errors propagate.
 - `vector-store-memory/nodejs/src/store.ts` — `Telo.Provider`; `provide()`
-  returns a handle backed by a `Map<id, {vector, metadata}>` with the configured
-  metric and FIFO eviction.
+  returns a `VectorStoreHandle` backed by a `Map<id, {vector, metadata}>` with
+  the configured metric and FIFO eviction. **Authoritative for dimension
+  enforcement**: `upsert`/`query` reject vectors whose length != `dimensions` and
+  throw. Implements the MongoDB-style `Filter` subset over stored metadata.
 
 ## Tests
 
@@ -442,7 +547,8 @@ targets:
   Record 3 vectors → Match a near-duplicate → assert top hit id + score
   ordering; Removal by id → Match → assert it's gone.
 - `vector-store-memory/tests/memory-store.yaml` — metric math + dimension
-  rejection + eviction.
+  rejection + eviction + `metadataFilter` evaluation (`$eq` implicit, `$in`,
+  `$and`/`$or`, `Removal` by `metadataFilter`).
 
 ## Docs & release checklist
 

@@ -102,6 +102,32 @@ Inside `condition`, `this` is bound to the value being validated. Rules fire aft
 
 Rule codes are invocation error codes (see [Run.Sequence structured errors](../run/docs/structured-errors.md)) — any catch block that matches the code can react to a specific business-rule failure.
 
+## Referencing a type from another schema (`$ref`)
+
+A whole `inputType` / `outputType` can name a type by string (`inputType: User`). To reuse a type as a **fragment** inside a larger JSON Schema — say a shared filter grammar referenced by several definitions — use a standard JSON Schema `$ref` to its module-scoped URI:
+
+```yaml
+kind: Type.JsonSchema
+metadata: { name: MetadataFilter }
+schema: { type: object, additionalProperties: true }
+---
+kind: Telo.Definition
+metadata: { name: Match }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      filter: { $ref: "telo://Self/MetadataFilter" }   # this module's own type
+```
+
+The authority before `#`/`/` is an **import** (or `Self`), not a hardcoded identity:
+
+- `telo://Self/<name>` — a type declared in the same module.
+- `telo://<Alias>/<name>` — a type the module imports under `<Alias>` (the imported library must export it). The version is taken from the `imports:` entry, never written in the URI.
+
+Each `Type.JsonSchema` registers its schema under the canonical id `telo://<module>/<name>`; the loader rewrites the `Self`/alias authority to that id before validation. A ref that resolves to no registered type is a static error (`SCHEMA_TYPE_REF_UNRESOLVED` / `SCHEMA_TYPE_REF_UNKNOWN_ALIAS`), so typos surface in `telo check` rather than passing silently. Recursive references within a type's own schema use a plain fragment (`$ref: "#"` / `$ref: "#/$defs/X"`).
+
 ## Usage patterns
 
 - **Input/output contracts for scripts** — define `inputType` / `outputType` once, reference from `JavaScript.Script` / `Starlark.Script`.

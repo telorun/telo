@@ -1,0 +1,65 @@
+{
+  "name": "@telorun/vector-store",
+  "version": "0.1.0",
+  "description": "Telo vector-store module — VectorStore.Store abstract plus Record / Match / Removal operating against any store.",
+  "keywords": [
+    "telo",
+    "vector",
+    "embedding",
+    "similarity-search"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/vector-store/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./record": {
+      "types": "./dist/record.d.ts",
+      "bun": "./src/record.ts",
+      "import": "./dist/record.js"
+    },
+    "./match": {
+      "types": "./dist/match.d.ts",
+      "bun": "./src/match.ts",
+      "import": "./dist/match.js"
+    },
+    "./removal": {
+      "types": "./dist/removal.d.ts",
+      "bun": "./src/removal.ts",
+      "import": "./dist/removal.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

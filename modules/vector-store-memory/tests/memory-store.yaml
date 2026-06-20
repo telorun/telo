@@ -1,0 +1,130 @@
+kind: Telo.Application
+metadata:
+  name: VectorStoreMemoryTest
+  version: 1.0.0
+  description: |
+    Exercises VectorStoreMemory.Store directly: dot-metric ranking, FIFO
+    eviction past maxEntries, and metadataFilter operators ($in, $gte, $or)
+    via Match and Removal.
+imports:
+  VectorStore: ../../vector-store
+  VectorStoreMemory: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: VectorStoreMemory.Store
+metadata: { name: Index }
+metric: dot
+dimensions: 2
+maxEntries: 3
+---
+kind: VectorStore.Record
+metadata: { name: Write }
+store: !ref Index
+---
+kind: VectorStore.Match
+metadata: { name: Search }
+store: !ref Index
+topK: 10
+---
+kind: VectorStore.Removal
+metadata: { name: Drop }
+store: !ref Index
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: seed
+    invoke: !ref Write
+    inputs:
+      items:
+        - { id: a, vector: [1, 0], metadata: { tier: 1, kind: doc } }
+        - { id: b, vector: [2, 0], metadata: { tier: 2, kind: doc } }
+        - { id: c, vector: [3, 0], metadata: { tier: 3, kind: note } }
+  - name: evict
+    invoke: !ref Write
+    inputs:
+      items:
+        - { id: d, vector: [4, 0], metadata: { tier: 4, kind: note } }
+  - name: searchAll
+    invoke: !ref Search
+    inputs:
+      vector: [1, 0]
+  - name: assertEviction
+    inputs:
+      ok: "${{ size(steps.searchAll.result.matches) == 3 }}"
+      top: "${{ steps.searchAll.result.matches[0].id }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [ok, top]
+        properties:
+          ok: { const: true }
+          top: { const: "d" }
+  - name: searchFiltered
+    invoke: !ref Search
+    inputs:
+      vector: [1, 0]
+      metadataFilter:
+        kind: { $in: [note] }
+        tier: { $gte: 4 }
+  - name: assertFiltered
+    inputs:
+      ok: "${{ size(steps.searchFiltered.result.matches) == 1 }}"
+      top: "${{ steps.searchFiltered.result.matches[0].id }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [ok, top]
+        properties:
+          ok: { const: true }
+          top: { const: "d" }
+  - name: dropByFilter
+    invoke: !ref Drop
+    inputs:
+      metadataFilter:
+        $or:
+          - { kind: note }
+          - { tier: { $lte: 2 } }
+  - name: assertDropped
+    inputs:
+      removed: "${{ steps.dropByFilter.result.removed }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [removed]
+        properties:
+          removed: { const: 3 }
+  - name: rejectBadDim
+    try:
+      - name: badWrite
+        invoke: !ref Write
+        inputs:
+          items:
+            - { id: bad, vector: [1, 2, 3] }
+    catch:
+      - name: assertRejected
+        inputs:
+          msg: "${{ error.message }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            required: [msg]
+            properties:
+              msg: { type: string }
+  - name: verifyRejected
+    inputs:
+      result: "${{ steps.assertRejected.result }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [result]
+        properties:
+          result: { const: true }

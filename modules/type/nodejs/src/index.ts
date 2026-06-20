@@ -1,6 +1,6 @@
 import { evaluate } from "@marcbachmann/cel-js";
 import type { ResourceContext, ResourceManifest, TypeRule } from "@telorun/sdk";
-import { RuntimeError } from "@telorun/sdk";
+import { canonicalTypeSchemaId, RuntimeError } from "@telorun/sdk";
 
 class TypeResource {
   constructor(
@@ -68,6 +68,15 @@ export async function create(
   if (shortName !== qualifiedName) {
     ctx.registerSchema(shortName, schema);
     ctx.registerTypeRules(shortName, rules);
+  }
+
+  // Canonical module-scoped URI `$id` — the target of `$ref: "telo://Self/<name>"`
+  // (and `telo://<Alias>/<name>` across imports) once the loader resolves the
+  // authority to this module. Lets a sibling schema reference this type with a
+  // standard JSON Schema `$ref`.
+  const moduleName = resource.metadata.module as string | undefined;
+  if (moduleName) {
+    ctx.registerSchema(canonicalTypeSchemaId(moduleName, shortName), schema);
   }
 
   return new TypeResource(qualifiedName, rules);
