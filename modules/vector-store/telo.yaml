@@ -1,0 +1,221 @@
+kind: Telo.Library
+metadata:
+  name: vector-store
+  namespace: std
+  version: 0.1.0
+  description: |
+    The VectorStore.Store abstract — a backend-pluggable vector index — plus the
+    Record / Match / Removal invocables that upsert, query, and delete vectors
+    against any store. Backend implementations (vector-store-memory,
+    vector-store-pgvector, …) live in their own modules and extend Store,
+    mirroring the cache / cache-memory family.
+imports:
+  Type: ../type
+exports:
+  kinds:
+    - Store
+    - Record
+    - Match
+    - Removal
+---
+# MetadataFilter — the MongoDB-style filter grammar shared by Match and Removal,
+# declared once and referenced via `$ref: "telo://Self/MetadataFilter"`. Top-level
+# keys are ANDed; a bare scalar is `$eq`; `$and`/`$or` take filter arrays, `$not`
+# negates a filter (recursion via `$ref: "#"`). No operator outside this set is
+# allowed, so an unsupported filter is a static error rather than per-backend drift.
+kind: Type.JsonSchema
+metadata:
+  name: MetadataFilter
+schema:
+  type: object
+  minProperties: 1
+  $defs:
+    Scalar:
+      type: [string, number, boolean, "null"]
+    Condition:
+      oneOf:
+        - $ref: "#/$defs/Scalar"
+        - type: object
+          minProperties: 1
+          additionalProperties: false
+          properties:
+            $eq: { $ref: "#/$defs/Scalar" }
+            $ne: { $ref: "#/$defs/Scalar" }
+            $gt: { type: number }
+            $gte: { type: number }
+            $lt: { type: number }
+            $lte: { type: number }
+            $in: { type: array, items: { $ref: "#/$defs/Scalar" } }
+            $nin: { type: array, items: { $ref: "#/$defs/Scalar" } }
+  properties:
+    $and: { type: array, minItems: 1, items: { $ref: "#" } }
+    $or: { type: array, minItems: 1, items: { $ref: "#" } }
+    $not: { $ref: "#" }
+  additionalProperties: { $ref: "#/$defs/Condition" }
+---
+# VectorStore.Store — the abstract index every backend implements. A
+# Telo.Provider: a configured index, NOT an operation you invoke. Consumers
+# (VectorStore.Record / .Match / .Removal) reference it via
+# `x-telo-ref: "std/vector-store#Store"`; a concrete implementation
+# (VectorStoreMemory.Store, …) satisfies the ref. The store owns its config
+# (metric, dimensions) and is authoritative for dimension enforcement.
+kind: Telo.Abstract
+metadata:
+  name: Store
+capability: Telo.Provider
+---
+# VectorStore.Record — upsert vectors with ids + metadata. Batch-first; the
+# same kind handles one or many.
+kind: Telo.Definition
+metadata:
+  name: Record
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#record
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    additionalProperties: false
+    properties:
+      items:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [id, vector]
+          additionalProperties: false
+          properties:
+            id: { type: string }
+            vector: { type: array, items: { type: number } }
+            metadata: { type: object, additionalProperties: true }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [ids]
+    additionalProperties: false
+    properties:
+      ids:
+        description: Ids written, in input order.
+        type: array
+        items: { type: string }
+schema:
+  type: object
+  required: [store]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing vector store.
+      x-telo-ref: "std/vector-store#Store"
+  examples:
+    - store: !ref knowledgeBase
+---
+# VectorStore.Match — nearest-neighbour query. Vector-only: the caller embeds
+# the query text first (e.g. Embedding.Query), keeping this op
+# single-responsibility and free of an embedder dependency. `metadataFilter`
+# constrains candidates by metadata, orthogonal to vector similarity.
+kind: Telo.Definition
+metadata:
+  name: Match
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#match
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [vector]
+    additionalProperties: false
+    properties:
+      vector: { type: array, items: { type: number } }
+      metadataFilter:
+        description: MongoDB-style metadata filter.
+        $ref: "telo://Self/MetadataFilter"
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [matches]
+    additionalProperties: false
+    properties:
+      matches:
+        type: array
+        items:
+          type: object
+          required: [id, score]
+          additionalProperties: false
+          properties:
+            id: { type: string }
+            score: { type: number }
+            metadata: { type: object, additionalProperties: true }
+            vector: { type: array, items: { type: number } }
+schema:
+  type: object
+  required: [store]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing vector store.
+      x-telo-ref: "std/vector-store#Store"
+    topK:
+      title: Top K
+      description: Maximum matches to return.
+      type: integer
+      minimum: 1
+      default: 10
+    includeVectors:
+      title: Include vectors
+      description: Return the stored vector on each match.
+      type: boolean
+      default: false
+  examples:
+    - store: !ref knowledgeBase
+      topK: 5
+---
+# VectorStore.Removal — delete by id list and/or metadata filter.
+kind: Telo.Definition
+metadata:
+  name: Removal
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#removal
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      ids:
+        type: array
+        minItems: 1
+        items: { type: string }
+      metadataFilter:
+        description: MongoDB-style metadata filter.
+        $ref: "telo://Self/MetadataFilter"
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [removed]
+    additionalProperties: false
+    properties:
+      removed:
+        description: Count of entries deleted.
+        type: integer
+        minimum: 0
+schema:
+  type: object
+  required: [store]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the backing vector store.
+      x-telo-ref: "std/vector-store#Store"
+  examples:
+    - store: !ref knowledgeBase

@@ -2,6 +2,7 @@ export * from "./cancellation.js";
 export * from "./compiled-value.js";
 export * from "./capabilities/invokable.js";
 export * from "./ref.js";
+export * from "./type-schema-ref.js";
 export * from "./invoke-step.js";
 export * from "./dispatch-invoke-ref.js";
 export * from "./capabilities/provider.js";

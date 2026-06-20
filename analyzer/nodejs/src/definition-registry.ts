@@ -110,6 +110,23 @@ export class DefinitionRegistry {
     }
   }
 
+  /** Registers a named `Telo.Type` resource's schema under its canonical
+   *  module-scoped URI `$id` (`telo://<module>/<name>`), so a sibling schema's
+   *  `$ref: "telo://Self/<name>"` (rewritten to the canonical form by
+   *  `resolveSchemaTypeRefs`) resolves during AJV compilation. Mirrors the
+   *  kernel type controller's `registerSchema(canonicalTypeSchemaId(...))`. */
+  registerNamedTypeSchema(id: string, schema: Record<string, any>): void {
+    if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return;
+    this.ajv.addSchema(schema, id);
+    this.registeredSchemaIds.add(id);
+  }
+
+  /** True when a schema is registered under `id` (a canonical `telo://` type id
+   *  or a definition `$id`). Used to flag schema `$ref`s that resolve to nothing. */
+  hasSchemaId(id: string): boolean {
+    return this.registeredSchemaIds.has(id) || this.ajv.getSchema(id) !== undefined;
+  }
+
   /** Computes the $id for a definition schema: "<identity>/<TypeName>".
    *  Returns undefined when the module identity is not yet registered. */
   computeId(moduleName: string, typeName: string): string | undefined {

@@ -1,0 +1,103 @@
+kind: Telo.Application
+metadata:
+  name: VectorStoreRoundtripTest
+  version: 1.0.0
+  description: |
+    Records 3 vectors via VectorStore.Record, Matches a near-duplicate of the
+    first (asserting it ranks top), then Removes it by id and re-Matches to
+    confirm it is gone.
+imports:
+  VectorStore: ../
+  VectorStoreMemory: ../../vector-store-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: VectorStoreMemory.Store
+metadata: { name: Index }
+metric: cosine
+dimensions: 3
+---
+kind: VectorStore.Record
+metadata: { name: Write }
+store: !ref Index
+---
+kind: VectorStore.Match
+metadata: { name: Search }
+store: !ref Index
+topK: 3
+---
+kind: VectorStore.Removal
+metadata: { name: Drop }
+store: !ref Index
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: write
+    invoke: !ref Write
+    inputs:
+      items:
+        - { id: a, vector: [1, 0, 0], metadata: { lang: en } }
+        - { id: b, vector: [0, 1, 0], metadata: { lang: fr } }
+        - { id: c, vector: [0, 0, 1], metadata: { lang: en } }
+  - name: search
+    invoke: !ref Search
+    inputs:
+      vector: [0.9, 0.1, 0]
+  - name: assertTop
+    inputs:
+      ok: "${{ steps.search.result.matches[0].id == 'a' && size(steps.search.result.matches) == 3 }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [ok]
+        properties:
+          ok: { const: true }
+  - name: searchFiltered
+    invoke: !ref Search
+    inputs:
+      vector: [0.9, 0.1, 0]
+      metadataFilter: { lang: en }
+  - name: assertFiltered
+    inputs:
+      ok: "${{ size(steps.searchFiltered.result.matches) == 2 }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [ok]
+        properties:
+          ok: { const: true }
+  - name: drop
+    invoke: !ref Drop
+    inputs:
+      ids: [a]
+  - name: assertRemoved
+    inputs:
+      removed: "${{ steps.drop.result.removed }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [removed]
+        properties:
+          removed: { const: 1 }
+  - name: searchAgain
+    invoke: !ref Search
+    inputs:
+      vector: [0.9, 0.1, 0]
+  - name: assertGone
+    inputs:
+      top: "${{ steps.searchAgain.result.matches[0].id }}"
+      ok: "${{ size(steps.searchAgain.result.matches) == 2 }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [top, ok]
+        properties:
+          top: { enum: [b, c] }
+          ok: { const: true }

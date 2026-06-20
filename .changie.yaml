@@ -315,6 +315,20 @@ projects:
       - path: modules/type/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
+  - label: vector-store
+    key: vector-store
+    changelog: modules/vector-store/CHANGELOG.md
+    replacements:
+      - path: modules/vector-store/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: vector-store-memory
+    key: vector-store-memory
+    changelog: modules/vector-store-memory/CHANGELOG.md
+    replacements:
+      - path: modules/vector-store-memory/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: workflow
     key: workflow
     changelog: modules/workflow/CHANGELOG.md

@@ -310,6 +310,23 @@ const sidebars: SidebarsConfig = {
                     { type: "doc", id: "modules/cache-redis/README", label: "Cache Redis" },
                   ],
                 },
+                {
+                  type: "category",
+                  label: "Vector Store",
+                  items: [
+                    { type: "doc", id: "modules/vector-store/README", label: "Overview" },
+                    {
+                      type: "doc",
+                      id: "modules/vector-store/docs/vector-store",
+                      label: "VectorStore",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/vector-store-memory/README",
+                      label: "Vector Store Memory",
+                    },
+                  ],
+                },
                 { type: "doc", id: "modules/rate-limit/README", label: "Rate Limit" },
                 {
                   type: "category",
