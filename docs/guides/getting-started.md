@@ -100,7 +100,7 @@ and dispatch.
 
 A console one-shot is the simplest possible Telo manifest, but the runtime
 really shines once you wire long-running services together. The next stop
-is [`examples/hello-api.yaml`](https://github.com/telorun/telo/blob/main/examples/hello-api.yaml)
+is [`examples/hello-api/telo.yaml`](https://github.com/telorun/telo/blob/main/examples/hello-api/telo.yaml)
 — a minimal HTTP server with one route, a CEL-templated request handler,
 and a JavaScript script that builds the response. Same four phases, but
 with a `Telo.Service` (the HTTP server) that stays alive after init.

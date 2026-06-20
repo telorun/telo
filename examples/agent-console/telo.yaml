@@ -21,8 +21,9 @@ imports:
   Mcp: std/mcp-client@0.4.0
   Http: std/http-client@0.7.0
   Console: std/console@0.9.0
-  Run: std/run@0.10.0
-  Sql: std/sql@0.9.2
+  Run: std/run@0.11.0
+  Sql: std/sql@0.10.0
+  SqlSqlite: std/sql-sqlite@0.2.0
 targets:
   - !ref InitSchema
   - !ref ChatLoop
@@ -32,7 +33,7 @@ secrets:
     type: string
 ---
 # --- Persistence -----------------------------------------------------------
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata: { name: ChatDb }
 file: ./tmp/agent-history.sqlite
 
@@ -133,7 +134,7 @@ steps:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
           bindings: [ "user", "${{ steps.Read.result.value }}" ]
         invoke:
-          kind: Sql.Exec
+          kind: Sql.Command
           connection: !ref ChatDb
       - name: ReadHistory
         inputs:
@@ -165,7 +166,7 @@ steps:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
           bindings: [ "assistant", "${{ steps.Ask.result.text }}" ]
         invoke:
-          kind: Sql.Exec
+          kind: Sql.Command
           connection: !ref ChatDb
       - name: Read
         invoke: !ref Console.readLine

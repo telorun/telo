@@ -23,7 +23,7 @@ Built to be language-agnostic and infinitely extensible.
 
 ```bash
 # Reconcile your manifest into a running backend
-$ telo ./examples/hello-api.yaml
+$ telo ./examples/hello-api
 
 {"level":30,"time":1771610393008,"pid":1310178,"hostname":"dev","msg":"Server listening at http://127.0.0.1:8844"}
 ```

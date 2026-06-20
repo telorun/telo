@@ -3,7 +3,7 @@ metadata:
   name: templated-api-usage
   version: 1.0.0
   description: |
-    Imports `templated-api.yaml` as a `Telo.Library` and mounts its
+    Imports `library.yaml` as a `Telo.Library` and mounts its
     `HelloApi` twice on the same `Http.Server` — under `/v1` and `/v2`.
     Shows that a single library-defined kind can be reused across multiple
     mount points without duplicating the route definition.
@@ -12,8 +12,8 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 imports:
-  Http: std/http-server@0.12.0
-  Templated: ./templated-api.yaml
+  Http: std/http-server@0.15.0
+  Templated: ./library.yaml
 ports:
   http:
     env: PORT

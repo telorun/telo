@@ -1,0 +1,4 @@
+project: sql-sqlite
+kind: Fixed
+body: "`Sql.Command` now reports the correct `rowCount` for plain INSERT/UPDATE/DELETE under Bun — the bun:sqlite driver had marked every statement as a reader, so affected-row counts were lost and rowCount was always 0."
+time: 2026-06-20T02:00:00Z
