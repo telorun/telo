@@ -11,6 +11,7 @@ export function injectAtPath(
   resource: ResourceManifest,
   fieldPath: string,
   getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
+  isPending?: (name: string) => boolean,
 ): void {
   const parts = fieldPath.split(".");
 
@@ -18,8 +19,13 @@ export function injectAtPath(
   // cross-module reference into an import's published exports; if that import hasn't
   // finished init() yet the instance is absent, so we throw to defer this resource to a
   // later pass of the multi-pass init loop (which catches and retries) rather than leaving
-  // the ref unresolved. Local refs (no alias) that miss are left for topo ordering / later
-  // diagnostics, matching prior behaviour.
+  // the ref unresolved. A LOCAL ref (no alias) that names a resource registered in this
+  // context but not yet initialized is deferred the same way — create-success order does
+  // not always match init order (e.g. a globally-registered controller lets a dependent
+  // create before its dependency's controller has loaded), so injection can run before the
+  // dependency inits. Without this defer the slot would be left unresolved and surface as a
+  // runtime ERR_RESOURCE_NOT_INVOKABLE. A local ref that names nothing pending is left as-is
+  // (topo ordering / later diagnostics), matching prior behaviour.
   function resolveInto(ref: Record<string, unknown>): ResourceInstance | undefined {
     const alias = typeof ref.alias === "string" ? ref.alias : undefined;
     const instance = getInstance(ref.name as string, alias);
@@ -27,6 +33,12 @@ export function injectAtPath(
       throw new RuntimeError(
         "ERR_CROSS_MODULE_REF_PENDING",
         `Cross-module reference '${alias}.${String(ref.name)}' is not available yet (import not initialized)`,
+      );
+    }
+    if (!instance && (!alias || alias === "Self") && isPending?.(ref.name as string)) {
+      throw new RuntimeError(
+        "ERR_LOCAL_REF_PENDING",
+        `Local reference '${String(ref.name)}' is registered but not initialized yet (deferring to a later init pass)`,
       );
     }
     // Tag the instance with the kind+name it resolved from, so a consumer that

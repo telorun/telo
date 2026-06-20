@@ -56,6 +56,27 @@ projects:
       - path: modules/benchmark/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: cache
+    key: cache
+    changelog: modules/cache/CHANGELOG.md
+    replacements:
+      - path: modules/cache/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: cache-memory
+    key: cache-memory
+    changelog: modules/cache-memory/CHANGELOG.md
+    replacements:
+      - path: modules/cache-memory/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: cache-redis
+    key: cache-redis
+    changelog: modules/cache-redis/CHANGELOG.md
+    replacements:
+      - path: modules/cache-redis/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: codec
     key: codec
     changelog: modules/codec/CHANGELOG.md
@@ -166,6 +187,13 @@ projects:
     changelog: modules/plain-text-codec/CHANGELOG.md
     replacements:
       - path: modules/plain-text-codec/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: rate-limit
+    key: rate-limit
+    changelog: modules/rate-limit/CHANGELOG.md
+    replacements:
+      - path: modules/rate-limit/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
   - label: record-stream

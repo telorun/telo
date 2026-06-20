@@ -63,10 +63,15 @@ export type InstanceFactory = (
  *                     non-`Self` `alias`, resolves a cross-module reference into that
  *                     import's published exported instances instead of the local context.
  *                     Returns undefined when the named resource is not yet initialized.
+ * @param isPending  Reports whether a local (no-alias) reference names a resource that is
+ *                   registered in this context but not yet initialized. Injection uses it
+ *                   to defer a resource whose dependency exists but hasn't inited yet —
+ *                   rather than leaving the slot unresolved — so the init loop retries it.
  */
 export type PreInitHook = (
   resource: ResourceManifest,
   getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
+  isPending?: (name: string) => boolean,
 ) => void;
 
 /** Canonical key for a resource instance: "<module>.<kind>.<name>" */
@@ -128,6 +133,10 @@ export interface EvaluationContext {
   ): Promise<any>;
   run(name: string, ctx?: InvokeContext): Promise<void>;
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
+  /** Bare scope-detach primitive: run `fn` outside the caller's cancellation/
+   *  trace scope. Tracking/draining the task is the owning `ResourceContext`'s
+   *  concern (see {@link ResourceContext.runDetached}). */
+  runDetached<T>(fn: () => Promise<T>): Promise<T>;
   expand(value: unknown): unknown;
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown;
   expandPaths(

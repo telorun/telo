@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: RunDetachSmokeTest
+  version: 1.0.0
+  description: |
+    Dispatches a cache write through Run.Detach (zero-config fire-and-forget),
+    waits briefly for the detached task to land, then reads the value back to
+    confirm the background path ran via ctx.runDetached.
+imports:
+  Run: ../
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: Cache.Entry
+metadata: { name: Put }
+store: !ref Mem
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: Get }
+store: !ref Mem
+---
+kind: Run.Detach
+metadata: { name: PutDetached }
+invoke: !ref Put
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: detach
+    invoke: !ref PutDetached
+    inputs:
+      key: "bg"
+      value: { hello: "detached" }
+  - name: assertDetached
+    inputs:
+      detached: "${{ steps.detach.result.detached }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [detached]
+        properties:
+          detached: { const: true }
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "100ms"
+      value: {}
+  - name: read
+    invoke: !ref Get
+    inputs:
+      key: "bg"
+  - name: assertWritten
+    inputs:
+      state: "${{ steps.read.result.state }}"
+      hello: "${{ steps.read.result.value.hello }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state, hello]
+        properties:
+          state: { const: "fresh" }
+          hello: { const: "detached" }

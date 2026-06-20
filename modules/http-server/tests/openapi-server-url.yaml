@@ -3,11 +3,13 @@ metadata:
   name: OpenApiServerUrlTest
   version: 1.0.0
   description: |
-    Http.Server OpenAPI `servers` URL resolution:
-      - relative (the mount prefix) by default, so it resolves against whatever
-        origin loaded the docs,
+    Http.Server OpenAPI `servers` URL resolution. The server is a single origin
+    (the mount prefix lives on each documented path, not in `servers`):
+      - relative (`/`) by default, so it resolves against whatever origin loaded
+        the docs,
       - absolute from X-Forwarded-Proto / X-Forwarded-Host when
         `trustForwardedHeaders` is on.
+    Also asserts the documented path carries the mount prefix (`/v1/ping`).
 imports:
   Http: ../
   JS: ../../javascript
@@ -26,7 +28,8 @@ code: |
     const r = await fetch(url, { headers: headers || {} });
     const body = await r.json();
     const serverUrl = (body && body.servers && body.servers[0] && body.servers[0].url) || "";
-    return { status: r.status, serverUrl };
+    const path = (body && body.paths && Object.keys(body.paths)[0]) || "";
+    return { status: r.status, serverUrl, path };
   }
 inputType:
   kind: Type.JsonSchema
@@ -43,7 +46,8 @@ outputType:
     properties:
       status: { type: integer }
       serverUrl: { type: string }
-    required: [ status, serverUrl ]
+      path: { type: string }
+    required: [ status, serverUrl, path ]
 ---
 kind: JS.Script
 metadata: { name: Ping }
@@ -113,13 +117,15 @@ steps:
   - name: AssertRelative
     inputs:
       serverUrl: "${{ steps.HitRelative.result.serverUrl }}"
+      path: "${{ steps.HitRelative.result.path }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties:
-          serverUrl: { const: "/v1" }
-        required: [ serverUrl ]
+          serverUrl: { const: "/" }
+          path: { const: "/v1/ping" }
+        required: [ serverUrl, path ]
   - name: HitForwarded
     inputs:
       url: http://127.0.0.1:8962/reference/openapi.json
@@ -130,10 +136,12 @@ steps:
   - name: AssertForwarded
     inputs:
       serverUrl: "${{ steps.HitForwarded.result.serverUrl }}"
+      path: "${{ steps.HitForwarded.result.path }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties:
-          serverUrl: { const: "https://api.example.com/v1" }
-        required: [ serverUrl ]
+          serverUrl: { const: "https://api.example.com" }
+          path: { const: "/v1/ping" }
+        required: [ serverUrl, path ]

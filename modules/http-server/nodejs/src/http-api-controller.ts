@@ -65,32 +65,29 @@ export class HttpServerApi implements ResourceInstance {
   async init() {}
 
   register(app: FastifyInstance, prefix = "") {
-    if (prefix) {
-      app.register(
-        async (scoped) => {
-          this.registerRoutes(scoped);
-        },
-        { prefix },
-      );
-    } else {
-      this.registerRoutes(app);
-    }
+    // Register each route at its full `prefix + path` on the root app rather than
+    // inside a `{ prefix }`-encapsulated context. Fastify encapsulation makes
+    // @fastify/swagger strip the prefix from the documented path, which conflates
+    // routes from different mounts (e.g. an Api at `/admin` documented as `/links`).
+    // Carrying the prefix on the path keeps the OpenAPI doc unambiguous for any mix
+    // of mounts; a single `servers` origin is set by the server controller.
+    this.registerRoutes(app, normalizeMountPrefix(prefix));
   }
 
-  private registerRoutes(app: FastifyInstance) {
+  private registerRoutes(app: FastifyInstance, prefix: string) {
     const routes = this.manifest.routes || [];
     for (const route of routes) {
-      this.registerRoute(app, route);
+      this.registerRoute(app, route, prefix);
     }
   }
 
-  private registerRoute(app: FastifyInstance, route: HttpApiRouteManifest) {
+  private registerRoute(app: FastifyInstance, route: HttpApiRouteManifest, prefix: string) {
     // After Phase 5 injection, KindRef<Invocable> is replaced with the live Invocable instance.
     const handler = route.handler as unknown as ResourceInstance | undefined;
     const handlerRef = this.handlerRefs.get(route as unknown as object);
     const handlerKind = handlerRef?.kind ?? "";
     const handlerName = handlerRef?.name ?? "";
-    const translatedPath = translateOpenApiPath(route.request.path);
+    const translatedPath = prefix + translateOpenApiPath(route.request.path);
 
     const schema: any = { response: {} };
 
@@ -131,6 +128,9 @@ export class HttpServerApi implements ResourceInstance {
             query: request.query || {},
             headers: normalizeHeaders(request.headers),
             body: streamBody ? toByteStream(request) : request.body,
+            // Canonical client address — honours X-Forwarded-For per the
+            // server's `trustProxy` setting (Fastify resolves it).
+            ip: request.ip,
           },
         };
         const acceptHeader = (
@@ -257,6 +257,16 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
  */
 function translateOpenApiPath(openApiPath: string): string {
   return openApiPath.replace(/{([a-zA-Z_][a-zA-Z0-9_]*)}/g, ":$1");
+}
+
+/**
+ * Normalizes a mount prefix into a path segment that prepends cleanly to a route
+ * path: the root mount (`""` / `"/"`) contributes nothing, and a trailing slash
+ * is dropped so `"/admin" + "/links"` is `/admin/links`, never `/admin//links`.
+ */
+function normalizeMountPrefix(prefix: string): string {
+  if (!prefix || prefix === "/") return "";
+  return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
 }
 
 /**

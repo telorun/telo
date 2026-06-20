@@ -1,0 +1,69 @@
+kind: Telo.Library
+metadata:
+  name: rate-limit
+  namespace: std
+  version: 0.1.0
+  description: |
+    RateLimit.Guard — a transport-neutral sliding-window rate limiter. Counters
+    live in any Cache.Store (cache-memory, cache-redis), so the limiter composes
+    with whichever backend is wired. The key is an explicit input (a client IP,
+    API key, user, tenant); the guard is non-throwing — it returns a verdict and
+    the caller maps the response.
+imports:
+  Cache: ../cache
+exports:
+  kinds:
+    - Guard
+---
+kind: Telo.Definition
+metadata:
+  name: Guard
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/rate-limit@0.1.0?local_path=./nodejs#guard
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    additionalProperties: false
+    properties:
+      key:
+        type: string
+        description: >-
+          The bucket key — a client IP, API key, user, or tenant. An empty key
+          fails closed (denied), never silently merged into one shared bucket.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [allowed, remaining, retryAfter]
+    additionalProperties: false
+    properties:
+      allowed:
+        type: boolean
+        description: Whether this request is within the limit.
+      remaining:
+        type: integer
+        description: Requests remaining in the current window (0 when denied).
+      retryAfter:
+        type: integer
+        description: Seconds until the window frees up (0 when allowed).
+schema:
+  type: object
+  required: [store, limit, window]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the Cache.Store holding the rate-limit counters.
+      x-telo-ref: "std/cache#Store"
+    limit:
+      title: Limit
+      type: integer
+      minimum: 1
+      description: Maximum requests permitted per key within `window`.
+    window:
+      title: Window
+      type: string
+      description: Sliding window as a duration (`60s`, `1m`, `1h`).

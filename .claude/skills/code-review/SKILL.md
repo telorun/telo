@@ -19,6 +19,10 @@ Focus on:
 - encapsulation and modularity
 - cohesion and coupling
 - adherence to Telo's core goals
+- check if generic packages are aware of specific packages, eg. 
+  - both `kernel` and `sdk` must not be aware of: any module in `./modules`, any package in `./packages`, `editor`, `cli`
+  - `editor` should not be aware of any module in `./modules`
+  - more generic module in `./modules` must not be aware of more specific module in `./modules`
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals.
 

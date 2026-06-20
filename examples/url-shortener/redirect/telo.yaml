@@ -1,0 +1,181 @@
+kind: Telo.Library
+metadata:
+  name: url-shortener-redirect
+  version: 1.0.0
+  description: |
+    Public side of the URL shortener: create a short link and redirect by code.
+    Owns the read-through cache (Cache.View over the SQL lookup), the rate-limit
+    guard, and the fire-and-forget click recorder (Run.Detach). Exports `Routes`
+    for the app to mount.
+variables:
+  dbFile:
+    type: string
+    description: Path to the shared SQLite database file.
+imports:
+  Http: ../../../modules/http-server
+  SqlRepository: std/sql-repository@0.3.0
+  Sql: std/sql@0.9.2
+  Run: ../../../modules/run
+  Cache: ../../../modules/cache
+  CacheMemory: ../../../modules/cache-memory
+  RateLimit: ../../../modules/rate-limit
+  Database:
+    source: ../database
+    variables:
+      dbFile: !cel "variables.dbFile"
+exports:
+  resources:
+    - Routes
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: RateLimit.Guard
+metadata: { name: Limit }
+store: !ref Mem
+limit: 60
+window: "60s"
+---
+kind: SqlRepository.Read
+metadata: { name: LookupLink }
+connection: !ref Database.connection
+table: links
+---
+kind: Cache.View
+metadata: { name: LinkView }
+store: !ref Mem
+invoke: !ref LookupLink
+ttl: "300s"
+staleTtl: "3600s"
+revalidate: background
+---
+kind: Sql.Exec
+metadata: { name: InsertLink }
+connection: !ref Database.connection
+---
+kind: SqlRepository.Create
+metadata: { name: InsertClick }
+connection: !ref Database.connection
+table: clicks
+---
+kind: Run.Detach
+metadata: { name: RecordClick }
+invoke: !ref InsertClick
+---
+kind: Run.Sequence
+metadata: { name: CreateLink }
+inputs:
+  code: { type: string }
+  url: { type: string }
+  ip: { type: string }
+steps:
+  - name: guard
+    invoke: !ref Limit
+    inputs:
+      key: "${{ inputs.ip }}"
+  - name: maybeInsert
+    if: "${{ steps.guard.result.allowed }}"
+    then:
+      - name: insert
+        invoke: !ref InsertLink
+        inputs:
+          sql: "INSERT OR REPLACE INTO links (code, target) VALUES (?, ?)"
+          bindings:
+            - "${{ inputs.code }}"
+            - "${{ inputs.url }}"
+outputs:
+  allowed: "${{ steps.guard.result.allowed }}"
+  retryAfter: "${{ steps.guard.result.retryAfter }}"
+  code: "${{ inputs.code }}"
+---
+kind: Run.Sequence
+metadata: { name: ResolveAndRedirect }
+inputs:
+  code: { type: string }
+  ip: { type: string }
+steps:
+  - name: guard
+    invoke: !ref Limit
+    inputs:
+      key: "${{ inputs.ip }}"
+  - name: maybeResolve
+    if: "${{ steps.guard.result.allowed }}"
+    then:
+      - name: resolve
+        invoke: !ref LinkView
+        inputs:
+          key: "${{ inputs.code }}"
+          filters:
+            code: "${{ inputs.code }}"
+      - name: maybeClick
+        if: "${{ size(steps.resolve.result.value.rows) > 0 }}"
+        then:
+          - name: click
+            invoke: !ref RecordClick
+            inputs:
+              data:
+                code: "${{ inputs.code }}"
+                ip: "${{ inputs.ip }}"
+outputs:
+  allowed: "${{ steps.guard.result.allowed }}"
+  retryAfter: "${{ steps.guard.result.retryAfter }}"
+  found: "${{ has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 }}"
+  target: "${{ has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 ? steps.resolve.result.value.rows[0].target : '' }}"
+---
+kind: Http.Api
+metadata: { name: Routes }
+routes:
+  - request:
+      path: /links
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [code, url]
+          properties:
+            code: { type: string, minLength: 1 }
+            url: { type: string, minLength: 1 }
+    handler: !ref CreateLink
+    inputs:
+      code: "${{ request.body.code }}"
+      url: "${{ request.body.url }}"
+      ip: "${{ request.ip }}"
+    returns:
+      - status: 429
+        when: "${{ !result.allowed }}"
+        headers: { Retry-After: "${{ string(result.retryAfter) }}" }
+        content:
+          application/json:
+            body: { ok: false, message: "Rate limit exceeded" }
+      - status: 201
+        content:
+          application/json:
+            body: { ok: true, code: "${{ result.code }}" }
+
+  - request:
+      path: /{code}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [code]
+          properties:
+            code: { type: string }
+    handler: !ref ResolveAndRedirect
+    inputs:
+      code: "${{ request.params.code }}"
+      ip: "${{ request.ip }}"
+    returns:
+      - status: 429
+        when: "${{ !result.allowed }}"
+        headers: { Retry-After: "${{ string(result.retryAfter) }}" }
+        content:
+          application/json:
+            body: { ok: false, message: "Rate limit exceeded" }
+      - status: 302
+        when: "${{ result.found }}"
+        headers: { Location: "${{ result.target }}" }
+      - status: 404
+        content:
+          application/json:
+            body: { ok: false, message: "Unknown short code" }

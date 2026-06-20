@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: LibraryInternalHandlerInjectionTest
+  version: 1.0.0
+  description: |
+    Regression: mounting an imported library's Http.Api whose route handler is a
+    library-INTERNAL resource (a JavaScript.Script) must inject the live handler
+    across the import boundary.
+
+    The consumer imports http-server (so the Http.Api controller is globally
+    registered) but NOT javascript — the handler's controller loads only when the
+    library's own import inits. Before the fix the Http.Api created and inited
+    (running Phase-5 injection) before its internal handler existed, so the local
+    handler ref was silently left unresolved and the route failed at request time
+    with ERR_RESOURCE_NOT_INVOKABLE. Injection now defers a resource whose local
+    ref names a registered-but-uninitialized dependency, so the init loop retries
+    it once the handler exists.
+imports:
+  # Http MUST be declared before Lib: the consumer's http-server import inits
+  # first, registering the Http.Api controller globally, so when Lib's child init
+  # runs the Api can create before its internal handler's (javascript) controller
+  # has loaded. That create/init order skew is what the fix addresses.
+  Http: ../
+  Lib: ./__fixtures__/internal-handler-lib
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8957
+    baseUrl: http://127.0.0.1:8957
+    logger: false
+    mounts:
+      - path: /
+        mount: !ref Lib.Api
+targets:
+  - !ref Server
+steps:
+  - name: Hit
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8957/greet?name=World
+      method: GET
+  - name: AssertOk
+    inputs:
+      status: "${{ steps.Hit.result.status }}"
+      message: "${{ steps.Hit.result.body.message }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          message: { const: "Hello World!" }
+        required: [ status, message ]

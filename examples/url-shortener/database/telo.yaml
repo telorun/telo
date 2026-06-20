@@ -1,0 +1,22 @@
+kind: Telo.Library
+metadata:
+  name: url-shortener-database
+  version: 1.0.0
+  description: |
+    Owns the shared SQLite connection and exports it as a singleton. Every
+    consumer (the app's migrations, the redirect library, the admin library)
+    references the one `connection` instance, so they all read and write the
+    same database.
+variables:
+  dbFile:
+    type: string
+    description: Path to the SQLite database file.
+imports:
+  Sql: std/sql@0.9.2
+exports:
+  resources:
+    - connection
+---
+kind: Sql.SqliteConnection
+metadata: { name: connection }
+file: !cel "variables.dbFile"

@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: UrlShortener
+  version: 1.0.0
+  description: |
+    A URL shortener exercising the cache, rate-limit, run (Detach), sql, and
+    http-server modules end to end. A thin root that owns the shared schema
+    and HTTP server and wires two libraries:
+
+      redirect/  POST /links {code,url}, GET /{code} (cache read-through,
+                 rate-limit, detached click recording)
+      admin/     GET /admin/links, GET /admin/links/{code}
+
+    Zero external infra: a shared SQLite file + in-process CacheMemory.Store.
+imports:
+  Http: ../../modules/http-server
+  Sql: std/sql@0.9.2
+  Database:
+    source: ./database
+    variables:
+      dbFile: !cel "variables.dbFile"
+  Redirect:
+    source: ./redirect
+    variables:
+      dbFile: !cel "variables.dbFile"
+  Admin:
+    source: ./admin
+    variables:
+      dbFile: !cel "variables.dbFile"
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    default: ./tmp/url-shortener.db
+ports:
+  http:
+    env: PORT
+    default: 8080
+targets:
+  - !ref SetupDb
+  - !ref Server
+---
+kind: Sql.Migrations
+metadata: { name: SetupDb }
+connection: !ref Database.connection
+migrations:
+  20260618_init:
+    statements:
+      - "CREATE TABLE IF NOT EXISTS links (code TEXT PRIMARY KEY, target TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+      - "CREATE TABLE IF NOT EXISTS clicks (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, ip TEXT, clicked_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+---
+kind: Http.Server
+metadata: { name: Server }
+port: !cel "ports.http"
+trustProxy: true
+logger: false
+openapi:
+  info: { title: URL Shortener, version: 1.0.0 }
+mounts:
+  - path: /
+    mount: !ref Redirect.Routes
+  - path: /admin
+    mount: !ref Admin.Routes

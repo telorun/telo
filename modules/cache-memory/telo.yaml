@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: cache-memory
+  namespace: std
+  version: 0.1.0
+  description: |
+    CacheMemory.Store — an in-process, freshness-aware backend for the Cache
+    abstract. Zero external dependencies; ideal for single-instance deployments,
+    tests, and as the `fallback` store behind CacheRedis.Store.
+imports:
+  Cache: ../cache
+exports:
+  kinds:
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Provider
+extends: Cache.Store
+controllers:
+  - pkg:npm/@telorun/cache-memory@0.1.0?local_path=./nodejs#store
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    maxEntries:
+      title: Max Entries
+      type: integer
+      minimum: 1
+      default: 10000
+      description: >-
+        Maximum number of entries retained. When exceeded, the oldest-written
+        entry is evicted (FIFO).

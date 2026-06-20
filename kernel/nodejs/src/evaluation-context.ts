@@ -349,10 +349,13 @@ export class EvaluationContext implements IEvaluationContext {
         if (this.resourceInstances.has(name)) continue;
         try {
           if (this.preInitHook) {
-            this.preInitHook(resource, (n, alias) =>
-              alias && alias !== "Self"
-                ? this.resolveImportedInstance(alias, n)
-                : this.resourceInstances.get(n)?.instance,
+            this.preInitHook(
+              resource,
+              (n, alias) =>
+                alias && alias !== "Self"
+                  ? this.resolveImportedInstance(alias, n)
+                  : this.resourceInstances.get(n)?.instance,
+              (n) => this.hasManifest(n) && !this.resourceInstances.has(n),
             );
           }
           if (instance.init) await instance.init(ctx);
@@ -466,11 +469,17 @@ export class EvaluationContext implements IEvaluationContext {
         // Propagate injection hook: extend getInstance to also resolve parent singleton instances.
         if (parent.preInitHook) {
           const parentHook = parent.preInitHook;
-          child.preInitHook = (resource, childGetInstance) => {
-            parentHook(resource, (name, alias) =>
-              alias && alias !== "Self"
-                ? parent.resolveImportedInstance(alias, name)
-                : childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
+          child.preInitHook = (resource, childGetInstance, childIsPending) => {
+            parentHook(
+              resource,
+              (name, alias) =>
+                alias && alias !== "Self"
+                  ? parent.resolveImportedInstance(alias, name)
+                  : childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
+              // A scoped ref resolves against the scope's own resources or an already-inited
+              // outer one; only a scope-local dependency can still be pending. The outer is
+              // live by the time a scope opens, so the child's own predicate suffices.
+              childIsPending,
             );
           };
         }
@@ -993,6 +1002,19 @@ export class EvaluationContext implements IEvaluationContext {
       await this.emit(`${name}.RunFailed`, span("end", "failed", detail));
       throw err;
     }
+  }
+
+  /**
+   * Run `fn` detached from the caller's cancellation/trace scope. The current
+   * ambient `InvokeContext` (a request's token + span) is replaced with the
+   * uncancellable root, so request-scope teardown cannot abort the work and it
+   * does not nest under the request's trace. This is the bare scope primitive —
+   * tracking/draining a detached task is the owning resource's concern (the
+   * per-resource `ResourceContext` records the task and drains it in the
+   * resource's teardown).
+   */
+  runDetached<T>(fn: () => Promise<T>): Promise<T> {
+    return cancellationStore.run(UNCANCELLABLE_CONTEXT, fn);
   }
 
   /**

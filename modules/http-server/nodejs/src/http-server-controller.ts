@@ -46,6 +46,7 @@ type HttpServerResource = RuntimeResource & {
   port?: number;
   baseUrl?: string;
   trustForwardedHeaders?: boolean;
+  trustProxy?: boolean | number;
   logger?: boolean;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
@@ -105,11 +106,14 @@ class HttpServer implements ResourceInstance {
     if (!this.port) {
       throw new Error("Http.Server port is required");
     }
+    // `trustProxy` is the single Fastify knob behind both the forwarded
+    // protocol/host (request.protocol/host) and the canonical client address
+    // (request.ip). An explicit `trustProxy` (boolean / hop-count) wins; absent
+    // it, the legacy `trustForwardedHeaders` boolean still applies.
+    const trustProxy = resource.trustProxy ?? this.trustForwardedHeaders;
     this.app = Fastify({
       logger: resource.logger,
-      // Honour X-Forwarded-Proto / X-Forwarded-Host so request.protocol/host (and
-      // the OpenAPI servers derived from them) reflect a fronting proxy's URL.
-      trustProxy: this.trustForwardedHeaders,
+      trustProxy,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });
   }
@@ -178,15 +182,13 @@ class HttpServer implements ResourceInstance {
       throw error;
     });
     if (this.resource.openapi) {
-      const mounts = this.resource.mounts || [];
-      const prefixes = [...new Set(mounts.map((mount) => mount.path || ""))];
-      // Server URL precedence: an explicit `baseUrl` is an absolute, fixed
-      // override; otherwise the URLs are relative (just the mount prefix) so the
-      // doc is correct behind any proxy/ingress/origin without configuration —
-      // the client resolves them against wherever the reference was loaded.
-      const servers = prefixes.map((prefix) => ({
-        url: this.resource.baseUrl ? this.resource.baseUrl + prefix : prefix || "/",
-      }));
+      // Each route is documented at its full `mount-prefix + path` (see
+      // http-api-controller), so the server is a single origin, not one entry per
+      // mount. Server URL precedence: an explicit `baseUrl` is an absolute, fixed
+      // override; otherwise the URL is relative (`/`) so the doc is correct behind
+      // any proxy/ingress/origin — the client resolves it against wherever the
+      // reference was loaded.
+      const servers = [{ url: this.resource.baseUrl ?? "/" }];
       await this.app.register(swagger, {
         openapi: {
           openapi: "3.0.0",
@@ -216,9 +218,7 @@ class HttpServer implements ResourceInstance {
           try {
             const doc = JSON.parse(text);
             if (doc && typeof doc === "object" && Array.isArray(doc.servers)) {
-              doc.servers = prefixes.map((prefix) => ({
-                url: `${request.protocol}://${request.host}${prefix}`,
-              }));
+              doc.servers = [{ url: `${request.protocol}://${request.host}` }];
               const out = JSON.stringify(doc);
               reply.header("content-length", Buffer.byteLength(out));
               return out;

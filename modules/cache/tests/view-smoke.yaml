@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: CacheViewSmokeTest
+  version: 1.0.0
+  description: |
+    Cache.View read-through: first lookup misses and loads from the wrapped
+    target (state=miss), the second is served from cache (state=fresh) with the
+    same value.
+imports:
+  Cache: ../
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+# Wrapped source-of-truth: echoes a value derived from the cache key.
+kind: Run.Value
+metadata: { name: Loader }
+inputs:
+  key: { type: string }
+value:
+  source: !cel "'value-for-' + inputs.key"
+---
+kind: Cache.View
+metadata: { name: V }
+store: !ref Mem
+invoke: !ref Loader
+ttl: "60s"
+revalidate: sync
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: first
+    invoke: !ref V
+    inputs:
+      key: "k1"
+  - name: assertMiss
+    inputs:
+      state: "${{ steps.first.result.state }}"
+      source: "${{ steps.first.result.value.source }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state, source]
+        properties:
+          state: { const: "miss" }
+          source: { const: "value-for-k1" }
+  - name: second
+    invoke: !ref V
+    inputs:
+      key: "k1"
+  - name: assertFresh
+    inputs:
+      state: "${{ steps.second.result.state }}"
+      source: "${{ steps.second.result.value.source }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [state, source]
+        properties:
+          state: { const: "fresh" }
+          source: { const: "value-for-k1" }

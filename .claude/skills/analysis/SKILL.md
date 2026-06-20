@@ -7,24 +7,18 @@ Do NOT modify any files. This is a read-only analysis task.
 
 ## Step 1: Analyze
 
-Use the Agent tool to spawn the `analyst` agent with the following prompt:
-
-> Analyze this problem for the Telo declarative runtime: $ARGUMENTS
+Rules:
+- Disregard existing implementation. Treat the system as if it could be rewritten from scratch.
+- Think from first principles. What is the ideal design given the system's goals and constraints?
+- Be concrete. Propose specific data structures, interfaces, control flow, and resource interactions.
+- Consider trade-offs. Present the recommended approach alongside alternatives you considered.
 >
-> Rules:
-> - Disregard existing implementation. Treat the system as if it could be rewritten from scratch.
-> - Think from first principles. What is the ideal design given the system's goals and constraints?
-> - Be concrete. Propose specific data structures, interfaces, control flow, and resource interactions.
-> - Consider trade-offs. Present the recommended approach alongside alternatives you considered.
->
-> Structure your response as:
-> 1. **Problem definition** — restate the problem, identify core requirements and constraints
-> 2. **Ideal architecture** — key abstractions, data/control flow, interfaces, integration with the kernel lifecycle (init loop, CEL evaluation, controllers, capabilities)
-> 3. **Trade-offs considered** — alternative designs and why the proposed approach is better
-> 4. **Impact surface** — which parts of the system this touches
-> 5. **Open questions** — decisions that need user input
->
-> Read CLAUDE.md for architectural context.
+Structure your response as:
+1. **Problem definition** — restate the problem, identify core requirements and constraints
+2. **Ideal architecture** — key abstractions, data/control flow, interfaces, integration with the kernel lifecycle (init loop, CEL evaluation, controllers, capabilities)
+3. **Trade-offs considered** — alternative designs and why the proposed approach is better
+4. **Impact surface** — which parts of the system this touches
+5. **Open questions** — decisions that need user input
 
 ## Step 2: Review
 
