@@ -5,10 +5,11 @@ metadata:
   description: |
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
 imports:
-  Http: std/http-server@0.12.1
-  Sql: std/sql@0.9.2
-  SqlRepository: std/sql-repository@0.3.0
-  Run: std/run@0.10.0
+  Http: std/http-server@0.15.0
+  Sql: std/sql@0.10.0
+  SqlSqlite: std/sql-sqlite@0.2.0
+  SqlRepository: std/sql-repository@0.4.0
+  Run: std/run@0.11.0
 targets:
   - !ref SetupDb
   - !ref Server
@@ -17,10 +18,10 @@ ports:
     env: PORT
     default: 8844
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
-connectionString: sqlite:./tmp/feedback-repo.db
+file: ./tmp/feedback-repo.db
 ---
 kind: SqlRepository.Create
 metadata:
@@ -46,10 +47,8 @@ metadata:
 steps:
   - name: CreateTable
     invoke:
-      kind: Sql.Exec
-      connection:
-        kind: Sql.Connection
-        name: Db
+      kind: Sql.Command
+      connection: !ref Db
     inputs:
       sql: |
         CREATE TABLE IF NOT EXISTS feedback (

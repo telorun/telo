@@ -8,7 +8,14 @@ export function openDatabase(file: string): SqliteDb {
     prepare(sql: string) {
       const stmt = db.prepare(sql);
       return {
-        reader: true,
+        // A statement is a reader iff it yields a result set. bun:sqlite has no
+        // `reader` flag (better-sqlite3 does), so derive it from the output
+        // columns: SELECT and `... RETURNING` expose column names, plain
+        // INSERT/UPDATE/DELETE expose none. Kysely routes readers through
+        // `all()` and everything else through `run()` — getting this wrong sent
+        // every mutation down the `all()` path, so `numAffectedRows` was never
+        // reported (rowCount always 0).
+        reader: stmt.columnNames.length > 0,
         all(params: ReadonlyArray<unknown>) {
           return stmt.all(...(params as any[]));
         },

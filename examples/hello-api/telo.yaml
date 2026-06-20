@@ -1,20 +1,39 @@
-kind: Telo.Library
+kind: Telo.Application
 metadata:
-  name: templated-server
+  name: HelloApiExample
   version: 1.0.0
   description: |
-    Reusable Telo.Library that defines a single `HelloApi` (`Http.Api`) plus
-    the `SayHello` script it dispatches to. Importers receive `HelloApi`
-    under their chosen alias and can mount it on any `Http.Server`. Paired
-    with `templated-api-usage.yaml`, which mounts the same library twice
-    under `/v1` and `/v2` to show import + mount reuse.
+    Simplest possible HTTP API: a single `GET /v1/hello?name=…` route backed
+    by a typed `JS.Script`. Shows how `Http.Server` mounts an `Http.Api`, how
+    the request schema feeds a CEL expression on `inputs`, and how the
+    script's output flows into the response body via `result.*`.
+
+    Run, then:
+        curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Type: std/type@0.4.0
-  Http: std/http-server@0.12.0
-  JavaScript: std/javascript@0.5.0
-exports:
-  resources:
-    - HelloApi
+  Type: std/type@0.5.0
+  Http: std/http-server@0.15.0
+  JS: std/javascript@0.5.0
+targets:
+  - !ref ExampleServer
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8845
+---
+kind: Http.Server
+metadata:
+  name: ExampleServer
+port: !cel "ports.http"
+logger: true
+openapi:
+  info:
+    title: Hello server
+    version: 1.0.0
+mounts:
+  - path: /v1
+    mount: !ref HelloApi
 ---
 kind: Http.Api
 metadata:
@@ -48,7 +67,7 @@ routes:
               greeting: "${{ result.message }}!"
               nice: "WOW"
 ---
-kind: JavaScript.Script
+kind: JS.Script
 metadata:
   name: SayHello
 code: |
@@ -69,4 +88,3 @@ outputType:
     type: object
     properties:
       message: { type: string }
----

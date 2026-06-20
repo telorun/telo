@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: SqliteCommandRowCount
+  version: 1.0.0
+  description: |
+    Regression: Sql.Command must report the number of affected rows for plain
+    INSERT/UPDATE/DELETE (no RETURNING). The bun:sqlite driver previously
+    hardcoded statements as readers, so Kysely never collected numAffectedRows
+    and rowCount was always 0 even though the mutation ran.
+imports:
+  Sql: ../../sql
+  SqlSqlite: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: Db
+file: ":memory:"
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Create
+    inputs:
+      sql: "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: Insert
+    inputs:
+      sql: "INSERT INTO t (id, v) VALUES (?, ?)"
+      bindings: [ !cel "1", !cel "'a'" ]
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: Insert2
+    inputs:
+      sql: "INSERT INTO t (id, v) VALUES (?, ?)"
+      bindings: [ !cel "2", !cel "'b'" ]
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: UpdateAll
+    inputs:
+      sql: "UPDATE t SET v = 'x'"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: DeleteOne
+    inputs:
+      sql: "DELETE FROM t WHERE id = ?"
+      bindings: [ !cel "2" ]
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: DeleteMissing
+    inputs:
+      sql: "DELETE FROM t WHERE id = ?"
+      bindings: [ !cel "999" ]
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: Assert
+    inputs:
+      insert: "${{ steps.Insert.result.rowCount }}"
+      updateAll: "${{ steps.UpdateAll.result.rowCount }}"
+      deleteOne: "${{ steps.DeleteOne.result.rowCount }}"
+      deleteMissing: "${{ steps.DeleteMissing.result.rowCount }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          insert: { const: 1 }
+          updateAll: { const: 2 }
+          deleteOne: { const: 1 }
+          deleteMissing: { const: 0 }
+        required: [ insert, updateAll, deleteOne, deleteMissing ]

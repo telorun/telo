@@ -118,6 +118,7 @@ function formatEnvPrefix(bindings: ReadonlyArray<EnvBinding>): string {
   return bindings.map((b) => `${b.envKey}=${shellQuote(b.value)}`).join(" ") + " ";
 }
 
+/** Flat scan: every `*.yaml` directly inside `dir` (used for aws/lambda). */
 function scanDirectory(dir: string): ExampleEntry[] {
   if (!fs.existsSync(dir)) return [];
   const entries: ExampleEntry[] = [];
@@ -125,6 +126,21 @@ function scanDirectory(dir: string): ExampleEntry[] {
     if (!name.endsWith(".yaml")) continue;
     const abs = path.join(dir, name);
     const entry = readExampleMetadata(abs);
+    if (entry) entries.push(entry);
+  }
+  return entries;
+}
+
+/** Each example is its own directory with a `telo.yaml` entry point
+ * (`examples/<name>/telo.yaml`). Scan the immediate subdirectories and read
+ * each one's `telo.yaml`. */
+function scanExampleDirectories(root: string): ExampleEntry[] {
+  if (!fs.existsSync(root)) return [];
+  const entries: ExampleEntry[] = [];
+  for (const name of fs.readdirSync(root).sort()) {
+    const manifest = path.join(root, name, "telo.yaml");
+    if (!fs.statSync(path.join(root, name)).isDirectory() || !fs.existsSync(manifest)) continue;
+    const entry = readExampleMetadata(manifest);
     if (entry) entries.push(entry);
   }
   return entries;
@@ -150,7 +166,7 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
 }
 
 export function generateExamplesIndex(examplesRoot: string, outFile: string): void {
-  const topLevel = scanDirectory(examplesRoot);
+  const topLevel = scanExampleDirectories(examplesRoot);
 
   const sections: string[] = [
     "---",

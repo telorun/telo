@@ -15,19 +15,19 @@
 # Run it (needs a vision-capable OpenAI model and an S3-compatible store, e.g. MinIO):
 #   OPENAI_API_KEY=sk-...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...  \
 #   S3_ENDPOINT=http://localhost:9000  S3_BUCKET=telo-draw  \
-#   pnpm run telo ./examples/draw-shapes-agent.yaml
+#   pnpm run telo ./examples/draw-shapes-agent
 kind: Telo.Application
 metadata:
   name: DrawShapesAgent
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: std/http-server@0.12.0
+  Http: std/http-server@0.15.0
   Ai: std/ai@0.7.0
   AiOpenai: std/ai-openai@0.8.0
   Image: std/image@0.2.0
   S3: std/s3@0.6.0
-  Run: std/run@0.10.0
+  Run: std/run@0.11.0
   Js: std/javascript@0.5.0
 targets:
   - !ref Server

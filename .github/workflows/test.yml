@@ -80,7 +80,7 @@ jobs:
         run: pnpm run check modules/*/telo.yaml
 
       - name: Check example manifests
-        run: pnpm run check examples/*.yaml
+        run: pnpm run check examples/*/telo.yaml
 
   bun:
     name: Run telo manifest tests (Bun)
@@ -235,7 +235,7 @@ jobs:
       - name: Run remote manifest over raw.githubusercontent.com
         run: |
           set -euo pipefail
-          URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world.yaml"
+          URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world/telo.yaml"
           # raw.githubusercontent.com's CDN lags behind the pushed commit, so
           # the SHA-pinned URL 404s for a short while. Poll until it serves.
           for attempt in $(seq 1 30); do
