@@ -1,0 +1,57 @@
+kind: Telo.Library
+metadata:
+  name: embedding-openai
+  namespace: std
+  version: 0.1.0
+  description: |
+    EmbeddingOpenai.Model — OpenAI-compatible backend for the Embedding.Model
+    abstract. Speaks the OpenAI /embeddings HTTP API directly (no vendor SDK),
+    so the same controller serves OpenAI plus every OpenAI-compatible endpoint
+    via baseUrl. OpenAI embeddings are symmetric, so the query / passage intent
+    is accepted and ignored.
+imports:
+  Embedding: ../embedding
+exports:
+  kinds:
+    - Model
+---
+kind: Telo.Definition
+metadata:
+  name: Model
+capability: Telo.Provider
+extends: Embedding.Model
+controllers:
+  - pkg:npm/@telorun/embedding-openai@0.1.0?local_path=./nodejs#model
+schema:
+  type: object
+  required: [model, apiKey]
+  additionalProperties: false
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI embedding model identifier (e.g. text-embedding-3-small).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    dimensions:
+      title: Dimensions
+      description: Output dimensionality. v3 models support truncating to fewer dimensions.
+      type: integer
+      minimum: 1
+    options:
+      title: Options
+      description: Extra request params merged into the /embeddings body; per-call options win.
+      type: object
+      additionalProperties: true
+  examples:
+    - model: text-embedding-3-small
+      apiKey: "${{ secrets.openaiApiKey }}"
+      dimensions: 1536

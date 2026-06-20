@@ -98,6 +98,20 @@ projects:
       - path: modules/console/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: embedding
+    key: embedding
+    changelog: modules/embedding/CHANGELOG.md
+    replacements:
+      - path: modules/embedding/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: embedding-openai
+    key: embedding-openai
+    changelog: modules/embedding-openai/CHANGELOG.md
+    replacements:
+      - path: modules/embedding-openai/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: gzip
     key: gzip
     changelog: modules/gzip/CHANGELOG.md

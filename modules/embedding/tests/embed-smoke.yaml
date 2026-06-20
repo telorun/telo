@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: EmbeddingSmokeTest
+  version: 1.0.0
+  description: |
+    Embeds text via Embedding.Query and Embedding.Passage against a deterministic
+    offline model. Asserts vector dimensions, batch order, and that the query and
+    passage intents produce different vectors for the same text.
+imports:
+  Embedding: ../
+  FakeEmbedding: ./__fixtures__/fake-embedding
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: FakeEmbedding.Model
+metadata: { name: Model }
+dimensions: 8
+---
+kind: Embedding.Query
+metadata: { name: QueryVector }
+model: !ref Model
+---
+kind: Embedding.Passage
+metadata: { name: PassageVector }
+model: !ref Model
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: query
+    invoke: !ref QueryVector
+    inputs:
+      input: "telo"
+  - name: assertQuery
+    inputs:
+      dimensions: "${{ steps.query.result.dimensions }}"
+      embeddings: "${{ steps.query.result.embeddings }}"
+      head: "${{ steps.query.result.embeddings[0][0] }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [dimensions, embeddings, head]
+        properties:
+          dimensions: { const: 8 }
+          embeddings:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: array
+              minItems: 8
+              maxItems: 8
+          head: { const: 116 }
+  - name: passage
+    invoke: !ref PassageVector
+    inputs:
+      input: ["telo", "run"]
+  - name: assertPassage
+    inputs:
+      embeddings: "${{ steps.passage.result.embeddings }}"
+      head: "${{ steps.passage.result.embeddings[0][0] }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        required: [embeddings, head]
+        properties:
+          embeddings:
+            type: array
+            minItems: 2
+            maxItems: 2
+          head: { const: 232 }

@@ -1,0 +1,150 @@
+kind: Telo.Library
+metadata:
+  name: embedding
+  namespace: std
+  version: 0.1.0
+  description: |
+    The Embedding.Model abstract — a backend-pluggable text embedding model —
+    plus the Query / Passage invocables that turn text into vectors. Asymmetric
+    retrieval models embed a search query differently from a stored passage;
+    the two kinds make that intent structural. Backend implementations
+    (embedding-openai, …) live in their own modules and extend Model, mirroring
+    the cache / cache-memory family.
+exports:
+  kinds:
+    - Model
+    - Query
+    - Passage
+---
+# Embedding.Model — the abstract model every embedding backend implements. A
+# Telo.Provider: a configured model, NOT an operation you invoke. Consumers
+# (Embedding.Query / Embedding.Passage) reference it via
+# `x-telo-ref: "std/embedding#Model"`; a concrete implementation
+# (EmbeddingOpenai.Model, …) satisfies the ref.
+kind: Telo.Abstract
+metadata:
+  name: Model
+capability: Telo.Provider
+---
+# Embedding.Query — embeds search queries. The controller passes the retrieval
+# intent `query` to the backend (mapped to the vendor's search_query /
+# RETRIEVAL_QUERY parameter); symmetric backends ignore it. Identical in shape
+# to Embedding.Passage — only the baked-in intent differs.
+kind: Telo.Definition
+metadata:
+  name: Query
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/embedding@0.1.0?local_path=./nodejs#query
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [input]
+    additionalProperties: false
+    properties:
+      input:
+        description: A single query, or a batch of queries, to embed.
+        oneOf:
+          - type: string
+          - type: array
+            minItems: 1
+            items: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [embeddings, dimensions, usage]
+    additionalProperties: false
+    properties:
+      embeddings:
+        description: One vector per input, in input order.
+        type: array
+        items: { type: array, items: { type: number } }
+      dimensions:
+        type: integer
+        minimum: 1
+      usage:
+        type: object
+        required: [promptTokens, totalTokens]
+        additionalProperties: false
+        properties:
+          promptTokens: { type: integer, minimum: 0 }
+          totalTokens: { type: integer, minimum: 0 }
+schema:
+  type: object
+  required: [model]
+  additionalProperties: false
+  properties:
+    model:
+      title: Model
+      description: Reference to any Embedding.Model implementation.
+      x-telo-ref: "std/embedding#Model"
+    options:
+      title: Options
+      description: Provider-specific per-call options.
+      type: object
+      additionalProperties: true
+  examples:
+    - model: !ref textEmbedding
+---
+# Embedding.Passage — embeds stored passages (the chunks you index).
+# Structurally identical to Embedding.Query; the controller passes the intent
+# `passage` (mapped to the vendor's search_document / RETRIEVAL_DOCUMENT).
+kind: Telo.Definition
+metadata:
+  name: Passage
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/embedding@0.1.0?local_path=./nodejs#passage
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [input]
+    additionalProperties: false
+    properties:
+      input:
+        description: A single passage, or a batch of passages, to embed.
+        oneOf:
+          - type: string
+          - type: array
+            minItems: 1
+            items: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [embeddings, dimensions, usage]
+    additionalProperties: false
+    properties:
+      embeddings:
+        description: One vector per input, in input order.
+        type: array
+        items: { type: array, items: { type: number } }
+      dimensions:
+        type: integer
+        minimum: 1
+      usage:
+        type: object
+        required: [promptTokens, totalTokens]
+        additionalProperties: false
+        properties:
+          promptTokens: { type: integer, minimum: 0 }
+          totalTokens: { type: integer, minimum: 0 }
+schema:
+  type: object
+  required: [model]
+  additionalProperties: false
+  properties:
+    model:
+      title: Model
+      description: Reference to any Embedding.Model implementation.
+      x-telo-ref: "std/embedding#Model"
+    options:
+      title: Options
+      description: Provider-specific per-call options.
+      type: object
+      additionalProperties: true
+  examples:
+    - model: !ref textEmbedding

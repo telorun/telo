@@ -182,6 +182,39 @@ const sidebars: SidebarsConfig = {
                     },
                   ],
                 },
+                {
+                  type: "category",
+                  label: "Embeddings",
+                  items: [
+                    { type: "doc", id: "modules/embedding/README", label: "Overview" },
+                    {
+                      type: "doc",
+                      id: "modules/embedding/docs/embedding-model",
+                      label: "Embedding.Model",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/embedding/docs/embedding-query",
+                      label: "Embedding.Query",
+                    },
+                    {
+                      type: "doc",
+                      id: "modules/embedding/docs/embedding-passage",
+                      label: "Embedding.Passage",
+                    },
+                    {
+                      type: "category",
+                      label: "Providers",
+                      items: [
+                        {
+                          type: "doc",
+                          id: "modules/embedding-openai/docs/embedding-openai-model",
+                          label: "EmbeddingOpenai.Model",
+                        },
+                      ],
+                    },
+                  ],
+                },
               ],
             },
             {
