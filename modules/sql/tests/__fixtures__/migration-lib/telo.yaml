@@ -4,10 +4,11 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../../
+  SqlSqlite: ../../../../sql-sqlite
 exports:
   resources: [ Db, Migrate ]
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: ":memory:"

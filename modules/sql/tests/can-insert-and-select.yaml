@@ -4,12 +4,13 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../
+  SqlSqlite: ../../sql-sqlite
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestInsertAndSelect
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: ":memory:"
@@ -22,14 +23,14 @@ steps:
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       connection: !ref Db
 
   - name: InsertRow
     inputs:
       sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       connection: !ref Db
 
   - name: SelectRow

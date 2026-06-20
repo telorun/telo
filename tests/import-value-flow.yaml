@@ -1,6 +1,6 @@
 # Config flows app -> mid -> data (leaf) through two nested import hops. The
 # app->mid hop forwards via the `!cel` form, the mid->data hop via `${{ }}` —
-# both reach the leaf's Sql.SqliteConnection as a concrete string. Before the
+# both reach the leaf's SqlSqlite.Connection as a concrete string. Before the
 # fix the CEL hop was baked verbatim as a compiled-value object and crashed the
 # connection. `:memory:` keeps it hermetic; the forwarding hops are still CEL, so
 # the bug is exercised. `Mid.Db`/`Mid.Migrate` are re-exported from data, proving

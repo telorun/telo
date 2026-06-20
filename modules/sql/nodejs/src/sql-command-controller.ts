@@ -5,7 +5,7 @@ import type { SqlResult } from "./sql-query-controller.js";
 import { runSql } from "./sql-run.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
-interface SqlExecManifest {
+interface SqlCommandManifest {
   metadata: { name: string; module: string };
   connection?: SqlConnectionResource;
   transaction?: SqlTransactionResource;
@@ -15,9 +15,9 @@ interface SqlExecManifest {
   };
 }
 
-class SqlExecResource implements ResourceInstance {
+class SqlCommandResource implements ResourceInstance {
   constructor(
-    private readonly manifest: SqlExecManifest,
+    private readonly manifest: SqlCommandManifest,
     private readonly ctx: ResourceContext,
   ) {}
 
@@ -38,8 +38,8 @@ class SqlExecResource implements ResourceInstance {
 export function register(): void {}
 
 export async function create(
-  resource: SqlExecManifest,
+  resource: SqlCommandManifest,
   ctx: ResourceContext,
-): Promise<SqlExecResource> {
-  return new SqlExecResource(resource, ctx);
+): Promise<SqlCommandResource> {
+  return new SqlCommandResource(resource, ctx);
 }

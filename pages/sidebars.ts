@@ -295,7 +295,9 @@ const sidebars: SidebarsConfig = {
                   label: "SQL",
                   items: [
                     { type: "doc", id: "modules/sql/README", label: "Overview" },
-                    { type: "doc", id: "modules/sql/select", label: "Sql.Select" },
+                    { type: "doc", id: "modules/sql/selection", label: "Sql.Selection" },
+                    { type: "doc", id: "modules/sql-postgres/README", label: "SQL Postgres" },
+                    { type: "doc", id: "modules/sql-sqlite/README", label: "SQL SQLite" },
                   ],
                 },
                 { type: "doc", id: "modules/sql-repository/README", label: "SQL Repository" },

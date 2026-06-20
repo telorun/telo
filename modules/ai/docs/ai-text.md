@@ -101,7 +101,7 @@ steps:
     inputs:
       summary: "${{ steps.Summarize.result.text }}"
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       connection: !ref Db
       inputs:
         sql: "INSERT INTO summaries (text) VALUES (?)"

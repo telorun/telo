@@ -932,17 +932,42 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  modules/sql/nodejs:
+  modules/sql-postgres/nodejs:
     dependencies:
-      better-sqlite3:
-        specifier: ^12.8.0
-        version: 12.8.0
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
       kysely:
         specifier: ^0.28.15
         version: 0.28.15
       pg:
         specifier: ^8.20.0
         version: 8.20.0
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      '@types/pg':
+        specifier: ^8.0.0
+        version: 8.18.0
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/sql-sqlite/nodejs:
+    dependencies:
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
+      better-sqlite3:
+        specifier: ^12.8.0
+        version: 12.8.0
+      kysely:
+        specifier: ^0.28.15
+        version: 0.28.15
     devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
@@ -956,9 +981,22 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
-      '@types/pg':
-        specifier: ^8.0.0
-        version: 8.18.0
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/sql/nodejs:
+    dependencies:
+      kysely:
+        specifier: ^0.28.15
+        version: 0.28.15
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
       typescript:
         specifier: ^5.0.0
         version: 5.9.3

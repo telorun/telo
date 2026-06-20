@@ -21,34 +21,35 @@
     "url": "https://github.com/telorun/telo/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    "./sql-postgres-connection": {
-      "bun": "./src/sql-postgres-connection-controller.ts",
-      "import": "./dist/sql-postgres-connection-controller.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
     },
-    "./sql-sqlite-connection": {
-      "bun": "./src/sql-sqlite-connection-controller.ts",
-      "import": "./dist/sql-sqlite-connection-controller.js"
+    "./connection": {
+      "types": "./dist/sql-connection-controller.d.ts",
+      "bun": "./src/sql-connection-controller.ts",
+      "import": "./dist/sql-connection-controller.js"
     },
     "./sql-query": {
       "bun": "./src/sql-query-controller.ts",
       "import": "./dist/sql-query-controller.js"
     },
-    "./sql-select": {
-      "bun": "./src/sql-select-controller.ts",
-      "import": "./dist/sql-select-controller.js"
+    "./sql-selection": {
+      "bun": "./src/sql-selection-controller.ts",
+      "import": "./dist/sql-selection-controller.js"
     },
-    "./sql-exec": {
-      "bun": "./src/sql-exec-controller.ts",
-      "import": "./dist/sql-exec-controller.js"
+    "./sql-command": {
+      "bun": "./src/sql-command-controller.ts",
+      "import": "./dist/sql-command-controller.js"
     },
     "./sql-transaction": {
       "bun": "./src/sql-transaction-controller.ts",
       "import": "./dist/sql-transaction-controller.js"
-    },
-    "./sqlite-driver": {
-      "bun": "./src/sqlite-driver-bun.ts",
-      "import": "./dist/sqlite-driver-node.js"
     },
     "./sql-migration": {
       "bun": "./src/sql-migration-controller.ts",
@@ -69,16 +70,11 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "better-sqlite3": "^12.8.0",
-    "pg": "^8.20.0",
     "kysely": "^0.28.15"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
-    "@types/better-sqlite3": "^7.0.0",
-    "@types/bun": "^1.3.10",
     "@types/node": "^20.0.0",
-    "@types/pg": "^8.0.0",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {

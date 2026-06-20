@@ -1,19 +1,19 @@
 ---
-description: "Sql.Select: declarative SELECT builder with columns, filters, ordering, pagination, and aggregates without raw SQL strings"
+description: "Sql.Selection: declarative SELECT builder with columns, filters, ordering, pagination, and aggregates without raw SQL strings"
 ---
 
-# Sql.Select
+# Sql.Selection
 
 A declarative `SELECT` builder. Expresses query structure as data — columns, filters, ordering, pagination — without writing SQL strings.
 
-Use `Sql.Query` for JOINs, CTEs, subqueries, or anything else that doesn't fit here. For everything else, `Sql.Select` is safer and clearer.
+Use `Sql.Query` for JOINs, CTEs, subqueries, or anything else that doesn't fit here. For everything else, `Sql.Selection` is safer and clearer.
 
 ---
 
 ## Basic example
 
 ```yaml
-kind: Sql.Select
+kind: Sql.Selection
 metadata:
   name: GetUsers
 connection:
@@ -229,7 +229,7 @@ offset: "${{ inputs.offset ?? 0 }}"
 ## Full example — module search
 
 ```yaml
-kind: Sql.Select
+kind: Sql.Selection
 metadata:
   name: SearchModules
 connection:
@@ -270,7 +270,7 @@ Calling it from an HTTP route:
     path: /search
     method: GET
   handler:
-    kind: Sql.Select
+    kind: Sql.Selection
     name: SearchModules
   inputs:
     q: "${{ request.query.q ?? '' }}"
@@ -300,4 +300,4 @@ Same as `Sql.Query`:
 
 ## Connection and transaction
 
-`Sql.Select` accepts the same `connection` and `transaction` references as `Sql.Query`. If both are present, `transaction` takes precedence. Transactions propagated via `AsyncLocalStorage` (from a wrapping `Sql.Transaction`) are also picked up automatically.
+`Sql.Selection` accepts the same `connection` and `transaction` references as `Sql.Query`. If both are present, `transaction` takes precedence. Transactions propagated via `AsyncLocalStorage` (from a wrapping `Sql.Transaction`) are also picked up automatically.

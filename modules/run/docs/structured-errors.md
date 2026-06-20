@@ -42,7 +42,7 @@ steps:
     catch:
       # Log the failure before re-raising. Plain errors rethrow too.
       - name: audit
-        invoke: { kind: Sql.Exec, connection: { kind: Sql.Connection, name: Db } }
+        invoke: { kind: Sql.Command, connection: { kind: Sql.Connection, name: Db } }
         inputs:
           sql: "INSERT INTO publish_failures (code, message, data, step) VALUES ($1, $2, $3, $4)"
           bindings:

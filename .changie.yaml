@@ -245,11 +245,25 @@ projects:
       - path: modules/sql/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: sql-postgres
+    key: sql-postgres
+    changelog: modules/sql-postgres/CHANGELOG.md
+    replacements:
+      - path: modules/sql-postgres/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: sql-repository
     key: sql-repository
     changelog: modules/sql-repository/CHANGELOG.md
     replacements:
       - path: modules/sql-repository/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: sql-sqlite
+    key: sql-sqlite
+    changelog: modules/sql-sqlite/CHANGELOG.md
+    replacements:
+      - path: modules/sql-sqlite/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
   - label: sse-codec

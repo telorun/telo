@@ -30,7 +30,7 @@ backend:
 nodes:
   - name: createRecord
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       name: InsertUser
   - name: sendWelcomeEmail
     invoke:
