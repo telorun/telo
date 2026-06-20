@@ -87,7 +87,7 @@ export class HttpServerApi implements ResourceInstance {
     const handlerRef = this.handlerRefs.get(route as unknown as object);
     const handlerKind = handlerRef?.kind ?? "";
     const handlerName = handlerRef?.name ?? "";
-    const translatedPath = prefix + translateOpenApiPath(route.request.path);
+    const translatedPath = joinMountPath(prefix, translateOpenApiPath(route.request.path));
 
     const schema: any = { response: {} };
 
@@ -267,6 +267,15 @@ function translateOpenApiPath(openApiPath: string): string {
 function normalizeMountPrefix(prefix: string): string {
   if (!prefix || prefix === "/") return "";
   return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+}
+
+/** Join a normalized mount prefix with a translated route path. A collection
+ *  route declared at `/` sits at the mount root itself (`/todos` + `/` → `/todos`),
+ *  not a trailing-slash variant Fastify would treat as a distinct, unmatched URL.
+ *  An empty prefix (root mount) keeps `/`. */
+function joinMountPath(prefix: string, path: string): string {
+  if (path === "/") return prefix || "/";
+  return prefix + path;
 }
 
 /**

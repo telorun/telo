@@ -4,6 +4,8 @@ metadata:
   namespace: std
   version: 0.4.0
   description: Named CRUD handlers that generate SQL from domain operations
+imports:
+  Sql: ../sql
 ---
 kind: Telo.Definition
 metadata:
@@ -65,10 +67,10 @@ resources:
     metadata:
       name: "${{ self.name }}-exec"
     connection: "${{ self.connection }}"
-    inputs:
-      sql: "${{ 'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')' }}"
-      bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) }}"
 invoke: "${{ self.name }}-exec"
+inputs:
+  sql: "${{ 'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')' }}"
+  bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) }}"
 
 ---
 kind: Telo.Definition
@@ -97,7 +99,39 @@ resources:
     metadata:
       name: "${{ self.name }}-exec"
     connection: "${{ self.connection }}"
-    inputs:
-      sql: "${{ 'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
-      bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
 invoke: "${{ self.name }}-exec"
+inputs:
+  sql: "${{ 'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
+  bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
+
+---
+kind: Telo.Definition
+metadata:
+  name: Update
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [connection, table]
+  examples:
+    - connection:
+        kind: SqlSqlite.Connection
+        name: Db
+      table: users
+  properties:
+    connection:
+      title: Connection
+      description: Reference to the SQL connection resource.
+      x-telo-ref: "std/sql#Connection"
+    table:
+      title: Table
+      description: Database table name.
+      type: string
+resources:
+  - kind: Sql.Command
+    metadata:
+      name: "${{ self.name }}-exec"
+    connection: "${{ self.connection }}"
+invoke: "${{ self.name }}-exec"
+inputs:
+  sql: "${{ 'UPDATE ' + self.table + ' SET ' + join(keys(inputs.data).map(k, k + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
+  bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k]) }}"

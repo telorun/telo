@@ -11,6 +11,12 @@ export interface CompiledValue {
    *  that need each interpolation as a separate value (e.g. SQL bind
    *  parameters) read this instead of the joined `call()` result. */
   readonly parts?: ReadonlyArray<string | CompiledValue>;
+  /** Root variable identifiers the expression reads, extracted from the CEL AST
+   *  at compile time (e.g. `["self", "request"]` for
+   *  `self.table + request.id`). Lets consumers decide what scope an expression
+   *  needs without re-parsing or string-matching the source. Absent for engines
+   *  that don't surface an AST. */
+  readonly refs?: readonly string[];
   call(ctx: Record<string, unknown>): unknown;
 }
 

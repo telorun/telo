@@ -1,18 +1,49 @@
-import type { ControllerInstance, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type {
+  CompiledValue,
+  ControllerInstance,
+  EvaluationContext,
+  ResourceContext,
+  ResourceInstance,
+} from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
+import { isRefSentinel } from "@telorun/templating";
+
+/** CEL variables that are only bound at call time (request handling, step
+ *  chaining, error branches) — never at a template's init(). A persistent
+ *  child's body is expanded against `self` only, so a `${{ }}` node referencing
+ *  any of these must survive untouched for the consuming controller (e.g. an
+ *  Http.Api evaluating route CEL per request) to evaluate later. A node mixing
+ *  `self` with a deferred variable in one expression is unsupported by design —
+ *  keep `self`-derived literals and request-derived values in separate fields
+ *  (e.g. a `self`-built SQL string vs. request-built `bindings`). */
+const DEFERRED_VARS = new Set(["request", "result", "steps", "error"]);
+const DEFERRED_RE = new RegExp(`(?<![.\\w])(?:${[...DEFERRED_VARS].join("|")})(?![\\w])`);
+
+/** True when an expression reads a call-time-only variable. Prefers the AST-
+ *  derived root identifiers stamped on the CompiledValue at compile time (exact —
+ *  ignores string literals and substrings); falls back to a source-text scan for
+ *  values produced by engines that surface no AST. */
+function referencesDeferred(value: CompiledValue): boolean {
+  if (value.refs) return value.refs.some((r) => DEFERRED_VARS.has(r));
+  return typeof value.source === "string" && DEFERRED_RE.test(value.source);
+}
+
+/** Matches a CEL source that is exactly a `self.<path>` member access (capturing
+ *  the `.<path>` tail) — the form resolved by direct navigation rather than CEL. */
+const SELF_PATH = /^self((?:\.[A-Za-z_$][\w$]*)+)$/;
 
 /** Reports the resources: entries available to dispatch against, by expanded
  *  name and kind. Used in error messages to guide the developer back to the
  *  template's `resources:` array when a dispatch target doesn't match. */
 function describeAvailableTargets(
-  ctx: ResourceContext,
+  ctx: EvaluationContext,
   resources: any[] | undefined,
   self: Record<string, unknown>,
 ): string {
   if (!resources || resources.length === 0) return "<none>";
   return resources
     .map((r) => {
-      const expanded = ctx.moduleContext.expandWith(r?.metadata?.name ?? "", { self }) as string;
+      const expanded = ctx.expandWith(r?.metadata?.name ?? "", { self }) as string;
       const kind = typeof r?.kind === "string" ? r.kind : "<unknown-kind>";
       return `'${expanded || "<unnamed>"}' (${kind})`;
     })
@@ -25,201 +56,198 @@ export function createTemplateController(definition: {
   invoke?: string | { kind?: string; name: string };
   inputs?: Record<string, any>;
   run?: string;
+  mount?: string | { kind?: string; name: string };
   provide?: { kind: string; name: string };
   result?: Record<string, any>;
-}): ControllerInstance {
+}, definingContext: EvaluationContext): ControllerInstance {
   return {
     schema: definition.schema ?? { type: "object", additionalProperties: true },
 
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
-      const self = { ...resource, name: resource.metadata.name };
+      void ctx; // child scope is rooted on definingContext, not the instance's ctx
+      // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
+      // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
+      // init(), so capturing self here would freeze the pre-injection refs. Every
+      // expansion reads the current resource state instead.
+      const getSelf = () => ({ ...resource, name: resource.metadata.name });
 
-      // `invoke` describes the dispatch target: a string name template (legacy
-      // shorthand) or an object `{ kind?, name }` for explicit kind-typed
-      // dispatch. `inputs:` lives as a sibling on the definition (same shape
-      // as Run.Sequence steps) — the values passed to the dispatch target's
-      // invoke() after CEL expansion.
-      const objectInvoke =
-        definition.invoke !== null &&
-        typeof definition.invoke === "object" &&
-        !isCompiledValue(definition.invoke)
-          ? (definition.invoke as { kind?: string; name: string })
+      // A dispatch field names which `resources:` entry receives the call. It is
+      // a string name template (legacy shorthand) or an object `{ kind?, name }`
+      // for explicit kind-typed dispatch. Per-call data lives on the top-level
+      // `inputs:` sibling (same factoring as Run.Sequence steps), never in the
+      // target's resource body — the body is `self`-only so every child can be
+      // created once at init and reused across calls.
+      const targetName = (field: string | { kind?: string; name: string } | undefined): string | null => {
+        if (field == null) return null;
+        const nameTemplate =
+          typeof field === "object" && !isCompiledValue(field) ? field.name : field;
+        return nameTemplate
+          ? (definingContext.expandWith(nameTemplate, { self: getSelf() }) as string)
           : null;
-      const invokeNameTemplate = objectInvoke ? objectInvoke.name : (definition.invoke ?? null);
-      const invokeTarget = invokeNameTemplate
-        ? (ctx.moduleContext.expandWith(invokeNameTemplate, { self }) as string)
-        : null;
-      const runTarget = definition.run
-        ? (ctx.moduleContext.expandWith(definition.run, { self }) as string)
-        : null;
-      const provideTarget = definition.provide?.name
-        ? (ctx.moduleContext.expandWith(definition.provide.name, { self }) as string)
-        : null;
+      };
 
-      const persistentManifests: any[] = [];
-      let ephemeralTemplate: any = null;
+      const invokeTarget = targetName(definition.invoke);
+      const runTarget = targetName(definition.run);
+      const mountTarget = targetName(definition.mount);
+      const provideTarget = targetName(definition.provide);
 
+      const childContext = definingContext.spawnChildContext();
+
+      // Resolves the live instance of a dispatch target from the child context.
+      // Every `resources:` entry is a persistent child created once at init(),
+      // so the target is looked up — never re-created — per call.
+      const dispatchEntry = (target: string, role: string) => {
+        const entry = childContext.resourceInstances.get(target);
+        if (!entry) {
+          throw new Error(
+            `Template '${resource.metadata.name}': '${role}:' targets '${target}' ` +
+              `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(definingContext, definition.resources, getSelf())}.`,
+          );
+        }
+        return entry;
+      };
+
+      const capabilityError = (entry: any, target: string, role: string, expected: string): Error => {
+        const targetKind = (entry?.resource?.kind ?? "<unknown-kind>") as string;
+        const targetDef = definingContext.getDefinition?.(targetKind);
+        const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
+        return new Error(
+          `Template '${resource.metadata.name}': '${role}:' target '${targetKind}/${target}' ` +
+            `has capability '${actualCap}', not ${expected}. Update '${role}:' to a ${expected} kind, ` +
+            `or change the target's kind in 'resources:'.`,
+        );
+      };
+
+      const expand = (value: any, extra: Record<string, unknown>) =>
+        definingContext.expandWith(definingContext.expandWith(value, extra), extra);
+
+      // A local `!ref` inside a template body names a sibling `resources:` entry.
+      // The entry carries the kind, so resolve each sibling's expanded name to its
+      // kind — used to stamp the ref's `{kind, name}` injection shape (an empty
+      // kind is rejected downstream as a malformed inline resource).
+      const siblingKinds = new Map<string, string>();
       for (const template of definition.resources ?? []) {
-        const expandedName = ctx.moduleContext.expandWith(template.metadata?.name ?? "", {
-          self,
+        const expandedName = definingContext.expandWith(template?.metadata?.name ?? "", {
+          self: getSelf(),
         }) as string;
-        const isTarget =
-          expandedName === invokeTarget ||
-          expandedName === runTarget ||
-          expandedName === provideTarget;
-        if (isTarget) {
-          ephemeralTemplate = template;
-        } else {
-          persistentManifests.push(ctx.moduleContext.expandWith(template, { self }));
+        if (expandedName && typeof template?.kind === "string") {
+          siblingKinds.set(expandedName, template.kind);
         }
       }
 
-      const childContext = ctx.spawnChildContext();
-
-      // Registers an ephemeral manifest on ctx.moduleContext so it shares the same
-      // resource scope (and can access connections, etc. via getInstance).
-      // Tears down and removes the resource after fn() completes.
-      const withEphemeral = async (expandedManifest: any, fn: (name: string) => Promise<any>) => {
-        const uniqueName = `${expandedManifest.metadata?.name ?? "eph"}__${Math.random().toString(16).slice(2, 8)}`;
-        const manifest = {
-          ...expandedManifest,
-          metadata: {
-            ...expandedManifest.metadata,
-            name: uniqueName,
-            module: resource.metadata.module,
-          },
-        };
-        ctx.moduleContext.registerManifest(manifest);
-        await ctx.moduleContext.initializeResources();
-        const entry = ctx.moduleContext.resourceInstances.get(uniqueName);
-        try {
-          return await fn(uniqueName);
-        } finally {
-          if (entry?.instance?.teardown) await entry.instance.teardown();
-          ctx.moduleContext.resourceInstances.delete(uniqueName);
+      // Expand a persistent child's body against `self`. Self-only CEL resolves
+      // to literals now; CEL bound only at call time (DEFERRED_VARS) passes
+      // through compiled for the child's own controller. `!ref` sentinels are
+      // rewritten to the `{kind, name, alias?}` injection shape here — Phase 2.5
+      // (`resolveRefSentinels`) does not descend into template bodies, so the
+      // child context's Phase 5 injection would otherwise see an unrecognized
+      // sentinel and leave the slot unresolved. Kind is left empty: injection
+      // dispatches by name and recovers the kind from the resolved instance.
+      const expandSelf = (value: any): any => {
+        if (isCompiledValue(value)) {
+          if (referencesDeferred(value)) return value;
+          // A pure `self.<path>` access (e.g. a `connection: !ref` passed down) is
+          // resolved by navigating the resource directly. Going through CEL would
+          // re-emit the value through CEL's output type-checker, which rejects live
+          // resource instances (unrecognized class constructors) — so the connection
+          // a consumer wired in could never reach a child's slot. Complex self
+          // expressions (string building) still evaluate via CEL, where they yield
+          // CEL-safe scalars.
+          const path = typeof value.source === "string" ? value.source.trim().match(SELF_PATH) : null;
+          if (path) {
+            let cur: any = getSelf();
+            for (const key of path[1].split(".").slice(1)) cur = cur?.[key];
+            return cur;
+          }
+          return definingContext.expandWith(value, { self: getSelf() });
         }
+        if (isRefSentinel(value)) {
+          const source = value.source;
+          const dot = source.indexOf(".");
+          const alias = dot > 0 ? source.slice(0, dot) : undefined;
+          if (alias && alias !== "Self") {
+            const name = source.slice(dot + 1);
+            return { kind: siblingKinds.get(name) ?? "", name, alias };
+          }
+          const name = alias === "Self" ? source.slice(dot + 1) : source;
+          return { kind: siblingKinds.get(name) ?? "", name };
+        }
+        if (Array.isArray(value)) return value.map(expandSelf);
+        if (value !== null && typeof value === "object") {
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(value)) out[k] = expandSelf(v);
+          return out;
+        }
+        return value;
       };
+
+      // init() may run more than once: when a child's local ref names a sibling
+      // not yet initialized, child init defers with ERR_LOCAL_REF_PENDING and the
+      // outer multi-pass loop retries this resource. Registration must happen
+      // once; each retry only resumes the child init loop (already-initialized
+      // children are skipped, still-pending ones advance).
+      let registered = false;
 
       return {
         init: async () => {
-          for (const m of persistentManifests) childContext.registerManifest(m);
+          if (!registered) {
+            for (const template of definition.resources ?? []) {
+              childContext.registerManifest(expandSelf(template));
+            }
+            registered = true;
+          }
           await childContext.initializeResources();
         },
 
         ...(invokeTarget && {
           invoke: async (inputs: any) => {
-            if (!ephemeralTemplate) {
-              throw new Error(
-                `Template '${resource.metadata.name}': 'invoke:' targets '${invokeTarget}' ` +
-                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
-              );
+            const entry = dispatchEntry(invokeTarget, "invoke");
+            if (!entry.instance?.invoke) {
+              throw capabilityError(entry, invokeTarget, "invoke", "Telo.Invocable");
             }
-            const extraContext = { self, inputs };
-            const expanded = ctx.moduleContext.expandWith(
-              ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
-              extraContext,
-            ) as any;
-            return withEphemeral(expanded, async (name) => {
-              const entry = ctx.moduleContext.resourceInstances.get(name);
-              if (!entry?.instance?.invoke) {
-                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
-                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
-                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
-                throw new Error(
-                  `Template '${resource.metadata.name}': 'invoke:' target '${targetKind}/${invokeTarget}' ` +
-                    `has capability '${actualCap}', not Telo.Invocable. Update 'invoke:' to a Telo.Invocable kind, or change the target's kind in 'resources:'.`,
-                );
-              }
-              // Top-level `inputs:` (sibling of `invoke:`) carries the values passed
-              // to the dispatch target's invoke(). When absent, fall back to the
-              // expanded resource entry's own `inputs` field (legacy string-form
-              // shape where the inputs live on the resource declaration), then
-              // finally to the caller's `inputs` arg.
-              const invokeInputs = definition.inputs != null
-                ? ctx.moduleContext.expandWith(
-                    ctx.moduleContext.expandWith(definition.inputs, extraContext),
-                    extraContext,
-                  )
-                : expanded.inputs ?? inputs;
-              const raw = await entry.instance.invoke(invokeInputs);
-              if (definition.result == null) return raw;
-              const resultContext = { self, result: raw };
-              return ctx.moduleContext.expandWith(
-                ctx.moduleContext.expandWith(definition.result, resultContext),
-                resultContext,
-              );
-            });
+            const invokeInputs =
+              definition.inputs != null ? expand(definition.inputs, { self: getSelf(), inputs }) : inputs;
+            const raw = await entry.instance.invoke(invokeInputs);
+            if (definition.result == null) return raw;
+            return expand(definition.result, { self: getSelf(), result: raw });
           },
         }),
 
         ...(runTarget && {
           run: async () => {
-            if (!ephemeralTemplate) {
-              throw new Error(
-                `Template '${resource.metadata.name}': 'run:' targets '${runTarget}' ` +
-                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
-              );
+            const entry = dispatchEntry(runTarget, "run");
+            if (!entry.instance?.run) {
+              throw capabilityError(entry, runTarget, "run", "Telo.Runnable");
             }
-            const extraContext = { self };
-            const expanded = ctx.moduleContext.expandWith(
-              ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
-              extraContext,
-            ) as any;
-            return withEphemeral(expanded, async (name) => {
-              const entry = ctx.moduleContext.resourceInstances.get(name);
-              if (!entry?.instance?.run) {
-                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
-                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
-                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
-                throw new Error(
-                  `Template '${resource.metadata.name}': 'run:' target '${targetKind}/${runTarget}' ` +
-                    `has capability '${actualCap}', not Telo.Runnable. Update 'run:' to a Telo.Runnable kind, or change the target's kind in 'resources:'.`,
-                );
-              }
-              return entry.instance.run();
-            });
+            return entry.instance.run();
           },
         }),
 
         ...(provideTarget && {
           provide: async () => {
-            if (!ephemeralTemplate) {
-              throw new Error(
-                `Template '${resource.metadata.name}': 'provide:' targets '${provideTarget}' ` +
-                  `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(ctx, definition.resources, self)}.`,
-              );
+            const entry = dispatchEntry(provideTarget, "provide");
+            if (!entry.instance?.invoke) {
+              throw capabilityError(entry, provideTarget, "provide", "Telo.Invocable");
             }
-            const extraContext = { self };
-            const expanded = ctx.moduleContext.expandWith(
-              ctx.moduleContext.expandWith(ephemeralTemplate, extraContext),
-              extraContext,
-            ) as any;
-            return withEphemeral(expanded, async (name) => {
-              const entry = ctx.moduleContext.resourceInstances.get(name);
-              if (!entry?.instance?.invoke) {
-                const targetKind = (entry?.resource?.kind ?? expanded?.kind ?? "<unknown-kind>") as string;
-                const targetDef = ctx.moduleContext.getDefinition?.(targetKind);
-                const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
-                throw new Error(
-                  `Template '${resource.metadata.name}': 'provide:' target '${targetKind}/${provideTarget}' ` +
-                    `has capability '${actualCap}', not Telo.Invocable. Update 'provide:' to a Telo.Invocable kind, or change the target's kind in 'resources:'.`,
-                );
-              }
-              const provideInputs: any =
-                definition.inputs != null
-                  ? ctx.moduleContext.expandWith(
-                      ctx.moduleContext.expandWith(definition.inputs, extraContext),
-                      extraContext,
-                    )
-                  : {};
-              const raw = await entry.instance.invoke(provideInputs);
-              if (definition.result == null) return raw;
-              const resultContext = { self, result: raw };
-              return ctx.moduleContext.expandWith(
-                ctx.moduleContext.expandWith(definition.result, resultContext),
-                resultContext,
-              );
-            });
+            const provideInputs: any =
+              definition.inputs != null ? expand(definition.inputs, { self: getSelf() }) : {};
+            const raw = await entry.instance.invoke(provideInputs);
+            if (definition.result == null) return raw;
+            return expand(definition.result, { self: getSelf(), result: raw });
+          },
+        }),
+
+        ...(mountTarget && {
+          // `register(app, prefix)` is the Telo.Mount contract a consuming
+          // Http.Server calls. It is not on the base ResourceInstance type, so
+          // the persistent mount child is accessed structurally.
+          register: (app: any, prefix?: string) => {
+            const entry = dispatchEntry(mountTarget, "mount");
+            const mountable = entry.instance as { register?: (app: any, prefix?: string) => unknown };
+            if (typeof mountable.register !== "function") {
+              throw capabilityError(entry, mountTarget, "mount", "Telo.Mount");
+            }
+            return mountable.register(app, prefix);
           },
         }),
 

@@ -37,7 +37,12 @@ class ResourceDefinition implements ResourceInstance {
           `Telo.Definition '${this.resource.metadata.name}': 'capability: Telo.Provider' requires either 'controllers:' (TS-backed) or 'provide:' (template-backed).`,
         );
       }
-      const controllerInstance = createTemplateController(this.resource as any);
+      // ctx.moduleContext here is the context that DEFINED this kind (the
+      // library the Telo.Definition lives in). The template controller spawns
+      // its child scope from this context so the template's internal kind
+      // aliases / `!ref`s resolve against the defining library's imports — not
+      // the consumer module that instantiates the kind.
+      const controllerInstance = createTemplateController(this.resource as any, ctx.moduleContext);
       ctx.registerDefinition(this.resource);
       await ctx.registerController(
         this.resource.metadata.module,

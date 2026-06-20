@@ -1,0 +1,178 @@
+kind: Telo.Application
+metadata:
+  name: CrudOverHttpTest
+  version: 1.0.0
+  description: |
+    End-to-end: a templated Crud.Resource mounted on an Http.Server exercises the
+    full REST lifecycle (create / list / read / update / delete / 404) against a
+    SQLite table. Validates the persistent-target template controller, the
+    `mount:` dispatch, and nested templated handlers resolving across imports.
+imports:
+  Crud: ../
+  Sql: ../../sql
+  SqlSqlite: ../../sql-sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Migrate
+  - !ref Test
+---
+kind: SqlSqlite.Connection
+metadata: { name: Db }
+file: ":memory:"
+---
+kind: Sql.Migrations
+metadata: { name: Migrate }
+connection: !ref Db
+migrations:
+  0001_todos:
+    statement: |
+      CREATE TABLE todos (
+        id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT    NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0
+      )
+---
+kind: Crud.Resource
+metadata: { name: Todos }
+connection: !ref Db
+table: todos
+---
+# Server is scoped to the test sequence so it is torn down (and the port freed)
+# when the run completes — the kernel can then exit cleanly.
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8971
+    baseUrl: http://127.0.0.1:8971
+    logger: false
+    mounts:
+      - path: /todos
+        mount: !ref Todos
+targets:
+  - !ref Server
+steps:
+  - name: Create
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos
+      method: POST
+      body: { text: "Buy milk" }
+  - name: AssertCreated
+    inputs:
+      status: "${{ steps.Create.result.status }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 201 } }
+        required: [ status ]
+
+  - name: List
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos
+      method: GET
+  - name: AssertList
+    inputs:
+      status: "${{ steps.List.result.status }}"
+      text: "${{ steps.List.result.body[0].text }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          text: { const: "Buy milk" }
+        required: [ status, text ]
+
+  - name: Read
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: GET
+  - name: AssertRead
+    inputs:
+      status: "${{ steps.Read.result.status }}"
+      done: "${{ steps.Read.result.body.done }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          done: { const: 0 }
+        required: [ status, done ]
+
+  - name: Update
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PUT
+      body: { done: 1 }
+  - name: AssertUpdated
+    inputs:
+      status: "${{ steps.Update.result.status }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 200 } }
+        required: [ status ]
+
+  - name: ReadUpdated
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: GET
+  - name: AssertUpdatedRow
+    inputs:
+      done: "${{ steps.ReadUpdated.result.body.done }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { done: { const: 1 } }
+        required: [ done ]
+
+  - name: Delete
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: DELETE
+  - name: AssertDeleted
+    inputs:
+      status: "${{ steps.Delete.result.status }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 204 } }
+        required: [ status ]
+
+  - name: ReadGone
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: GET
+  - name: AssertGone
+    inputs:
+      status: "${{ steps.ReadGone.result.status }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 404 } }
+        required: [ status ]

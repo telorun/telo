@@ -306,6 +306,7 @@ const sidebars: SidebarsConfig = {
                   ],
                 },
                 { type: "doc", id: "modules/sql-repository/README", label: "SQL Repository" },
+                { type: "doc", id: "modules/crud/README", label: "CRUD" },
                 {
                   type: "category",
                   label: "Cache",

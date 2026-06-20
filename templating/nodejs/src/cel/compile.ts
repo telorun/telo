@@ -1,8 +1,23 @@
 import { isCompiledValue, type CompiledValue } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
+import { extractAccessChains } from "./analyze.js";
 
 export const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 export const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
+
+/** Root variable identifiers an expression reads, from its parsed AST — the
+ *  first element of every member-access chain (`self.table` → `self`). Returns
+ *  undefined when the parse result carries no AST so consumers can tell "no
+ *  refs" from "unknown". */
+function rootRefs(parsed: unknown): readonly string[] | undefined {
+  const ast = (parsed as { ast?: unknown }).ast;
+  if (!ast) return undefined;
+  const roots = new Set<string>();
+  for (const chain of extractAccessChains(ast as never)) {
+    if (chain.length > 0) roots.add(chain[0]!);
+  }
+  return [...roots];
+}
 
 /** Compile a single CEL expression (no `${{ }}` wrapping) into a CompiledValue.
  *  Throws on syntax errors. Used by the `!cel` engine where the entire tagged
@@ -12,6 +27,7 @@ export function compileExpression(expr: string, env: Environment): CompiledValue
   return {
     __compiled: true,
     source: expr,
+    refs: rootRefs(fn),
     call: (ctx: Record<string, unknown>) => fn(ctx),
   };
 }
@@ -38,10 +54,16 @@ export function compileString(s: string, env: Environment): unknown {
   }
   if (last < s.length) parts.push(s.slice(last));
 
+  const refs = new Set<string>();
+  for (const p of parts) {
+    if (typeof p !== "string" && p.refs) for (const r of p.refs) refs.add(r);
+  }
+
   return {
     __compiled: true,
     source: s,
     parts,
+    refs: [...refs],
     call: (ctx: Record<string, unknown>) =>
       parts.map((p) => (typeof p === "string" ? p : String(p.call(ctx) ?? ""))).join(""),
   } satisfies CompiledValue;

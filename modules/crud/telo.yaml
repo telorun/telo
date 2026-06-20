@@ -1,0 +1,184 @@
+kind: Telo.Library
+metadata:
+  name: crud
+  namespace: std
+  version: 0.1.0
+  description: |
+    Crud.Resource — a single declarative resource that exposes a full REST CRUD
+    API (list / read / create / update / delete) over a SQL table. It is a
+    Telo.Mount: drop it into an Http.Server's `mounts:` and point it at a table
+    and a Sql.Connection. Purely templated — it composes sql-repository's SQL
+    handlers with an http-server Http.Api, no controller code.
+
+    Convention: the table's primary key is the column `id`, surfaced as the
+    `{id}` path parameter. Bodies are passed through verbatim, so the table
+    columns and the JSON fields line up one-to-one.
+imports:
+  Http: ../http-server
+  SqlRepo: ../sql-repository
+exports:
+  kinds:
+    - Resource
+---
+kind: Telo.Definition
+metadata:
+  name: Resource
+capability: Telo.Mount
+schema:
+  type: object
+  required: [connection, table]
+  examples:
+    - connection:
+        kind: SqlSqlite.Connection
+        name: Db
+      table: todos
+  properties:
+    connection:
+      title: Connection
+      description: The SQL connection the CRUD routes run against.
+      x-telo-ref: "std/sql#Connection"
+    table:
+      title: Table
+      description: Database table name. Its primary key must be the column `id`.
+      type: string
+mount: api
+resources:
+  # SQL handlers — each builds parameterized SQL from the per-request map it is
+  # handed (data / filters) and this resource's `table`. `self`-only config, so
+  # they are created once at init and reused across requests.
+  - kind: SqlRepo.Read
+    metadata:
+      name: reader
+    connection: "${{ self.connection }}"
+    table: "${{ self.table }}"
+  - kind: SqlRepo.Create
+    metadata:
+      name: creator
+    connection: "${{ self.connection }}"
+    table: "${{ self.table }}"
+  - kind: SqlRepo.Update
+    metadata:
+      name: updater
+    connection: "${{ self.connection }}"
+    table: "${{ self.table }}"
+  - kind: SqlRepo.Delete
+    metadata:
+      name: deleter
+    connection: "${{ self.connection }}"
+    table: "${{ self.table }}"
+
+  # The mountable HTTP surface. Routes carry only request/result CEL — the table
+  # is baked into the handlers above, so nothing here mixes request and config.
+  - kind: Http.Api
+    metadata:
+      name: api
+    routes:
+      # List every row.
+      - request:
+          method: GET
+          path: /
+        handler: !ref reader
+        inputs:
+          filters: {}
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: "${{ result.rows }}"
+
+      # Read one row by id.
+      - request:
+          method: GET
+          path: /{id}
+          schema:
+            params:
+              type: object
+              required: [ id ]
+              properties:
+                id:
+                  type: integer
+                  description: Row id.
+        handler: !ref reader
+        inputs:
+          filters:
+            id: "${{ request.params.id }}"
+        returns:
+          - status: 200
+            when: "${{ size(result.rows) > 0 }}"
+            content:
+              application/json:
+                body: "${{ result.rows[0] }}"
+          - status: 404
+            content:
+              application/json:
+                body: { error: not_found }
+
+      # Create a row from the JSON body.
+      - request:
+          method: POST
+          path: /
+          schema:
+            body:
+              type: object
+        handler: !ref creator
+        inputs:
+          data: "${{ request.body }}"
+        returns:
+          - status: 201
+            content:
+              application/json:
+                body: "${{ request.body }}"
+
+      # Update the columns present in the JSON body.
+      - request:
+          method: PUT
+          path: /{id}
+          schema:
+            params:
+              type: object
+              required: [ id ]
+              properties:
+                id:
+                  type: integer
+                  description: Row id.
+            body:
+              type: object
+        handler: !ref updater
+        inputs:
+          data: "${{ request.body }}"
+          filters:
+            id: "${{ request.params.id }}"
+        returns:
+          - status: 200
+            when: "${{ result.rowCount > 0 }}"
+            content:
+              application/json:
+                body: "${{ request.body }}"
+          - status: 404
+            content:
+              application/json:
+                body: { error: not_found }
+
+      # Delete a row by id.
+      - request:
+          method: DELETE
+          path: /{id}
+          schema:
+            params:
+              type: object
+              required: [ id ]
+              properties:
+                id:
+                  type: integer
+                  description: Row id.
+        handler: !ref deleter
+        inputs:
+          filters:
+            id: "${{ request.params.id }}"
+        returns:
+          - status: 204
+            when: "${{ result.rowCount > 0 }}"
+          - status: 404
+            content:
+              application/json:
+                body: { error: not_found }

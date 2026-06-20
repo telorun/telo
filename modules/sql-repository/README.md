@@ -15,6 +15,7 @@ Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connect
 | --- | --- |
 | `SqlRepository.Read` | Reads rows from a table filtered by an equality map. |
 | `SqlRepository.Create` | Inserts a row from a domain object. |
+| `SqlRepository.Update` | Updates the columns in a `data` map for rows matching a `filters` map. |
 | `SqlRepository.Delete` | Removes rows matching an equality map. |
 
 ## Example
