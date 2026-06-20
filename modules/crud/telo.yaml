@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: crud
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Crud.Resource — a single declarative resource that exposes a full REST CRUD
     API (list / read / create / update / delete) over a SQL table. It is a

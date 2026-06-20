@@ -1,4 +1,0 @@
-project: sql-repository
-kind: Added
-body: "New `SqlRepo.Update` handler — builds a parameterized `UPDATE <table> SET ... WHERE ...` from the `data` and `filters` maps it is handed. The library now declares its own `Sql` import so its generated SQL handlers resolve regardless of what the consumer imports."
-time: 2026-06-20T03:01:00Z
