@@ -13,6 +13,10 @@ imports:
 targets:
   - !ref Migrate
   - !ref Server
+# Ship the frontend into the published module artifact so `Http.Static root:
+# ./public` resolves after `telo publish` / install, not just locally.
+files:
+  - public/**
 ports:
   http:
     env: PORT

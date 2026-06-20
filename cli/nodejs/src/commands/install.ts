@@ -12,6 +12,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
+import { extractModuleBundles } from "../bundle/extract.js";
 import { createLogger, type Logger } from "../logger.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
@@ -153,6 +154,18 @@ async function installOne(
       if (written.length > 0) {
         console.log(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
+        );
+      }
+      const extracted = await extractModuleBundles(
+        graph,
+        entryDir,
+        registryUrl,
+        manifestsDir,
+        (msg) => console.error(`  ${log.warn("⚠")}  ${msg}`),
+      );
+      if (extracted > 0) {
+        console.log(
+          `  ${log.ok("✓")}  extracted ${extracted} file bundle${extracted !== 1 ? "s" : ""}`,
         );
       }
     } catch (err) {

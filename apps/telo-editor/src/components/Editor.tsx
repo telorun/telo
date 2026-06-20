@@ -1440,6 +1440,20 @@ export function Editor() {
                   </p>
                 </div>
               )}
+              {pendingImport.plan.warnings.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                    Warnings
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-amber-600 dark:text-amber-400">
+                    {pendingImport.plan.warnings.map((w) => (
+                      <li key={w} className="break-all">
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
           <AlertDialogFooter>

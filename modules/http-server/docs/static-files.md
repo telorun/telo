@@ -33,6 +33,25 @@ ship co-located with the application: point `root` at the directory your build
 emits (`./public`, `./dist`, `./web/build`) and the assets travel with the app.
 An absolute path is used as-is.
 
+## Shipping the assets to the registry
+
+For `root: ./public` to work after `telo publish`, the app must declare those
+files in a top-level `files:` list so they are bundled into the published
+`module.tar.gz` (the registry artifact) — otherwise only `telo.yaml` is
+published and `root` resolves to an empty directory on the consumer:
+
+```yaml
+kind: Telo.Application
+metadata: { name: todo-app, version: 1.0.0 }
+files:
+  - public/**
+# … Http.Static with root: ./public
+```
+
+`telo install` / `telo run` extract the bundle next to the cached manifest, so
+`root` resolves the same way it does locally. See the CLI `telo publish` docs
+for the full `files:` pattern semantics.
+
 ## Fields
 
 | Field | Type | Default | Purpose |

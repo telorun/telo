@@ -35,7 +35,8 @@ Publish one or more module manifests to the Telo registry. For each manifest, th
 4. Publishes each controller package to its registry (currently npm). If the version already exists, the publish step is skipped — the command is idempotent.
 5. Rewrites the PURL version specs in the manifest to exact static versions.
 6. Bumps `metadata.version` in the manifest when `--bump` is given.
-7. Pushes the updated manifest to the Telo registry.
+7. Pushes the artifact to the Telo registry — a plain `telo.yaml` (`text/yaml`),
+   or, when the manifest declares `files:`, a `module.tar.gz` bundle (see below).
 
 ```bash
 telo publish ./modules/my-module/telo.yaml
@@ -44,6 +45,35 @@ telo publish ./modules/a/telo.yaml ./modules/b/telo.yaml --bump=minor
 telo publish ./modules/my-module/telo.yaml --dry-run
 telo publish ./modules/my-module/telo.yaml --skip-controllers
 ```
+
+**Bundling files with `files:`**
+
+A `Telo.Application` or `Telo.Library` may declare a `files:` list to ship
+static assets alongside `telo.yaml` — a built SPA served by `Http.Static`,
+templates, seed data, etc. Without it, only the manifest reaches the registry
+and a relative `Http.Static` `root:` resolves to an empty directory on the
+consumer.
+
+```yaml
+kind: Telo.Application
+metadata: { name: todo-app, version: 1.0.0 }
+files:
+  - public/**          # ship the built frontend
+  - "!**/*.map"        # but not source maps
+```
+
+`files:` entries are ordered, `.gitignore`-style patterns (the same `ignore`
+engine git uses): positive patterns opt files in, `!` patterns carve them out,
+**last match wins**. They are resolved against the manifest directory. A small
+always-on set is never shipped regardless of patterns: `node_modules/`,
+`.git/`, `.telo/`, `.telobundle.*`.
+
+When `files:` selects anything, `telo publish` packs `telo.yaml` plus the
+selected files into `module.tar.gz` and PUTs it to
+`…/<namespace>/<name>/<version>/module.tar.gz`. `telo install` (and `telo run`)
+download and extract that archive into the local cache next to the cached
+`telo.yaml`, so a relative `Http.Static` `root:` resolves on the consumer
+exactly as it does in development.
 
 **Options:**
 

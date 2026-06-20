@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
+import { extractModuleBundles } from "../bundle/extract.js";
 import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
@@ -363,11 +364,11 @@ async function persistManifestCache(
   const graph = kernel.getLoadedGraph();
   if (!graph) return;
   try {
-    await writeManifestCache(
-      graph,
-      resolveEntryDir(argv.path) ?? "",
-      registryUrlFor(argv),
-      path.join(cacheRoot, "manifests"),
+    const entryDir = resolveEntryDir(argv.path) ?? "";
+    const manifestsDir = path.join(cacheRoot, "manifests");
+    await writeManifestCache(graph, entryDir, registryUrlFor(argv), manifestsDir);
+    await extractModuleBundles(graph, entryDir, registryUrlFor(argv), manifestsDir, (msg) =>
+      process.stderr.write(`${log.warn(`[manifest-cache] ${msg}`)}\n`),
     );
   } catch (err) {
     // Warnings belong on stderr — stdout is reserved for the manifest's own

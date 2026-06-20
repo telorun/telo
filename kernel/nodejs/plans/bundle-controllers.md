@@ -125,6 +125,96 @@ not for *resolution*. The symlink is what lets authors write a plain import — 
 covers the dev loop (editor → docker-runner raw sources) too, since they import
 the SDK the same way.
 
+## Static assets & arbitrary bundled files (`files:`)
+
+A bundled controller is referenced by a `pkg:telo` PURL, so its `path` file is
+discoverable from the manifest. Static assets are not: a full-stack app serves a
+built SPA via `Http.Static` (`root: ./public`), and `root` is a **directory**,
+not a controller locator — no PURL points at `public/index.html`, the JS, the
+CSS, the fonts. So the controller-driven file-set (`telo.yaml` + `pkg:telo`
+paths) leaves them out, and a published app's `root: ./public` resolves to an
+empty dir on the consumer.
+
+The fix is an **author-declared file set** — the same primitive every package
+manager ships (npm `files`, Cargo `include`, Go `//go:embed`):
+
+```yaml
+kind: Telo.Application   # or Telo.Library
+metadata: { name: todo-app, version: 1.0.0 }
+files:
+  - public/**
+```
+
+- **Field**: `files:` — an ordered array of `.gitignore`-style patterns,
+  resolved against the manifest directory. Allowed on **both `Telo.Application`
+  and `Telo.Library`** (a library may ship bundled templates, migrations, seed
+  data).
+- **Distinct from `include:`** — `include:` inlines *YAML partial docs* into the
+  manifest; `files:` carries *opaque asset files* that stay as separate files in
+  the tarball. Distinct from `pkg:telo` paths — those are controller code pulled
+  in by PURL; `files:` is everything else the app needs at runtime.
+- **Selection is an allowlist with `.gitignore` semantics**, implemented with
+  the [`ignore`](https://www.npmjs.com/package/ignore) package (see "Glob
+  engine" below): positive patterns opt files **in**, `!` patterns carve them
+  back out, **ordered, last-match-wins**. So
+  `files: [ public/**, "!**/*.map" ]` ships `public/` without source maps. Order
+  matters — `[ "!**/*.map", public/** ]` ships everything, because the later
+  positive pattern re-includes it.
+- **Always-on default-ignore set** — applied after the `files:` selection,
+  independent of the author: `node_modules/`, `.git/`, `.telo/` (the manifest
+  cache — bundling it would recurse), `.telobundle.*` (controller-bundle
+  output). These are never shippable; a `files:` pattern cannot opt them back in.
+- **Dir-confinement** is unchanged from `expandAndInlineIncludes`
+  ([publish.ts:140-153](../../cli/nodejs/src/commands/publish.ts#L140-L153)):
+  enumerate with `fs.readdirSync(recursive)`, then a
+  `realpathSync().startsWith(realManifestDir)` check rejects any selected file
+  that escapes the module root. Unlike `include:`, the resolved files are
+  **added to the tarball at their relative paths**, not inlined into the YAML and
+  not deleted from the manifest.
+
+### Glob engine — `ignore` replaces `minimatch`
+
+`minimatch` is used in exactly one place — the `include:` resolver
+([publish.ts:131](../../cli/nodejs/src/commands/publish.ts#L131),
+`patterns.some(p => minimatch(normalized, p))`). Both `include:` and `files:`
+move to a shared `ignore`-based matcher:
+
+```
+selectFiles(allRelPaths, patterns):
+  const sel = ignore().add(patterns)          // allowlist via gitignore engine
+  const deny = ignore().add(DEFAULT_IGNORE)   // always-on
+  return allRelPaths.filter(p => sel.ignores(p) && !deny.ignores(p))
+```
+
+Reading note: `ignore` returns `true` from `.ignores(p)` when `p` matches the
+rule set — we *reinterpret* "matched" as "selected", and `!` negation then
+subtracts exactly as in `.gitignore`. Paths must be manifest-relative with
+forward slashes and no leading `/` (the lib rejects `../` and absolute paths) —
+already true after `path.relative(manifestDir, …)`.
+
+`include:` keeps working: a plain positive pattern (`partials/*.yaml`) selects
+the same set under `ignore` as under `minimatch`; only `.gitignore` edge cases
+(leading-`/` anchoring, trailing-`/` dir-only) differ, and no current `include:`
+relies on those. Add `ignore` to `cli/nodejs` deps and drop `minimatch` (this is
+its only CLI consumer; the kernel's separate `minimatch` dep is untouched).
+- **Schema — analyzer `builtins.ts` only**: the `Telo.Application` and
+  `Telo.Library` top-level schemas live **solely** in
+  `analyzer/nodejs/src/builtins.ts` (the kernel's `manifest-schemas.ts` defines
+  only `Telo.Definition`/`Telo.Abstract`; `kernel.load` validates Application/
+  Library through `StaticAnalyzer`). Add `files` (array of strings) beside
+  `include` in both the Application and Library schemas there. These schemas are
+  `additionalProperties: false`, so without this an author's `files:` is a hard
+  `telo check` / editor / `kernel.load` diagnostic. The analyzer never reads the
+  assets — it only needs to accept the field.
+- **Runtime**: zero controller change. `Http.Static` already resolves `root`
+  against `moduleContext.source`
+  ([http-static-controller.ts:99-106](../../modules/http-server/nodejs/src/http-static-controller.ts#L99-L106)),
+  so once step 6 extracts the tarball into `.telo/manifests/<ns>/<name>/<ver>/`,
+  `root: ./public` resolves to the extracted `public/` exactly as in dev.
+- **Manifest-only consumers unaffected** — the analyzer/editor/MCP
+  `get_module_manifest` never read `files:` assets; they keep fetching
+  `telo.yaml`. `files:` only widens the tarball and the fetch trigger (below).
+
 ## Publish (cli/nodejs/src/commands/publish.ts + publishers/)
 
 For a `pkg:telo` controller, replace the npm publish path with a bundle path:
@@ -141,12 +231,18 @@ For a `pkg:telo` controller, replace the npm publish path with a bundle path:
    the in-tarball path; `rewritePurls` is skipped for this type.
 4. **Tar + gzip** — after `expandAndInlineIncludes` /
    `canonicalizeRelativeImports`, assemble the artifact:
-   `telo.yaml` + every `pkg:telo` `path` file. Reuse / promote the existing
-   hand-rolled tar+gzip writer from
-   [apps/k8s-runner/src/tar.ts](../../apps/k8s-runner/src/tar.ts) into a shared
-   CLI helper (no Telo kind needed — this is Node code).
-5. **PUT** the `.tar.gz` with `content-type: application/gzip` instead of the
-   current `text/yaml` body.
+   `telo.yaml` + every `pkg:telo` `path` file + every `files:`-globbed asset
+   (see [Static assets](#static-assets--arbitrary-bundled-files-files), each at
+   its relative path). **Do not reuse `apps/k8s-runner/src/tar.ts`** — it is the
+   *runner's* bundle writer, coupled to `@telorun/runner-core`'s `RunBundle` and
+   unrelated to publishing. The CLI gets its own writer: add `tar-stream`
+   (already a repo dep, used by `modules/tar/nodejs`) to `cli/nodejs` and write a
+   small `cli/nodejs/src/bundle/tar.ts` helper (`tar-stream` pack →
+   `node:zlib` gzip). No Telo kind — this is plain Node code on the publish path.
+5. **PUT** the `.tar.gz` to `…/module.tar.gz` with `content-type:
+   application/gzip`. A module with **no** `pkg:telo` controllers **and no**
+   `files:` keeps the current `text/yaml` PUT to `…/telo.yaml` — the tar.gz path
+   is taken only when there is something beyond the manifest to ship.
 
 A new `publishers/` entry for `type: "telo"` (alongside the npm publisher)
 encapsulates `build` (esbuild) and the no-op publish.
@@ -197,9 +293,16 @@ plan; it is unblocked once the prerequisite kinds above are published.
 `LocalManifestCacheSource` already maps a registry ref to
 `.telo/manifests/<ns>/<name>/<ver>/`. Extend the install/run write-through:
 
-- For a `pkg:telo`-bearing module, download `module.tar.gz` and **extract** into
-  that dir, so `path: ./nodejs/script.mjs` resolves next to the cached
-  `telo.yaml` — the identical relative resolution the author uses in dev.
+- For a module that ships a tarball (any `pkg:telo` controller **or** a `files:`
+  set), download `module.tar.gz` and **extract** into that dir, so both
+  `path: ./nodejs/script.mjs` and `root: ./public` resolve next to the cached
+  `telo.yaml` — the identical relative resolution the author uses in dev. The
+  extracted asset tree is what makes `Http.Static` work post-install.
+- **Fetch trigger** — the consumer must know whether a registry ref has a
+  tarball before choosing the URL. The manifest (always fetchable at
+  `…/telo.yaml`) carries the answer: if it declares `files:` or any `pkg:telo`
+  controller, fetch + extract `…/module.tar.gz`; otherwise the plain
+  `telo.yaml` is the whole module.
 - Manifest-only consumers (analyzer/editor) keep fetching `.../telo.yaml`.
 
 ## Editor + runner (raw `.js`, no publish)
@@ -222,6 +325,31 @@ raw `.js` text drops in with no contract change.
   manifest whose controllers are all `pkg:telo`, the k8s runner's trusted-build
   `npm ci` job and its cache-poisoning threat model don't apply
   ([apps/k8s-runner/plans/kubernetes-runner.md:91-146](../../apps/k8s-runner/plans/kubernetes-runner.md#L91-L146)).
+
+## Editor remote-open (`?open=<url>`) — `files:` over raw HTTP
+
+The editor opens a manifest from a raw URL (e.g.
+`raw.githubusercontent.com/.../telo.yaml`) and resolves relative imports as
+sibling raw URLs. There is **no directory listing** over raw HTTP, so a glob
+pattern in `files:` cannot be expanded — the editor has no filesystem to glob
+and no host-agnostic way to enumerate `public/`.
+
+Resolution: the editor reads `files:` and **fetches only the literal entries**
+(no glob metacharacters), each as a sibling raw URL through its existing
+relative-fetch path. For any **glob entry** (contains `* ? [ ] { }` or a leading
+`!`), it cannot enumerate the matches, so it **skips it and surfaces a
+warning** — e.g. "`files: public/**` can't be previewed over a remote URL;
+list the files explicitly to make them editable here." No host-specific
+directory API, no in-browser glob engine.
+
+- Detection is purely lexical: an entry with none of `* ? [ ] { }` and no
+  leading `!` is a literal path → fetch; otherwise → warn + skip.
+- This makes literal `files:` entries first-class in the remote-open view and
+  globs a publish-time-only convenience. An author who wants an example fully
+  editable over a raw URL lists the asset paths explicitly; one who only cares
+  about publishing keeps the glob and accepts the editor warning.
+- Purely an editor concern — no registry, kernel, or publish change. The glob
+  still drives publish-time tarball selection unchanged.
 
 ## Release-track impact
 
@@ -255,21 +383,47 @@ registry-independent; the **distribution** track must go registry-before-CLI
    then **delegates** parse/validate/index/store-telo.yaml to the existing
    `PublishHandler`. Static-checked; **needs `test:e2e` (S3 + Postgres) for
    runtime verification.**
-5. ⬜ **CLI publish bundle path**: esbuild (SDK bundled in, no externals) +
-   non-bundleable refusal + tar/gz + PUT to `…/module.tar.gz`. Test against a
-   local registry (`--registry=http://registry.telo.localhost`). Depends on 4.
-6. ⬜ **Consumer cache extraction** of `module.tar.gz` into `.telo/manifests`.
+5. 🟡 **CLI publish bundle path** — the **`files:` static-asset slice is done**:
+   `files:` selection (shared `ignore`-based matcher in
+   `cli/nodejs/src/bundle/select-files.ts`, replacing `minimatch` for both
+   `include:` and `files:`; always-on default-ignore set), `tar-stream` writer
+   (`cli/nodejs/src/bundle/tar.ts`, **not** k8s-runner's), and the
+   `module.tar.gz` PUT branch in `publish.ts`. The `files:` schema lives in
+   `analyzer/nodejs/src/builtins.ts` only (Application + Library) — the kernel
+   has no Application/Library schema; it validates via `StaticAnalyzer`.
+   **Deferred (esbuild / `pkg:telo` controller bundling):** SDK-bundled esbuild
+   build + non-bundleable refusal. No current consumer needs it — `todo-app`
+   has no `pkg:telo` controllers — so it was cut from this slice.
+6. ✅ **Consumer cache extraction** of `module.tar.gz` into `.telo/manifests`
+   (`cli/nodejs/src/bundle/extract.ts`, wired into `telo install` + `telo run`
+   after `writeManifestCache`), with the manifest-driven fetch trigger (a module
+   whose `telo.yaml` declares `files:` ⇒ fetch + extract the tarball).
 7. ⬜ **Editor run-bundle** `.js` collection + relative-import crawl (dev loop;
-   parallelizable with 5–6 once 1–2 landed).
+   parallelizable with 5–6 once 1–2 landed). Part of the deferred controller
+   slice.
+8. ✅ **Editor remote-open `files:`** — `collectRemoteFiles` in
+   `apps/telo-editor/src/loader/remote.ts` fetches literal `files:` entries as
+   sibling raw URLs and warns + skips glob entries (surfaced in the import
+   preview dialog).
 
-Steps 1–2 (run track) are done and tested. Step 4 (registry) is done but only
-static-checked here. Steps 5–7 remain.
+Steps 1–2 (run track) and 4 (registry) were already done. The **`files:`
+static-asset slice (5-files, 6, 8) is now implemented**, with CLI unit tests
+(`cli/nodejs/tests/bundle.test.ts`) and a CLI-driven e2e round-trip
+(`apps/registry/tests/e2e-bundle.ts`, `pnpm run test:e2e:bundle`). The esbuild
+controller-bundling half of step 5 and the editor run-bundle (step 7) remain
+deferred — no current consumer needs them.
 
 ## Testing
 
 - Kernel: bundle load + realm identity; fallback ordering; env-missing recovery.
 - CLI: publish dry-run; bundle emitted; non-bundleable dep rejected;
-  tar.gz round-trips and extracts to the right paths.
+  `files:` selection collected — positive match, `!` negation (last-match-wins),
+  default-ignore set never shipped, and a pattern escaping the module root
+  rejected; `include:` still resolves the same set after the `minimatch`→`ignore`
+  swap; tar.gz round-trips and extracts to the right paths.
+- End-to-end: publish `examples/todo-app` (Http.Api + Http.Static `./public`)
+  to a local registry, install into a clean cache, run — the SPA serves from the
+  extracted `public/` and the API responds. This is the motivating case.
 - Prerequisite kinds (gzip/tar/http-server/s3) — tested in their own plan.
 - Registry: PUT a tar.gz → GET `telo.yaml` and `module.tar.gz`; manifest indexed.
 - Editor: run-bundle includes the `.js` and its relative siblings; docker runner

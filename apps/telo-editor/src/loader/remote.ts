@@ -1,4 +1,8 @@
-import { DEFAULT_MANIFEST_FILENAME, HttpSource, flattenLoadedModule } from "@telorun/analyzer";
+import {
+  DEFAULT_MANIFEST_FILENAME,
+  HttpSource,
+  flattenLoadedModule,
+} from "@telorun/analyzer";
 import type { ManifestSource } from "@telorun/analyzer";
 import type { ImportKind, WorkspaceAdapter } from "../model";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
@@ -67,6 +71,63 @@ export interface RemoteImportPlan {
   /** Same-origin cascade dependencies that failed to load — surfaced so the
    *  preview doesn't imply a complete import. */
   errors: { url: string; message: string }[];
+  /** Non-fatal notices — e.g. `files:` glob entries that can't be enumerated
+   *  over a raw URL, or an asset that failed to fetch. */
+  warnings: string[];
+}
+
+/** A `files:` entry is a glob when it carries any gitignore metacharacter or a
+ *  leading `!` negation — those can't be enumerated over a raw URL (no
+ *  directory listing). A plain path is fetched directly. */
+export function isGlobPattern(pattern: string): boolean {
+  return /[*?[\]{}]/.test(pattern) || pattern.startsWith("!");
+}
+
+/** Fetch the root manifest's literal `files:` entries as sibling URLs (the
+ *  editor's existing relative-fetch model) and map them into the workspace.
+ *  Glob entries are skipped with a warning — there is no directory listing over
+ *  a raw URL to expand them. Asset fetch failures are warnings, not errors. */
+export async function collectRemoteFiles(
+  rootCanonical: string,
+  rootDestPath: string,
+  patterns: string[],
+): Promise<{ files: PlanFile[]; warnings: string[] }> {
+  const files: PlanFile[] = [];
+  const warnings: string[] = [];
+
+  for (const pattern of patterns) {
+    if (isGlobPattern(pattern)) {
+      warnings.push(
+        `files: "${pattern}" is a glob and can't be previewed over a remote URL — ` +
+          `list the matching files explicitly to make them editable here.`,
+      );
+      continue;
+    }
+
+    const assetUrl = new URL(pattern, rootCanonical).href;
+    let destPath: string;
+    try {
+      destPath = workspacePathFor(rootCanonical, rootDestPath, assetUrl);
+    } catch (err) {
+      warnings.push(err instanceof Error ? err.message : String(err));
+      continue;
+    }
+
+    try {
+      const res = await fetch(assetUrl);
+      if (!res.ok) {
+        warnings.push(`Could not fetch ${assetUrl}: HTTP ${res.status} ${res.statusText}.`);
+        continue;
+      }
+      files.push({ url: assetUrl, destPath, text: await res.text(), isRoot: false, exists: false });
+    } catch (err) {
+      warnings.push(
+        `Could not fetch ${assetUrl}: ${err instanceof Error ? err.message : String(err)}.`,
+      );
+    }
+  }
+
+  return { files, warnings };
 }
 
 /** Reads the manifest URL from a `location.search` string, or null when absent. */
@@ -268,6 +329,24 @@ export async function buildRemoteImportPlan(
   const graph = await loader.loadGraph(rootUrl, { desugarImports: true });
   const rootOrigin = new URL(graph.rootSource).origin;
   const files = collectPlanFiles(graph.rootSource, root.destPath, graph.modules);
+
+  // Fetch the root's literal `files:` assets (SPA build output, templates, …);
+  // glob entries can't be enumerated over a raw URL and surface as warnings.
+  const rootDocs = flattenLoadedModule(rootModule);
+  const rootDoc = rootDocs.find(
+    (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
+  );
+  const rawFiles = (rootDoc as { files?: unknown } | undefined)?.files;
+  const filesPatterns = Array.isArray(rawFiles)
+    ? (rawFiles.filter((p) => typeof p === "string") as string[])
+    : [];
+  const { files: assetFiles, warnings } = await collectRemoteFiles(
+    graph.rootSource,
+    root.destPath,
+    filesPatterns,
+  );
+  files.push(...assetFiles);
+
   await markExisting(adapter, files);
 
   // Surface same-origin load failures so the preview doesn't imply a complete
@@ -290,6 +369,7 @@ export async function buildRemoteImportPlan(
     rootDestPath: root.destPath,
     files,
     errors,
+    warnings,
   };
 }
 
