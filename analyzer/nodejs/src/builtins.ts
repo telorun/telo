@@ -300,6 +300,16 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
+        // Files bundled alongside `telo.yaml` into the module's registry
+        // artifact (`module.tar.gz`) — static assets served by Http.Static,
+        // templates, etc. Ordered `.gitignore`-style patterns resolved against
+        // the manifest dir at publish time. Analyzer-only role: accept the
+        // field (the schema is additionalProperties:false); the analyzer never
+        // reads the assets. See kernel/nodejs/plans/bundle-controllers.md.
+        files: {
+          type: "array",
+          items: { type: "string" },
+        },
         // Inline imports — name-keyed map sugar for separate `Telo.Import`
         // documents. The key is the PascalCase alias (the import's
         // `metadata.name`). Each value is either a bare source string
@@ -421,6 +431,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         variables: { type: "object" },
         secrets: { type: "object" },
         include: {
+          type: "array",
+          items: { type: "string" },
+        },
+        // Files bundled into the module's registry artifact — same semantics as
+        // the Telo.Application `files` field above (a library may ship bundled
+        // templates, migrations, seed data).
+        files: {
           type: "array",
           items: { type: "string" },
         },

@@ -2,12 +2,13 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { minimatch } from "minimatch";
 import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
+import { selectFiles } from "../bundle/select-files.js";
+import { makeTarGz } from "../bundle/tar.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
@@ -116,39 +117,33 @@ export function expandAndInlineIncludes(content: string, manifestDir: string): s
   );
   if (patterns.length === 0) return content;
 
-  // Expand globs against the manifest directory
-  const hasGlobs = patterns.some((p) => /[*?{}\[\]]/.test(p));
+  // Expand globs against the manifest directory. A glob entry is matched with
+  // the shared `ignore` engine (gitignore semantics); a plain path is taken
+  // verbatim and validated to exist (an explicit `include:` of a missing file
+  // is an error, unlike a glob that simply matches nothing).
+  const hasGlobs = patterns.some((p) => /[*?{}\[\]!]/.test(p));
   let resolvedFiles: string[];
 
   if (hasGlobs) {
-    const entries = fs.readdirSync(manifestDir, { recursive: true, withFileTypes: true });
-    const normalizedPatterns = patterns.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
-    resolvedFiles = [];
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      const relative = path.relative(manifestDir, path.join(entry.parentPath, entry.name));
-      const normalized = relative.replace(/\\/g, "/");
-      if (normalizedPatterns.some((p) => minimatch(normalized, p))) {
-        resolvedFiles.push(path.resolve(manifestDir, relative));
-      }
-    }
-    resolvedFiles.sort();
+    resolvedFiles = selectFiles(manifestDir, patterns, { applyDefaultIgnore: false }).map((rel) =>
+      path.resolve(manifestDir, rel),
+    );
   } else {
     resolvedFiles = [...new Set(patterns.map((p) => path.resolve(manifestDir, p)))];
-  }
 
-  // Validate all resolved paths exist and stay within the module directory
-  const realManifestDir = fs.realpathSync(manifestDir) + path.sep;
-  for (const filePath of resolvedFiles) {
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`Included file not found: ${filePath}`);
-    }
-    const realPath = fs.realpathSync(filePath);
-    if (!realPath.startsWith(realManifestDir)) {
-      throw new Error(
-        `Include path '${filePath}' resolves outside the module directory. ` +
-          `Publishing files from outside the module root is not allowed.`,
-      );
+    // Validate explicit paths exist and stay within the module directory.
+    const realManifestDir = fs.realpathSync(manifestDir) + path.sep;
+    for (const filePath of resolvedFiles) {
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`Included file not found: ${filePath}`);
+      }
+      const realPath = fs.realpathSync(filePath);
+      if (!realPath.startsWith(realManifestDir)) {
+        throw new Error(
+          `Include path '${filePath}' resolves outside the module directory. ` +
+            `Publishing files from outside the module root is not allowed.`,
+        );
+      }
     }
   }
 
@@ -166,6 +161,14 @@ export function expandAndInlineIncludes(content: string, manifestDir: string): s
   // Re-serialize all original documents + inlined partials
   const serialized = docs.map((d) => d.toString()).join("---\n");
   return serialized + inlined;
+}
+
+/** Read the first doc's `files:` glob patterns (empty when none declared). */
+export function readFilesPatterns(content: string): string[] {
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const first = docs[0]?.toJSON();
+  if (!first || !Array.isArray(first.files)) return [];
+  return first.files.filter((p: unknown): p is string => typeof p === "string");
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +243,11 @@ async function pushToTeloRegistry(
   filePath: string,
   registry: string,
   log: Logger,
+  push: { body: string | Buffer; contentType: string; urlSuffix: string } = {
+    body: content,
+    contentType: "text/yaml",
+    urlSuffix: "",
+  },
 ): Promise<{ ok: boolean; label: string; url: string }> {
   const firstDoc =
     content.split(/^---$/m)[0].trim() || content.split(/^---\n/m)[1]?.trim() || content;
@@ -261,10 +269,11 @@ async function pushToTeloRegistry(
     return { ok: false, label: "", url: "" };
   }
 
-  const url = `${registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
+  const base = `${registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
+  const url = `${base}${push.urlSuffix}`;
   const label = `${namespace}/${name}@${version}`;
 
-  const headers: Record<string, string> = { "content-type": "text/yaml" };
+  const headers: Record<string, string> = { "content-type": push.contentType };
   const token = process.env.TELO_REGISTRY_TOKEN;
   if (token) headers.authorization = `Bearer ${token}`;
 
@@ -274,7 +283,7 @@ async function pushToTeloRegistry(
   for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
     networkErr = null;
     try {
-      res = await fetch(url, { method: "PUT", headers, body: content });
+      res = await fetch(url, { method: "PUT", headers, body: push.body as BodyInit });
     } catch (err) {
       networkErr = err;
       res = null;
@@ -510,12 +519,40 @@ async function publishOne(
   // Expand include globs and inline partial file contents before pushing
   content = expandAndInlineIncludes(content, manifestDir);
 
+  // Resolve the `files:` asset set. When present, the artifact is a
+  // `module.tar.gz` (telo.yaml + assets) instead of a bare YAML body.
+  let bundledFiles: string[];
+  try {
+    bundledFiles = selectFiles(manifestDir, readFilesPatterns(content));
+  } catch (err) {
+    console.error(
+      log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
   if (dryRun) {
+    if (bundledFiles.length > 0) {
+      stepDry(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml → module.tar.gz`);
+    }
     stepDry(log, "push", "Telo registry");
     return true;
   }
 
-  const { ok, label, url } = await pushToTeloRegistry(content, filePath, registry, log);
+  let push: { body: string | Buffer; contentType: string; urlSuffix: string } | undefined;
+  if (bundledFiles.length > 0) {
+    const tarGz = await makeTarGz([
+      { name: "telo.yaml", content },
+      ...bundledFiles.map((rel) => ({
+        name: rel,
+        content: fs.readFileSync(path.resolve(manifestDir, rel)),
+      })),
+    ]);
+    stepOk(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml`);
+    push = { body: tarGz, contentType: "application/gzip", urlSuffix: "/module.tar.gz" };
+  }
+
+  const { ok, label, url } = await pushToTeloRegistry(content, filePath, registry, log, push);
   if (!ok) return false;
 
   stepOk(log, "push", `${label} → ${url}`);
