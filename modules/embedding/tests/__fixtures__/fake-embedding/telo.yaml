@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata:
+  name: fake-embedding
+  namespace: test
+  version: 0.0.0
+  description: Deterministic offline Embedding.Model for tests — no network call.
+imports:
+  Embedding: ../../../
+exports:
+  kinds:
+    - Model
+---
+kind: Telo.Definition
+metadata:
+  name: Model
+capability: Telo.Provider
+extends: Embedding.Model
+controllers:
+  - pkg:npm/@telorun-test/fake-embedding@0.0.0?local_path=./nodejs#model
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    dimensions:
+      title: Dimensions
+      type: integer
+      minimum: 1
+      default: 8

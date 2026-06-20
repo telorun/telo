@@ -1,0 +1,53 @@
+{
+  "name": "@telorun/embedding-openai",
+  "version": "0.1.0",
+  "description": "Telo EmbeddingOpenai.Model — OpenAI-compatible provider for Embedding.Model (direct /embeddings HTTP API, no vendor SDK).",
+  "keywords": [
+    "telo",
+    "embedding",
+    "openai",
+    "vector"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/embedding-openai/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/model-controller.js",
+  "module": "./dist/model-controller.js",
+  "types": "./dist/model-controller.d.ts",
+  "exports": {
+    "./model": {
+      "types": "./dist/model-controller.d.ts",
+      "bun": "./src/model-controller.ts",
+      "import": "./dist/model-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@telorun/embedding": "workspace:*"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

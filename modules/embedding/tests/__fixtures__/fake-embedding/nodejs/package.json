@@ -1,0 +1,9 @@
+{
+  "name": "@telorun-test/fake-embedding",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./model": "./model.mjs"
+  }
+}
