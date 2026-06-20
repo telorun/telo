@@ -4,13 +4,14 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../sql
+  SqlSqlite: ../../sql-sqlite
   SqlRepository: ../
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestCrud
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: ":memory:"
@@ -41,7 +42,7 @@ steps:
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)"
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       connection: !ref Db
 
   - name: Insert

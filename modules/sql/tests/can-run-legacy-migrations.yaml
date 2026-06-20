@@ -4,13 +4,14 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../
+  SqlSqlite: ../../sql-sqlite
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref Migrate
   - !ref VerifyLegacy
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: ":memory:"

@@ -1,25 +1,9 @@
 import type { ResourceInstance } from "@telorun/sdk";
 import { randomUUID } from "crypto";
-import {
-  CompiledQuery,
-  Kysely,
-  PostgresDialect,
-  SqliteAdapter,
-  SqliteDialect,
-  type QueryResult,
-  type Transaction,
-} from "kysely";
-import { Pool } from "pg";
+import { CompiledQuery, Kysely, type QueryResult, type Transaction } from "kysely";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
 import { currentTxId, deleteTx, getTx, setTx, txStorage } from "./transaction-store.js";
-
-interface PoolConfig {
-  min?: number;
-  max?: number;
-  idleTimeoutMs?: number;
-  connectionTimeoutMs?: number;
-}
 
 export type SqlDriver = "postgres" | "sqlite";
 
@@ -27,51 +11,24 @@ export type SqlDriver = "postgres" | "sqlite";
  *  PostgreSQL binds numbered `$1`, `$2`, … */
 export type PlaceholderStyle = "qmark" | "numbered";
 
-export interface SqlConnectionConfig {
-  driver: SqlDriver;
-  /** Required for `postgres`; ignored for `sqlite` (which opens via `sqlite`). */
-  connectionString?: string;
-  pool?: PoolConfig;
-}
-
+/**
+ * Driver-agnostic SQL connection. The kysely instance (and, for SQLite, the
+ * underlying database handle used by `executeScript`) is built by the driver
+ * backend (`sql-postgres`, `sql-sqlite`) and handed in via
+ * {@link createSqlConnection}. Everything here — execution, transactions,
+ * placeholder style, row-count normalization — is transport-neutral.
+ */
 export class SqlConnectionResource implements ResourceInstance {
-  readonly driver: SqlDriver;
   private readonly db: Kysely<any>;
   private readonly sqlite?: SqliteDb;
 
-  constructor(config: SqlConnectionConfig, sqlite?: SqliteDb) {
-    this.driver = config.driver;
-
-    if (this.driver === "postgres") {
-      if (!config.connectionString) {
-        throw new Error("Sql: postgres connection requires a connectionString");
-      }
-      const url = new URL(config.connectionString);
-      const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
-      url.searchParams.delete("sslmode");
-      this.db = new Kysely({
-        dialect: new PostgresDialect({
-          pool: new Pool({
-            connectionString: url.toString(),
-            ssl,
-            min: config.pool?.min ?? 1,
-            max: config.pool?.max ?? 10,
-            idleTimeoutMillis: config.pool?.idleTimeoutMs,
-            connectionTimeoutMillis: config.pool?.connectionTimeoutMs,
-          }),
-        }),
-      });
-    } else {
-      if (!sqlite) {
-        throw new Error("Sql: sqlite database was not initialized");
-      }
-      this.sqlite = sqlite;
-      this.db = new Kysely({
-        dialect: new TransactionalSqliteDialect({
-          database: this.sqlite,
-        }),
-      });
-    }
+  constructor(
+    readonly driver: SqlDriver,
+    db: Kysely<any>,
+    sqlite?: SqliteDb,
+  ) {
+    this.db = db;
+    this.sqlite = sqlite;
   }
 
   async init() {
@@ -171,67 +128,16 @@ export class SqlConnectionResource implements ResourceInstance {
   }
 }
 
-// Kysely's stock SQLite adapter reports `supportsTransactionalDdl = false`, so
-// its Migrator runs migrations without a transaction. SQLite does support
-// transactional DDL, so we flip the flag — letting the Migrator wrap the whole
-// migration batch in a single transaction, matching PostgreSQL.
-class TransactionalSqliteAdapter extends SqliteAdapter {
-  override get supportsTransactionalDdl(): boolean {
-    return true;
-  }
-}
-
-class TransactionalSqliteDialect extends SqliteDialect {
-  override createAdapter(): SqliteAdapter {
-    return new TransactionalSqliteAdapter();
-  }
-}
-
-type SslOption =
-  | false
-  | { rejectUnauthorized: boolean; checkServerIdentity?: () => undefined };
-
-function sslFromSslmode(mode: string | null): SslOption {
-  switch (mode) {
-    case null:
-    case "disable":
-      return false;
-    case "require":
-      return { rejectUnauthorized: false };
-    case "verify-ca":
-      // libpq `verify-ca` validates the CA chain but not the hostname; Node's
-      // default `checkServerIdentity` enforces the hostname, so disable it.
-      return { rejectUnauthorized: true, checkServerIdentity: () => undefined };
-    case "verify-full":
-      return { rejectUnauthorized: true };
-    default:
-      throw new Error(
-        `Sql.Connection: unsupported sslmode '${mode}'. ` +
-          `Use 'disable', 'require', 'verify-ca', or 'verify-full'.`,
-      );
-  }
-}
-
-export async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
-  // Auto-create the parent directory for file-backed databases. SQLite
-  // drivers fail-fast when the directory doesn't exist; mirroring `mkdir
-  // -p` here lets manifests use paths like `./tmp/foo.sqlite` without a
-  // separate filesystem-prep step. `:memory:` skips filesystem entirely.
-  if (file !== ":memory:") {
-    const { mkdir } = await import("node:fs/promises");
-    const { dirname } = await import("node:path");
-    const dir = dirname(file);
-    if (dir && dir !== "." && dir !== "/") {
-      await mkdir(dir, { recursive: true });
-    }
-  }
-
-  // Route through the package's own `./sqlite-driver` subpath export so the
-  // resolver selects the driver per runtime (Bun → bun:sqlite, Node →
-  // better-sqlite3). A manual `typeof Bun` check with relative imports gets
-  // flattened by the controller bundler into an unconditional top-level
-  // `import "bun:sqlite"`, which Node's ESM loader rejects before the guard
-  // runs; an external `@telorun/*` specifier stays a deferred dynamic import.
-  const { openDatabase } = await import("@telorun/sql/sqlite-driver");
-  return openDatabase(file);
+/**
+ * Build a connection from a driver-constructed kysely instance. Driver backends
+ * (`sql-postgres`, `sql-sqlite`) own dialect construction and call this; the
+ * `sqlite` handle is required only for SQLite (its `executeScript` runs through
+ * the native handle).
+ */
+export function createSqlConnection(
+  driver: SqlDriver,
+  db: Kysely<any>,
+  sqlite?: SqliteDb,
+): SqlConnectionResource {
+  return new SqlConnectionResource(driver, db, sqlite);
 }

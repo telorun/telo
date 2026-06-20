@@ -51,7 +51,7 @@ tools:
 
 | Field         | Type                   | Required | Purpose                                                                          |
 | ------------- | ---------------------- | -------- | -------------------------------------------------------------------------------- |
-| `tool`        | ref (`telo#Invocable` \| `telo#Runnable`) | yes | Any invocable or runnable — `Js.Script`, `Http.Client.Request`, `Sql.Select`, another `Ai.Text`, a `Run.Sequence` pipeline, … |
+| `tool`        | ref (`telo#Invocable` \| `telo#Runnable`) | yes | Any invocable or runnable — `Js.Script`, `Http.Client.Request`, `Sql.Selection`, another `Ai.Text`, a `Run.Sequence` pipeline, … |
 | `name`        | string                 | no       | Tool name the model sees. Defaults to the referenced resource name.              |
 | `description` | string                 | no       | What the tool does (the model reads this).                                       |
 | `parameters`  | JSON Schema            | yes      | The schema the model produces arguments against.                                 |

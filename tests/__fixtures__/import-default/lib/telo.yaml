@@ -4,6 +4,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../../../modules/sql
+  SqlSqlite: ../../../../modules/sql-sqlite
 variables:
   dbFile:
     type: string
@@ -13,7 +14,7 @@ exports:
 ---
 # `file` reads the contract var `dbFile`. The importer provides no override, so it
 # must resolve to the library default ":memory:" — not a missing key.
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: "${{ variables.dbFile }}"

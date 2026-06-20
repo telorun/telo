@@ -3,89 +3,23 @@ metadata:
   name: sql
   namespace: std
   version: 0.9.2
-  description: SQL database access — PostgreSQL and SQLite
+  description: >-
+    Driver-agnostic SQL database access — the Sql.Connection abstract plus the
+    Query / Command / Selection / Transaction / Migrations operations. Concrete
+    drivers ship as their own modules (sql-postgres, sql-sqlite) and extend
+    Connection, mirroring the cache / cache-* family.
 ---
 # Sql.Connection — the abstract database handle every driver implements. A
 # Telo.Provider: a configured connection to a backend, NOT an operation you
-# invoke. Consumers (Sql.Query / Sql.Exec / Sql.Select / Sql.Migrations /
+# invoke. Consumers (Sql.Query / Sql.Command / Sql.Selection / Sql.Migrations /
 # Sql.Transaction) reference it via `x-telo-ref: "std/sql#Connection"` and a
-# concrete implementation (Sql.PostgresConnection / Sql.SqliteConnection)
+# concrete implementation (SqlPostgres.Connection / SqlSqlite.Connection)
 # satisfies the ref. Each implementation also fixes the driver-native bind
 # placeholder style, so inline `${{ }}` parameters in queries are dialect-neutral.
 kind: Telo.Abstract
 metadata:
   name: Connection
 capability: Telo.Provider
----
-kind: Telo.Definition
-metadata:
-  name: PostgresConnection
-capability: Telo.Provider
-extends: Self.Connection
-controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-postgres-connection
-schema:
-  type: object
-  examples:
-    - connectionString: postgres://user:password@localhost:5432/mydb?sslmode=require
-    - connectionString: postgres://user:password@localhost:5432/mydb
-      pool:
-        min: 2
-        max: 20
-  required:
-    - connectionString
-  properties:
-    connectionString:
-      title: Connection String
-      type: string
-      description: >-
-        PostgreSQL connection URL — `postgres://` or `postgresql://`. TLS is
-        configured with the standard libpq `?sslmode=` query parameter
-        (`disable`, `require`, `verify-ca`, `verify-full`).
-    pool:
-      title: Pool
-      description: Database connection pool configuration.
-      type: object
-      properties:
-        min:
-          title: Min
-          description: Minimum number of connections in the pool.
-          type: integer
-          default: 1
-        max:
-          title: Max
-          description: Maximum number of connections in the pool.
-          type: integer
-          default: 10
-        idleTimeoutMs:
-          title: Idle Timeout Ms
-          description: Milliseconds before idle connections are closed.
-          type: integer
-        connectionTimeoutMs:
-          title: Connection Timeout Ms
-          description: Milliseconds to wait for a new connection.
-          type: integer
----
-kind: Telo.Definition
-metadata:
-  name: SqliteConnection
-capability: Telo.Provider
-extends: Self.Connection
-controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-sqlite-connection
-schema:
-  type: object
-  examples:
-    - file: ./data.db
-    - file: ":memory:"
-  properties:
-    file:
-      title: File
-      type: string
-      description: >-
-        Path to the SQLite database file (e.g. `./data.db`). The parent
-        directory is created if missing. Omit, or use `:memory:`, for an
-        in-memory database.
 ---
 kind: Telo.Definition
 metadata:
@@ -98,7 +32,7 @@ schema:
   description: >-
     Runs a SQL query and returns the result rows; `result.rowCount` is the
     number of rows returned. Use for `SELECT` (and PostgreSQL `… RETURNING`).
-    For mutations with no row result, use `Sql.Exec`.
+    For mutations with no row result, use `Sql.Command`.
   properties:
     connection:
       title: Connection
@@ -157,10 +91,10 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: Exec
+  name: Command
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-exec
+  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-command
 schema:
   type: object
   description: >-
@@ -253,10 +187,10 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: Select
+  name: Selection
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-select
+  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-selection
 schema:
   type: object
   required: [from]
@@ -409,9 +343,7 @@ schema:
   type: object
   required: [connection]
   examples:
-    - connection:
-        kind: Sql.SqliteConnection
-        name: Db
+    - connection: !ref Db
       migrations:
         20260401_create_users:
           statements:

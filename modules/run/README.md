@@ -83,16 +83,16 @@ A sequence can stand up its own resources for the duration of its run — a data
 kind: Run.Sequence
 metadata: { name: IntegrationCheck }
 with:
-  - kind: Sql.SqliteConnection
+  - kind: SqlSqlite.Connection
     metadata: { name: Db }
     file: ":memory:"
   - kind: Sql.Migrations
     metadata: { name: Migrate }
-    connection: { kind: Sql.SqliteConnection, name: Db }
+    connection: { kind: SqlSqlite.Connection, name: Db }
 targets: [ Migrate ]          # run() before the steps
 steps:
   - name: seed
-    invoke: { kind: Sql.Exec, connection: { kind: Sql.SqliteConnection, name: Db } }
+    invoke: { kind: Sql.Command, connection: { kind: SqlSqlite.Connection, name: Db } }
     inputs: { sql: !sql "INSERT INTO users (name) VALUES (${{ 'Ada' }})" }
 ```
 

@@ -76,7 +76,7 @@ interface SelectManifest {
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
-class SqlSelectResource implements ResourceInstance {
+class SqlSelectionResource implements ResourceInstance {
   constructor(
     private readonly manifest: SelectManifest,
     private readonly ctx: ResourceContext,
@@ -98,7 +98,7 @@ class SqlSelectResource implements ResourceInstance {
 
     const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
     if (!connection) {
-      throw new Error("Sql.Select: either 'connection' or 'transaction' must be set");
+      throw new Error("Sql.Selection: either 'connection' or 'transaction' must be set");
     }
 
     const { sql, params } = buildSelect(m, where, having, limit, offset, connection.driver);
@@ -266,7 +266,7 @@ function opToSql(op: Op): string {
     ilike: "ILIKE",
   };
   const sql = map[op];
-  if (!sql) throw new Error(`Sql.Select: unknown operator '${op}'`);
+  if (!sql) throw new Error(`Sql.Selection: unknown operator '${op}'`);
   return sql;
 }
 
@@ -306,6 +306,6 @@ export function register(): void {}
 export async function create(
   resource: SelectManifest,
   ctx: ResourceContext,
-): Promise<SqlSelectResource> {
-  return new SqlSelectResource(resource, ctx);
+): Promise<SqlSelectionResource> {
+  return new SqlSelectionResource(resource, ctx);
 }

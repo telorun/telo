@@ -1,0 +1,4 @@
+project: sql-repository
+kind: Added
+body: Track the sql driver split — CRUD templates now emit `Sql.Command` (renamed from `Sql.Exec`) and the schema examples reference `SqlSqlite.Connection` / `SqlPostgres.Connection`.
+time: 2026-06-20T00:00:00Z

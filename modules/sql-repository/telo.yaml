@@ -14,7 +14,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: Sql.SqliteConnection
+        kind: SqlSqlite.Connection
         name: Db
       table: users
   properties:
@@ -48,7 +48,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: Sql.SqliteConnection
+        kind: SqlSqlite.Connection
         name: Db
       table: users
   properties:
@@ -61,7 +61,7 @@ schema:
       description: Database table name.
       type: string
 resources:
-  - kind: Sql.Exec
+  - kind: Sql.Command
     metadata:
       name: "${{ self.name }}-exec"
     connection: "${{ self.connection }}"
@@ -80,7 +80,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: Sql.SqliteConnection
+        kind: SqlSqlite.Connection
         name: Db
       table: users
   properties:
@@ -93,7 +93,7 @@ schema:
       description: Database table name.
       type: string
 resources:
-  - kind: Sql.Exec
+  - kind: Sql.Command
     metadata:
       name: "${{ self.name }}-exec"
     connection: "${{ self.connection }}"

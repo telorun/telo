@@ -8,13 +8,14 @@ metadata:
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
+  Sqlite: ../../modules/sql-sqlite
   Run: ../../modules/run
 targets:
   - !ref SetupDb
   - !ref Server
 ---
 # SQLite database — swap to Sql.PostgresConnection for PostgreSQL
-kind: Sql.SqliteConnection
+kind: Sqlite.Connection
 metadata:
   name: Db
   module: FeedbackApi
@@ -28,7 +29,7 @@ metadata:
 steps:
   - name: CreateTable
     invoke:
-      kind: Sql.Exec
+      kind: Sql.Command
       connection:
         kind: Sql.SqliteConnection
         name: Db
@@ -77,10 +78,8 @@ routes:
               type: string
           required: [ text ]
     handler:
-      kind: Sql.Exec
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      kind: Sql.Command
+      connection: !ref Db
     inputs:
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
       bindings:
@@ -101,9 +100,7 @@ routes:
       method: GET
     handler:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     returns:
@@ -125,9 +122,7 @@ routes:
           required: [ id ]
     handler:
       kind: Sql.Query
-      connection:
-        kind: Sql.SqliteConnection
-        name: Db
+      connection: !ref Db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
       bindings:

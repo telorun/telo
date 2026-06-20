@@ -1,26 +1,26 @@
 # SQL
 
-SQL database access for PostgreSQL and SQLite — connections, raw queries, a declarative SELECT builder, transactions, and migrations.
+Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and migrations. Concrete drivers ship as their own modules — [`sql-postgres`](../sql-postgres/README.md) (`SqlPostgres.Connection`) and [`sql-sqlite`](../sql-sqlite/README.md) (`SqlSqlite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
 
 ## Why use this
 
-- **Two backends, one shape** — `Sql.PostgresConnection` (pg + Kysely) and `Sql.SqliteConnection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
+- **Two backends, one shape** — `SqlPostgres.Connection` (pg + Kysely) and `SqlSqlite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
 - **Safe inline values** — write bound parameters directly in SQL with the `!sql` tag (`WHERE id = ${{ x }}`); each interpolation is bound, never spliced — dialect-neutral and injection-safe.
-- **Raw and structured** — `Sql.Query` / `Sql.Exec` for hand-written SQL; `Sql.Select` for declarative SELECTs as data.
+- **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
 - **Implicit transactions** — `Sql.Transaction` propagates the active transaction through `AsyncLocalStorage`; nested invocations pick it up automatically.
 - **Idempotent migrations** — `Sql.Migrations` applies its keyed migration entries in lexicographic key order and tracks applied versions in a metadata table.
-- **Tunable pooling** — Postgres pool `min`, `max`, and timeout knobs exposed on `Sql.PostgresConnection`.
+- **Tunable pooling** — Postgres pool `min`, `max`, and timeout knobs exposed on `SqlPostgres.Connection`.
 
 ## Kinds
 
 | Kind | Purpose |
 | --- | --- |
 | `Sql.Connection` | **Abstract** database-connection contract; reference it from any consumer (`x-telo-ref: std/sql#Connection`). |
-| `Sql.PostgresConnection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
-| `Sql.SqliteConnection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
+| `SqlPostgres.Connection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
+| `SqlSqlite.Connection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
 | `Sql.Query` | SQL returning rows plus row count; inline `!sql` binding or `bindings` escape hatch. |
-| `Sql.Exec` | Same shape as `Sql.Query` for statements that do not return rows. |
-| `Sql.Select` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
+| `Sql.Command` | Same shape as `Sql.Query` for statements that do not return rows. |
+| `Sql.Selection` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
 | `Sql.Transaction` | Wraps an invocable in a database transaction; nested transactions are flattened. |
 | `Sql.Migrations` | Boot-time runner holding a keyed `migrations` map; applies pending entries in key order. |
 | `Sql.Migration` | **Deprecated** — standalone migration entry, discovered and merged by `Sql.Migrations`. Prefer the inline map. |
@@ -32,18 +32,19 @@ kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
   Sql: std/sql@<version>
+  SqlPostgres: std/sql-postgres@<version>
 targets: [ !ref Migrate ]
 secrets:
   DATABASE_URL: { type: string }
 ---
-kind: Sql.PostgresConnection
+kind: SqlPostgres.Connection
 metadata: { name: Db }
 connectionString: "${{ secrets.DATABASE_URL }}"
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
 kind: Sql.Migrations
 metadata: { name: Migrate }
-connection: { kind: Sql.PostgresConnection, name: Db }
+connection: { kind: SqlPostgres.Connection, name: Db }
 migrations:
   20260401120000_CreateUsers:
     statement: |
@@ -57,9 +58,9 @@ migrations:
       - CREATE INDEX users_email ON users(email)
       - CREATE INDEX users_created_at ON users(created_at)
 ---
-kind: Sql.Select
+kind: Sql.Selection
 metadata: { name: ActiveUsers }
-connection: { kind: Sql.PostgresConnection, name: Db }
+connection: { kind: SqlPostgres.Connection, name: Db }
 from: users
 columns: [ id, email ]
 where:
@@ -71,24 +72,24 @@ limit: 50
 
 ## Connections
 
-`Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: { kind: Sql.PostgresConnection, name: Db }`) and stays driver-agnostic.
+`Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: { kind: SqlPostgres.Connection, name: Db }`) and stays driver-agnostic.
 
-**`Sql.PostgresConnection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
+**`SqlPostgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
 
-**`Sql.SqliteConnection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
+**`SqlSqlite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
 
-The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `Sql.PostgresConnection` with `connectionString: "${{ secrets.DATABASE_URL }}"`.
+The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `SqlPostgres.Connection` with `connectionString: "${{ secrets.DATABASE_URL }}"`.
 
-`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`Sql.PostgresConnection` / `Sql.SqliteConnection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
+`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SqlSqlite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 
 ## Reusing handlers
 
-`Sql.Query`, `Sql.Exec`, and `Sql.Select` are Invocables: declare one as a **top-level named resource** and reference it by `{ kind, name }` from any number of routes or `Run.Sequence` steps — define a query once, reuse it everywhere. (Inlining a handler on a single route also works for one-offs.)
+`Sql.Query`, `Sql.Command`, and `Sql.Selection` are Invocables: declare one as a **top-level named resource** and reference it by `{ kind, name }` from any number of routes or `Run.Sequence` steps — define a query once, reuse it everywhere. (Inlining a handler on a single route also works for one-offs.)
 
 ```yaml
-kind: Sql.Select
+kind: Sql.Selection
 metadata: { name: ActiveUsers }      # declared once
-connection: { kind: Sql.PostgresConnection, name: Db }
+connection: { kind: SqlPostgres.Connection, name: Db }
 from: users
 columns: [ id, email ]
 ---
@@ -96,7 +97,7 @@ kind: Http.Api
 metadata: { name: Api }
 routes:
   - request: { path: /users, method: GET }
-    handler: { kind: Sql.Select, name: ActiveUsers }   # referenced by name
+    handler: { kind: Sql.Selection, name: ActiveUsers }   # referenced by name
 ```
 
 ## Binding values
@@ -107,7 +108,7 @@ Never concatenate values into SQL. Two ways to bind, both injection-safe:
 
 ```yaml
 - name: GetUser
-  invoke: { kind: Sql.Query, connection: { kind: Sql.PostgresConnection, name: Db } }
+  invoke: { kind: Sql.Query, connection: { kind: SqlPostgres.Connection, name: Db } }
   inputs:
     sql: !sql "SELECT * FROM users WHERE id = ${{ request.params.id }}"
 ```

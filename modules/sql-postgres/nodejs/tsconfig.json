@@ -1,11 +1,10 @@
 {
   "extends": "../../../tsconfig.base.json",
   "files": [],
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts"],
   "compilerOptions": {
     "strict": true,
-    "esModuleInterop": true,
-    "types": ["node"]
+    "esModuleInterop": true
   },
   "references": [
     {

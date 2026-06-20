@@ -1,0 +1,65 @@
+kind: Telo.Library
+metadata:
+  name: sql-postgres
+  namespace: std
+  version: 0.1.0
+  description: |
+    SqlPostgres.Connection — a PostgreSQL backend for the Sql.Connection
+    abstract. Speaks the standard `postgres://` URL with libpq `sslmode`,
+    backed by a `pg` connection pool. Operations
+    (Sql.Query / Sql.Command / Sql.Selection / Sql.Transaction / Sql.Migrations)
+    in the `sql` core run against it; the core itself depends on no driver.
+imports:
+  Sql: ../sql
+exports:
+  kinds:
+    - Connection
+---
+kind: Telo.Definition
+metadata:
+  name: Connection
+capability: Telo.Provider
+extends: Sql.Connection
+controllers:
+  - pkg:npm/@telorun/sql-postgres@0.1.0?local_path=./nodejs#connection
+schema:
+  type: object
+  required:
+    - connectionString
+  examples:
+    - connectionString: postgres://user:password@localhost:5432/mydb?sslmode=require
+    - connectionString: postgres://user:password@localhost:5432/mydb
+      pool:
+        min: 2
+        max: 20
+  properties:
+    connectionString:
+      title: Connection String
+      type: string
+      description: >-
+        PostgreSQL connection URL — `postgres://` or `postgresql://`. TLS is
+        configured with the standard libpq `?sslmode=` query parameter
+        (`disable`, `require`, `verify-ca`, `verify-full`).
+    pool:
+      title: Pool
+      description: Database connection pool configuration.
+      type: object
+      properties:
+        min:
+          title: Min
+          description: Minimum number of connections in the pool.
+          type: integer
+          default: 1
+        max:
+          title: Max
+          description: Maximum number of connections in the pool.
+          type: integer
+          default: 10
+        idleTimeoutMs:
+          title: Idle Timeout Ms
+          description: Milliseconds before idle connections are closed.
+          type: integer
+        connectionTimeoutMs:
+          title: Connection Timeout Ms
+          description: Milliseconds to wait for a new connection.
+          type: integer

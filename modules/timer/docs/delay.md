@@ -35,12 +35,12 @@ kind: Run.Sequence
 metadata: { name: Paced }
 steps:
   - name: First
-    invoke: { kind: Sql.Exec, name: DoWork }
+    invoke: { kind: Sql.Command, name: DoWork }
   - name: Wait
     inputs: { duration: "2s" }
     invoke: { kind: Timer.Delay }
   - name: Second
-    invoke: { kind: Sql.Exec, name: DoMoreWork }
+    invoke: { kind: Sql.Command, name: DoMoreWork }
 ```
 
 Delay-then-forward — carry a value through the wait:
@@ -54,7 +54,7 @@ Delay-then-forward — carry a value through the wait:
 - name: Use
   inputs:
     payload: "${{ steps.Hold.result.value }}"
-  invoke: { kind: Sql.Exec, name: Persist }
+  invoke: { kind: Sql.Command, name: Persist }
 ```
 
 A dynamic duration is just CEL on the caller's side — the value reaching `duration` must be a duration string:

@@ -5,7 +5,7 @@ Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connect
 ## Why use this
 
 - **Domain-shaped inputs** — pass `filters` or `data` objects; the module generates parameterized SQL.
-- **No new controllers** — each kind is a parameterized template that expands into `Sql.Query` / `Sql.Exec` resources at load time.
+- **No new controllers** — each kind is a parameterized template that expands into `Sql.Query` / `Sql.Command` resources at load time.
 - **Transaction-aware** — generated invocations honour `Sql.Transaction` via `AsyncLocalStorage` exactly like hand-written SQL.
 - **Straightforward CRUD** — ideal for HTTP routes fronting a single table, admin panels, and simple internal APIs.
 
@@ -62,4 +62,4 @@ inputs:
 
 ## When to Use It
 
-`SqlRepository.*` is designed for straightforward CRUD. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Select`](../sql/select.md) or `Sql.Query` directly. A `SqlRepository.Delete` without filters would generate invalid SQL (`DELETE FROM users WHERE`) — make sure every invocation supplies at least one filter.
+`SqlRepository.*` is designed for straightforward CRUD. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Selection`](../sql/selection.md) or `Sql.Query` directly. A `SqlRepository.Delete` without filters would generate invalid SQL (`DELETE FROM users WHERE`) — make sure every invocation supplies at least one filter.

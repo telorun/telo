@@ -1,0 +1,52 @@
+{
+  "name": "@telorun/sql-postgres",
+  "version": "0.1.0",
+  "description": "Telo SqlPostgres.Connection — PostgreSQL backend for the Sql.Connection abstract (pg pool, libpq sslmode).",
+  "keywords": [
+    "telo",
+    "sql",
+    "postgres",
+    "postgresql"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/sql-postgres/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "exports": {
+    "./connection": {
+      "bun": "./src/connection-controller.ts",
+      "import": "./dist/connection-controller.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@telorun/sql": "workspace:*",
+    "pg": "^8.20.0",
+    "kysely": "^0.28.15"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

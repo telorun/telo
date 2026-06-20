@@ -26,7 +26,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 
 | Module | Description |
 | --- | --- |
-| [sql](./sql/README.md) | PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Exec`, `Sql.Select`, `Sql.Transaction`, and migrations. |
+| [sql](./sql/README.md) | PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`, and migrations. |
 | [sql-repository](./sql-repository/README.md) | Domain-shaped CRUD over a table via `SqlRepository.Read/Create/Delete`. |
 | [s3](./s3/README.md) | S3-compatible object storage. |
 | [type](./type/README.md) | Named data types via `Type.JsonSchema`. |

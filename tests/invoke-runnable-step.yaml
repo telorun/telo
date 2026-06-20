@@ -7,12 +7,13 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../modules/sql
+  SqlSqlite: ../modules/sql-sqlite
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref Flow
 ---
-kind: Sql.SqliteConnection
+kind: SqlSqlite.Connection
 metadata:
   name: Db
 file: ":memory:"
