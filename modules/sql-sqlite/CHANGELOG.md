@@ -1,4 +1,7 @@
 # Changelog
-## 0.2.0 - 2026-06-20
+## 0.2.1 - 2026-06-20
+### Fixed
+* Update controller @telorun/sql-sqlite to 0.2.1.
+* `Sql.Command` now reports the correct `rowCount` for plain INSERT/UPDATE/DELETE under Bun — the bun:sqlite driver had marked every statement as a reader, so affected-row counts were lost and rowCount was always 0.## 0.2.0 - 2026-06-20
 ### Added
 * Update controller @telorun/sql-sqlite to 0.2.0.## 0.1.0

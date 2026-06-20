@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql-sqlite
   namespace: std
-  version: 0.2.0
+  version: 0.2.1
   description: |
     SqlSqlite.Connection — a SQLite backend for the Sql.Connection abstract.
     Opens a file-backed or in-memory database (better-sqlite3 on Node,
@@ -21,7 +21,7 @@ metadata:
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:
-  - pkg:npm/@telorun/sql-sqlite@0.2.0?local_path=./nodejs#connection
+  - pkg:npm/@telorun/sql-sqlite@0.2.1?local_path=./nodejs#connection
 schema:
   type: object
   examples:
