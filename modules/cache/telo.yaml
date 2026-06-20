@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: cache
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     The Cache.Store abstract — a backend-pluggable, freshness-aware key/value
     cache — plus the Lookup / Entry invocables and the View read-through
@@ -34,7 +34,7 @@ metadata:
   name: Lookup
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#lookup
+  - pkg:npm/@telorun/cache@0.2.0?local_path=./nodejs#lookup
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -78,7 +78,7 @@ metadata:
   name: Entry
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#entry
+  - pkg:npm/@telorun/cache@0.2.0?local_path=./nodejs#entry
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -131,7 +131,7 @@ metadata:
   name: View
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.1.0?local_path=./nodejs#view
+  - pkg:npm/@telorun/cache@0.2.0?local_path=./nodejs#view
 inputType:
   kind: Type.JsonSchema
   schema:

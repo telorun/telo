@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: run
   namespace: std
-  version: 0.10.0
+  version: 0.11.0
   description: Run sequence of invocable resources with if, while, switch, and try steps
 exports:
   kinds:
@@ -19,7 +19,7 @@ metadata:
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#sequence
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#sequence
 throws:
   inherit: true
 schema:
@@ -329,7 +329,7 @@ metadata:
   name: Value
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#value
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#value
 schema:
   type: object
   properties:
@@ -374,7 +374,7 @@ metadata:
   name: Iteration
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#iteration
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#iteration
 throws:
   inherit: true
 schema:
@@ -656,7 +656,7 @@ metadata:
   name: Projection
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#projection
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#projection
 throws:
   inherit: true
 schema:
@@ -955,7 +955,7 @@ metadata:
   name: Loop
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#loop
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#loop
 throws:
   inherit: true
 schema:
@@ -1259,7 +1259,7 @@ metadata:
   name: Detach
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.8.0?local_path=./nodejs#detach
+  - pkg:npm/@telorun/run@0.9.0?local_path=./nodejs#detach
 inputType:
   kind: Type.JsonSchema
   schema:

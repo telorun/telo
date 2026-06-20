@@ -1,6 +1,6 @@
 {
   "name": "@telorun/cache-redis",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo cache-redis module — Redis-backed CacheRedis.Store with degrade-to-fallback.",
   "keywords": [
     "telo",

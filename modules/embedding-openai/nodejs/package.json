@@ -1,6 +1,6 @@
 {
   "name": "@telorun/embedding-openai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo EmbeddingOpenai.Model — OpenAI-compatible provider for Embedding.Model (direct /embeddings HTTP API, no vendor SDK).",
   "keywords": [
     "telo",

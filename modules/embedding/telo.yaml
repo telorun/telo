@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: embedding
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     The Embedding.Model abstract — a backend-pluggable text embedding model —
     plus the Query / Passage invocables that turn text into vectors. Asymmetric
@@ -35,7 +35,7 @@ metadata:
   name: Query
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/embedding@0.1.0?local_path=./nodejs#query
+  - pkg:npm/@telorun/embedding@0.2.0?local_path=./nodejs#query
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -96,7 +96,7 @@ metadata:
   name: Passage
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/embedding@0.1.0?local_path=./nodejs#passage
+  - pkg:npm/@telorun/embedding@0.2.0?local_path=./nodejs#passage
 inputType:
   kind: Type.JsonSchema
   schema:

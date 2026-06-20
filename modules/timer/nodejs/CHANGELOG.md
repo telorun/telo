@@ -1,5 +1,11 @@
 # @telorun/timer
 
+## 0.1.1
+
+### Patch Changes
+
+- 95f168e: Use the SDK's shared `tryParseDurationMs` helper instead of a local duration parser. No behavioural change.
+
 ## 0.1.0
 
 ### Minor Changes

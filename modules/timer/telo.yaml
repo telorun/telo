@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: timer
   namespace: std
-  version: 0.2.0
+  version: 0.2.1
   description: |
     Time-based primitives. `Timer.Delay` waits for a duration, then completes —
     composable as a `Run.Sequence` step, an HTTP handler, or any invoke target.
@@ -21,7 +21,7 @@ metadata:
   name: Delay
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/timer@0.1.0?local_path=./nodejs#delay
+  - pkg:npm/@telorun/timer@0.1.1?local_path=./nodejs#delay
 inputType:
   kind: Type.JsonSchema
   schema:
