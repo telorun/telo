@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql
   namespace: std
-  version: 0.9.2
+  version: 0.10.0
   description: >-
     Driver-agnostic SQL database access — the Sql.Connection abstract plus the
     Query / Command / Selection / Transaction / Migrations operations. Concrete
@@ -26,7 +26,7 @@ metadata:
   name: Query
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-query
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-query
 schema:
   type: object
   description: >-
@@ -94,7 +94,7 @@ metadata:
   name: Command
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-command
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-command
 schema:
   type: object
   description: >-
@@ -165,7 +165,7 @@ metadata:
   name: Transaction
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-transaction
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-transaction
 schema:
   type: object
   required:
@@ -190,7 +190,7 @@ metadata:
   name: Selection
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-selection
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-selection
 schema:
   type: object
   required: [from]
@@ -300,7 +300,7 @@ metadata:
   name: Migration
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-migration
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migration
 schema:
   type: object
   required: [sql]
@@ -338,7 +338,7 @@ metadata:
   name: Migrations
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/sql@0.7.2?local_path=./nodejs#sql-migrations
+  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migrations
 schema:
   type: object
   required: [connection]

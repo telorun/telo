@@ -1,6 +1,6 @@
 {
   "name": "@telorun/cli",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "description": "Telo CLI - Command-line interface for the Telo runtime.",
   "keywords": [
     "telo",
