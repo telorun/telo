@@ -1,5 +1,7 @@
 # Changelog
-## 0.3.0 - 2026-06-07
+## 0.4.0 - 2026-06-20
+### Added
+* Track the sql driver split — CRUD templates now emit `Sql.Command` (renamed from `Sql.Exec`) and the schema examples reference `SqlSqlite.Connection` / `SqlPostgres.Connection`.## 0.3.0 - 2026-06-07
 ### Added
 * Schema `examples:` on its kinds so the MCP `get_module_manifest` tool gives authors a copyable template per kind.## 0.2.0 - 2026-06-03
 ### Added

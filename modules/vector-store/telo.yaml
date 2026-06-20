@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     The VectorStore.Store abstract — a backend-pluggable vector index — plus the
     Record / Match / Removal invocables that upsert, query, and delete vectors
@@ -71,7 +71,7 @@ metadata:
   name: Record
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#record
+  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#record
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -122,7 +122,7 @@ metadata:
   name: Match
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#match
+  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#match
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -182,7 +182,7 @@ metadata:
   name: Removal
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.1.0?local_path=./nodejs#removal
+  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#removal
 inputType:
   kind: Type.JsonSchema
   schema:

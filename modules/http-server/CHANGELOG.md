@@ -1,5 +1,8 @@
 # Changelog
-## 0.14.0 - 2026-06-20
+## 0.15.0 - 2026-06-20
+### Added
+* Update controller @telorun/http-server to 0.14.0.
+* Add the `Http.Static` mount — serve a directory of static assets (built SPA, plain HTML, images) on an Http.Server, with a manifest-relative `root`, `spaFallback` for client-side routing, and `maxAge` / `immutable` cache control.## 0.14.0 - 2026-06-20
 ### Added
 * Update controller @telorun/http-server to 0.13.0.## 0.13.0 - 2026-06-18
 ### Added

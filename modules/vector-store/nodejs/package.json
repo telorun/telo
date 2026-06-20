@@ -1,6 +1,6 @@
 {
   "name": "@telorun/vector-store",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo vector-store module — VectorStore.Store abstract plus Record / Match / Removal operating against any store.",
   "keywords": [
     "telo",

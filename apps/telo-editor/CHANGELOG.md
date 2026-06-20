@@ -1,5 +1,15 @@
 # telo-editor
 
+## 0.8.8
+
+### Patch Changes
+
+- Updated dependencies [d7fda97]
+  - @telorun/sdk@0.34.0
+  - @telorun/analyzer@0.25.0
+  - @telorun/templating@0.10.0
+  - @telorun/ide-support@0.4.28
+
 ## 0.8.7
 
 ### Patch Changes

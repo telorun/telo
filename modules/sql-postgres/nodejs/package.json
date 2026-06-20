@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sql-postgres",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo SqlPostgres.Connection — PostgreSQL backend for the Sql.Connection abstract (pg pool, libpq sslmode).",
   "keywords": [
     "telo",

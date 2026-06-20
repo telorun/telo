@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: assert
   namespace: std
-  version: 0.8.5
+  version: 0.8.6
   description: Assertion and value verification for testing
 exports:
   kinds:
@@ -27,7 +27,7 @@ metadata:
   name: ModuleContext
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#module-context
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#module-context
 schema:
   type: object
   properties:
@@ -46,7 +46,7 @@ metadata:
   name: Schema
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#schema
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#schema
 schema:
   type: object
   examples:
@@ -75,7 +75,7 @@ metadata:
   name: Events
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#events
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#events
 schema:
   type: object
   properties:
@@ -117,7 +117,7 @@ metadata:
   name: Manifest
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#manifest
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#manifest
 schema:
   type: object
   properties:
@@ -169,7 +169,7 @@ metadata:
   name: Equals
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#equals
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#equals
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -202,7 +202,7 @@ metadata:
   name: Matches
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#matches
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#matches
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -238,7 +238,7 @@ metadata:
   name: Contains
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.14?local_path=./nodejs#contains
+  - pkg:npm/@telorun/assert@0.7.15?local_path=./nodejs#contains
 inputType:
   kind: Type.JsonSchema
   schema:
