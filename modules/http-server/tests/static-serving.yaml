@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: HttpStaticServingTest
+  version: 1.0.0
+  description: |
+    Http.Static serves a directory of assets mounted on an Http.Server. Verifies
+    the index file at the mount root, a sibling asset with its inferred MIME type,
+    and the SPA fallback (an unmatched deep path returns the index, not a 404), so
+    client-side routing survives a refresh.
+imports:
+  Http: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+  Type: ../../type
+targets:
+  - !ref Test
+---
+# Fetch a URL, returning status, content-type, and the (text) body.
+kind: JS.Script
+metadata: { name: Fetch }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    return {
+      status: r.status,
+      contentType: r.headers.get("content-type") ?? "",
+      body: await r.text(),
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties: { url: { type: string } }
+    required: [ url ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      contentType: { type: string }
+      body: { type: string }
+    required: [ status, contentType, body ]
+---
+kind: Http.Static
+metadata: { name: Site }
+root: ./__fixtures__/static-site
+spaFallback: true
+maxAge: 3600
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8971
+    logger: false
+    mounts:
+      - path: /
+        mount: !ref Site
+targets:
+  - !ref Server
+steps:
+  - name: HitIndex
+    inputs: { url: http://127.0.0.1:8971/ }
+    invoke: !ref Fetch
+  - name: AssertIndex
+    inputs:
+      status: "${{ steps.HitIndex.result.status }}"
+      hasMarker: "${{ steps.HitIndex.result.body.contains('TELO_STATIC_INDEX') }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          hasMarker: { const: true }
+        required: [ status, hasMarker ]
+
+  - name: HitAsset
+    inputs: { url: http://127.0.0.1:8971/app.js }
+    invoke: !ref Fetch
+  - name: AssertAsset
+    inputs:
+      status: "${{ steps.HitAsset.result.status }}"
+      isJs: "${{ steps.HitAsset.result.contentType.startsWith('text/javascript') || steps.HitAsset.result.contentType.startsWith('application/javascript') }}"
+      hasMarker: "${{ steps.HitAsset.result.body.contains('TELO_STATIC_APP') }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          isJs: { const: true }
+          hasMarker: { const: true }
+        required: [ status, isJs, hasMarker ]
+
+  - name: HitDeepLink
+    inputs: { url: http://127.0.0.1:8971/some/client/route }
+    invoke: !ref Fetch
+  - name: AssertDeepLink
+    inputs:
+      status: "${{ steps.HitDeepLink.result.status }}"
+      hasMarker: "${{ steps.HitDeepLink.result.body.contains('TELO_STATIC_INDEX') }}"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          hasMarker: { const: true }
+        required: [ status, hasMarker ]

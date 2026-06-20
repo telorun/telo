@@ -9,6 +9,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standardized HTTP 400 with `details[]` on failure.
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
 - **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
+- **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
 
 ## Kinds
@@ -17,6 +18,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 | --- | --- |
 | `Http.Server` | Long-lived HTTP listener that hosts mounts on configured paths and ports. |
 | `Http.Api` | Mountable router exposing route definitions with returns/catches rendering. |
+| `Http.Static` | Mountable static-file server for a directory of assets (built SPA, plain HTML, images). |
 
 ## Example
 
@@ -77,6 +79,7 @@ code: |
 ## Reference
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
+- [Serving static files & frontends](docs/static-files.md) — `Http.Static`, manifest-relative roots, SPA fallback, asset caching.
 
 ## Implementation Contract
 

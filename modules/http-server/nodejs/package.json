@@ -33,6 +33,11 @@
       "types": "./dist/http-api-controller.d.ts",
       "bun": "./src/http-api-controller.ts",
       "import": "./dist/http-api-controller.js"
+    },
+    "./http-static": {
+      "types": "./dist/http-static-controller.d.ts",
+      "bun": "./src/http-static-controller.ts",
+      "import": "./dist/http-static-controller.js"
     }
   },
   "scripts": {
@@ -44,6 +49,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^8.0.0",
     "@fastify/swagger": "^9.6.1",
     "@scalar/fastify-api-reference": "^1.44.6",
     "@sinclair/typebox": "^0.34.48",

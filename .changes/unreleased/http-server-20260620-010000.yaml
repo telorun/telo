@@ -1,0 +1,4 @@
+project: http-server
+kind: Added
+body: Add the `Http.Static` mount — serve a directory of static assets (built SPA, plain HTML, images) on an Http.Server, with a manifest-relative `root`, `spaFallback` for client-side routing, and `maxAge` / `immutable` cache control.
+time: 2026-06-20T01:00:00Z
