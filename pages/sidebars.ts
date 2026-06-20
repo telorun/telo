@@ -231,6 +231,11 @@ const sidebars: SidebarsConfig = {
                       id: "modules/http-server/docs/returns-and-catches",
                       label: "returns & catches",
                     },
+                    {
+                      type: "doc",
+                      id: "modules/http-server/docs/static-files",
+                      label: "static files & frontends",
+                    },
                   ],
                 },
                 { type: "doc", id: "modules/http-client/README", label: "HTTP Client" },

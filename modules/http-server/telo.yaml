@@ -17,6 +17,7 @@ exports:
   kinds:
     - Server
     - Api
+    - Static
 ---
 kind: "Telo.Definition"
 metadata:
@@ -645,3 +646,62 @@ schema:
                   body:
                     id: !cel "result.rows[0].id"
                     email: !cel "result.rows[0].email"
+---
+kind: "Telo.Definition"
+metadata:
+  name: "Static"
+capability: Telo.Mount
+controllers:
+  - pkg:npm/@telorun/http-server@0.13.0?local_path=./nodejs#http-static
+schema:
+  type: "object"
+  description: >-
+    Serves a directory of static assets (a built SPA, plain HTML, images, …) as
+    a mountable router. Attach it to an Http.Server mount alongside an Http.Api
+    so one application delivers both its API and its frontend.
+  properties:
+    root:
+      title: Root
+      description: >-
+        Directory of files to serve. A relative path is resolved against the
+        manifest file that declares this resource, so the assets ship with the
+        application.
+      type: "string"
+      x-telo-eval: compile
+    index:
+      title: Index
+      description: File served for the directory root. Defaults to index.html.
+      type: "string"
+      x-telo-eval: compile
+      default: "index.html"
+    spaFallback:
+      title: SPA Fallback
+      description: >-
+        Serve the index file for any path that does not match a file, so a
+        single-page app's client-side routing works on deep links / refresh.
+      type: "boolean"
+      x-telo-eval: compile
+      default: false
+    maxAge:
+      title: Max Age
+      description: >-
+        Cache-Control max-age in seconds. When set, served assets carry a
+        Cache-Control header; omit for no caching directive.
+      type: "integer"
+      x-telo-eval: compile
+      minimum: 0
+    immutable:
+      title: Immutable
+      description: >-
+        Add the `immutable` Cache-Control directive (for content-hashed asset
+        filenames that never change). Only meaningful together with maxAge.
+      type: "boolean"
+      x-telo-eval: compile
+      default: false
+  required: [ "root" ]
+  examples:
+    - root: ./public
+    - root: ./dist
+      spaFallback: true
+      maxAge: 3600
+      immutable: true
