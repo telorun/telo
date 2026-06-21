@@ -3,7 +3,7 @@ import { createRequire } from "module";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Loader } from "@telorun/analyzer";
+import { Loader, defaultSources } from "@telorun/analyzer";
 import {
   LocalManifestCacheSource,
   cachePathForCanonical,
@@ -346,10 +346,11 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
 
     // Build a Loader with the cache source registered, and point
     // `registryUrl` at an unreachable host to prove no network call is made.
-    const loader = new Loader({
-      extraSources: [new LocalFileSource(), new LocalManifestCacheSource(workdir)],
-      registryUrl: "http://127.0.0.1:1",
-    });
+    const loader = new Loader([
+      new LocalFileSource(),
+      new LocalManifestCacheSource(workdir),
+      ...defaultSources("http://127.0.0.1:1"),
+    ]);
 
     const graph = await loader.loadGraph(entryPath);
     expect(graph.errors).toEqual([]);
@@ -376,10 +377,11 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
       ].join("\n"),
     );
 
-    const loader = new Loader({
-      extraSources: [new LocalFileSource(), new LocalManifestCacheSource(workdir)],
-      registryUrl: "http://127.0.0.1:1",
-    });
+    const loader = new Loader([
+      new LocalFileSource(),
+      new LocalManifestCacheSource(workdir),
+      ...defaultSources("http://127.0.0.1:1"),
+    ]);
 
     const graph = await loader.loadGraph(entryPath);
     expect(graph.errors.length).toBeGreaterThan(0);

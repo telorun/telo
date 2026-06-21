@@ -18,6 +18,7 @@ Focus on:
 - architecture and design of the code
 - encapsulation and modularity
 - cohesion and coupling
+- dependency inversion violations — flag a class that constructs its own concrete dependencies instead of depending on the abstraction and receiving them (constructor injection / factory). Watch for boolean flags whose only purpose is to switch hardcoded constructions on/off: the decision of *which* concretions exist is a composition-root concern and must not leak into the class. The fix is one injection seam (plus an exported factory for the common default set), not a growing list of toggles.
 - adherence to Telo's core goals
 - check if generic packages are aware of specific packages, eg. 
   - both `kernel` and `sdk` must not be aware of: any module in `./modules`, any package in `./packages`, `editor`, `cli`
@@ -33,3 +34,5 @@ Ground your feedback in specific file paths and line ranges. Provide actionable 
 Make sure there is no major version bump in any of the packages or modules.
 
 Ignore any file changes that are not coherent with the overall feature or fix being implemented and seem out of scope.
+
+Do not comment about what is sound about the implementation, only point out potential issues and areas for improvement.

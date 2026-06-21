@@ -1,5 +1,5 @@
 import type { LoadedGraph } from "@telorun/analyzer";
-import { AnalysisRegistry, Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
 import {
   findPositions,
   normalizeDiagnostic,
@@ -104,7 +104,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     const filePath = document.uri.fsPath;
-    const loader = new Loader([new NodeAdapter(path.dirname(filePath))]);
+    const loader = new Loader([new NodeAdapter(path.dirname(filePath)), ...defaultSources()]);
 
     let result: Awaited<ReturnType<typeof loader.loadGraphForFile>>;
     try {
@@ -200,7 +200,13 @@ export function activate(context: vscode.ExtensionContext): void {
     const manifests = flattenForAnalyzer(graph);
 
     const registry = new AnalysisRegistry();
-    const rawDiagnostics = analyzer.analyze(manifests, undefined, registry);
+    // Loader-produced version-reconciliation diagnostics (hoist / major
+    // mismatch) carry `data.filePath` + `data.path: imports.<alias>`, so the
+    // shared `findPositions` resolver lands them on the importer's import line.
+    const rawDiagnostics = [
+      ...graph.versionDiagnostics,
+      ...analyzer.analyze(manifests, undefined, registry),
+    ];
 
     const diagnosticsByFile = new Map<string, vscode.Diagnostic[]>();
 

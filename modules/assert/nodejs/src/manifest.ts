@@ -1,4 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, flattenForAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
 import type { ResourceContext, Runnable } from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -78,7 +78,7 @@ export async function create(
       const dim = (t: string) => c("2", t);
 
       const name = manifest.metadata.name;
-      const loader = new Loader([new LocalFileSource()]);
+      const loader = new Loader([new LocalFileSource(), ...defaultSources()]);
       const analyzer = new StaticAnalyzer();
 
       const resolvedUrl = new URL(manifest.source, ctx.moduleContext.source).toString();

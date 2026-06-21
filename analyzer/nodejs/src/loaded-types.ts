@@ -1,7 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { Document } from "yaml";
 import type { DocumentPosition } from "./position-metadata.js";
-import type { Range } from "./types.js";
+import type { AnalysisDiagnostic, Range } from "./types.js";
 
 /** One physical file's parsed result. Returned for the owner manifest, for
  *  each `include:` partial, and for each external import target.
@@ -70,8 +70,21 @@ export interface LoadedGraph {
    *  its partials. */
   modules: Map<string, LoadedModule>;
   /** Per-Telo.Import resolution. Keyed by the resolved URL of the file the
-   *  Telo.Import was declared in, then by the import's PascalCase alias. */
+   *  Telo.Import was declared in, then by the import's PascalCase alias.
+   *  Version reconciliation repoints losing edges at their winner here, so a
+   *  consumer walking these edges (`flattenForAnalyzer`) sees one version per
+   *  module identity. */
   importEdges: Map<string, Map<string, ImportEdge>>;
+  /** Version-reconciliation redirects: a losing module's canonical source URL →
+   *  the winning version's canonical source URL. The runtime consults this when
+   *  it independently re-resolves an import (the analyzer already sees repointed
+   *  `importEdges`). Empty when no module identity appeared at two sources. */
+  overrides: Map<string, string>;
+  /** Diagnostics produced while reconciling module versions — one per import
+   *  edge redirected to a different version (warning for a same-major hoist,
+   *  error for a major mismatch). Surfaced alongside `analyze()` diagnostics by
+   *  every consumer (CLI, editor, VS Code). */
+  versionDiagnostics: AnalysisDiagnostic[];
   /** Surface-level errors that did not abort the graph load (e.g. an import
    *  whose target failed to fetch). */
   errors: GraphLoadError[];

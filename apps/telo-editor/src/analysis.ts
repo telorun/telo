@@ -213,6 +213,29 @@ function analyzeClosure(
     appendByFile(UNKNOWN_FILE_KEY, normalized);
   }
 
+  // Version-reconciliation diagnostics are a property of the whole graph, not
+  // of any single closure's claimed files: a hoist/conflict is only visible
+  // from the importer that pulls both versions together (a sub-library analyzed
+  // standalone sees no skew). Route them straight to their `data.filePath`,
+  // bypassing `claimsFile`, and dedupe across closures by file+code+message so
+  // the same skew surfaces exactly once.
+  for (const vd of graph.versionDiagnostics) {
+    const filePath = (vd.data as { filePath?: string } | undefined)?.filePath;
+    if (!filePath) continue;
+    const dedupKey = `version::${filePath}::${vd.code}::${vd.message}`;
+    if (acc.unknownSeen.has(dedupKey)) continue;
+    acc.unknownSeen.add(dedupKey);
+    const moduleDocPos = graph.modules.get(filePath)?.owner.positions[0];
+    appendByFile(
+      filePath,
+      normalizeDiagnostic(vd, {
+        registry,
+        positionIndex: moduleDocPos?.positionIndex,
+        sourceLine: moduleDocPos?.sourceLine,
+      }),
+    );
+  }
+
   // Registry routing: a root-local file resolves completions against THIS
   // closure's registry (its own definitions + forwarded imports) — authoritative,
   // so it wins regardless of closure order. Other closure files (forwarded

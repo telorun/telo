@@ -1,5 +1,6 @@
 import {
   AnalysisRegistry,
+  defaultSources,
   flattenForAnalyzer,
   flattenLoadedModule,
   isModuleKind,
@@ -150,7 +151,7 @@ export class Kernel implements IKernel {
     this.env = options.env ?? process.env;
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
-    this.loader = new Loader({ registryUrl: this.registryUrl, celHandlers: nodeCelHandlers });
+    this.loader = new Loader(defaultSources(this.registryUrl), { celHandlers: nodeCelHandlers });
     for (const source of options.sources) {
       this.loader.register(source);
     }
@@ -239,7 +240,21 @@ export class Kernel implements IKernel {
    *  custom `ManifestSource`s — `isImportValidatedAtLoad` etc. only hit
    *  when both sides agree on the canonical URL. */
   resolveImportUrl(fromSource: string, importSource: string): string {
-    return this.loader.resolveImportUrl(fromSource, importSource);
+    const resolved = this.loader.resolveImportUrl(fromSource, importSource);
+    // Apply version-reconciliation overrides captured during `load()`: when the
+    // entry graph hoisted this module identity to a higher version, redirect the
+    // import-controller's independent re-resolution onto the winning source so a
+    // sub-library importing a lower version loads the same controller/definition
+    // the analyzer registered — never a second, colliding copy. Keyed by
+    // canonical URL; `canonicalize` maps a registry ref (returned verbatim by
+    // the loader) to the URL the graph walk already resolved it to.
+    const overrides = this._loadedGraph?.overrides;
+    if (overrides && overrides.size > 0) {
+      const canonical = this.loader.canonicalize(resolved) ?? resolved;
+      const winner = overrides.get(canonical);
+      if (winner) return winner;
+    }
+    return resolved;
   }
 
   /**
@@ -348,6 +363,21 @@ export class Kernel implements IKernel {
       throw analysisGraph.errors[0].error;
     }
     this._loadedGraph = analysisGraph;
+    // Version reconciliation: an incompatible major mismatch is fatal (the
+    // hoist override would silently run the wrong major); a same-major hoist is
+    // advisory — the override already redirects every importer to the winner.
+    const versionConflicts = analysisGraph.versionDiagnostics.filter(
+      (d) => d.code === "MODULE_VERSION_CONFLICT",
+    );
+    if (versionConflicts.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        versionConflicts.map((d) => d.message).join("\n"),
+      );
+    }
+    for (const d of analysisGraph.versionDiagnostics) {
+      if (d.code === "MODULE_VERSION_HOISTED") console.warn(`warning: ${d.message}`);
+    }
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
 

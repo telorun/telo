@@ -1,4 +1,4 @@
-import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
+import { Loader, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
 import {
   ControllerLoader,
   Kernel,
@@ -122,10 +122,7 @@ async function installOne(
   // image bakes deps at the relocated root) and thread it to the manifest
   // cache, controller install root, and analysis-warm pass.
   const cacheRoot = resolveCacheRoot(entryPath);
-  const loader = new Loader({
-    extraSources: [new LocalFileSource()],
-    registryUrl,
-  });
+  const loader = new Loader([new LocalFileSource(), ...defaultSources(registryUrl)]);
   let manifests: ResourceManifest[];
   let graph: Awaited<ReturnType<typeof loader.loadGraph>>;
   try {

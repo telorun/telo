@@ -37,11 +37,7 @@ describe("Loader.loadFile url cache", () => {
         source: "file:///cache/std/foo/1.0.0/telo.yaml",
       },
     });
-    const loader = new Loader({
-      extraSources: [source],
-      includeHttpSource: false,
-      includeRegistrySource: false,
-    });
+    const loader = new Loader([source]);
 
     const first = await loader.loadFile("std/foo@1.0.0");
     const second = await loader.loadFile("std/foo@1.0.0");
@@ -57,11 +53,7 @@ describe("Loader.loadFile url cache", () => {
         source: "file:///cache/std/bar/1.0.0/telo.yaml",
       },
     });
-    const loader = new Loader({
-      extraSources: [source],
-      includeHttpSource: false,
-      includeRegistrySource: false,
-    });
+    const loader = new Loader([source]);
 
     await loader.loadFile("std/bar@1.0.0", { compile: false });
     await loader.loadFile("std/bar@1.0.0", { compile: true });
@@ -92,11 +84,7 @@ describe("Loader.loadFile url cache", () => {
         source: "file:///cache/std/foo/1.0.0/telo.yaml",
       },
     });
-    const loader = new Loader({
-      extraSources: [source],
-      includeHttpSource: false,
-      includeRegistrySource: false,
-    });
+    const loader = new Loader([source]);
 
     await loader.loadGraph("app.yaml");
     await loader.loadModule("std/foo@1.0.0", { compile: true });

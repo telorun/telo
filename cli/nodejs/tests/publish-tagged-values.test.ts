@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Loader } from "@telorun/analyzer";
+import { Loader, defaultSources } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseAllDocuments } from "yaml";
@@ -155,7 +155,7 @@ describe("canonicalizeRelativeImports — tagged values", () => {
 
     const owner = fs.readFileSync(consumerManifestPath, "utf-8");
     const localFileSource = new LocalFileSource();
-    const loader = new Loader([localFileSource]);
+    const loader = new Loader([localFileSource, ...defaultSources()]);
     const out = await canonicalizeRelativeImports(
       owner,
       consumerManifestPath,
@@ -206,7 +206,7 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     fs.writeFileSync(manifestPath, text);
 
     const localFileSource = new LocalFileSource();
-    const loader = new Loader([localFileSource]);
+    const loader = new Loader([localFileSource, ...defaultSources()]);
     void pathToFileURL(manifestPath);
     const out = await canonicalizeRelativeImports(text, manifestPath, loader, localFileSource);
     // No imports → no mutation → returned content is identical.

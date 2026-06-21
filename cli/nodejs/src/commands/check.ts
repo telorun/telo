@@ -1,4 +1,4 @@
-import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";
@@ -11,7 +11,7 @@ async function checkOne(
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
 
-  const loader = new Loader([new LocalFileSource()]);
+  const loader = new Loader([new LocalFileSource(), ...defaultSources()]);
 
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic
@@ -23,7 +23,10 @@ async function checkOne(
       throw first.error;
     }
     const manifests = flattenForAnalyzer(graph);
-    const diagnostics = new StaticAnalyzer().analyze(manifests);
+    // Version-reconciliation diagnostics (hoist warnings / major-mismatch
+    // errors) are produced by the loader, not `analyze()`; merge them in so a
+    // skewed import surfaces here exactly as it does in the editor.
+    const diagnostics = [...graph.versionDiagnostics, ...new StaticAnalyzer().analyze(manifests)];
     return formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
   } catch (err) {
     const sourceLine = (err as any).sourceLine as number | undefined;
