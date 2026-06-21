@@ -1,5 +1,33 @@
 # @telorun/cli
 
+## 0.37.0
+
+### Minor Changes
+
+- 5ea5ff3: Reconcile module versions to one version per identity within an import graph.
+
+  When the same `<namespace>/<module-name>` is reached at multiple versions (a diamond import), the loader now collapses them onto a single version before any controller, definition, or kind is registered — fixing the spurious `DUPLICATE_IMPORT_ALIAS` and the silent last-writer-wins controller collision that two versions of one module previously caused.
+
+  - Same major → the highest version wins (a non-lossy hoist given the additive-only pre-1.0 policy), reported as a `MODULE_VERSION_HOISTED` warning on the lower-version import line.
+  - Different major → a fatal `MODULE_VERSION_CONFLICT`; `telo run` refuses to start and `telo check` errors.
+  - Same version from two sources with differing content → a `MODULE_VERSION_HOISTED` warning; identical content is deduplicated silently.
+
+  Reconciliation lives in the shared analyzer loader, so `telo check`, the kernel runtime, and the editor all resolve the same single version. `LoadedGraph` gains `overrides` and `versionDiagnostics`.
+
+### Patch Changes
+
+- 5ea5ff3: Inject manifest sources into the `Loader` constructor instead of constructing built-ins inside it.
+
+  `new Loader(...)` now takes `(sources: ManifestSource[], options?: { celHandlers? })` — the caller (composition root) decides which concrete sources exist and supplies them. The previous behaviour of self-constructing `HttpSource`/`RegistrySource` (gated by `includeHttpSource`/`includeRegistrySource` flags) and the `extraSources`/`registryUrl` init options are removed. A new exported `defaultSources(registryUrl?)` bundles the browser-safe built-ins (HTTP + registry) for the common case, so consumers compose them explicitly: `new Loader([localFileSource, ...defaultSources(registryUrl)])`.
+
+  This removes a dependency-inversion violation: the `Loader` now depends only on the `ManifestSource` abstraction and no longer imports concrete source implementations.
+
+- Updated dependencies [5ea5ff3]
+- Updated dependencies [5ea5ff3]
+  - @telorun/analyzer@0.28.0
+  - @telorun/kernel@0.37.0
+  - @telorun/ide-support@0.4.31
+
 ## 0.36.0
 
 ### Patch Changes
