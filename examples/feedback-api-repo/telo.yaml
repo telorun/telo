@@ -5,10 +5,10 @@ metadata:
   description: |
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
 imports:
-  Http: std/http-server@0.15.0
+  Http: std/http-server@0.15.1
   Sql: std/sql@0.10.0
-  SqlSqlite: std/sql-sqlite@0.2.0
-  SqlRepository: std/sql-repository@0.4.0
+  SqlSqlite: std/sql-sqlite@0.2.1
+  SqlRepository: std/sql-repository@0.5.0
   Run: std/run@0.11.0
 targets:
   - !ref SetupDb

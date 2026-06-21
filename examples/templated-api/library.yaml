@@ -10,7 +10,7 @@ metadata:
     under `/v1` and `/v2` to show import + mount reuse.
 imports:
   Type: std/type@0.5.0
-  Http: std/http-server@0.15.0
+  Http: std/http-server@0.15.1
   JavaScript: std/javascript@0.5.0
 exports:
   resources:

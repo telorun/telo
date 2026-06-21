@@ -13,7 +13,7 @@ metadata:
 
     Zero external infra: a shared SQLite file + in-process CacheMemory.Store.
 imports:
-  Http: ../../modules/http-server
+  Http: std/http-server@0.15.1
   Sql: std/sql@0.10.0
   Database:
     source: ./database
