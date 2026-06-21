@@ -12,7 +12,7 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: ../../../modules/http-server
+  Http: std/http-server@0.15.1
   Sql: std/sql@0.9.2
   Database:
     source: ../database

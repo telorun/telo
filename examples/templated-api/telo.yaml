@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 imports:
-  Http: std/http-server@0.15.0
+  Http: std/http-server@0.15.1
   Templated: ./library.yaml
 ports:
   http:
