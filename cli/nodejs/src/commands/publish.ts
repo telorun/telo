@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -480,7 +480,7 @@ async function publishOne(
   // This catches schema errors, bad references, CEL issues, and system-kind violations
   // in partial files — all before the artifact reaches the registry.
   const localFileSource = new LocalFileSource();
-  const analysisLoader = new Loader([localFileSource]);
+  const analysisLoader = new Loader([localFileSource, ...defaultSources()]);
   let analysisGraph;
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic

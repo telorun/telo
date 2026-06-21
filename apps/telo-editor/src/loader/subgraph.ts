@@ -1,5 +1,5 @@
 import type { ManifestSource } from "@telorun/analyzer";
-import { Loader, flattenLoadedModule, isModuleKind } from "@telorun/analyzer";
+import { HttpSource, Loader, flattenLoadedModule, isModuleKind } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   ModuleDocument,
@@ -28,17 +28,6 @@ import {
 // Loader wiring
 // ---------------------------------------------------------------------------
 
-type LoaderOptionsCompat = {
-  extraSources?: ManifestSource[];
-  includeHttpSource?: boolean;
-  includeRegistrySource?: boolean;
-  registryUrl?: string;
-};
-
-const LoaderCtor = Loader as unknown as new (
-  extraSourcesOrOptions?: ManifestSource[] | LoaderOptionsCompat,
-) => Loader;
-
 const registryFallbackBlocker: ManifestSource = {
   supports(url: string): boolean {
     return isRegistryImportSource(url);
@@ -63,17 +52,13 @@ export function createEditorLoader(
   localAdapter: ManifestSource,
   registryAdapters: ManifestSource[],
 ): Loader {
-  try {
-    return new LoaderCtor({
-      extraSources: [...registryAdapters, localAdapter],
-      includeRegistrySource: false,
-    });
-  } catch {
-    const legacyAdapters = registryAdapters.length
-      ? [...registryAdapters, localAdapter]
-      : [registryFallbackBlocker, localAdapter];
-    return new LoaderCtor(legacyAdapters);
-  }
+  // The editor supplies its own registry adapters (or a blocker that fails with
+  // an actionable "configure a registry" message), so it takes the built-in
+  // HTTP source but not the built-in RegistrySource.
+  const registrySources = registryAdapters.length
+    ? registryAdapters
+    : [registryFallbackBlocker];
+  return new Loader([...registrySources, localAdapter, new HttpSource()]);
 }
 
 // ---------------------------------------------------------------------------

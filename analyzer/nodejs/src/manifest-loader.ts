@@ -1,7 +1,5 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
-import { HttpSource } from "./sources/http-source.js";
-import { RegistrySource } from "./sources/registry-source.js";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type {
   GraphLoadError,
@@ -13,6 +11,7 @@ import type {
 import { desugarLoadedFile } from "./inline-imports.js";
 import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
+import { reconcileModuleVersions } from "./reconcile-module-versions.js";
 import {
   DEFAULT_MANIFEST_FILENAME,
   type LoadOptions,
@@ -53,22 +52,13 @@ export class Loader {
   protected sources: ManifestSource[];
   private readonly celEnv: Environment;
 
-  constructor(extraSourcesOrOptions: ManifestSource[] | LoaderInitOptions = []) {
-    const options: LoaderInitOptions = Array.isArray(extraSourcesOrOptions)
-      ? { extraSources: extraSourcesOrOptions }
-      : extraSourcesOrOptions;
-
-    const includeHttpSource = options.includeHttpSource ?? true;
-    const includeRegistrySource = options.includeRegistrySource ?? true;
-
-    this.sources = [];
-    if (includeHttpSource) this.sources.push(new HttpSource());
-    if (includeRegistrySource) this.sources.push(new RegistrySource(options.registryUrl));
-
-    if (options.extraSources?.length) {
-      this.sources.unshift(...options.extraSources);
-    }
-
+  /** Sources are resolved in order — the first whose `supports(url)` matches
+   *  wins. The caller (composition root) decides which concrete sources exist
+   *  and supplies them; `defaultSources()` bundles the browser-safe built-ins
+   *  (HTTP + registry) for the common case. `register()` prepends a source at
+   *  runtime. */
+  constructor(sources: ManifestSource[] = [], options: LoaderInitOptions = {}) {
+    this.sources = [...sources];
     this.celEnv = buildCelEnvironment(options.celHandlers);
   }
 
@@ -307,7 +297,20 @@ export class Loader {
       }
     }
 
-    return { rootSource, entry, modules, importEdges, errors };
+    // Collapse multiple versions of the same module identity onto one version
+    // before any consumer walks the edges: repoints losing `importEdges` in
+    // place and yields the runtime override map + hoist/conflict diagnostics.
+    const { overrides, diagnostics } = reconcileModuleVersions(modules, importEdges);
+
+    return {
+      rootSource,
+      entry,
+      modules,
+      importEdges,
+      overrides,
+      versionDiagnostics: diagnostics,
+      errors,
+    };
   }
 
   /** Resolve an `import` URL against the file it appears in. Relative /

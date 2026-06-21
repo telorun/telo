@@ -63,11 +63,7 @@ describe("Loader.loadGraph — error sourceLine", () => {
     ].join("\n");
 
     const source = inMemorySource({ "/ws/telo.yaml": appText });
-    const loader = new Loader({
-      includeHttpSource: false,
-      includeRegistrySource: false,
-      extraSources: [source],
-    });
+    const loader = new Loader([source]);
 
     const graph = await loader.loadGraph("/ws/telo.yaml");
 
@@ -106,11 +102,7 @@ describe("Loader.loadGraph — error sourceLine", () => {
       "/ws/telo.yaml": appText,
       "/ws/other/telo.yaml": otherText,
     });
-    const loader = new Loader({
-      includeHttpSource: false,
-      includeRegistrySource: false,
-      extraSources: [source],
-    });
+    const loader = new Loader([source]);
 
     // assertImportTargetIsLibrary throws synchronously on Application targets.
     // The thrown error carries `sourceLine` for hosts that pin diagnostics.

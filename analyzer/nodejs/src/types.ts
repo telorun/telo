@@ -75,14 +75,6 @@ export interface LoadOptions {
 }
 
 export interface LoaderInitOptions {
-  /** Sources inserted with highest priority before built-ins. */
-  extraSources?: ManifestSource[];
-  /** Include built-in HttpSource. Defaults to true. */
-  includeHttpSource?: boolean;
-  /** Include built-in RegistrySource. Defaults to true. */
-  includeRegistrySource?: boolean;
-  /** Base URL used by built-in RegistrySource when enabled. */
-  registryUrl?: string;
   /** Handlers for CEL stdlib functions (e.g. `sha256`). Analyzer-only callers may
    *  omit this and get throwing stubs; runtime callers (kernel) must supply real impls. */
   celHandlers?: import("./cel-environment.js").CelHandlers;

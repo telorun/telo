@@ -39,6 +39,8 @@ export { parseLoadedFile } from "./parse-loaded-file.js";
 export type { ParseOptions } from "./parse-loaded-file.js";
 export { desugarLoadedFile, inlineImportManifests } from "./inline-imports.js";
 export type { SyntheticImport } from "./inline-imports.js";
+export { reconcileModuleVersions } from "./reconcile-module-versions.js";
+export type { VersionReconciliation } from "./reconcile-module-versions.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
 export {
     buildDocumentPositions,
@@ -49,6 +51,7 @@ export {
 export type { DocumentPosition } from "./position-metadata.js";
 export { HttpSource } from "./sources/http-source.js";
 export { RegistrySource } from "./sources/registry-source.js";
+export { defaultSources } from "./sources/default-sources.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";
 export type {
