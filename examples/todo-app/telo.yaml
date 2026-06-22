@@ -46,14 +46,6 @@ migrations:
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
 ---
-# The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
-# serves GET / (list), GET /{id}, POST /, PUT /{id}, DELETE /{id}.
-kind: Crud.Resource
-metadata:
-  name: Todos
-connection: !ref Db
-table: todos
----
 kind: Http.Server
 metadata:
   name: Server
@@ -66,7 +58,13 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /api/todos
-    mount: !ref Todos
+    mount:
+      # The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
+      # serves GET / (list), GET /{id}, POST /, PUT /{id}, DELETE /{id}.
+      kind: Crud.Resource
+      connection: !ref Db
+      table: todos
+
   - path: /
     mount: !ref Ui
 ---

@@ -2,6 +2,7 @@ import Dagre from "@dagrejs/dagre";
 import {
   Background,
   Controls,
+  type Edge,
   Handle,
   type Node,
   type NodeProps,
@@ -10,12 +11,17 @@ import {
   ReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import {
+  collapseTopology,
   deriveGraph,
   deriveInvocations,
+  type GraphEdge,
   type GraphNode,
+  type GraphState,
+  type GroupedGraphNode,
   type Invocation,
+  subtreeGraph,
   type TraceNode,
   traceSubgraph,
 } from "../graph.js";
@@ -38,12 +44,14 @@ const badgeClass = (outcome: Invocation["outcome"]) =>
 // ── Custom nodes ────────────────────────────────────────────────────────────
 
 interface TopologyNodeData extends Record<string, unknown> {
-  node: GraphNode;
+  node: GroupedGraphNode;
   selected: boolean;
 }
 
 /** Live-topology node: status dot, name + kind, invocation badge; pulses on each
- *  new invocation, tinted by outcome. */
+ *  new invocation, tinted by outcome. A node that owns spawned children (a
+ *  templated kind) shows an "n internal" badge — clicking it opens the drill-down
+ *  pane with that resource and the children it spawned. */
 function TopologyNode({ data }: NodeProps<Node<TopologyNodeData>>) {
   const { node, selected } = data;
   const [pulse, setPulse] = useState<"" | "ok" | "bad">("");
@@ -61,6 +69,7 @@ function TopologyNode({ data }: NodeProps<Node<TopologyNodeData>>) {
   const cls = [
     "tdbg-node",
     `tdbg-node-${node.status}`,
+    node.childCount > 0 ? "tdbg-node-owner" : "",
     selected ? "tdbg-node-sel" : "",
     pulse ? `tdbg-node-pulse-${pulse}` : "",
   ]
@@ -84,6 +93,9 @@ function TopologyNode({ data }: NodeProps<Node<TopologyNodeData>>) {
         )}
       </div>
       <div className="tdbg-node-kind">{node.kind}</div>
+      {node.childCount > 0 && (
+        <span className="tdbg-node-internal">{node.childCount} internal ›</span>
+      )}
       <Handle type="source" position={Position.Right} className="tdbg-node-handle" />
     </div>
   );
@@ -149,6 +161,29 @@ function layoutPositions(graph: {
   return pos;
 }
 
+/** Map graph edges to ReactFlow edges, dropping any whose endpoints aren't shown.
+ *  Ownership edges (owner → child) render dashed + muted so they read as
+ *  containment, not data flow. */
+function buildFlowEdges(edges: readonly GraphEdge[], present: ReadonlySet<string>): Edge[] {
+  return edges
+    .filter((e) => present.has(e.source) && present.has(e.target))
+    .map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      ...(e.ownership
+        ? {
+            className: "tdbg-edge-owner",
+            style: { stroke: "var(--tdbg-muted)", strokeDasharray: "5 4", opacity: 0.65 },
+          }
+        : {}),
+    }));
+}
+
+/** The main canvas shows the topology fully collapsed — templated resources are
+ *  one node each; their children are reached through the drill-down pane. */
+const NO_EXPANSION: ReadonlySet<string> = new Set();
+
 // ── The view ────────────────────────────────────────────────────────────────
 
 /**
@@ -161,6 +196,10 @@ function layoutPositions(graph: {
 export function EventGraph({ events, resolveUrl }: EventGraphProps) {
   const [traceId, setTraceId] = useState<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Drill-down stack of owner ids: clicking a templated resource pushes it and
+  // opens the nested pane; the breadcrumb pops back. Empty = pane closed.
+  const [drilldown, setDrilldown] = useState<string[]>([]);
 
   // Default on: standalone services / providers with no dependency wiring are
   // usually noise in the topology view.
@@ -176,19 +215,23 @@ export function EventGraph({ events, resolveUrl }: EventGraphProps) {
     [trace, activeTraceId],
   );
 
+  // The main canvas is the fully-collapsed topology: a templated resource is one
+  // node (absorbing its children's edges); the children are reached by clicking it.
+  const collapsed = useMemo(() => collapseTopology(topology, NO_EXPANSION), [topology]);
+
   // Topology with isolated nodes (no incoming/outgoing edge) dropped when the
   // toggle is on. Only meaningful for the live topology — trace subgraphs are all
   // connected by call edges.
   const displayTopology = useMemo(() => {
-    if (!hideUnconnected) return topology;
+    if (!hideUnconnected) return collapsed;
     const connected = new Set<string>();
-    for (const e of topology.edges) {
+    for (const e of collapsed.edges) {
       connected.add(e.source);
       connected.add(e.target);
     }
-    return { nodes: topology.nodes.filter((n) => connected.has(n.id)), edges: topology.edges };
-  }, [topology, hideUnconnected]);
-  const hiddenCount = topology.nodes.length - displayTopology.nodes.length;
+    return { nodes: collapsed.nodes.filter((n) => connected.has(n.id)), edges: collapsed.edges };
+  }, [collapsed, hideUnconnected]);
+  const hiddenCount = collapsed.nodes.length - displayTopology.nodes.length;
 
   const graph = scoped ?? displayTopology;
   const topoKey = useMemo(
@@ -219,16 +262,26 @@ export function EventGraph({ events, resolveUrl }: EventGraphProps) {
   }, [scoped, displayTopology, positions, selectedNodeId]);
 
   const flowEdges = useMemo(
-    () =>
-      graph.edges
-        .filter((e) => present.has(e.source) && present.has(e.target))
-        .map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    () => buildFlowEdges(graph.edges as readonly GraphEdge[], present),
     [graph, present],
   );
 
   const selectTrace = (id: number | null) => {
     setTraceId(id);
     setSelectedNodeId(null);
+    setDrilldown([]);
+  };
+
+  // Clicking a templated resource (one that owns children) opens the drill-down
+  // pane; any other node opens its inputs/outputs detail.
+  const onTopologyNodeClick = (id: string) => {
+    const node = displayTopology.nodes.find((n) => n.id === id);
+    if (node && node.childCount > 0) {
+      setDrilldown([id]);
+      setSelectedNodeId(null);
+    } else {
+      setSelectedNodeId(id);
+    }
   };
 
   return (
@@ -244,8 +297,8 @@ export function EventGraph({ events, resolveUrl }: EventGraphProps) {
           <div className="tdbg-empty">
             {activeTraceId !== null
               ? "No resources in this trace."
-              : hideUnconnected && topology.nodes.length > 0
-                ? `All ${topology.nodes.length} resource(s) are unconnected — turn off "Hide unconnected" to show them.`
+              : hideUnconnected && collapsed.nodes.length > 0
+                ? `All ${collapsed.nodes.length} resource(s) are unconnected — turn off "Hide unconnected" to show them.`
                 : "No resources yet — waiting for the stream…"}
           </div>
         ) : (
@@ -262,7 +315,9 @@ export function EventGraph({ events, resolveUrl }: EventGraphProps) {
             fitView
             minZoom={0.2}
             proOptions={{ hideAttribution: true }}
-            onNodeClick={(_e, node) => setSelectedNodeId(node.id)}
+            onNodeClick={(_e, node) =>
+              scoped ? setSelectedNodeId(node.id) : onTopologyNodeClick(node.id)
+            }
             onPaneClick={() => setSelectedNodeId(null)}
           >
             <Background />
@@ -299,7 +354,143 @@ export function EventGraph({ events, resolveUrl }: EventGraphProps) {
             onClose={() => setSelectedNodeId(null)}
           />
         ))}
+      {!scoped && drilldown.length > 0 && (
+        <>
+          <div className="tdbg-nested-backdrop" onClick={() => setDrilldown([])} />
+          {drilldown.map((ownerId, i) => (
+            <NestedGraphPane
+              key={`${ownerId}@${i}`}
+              topology={topology}
+              ownerId={ownerId}
+              depth={i}
+              isTop={i === drilldown.length - 1}
+              onDrill={(childId) => setDrilldown((d) => [...d.slice(0, i + 1), childId])}
+              onReveal={() => setDrilldown((d) => d.slice(0, i + 1))}
+              onClose={() => setDrilldown((d) => d.slice(0, i))}
+              resolveUrl={resolveUrl}
+            />
+          ))}
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * One panel in the drill-down stack — a templated resource and the children it
+ * spawned (`subtreeGraph`), wired by dashed ownership edges plus the dependency
+ * edges among them. Each drill-in pushes a *new* panel (cascaded to the right);
+ * clicking a child that owns its own children opens the next panel, recursive to
+ * any depth. Only the top panel is interactive; clicking a panel beneath pops the
+ * stack back to it, and clicking a leaf (or the parent) opens its detail.
+ */
+function NestedGraphPane({
+  topology,
+  ownerId,
+  depth,
+  isTop,
+  onDrill,
+  onReveal,
+  onClose,
+  resolveUrl,
+}: {
+  topology: GraphState;
+  ownerId: string;
+  depth: number;
+  isTop: boolean;
+  onDrill: (childId: string) => void;
+  onReveal: () => void;
+  onClose: () => void;
+  resolveUrl: (rel: string) => string;
+}) {
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const nodeById = useMemo(() => new Map(topology.nodes.map((n) => [n.id, n])), [topology]);
+  const sub = useMemo(() => subtreeGraph(topology, ownerId), [topology, ownerId]);
+  const positions = useMemo(() => layoutPositions(sub), [sub]);
+  const present = useMemo(() => new Set(sub.nodes.map((n) => n.id)), [sub]);
+
+  const flowNodes: Node[] = useMemo(
+    () =>
+      sub.nodes.map((n) => ({
+        id: n.id,
+        type: "topology",
+        position: positions.get(n.id) ?? { x: 0, y: 0 },
+        data: { node: n, selected: n.id === selectedNodeId } satisfies TopologyNodeData,
+      })),
+    [sub, positions, selectedNodeId],
+  );
+  const flowEdges = useMemo(() => buildFlowEdges(sub.edges, present), [sub, present]);
+
+  const onNodeClick = (id: string) => {
+    const node = sub.nodes.find((n) => n.id === id);
+    // A child that owns its own children opens the next panel; the parent itself
+    // or a leaf opens its detail in this panel.
+    if (id !== ownerId && node && node.childCount > 0) onDrill(id);
+    else setSelectedNodeId(id);
+  };
+
+  const owner = nodeById.get(ownerId);
+  const detailNode = selectedNodeId ? nodeById.get(selectedNodeId) : undefined;
+
+  return (
+    <aside
+      className={`tdbg-nested-pane${isTop ? "" : " tdbg-nested-pane-under"}`}
+      // `--tdbg-depth` drives the cascade offset (`left`) in CSS, so a media query
+      // can tighten it on a narrow screen; z-index stacks the panels.
+      style={{ zIndex: 20 + depth, ["--tdbg-depth"]: depth } as CSSProperties}
+      // A panel beneath the top acts as a single "go back here" surface.
+      onClick={isTop ? undefined : onReveal}
+    >
+      <div className="tdbg-nested-head">
+        <span className="tdbg-nested-title">
+          <span className="tdbg-node-name">{owner?.name ?? ownerId}</span>
+          {owner && <span className="tdbg-muted">{owner.kind}</span>}
+        </span>
+        <button
+          className="tdbg-btn tdbg-icon-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="tdbg-nested-body" style={{ pointerEvents: isTop ? "auto" : "none" }}>
+        <div className="tdbg-nested-canvas">
+          {sub.nodes.length === 0 ? (
+            <div className="tdbg-empty">This resource spawned no children.</div>
+          ) : (
+            <ReactFlow
+              key={ownerId}
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={nodeTypes}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              edgesFocusable={false}
+              fitView
+              minZoom={0.2}
+              proOptions={{ hideAttribution: true }}
+              onNodeClick={(_e, node) => onNodeClick(node.id)}
+              onPaneClick={() => setSelectedNodeId(null)}
+            >
+              <Background />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          )}
+        </div>
+        {detailNode && (
+          <NodeDetail
+            node={detailNode}
+            resolveUrl={resolveUrl}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -369,6 +560,9 @@ function NodeDetail({
 }) {
   if (!node) return null;
   const i = node.lastInvoke;
+  const props = node.properties;
+  const hasProps =
+    !!props && typeof props === "object" && Object.keys(props as object).length > 0;
   return (
     <aside className="tdbg-graph-detail">
       <DetailHead name={node.name} onClose={onClose} />
@@ -377,6 +571,12 @@ function NodeDetail({
         <span className={`tdbg-badge tdbg-suffix-${node.status}`}>{node.status}</span>
         <span className="tdbg-muted">{node.invokeCount} invocation(s)</span>
       </div>
+      {hasProps && (
+        <div className="tdbg-graph-detail-body">
+          <div className="tdbg-graph-detail-label">Properties</div>
+          <PayloadInspector value={props} resolveUrl={resolveUrl} />
+        </div>
+      )}
       {i ? (
         <div className="tdbg-graph-detail-body">
           <div className="tdbg-graph-detail-sub">

@@ -333,6 +333,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 .tdbg-graph-canvas {
   flex: 1;
@@ -349,6 +350,77 @@
   --xy-controls-button-color-hover-default: var(--tdbg-accent);
   --xy-controls-button-border-color-default: var(--tdbg-line);
   background: var(--tdbg-bg);
+  /* xyflow ships no `touch-action`, so on touch the browser claims one-finger
+   * drags and d3-zoom never pans/zooms. Hand the gestures to the canvas. */
+  touch-action: none;
+}
+
+/* ── Drill-down stack ───────────────────────────────────────────────────── */
+/* One backdrop behind the whole stack; clicking it closes every panel. */
+.tdbg-nested-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  background: rgba(0, 0, 0, 0.45);
+}
+/* Each drill level is its own panel, docked right and cascaded left (via inline
+ * `left` + `z-index`) so the panels beneath peek out as a navigable stack. */
+.tdbg-nested-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Cascade offset: each deeper panel starts further right (`--tdbg-depth` set by
+   * the component), leaving the panels beneath peeking on the left. */
+  left: calc(10% + var(--tdbg-depth, 0) * 46px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--tdbg-bg);
+  border-left: 1px solid var(--tdbg-line);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.3);
+}
+/* A panel beneath the top is a single "go back here" surface. */
+.tdbg-nested-pane-under {
+  cursor: pointer;
+}
+.tdbg-nested-pane-under::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.tdbg-nested-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--tdbg-line);
+  background: var(--tdbg-panel);
+}
+.tdbg-nested-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.tdbg-nested-title .tdbg-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tdbg-nested-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.tdbg-nested-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
 }
 
 .tdbg-node {
@@ -429,6 +501,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.tdbg-node-owner {
+  border-left: 3px solid var(--tdbg-accent);
+}
+.tdbg-node-internal {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tdbg-accent-bg, var(--tdbg-panel));
+  color: var(--tdbg-accent);
+  font-size: 10px;
+  font-weight: 600;
+}
 .tdbg-node-pulse-ok {
   animation: tdbg-pulse-ok 0.65s ease-out;
 }
@@ -491,7 +576,10 @@
 .tdbg-graph-detail-body {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  /* Don't let flex shrink the body below its content — otherwise each payload
+   * (overflow: auto) collapses into a tiny nested scrollbar. The whole detail
+   * aside (overflow: auto) is the single scroll container. */
+  flex-shrink: 0;
 }
 .tdbg-graph-detail-sub {
   display: flex;
@@ -596,4 +684,80 @@
 }
 .tdbg-graph-toggle input {
   cursor: pointer;
+}
+
+/* ── Mobile (≤640px) ────────────────────────────────────────────────────────
+ * The desktop layout leans on fixed-width side rails (220px trace list, 340px
+ * detail) and a single-row header. On a phone we wrap the header, stack the graph
+ * vertically (trace list → top scroll strip, detail → bottom sheet), and let the
+ * drill-down panels go near-full-width. */
+@media (max-width: 640px) {
+  .tdbg-tabs {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .tdbg-tab,
+  .tdbg-btn {
+    min-height: 34px;
+  }
+  .tdbg-bar-row {
+    flex-wrap: wrap;
+  }
+
+  /* Graph: stack the rails above/below the canvas instead of beside it. */
+  .tdbg-graph {
+    flex-direction: column;
+  }
+
+  /* Trace list → a horizontal scroll strip of invocation chips. */
+  .tdbg-trace-list {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    max-height: 30vh;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--tdbg-line);
+  }
+  .tdbg-trace-list-head {
+    position: static;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    border-bottom: none;
+    border-right: 1px solid var(--tdbg-line);
+  }
+  .tdbg-trace-row {
+    width: auto;
+    flex: 0 0 auto;
+    border-bottom: none;
+    border-right: 1px solid var(--tdbg-line);
+    white-space: nowrap;
+  }
+  .tdbg-trace-row .tdbg-node-name {
+    flex: 0 0 auto;
+  }
+  .tdbg-trace-row-on {
+    box-shadow: inset 0 -2px 0 var(--tdbg-accent);
+  }
+
+  /* Detail → a bottom sheet overlaying the canvas, not a 340px side column. */
+  .tdbg-graph-detail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 55%;
+    z-index: 10;
+    border-left: none;
+    border-top: 1px solid var(--tdbg-line);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Drill-down panels go near-full-width with a tight cascade. */
+  .tdbg-nested-pane {
+    left: calc(var(--tdbg-depth, 0) * 14px);
+  }
 }

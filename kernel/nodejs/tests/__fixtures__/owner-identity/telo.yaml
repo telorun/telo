@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: OwnerIdentityApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+  Lib: ./lib
+---
+kind: Lib.Boxed
+metadata:
+  name: alpha
+value: a
+---
+kind: Lib.Boxed
+metadata:
+  name: beta
+value: b

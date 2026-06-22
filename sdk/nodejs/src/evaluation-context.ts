@@ -79,6 +79,12 @@ export function resourceKey(r: ResourceManifest): string {
   return `${r.kind}.${r.metadata.name}`;
 }
 
+/** The resource that owns a spawned child context — the parent in the resource
+ *  topology. `id` is the owner's full hierarchical id (`<owner.id>/<kind>.<name>`,
+ *  or just `<kind>.<name>` at the top level), so a child's own id qualifies under
+ *  it and stays unique across instances of the same templated kind. */
+export type ResourceOwner = { kind: string; name: string; id: string };
+
 /**
  * Public contract for the base evaluation context.
  *
@@ -109,6 +115,20 @@ export interface EvaluationContext {
   /** Per-kernel invocation tracer. Set by the kernel on the root context and
    *  propagated through `spawnChild`; drives invocation-id minting in `invoke`. */
   tracer?: Tracer;
+
+  /** The resource that spawned this context's resources, if any. A template
+   *  controller stamps it on the child context it registers its `resources:`
+   *  into, so the lifecycle/dispatch events those children emit carry the owning
+   *  resource — letting a debug consumer nest them under their parent and keep
+   *  two instances of the same templated kind from colliding by name. `id` is the
+   *  owner's full hierarchical id (`<owner.id>/<kind>.<name>`); undefined on a
+   *  context whose resources are top-level. */
+  owner?: ResourceOwner;
+
+  /** The id prefix to prepend to a resource created in this context:
+   *  `owner ? owner.id + "/" : ""`. A controller that spawns sub-resources reads
+   *  it (via {@link ResourceContext.ownerPrefix}) to compose their hierarchical ids. */
+  readonly ownerPrefix: string;
 
   readonly createInstance: InstanceFactory;
   readonly context: Record<string, unknown>;

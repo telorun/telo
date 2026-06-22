@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: owner-identity-lib
+  version: 1.0.0
+imports:
+  JS: ../../../../../../modules/javascript
+---
+kind: Telo.Definition
+metadata:
+  name: Boxed
+capability: Telo.Provider
+schema:
+  type: object
+  required: [ value ]
+  additionalProperties: true
+  # A `{kind, name}`-shaped value in a schema example is documentation data, not a
+  # `!ref` — the dependency-edge collector must not treat it as a real dependency.
+  examples:
+    - value: a
+      ref:
+        kind: Demo.Thing
+        name: phantom
+  properties:
+    value: { type: string }
+resources:
+  # A fixed child name (not derived from self.name), so two Boxed instances both
+  # spawn a child called `inner` — the collision the owner identity must resolve.
+  - kind: JS.Script
+    metadata:
+      name: inner
+    inputType: { type: object, additionalProperties: true }
+    outputType: { type: object, additionalProperties: true }
+    code: |
+      function main(input) { return { echoed: input.value }; }
+provide:
+  kind: JS.Script
+  name: inner
+inputs:
+  value: ${{ self.value }}

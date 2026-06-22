@@ -46,14 +46,7 @@ imports:
   Run: std/run@<version>
   Console: std/console@<version>
 targets:
-  - Main
----
-kind: Run.Sequence
-metadata:
-  name: Main
-steps:
-  - name: SayHello
-    invoke: !ref Console.writeLine
+  - invoke: !ref Console.writeLine
     inputs:
       output: "Hello from Telo!"
 ```

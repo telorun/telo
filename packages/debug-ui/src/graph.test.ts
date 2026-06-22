@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveGraph, deriveInvocations, traceSubgraph } from "./graph.js";
+import {
+  collapseTopology,
+  deriveGraph,
+  deriveInvocations,
+  subtreeGraph,
+  traceSubgraph,
+} from "./graph.js";
 import type { DebugFrame } from "./wire.js";
 
 let seq = 0;
@@ -11,6 +17,35 @@ const ev = (event: string, payload?: unknown): DebugFrame => ({
 
 const created = (kind: string, name: string, deps: { kind: string; name: string }[] = []) =>
   ev(`${kind}.${name}.Created`, { resource: { kind, name }, dependencies: deps });
+
+type Owner = { kind: string; name: string; id: string };
+const idOf = (kind: string, name: string, ownerId?: string) =>
+  ownerId ? `${ownerId}/${kind}.${name}` : `${kind}.${name}`;
+
+/** A `Created` carrying the hierarchical `id` (and `owner`, for a spawned child)
+ *  the current kernel emits — the shape that disambiguates two instances of the
+ *  same templated kind. */
+const createdR = (
+  kind: string,
+  name: string,
+  opts: { owner?: Owner; deps?: { kind: string; name: string; id?: string }[] } = {},
+) =>
+  ev(`${kind}.${name}.Created`, {
+    resource: { kind, name, id: idOf(kind, name, opts.owner?.id) },
+    ...(opts.owner ? { owner: opts.owner } : {}),
+    dependencies: opts.deps ?? [],
+  });
+
+/** A terminal dispatch event whose `ref` carries the hierarchical `id`. */
+const dispId = (
+  name: string,
+  kind: string,
+  id: string,
+  outcome: Outcome,
+  suffix: string,
+  detail: Record<string, unknown> = {},
+): DebugFrame =>
+  ev(`${name}.${suffix}`, { capability: "invoke", phase: "end", outcome, ref: { kind, name, id }, ...detail });
 
 type Outcome = "ok" | "failed" | "rejected" | "cancelled";
 
@@ -138,6 +173,174 @@ describe("deriveGraph", () => {
     ]);
     expect(nodes).toHaveLength(1);
     expect(edges).toHaveLength(0);
+  });
+});
+
+describe("owner grouping", () => {
+  const todos: Owner = { kind: "Crud.Resource", name: "todos", id: "Crud.Resource.todos" };
+  const users: Owner = { kind: "Crud.Resource", name: "users", id: "Crud.Resource.users" };
+
+  it("keeps same-named children of two templated instances from colliding", () => {
+    const { nodes } = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("Crud.Resource", "users"),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+      createdR("SqlRepo.Read", "reader", { owner: users }),
+    ]);
+    const readers = nodes.filter((n) => n.name === "reader");
+    expect(readers.map((n) => n.id).sort()).toEqual([
+      "Crud.Resource.todos/SqlRepo.Read.reader",
+      "Crud.Resource.users/SqlRepo.Read.reader",
+    ]);
+    expect(readers.map((n) => n.ownerId).sort()).toEqual([
+      "Crud.Resource.todos",
+      "Crud.Resource.users",
+    ]);
+  });
+
+  it("attributes an invocation to the right instance via ref.id", () => {
+    const { nodes } = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("Crud.Resource", "users"),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+      createdR("SqlRepo.Read", "reader", { owner: users }),
+      dispId("reader", "SqlRepo.Read", "Crud.Resource.todos/SqlRepo.Read.reader", "ok", "Invoked", {
+        inputs: {},
+        outputs: 1,
+      }),
+    ]);
+    expect(nodes.find((n) => n.id === "Crud.Resource.todos/SqlRepo.Read.reader")?.invokeCount).toBe(1);
+    expect(nodes.find((n) => n.id === "Crud.Resource.users/SqlRepo.Read.reader")?.invokeCount).toBe(0);
+  });
+
+  it("collapseTopology hides children until their owner is expanded", () => {
+    const graph = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+      createdR("SqlRepo.Create", "creator", { owner: todos }),
+    ]);
+
+    const collapsedDefault = collapseTopology(graph, new Set());
+    expect(collapsedDefault.nodes.map((n) => n.id)).toEqual(["Crud.Resource.todos"]);
+    expect(collapsedDefault.nodes[0]).toMatchObject({ childCount: 2, expanded: false });
+
+    const expanded = collapseTopology(graph, new Set(["Crud.Resource.todos"]));
+    expect(expanded.nodes.map((n) => n.id).sort()).toEqual([
+      "Crud.Resource.todos",
+      "Crud.Resource.todos/SqlRepo.Create.creator",
+      "Crud.Resource.todos/SqlRepo.Read.reader",
+    ]);
+    expect(expanded.nodes.find((n) => n.id === "Crud.Resource.todos")).toMatchObject({ expanded: true });
+
+    // Revealed children stay attached to their owner via ownership edges.
+    const owns = expanded.edges.filter((e) => e.ownership);
+    expect(owns.map((e) => e.target).sort()).toEqual([
+      "Crud.Resource.todos/SqlRepo.Create.creator",
+      "Crud.Resource.todos/SqlRepo.Read.reader",
+    ]);
+    expect(owns.every((e) => e.source === "Crud.Resource.todos")).toBe(true);
+  });
+
+  it("adds no ownership edges while the owner is collapsed", () => {
+    const graph = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+    ]);
+    expect(collapseTopology(graph, new Set()).edges.some((e) => e.ownership)).toBe(false);
+  });
+
+  it("collapseTopology folds a hidden child's edge onto its owner", () => {
+    const graph = deriveGraph([
+      createdR("Sql.Connection", "db"),
+      createdR("Crud.Resource", "todos"),
+      createdR("SqlRepo.Read", "reader", {
+        owner: todos,
+        deps: [{ kind: "Sql.Connection", name: "db", id: "Sql.Connection.db" }],
+      }),
+    ]);
+    const collapsed = collapseTopology(graph, new Set());
+    expect(collapsed.edges).toContainEqual({
+      id: "Crud.Resource.todos->Sql.Connection.db",
+      source: "Crud.Resource.todos",
+      target: "Sql.Connection.db",
+    });
+    // The child node itself is hidden while collapsed.
+    expect(collapsed.nodes.some((n) => n.id.endsWith("SqlRepo.Read.reader"))).toBe(false);
+  });
+});
+
+describe("subtreeGraph (drill-down pane)", () => {
+  const todos: Owner = { kind: "Crud.Resource", name: "todos", id: "Crud.Resource.todos" };
+
+  it("links the parent only to children not already reached by a sibling", () => {
+    const topology = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("Http.Api", "api", {
+        owner: todos,
+        deps: [{ kind: "SqlRepo.Read", name: "reader", id: "Crud.Resource.todos/SqlRepo.Read.reader" }],
+      }),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+    ]);
+    const sub = subtreeGraph(topology, "Crud.Resource.todos");
+
+    expect(sub.nodes.map((n) => n.id).sort()).toEqual([
+      "Crud.Resource.todos",
+      "Crud.Resource.todos/Http.Api.api",
+      "Crud.Resource.todos/SqlRepo.Read.reader",
+    ]);
+    expect(sub.nodes.find((n) => n.id === "Crud.Resource.todos")?.expanded).toBe(true);
+
+    // The parent owns `api` directly; `reader` is reached through `api`, so the
+    // redundant parent→reader ownership edge is dropped.
+    const owns = sub.edges.filter((e) => e.ownership);
+    expect(owns.map((e) => e.target)).toEqual(["Crud.Resource.todos/Http.Api.api"]);
+    expect(owns.some((e) => e.target.endsWith("SqlRepo.Read.reader"))).toBe(false);
+
+    // The dependency edge among children (api → reader) is kept.
+    expect(
+      sub.edges.some(
+        (e) =>
+          !e.ownership &&
+          e.source === "Crud.Resource.todos/Http.Api.api" &&
+          e.target === "Crud.Resource.todos/SqlRepo.Read.reader",
+      ),
+    ).toBe(true);
+  });
+
+  it("reports each child's own childCount and drills recursively", () => {
+    const reader: Owner = {
+      kind: "SqlRepo.Read",
+      name: "reader",
+      id: "Crud.Resource.todos/SqlRepo.Read.reader",
+    };
+    const topology = deriveGraph([
+      createdR("Crud.Resource", "todos"),
+      createdR("SqlRepo.Read", "reader", { owner: todos }),
+      createdR("Sql.Query", "reader-query", { owner: reader }),
+    ]);
+
+    const lvl1 = subtreeGraph(topology, "Crud.Resource.todos");
+    expect(lvl1.nodes.find((n) => n.id === reader.id)?.childCount).toBe(1);
+
+    const lvl2 = subtreeGraph(topology, reader.id);
+    expect(lvl2.nodes.map((n) => n.id).sort()).toEqual([
+      "Crud.Resource.todos/SqlRepo.Read.reader",
+      "Crud.Resource.todos/SqlRepo.Read.reader/Sql.Query.reader-query",
+    ]);
+  });
+
+  it("drops dependency edges that leave the subtree", () => {
+    const topology = deriveGraph([
+      createdR("Sql.Connection", "db"),
+      createdR("Crud.Resource", "todos"),
+      createdR("SqlRepo.Read", "reader", {
+        owner: todos,
+        deps: [{ kind: "Sql.Connection", name: "db", id: "Sql.Connection.db" }],
+      }),
+    ]);
+    const sub = subtreeGraph(topology, "Crud.Resource.todos");
+    expect(sub.nodes.some((n) => n.id === "Sql.Connection.db")).toBe(false);
+    expect(sub.edges.some((e) => e.target === "Sql.Connection.db")).toBe(false);
   });
 });
 

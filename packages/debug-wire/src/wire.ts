@@ -69,6 +69,55 @@ export interface WireRef {
 }
 
 /**
+ * The owning resource of a spawned child — the parent in the resource topology.
+ * A child is spawned by a templated resource (e.g. a `Crud.Resource` expanding
+ * into its SQL handlers + HTTP API); the producer stamps this so a consumer can
+ * nest the child under its parent and keep two instances of the same templated
+ * kind from colliding. `id` is the owner's full hierarchical id.
+ */
+export interface WireOwner {
+  kind: string;
+  name: string;
+  id: string;
+}
+
+/**
+ * A resource as it appears in a lifecycle event payload (`Created` /
+ * `Initialized` / `Teardown`) or a dispatch event's `ref`. Beyond `kind` + `name`
+ * it carries `id` — the resource's full hierarchical id (`<owner.id>/<kind>.<name>`,
+ * or `<kind>.<name>` at the top level) — which is globally unique even across
+ * instances of the same templated kind. A legacy producer omits `id`; a consumer
+ * falls back to `name`. On a dependency entry, `alias` marks a cross-module target.
+ */
+export interface WireResourceRef {
+  kind: string;
+  name: string;
+  /** Module scope, when the producer attaches it (lifecycle `resource` only). */
+  module?: string;
+  /** Full hierarchical id. Present on current producers; absent on legacy streams. */
+  id?: string;
+  /** Set on a dependency that targets an imported library's exported instance. */
+  alias?: string;
+}
+
+/**
+ * The payload of a resource lifecycle event (`<Kind>.<Name>.{Created,Initialized,
+ * Teardown}`). `owner` is present only for a resource spawned by another (a
+ * template's child); `dependencies` (on `Created`) are the resolved `!ref` edges
+ * the resource points at, each carrying the target's hierarchical `id`.
+ */
+export interface LifecyclePayload {
+  resource: WireResourceRef;
+  owner?: WireOwner;
+  dependencies?: WireResourceRef[];
+  /** On `Created`: the resource's resolved config "after templating" — `${{ }}` /
+   *  `!cel` reduced to concrete values, resolved `!ref`s as `{kind,name}`, deferred
+   *  runtime expressions as their `${{ source }}` text, and known secret values
+   *  scrubbed to `[secret]`. Plain wire-safe data; shape mirrors the manifest. */
+  properties?: unknown;
+}
+
+/**
  * The payload every capability *dispatch* event carries (invoke / run / provide).
  * The language-neutral trace contract: a consumer rebuilds the call tree purely
  * from these fields and never parses the dotted event name.
@@ -92,7 +141,12 @@ export interface TracePayload {
   capability: "invoke" | "run" | "provide" | "request";
   phase: "start" | "end";
   outcome?: "ok" | "failed" | "rejected" | "cancelled";
-  ref: WireRef;
+  /** The dispatched resource. `id` is its full hierarchical id — a consumer keys
+   *  the call graph on it so a templated child's invocations land on the right
+   *  node (legacy producers omit it; fall back to `name`). */
+  ref: WireResourceRef;
+  /** The owning resource, when the dispatched resource was spawned by another. */
+  owner?: WireOwner;
   /** Human label for the span (e.g. a route `"POST /feedback"`). */
   label?: string;
   /** Structured span attributes (e.g. `{ method, path }`) — map to OTel attributes. */

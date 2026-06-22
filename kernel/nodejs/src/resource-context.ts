@@ -38,6 +38,10 @@ export class ResourceContextImpl implements ResourceContext {
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
   readonly args: ParsedArgs;
+  /** Id prefix of the context this resource was created in. A controller that
+   *  spawns sub-resources composes their ids as `ownerPrefix + kind + "." + name`
+   *  and stamps the owner on the child context it registers them into. */
+  readonly ownerPrefix: string;
 
   constructor(
     readonly kernel: Kernel,
@@ -49,12 +53,14 @@ export class ResourceContextImpl implements ResourceContext {
     stdout?: NodeJS.WritableStream,
     stderr?: NodeJS.WritableStream,
     args?: ParsedArgs,
+    ownerPrefix = "",
   ) {
     this.env = env ?? process.env;
     this.stdin = stdin ?? process.stdin;
     this.stdout = stdout ?? process.stdout;
     this.stderr = stderr ?? process.stderr;
     this.args = args ?? { _: [] };
+    this.ownerPrefix = ownerPrefix;
   }
 
   createSchemaValidator(schema: any) {

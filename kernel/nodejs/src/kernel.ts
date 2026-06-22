@@ -895,6 +895,7 @@ export class Kernel implements IKernel {
     moduleContext: IModuleContext,
     resource: ResourceManifest,
     args?: ParsedArgs,
+    ownerPrefix = "",
   ): ResourceContext {
     return new ResourceContextImpl(
       this,
@@ -906,6 +907,7 @@ export class Kernel implements IKernel {
       this.stdout,
       this.stderr,
       args,
+      ownerPrefix,
     );
   }
 
@@ -1043,7 +1045,12 @@ export class Kernel implements IKernel {
 
     const parsedArgs = this.parseArgsForController(controller);
     const moduleCtx = this.findModuleContext(evalContext);
-    const ctx = this.createResourceContext(moduleCtx, processedResource, parsedArgs);
+    const ctx = this.createResourceContext(
+      moduleCtx,
+      processedResource,
+      parsedArgs,
+      evalContext.ownerPrefix,
+    );
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 

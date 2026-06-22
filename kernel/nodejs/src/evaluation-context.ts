@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  getRefIdentity,
   isCompiledValue,
   isInvokeError,
   isCancellationError,
@@ -16,6 +17,7 @@ import {
   type ResourceDefinition,
   type ResourceInstance,
   type ResourceManifest,
+  type ResourceOwner,
   type RuntimeDiagnostic,
   type ScopeContext,
   type ScopeHandle,
@@ -40,16 +42,28 @@ function isResolvedRef(value: unknown): value is ResourceRef {
   return Object.keys(v).every((k) => k === "kind" || k === "name" || k === "alias");
 }
 
+/** The system kinds whose top-level `schema:` is, by definition, a JSON Schema
+ *  document (with `examples` / `default` / `const`) rather than config — a
+ *  `{kind, name}` inside one is documentation data, not a `!ref`. For these the
+ *  `schema` field is skipped when walking for refs/properties; for every other
+ *  kind a `schema` field is ordinary config and is walked normally, so a real
+ *  `schema: !ref X` still resolves. Narrowly scoped (rather than skipping any
+ *  field named `schema` on every kind) so the heuristic can't misfire. */
+const SCHEMA_AS_CONTRACT_KINDS = new Set(["Telo.Definition", "Telo.Abstract", "Telo.Type"]);
+
 /**
  * Walk a resource manifest's config and collect every resolved `{kind, name,
  * alias?}` reference it points at — the outbound edges for the dependency graph.
  * Called at create time, before Phase-5 injection swaps refs for live instances,
  * so the targets are still inspectable plain objects (and there are no instance
- * cycles to guard against). `metadata` is skipped (it holds the resource's own
- * identity, never refs); ref leaves are not descended into. Deduped by alias+name.
+ * cycles to guard against). Deduped by alias+name. `metadata` is always skipped
+ * (the resource's own identity); `schema` is skipped only for the system kinds
+ * that carry a JSON-Schema contract there (see {@link SCHEMA_AS_CONTRACT_KINDS}).
+ * Ref leaves are not descended into.
  */
 function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
   const found = new Map<string, ResourceRef>();
+  const skipSchema = SCHEMA_AS_CONTRACT_KINDS.has(resource.kind as string);
   const visit = (value: unknown): void => {
     if (isResolvedRef(value)) {
       const key = `${value.alias ?? ""}::${value.name}`;
@@ -60,16 +74,84 @@ function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
       for (const item of value) visit(item);
     } else if (value && typeof value === "object") {
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        if (k === "metadata") continue;
+        if (k === "metadata" || (skipSchema && k === "schema")) continue;
         visit(v);
       }
     }
   };
   for (const [k, v] of Object.entries(resource as Record<string, unknown>)) {
-    if (k === "kind" || k === "metadata") continue;
+    if (k === "kind" || k === "metadata" || (skipSchema && k === "schema")) continue;
     visit(v);
   }
   return [...found.values()];
+}
+
+/**
+ * Build a resource's resolved properties for the debug stream — its config "after
+ * templating", with `${{ }}` / `!cel` reduced to concrete values. The manifest is
+ * already compile-evaluated by the time it is created, so this just makes the
+ * remaining live forms wire-friendly:
+ *  - a resolved `!ref` (`{kind, name, alias?}`) → its `{kind, name}` target;
+ *  - a deferred runtime expression (a `CompiledValue` left for per-call eval, e.g.
+ *    an Http.Api route reading `request`) → its `${{ source }}` text — there is no
+ *    concrete value for it at the resource level;
+ *  - a string carrying a known secret value → `[secret]` (substring-scrubbed), so
+ *    a compile-time `${{ secrets.x }}` never lands in the stream verbatim.
+ * `metadata` / `schema` are omitted (identity and JSON-Schema, not config).
+ */
+/** Substring-scrubbing a secret shorter than this risks redacting unrelated
+ *  content (a short/common-word value matches everywhere), so below it only a
+ *  whole-value match is redacted. */
+const MIN_SUBSTRING_SCRUB_LEN = 5;
+
+export function buildResolvedProperties(
+  resource: ResourceManifest,
+  secretValues: Set<string>,
+): Record<string, unknown> {
+  const skipSchema = SCHEMA_AS_CONTRACT_KINDS.has(resource.kind as string);
+  const scrub = (s: string): string => {
+    let out = s;
+    for (const secret of secretValues) {
+      if (!secret) continue;
+      // Exact match is always a secret; substring-redact only longer values so a
+      // short secret can't garble unrelated text it happens to appear in.
+      if (out === secret) out = "[secret]";
+      else if (secret.length >= MIN_SUBSTRING_SCRUB_LEN && out.includes(secret)) {
+        out = out.split(secret).join("[secret]");
+      }
+    }
+    return out;
+  };
+  const visit = (value: unknown): unknown => {
+    if (isCompiledValue(value)) {
+      const src = (value as { source?: unknown }).source;
+      return typeof src === "string" ? `\${{ ${src} }}` : "[expression]";
+    }
+    if (isResolvedRef(value)) return { kind: value.kind, name: value.name };
+    if (typeof value === "string") return scrub(value);
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === "object") {
+      // A live instance injected into a ref slot (e.g. a template child whose
+      // `connection` was resolved to the real connection): show its identity, not
+      // its internals. Other class instances (streams, clients) get a marker.
+      const id = getRefIdentity(value);
+      if (id) return { kind: id.kind, name: id.name };
+      const proto = Object.getPrototypeOf(value);
+      if (proto !== Object.prototype && proto !== null) {
+        return `[${(value as { constructor?: { name?: string } }).constructor?.name ?? "Object"}]`;
+      }
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = visit(v);
+      return out;
+    }
+    return value;
+  };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(resource as Record<string, unknown>)) {
+    if (k === "kind" || k === "metadata" || (skipSchema && k === "schema")) continue;
+    out[k] = visit(v);
+  }
+  return out;
 }
 
 /**
@@ -188,6 +270,38 @@ export class EvaluationContext implements IEvaluationContext {
    */
   tracer?: Tracer;
 
+  /**
+   * The resource that owns this context's resources — stamped by a template
+   * controller on the child context it registers its `resources:` into.
+   * Propagated through spawnChild() so scoped/nested children inherit it. Drives
+   * the hierarchical `id` and `owner` every lifecycle/dispatch event carries, so
+   * a debug consumer nests children under their parent and two instances of the
+   * same templated kind don't collide by name. Undefined ⇒ top-level resources.
+   */
+  owner?: ResourceOwner;
+
+  /** Id prefix for a resource created in this context: `owner.id + "/"`, or ""
+   *  at the top level. A resource's full id is `ownerPrefix + kind + "." + name`. */
+  get ownerPrefix(): string {
+    return this.owner ? `${this.owner.id}/` : "";
+  }
+
+  /** The full hierarchical id of a resource emitted from this context. */
+  private resourceId(kind: string, name: string): string {
+    return `${this.ownerPrefix}${kind}.${name}`;
+  }
+
+  /** Stamp each dependency ref with the target node's hierarchical id. A local
+   *  (no-alias) sibling lives in this same context, so it carries this prefix; a
+   *  cross-module (`alias`) target lives elsewhere, so it stays unqualified
+   *  (best-effort — the renderer drops an edge that finds no node). */
+  private qualifyDeps(refs: ResourceRef[]): (ResourceRef & { id: string })[] {
+    return refs.map((ref) => ({
+      ...ref,
+      id: ref.alias ? `${ref.kind}.${ref.name}` : this.resourceId(ref.kind, ref.name),
+    }));
+  }
+
   constructor(
     readonly source: string,
     context: Record<string, unknown>,
@@ -271,6 +385,12 @@ export class EvaluationContext implements IEvaluationContext {
     if (this.tracer && !child.tracer) {
       child.tracer = this.tracer;
     }
+    // Inherit ownership so a scope/import opened inside a template's child
+    // context keeps its resources nested under the same owner. A template
+    // controller overrides this on its own child context after spawning.
+    if (this.owner && !child.owner) {
+      child.owner = this.owner;
+    }
     return child;
   }
 
@@ -348,14 +468,29 @@ export class EvaluationContext implements IEvaluationContext {
             if (idx >= 0) this.pendingResources.splice(idx, 1);
             errors.delete(name);
             progress = true;
-            await this.emit(`${created.resource.kind}.${created.resource.metadata.name}.Created`, {
+            const createdRes = created.resource;
+            const payload: Record<string, unknown> = {
               resource: {
-                kind: created.resource.kind,
-                name: created.resource.metadata.name,
-                module: created.resource.metadata.module,
+                kind: createdRes.kind,
+                name: createdRes.metadata.name,
+                module: createdRes.metadata.module,
+                id: this.resourceId(createdRes.kind, createdRes.metadata.name),
               },
-              dependencies: collectResourceRefs(created.resource),
+              ...(this.owner ? { owner: this.owner } : {}),
+              dependencies: this.qualifyDeps(collectResourceRefs(createdRes)),
+            };
+            // `properties` (the resolved config) is a second full config walk plus
+            // a secret scrub. Build it lazily: the EventBus short-circuits when
+            // nothing is subscribed (the no-debug-consumer case), so this getter
+            // only runs when a consumer actually serializes the payload. Memoized
+            // so multiple sinks (JSONL + SSE) don't rebuild it.
+            let props: Record<string, unknown> | undefined;
+            Object.defineProperty(payload, "properties", {
+              enumerable: true,
+              configurable: true,
+              get: () => (props ??= buildResolvedProperties(createdRes, this.secretValues)),
             });
+            await this.emit(`${createdRes.kind}.${createdRes.metadata.name}.Created`, payload);
           }
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
@@ -387,7 +522,12 @@ export class EvaluationContext implements IEvaluationContext {
           errors.delete(name);
           progress = true;
           await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
-            resource: { kind: resource.kind, name: resource.metadata.name },
+            resource: {
+              kind: resource.kind,
+              name: resource.metadata.name,
+              id: this.resourceId(resource.kind, resource.metadata.name),
+            },
+            ...(this.owner ? { owner: this.owner } : {}),
           });
         } catch (error) {
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
@@ -555,7 +695,12 @@ export class EvaluationContext implements IEvaluationContext {
     for (const [key, { resource, instance }] of entries) {
       if (instance.teardown) await instance.teardown();
       await this.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
-        resource: { kind: resource.kind, name: resource.metadata.name },
+        resource: {
+          kind: resource.kind,
+          name: resource.metadata.name,
+          id: this.resourceId(resource.kind, resource.metadata.name),
+        },
+        ...(this.owner ? { owner: this.owner } : {}),
       });
       this.resourceInstances.delete(key);
     }
@@ -673,7 +818,8 @@ export class EvaluationContext implements IEvaluationContext {
       capability,
       phase,
       ...(outcome !== undefined ? { outcome } : {}),
-      ref: { kind, name },
+      ref: { kind, name, id: this.resourceId(kind, name) },
+      ...(this.owner ? { owner: this.owner } : {}),
       ...detail,
     };
   }
