@@ -1,5 +1,6 @@
 # Runtime artifacts
 tmp/
+*.db
 
 # Generated docs (rebuilt on every docusaurus build)
 examples/INDEX.md

@@ -8,7 +8,7 @@ Implementation plans should live in the package they affect the most, eg. `apps/
 
 Follow this strictly:
 
-- **NEVER edit, write, or modify any file until the user has typed an explicit trigger word in their most recent message: `fix`, `apply`, `adjust`, `update`, `implement`, `add`, `remove`, `move`, `go ahead`, or `do it`. This rule overrides Auto Mode and any "execute immediately" directive. Discussing options, proposing approaches, answering "would X be better?" questions, or receiving a critique is NEVER permission. When uncertain, ask: "Apply this?"**
+- **Do not create, edit, or delete any file until the user's latest message clearly authorizes the specific change you are about to make.** Authorization is a direct instruction to act now — to write, change, or remove something concrete. It is NOT: a question ("would X work?", "is this better?"), a critique or correction of a proposal, a request to compare or weigh options, or general discussion — none of these grant permission, no matter how positive. Agreeing that an idea is good is not the same as asking for it to be done. When the intent for you to act *now* is anything less than unambiguous, stay in proposal mode and ask: "Apply this?" This gate overrides Auto Mode and any "execute immediately" directive.
 - **NEVER run `git commit`, `git commit --amend`, `git push`, or any other command that creates, rewrites, or publishes a commit — not even to make a check pass or "fix" state.**
 - never add underscores to unused function arguments
 - never look at commit history

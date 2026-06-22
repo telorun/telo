@@ -64,7 +64,6 @@ export function createTemplateController(definition: {
     schema: definition.schema ?? { type: "object", additionalProperties: true },
 
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
-      void ctx; // child scope is rooted on definingContext, not the instance's ctx
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
       // init(), so capturing self here would freeze the pre-injection refs. Every
@@ -91,7 +90,19 @@ export function createTemplateController(definition: {
       const mountTarget = targetName(definition.mount);
       const provideTarget = targetName(definition.provide);
 
+      // The child scope is rooted on definingContext (so the template's internal
+      // kinds/refs resolve against the defining library). Its *ownership*, though,
+      // is this instance: stamp the child with the owning resource so the
+      // resources it spawns carry a hierarchical id (`<owner.id>/<kind>.<name>`)
+      // and an `owner` pointer. That keeps two instances of the same templated
+      // kind from colliding by name and lets a debug consumer nest them under
+      // their parent. `ctx.ownerPrefix` makes the id robust when templates nest.
       const childContext = definingContext.spawnChildContext();
+      childContext.owner = {
+        kind: resource.kind,
+        name: resource.metadata.name,
+        id: `${ctx.ownerPrefix}${resource.kind}.${resource.metadata.name}`,
+      };
 
       // Resolves the live instance of a dispatch target from the child context.
       // Every `resources:` entry is a persistent child created once at init(),

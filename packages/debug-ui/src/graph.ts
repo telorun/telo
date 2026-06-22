@@ -41,11 +41,20 @@ export interface InvokeRecord {
 }
 
 export interface GraphNode {
-  /** Stable id — the resource name (dot-free, unique within its module scope). */
+  /** Stable id — the resource's full hierarchical id (`<owner.id>/<kind>.<name>`),
+   *  unique across instances of the same templated kind. Falls back to the bare
+   *  name on a legacy stream that carries no `id`. */
   id: string;
   kind: string;
   name: string;
   module?: string;
+  /** The owning resource's id, when this resource was spawned by another (a
+   *  templated kind's child). Drives the collapsible parent/child grouping. */
+  ownerId?: string;
+  /** The resource's resolved config "after templating" (from the `Created`
+   *  payload) — concrete values for compile-time CEL, `{kind,name}` for refs,
+   *  `${{ … }}` for deferred runtime expressions, secrets scrubbed. */
+  properties?: unknown;
   status: NodeStatus;
   /** Total invocations seen across the stream. */
   invokeCount: number;
@@ -61,6 +70,10 @@ export interface GraphEdge {
   source: string;
   /** Target resource name (the dependency). */
   target: string;
+  /** An ownership edge (owner → spawned child), not a dependency. Added when a
+   *  templated resource is expanded so its revealed children stay attached to it;
+   *  the renderer draws it distinctly (dashed/muted). */
+  ownership?: boolean;
 }
 
 export interface GraphState {
@@ -72,7 +85,21 @@ interface WireResourceRef {
   kind: string;
   name: string;
   module?: string;
+  /** Full hierarchical id; absent on a legacy stream. */
+  id?: string;
   alias?: string;
+}
+
+interface WireOwner {
+  kind: string;
+  name: string;
+  id: string;
+}
+
+/** The id a node is keyed by: the producer's hierarchical `id`, or the bare name
+ *  on a legacy stream. Globally unique when `id` is present. */
+function nodeKey(ref: { id?: string; name: string }): string {
+  return ref.id ?? ref.name;
 }
 
 function asResource(payload: unknown): WireResourceRef | undefined {
@@ -86,12 +113,30 @@ function asResource(payload: unknown): WireResourceRef | undefined {
   return undefined;
 }
 
-/** The resolved `{kind,name}` a dispatch event's payload carries under `ref`. */
-function readRef(payload: Record<string, unknown> | undefined): { kind: string; name: string } | undefined {
+/** The owning resource a lifecycle/dispatch payload carries under `owner`, when
+ *  the resource was spawned by another (a templated kind's child). */
+function readOwner(payload: unknown): WireOwner | undefined {
+  const owner = (payload as { owner?: unknown } | undefined)?.owner;
+  if (owner && typeof owner === "object") {
+    const { kind, name, id } = owner as Record<string, unknown>;
+    if (typeof kind === "string" && typeof name === "string" && typeof id === "string") {
+      return { kind, name, id };
+    }
+  }
+  return undefined;
+}
+
+/** The resolved ref a dispatch event's payload carries under `ref` — `id` keys
+ *  the node (a templated child's calls land on the right instance). */
+function readRef(
+  payload: Record<string, unknown> | undefined,
+): { kind: string; name: string; id?: string } | undefined {
   const ref = payload?.ref;
   if (ref && typeof ref === "object") {
-    const { kind, name } = ref as Record<string, unknown>;
-    if (typeof kind === "string" && typeof name === "string") return { kind, name };
+    const { kind, name, id } = ref as Record<string, unknown>;
+    if (typeof kind === "string" && typeof name === "string") {
+      return { kind, name, id: typeof id === "string" ? id : undefined };
+    }
   }
   return undefined;
 }
@@ -133,15 +178,18 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
     if (suffix === "Created") {
       const res = asResource(event.payload);
       if (!res) return;
-      const existing = nodes.get(res.name);
+      const key = nodeKey(res);
+      const existing = nodes.get(key);
       if (existing) {
         existing.lastActivitySeq = seq;
       } else {
-        nodes.set(res.name, {
-          id: res.name,
+        nodes.set(key, {
+          id: key,
           kind: res.kind,
           name: res.name,
           module: res.module,
+          ownerId: readOwner(event.payload)?.id,
+          properties: (event.payload as { properties?: unknown }).properties,
           status: "created",
           invokeCount: 0,
           lastActivitySeq: seq,
@@ -149,16 +197,17 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
       }
       const deps = (event.payload as { dependencies?: WireResourceRef[] }).dependencies ?? [];
       for (const dep of deps) {
-        if (!dep?.name || dep.name === res.name) continue;
-        const id = `${res.name}->${dep.name}`;
-        if (!edges.has(id)) edges.set(id, { id, source: res.name, target: dep.name });
+        const depKey = dep?.name ? nodeKey(dep) : undefined;
+        if (!depKey || depKey === key) continue;
+        const id = `${key}->${depKey}`;
+        if (!edges.has(id)) edges.set(id, { id, source: key, target: depKey });
       }
       return;
     }
 
     if (suffix === "Initialized" || suffix === "Teardown") {
       const res = asResource(event.payload);
-      const node = res ? nodes.get(res.name) : undefined;
+      const node = res ? nodes.get(nodeKey(res)) : undefined;
       if (node) {
         node.status = suffix === "Teardown" ? "torndown" : "initialized";
         node.lastActivitySeq = seq;
@@ -166,13 +215,13 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
       return;
     }
 
-    // Dispatch (trace) events: the payload's `ref.name` resolves the target node
-    // directly (nodes are name-keyed). `phase:"start"` events carry no `outcome`
+    // Dispatch (trace) events: the payload's `ref.id` resolves the target node
+    // directly (nodes are id-keyed). `phase:"start"` events carry no `outcome`
     // and are skipped — only terminal events record a result.
     const p = (event.payload ?? undefined) as Record<string, unknown> | undefined;
     const ref = readRef(p);
     const outcome = asOutcome(p?.outcome);
-    const node = ref ? nodes.get(ref.name) : undefined;
+    const node = ref ? nodes.get(nodeKey(ref)) : undefined;
     if (!node || !outcome) return;
     node.invokeCount += 1;
     node.lastActivitySeq = seq;
@@ -189,6 +238,148 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
+// ── Owner grouping (collapsible parents) ────────────────────────────────────
+
+/** A topology node augmented with its grouping state — how many direct children
+ *  it owns and whether they are currently revealed. */
+export interface GroupedGraphNode extends GraphNode {
+  /** Number of resources directly owned by this node (spawned children). */
+  childCount: number;
+  /** Whether this node's children are currently shown (only meaningful when
+   *  `childCount > 0`). */
+  expanded: boolean;
+}
+
+export interface GroupedGraphState {
+  nodes: GroupedGraphNode[];
+  edges: GraphEdge[];
+}
+
+/** Count direct children per owner id — how many resources each node spawned. */
+function countChildren(nodes: readonly GraphNode[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    if (n.ownerId) counts.set(n.ownerId, (counts.get(n.ownerId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Collapse a topology by owner: a resource spawned by another (a templated kind's
+ * child) is hidden unless every ancestor in its owner chain is in `expanded`. A
+ * collapsed parent absorbs its hidden descendants' edges — each edge endpoint is
+ * remapped to its nearest visible ancestor — so the parent stays wired to the
+ * rest of the graph as one node. Pure: drives the Graph view's collapse toggles
+ * and is independently testable. With an empty `expanded` set, every owner is
+ * collapsed (the default), so the top-level topology stays readable.
+ */
+export function collapseTopology(
+  graph: GraphState,
+  expanded: ReadonlySet<string>,
+): GroupedGraphState {
+  const byId = new Map<string, GraphNode>(graph.nodes.map((n) => [n.id, n] as [string, GraphNode]));
+  const childCount = countChildren(graph.nodes);
+
+  // A node is visible when no present ancestor in its owner chain is collapsed.
+  const visible = (node: GraphNode): boolean => {
+    let cur: GraphNode | undefined = node;
+    while (cur?.ownerId) {
+      const parent = byId.get(cur.ownerId);
+      if (!parent) return true; // owner not in this stream — don't hide under an unknown
+      if (!expanded.has(parent.id)) return false;
+      cur = parent;
+    }
+    return true;
+  };
+
+  // The nearest visible ancestor an edge endpoint folds into.
+  const resolveVisible = (id: string): string => {
+    const start = byId.get(id);
+    if (!start) return id;
+    let node: GraphNode = start;
+    while (!visible(node)) {
+      const parent = node.ownerId ? byId.get(node.ownerId) : undefined;
+      if (!parent) return node.id;
+      node = parent;
+    }
+    return node.id;
+  };
+
+  const nodes = graph.nodes
+    .filter(visible)
+    .map((n) => ({ ...n, childCount: childCount.get(n.id) ?? 0, expanded: expanded.has(n.id) }));
+
+  const edges = new Map<string, GraphEdge>();
+  for (const e of graph.edges) {
+    const source = resolveVisible(e.source);
+    const target = resolveVisible(e.target);
+    if (source === target) continue;
+    const id = `${source}->${target}`;
+    if (!edges.has(id)) edges.set(id, { id, source, target });
+  }
+
+  // Attach each revealed child to its owner: when a parent is expanded both it
+  // and its children are visible, but no dependency edge ties them together, so
+  // they would float as a detached cluster. An ownership edge keeps them grouped
+  // (and pulls the children next to the parent in the layout).
+  const visibleIds = new Set(nodes.map((n) => n.id));
+  for (const n of nodes) {
+    if (n.ownerId && visibleIds.has(n.ownerId)) {
+      const id = `owner:${n.ownerId}->${n.id}`;
+      edges.set(id, { id, source: n.ownerId, target: n.id, ownership: true });
+    }
+  }
+
+  return { nodes, edges: [...edges.values()] };
+}
+
+/**
+ * The drill-down view of one templated resource: the parent node plus the direct
+ * children it spawned. Children are wired by the dependency edges that run *among*
+ * them (e.g. an Http.Api → its SQL handlers); anything pointing outside the
+ * subtree is dropped (that wiring is visible at the level above). The parent
+ * connects by an ownership edge only to children that aren't already reached by a
+ * sibling's dependency edge — so a handler reached through the Http.Api isn't also
+ * tied directly to the parent, leaving a clean tree instead of a redundant fan.
+ * Each child that itself owns children reports its `childCount` for a further
+ * drill-in. Pure and depth-independent: drilling into a child calls this again.
+ */
+export function subtreeGraph(topology: GraphState, ownerId: string): GroupedGraphState {
+  const childCount = countChildren(topology.nodes);
+
+  const parent = topology.nodes.find((n) => n.id === ownerId);
+  const children = topology.nodes.filter((n) => n.ownerId === ownerId);
+
+  const nodes: GroupedGraphNode[] = [];
+  if (parent) nodes.push({ ...parent, childCount: childCount.get(parent.id) ?? 0, expanded: true });
+  for (const c of children) {
+    nodes.push({ ...c, childCount: childCount.get(c.id) ?? 0, expanded: false });
+  }
+
+  const present = new Set(nodes.map((n) => n.id));
+  const edges = new Map<string, GraphEdge>();
+
+  // Dependency edges among the shown nodes; track which are reached by one so the
+  // parent doesn't also tie to a child already connected through a sibling.
+  const reachedByDep = new Set<string>();
+  for (const e of topology.edges) {
+    if (e.source !== e.target && present.has(e.source) && present.has(e.target) && !edges.has(e.id)) {
+      edges.set(e.id, e);
+      reachedByDep.add(e.target);
+    }
+  }
+
+  // Ownership edge parent → child, only for children not already wired in by a
+  // sibling's dependency edge.
+  for (const c of children) {
+    if (reachedByDep.has(c.id)) continue;
+    const id = `owner:${ownerId}->${c.id}`;
+    edges.set(id, { id, source: ownerId, target: c.id, ownership: true });
+  }
+
+  return { nodes, edges: [...edges.values()] };
+}
+
 // ── Invocation traces ──────────────────────────────────────────────────────
 
 /** Which capability the span represents. `"request"` is an inbound-boundary span. */
@@ -202,6 +393,9 @@ export interface Invocation {
   traceId?: string;
   kind: string;
   name: string;
+  /** The dispatched resource's full hierarchical id; absent on a legacy stream.
+   *  Keys the scoped trace graph so a templated child collapses per instance. */
+  resourceId?: string;
   capability?: SpanCapability;
   outcome: InvokeOutcome;
   /** The terminal event's suffix (`Invoked`, `InvokeFailed`, …) — for display only. */
@@ -259,6 +453,7 @@ export function deriveInvocations(frames: readonly DebugFrame[]): TraceState {
       traceId: typeof p?.traceId === "string" ? p.traceId : undefined,
       kind: ref.kind,
       name: ref.name,
+      resourceId: ref.id,
       capability: asCapability(p?.capability),
       outcome,
       suffix: eventSuffix(event.event),
@@ -323,7 +518,7 @@ export function traceSubgraph(trace: TraceState, rootId: number): TraceSubgraph 
   const root = trace.byId.get(rootId);
   if (!root) return { nodes: [], edges: [] };
 
-  const resourceKey = (inv: Invocation) => `${inv.kind}.${inv.name}`;
+  const resourceKey = (inv: Invocation) => inv.resourceId ?? `${inv.kind}.${inv.name}`;
   const nodes = new Map<string, TraceNode>();
   const edges = new Map<string, TraceEdge>();
 

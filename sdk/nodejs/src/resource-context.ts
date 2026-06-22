@@ -43,6 +43,13 @@ export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & 
 
 export interface ResourceContext extends ControllerContext {
   readonly args: ParsedArgs;
+  /** The id prefix of the context this resource was created in (the creating
+   *  {@link EvaluationContext}'s `ownerPrefix`). A controller that spawns
+   *  sub-resources composes their hierarchical ids as
+   *  `ownerPrefix + <kind>.<name>` and stamps the owner on the child context it
+   *  registers them into, so two instances of the same templated kind don't
+   *  collide and the children nest under their parent in a debug view. */
+  readonly ownerPrefix: string;
   acquireHold(reason?: string): () => void;
   emitEvent(event: string, payload?: any): Promise<void>;
   /** Mint a writable cancellation source for a trigger to own (HTTP request,
