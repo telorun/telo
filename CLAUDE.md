@@ -17,6 +17,7 @@ Follow this strictly:
 - keep code comments very concise and add them only when necessary; prefer self-documenting code and module documentation
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
+- in telo manifests, ALWAYS write CEL with the `!cel "..."` YAML tag — never the inline `"${{ ... }}"` string form. The formatter normalizes to `!cel`, and the inline form gets mangled on round-trip (it has been silently rewritten into a broken `!ref`). This applies to every CEL value, including pure expressions and string interpolations (`!cel "'http://localhost:' + string(ports.http)"`).
 - never use `cat` nor `sed` to read files — read them directly
 - never use `AskUserQuestion` tool, ask questions directly
 - never do major upgrades of modules nor packages

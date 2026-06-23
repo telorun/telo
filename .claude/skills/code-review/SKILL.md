@@ -24,6 +24,10 @@ Focus on:
   - both `kernel` and `sdk` must not be aware of: any module in `./modules`, any package in `./packages`, `editor`, `cli`
   - `editor` should not be aware of any module in `./modules`
   - more generic module in `./modules` must not be aware of more specific module in `./modules`
+- check if implementation introduces runtime validation in kernel but does not align analyzer to catch it at static analysis time.
+- check if implementation can become a threat for static analysis.
+- make sure that kernel, analyzer, and editor do not know anything about standard modules in `./modules`.
+- if implementation can't be ported to other languages (rust, go)
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals.
 

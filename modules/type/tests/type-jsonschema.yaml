@@ -15,6 +15,7 @@ targets:
   - !ref TestOutputTypeRejection
   - !ref TestMultipleRules
   - !ref TestMultipleExtends
+  - !ref TestExtendsComposition
 ---
 # ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -431,3 +432,69 @@ steps:
             properties:
               msg:
                 type: string
+---
+# ─── Test 8: extends preserves composition keywords (allOf) ───────────────────
+
+kind: Type.JsonSchema
+metadata:
+  name: Scored
+extends: Entity
+schema:
+  type: object
+  required: [ score ]
+  properties:
+    score: { type: integer }
+  # A constraint that the merged object shape alone does not capture — it must
+  # survive `extends`, not be dropped.
+  allOf:
+    - properties:
+        score: { minimum: 10 }
+---
+kind: JavaScript.Script
+metadata:
+  name: UseScored
+inputType: !ref Scored
+code: |
+  function main(input) { return input }
+---
+kind: Run.Sequence
+metadata:
+  name: TestExtendsComposition
+steps:
+  # Valid: id (inherited) present, score satisfies the allOf minimum.
+  - name: ValidScore
+    inputs:
+      id: "x"
+      score: 15
+    invoke: !ref UseScored
+  - name: VerifyValid
+    inputs:
+      score: !cel "steps.ValidScore.result.score"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          score: { const: 15 }
+        required: [ score ]
+  # Invalid: score 5 passes the merged object shape but violates the inherited
+  # allOf minimum — must be rejected (regression: extends used to drop allOf).
+  - name: LowScore
+    try:
+      - name: CallLowScore
+        inputs:
+          id: "x"
+          score: 5
+        invoke: !ref UseScored
+    catch:
+      - name: VerifyCompositionError
+        inputs:
+          msg: !cel "error.message"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              msg:
+                type: string
+            required: [ msg ]

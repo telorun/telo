@@ -1,0 +1,3 @@
+project: crud
+kind: Added
+body: Translate between camelCase model properties and snake_case database columns — writes map `dueDate` → `due_date`, reads alias `due_date AS dueDate` so responses stay camelCase. `Crud.Resource` now builds its SQL directly (no longer via `sql-repository`).

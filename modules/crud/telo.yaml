@@ -6,16 +6,18 @@ metadata:
   description: |
     Crud.Resource — a single declarative resource that exposes a full REST CRUD
     API (list / read / create / update / delete) over a SQL table. It is a
-    Telo.Mount: drop it into an Http.Server's `mounts:` and point it at a table
-    and a Sql.Connection. Purely templated — it composes sql-repository's SQL
-    handlers with an http-server Http.Api, no controller code.
+    Telo.Mount: drop it into an Http.Server's `mounts:` and point it at a table,
+    a Sql.Connection, and a model (a Type.JsonSchema). Purely templated — it
+    builds parameterized SQL and mounts it through an http-server Http.Api, no
+    controller code.
 
-    Convention: the table's primary key is the column `id`, surfaced as the
-    `{id}` path parameter. Bodies are passed through verbatim, so the table
-    columns and the JSON fields line up one-to-one.
+    Request bodies are validated against the model (POST: full; PUT: partial).
+    Model properties are camelCase; columns are their snake_case form (writes
+    translate, reads alias back). The primary key is the column `id`, surfaced
+    as the configurable `{<singular>Id}` path parameter and excluded from the model.
 imports:
   Http: ../http-server
-  SqlRepo: ../sql-repository
+  Sql: ../sql
 exports:
   kinds:
     - Resource
@@ -26,55 +28,103 @@ metadata:
 capability: Telo.Mount
 schema:
   type: object
-  required: [connection, table]
+  required: [connection, model, singular, plural]
   examples:
-    - connection:
-        kind: SqlSqlite.Connection
-        name: Db
-      table: todos
+    - connection: !ref Db
+      singular: todo
+      plural: todos
+      model:
+        kind: Type.JsonSchema
+        schema:
+          type: object
+          required: [text]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            done: { type: integer }
   properties:
     connection:
       title: Connection
       description: The SQL connection the CRUD routes run against.
       x-telo-ref: "std/sql#Connection"
+    singular:
+      title: Singular name
+      description: >-
+        Singular noun for one item (e.g. `todo`). Defaults the id path parameter
+        to `<singular>Id` and names the per-item OpenAPI operations.
+      type: string
+    plural:
+      title: Plural name
+      description: >-
+        Plural noun for the collection (e.g. `todos`). Defaults `table`, and
+        names the list operation plus the OpenAPI tag.
+      type: string
     table:
       title: Table
-      description: Database table name. Its primary key must be the column `id`.
+      description: >-
+        Database table name. Defaults to `plural`. Its primary key must be the
+        column `id`.
       type: string
+    idParam:
+      title: Id path parameter
+      description: >-
+        Name of the `{…}` path parameter identifying one item. Defaults to
+        `<singular>Id` (e.g. `/todos/{todoId}`). The primary-key column stays
+        `id` — this only renames the URL parameter.
+      type: string
+    model:
+      title: Model
+      description: >-
+        The resource's data shape — a `Type.JsonSchema` (inline or `!ref`)
+        describing the writable columns; exclude `id` (it is the auto-increment
+        primary key and the `{id}` path parameter). Validates create / update
+        request bodies (POST against the full schema, PUT against a partial where
+        nothing is required) and feeds the generated OpenAPI.
+      x-telo-ref: "telo#Type"
 mount: api
 resources:
-  # SQL handlers — each builds parameterized SQL from the per-request map it is
-  # handed (data / filters) and this resource's `table`. `self`-only config, so
-  # they are created once at init and reused across requests.
-  - kind: SqlRepo.Read
+  # SQL handlers (crud-internal kinds below) — each builds parameterized SQL
+  # from the per-request map it is handed (data / filters) and this resource's
+  # table (`table`, defaulting to `plural`). API property names are camelCase;
+  # columns are their snake_case form. The reader is handed the model's
+  # properties so it can alias the snake_case columns back to camelCase on read.
+  - kind: Self.Reader
     metadata:
       name: reader
-    connection: "${{ self.connection }}"
-    table: "${{ self.table }}"
-  - kind: SqlRepo.Create
+    connection: !cel "self.connection"
+    table: !cel "('table' in self) ? self.table : self.plural"
+    props: !cel "self.model.schema.properties"
+  - kind: Self.Creator
     metadata:
       name: creator
-    connection: "${{ self.connection }}"
-    table: "${{ self.table }}"
-  - kind: SqlRepo.Update
+    connection: !cel "self.connection"
+    table: !cel "('table' in self) ? self.table : self.plural"
+  - kind: Self.Updater
     metadata:
       name: updater
-    connection: "${{ self.connection }}"
-    table: "${{ self.table }}"
-  - kind: SqlRepo.Delete
+    connection: !cel "self.connection"
+    table: !cel "('table' in self) ? self.table : self.plural"
+  - kind: Self.Deleter
     metadata:
       name: deleter
-    connection: "${{ self.connection }}"
-    table: "${{ self.table }}"
+    connection: !cel "self.connection"
+    table: !cel "('table' in self) ? self.table : self.plural"
 
-  # The mountable HTTP surface. Routes carry only request/result CEL — the table
-  # is baked into the handlers above, so nothing here mixes request and config.
+  # The mountable HTTP surface. The id path parameter is `idParam` (default
+  # `<singular>Id`) — a `self`-only literal, so the path and params schema are
+  # built once at init. Its VALUE is read request-side as the sole path param
+  # (`values(request.params)[0]`), never naming it, so no expression mixes
+  # `self` with `request` (which the template engine forbids). The PK column
+  # stays `id`.
   - kind: Http.Api
     metadata:
       name: api
     routes:
       # List every row.
-      - request:
+      - operationId: !cel "'list' + self.plural.substring(0,1).upperAscii() + self.plural.substring(1)"
+        summary: !cel "'List ' + self.plural"
+        tags: !cel "[self.plural]"
+        request:
           method: GET
           path: /
         handler: !ref reader
@@ -84,101 +134,212 @@ resources:
           - status: 200
             content:
               application/json:
-                body: "${{ result.rows }}"
+                body: !cel "result.rows"
 
       # Read one row by id.
-      - request:
+      - operationId: !cel "'get' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
+        summary: !cel "'Get a ' + self.singular"
+        tags: !cel "[self.plural]"
+        request:
           method: GET
-          path: /{id}
+          path: !cel "'/{' + (('idParam' in self) ? self.idParam : self.singular + 'Id') + '}'"
           schema:
             params:
               type: object
-              required: [ id ]
-              properties:
-                id:
-                  type: integer
-                  description: Row id.
+              required:
+                - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
         handler: !ref reader
         inputs:
           filters:
-            id: "${{ request.params.id }}"
+            id: !cel "values(request.params)[0]"
         returns:
           - status: 200
-            when: "${{ size(result.rows) > 0 }}"
+            when: !cel "size(result.rows) > 0"
             content:
               application/json:
-                body: "${{ result.rows[0] }}"
+                body: !cel "result.rows[0]"
           - status: 404
             content:
               application/json:
                 body: { error: not_found }
 
-      # Create a row from the JSON body.
-      - request:
+      # Create a row from the JSON body, validated against the full model.
+      - operationId: !cel "'create' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
+        summary: !cel "'Create a ' + self.singular"
+        tags: !cel "[self.plural]"
+        request:
           method: POST
           path: /
           schema:
-            body:
-              type: object
+            body: !cel "self.model.schema"
         handler: !ref creator
         inputs:
-          data: "${{ request.body }}"
+          data: !cel "request.body"
         returns:
           - status: 201
             content:
               application/json:
-                body: "${{ request.body }}"
+                body: !cel "request.body"
 
-      # Update the columns present in the JSON body.
-      - request:
+      # Update the columns present in the JSON body. Partial: the model's
+      # properties with nothing required, so any subset of columns is accepted.
+      - operationId: !cel "'update' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
+        summary: !cel "'Update a ' + self.singular"
+        tags: !cel "[self.plural]"
+        request:
           method: PUT
-          path: /{id}
+          path: !cel "'/{' + (('idParam' in self) ? self.idParam : self.singular + 'Id') + '}'"
           schema:
             params:
               type: object
-              required: [ id ]
-              properties:
-                id:
-                  type: integer
-                  description: Row id.
+              required:
+                - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
             body:
               type: object
+              additionalProperties: false
+              properties: !cel "self.model.schema.properties"
         handler: !ref updater
         inputs:
-          data: "${{ request.body }}"
+          data: !cel "request.body"
           filters:
-            id: "${{ request.params.id }}"
+            id: !cel "values(request.params)[0]"
         returns:
           - status: 200
-            when: "${{ result.rowCount > 0 }}"
+            when: !cel "result.rowCount > 0"
             content:
               application/json:
-                body: "${{ request.body }}"
+                body: !cel "request.body"
           - status: 404
             content:
               application/json:
                 body: { error: not_found }
 
       # Delete a row by id.
-      - request:
+      - operationId: !cel "'delete' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
+        summary: !cel "'Delete a ' + self.singular"
+        tags: !cel "[self.plural]"
+        request:
           method: DELETE
-          path: /{id}
+          path: !cel "'/{' + (('idParam' in self) ? self.idParam : self.singular + 'Id') + '}'"
           schema:
             params:
               type: object
-              required: [ id ]
-              properties:
-                id:
-                  type: integer
-                  description: Row id.
+              required:
+                - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
         handler: !ref deleter
         inputs:
           filters:
-            id: "${{ request.params.id }}"
+            id: !cel "values(request.params)[0]"
         returns:
           - status: 204
-            when: "${{ result.rowCount > 0 }}"
+            when: !cel "result.rowCount > 0"
           - status: 404
             content:
               application/json:
                 body: { error: not_found }
+---
+# Crud-internal SQL handlers — not exported, so importers construct `Crud.Resource`
+# and never these. API property names are camelCase; the column is its snake_case
+# form (`dueDate` → `due_date`). The reader aliases columns back to the property
+# names on read (`SELECT due_date AS dueDate`), so responses stay camelCase.
+kind: Telo.Definition
+metadata:
+  name: Reader
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [connection, table, props]
+  properties:
+    connection:
+      x-telo-ref: "std/sql#Connection"
+    table:
+      type: string
+    props:
+      type: object
+      description: The model's properties map; its keys are aliased back to camelCase columns on read.
+resources:
+  - kind: Sql.Query
+    metadata:
+      name: !cel "self.name + '-query'"
+    connection: !cel "self.connection"
+invoke:
+  kind: Sql.Query
+  name: !cel "self.name + '-query'"
+inputs:
+  sql: !cel "'SELECT id' + (keys(self.props).size() > 0 ? ', ' + join(keys(self.props).map(p, lower(regexReplace(p, '([A-Z])', '_$1')) + ' AS ' + p), ', ') : '') + ' FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ') : '')"
+  bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
+---
+kind: Telo.Definition
+metadata:
+  name: Creator
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [connection, table]
+  properties:
+    connection:
+      x-telo-ref: "std/sql#Connection"
+    table:
+      type: string
+resources:
+  - kind: Sql.Command
+    metadata:
+      name: !cel "self.name + '-exec'"
+    connection: !cel "self.connection"
+invoke:
+  kind: Sql.Command
+  name: !cel "self.name + '-exec'"
+inputs:
+  sql: !cel "'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data).map(k, lower(regexReplace(k, '([A-Z])', '_$1'))), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')'"
+  bindings: !cel "keys(inputs.data).map(k, inputs.data[k])"
+---
+kind: Telo.Definition
+metadata:
+  name: Updater
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [connection, table]
+  properties:
+    connection:
+      x-telo-ref: "std/sql#Connection"
+    table:
+      type: string
+resources:
+  - kind: Sql.Command
+    metadata:
+      name: !cel "self.name + '-exec'"
+    connection: !cel "self.connection"
+invoke:
+  kind: Sql.Command
+  name: !cel "self.name + '-exec'"
+inputs:
+  sql: !cel "'UPDATE ' + self.table + ' SET ' + join(keys(inputs.data).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
+  bindings: !cel "keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k])"
+---
+kind: Telo.Definition
+metadata:
+  name: Deleter
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [connection, table]
+  properties:
+    connection:
+      x-telo-ref: "std/sql#Connection"
+    table:
+      type: string
+resources:
+  - kind: Sql.Command
+    metadata:
+      name: !cel "self.name + '-exec'"
+    connection: !cel "self.connection"
+invoke:
+  kind: Sql.Command
+  name: !cel "self.name + '-exec'"
+inputs:
+  sql: !cel "'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
+  bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"

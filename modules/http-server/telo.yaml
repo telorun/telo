@@ -329,6 +329,24 @@ schema:
         type: "object"
         additionalProperties: false
         properties:
+          operationId:
+            title: Operation ID
+            description: OpenAPI operationId for this route — should be unique across the document.
+            type: "string"
+          summary:
+            title: Summary
+            description: Short OpenAPI summary for this route.
+            type: "string"
+          description:
+            title: Description
+            description: Longer OpenAPI description for this route.
+            type: "string"
+          tags:
+            title: Tags
+            description: OpenAPI tags grouping this route in the generated document.
+            type: "array"
+            items:
+              type: "string"
           request:
             title: Request
             description: >-

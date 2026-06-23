@@ -9,6 +9,8 @@ targets:
   - !ref TestValidFieldAccess
   - !ref TestUntypedStepAccess
   - !ref TestBadCelOverload
+  - !ref TestExtendsInheritedAccess
+  - !ref TestExtendsUnknownAccess
 ---
 # Bad field access on typed output — should produce CEL_UNKNOWN_FIELD
 kind: Assert.Manifest
@@ -52,3 +54,24 @@ expect:
       message: "CEL type error"
     - code: SCHEMA_VIOLATION
       message: "slice"
+---
+# Field access on a type's INHERITED (`extends`) property — the analyzer must
+# merge parent schemas exactly like the runtime, so an inherited field is known
+# and produces zero errors (regression: previously a false CEL_UNKNOWN_FIELD).
+kind: Assert.Manifest
+metadata:
+  name: TestExtendsInheritedAccess
+source: ./__fixtures__/extends-inherited-access.yaml
+expect:
+  errors: []
+---
+# Merging `extends` must not turn a strict child into an open object — a field
+# that is neither own nor inherited is still caught.
+kind: Assert.Manifest
+metadata:
+  name: TestExtendsUnknownAccess
+source: ./__fixtures__/extends-unknown-access.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: bogus

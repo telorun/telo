@@ -1,11 +1,16 @@
 import { evaluate } from "@marcbachmann/cel-js";
 import type { ResourceContext, ResourceManifest, TypeRule } from "@telorun/sdk";
-import { canonicalTypeSchemaId, RuntimeError } from "@telorun/sdk";
+import { canonicalTypeSchemaId, mergeTypeSchemas, RuntimeError } from "@telorun/sdk";
 
 class TypeResource {
   constructor(
     private readonly qualifiedName: string,
     private readonly rules: TypeRule[],
+    /** The fully-resolved (post-`extends`), self-contained JSON Schema. Read by
+     *  consumers that need the effective shape — e.g. a templated resource
+     *  threading `${{ self.model.schema }}` into an HTTP request validation
+     *  schema. */
+    readonly schema: Record<string, unknown>,
   ) {}
 
   /**
@@ -39,23 +44,26 @@ export async function create(
   ctx: ResourceContext,
 ): Promise<TypeResource | null> {
   const qualifiedName = `${resource.metadata.module}.${resource.metadata.name}`;
-  let schema = resource.schema as object;
+  const ownSchema = resource.schema as Record<string, unknown>;
+
+  let schema: Record<string, unknown> = ownSchema;
 
   const extendsField = resource.extends as string | string[] | undefined;
   if (extendsField) {
     const parents = Array.isArray(extendsField) ? extendsField : [extendsField];
 
-    // Defer if any parent schema isn't registered yet (multi-pass resolution)
+    const parentSchemas: Record<string, unknown>[] = [];
     for (const parent of parents) {
-      if (!ctx.lookupSchema(parent)) {
-        return null;
-      }
+      const parentSchema = ctx.lookupSchema(parent);
+      // Defer if any parent schema isn't registered yet (multi-pass resolution).
+      if (!parentSchema) return null;
+      parentSchemas.push(parentSchema as Record<string, unknown>);
     }
 
-    // Merge: allOf [{ $ref: "Parent" }, ..., ownSchema]
-    schema = {
-      allOf: [...parents.map((p) => ({ $ref: p })), schema],
-    };
+    // Each parent's registered schema is itself already resolved, so merging
+    // them makes inheritance transitive through grandparents with no `$ref`s
+    // left in the result.
+    schema = mergeTypeSchemas([...parentSchemas, ownSchema]);
   }
 
   const rules = (Array.isArray(resource.rules) ? resource.rules : []) as TypeRule[];
@@ -79,5 +87,5 @@ export async function create(
     ctx.registerSchema(canonicalTypeSchemaId(moduleName, shortName), schema);
   }
 
-  return new TypeResource(qualifiedName, rules);
+  return new TypeResource(qualifiedName, rules, schema);
 }

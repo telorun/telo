@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: ExtendsInheritedAccess
+  version: 1.0.0
+imports:
+  Type: ../..
+  Run: ../../../run
+  JavaScript: ../../../javascript
+targets:
+  - !ref T
+---
+kind: Type.JsonSchema
+metadata:
+  name: Base
+schema:
+  type: object
+  required: [ id ]
+  properties:
+    id: { type: string }
+---
+# Child extends Base and is strict (additionalProperties:false). The analyzer must
+# still recognise the inherited `id` — its effective schema is the merge of both.
+kind: Type.JsonSchema
+metadata:
+  name: Child
+extends: Base
+schema:
+  type: object
+  required: [ name ]
+  additionalProperties: false
+  properties:
+    name: { type: string }
+---
+kind: JavaScript.Script
+metadata:
+  name: Make
+outputType: !ref Child
+code: |
+  function main() { return { id: "x", name: "y" } }
+---
+kind: Run.Sequence
+metadata:
+  name: T
+steps:
+  - name: M
+    invoke: !ref Make
+  - name: Use
+    inputs:
+      a: !cel "steps.M.result.id"
+      b: !cel "steps.M.result.name"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main(input) { return input }
