@@ -1,4 +1,5 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
+import { mergeTypeSchemas } from "@telorun/sdk";
 
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
@@ -25,10 +26,13 @@ export interface ContextResolveOpts {
 export function resolveTypeFieldToSchema(
   value: unknown,
   allManifests: Record<string, any>[],
+  ancestry: ReadonlySet<string> = new Set(),
 ): Record<string, any> | undefined {
   if (!value) return undefined;
 
   if (typeof value === "string") {
+    // Cycle guard: a type already on the resolution path can't extend back into it.
+    if (ancestry.has(value)) return undefined;
     // Named type reference — find a Telo.Type resource by name
     const typeManifest = allManifests.find(
       (m) =>
@@ -38,14 +42,20 @@ export function resolveTypeFieldToSchema(
         typeof m.schema === "object" &&
         m.schema !== null,
     );
-    return typeManifest?.schema as Record<string, any> | undefined;
+    if (!typeManifest) return undefined;
+    return applyExtends(
+      typeManifest.schema as Record<string, any>,
+      typeManifest.extends,
+      allManifests,
+      new Set(ancestry).add(value),
+    );
   }
 
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, any>;
     // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
     if (obj.schema && typeof obj.schema === "object") {
-      return obj.schema as Record<string, any>;
+      return applyExtends(obj.schema as Record<string, any>, obj.extends, allManifests, ancestry);
     }
     // Raw JSON Schema (has type or properties)
     if (obj.type || obj.properties) {
@@ -54,11 +64,37 @@ export function resolveTypeFieldToSchema(
     // Named type reference resolved from a `!ref` → { kind, name } — resolve the
     // named Telo.Type the same way as the bare-string form.
     if (typeof obj.name === "string") {
-      return resolveTypeFieldToSchema(obj.name, allManifests);
+      return resolveTypeFieldToSchema(obj.name, allManifests, ancestry);
     }
   }
 
   return undefined;
+}
+
+/**
+ * Fold a `Type.JsonSchema`'s `extends` parents into its own schema, matching the
+ * runtime `type` controller exactly — both call the shared `mergeTypeSchemas`, so
+ * static analysis and runtime validation can never disagree on a type's effective
+ * shape. Without this the analyzer would see only a child type's own properties
+ * and reject valid access to an inherited field with a false `CEL_UNKNOWN_FIELD`.
+ * `ancestry` carries the resolution path for cycle detection (siblings share it
+ * unmutated, so diamond inheritance still re-includes a shared grandparent).
+ */
+function applyExtends(
+  ownSchema: Record<string, any>,
+  extendsField: unknown,
+  allManifests: Record<string, any>[],
+  ancestry: ReadonlySet<string>,
+): Record<string, any> {
+  if (!extendsField) return ownSchema;
+  const parents = Array.isArray(extendsField) ? extendsField : [extendsField];
+  const resolved: Record<string, any>[] = [];
+  for (const parent of parents) {
+    const parentSchema = resolveTypeFieldToSchema(parent, allManifests, ancestry);
+    if (parentSchema) resolved.push(parentSchema);
+  }
+  if (resolved.length === 0) return ownSchema;
+  return mergeTypeSchemas([...resolved, ownSchema]) as Record<string, any>;
 }
 
 /** Pull the raw expression source from a CEL field value — a compiled value

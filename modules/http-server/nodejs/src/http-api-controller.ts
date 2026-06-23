@@ -40,6 +40,10 @@ const HttpApiRouteManifest = Type.Object({
   inputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
   returns: Type.Array(ReturnEntry),
   catches: Type.Optional(Type.Array(CatchEntry)),
+  operationId: Type.Optional(Type.String()),
+  summary: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  tags: Type.Optional(Type.Array(Type.String())),
 });
 type HttpApiRouteManifest = Static<typeof HttpApiRouteManifest>;
 
@@ -100,6 +104,13 @@ export class HttpServerApi implements ResourceInstance {
     if (route.request.schema?.params) schema.params = route.request.schema.params;
     if (route.request.schema?.body && !streamBody) schema.body = route.request.schema.body;
     if (route.request.schema?.headers) schema.headers = route.request.schema.headers;
+
+    // OpenAPI operation metadata — @fastify/swagger reads these off the route
+    // schema and renders them into the generated document.
+    if (route.operationId) schema.operationId = route.operationId;
+    if (route.summary) schema.summary = route.summary;
+    if (route.description) schema.description = route.description;
+    if (route.tags) schema.tags = route.tags;
 
     // Response schemas: register the FIRST content[mime].schema we find for
     // each status. Multiple MIMEs per status all get the same response shape

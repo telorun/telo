@@ -1,0 +1,3 @@
+project: crud
+kind: Added
+body: Add `singular`/`plural` names to `Crud.Resource`. `table` now defaults from `plural` and the item path parameter from `<singular>Id` (overridable via `idParam`, renaming only the URL parameter — the PK column stays `id`); the generated OpenAPI operations are named from the singular/plural nouns and tagged with `plural`.

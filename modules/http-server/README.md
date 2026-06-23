@@ -8,6 +8,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **OpenAPI-style paths** — `/users/{id}` syntax everywhere; the adapter translates to its native router.
 - **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standardized HTTP 400 with `details[]` on failure.
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
+- **OpenAPI operation metadata** — a route may declare `operationId`, `summary`, `description`, and `tags`; they are rendered into the generated OpenAPI document.
 - **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.

@@ -13,6 +13,7 @@ imports:
   SqlSqlite: ../../sql-sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
+  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -30,15 +31,30 @@ migrations:
   0001_todos:
     statement: |
       CREATE TABLE todos (
-        id   INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT    NOT NULL,
-        done INTEGER NOT NULL DEFAULT 0
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        text     TEXT    NOT NULL,
+        done     INTEGER NOT NULL DEFAULT 0,
+        due_date TEXT
       )
+---
+kind: Type.JsonSchema
+metadata: { name: TodoModel }
+schema:
+  type: object
+  required: [ text ]
+  additionalProperties: false
+  properties:
+    text: { type: string, minLength: 1 }
+    done: { type: integer, enum: [ 0, 1 ] }
+    # camelCase property — the column is its snake_case form `due_date`.
+    dueDate: { type: string }
 ---
 kind: Crud.Resource
 metadata: { name: Todos }
 connection: !ref Db
-table: todos
+singular: todo
+plural: todos
+model: !ref TodoModel
 ---
 # Server is scoped to the test sequence so it is torn down (and the port freed)
 # when the run completes — the kernel can then exit cleanly.
@@ -51,27 +67,74 @@ with:
     port: 8971
     baseUrl: http://127.0.0.1:8971
     logger: false
+    openapi:
+      info:
+        title: Todos API
+        version: 1.0.0
     mounts:
       - path: /todos
         mount: !ref Todos
 targets:
   - !ref Server
 steps:
+  # The model/name config drives the OpenAPI doc: the collection is `/todos`,
+  # each item lives at the renamed `/todos/{todoId}` (idParam default), and the
+  # operations are named from singular/plural.
+  - name: Spec
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/reference/openapi.json
+      method: GET
+  - name: AssertSpec
+    inputs:
+      listOp: !cel "steps.Spec.result.body.paths['/todos'].get.operationId"
+      getOp: !cel "steps.Spec.result.body.paths['/todos/{todoId}'].get.operationId"
+      createOp: !cel "steps.Spec.result.body.paths['/todos'].post.operationId"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          listOp: { const: listTodos }
+          getOp: { const: getTodo }
+          createOp: { const: createTodo }
+        required: [ listOp, getOp, createOp ]
+
   - name: Create
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8971/todos
       method: POST
-      body: { text: "Buy milk" }
+      body: { text: "Buy milk", dueDate: "2026-07-01" }
   - name: AssertCreated
     inputs:
-      status: "${{ steps.Create.result.status }}"
+      status: !cel "steps.Create.result.status"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties: { status: { const: 201 } }
+        required: [ status ]
+
+  # Body missing the required `text` is rejected by the model schema before the
+  # handler runs — no row is created, so the List below still sees exactly one.
+  - name: BadCreate
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos
+      method: POST
+      body: { done: 1 }
+  - name: AssertBadCreate
+    inputs:
+      status: !cel "steps.BadCreate.result.status"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 400 } }
         required: [ status ]
 
   - name: List
@@ -82,8 +145,8 @@ steps:
       method: GET
   - name: AssertList
     inputs:
-      status: "${{ steps.List.result.status }}"
-      text: "${{ steps.List.result.body[0].text }}"
+      status: !cel "steps.List.result.status"
+      text: !cel "steps.List.result.body[0].text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -101,8 +164,11 @@ steps:
       method: GET
   - name: AssertRead
     inputs:
-      status: "${{ steps.Read.result.status }}"
-      done: "${{ steps.Read.result.body.done }}"
+      status: !cel "steps.Read.result.status"
+      done: !cel "steps.Read.result.body.done"
+      # Round-trips the casing: written as `dueDate`, stored in column `due_date`,
+      # aliased back to `dueDate` on read.
+      dueDate: !cel "steps.Read.result.body.dueDate"
     invoke:
       kind: Assert.Schema
       schema:
@@ -110,7 +176,8 @@ steps:
         properties:
           status: { const: 200 }
           done: { const: 0 }
-        required: [ status, done ]
+          dueDate: { const: "2026-07-01" }
+        required: [ status, done, dueDate ]
 
   - name: Update
     inputs: {}
@@ -121,7 +188,7 @@ steps:
       body: { done: 1 }
   - name: AssertUpdated
     inputs:
-      status: "${{ steps.Update.result.status }}"
+      status: !cel "steps.Update.result.status"
     invoke:
       kind: Assert.Schema
       schema:
@@ -137,13 +204,32 @@ steps:
       method: GET
   - name: AssertUpdatedRow
     inputs:
-      done: "${{ steps.ReadUpdated.result.body.done }}"
+      done: !cel "steps.ReadUpdated.result.body.done"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties: { done: { const: 1 } }
         required: [ done ]
+
+  # `done: 5` is outside the model's enum [0, 1] — the partial PUT schema still
+  # type-checks each supplied column, so this is rejected with 400.
+  - name: BadUpdate
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PUT
+      body: { done: 5 }
+  - name: AssertBadUpdate
+    inputs:
+      status: !cel "steps.BadUpdate.result.status"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { status: { const: 400 } }
+        required: [ status ]
 
   - name: Delete
     inputs: {}
@@ -153,7 +239,7 @@ steps:
       method: DELETE
   - name: AssertDeleted
     inputs:
-      status: "${{ steps.Delete.result.status }}"
+      status: !cel "steps.Delete.result.status"
     invoke:
       kind: Assert.Schema
       schema:
@@ -169,7 +255,7 @@ steps:
       method: GET
   - name: AssertGone
     inputs:
-      status: "${{ steps.ReadGone.result.status }}"
+      status: !cel "steps.ReadGone.result.status"
     invoke:
       kind: Assert.Schema
       schema:
