@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-06-20
+## 0.6.0 - 2026-06-23
+### Added
+* Update controller @telorun/type to 0.5.0.## 0.5.0 - 2026-06-20
 ### Added
 * Update controller @telorun/type to 0.4.0.## 0.4.0 - 2026-06-07
 ### Added

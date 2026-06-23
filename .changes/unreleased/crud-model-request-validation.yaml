@@ -1,3 +1,0 @@
-project: crud
-kind: Added
-body: Add a required `model` (a `Type.JsonSchema`) to `Crud.Resource` that validates request bodies — POST against the full schema, PUT against a partial where nothing is required.

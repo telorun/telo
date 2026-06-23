@@ -1,5 +1,15 @@
 # @telorun/http-server
 
+## 0.15.0
+
+### Minor Changes
+
+- a9ac4ba: Add optional `operationId`, `summary`, `description`, and `tags` fields to `Http.Api` routes. They are passed through to the underlying framework and rendered into the generated OpenAPI document.
+
+### Patch Changes
+
+- @telorun/http-dispatch@0.4.1
+
 ## 0.14.1
 
 ### Patch Changes

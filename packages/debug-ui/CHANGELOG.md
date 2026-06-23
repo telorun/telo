@@ -1,5 +1,35 @@
 # @telorun/debug-ui
 
+## 0.5.0
+
+### Minor Changes
+
+- a125804: Make the debug UI usable on a phone-width viewport.
+
+  The layout previously assumed a desktop width — a single non-wrapping header row and the Graph view's fixed 220px trace-list + 340px detail rails left almost no room for the canvas under ~640px. A `@media (max-width: 640px)` block now:
+
+  - wraps the header tabs/controls and the events filter bar, with larger tap targets;
+  - stacks the Graph view vertically — the invocation list becomes a horizontal scroll strip above the canvas, and the node-detail panel becomes a bottom sheet overlaying the canvas instead of a 340px side column;
+  - lets the drill-down panels go near-full-width with a tight cascade.
+
+  The drill-down cascade offset moved from an inline `left` to a `--tdbg-depth` CSS variable so the media query can retune it; desktop layout is unchanged.
+
+  Also fixes pan/zoom on touch: xyflow ships no `touch-action`, so the browser claimed one-finger drags and the graph never panned on a touch device. The flow container is now `touch-action: none`, handing pan/pinch to xyflow.
+
+- a125804: Give resources spawned by a templated kind a hierarchical identity, so the debug graph nests them under their parent and stops collapsing collisions.
+
+  A `Telo.Definition` with a `resources:` block (e.g. `std/crud`'s `Crud.Resource`) expands into child resources whose `kind` + `name` are identical across every instance of the kind — two `Crud.Resource`s both spawn `SqlRepo.Read.reader`. The debug stream keyed nodes by name, so those children collided and only one appeared, with no link back to the owning resource.
+
+  - **Kernel / SDK**: every resource now carries a full hierarchical `id` (`<owner.id>/<kind>.<name>`, or `<kind>.<name>` at the top level). A template controller stamps the owning resource onto the child context it registers its `resources:` into (`EvaluationContext.owner`), so the children's `Created` / `Initialized` / `Teardown` and dispatch events carry that `owner` and a unique `id`; dependency edges are id-qualified too. `ResourceContext.ownerPrefix` exposes the composing prefix so the identity stays unique when templates nest. The dependency-edge collector also skips `schema` for the system kinds whose `schema:` is definitionally a JSON-Schema contract (`Telo.Definition` / `Telo.Abstract` / `Telo.Type`): a `{kind, name}`-shaped value in a schema `examples` block is documentation data, not a `!ref`, and previously surfaced as a phantom dependency edge (e.g. every `Telo.Definition` wiring itself to a resource named in its example). Other kinds' `schema` fields are still walked, so a genuine `schema: !ref X` resolves.
+  - **Resolved properties**: each `Created` event now also carries `properties` — the resource's config "after templating", with compile-time `${{ }}` / `!cel` reduced to concrete values, resolved `!ref`s (and injected live instances) shown as `{kind,name}`, deferred runtime expressions as their `${{ source }}` text, and known secret values scrubbed to `[secret]`. The node detail panel renders it as a **Properties** section above Inputs/Outputs.
+  - **Wire** (`@telorun/debug-wire`): lifecycle and dispatch payloads gain `id` on the resource `ref` and an optional `owner` pointer (`WireOwner`, `WireResourceRef`, `LifecyclePayload`); `Created` adds `properties`. Additive — a legacy producer that omits `id` falls back to name-keyed identity.
+  - **Debug UI**: the Graph view keys nodes by `id` and renders a templated resource as one node with an "n internal" badge. Clicking it opens a drill-down panel showing that resource plus the children it spawned (`subtreeGraph`), wired into a tree — the children connected by their own dependency edges, and the parent linked by a dashed ownership edge only to children not already reached through a sibling (so a handler reached via the Http.Api isn't also tied directly to the parent). Drilling into a child pushes another panel onto a cascading stack (recursive to any depth); panels beneath peek out on the left and click to pop back, so the main canvas never reflows. The node-detail aside now scrolls as one unit — previously its flex body collapsed each inputs/outputs payload into a tiny nested scrollbar.
+
+### Patch Changes
+
+- Updated dependencies [a125804]
+  - @telorun/debug-wire@0.3.0
+
 ## 0.4.0
 
 ### Minor Changes
