@@ -1,3 +1,4 @@
+import { selectByPatterns } from "@telorun/glob";
 import { Kernel, LocalFileSource } from "@telorun/kernel";
 import type { ResourceContext, Runnable } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
@@ -62,14 +63,6 @@ function createColors(stream: NodeJS.WritableStream) {
   };
 }
 
-function globToRegex(pattern: string): RegExp {
-  const re = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, "(.+/)?")
-    .replace(/\*/g, "[^/]+");
-  return new RegExp(`^${re}$`);
-}
-
 function discoverTests(
   baseDir: string,
   include: string[],
@@ -77,25 +70,25 @@ function discoverTests(
   filter?: string,
 ): string[] {
   const entries = fs.readdirSync(baseDir, { recursive: true, encoding: "utf8" });
-  const includeRe = include.map(globToRegex);
-  const excludeRe = exclude.map(globToRegex);
+  const rels = entries.map((entry) => entry.replace(/\\/g, "/"));
 
-  const results: string[] = [];
+  // Match with the monorepo's single glob engine. `applyDefaultIgnore: false`
+  // skips only the soft tier; the hard tier still denies `node_modules` — the
+  // symlinked workspace dupes / vendored copies that must never run as
+  // workspace tests — so discovery only adds the user-facing `exclude`
+  // (defaults to __fixtures__).
+  const selected = selectByPatterns(rels, include, {
+    applyDefaultIgnore: false,
+    exclude,
+  });
+
   // Dedupe by realpath: pnpm symlinks workspace packages into multiple
   // node_modules locations, so the same test file can be reached via
   // many paths. Without dedupe, recursive traversal yields the same yaml
   // dozens of times under different prefixes.
   const seen = new Set<string>();
-
-  for (const entry of entries) {
-    const rel = entry.replace(/\\/g, "/");
-    // Hard-skip node_modules: those are always symlinked workspace dupes
-    // (or vendored copies that shouldn't run as workspace tests). The
-    // user-facing `exclude` defaults to `__fixtures__` only, but
-    // node_modules is a hard architectural skip.
-    if (rel.split("/").includes("node_modules")) continue;
-    if (!includeRe.some((re) => re.test(rel))) continue;
-    if (excludeRe.some((re) => re.test(rel))) continue;
+  const results: string[] = [];
+  for (const rel of selected) {
     if (filter && !rel.includes(filter)) continue;
     const abs = path.resolve(baseDir, rel);
     let real: string;

@@ -1,8 +1,8 @@
 import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "@telorun/analyzer";
+import { selectByPatterns } from "@telorun/glob";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { minimatch } from "minimatch";
 
 function toFilePath(pathOrUrl: string): string {
   return pathOrUrl.startsWith("file://") ? fileURLToPath(pathOrUrl) : pathOrUrl;
@@ -49,17 +49,18 @@ export class LocalFileSource implements ManifestSource {
   async expandGlob(base: string, patterns: string[]): Promise<string[]> {
     const baseDir = path.dirname(path.resolve(toFilePath(base)));
     const entries = await fs.readdir(baseDir, { recursive: true, withFileTypes: true });
-    const normalizedPatterns = patterns.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
-    const matched: string[] = [];
+    const rels: string[] = [];
     for (const entry of entries) {
       if (!entry.isFile()) continue;
-      const relative = path.relative(baseDir, path.join(entry.parentPath, entry.name));
-      const normalized = relative.replace(/\\/g, "/");
-      if (normalizedPatterns.some((p) => minimatch(normalized, p))) {
-        matched.push(toFileUrl(path.resolve(baseDir, relative)));
-      }
+      rels.push(path.relative(baseDir, path.join(entry.parentPath, entry.name)).replace(/\\/g, "/"));
     }
-    return matched.sort();
+    // `include:` resolution may reach any co-located partial, so it opts out of
+    // the soft default-ignore tier (parity with `telo publish`'s include path).
+    // The hard tier (`node_modules`/`.git`/`.telo`) is always denied, so a broad
+    // `**` include never recurses into the manifest cache.
+    return selectByPatterns(rels, patterns, { applyDefaultIgnore: false }).map((rel) =>
+      toFileUrl(path.resolve(baseDir, rel)),
+    );
   }
 
   async resolveOwnerOf(fileUrl: string): Promise<string | null> {

@@ -41,6 +41,7 @@
     "@telorun/analyzer": "workspace:*",
     "@telorun/debug-ui": "workspace:*",
     "@telorun/debug-wire": "workspace:*",
+    "@telorun/glob": "workspace:*",
     "@telorun/ide-support": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",

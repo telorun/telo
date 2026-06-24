@@ -44,12 +44,12 @@
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
+    "@telorun/glob": "workspace:*",
     "@telorun/ide-support": "workspace:*",
     "@telorun/kernel": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",
     "dotenv": "^17.4.0",
-    "ignore": "^7.0.5",
     "packageurl-js": "^2.0.1",
     "semver": "^7.7.3",
     "tar-stream": "^3.1.7",

@@ -1,6 +1,6 @@
 {
   "productName": "telo-editor",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "com.telo.editor",
   "build": {
     "beforeDevCommand": "pnpm dev",

@@ -152,6 +152,10 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     | string[]
     | undefined;
 
+  const files = (moduleDoc as Record<string, unknown> | undefined)?.files as
+    | string[]
+    | undefined;
+
   const moduleMeta = moduleDoc as Record<string, unknown> | undefined;
 
   // `variables` / `secrets` are top-level doc fields (flat, not under
@@ -177,6 +181,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     imports,
     resources,
     ...(include?.length ? { include } : {}),
+    ...(files?.length ? { files } : {}),
     ...(variables ? { variables } : {}),
     ...(secrets ? { secrets } : {}),
   };

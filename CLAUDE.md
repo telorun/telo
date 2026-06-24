@@ -15,6 +15,7 @@ Follow this strictly:
 - never use git stash
 - never fix linting problems, and never mention it
 - keep code comments very concise and add them only when necessary; prefer self-documenting code and module documentation
+- if you cannot implement a feature in a way it was established or planned to be implemented, propose a new approach and ask for approval before implementing it
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
 - in telo manifests, ALWAYS write CEL with the `!cel "..."` YAML tag — never the inline `"${{ ... }}"` string form. The formatter normalizes to `!cel`, and the inline form gets mangled on round-trip (it has been silently rewritten into a broken `!ref`). This applies to every CEL value, including pure expressions and string interpolations (`!cel "'http://localhost:' + string(ports.http)"`).
@@ -29,7 +30,7 @@ Follow this strictly:
 - When working on a plan, when a decision is made then remove the decision section entirely, not just mark it as decided. The plan should reflect the current state of the world, not a history of how we got here.
 - `JS.Script` in manifests is a last resort. Before reaching for it, check whether the work belongs in a new generic stdlib resource (composes with the existing kind library, reusable across consumers, type-safe at the manifest level). A `JS.Script` is acceptable when (a) the logic is one-off and demonstrably not reusable, or (b) it bridges to a Node-specific API the kernel doesn't yet expose. In every other case, propose a new resource kind first and ask before adding inline JS.
 - never add Docusaurus or any other rendering-tool annotations (`sidebar_label`, `sidebar_position`, `description`, etc.) to `README.md` files. Docusaurus-specific labels and ordering belong in `pages/sidebars.ts`; other markdown files under `docs/` may keep frontmatter where it's actually consumed.
-- keep your communication concise and to the point; avoid unnecessary preambles, or apologies. Focus on the task at hand and the specific changes being made. If you need to explain a complex decision, do so.
+- keep your communication very concise and to the point; avoid unnecessary preambles, or apologies. Focus on the task at hand and the specific changes being made. If you need to explain a complex decision, do so.
 
 ## Architecture
 
@@ -217,6 +218,8 @@ Available in `${{ }}`:
    - Add `sidebar_label` frontmatter to the markdown file
 
 ## Versioning & releases — MANDATORY
+
+**The whole repo is intentionally pre-1.0, and staying pre-1.0 is the goal.** Breaking changes are released as **minor** bumps on purpose — both `@telorun/*` npm packages and Telo modules. A documented breaking change shipped as a minor (or a module's `Added` fragment for a breaking change) is the convention working as designed, **never** a versioning defect. Do not flag "breaking change shipped as minor" in reviews. The CI guards (`check-no-major-module-bump`, the changeset major-bump guard) exist to *enforce* this — anything that would bump to 1.0.0 is the error, not the minor.
 
 Two release tracks, split by artifact:
 

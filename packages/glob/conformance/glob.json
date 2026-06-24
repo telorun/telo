@@ -1,0 +1,124 @@
+{
+  "spec": "Telo glob matching — see ./README.md. Each case asserts selectByPatterns(paths, patterns, options) deep-equals selected (sorted).",
+  "cases": [
+    {
+      "name": "empty pattern list selects nothing",
+      "patterns": [],
+      "paths": ["a.js"],
+      "selected": []
+    },
+    {
+      "name": "floating extension matches at any depth",
+      "patterns": ["*.js"],
+      "paths": ["a.js", "public/b.js", "public/c.css"],
+      "selected": ["a.js", "public/b.js"]
+    },
+    {
+      "name": "anchored ** matches recursively under its prefix",
+      "patterns": ["public/**"],
+      "paths": ["telo.yaml", "public/a.js", "public/sub/b.css", "other.txt"],
+      "selected": ["public/a.js", "public/sub/b.css"]
+    },
+    {
+      "name": "negation carves out, last match wins",
+      "patterns": ["public/**", "!public/skip.js"],
+      "paths": ["public/keep.js", "public/skip.js"],
+      "selected": ["public/keep.js"]
+    },
+    {
+      "name": "re-include after exclude (pure last-match-wins, diverges from git)",
+      "patterns": ["public/**", "!public/**", "public/keep.js"],
+      "paths": ["public/keep.js", "public/other.js"],
+      "selected": ["public/keep.js"]
+    },
+    {
+      "name": "anchored mid ** with extension matches at any depth under prefix only",
+      "patterns": ["handlers/**/*.yaml"],
+      "paths": ["handlers/a.yaml", "handlers/sub/b.yaml", "handlers/sub/c.txt", "other/handlers/x.yaml"],
+      "selected": ["handlers/a.yaml", "handlers/sub/b.yaml"]
+    },
+    {
+      "name": "floating bare filename matches any depth but respects segment boundary",
+      "patterns": ["routes.yaml"],
+      "paths": ["routes.yaml", "sub/routes.yaml", "sub/myroutes.yaml"],
+      "selected": ["routes.yaml", "sub/routes.yaml"]
+    },
+    {
+      "name": "double-star alone matches everything",
+      "patterns": ["**"],
+      "paths": ["a.js", "sub/b.js"],
+      "selected": ["a.js", "sub/b.js"]
+    },
+    {
+      "name": "floating trailing-slash directory matches its contents at any depth",
+      "patterns": ["build/"],
+      "paths": ["build/x.js", "build/sub/y.js", "a/build/z.js", "buildfile.js"],
+      "selected": ["a/build/z.js", "build/sub/y.js", "build/x.js"]
+    },
+    {
+      "name": "anchored trailing-slash directory matches only under its prefix",
+      "patterns": ["src/lib/"],
+      "paths": ["src/lib/a.js", "src/lib/sub/b.js", "other/src/lib/c.js"],
+      "selected": ["src/lib/a.js", "src/lib/sub/b.js"]
+    },
+    {
+      "name": "question mark matches exactly one non-slash character",
+      "patterns": ["a?.js"],
+      "paths": ["ab.js", "a.js", "abc.js"],
+      "selected": ["ab.js"]
+    },
+    {
+      "name": "wildcards match dotfiles (the deny tier hides caches, not the wildcard)",
+      "patterns": ["*"],
+      "paths": [".env", "sub/.hidden"],
+      "options": { "applyDefaultIgnore": false },
+      "selected": [".env", "sub/.hidden"]
+    },
+    {
+      "name": "hard deny applies even when applyDefaultIgnore is false",
+      "patterns": ["**"],
+      "paths": ["node_modules/dep/index.js", ".git/config", ".telo/manifests/x.yaml", "src/a.js"],
+      "options": { "applyDefaultIgnore": false },
+      "selected": ["src/a.js"]
+    },
+    {
+      "name": "soft deny applies by default",
+      "patterns": ["**"],
+      "paths": [".telobundle.cjs", "src/a.js"],
+      "selected": ["src/a.js"]
+    },
+    {
+      "name": "soft deny opts out under applyDefaultIgnore false",
+      "patterns": ["**"],
+      "paths": [".telobundle.cjs", "src/a.js"],
+      "options": { "applyDefaultIgnore": false },
+      "selected": [".telobundle.cjs", "src/a.js"]
+    },
+    {
+      "name": "nested node_modules denied (pnpm symlink dupes)",
+      "patterns": ["**"],
+      "paths": ["a/node_modules/b/c.js", "src/x.js"],
+      "selected": ["src/x.js"]
+    },
+    {
+      "name": "exclude option carves out independently of the deny tiers",
+      "patterns": ["**"],
+      "paths": ["a.yaml", "__fixtures__/b.yaml", "sub/__fixtures__/c.yaml", "d.yaml"],
+      "options": { "applyDefaultIgnore": false, "exclude": ["**/__fixtures__/**"] },
+      "selected": ["a.yaml", "d.yaml"]
+    },
+    {
+      "name": "leading ./ is stripped; a single star does not cross a slash",
+      "patterns": ["./public/*.js"],
+      "paths": ["public/a.js", "public/sub/b.js"],
+      "selected": ["public/a.js"]
+    },
+    {
+      "name": "test-discovery pattern selects direct yaml under any tests dir",
+      "patterns": ["**/tests/*.yaml"],
+      "paths": ["tests/a.yaml", "pkg/tests/b.yaml", "tests/sub/c.yaml", "tests/a.txt"],
+      "options": { "applyDefaultIgnore": false },
+      "selected": ["pkg/tests/b.yaml", "tests/a.yaml"]
+    }
+  ]
+}

@@ -107,7 +107,7 @@ describe("POST /v1/sessions", () => {
     expect(opts?.HostConfig.NetworkMode).toBe("telo_default");
     expect(opts?.HostConfig.AutoRemove).toBe(true);
     expect(opts?.WorkingDir).toBe(`/srv/${sessionId}`);
-    expect(opts?.Cmd).toEqual(["./telo.yaml"]);
+    expect(opts?.Cmd).toEqual(["telo", "./telo.yaml"]);
   });
 
   it("Env contains exactly FORCE_COLOR + CLICOLOR_FORCE + request env — no runner leak", async () => {

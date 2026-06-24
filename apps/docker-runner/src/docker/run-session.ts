@@ -230,12 +230,14 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   // Tty + OpenStdin + StdinOnce=false + the four Attach* flags yield a hijacked
   // attach duplex carrying the PTY byte stream both ways. Without OpenStdin the
   // container's stdin is detached at /dev/null and user input never reaches it.
-  // Inspect appends `--inspect 0.0.0.0:<port> --no-open` to the telo args so the
-  // kernel serves its debug stream on the child network. 0.0.0.0 (not the CLI's
-  // loopback default) lets the runner reach it across the container boundary.
+  // The command names `telo` explicitly (matching the k8s runner); the image's
+  // smart entrypoint runs a real command like this verbatim. Inspect appends
+  // `--inspect 0.0.0.0:<port> --no-open` so the kernel serves its debug stream
+  // on the child network. 0.0.0.0 (not the CLI's loopback default) lets the
+  // runner reach it across the container boundary.
   const cmd = args.inspect
-    ? [args.entryRelativePath, "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"]
-    : [args.entryRelativePath];
+    ? ["telo", args.entryRelativePath, "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"]
+    : ["telo", args.entryRelativePath];
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,

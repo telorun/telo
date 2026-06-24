@@ -21,10 +21,10 @@ RUN telo install apps/my-app/telo.yaml
 FROM telorun/node:1.4.2-slim AS production
 WORKDIR /srv
 COPY --from=build /srv /srv
-CMD ["apps/my-app/telo.yaml"]
+CMD ["telo", "apps/my-app/telo.yaml"]
 ```
 
-The image's `ENTRYPOINT` is `telo`, so `CMD` is just the application path (and any flags). Override at run time with `docker run … <image> --watch ./manifest.yaml` if you need to.
+The image has a smart entrypoint (like the official `node` image): a bare manifest path or a flag is routed to `telo`, so the explicit `CMD ["telo", "apps/my-app/telo.yaml", "--watch"]` and the terse `CMD ["apps/my-app/telo.yaml"]` both work. At run time, `docker run … <image> ./manifest.yaml` or `docker run … <image> --watch ./manifest.yaml` reach the CLI, while `docker run … <image> bash` drops into a shell.
 
 ## Warm the cache with `telo install`
 

@@ -21,11 +21,11 @@ COPY apps/registry/telo.yaml apps/registry/telo.yaml
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).
 RUN telo install apps/registry/telo.yaml
 
-CMD ["apps/registry/telo.yaml"]
+CMD ["telo", "apps/registry/telo.yaml"]
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
 WORKDIR /srv
 COPY --from=build /srv /srv
 
-CMD ["apps/registry/telo.yaml"]
+CMD ["telo", "apps/registry/telo.yaml"]

@@ -46,11 +46,14 @@ function pinnedUiVersion(): string | null {
   return /^\d/.test(version) ? version : null;
 }
 
-/** Outcome of resolving the debug UI bundle. `unavailable` carries a human
+/** Outcome of resolving the debug UI bundle. `ok` resolved to a file on disk;
+ *  `inline` was fetched into memory under `--no-cache-write` and is served
+ *  without ever touching the (read-only) cache; `unavailable` carries a human
  *  `reason` — surfaced verbatim (e.g. the exact fetch URL that failed) rather than
  *  collapsed to a silent null, so the inspect endpoint's 503 says *why*. */
 export type UiBundleResolution =
   | { kind: "ok"; path: string }
+  | { kind: "inline"; html: Buffer }
   | { kind: "unavailable"; reason: string };
 
 /** Resolve the on-demand single-file debug UI, first hit wins so local
@@ -60,13 +63,20 @@ export type UiBundleResolution =
  *    2. devDep on disk               — present in the monorepo, absent in a
  *                                      production install.
  *    3. `<cacheRoot>/debug-ui/<ver>` — a previous fetch.
- *    4. CDN (jsDelivr / `TELO_DEBUG_UI_URL`) — fetch the pinned version, cache.
+ *    4. CDN (jsDelivr / `TELO_DEBUG_UI_URL`) — fetch the pinned version. Cached
+ *                                      to disk when `cacheWrite` is set; under
+ *                                      `--no-cache-write` (e.g. the k8s runner's
+ *                                      baked, read-only `/telo-cache`) the bytes
+ *                                      are returned in-memory instead of written.
  *
  *  When nothing resolves the inspect endpoint still works headless; the returned
  *  `reason` explains the gap (missing version, no cache dir, or a failed fetch
  *  with its URL and status) so the failure is never silent.
  */
-export async function resolveUiBundle(cacheRoot: string | null): Promise<UiBundleResolution> {
+export async function resolveUiBundle(
+  cacheRoot: string | null,
+  cacheWrite = true,
+): Promise<UiBundleResolution> {
   const override = process.env.TELO_DEBUG_UI_PATH;
   if (override) {
     if (fs.existsSync(override)) return { kind: "ok", path: override };
@@ -105,6 +115,10 @@ export async function resolveUiBundle(cacheRoot: string | null): Promise<UiBundl
       return { kind: "unavailable", reason: `could not fetch the debug UI from ${url} — HTTP ${res.status} ${res.statusText}.` };
     }
     const body = Buffer.from(await res.arrayBuffer());
+    // `--no-cache-write`: the cache dir is read-only (e.g. the k8s runner's baked
+    // `/telo-cache`), so serve the freshly fetched bytes from memory rather than
+    // attempting a write that would fail (EROFS / ENOENT) and lose a good fetch.
+    if (!cacheWrite) return { kind: "inline", html: body };
     await fsp.mkdir(path.dirname(cached), { recursive: true });
     await fsp.writeFile(cached, body);
     return { kind: "ok", path: cached };

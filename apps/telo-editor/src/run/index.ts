@@ -21,6 +21,7 @@ export type {
 } from "./types";
 export { TermsRequiredError } from "./types";
 export { buildRunBundle } from "./bundle";
+export { selectModuleFiles } from "./select-module-files";
 export { registry } from "./registry";
 export { RunSettingsSection } from "./ui/RunSettingsSection";
 export { RunStatusChip } from "./ui/RunStatusChip";

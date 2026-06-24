@@ -65,4 +65,16 @@ describe("DebugServer UI availability", () => {
 
     expect(info.protocol).toBe("telo-debug");
   });
+
+  it("serves in-memory uiHtml bytes (the --no-cache-write fetch path) at /", async () => {
+    const html = Buffer.from("<h1>inline debug ui</h1>");
+    server = new DebugServer({ uiHtml: html });
+    await server.start();
+
+    const res = await fetch(`${server.url}/`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toBe("<h1>inline debug ui</h1>");
+  });
 });

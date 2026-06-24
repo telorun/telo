@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
+    "@telorun/glob": "workspace:*",
     "@telorun/kernel": "workspace:*"
   },
   "devDependencies": {

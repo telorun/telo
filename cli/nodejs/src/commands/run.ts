@@ -255,7 +255,7 @@ async function startDebugSession(
         ),
       );
     }
-    const ui = await resolveUiBundle(cacheRoot);
+    const ui = await resolveUiBundle(cacheRoot, argv.cacheWrite);
     if (ui.kind === "unavailable") {
       log.info(log.warn(`[inspect] debug UI unavailable — ${ui.reason}`));
     }
@@ -264,6 +264,7 @@ async function startDebugSession(
       port,
       jsonlPath: eventLogPath,
       uiHtmlPath: ui.kind === "ok" ? ui.path : undefined,
+      uiHtml: ui.kind === "inline" ? ui.html : undefined,
       uiUnavailableReason: ui.kind === "unavailable" ? ui.reason : undefined,
     });
     await server.start();

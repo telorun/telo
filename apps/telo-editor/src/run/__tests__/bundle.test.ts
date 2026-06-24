@@ -156,6 +156,43 @@ describe("buildRunBundle", () => {
     expect(readFile).toHaveBeenCalledWith("/ws/app/nested/deep.yaml");
   });
 
+  it("selects files: assets and ships them with their contents", async () => {
+    const app = makeManifest("/ws/app/telo.yaml", "Application", {
+      files: ["public/app.js", "public/**"],
+    });
+    const ws = makeWorkspace([app]);
+    const readFile = stubReadFile({
+      "/ws/app/telo.yaml": "# main",
+      "/ws/app/public/app.js": "// app",
+      "/ws/app/public/index.html": "<html>",
+    });
+    const selectFiles = vi.fn(async (base: string) => {
+      expect(base).toBe("/ws/app/telo.yaml");
+      return ["/ws/app/public/app.js", "/ws/app/public/index.html"];
+    });
+
+    const bundle = await buildRunBundle(ws, "/ws/app/telo.yaml", readFile, selectFiles);
+
+    const byPath = Object.fromEntries(bundle.files.map((f) => [f.relativePath, f.contents]));
+    expect(byPath).toEqual({
+      "telo.yaml": "# main",
+      "public/app.js": "// app",
+      "public/index.html": "<html>",
+    });
+    expect(selectFiles).toHaveBeenCalledWith("/ws/app/telo.yaml", ["public/app.js", "public/**"]);
+  });
+
+  it("throws when a module declares files: but no file selector is provided", async () => {
+    const app = makeManifest("/ws/app/telo.yaml", "Application", {
+      files: ["public/**"],
+    });
+    const ws = makeWorkspace([app]);
+
+    await expect(buildRunBundle(ws, "/ws/app/telo.yaml", stubReadFile())).rejects.toThrow(
+      /without a file selector/,
+    );
+  });
+
   it("rejects when the entry module is a Library", async () => {
     const lib = makeManifest("/ws/lib/telo.yaml", "Library");
     const ws = makeWorkspace([lib]);

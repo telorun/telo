@@ -18,6 +18,10 @@ export interface DebugServerOptions {
   /** Absolute path to the single-file debug UI (`resolveUiBundle`). When absent,
    *  the endpoint runs headless and `/` returns a "UI not available" notice. */
   uiHtmlPath?: string;
+  /** Single-file debug UI bytes to serve from memory — set when the bundle was
+   *  fetched under `--no-cache-write` and never written to disk (e.g. the k8s
+   *  runner's read-only cache). Preferred over {@link uiHtmlPath} when both set. */
+  uiHtml?: Buffer;
   /** Why the UI bundle is absent — rendered verbatim in the `/` 503 (e.g. the
    *  exact fetch URL that failed) so the failure is explicit, not generic. */
   uiUnavailableReason?: string;
@@ -236,6 +240,10 @@ export class DebugServer {
    *  and no path-traversal surface. Absent bundle → a 503 notice; the endpoint
    *  itself (SSE / JSONL / blobs / version) keeps working headless. */
   private async handleUi(res: http.ServerResponse): Promise<void> {
+    if (this.options.uiHtml) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(this.options.uiHtml);
+      return;
+    }
     if (!this.options.uiHtmlPath) {
       const detail = this.options.uiUnavailableReason ?? "the UI bundle could not be resolved or fetched.";
       res

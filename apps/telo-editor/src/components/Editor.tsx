@@ -47,6 +47,7 @@ import {
   buildRunBundle,
   registry as runRegistry,
   RunView,
+  selectModuleFiles,
   TermsRequiredError,
   useRun,
 } from "../run";
@@ -442,8 +443,12 @@ export function Editor() {
 
     let bundle;
     try {
-      bundle = await buildRunBundle(workspace, filePath, (p) =>
-        workspaceAdapter.readFile(p),
+      bundle = await buildRunBundle(
+        workspace,
+        filePath,
+        (p) => workspaceAdapter.readFile(p),
+        (base, patterns) =>
+          selectModuleFiles(base, patterns, (dir) => workspaceAdapter.listDir(dir)),
       );
     } catch (err) {
       setError(

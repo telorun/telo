@@ -8,6 +8,7 @@
 !packages/ide-support
 !packages/debug-wire
 !packages/debug-ui
+!packages/glob/nodejs
 !package.json
 !pnpm-*
 !tsconfig.base.json
