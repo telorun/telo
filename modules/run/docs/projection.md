@@ -18,7 +18,7 @@ The body is the same step grammar as [`Run.Sequence`](../README.md) minus the `w
 | `collection` | CEL expression resolving to the array projected over. |
 | `steps` | The body run once per element. |
 | `outputs` | A CEL map evaluated per element; its value is collected into the result array. Omit to collect the raw step map. |
-| `concurrency` | Maximum elements processed at once. Default `1` (strictly ordered); `>1` runs that many in flight. |
+| `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
 | `inputs` | Input contract (JSON Schema property map). |
 | `catches` | Whole-operation error contract — see [Error handling](#error-handling). |
 
@@ -51,7 +51,7 @@ outputs:
 
 ## Concurrency
 
-`concurrency: 1` (the default) processes elements in order. A higher value runs that many concurrently; the result array still follows input order. Execution is **fail-fast** — an uncaught element throw stops scheduling and propagates.
+`concurrency: 1` (the default) processes elements in order. A higher value runs that many concurrently; the result array still follows input order. The value may be an integer literal or a `!cel` expression over `inputs` (e.g. `!cel "inputs.workers"`); it must resolve to an integer ≥ 1 or the projection fails with `INVALID_CONCURRENCY`. Execution is **fail-fast** — an uncaught element throw stops scheduling and propagates.
 
 ## Error handling
 

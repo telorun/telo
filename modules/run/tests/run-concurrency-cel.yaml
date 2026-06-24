@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: RunConcurrencyCel
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+variables:
+  conc: { env: CONC, type: integer, default: 2 }
+targets:
+  - !ref VerifyProjection
+---
+# Regression: a `!cel` concurrency must be resolved to an integer before the
+# scheduler reads it. Reading it raw left a CompiledValue, zeroing the worker
+# pool and silently returning `[null, null, null]`.
+kind: Run.Projection
+metadata:
+  name: TagEach
+collection: !cel "['a', 'b', 'c']"
+concurrency: !cel "variables.conc"
+steps:
+  - name: Tag
+    inputs:
+      x: !cel "item"
+    invoke:
+      kind: Run.Value
+      inputs:
+        x: {}
+      value:
+        text: !cel "inputs.x"
+outputs:
+  text: !cel "steps.Tag.result.text"
+  at: !cel "index"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyProjection
+steps:
+  - name: Project
+    invoke: !ref TagEach
+  - name: Check
+    inputs:
+      result: !cel "steps.Project.result"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          result:
+            type: array
+            const:
+              - { text: a, at: 0 }
+              - { text: b, at: 1 }
+              - { text: c, at: 2 }

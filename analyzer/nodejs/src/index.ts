@@ -21,6 +21,7 @@ export {
     type ParsedExportEntry,
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
+export { buildEvalPaths, evalPathCovers } from "./eval-paths.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

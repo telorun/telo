@@ -3,6 +3,7 @@ import {
   type CatchEntry,
   mapConcurrent,
   pascalCase,
+  resolveConcurrency,
   type Step,
   StepEngine,
   withCatches,
@@ -11,7 +12,7 @@ import {
 interface RunIterationManifest {
   metadata: Record<string, string | number | boolean>;
   collection: unknown;
-  concurrency?: number;
+  concurrency?: unknown;
   inputs?: Record<string, unknown>;
   catches?: CatchEntry[];
   steps: Step[];
@@ -57,7 +58,13 @@ class RunIteration {
             { value: items },
           );
         }
-        await mapConcurrent(items, this.resource.concurrency ?? 1, async (item, index) => {
+        const concurrency = resolveConcurrency(
+          this.ctx,
+          this.resource.concurrency,
+          inputs,
+          `Run.Iteration "${this.resource.metadata.name}"`,
+        );
+        await mapConcurrent(items, concurrency, async (item, index) => {
           await this.engine.executeSteps(this.resource.steps, {}, undefined, {
             inputs,
             item,

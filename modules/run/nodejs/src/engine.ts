@@ -325,6 +325,29 @@ export async function withCatches<T>(
   }
 }
 
+/** Resolve a `concurrency` field — a raw CEL value (`!cel`) or literal — to a
+ *  positive integer. The schema does not auto-eval the field, so the controller
+ *  must expand it itself (mirroring Run.Loop's `maxIterations`); reading it raw
+ *  leaves a CompiledValue that `mapConcurrent` would turn into zero workers and a
+ *  silent `[null, …]`. Defaults to 1 when omitted. */
+export function resolveConcurrency(
+  ctx: ResourceContext,
+  raw: unknown,
+  inputs: Record<string, unknown>,
+  operationName: string,
+): number {
+  if (raw === undefined) return 1;
+  const resolved = ctx.expandValue(raw, { inputs });
+  const value = Number(resolved);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new InvokeError(
+      "INVALID_CONCURRENCY",
+      `${operationName}: concurrency must resolve to an integer >= 1, got ${JSON.stringify(resolved)}`,
+    );
+  }
+  return value;
+}
+
 /** Map `items` through `fn` with a bounded worker pool. `concurrency` 1 runs
  *  strictly ordered; `>1` runs that many in flight. Results are written by index
  *  so the returned array preserves input order regardless of completion order.
@@ -335,6 +358,15 @@ export async function mapConcurrent<I, O>(
   concurrency: number,
   fn: (item: I, index: number) => Promise<O>,
 ): Promise<O[]> {
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    // Defence in depth: callers resolve concurrency to a validated integer. A
+    // non-finite value here would zero the worker pool and silently return a
+    // sparse array — surface it instead.
+    throw new InvokeError(
+      "INVALID_CONCURRENCY",
+      `mapConcurrent: concurrency must be a positive integer, got ${concurrency}`,
+    );
+  }
   const results: O[] = new Array(items.length);
   const limit = Math.max(1, Math.floor(concurrency));
   let next = 0;

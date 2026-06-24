@@ -30,12 +30,14 @@ import {
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
+  extractCelRegionScopes,
   extractContextsFromSchema,
   getManifestItem,
   pathMatchesScope,
   resolveContextAnnotations,
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
+import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -393,6 +395,32 @@ function buildStepContextSchema(
  * specific field name (or `Run.Sequence`) is hardcoded; any composer that tags
  * its error-bearing branch fields opts in the same way.
  */
+/**
+ * True when a `walkCelExpressions` path (`with[0].handler.inputs.x`) crosses an
+ * inline nested resource — an `{ kind: … }` object below the host root — before
+ * reaching the leaf. Such CEL belongs to the nested resource's kind (validated
+ * when that resource is analyzed), not the host's schema, so the
+ * non-eval-field check must not attribute it to the host.
+ */
+function pathCrossesNestedResource(root: unknown, path: string): boolean {
+  const segments = path.match(/[^.[\]]+/g) ?? [];
+  let node: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    node = Array.isArray(node)
+      ? node[Number(segments[i])]
+      : (node as Record<string, unknown> | undefined)?.[segments[i]!];
+    if (
+      node !== null &&
+      typeof node === "object" &&
+      !Array.isArray(node) &&
+      typeof (node as { kind?: unknown }).kind === "string"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function collectErrorContextScopes(
   defSchema: Record<string, any> | undefined,
 ): Map<string, Record<string, any>> {
@@ -1189,6 +1217,13 @@ export class StaticAnalyzer {
     let celStepContextSchema: Record<string, any> | undefined;
     let celInvocationContext: Record<string, any> | undefined;
     let celErrorScopes: Map<string, Record<string, any>> = new Map();
+    // Region coverage for the "CEL in a non-eval field" check: the union of
+    // `x-telo-eval` paths (own + capability) and `x-telo-context` /
+    // `x-telo-step-context` / `x-telo-error-context` scopes. A `!cel` outside
+    // every region is read as a literal — the runtime never evaluates it.
+    let celEvalPaths: string[] = [];
+    let celRegionScopes: string[] = [];
+    let celRuleApplies = false;
 
     visitManifest(
       allManifests,
@@ -1211,12 +1246,55 @@ export class StaticAnalyzer {
           celErrorScopes = collectErrorContextScopes(
             e.definition?.schema as Record<string, any> | undefined,
           );
+
+          // The non-eval-field check only applies to runtime resource instances:
+          // structural / templating kinds (capability `Telo.Template`, or no
+          // definition) carry CEL the kernel evaluates by other rules.
+          const capability = e.definition?.capability;
+          celRuleApplies =
+            !!e.definition?.schema && capability !== undefined && capability !== "Telo.Template";
+          if (celRuleApplies) {
+            const ownSchema = e.definition!.schema as Record<string, any>;
+            const own = buildEvalPaths(ownSchema);
+            const capabilityDef = capability ? defs.resolve(capability) : undefined;
+            const parent = capabilityDef?.schema
+              ? buildEvalPaths(capabilityDef.schema as Record<string, any>)
+              : { compile: [], runtime: [] };
+            celEvalPaths = [...own.compile, ...own.runtime, ...parent.compile, ...parent.runtime];
+            celRegionScopes = extractCelRegionScopes(ownSchema);
+          } else {
+            celEvalPaths = [];
+            celRegionScopes = [];
+          }
         },
         onCel: (e) => {
           const m = e.source;
           const resource = { kind: m.kind, name: m.metadata?.name as string };
           const filePath = (m.metadata as { source?: string } | undefined)?.source;
           const { expr, path, engineName, matchedScope } = e;
+
+          // A `!cel` (or `${{ }}`) in a field with no `x-telo-eval` / `x-telo-context`
+          // is never evaluated — the runtime reads it as a literal (e.g. a
+          // `concurrency` `!cel` that silently degraded to a sparse `[null, …]`).
+          // Flag it rather than letting it pass as valid CEL. Inline resources
+          // (resource-wide invocation context) carry CEL the kernel evaluates.
+          if (
+            celRuleApplies &&
+            engineName === "cel" &&
+            celInvocationContext === undefined &&
+            !evalPathsCover(celEvalPaths, path) &&
+            !celRegionScopes.some((scope) => pathMatchesScope(path, scope)) &&
+            !pathCrossesNestedResource(m, path)
+          ) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_IN_NON_EVAL_FIELD",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: CEL at '${path}' is never evaluated — the field has no x-telo-eval / x-telo-context annotation, so its value is read as a literal. Annotate the field as a CEL slot or remove the !cel tag.`,
+              data: { resource, filePath, path },
+            });
+            return;
+          }
 
           let matchedContext: Record<string, any> | undefined =
             e.contextSchema ?? celInvocationContext;
