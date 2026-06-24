@@ -14,7 +14,7 @@ function render(todos) {
   empty.hidden = todos.length > 0;
   for (const todo of todos) {
     const li = document.createElement("li");
-    li.className = todo.done ? "done" : "";
+    li.className = todo.isDone ? "done" : "";
 
     const label = document.createElement("span");
     label.className = "text";
@@ -49,7 +49,7 @@ async function toggle(todo) {
   await json(await fetch(`${api}/${todo.id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ done: todo.done ? 0 : 1 }),
+    body: JSON.stringify({ isDone: !todo.isDone }),
   }));
   await load();
 }

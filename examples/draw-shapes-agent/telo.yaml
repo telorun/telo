@@ -22,12 +22,12 @@ metadata:
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: std/http-server@0.15.1
+  Http: std/http-server@0.16.0
   Ai: std/ai@0.7.0
   AiOpenai: std/ai-openai@0.8.0
   Image: std/image@0.2.0
   S3: std/s3@0.6.0
-  Run: std/run@0.11.0
+  Run: std/run@0.11.1
   Js: std/javascript@0.5.0
 targets:
   - !ref Server

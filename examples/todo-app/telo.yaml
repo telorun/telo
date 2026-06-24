@@ -8,10 +8,11 @@ metadata:
     surface is one declarative Crud.Resource — list / read / create / update /
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
-  Http: std/http-server@0.15.1
-  Sql: std/sql@0.10.0
+  Http: std/http-server@0.16.0
+  Sql: std/sql@0.11.0
   SqlSqlite: std/sql-sqlite@0.2.1
-  Crud: std/crud@0.2.0
+  Crud: std/crud@0.3.0
+  Type: std/type@0.6.0
 targets:
   - !ref Migrate
   - !ref Server
@@ -30,7 +31,7 @@ ports:
 kind: SqlSqlite.Connection
 metadata:
   name: Db
-file: ./todo.db
+file: ":memory:"
 ---
 kind: Sql.Migrations
 metadata:
@@ -42,7 +43,7 @@ migrations:
       CREATE TABLE IF NOT EXISTS todos (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         text       TEXT    NOT NULL,
-        done       INTEGER NOT NULL DEFAULT 0,
+        is_done    BOOLEAN NOT NULL DEFAULT FALSE,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
 ---
@@ -63,7 +64,15 @@ mounts:
       # serves GET / (list), GET /{id}, POST /, PUT /{id}, DELETE /{id}.
       kind: Crud.Resource
       connection: !ref Db
-      table: todos
+      plural: todos
+      singular: todo
+      model:
+        kind: Type.JsonSchema
+        schema:
+          type: object
+          properties:
+            text: { type: string }
+            isDone: { type: boolean }
 
   - path: /
     mount: !ref Ui
