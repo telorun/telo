@@ -5,6 +5,7 @@ export async function buildRunBundle(
   workspace: Workspace,
   entryFilePath: string,
   readFile: (absPath: string) => Promise<string>,
+  selectFiles?: (base: string, patterns: string[]) => Promise<string[]>,
 ): Promise<RunBundle> {
   const entry = workspace.modules.get(entryFilePath);
   if (!entry) {
@@ -19,6 +20,10 @@ export async function buildRunBundle(
   const visitedModules = new Set<string>();
   const queue: string[] = [entryFilePath];
   const collectedPaths: string[] = [];
+  // Modules declaring `files:` asset globs (e.g. an Http.Static `root:` dir).
+  // Expanded after the walk so the recursive directory listing runs once per
+  // owner rather than inline in the synchronous BFS.
+  const fileGlobs: Array<{ source: string; patterns: string[] }> = [];
 
   while (queue.length > 0) {
     const currentPath = queue.shift()!;
@@ -37,11 +42,29 @@ export async function buildRunBundle(
       }
     }
 
+    if (mod.files?.length) {
+      fileGlobs.push({ source: currentPath, patterns: mod.files });
+    }
+
     for (const imp of mod.imports) {
       if (imp.importKind !== "local") continue;
       if (!imp.resolvedPath) continue;
       if (visitedModules.has(imp.resolvedPath)) continue;
       queue.push(imp.resolvedPath);
+    }
+  }
+
+  if (fileGlobs.length > 0) {
+    if (!selectFiles) {
+      throw new Error(
+        `Cannot bundle 'files:' assets without a file selector: ${fileGlobs
+          .map((g) => g.source)
+          .join(", ")}`,
+      );
+    }
+    const selected = await Promise.all(fileGlobs.map((g) => selectFiles(g.source, g.patterns)));
+    for (const group of selected) {
+      for (const assetPath of group) collectedPaths.push(toPosix(assetPath));
     }
   }
 

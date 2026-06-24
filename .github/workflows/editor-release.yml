@@ -1,0 +1,209 @@
+name: Release Editor
+
+# Builds the Tauri desktop binaries for the Telo Editor and publishes them as a
+# GitHub Release on the external `telorun/editor` repo (the same repo the web
+# build is deployed to via Pages in `editor-pages.yml`).
+#
+# Trigger is coupled to the changesets release: `@telorun/editor` is private so
+# it never lands in `publishedPackages`, so we instead fire whenever its
+# `package.json` version field actually moves on main (which happens when a
+# Version PR merges, including the automatic `updateInternalDependencies` patch
+# bumps). The `gate` job confirms the version changed before spending matrix
+# minutes. `workflow_dispatch` forces a (re)build of the current version.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/telo-editor/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editor-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Detect version bump
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check editor version
+        id: check
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r .version apps/telo-editor/package.json)
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No baseline commit -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OLD=$(git show "$BEFORE:apps/telo-editor/package.json" 2>/dev/null | jq -r .version || echo "")
+          if [ "$NEW" != "$OLD" ]; then
+            echo "Editor version changed: ${OLD:-<none>} -> $NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Editor version unchanged ($NEW); skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.label }})
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x64
+          - os: ubuntu-22.04
+            target: ''
+            label: linux-x64
+          - os: windows-latest
+            target: ''
+            label: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Tauri 2 system libraries (webkit2gtk + tray/appindicator + packaging).
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            file \
+            libxdo-dev \
+            libssl-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/telo-editor/src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The editor's `beforeBuildCommand` only runs its own vite build, which
+      # imports the built dist of these workspace deps. Build them first; the
+      # `^...` selector is deps-only (excludes the editor itself).
+      - name: Build workspace dependencies
+        run: pnpm --filter "@telorun/editor^..." build
+
+      - name: Build Tauri bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/telo-editor
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      # Flatten the distributable bundles (.dmg/.msi/.exe/.AppImage/.deb) that
+      # tauri-action reports into one dir for upload. `shell: bash` so the same
+      # script runs on the Windows runner (Git bash); jq is preinstalled on all
+      # GitHub-hosted images.
+      - name: Stage bundles
+        shell: bash
+        env:
+          ARTIFACTS: ${{ steps.tauri.outputs.artifactPaths }}
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          # tr normalizes Windows backslash paths so Git bash `cp` resolves them.
+          echo "$ARTIFACTS" | jq -r '.[]' | tr '\\' '/' | while read -r p; do
+            [ -e "$p" ] && cp "$p" staged/
+          done
+          ls -la staged
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-${{ matrix.label }}
+          path: staged/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release to telorun/editor
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List bundles
+        run: ls -la artifacts
+
+      # Cross-repo: publishes to telorun/editor's Releases using the same PAT
+      # that the Pages deploy uses. softprops creates the tag/release if absent
+      # and reuses it (appending assets) on re-runs of the same version.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: telorun/editor
+          token: ${{ secrets.EDITOR_PAGES_TOKEN }}
+          tag_name: editor-v${{ needs.gate.outputs.version }}
+          name: Telo Editor v${{ needs.gate.outputs.version }}
+          files: artifacts/**/*
+          fail_on_unmatched_files: true
+          body: |
+            Desktop builds of the Telo Editor v${{ needs.gate.outputs.version }}.
+
+            | Platform | Assets |
+            | --- | --- |
+            | macOS (Apple Silicon) | `.dmg` — `macos-arm64` |
+            | macOS (Intel) | `.dmg` — `macos-x64` |
+            | Windows | `.msi` / `.exe` |
+            | Linux | `.AppImage` / `.deb` |
+
+            > These are **unsigned** builds: macOS Gatekeeper and Windows
+            > SmartScreen will warn on first launch. Code signing is a follow-up.

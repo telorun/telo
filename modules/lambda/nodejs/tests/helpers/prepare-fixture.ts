@@ -24,6 +24,7 @@ const WORKSPACE_PACKAGES = [
   { name: "@telorun/kernel", dir: "kernel/nodejs" },
   { name: "@telorun/sdk", dir: "sdk/nodejs" },
   { name: "@telorun/analyzer", dir: "analyzer/nodejs" },
+  { name: "@telorun/glob", dir: "packages/glob/nodejs" },
   { name: "@telorun/templating", dir: "templating/nodejs" },
 ];
 

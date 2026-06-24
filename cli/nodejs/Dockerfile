@@ -36,16 +36,25 @@ RUN node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('/build/p
 FROM node:24-trixie AS lean
 
 COPY --from=build /deploy/ /opt/telo/
-RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo
+COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
+RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
+ && chmod +x /usr/local/bin/telo-entrypoint.sh
 WORKDIR /workspace
-ENTRYPOINT ["telo"]
+# Smart entrypoint (mirrors node's docker-entrypoint.sh): a bare manifest path or
+# flag is routed to `telo`, while `bash`/`node`/`telo …` run verbatim. A derived
+# image can write `CMD ["telo", ".", "--watch"]` or the terse `CMD ["./telo.yaml"]`.
+ENTRYPOINT ["telo-entrypoint.sh"]
+CMD ["telo"]
 
 FROM node:24-trixie-slim AS lean-slim
 
 COPY --from=build /deploy/ /opt/telo/
-RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo
+COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
+RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
+ && chmod +x /usr/local/bin/telo-entrypoint.sh
 WORKDIR /workspace
-ENTRYPOINT ["telo"]
+ENTRYPOINT ["telo-entrypoint.sh"]
+CMD ["telo"]
 
 # Rust toolchain layered on top of the lean variants. Pinned via Debian's
 # `rustup` package (no `curl | sh` from a third-party host), then

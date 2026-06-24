@@ -172,7 +172,7 @@ RUN telo install apps/my-app/telo.yaml
 FROM telorun/node:latest-slim as production
 WORKDIR /srv
 COPY --from=build /srv /srv
-CMD ["apps/my-app/telo.yaml"]
+CMD ["telo", "apps/my-app/telo.yaml"]
 ```
 
 Available image variants:

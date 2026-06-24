@@ -1,4 +1,5 @@
-import type { DirEntry, WorkspaceAdapter } from "../model";
+import { GLOB_PRUNE_DIRS, selectByPatterns, type SelectOptions } from "@telorun/glob";
+import type { DirEntry } from "../model";
 
 // Directory basenames skipped at any depth during workspace scan.
 export const SCAN_EXCLUDED_NAMES: ReadonlySet<string> = new Set([
@@ -67,65 +68,38 @@ export function normalizePath(p: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Glob matching (browser-safe; no minimatch dependency)
+// Glob matching — the walk lives here; matching delegates to the single
+// Telo-glob matcher in @telorun/glob (shared with the kernel, CLI publish,
+// and test discovery). No second glob implementation in the editor.
 // ---------------------------------------------------------------------------
-
-/** Converts a glob pattern to a regex. Handles `*` (any chars except `/`),
- *  `**` (any chars including `/`), and `?` (single char except `/`). Brace
- *  and character-class expansion are intentionally unsupported — they are not
- *  required by current include patterns and would bloat this function. */
-function globToRegExp(pattern: string): RegExp {
-  let re = "";
-  let i = 0;
-  while (i < pattern.length) {
-    const c = pattern[i];
-    if (c === "*") {
-      if (pattern[i + 1] === "*") {
-        re += ".*";
-        i += 2;
-        if (pattern[i] === "/") i++;
-      } else {
-        re += "[^/]*";
-        i++;
-      }
-    } else if (c === "?") {
-      re += "[^/]";
-      i++;
-    } else if ("\\^$+.()=!|:{}[]".includes(c)) {
-      re += "\\" + c;
-      i++;
-    } else {
-      re += c;
-      i++;
-    }
-  }
-  return new RegExp("^" + re + "$");
-}
 
 /** True when a pattern contains any glob metacharacter. */
 export function hasGlobChars(pattern: string): boolean {
   return /[*?]/.test(pattern);
 }
 
-/** Recursively collects all file paths under a directory via a
- *  WorkspaceAdapter's `listDir`. Directories listed in SCAN_EXCLUDED_NAMES
- *  are skipped. Returned paths are absolute (joined with the input dir). */
-export async function listAllFilesRecursive(
+/** Recursively collects all file paths under a directory via a one-level
+ *  `listDir`. `GLOB_PRUNE_DIRS` (node_modules/.git/.telo) are pruned for
+ *  performance — a strict subset of the deny set, so results are unchanged.
+ *  `dist`/`__fixtures__` are NOT pruned (a `files: dist/**` or
+ *  `include: __fixtures__/*.yaml` must still resolve). Returned paths are
+ *  absolute (joined with the input dir). */
+export async function walkFilesRecursive(
   dir: string,
-  adapter: WorkspaceAdapter,
+  listDir: (dir: string) => Promise<DirEntry[]>,
 ): Promise<string[]> {
   const out: string[] = [];
   async function walk(current: string): Promise<void> {
     let entries: DirEntry[];
     try {
-      entries = await adapter.listDir(current);
+      entries = await listDir(current);
     } catch {
       return;
     }
     for (const entry of entries) {
-      if (SCAN_EXCLUDED_NAMES.has(entry.name)) continue;
       const full = pathJoin(current, entry.name);
       if (entry.isDirectory) {
+        if (GLOB_PRUNE_DIRS.has(entry.name)) continue;
         await walk(full);
       } else {
         out.push(full);
@@ -154,34 +128,23 @@ export function toRelativeSource(fromPath: string, toPath: string): string {
   return rel === "." ? "." : rel.startsWith(".") ? rel : "./" + rel;
 }
 
-/** Generic glob expander. Given a `base` source (an owner telo.yaml path),
- *  expands each pattern relative to the base's directory and returns matching
- *  absolute file paths. Used by all three browser-side adapters to avoid
- *  duplicating the walk-and-match logic three times. `listFiles` is the
- *  adapter-specific piece that enumerates the directory tree. */
+/** Generic glob expander shared by every browser-side caller (the three
+ *  adapters' `include:` resolution and the run bundle's `files:` selection).
+ *  Walks `base`'s directory via `listDir`, then matches with the shared
+ *  Telo-glob matcher. `opts` forwards to `selectByPatterns` — `include:` passes
+ *  `{ applyDefaultIgnore: false }` to reach co-located partials (the hard deny
+ *  tier still bars `node_modules`/`.git`/`.telo`); `files:` keeps the soft deny
+ *  pass too. Returns matching absolute paths. */
 export async function expandGlobViaList(
   base: string,
   patterns: string[],
-  listFiles: (dir: string) => Promise<string[]>,
+  listDir: (dir: string) => Promise<DirEntry[]>,
+  opts: SelectOptions = {},
 ): Promise<string[]> {
   const baseDir = pathDirname(base);
-  const allFiles = await listFiles(baseDir);
-  const normalizedPatterns = patterns.map((p) => p.replace(/^\.\//, ""));
-  const regexps = normalizedPatterns.map((p) =>
-    hasGlobChars(p) ? globToRegExp(p) : null,
-  );
-
-  const matched = new Set<string>();
-  for (const file of allFiles) {
-    const rel = pathRelative(baseDir, file);
-    for (let i = 0; i < normalizedPatterns.length; i++) {
-      const re = regexps[i];
-      if (re) {
-        if (re.test(rel)) matched.add(file);
-      } else if (rel === normalizedPatterns[i]) {
-        matched.add(file);
-      }
-    }
+  const relToAbs = new Map<string, string>();
+  for (const abs of await walkFilesRecursive(baseDir, listDir)) {
+    relToAbs.set(pathRelative(baseDir, abs), abs);
   }
-  return [...matched].sort();
+  return selectByPatterns([...relToAbs.keys()], patterns, opts).map((rel) => relToAbs.get(rel)!);
 }

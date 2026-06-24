@@ -76,6 +76,10 @@ interface BaseParsedManifest {
   imports: ParsedImport[];
   resources: ParsedResource[];
   include?: string[];
+  /** `files:` glob patterns selecting non-manifest assets to ship alongside the
+   *  module (e.g. an `Http.Static` `root:` directory). Expanded relative to the
+   *  module directory when building a run bundle. */
+  files?: string[];
   /** Env-bound `variables` / `secrets` blocks (flat, as they appear at the top
    *  level of the YAML doc). Shared by both module variants: Applications bind
    *  them from the host environment, Libraries declare them as the public

@@ -1,12 +1,7 @@
 import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
-import {
-  expandGlobViaList,
-  listAllFilesRecursive,
-  pathExtname,
-  pathResolve,
-} from "../paths";
+import { expandGlobViaList, pathExtname, pathResolve } from "../paths";
 
 // ---------------------------------------------------------------------------
 // LocalStorageAdapter — browser fallback (Firefox/Safari) for a virtual
@@ -100,7 +95,10 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
   }
 
   async expandGlob(base: string, patterns: string[]): Promise<string[]> {
-    return expandGlobViaList(base, patterns, (dir) => listAllFilesRecursive(dir, this));
+    // `include:` resolution opts out of the default-ignore deny set.
+    return expandGlobViaList(base, patterns, (dir) => this.listDir(dir), {
+      applyDefaultIgnore: false,
+    });
   }
 
   get root(): string {
