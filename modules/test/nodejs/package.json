@@ -1,6 +1,6 @@
 {
   "name": "@telorun/test",
-  "version": "0.4.32",
+  "version": "0.4.33",
   "description": "Telo Test module - Test runner for Telo manifests.",
   "keywords": [
     "telo",

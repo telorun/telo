@@ -1,5 +1,27 @@
 # @telorun/cli
 
+## 0.39.0
+
+### Minor Changes
+
+- d84a585: Give the `telorun/node` image a smart entrypoint, modeled on the official node image's `docker-entrypoint.sh`. It prepends `telo` only when the first argument is a flag (`-…`), an unknown command, or a non-executable file — so `docker run telorun/node ./telo.yaml` and `docker run telorun/node --watch ./telo.yaml` both reach the CLI, while `bash`, `sh`, and `node` still run verbatim as escape hatches. A derived image may write either the explicit `CMD ["telo", ".", "--watch"]` or the terse `CMD ["./telo.yaml"]` — both work; the bare image runs the CLI via the default `CMD ["telo"]`.
+
+### Patch Changes
+
+- d84a585: Honor `--no-cache-write` when fetching the on-demand debug UI for `--inspect`. Previously the bundle was always written into `TELO_CACHE_DIR`, so in the k8s runner — where `/telo-cache` is the baked, read-only deps cache and the workload runs with `--no-cache-write` — the cache write failed (`EROFS` / `ENOENT mkdir '/telo-cache/debug-ui'`) and the inspect UI came up unavailable. Under `--no-cache-write` the fetched bytes are now served in-memory via `DebugServer` and never touch disk.
+- d84a585: Unify glob matching across the monorepo onto a single dependency-free engine in a new `@telorun/glob` package. It exports `selectByPatterns` (plus `HARD_IGNORE` / `DEFAULT_IGNORE` / `GLOB_PRUNE_DIRS`) as the one matcher used everywhere a `.gitignore`-style pattern set is resolved: `files:` bundling (`telo publish` + the editor run bundle), `include:` expansion (kernel `LocalFileSource` + the editor adapters), and test discovery (`@telorun/test`).
+
+  This removes four divergent implementations — the kernel's `minimatch`, the editor's hand-rolled glob→regex, the test runner's own `globToRegex`, and an `ignore`-based pass — in favor of a small matcher implementing a documented **Telo glob** subset of gitignore. The subset and its exact behavior are pinned by a language-neutral conformance suite (`packages/glob/conformance/glob.json` + `README.md`) so any runtime (Node today; Rust / Go later) can reimplement it identically rather than chasing one library's quirks. The kernel drops `minimatch` and the CLI drops its direct `ignore` dependency; the matcher lives in its own package rather than the static analyzer, so consumers depend on it directly instead of reaching into `@telorun/analyzer` for a non-analysis primitive.
+
+  The deny set is split into a non-overridable **hard** tier (`node_modules`/`.git`/`.telo`) and a soft, opt-out-able tier (`.telobundle.*`). `applyDefaultIgnore: false` (used by `include:` resolution to reach co-located partials) now only skips the soft tier — a broad `**` `include:` can no longer recurse into the manifest cache, and resolves identically in the kernel and the editor.
+
+- Updated dependencies [ebca26a]
+- Updated dependencies [d84a585]
+  - @telorun/analyzer@0.29.0
+  - @telorun/kernel@0.39.0
+  - @telorun/glob@0.2.0
+  - @telorun/ide-support@0.4.33
+
 ## 0.38.0
 
 ### Patch Changes

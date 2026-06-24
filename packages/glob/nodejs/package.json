@@ -1,6 +1,6 @@
 {
   "name": "@telorun/glob",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo glob — the single .gitignore-style file-selection matcher shared by the Telo runtime, CLI, analyzer, editor, and test runner. Dependency-free; pinned by a language-neutral conformance suite for polyglot parity.",
   "keywords": [
     "telo",

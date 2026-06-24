@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql
   namespace: std
-  version: 0.10.0
+  version: 0.11.0
   description: >-
     Driver-agnostic SQL database access — the Sql.Connection abstract plus the
     Query / Command / Selection / Transaction / Migrations operations. Concrete
