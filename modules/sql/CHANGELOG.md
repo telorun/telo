@@ -1,5 +1,7 @@
 # Changelog
-## 0.10.0 - 2026-06-20
+## 0.11.0 - 2026-06-24
+### Added
+* Annotate Sql.Selection 'where', 'having', 'limit', and 'offset' as CEL slots (x-telo-context over 'inputs') so the analyzer recognizes them as evaluated fields. The controller already expanded them at invoke time; without the annotation the new CEL_IN_NON_EVAL_FIELD check flagged a !cel there as never evaluated.## 0.10.0 - 2026-06-20
 ### Added
 * Update controller @telorun/sql to 0.8.0.## 0.9.2 - 2026-06-15
 ### Fixed
