@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a Starlark script run from flat `targets`.
 imports:
-  Type: std/type@0.5.0
+  Type: std/type@0.6.0
   Starlark: std/starlark@0.6.0
   Console: std/console@0.9.0
 targets:

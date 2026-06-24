@@ -16,8 +16,8 @@ imports:
   RecordStream: std/record-stream@0.5.1
   PlainText: std/plain-text-codec@0.4.1
   Console: std/console@0.9.0
-  Run: std/run@0.11.0
-  Sql: std/sql@0.10.0
+  Run: std/run@0.11.1
+  Sql: std/sql@0.11.0
   SqlSqlite: std/sql-sqlite@0.2.1
 targets:
   - !ref InitSchema
