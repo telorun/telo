@@ -292,6 +292,10 @@ schema:
         `result` — what a caller sees, e.g. an `Http.Api` route's `returns:`.
         Omit it to return the raw step-results map.
       additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
     steps:
       title: Steps
       description: Ordered sequence of steps to execute.
@@ -592,10 +596,16 @@ schema:
           inputs: {}
     concurrency:
       title: Concurrency
-      description: Maximum number of elements processed at once; 1 (default) runs strictly ordered.
+      description: >-
+        CEL integer resolving to the maximum number of elements processed at once;
+        1 (default) runs strictly ordered. Sees inputs.
       type: integer
       minimum: 1
       default: 1
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
     catches:
       title: Catches
       description: >-
@@ -873,10 +883,16 @@ schema:
           inputs: {}
     concurrency:
       title: Concurrency
-      description: Maximum number of elements processed at once; 1 (default) runs strictly ordered.
+      description: >-
+        CEL integer resolving to the maximum number of elements processed at once;
+        1 (default) runs strictly ordered. Sees inputs.
       type: integer
       minimum: 1
       default: 1
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
     catches:
       title: Catches
       description: >-

@@ -15,7 +15,7 @@ sidebar_label: Run.Iteration
 | --- | --- |
 | `collection` | CEL expression resolving to the array iterated over. |
 | `steps` | The body run once per element. |
-| `concurrency` | Maximum elements processed at once. Default `1` (strictly ordered); `>1` runs that many in flight. |
+| `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
 | `inputs` | Input contract (JSON Schema property map); the body reads them as `!cel "inputs.x"`. |
 | `catches` | Whole-operation error contract — see [Error handling](#error-handling). |
 
@@ -45,7 +45,7 @@ steps:
 
 ## Concurrency
 
-`concurrency: 1` (the default) runs elements strictly in order. A higher value runs that many elements concurrently. Execution is **fail-fast**: when an element throws and is not caught inside its own body, no further elements are scheduled and the error propagates.
+`concurrency: 1` (the default) runs elements strictly in order. A higher value runs that many elements concurrently. The value may be an integer literal or a `!cel` expression over `inputs` (e.g. `!cel "inputs.workers"`); it must resolve to an integer ≥ 1 or the iteration fails with `INVALID_CONCURRENCY`. Execution is **fail-fast**: when an element throws and is not caught inside its own body, no further elements are scheduled and the error propagates.
 
 ## Error handling
 

@@ -1,5 +1,6 @@
 import {
   AnalysisRegistry,
+  buildEvalPaths,
   defaultSources,
   flattenForAnalyzer,
   flattenLoadedModule,
@@ -36,7 +37,6 @@ import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
-import { buildEvalPaths } from "./eval-paths.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtPath } from "./dependency-injection.js";
 import {

@@ -1,0 +1,46 @@
+kind: Telo.Application
+metadata:
+  name: RunIterationConcurrencyCel
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+variables:
+  conc: { env: CONC, type: integer, default: 2 }
+targets:
+  - !ref IterateEach
+  - !ref ExpectEvents
+---
+# Regression: Run.Iteration shares the concurrency code path with Run.Projection.
+# A `!cel` concurrency must resolve to an integer; reading it raw zeroed the
+# worker pool, so the body never ran (no events emitted).
+kind: Run.Iteration
+metadata:
+  name: IterateEach
+collection: !cel "['x', 'y']"
+concurrency: !cel "variables.conc"
+steps:
+  - name: Notify
+    inputs:
+      who: !cel "item"
+    invoke:
+      kind: Run.Value
+      inputs:
+        who: {}
+      value:
+        notified: !cel "inputs.who"
+---
+kind: Assert.Events
+metadata:
+  name: ExpectEvents
+filter:
+  - type: "*"
+expect:
+  - event: "*.Invoked"
+    payload:
+      ref: { kind: Run.Value }
+      outputs: { notified: x }
+  - event: "*.Invoked"
+    payload:
+      ref: { kind: Run.Value }
+      outputs: { notified: y }

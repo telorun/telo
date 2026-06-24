@@ -1,0 +1,7 @@
+project: sql
+kind: Added
+body: Annotate Sql.Selection 'where', 'having', 'limit', and 'offset' as CEL slots
+  (x-telo-context over 'inputs') so the analyzer recognizes them as evaluated fields.
+  The controller already expanded them at invoke time; without the annotation the
+  new CEL_IN_NON_EVAL_FIELD check flagged a !cel there as never evaluated.
+time: 2026-06-24T17:44:45.310733378Z

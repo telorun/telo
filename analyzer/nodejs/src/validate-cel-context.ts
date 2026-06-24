@@ -396,6 +396,45 @@ export function extractContextsFromSchema(
   return all.sort((a, b) => b.scope.length - a.scope.length);
 }
 
+/** Schema keys that declare a CEL-bearing region: a field carrying any of these
+ *  is evaluated at runtime, so a `!cel` inside it (or a descendant) is live. */
+const CEL_REGION_KEYS = [
+  "x-telo-context",
+  "x-telo-step-context",
+  "x-telo-error-context",
+] as const;
+
+/**
+ * Walk a JSON Schema tree and collect the JSONPath scopes of every field that
+ * declares a CEL-bearing region (`x-telo-context` / `x-telo-step-context` /
+ * `x-telo-error-context`). Used — alongside `x-telo-eval` paths — to decide
+ * whether a `!cel` expression sits in a slot the runtime actually evaluates.
+ * Scopes use the same `$.a.b[*]` form as `extractContextsFromSchema`, matched
+ * against expression paths with `pathMatchesScope`.
+ */
+export function extractCelRegionScopes(schema: Record<string, any>, path = "$"): string[] {
+  if (!schema || typeof schema !== "object") return [];
+  const out: string[] = [];
+
+  if (CEL_REGION_KEYS.some((k) => schema[k])) out.push(path);
+
+  if (schema.properties) {
+    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
+      out.push(...extractCelRegionScopes(value, `${path}.${key}`));
+    }
+  }
+  if (schema.items && typeof schema.items === "object") {
+    out.push(...extractCelRegionScopes(schema.items, `${path}[*]`));
+  }
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const subschema of schema[key]) out.push(...extractCelRegionScopes(subschema, path));
+    }
+  }
+
+  return out;
+}
+
 function collectContexts(
   schema: Record<string, any>,
   path: string,

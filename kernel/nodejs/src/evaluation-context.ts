@@ -24,6 +24,7 @@ import {
   type Tracer,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+import { evalPathCovers } from "@telorun/analyzer";
 
 export { resourceKey };
 
@@ -1270,10 +1271,12 @@ export class EvaluationContext implements IEvaluationContext {
   }
 }
 
+/** A compile path is excluded from compile-time expansion when it overlaps a
+ *  runtime path in either direction — the runtime path is a descendant of it, or
+ *  vice versa. Both directions go through the shared {@link evalPathCovers}
+ *  containment rule so this stays in lockstep with the analyzer's coverage check. */
 function isExcluded(path: string, excludePaths: string[]): boolean {
-  return excludePaths.some(
-    (ep) => ep === path || ep === "**" || path.startsWith(ep + ".") || ep.startsWith(path + "."),
-  );
+  return excludePaths.some((ep) => evalPathCovers(ep, path) || evalPathCovers(path, ep));
 }
 
 function getNestedValue(obj: Record<string, unknown>, parts: string[]): unknown {

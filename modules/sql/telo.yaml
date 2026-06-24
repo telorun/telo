@@ -240,6 +240,10 @@ schema:
       title: Where
       description: Structured where clauses.
       type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
       items:
         title: Where Clause
         description: Single where clause object.
@@ -257,6 +261,10 @@ schema:
       title: Having
       description: Structured having clauses.
       type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
       items:
         title: Having Clause
         description: Single having clause object.
@@ -283,9 +291,17 @@ schema:
     limit:
       title: Limit
       description: Maximum number of rows returned.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
     offset:
       title: Offset
       description: Number of rows skipped before returning results.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
