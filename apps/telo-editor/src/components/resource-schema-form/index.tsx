@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
+import {
+  FieldDiagnostics,
+  fieldDiagnosticsFor,
+  type FieldDiagnostic,
+} from "./field-diagnostics";
+import { SEVERITY_TEXT_COLOR } from "../diagnostics/severity";
 import type { RefResolver } from "./ref-candidates";
 import type {
   JsonSchema,
@@ -25,6 +31,10 @@ export interface ResourceSchemaFormProps {
   /** Render object/map entries inline (horizontal) instead of behind an
    *  accordion. An editor layout choice set by the consuming view. */
   flat?: boolean;
+  /** Analyzer diagnostics scoped to this form (paths relative to the form's
+   *  pointer). Each top-level field surfaces the ones whose path falls under
+   *  it; the consumer (DetailPanel) strips the pointer prefix before passing. */
+  fieldDiagnostics?: FieldDiagnostic[];
 }
 
 export type { ResolvedResourceOption, TypeKindOption } from "./types";
@@ -41,6 +51,7 @@ export function ResourceSchemaForm({
   typeKinds,
   registry,
   flat,
+  fieldDiagnostics = [],
 }: ResourceSchemaFormProps) {
   const typedSchema = schema as JsonSchema;
   const properties = useMemo(() => typedSchema.properties ?? {}, [typedSchema.properties]);
@@ -86,6 +97,15 @@ export function ResourceSchemaForm({
       {fields.map(({ name, prop, kind }) => {
         const labelText = typeof prop.title === "string" ? prop.title : name;
         const fieldOwnsLabel = ownsLabel(prop as JsonSchemaProperty);
+        const diags = fieldDiagnosticsFor(fieldDiagnostics, name);
+        // Lowest severity value is worst (Error === 1), so the dot reads the
+        // most severe diagnostic on the field.
+        const worst = diags.length
+          ? diags.reduce(
+              (acc, d) => (d.diagnostic.severity < acc ? d.diagnostic.severity : acc),
+              diags[0].diagnostic.severity,
+            )
+          : null;
         return (
           <div key={name} className="flex flex-col gap-1">
             {!fieldOwnsLabel && (
@@ -93,6 +113,11 @@ export function ResourceSchemaForm({
                 {labelText}
                 {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
                 <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
+                {worst != null && (
+                  <span aria-hidden className={`ml-1.5 ${SEVERITY_TEXT_COLOR[worst]}`}>
+                    ●
+                  </span>
+                )}
               </label>
             )}
             <FieldControl
@@ -112,6 +137,7 @@ export function ResourceSchemaForm({
               required={required.has(name)}
               flat={flat}
             />
+            <FieldDiagnostics diagnostics={diags} />
           </div>
         );
       })}

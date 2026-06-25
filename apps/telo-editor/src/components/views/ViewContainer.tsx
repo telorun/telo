@@ -1,4 +1,7 @@
+import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import type { ModuleKind, ViewId } from "../../model";
+import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
+import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { DefinitionsView } from "./definitions/DefinitionsView";
 import { DeploymentView } from "./deployment/DeploymentView";
 import { ImportsView } from "./imports/ImportsView";
@@ -39,6 +42,10 @@ function isTabVisible(tab: TabEntry, kind: ModuleKind): boolean {
 export function ViewContainer({ activeView, onChangeView, viewProps }: ViewContainerProps) {
   const kind = viewProps.viewData.manifest.kind;
   const visibleTabs = VIEW_TABS.filter((t) => isTabVisible(t, kind));
+  // Module-wide rollup surfaced on the Source tab — the same dot + count the
+  // sidebar shows per module, since Source is where you go to fix diagnostics.
+  const diagState = useDiagnosticsState();
+  const sourceSummary = summarizeFiles(diagState, getModuleFiles(viewProps.viewData.manifest));
   // If the active view is hidden (e.g. "deployment" while viewing a Library),
   // render nothing — Editor is expected to reset activeView when this happens,
   // but we guard here so a stale state doesn't crash the canvas.
@@ -48,17 +55,19 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <div className="flex h-8 shrink-0 items-center gap-1 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
         {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onChangeView(tab.id)}
-            className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-              activeView === tab.id
-                ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            }`}
-          >
-            {tab.label}
-          </button>
+          <div key={tab.id} className="flex items-center">
+            <button
+              onClick={() => onChangeView(tab.id)}
+              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                activeView === tab.id
+                  ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+            {tab.id === "source" && <DiagnosticBadge summary={sourceSummary} size="sm" />}
+          </div>
         ))}
       </div>
 

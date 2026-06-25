@@ -30,6 +30,10 @@ import {
   SelectValue,
 } from "../../ui/select";
 import { isRecord } from "../../../lib/utils";
+import { summarizeResource } from "../../../diagnostics-aggregate";
+import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
+import { useActiveFilePaths, useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
+import { severityBorderClass } from "../../diagnostics/severity";
 import {
   type AppCanvasModel,
   type GraphNode,
@@ -385,13 +389,19 @@ function PortRows({
  *  distinctly. */
 function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
   const isRoot = data.isRoot;
+  const diagState = useDiagnosticsState();
+  const filePaths = useActiveFilePaths();
+  const summary = summarizeResource(diagState, filePaths, data.name);
+  const bgClass = isRoot ? "bg-indigo-50 dark:bg-indigo-950" : "bg-white dark:bg-zinc-900";
+  const defaultBorder = isRoot
+    ? "border-indigo-300 dark:border-indigo-700"
+    : "border-zinc-200 dark:border-zinc-700";
+  const borderClass = (summary && severityBorderClass(summary.worstSeverity)) || defaultBorder;
   return (
     <div
-      className={`relative rounded-md border px-3 py-2 text-left shadow-sm ${
-        isRoot
-          ? "border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950"
-          : "border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900"
-      } ${data.selected ? "ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-zinc-900" : ""}`}
+      className={`relative rounded-md border px-3 py-2 text-left shadow-sm ${bgClass} ${borderClass} ${
+        data.selected ? "ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-zinc-900" : ""
+      }`}
       style={{ width: NODE_WIDTH }}
     >
       {/* The module root is an edge source only — nothing wires into it, so it
@@ -425,9 +435,14 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
         ) : (
           <FileCog className="size-3.5 shrink-0 text-zinc-400" />
         )}
-        <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+        <span className="min-w-0 truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
           {data.label}
         </span>
+        {summary && (
+          <span data-no-open className="ml-auto shrink-0">
+            <DiagnosticBadge summary={summary} size="sm" />
+          </span>
+        )}
       </div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
         {capLabel(data.capability)}
@@ -749,6 +764,8 @@ export function ApplicationTopologyCanvas({
   onBackgroundClick,
 }: ApplicationTopologyCanvasProps) {
   const [stripOpen, setStripOpen] = useState(true);
+  const diagState = useDiagnosticsState();
+  const activeFilePaths = useActiveFilePaths();
   const editable = !!onWriteRef;
   const selected = selectedResource ?? null;
   // A pointer-scoped selection focuses a sub-field, so its node's whole-node
@@ -1002,20 +1019,29 @@ export function ApplicationTopologyCanvas({
                 </button>
               </div>
               <div className="flex flex-col gap-1">
-                {model.stripItems.map((item) => (
-                  <button
-                    key={nodeId(item.kind, item.name)}
-                    className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-left hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                    onClick={() => onSelectResource(item.kind, item.name)}
-                  >
-                    <div className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                      {item.name}
+                {model.stripItems.map((item) => {
+                  const summary = summarizeResource(diagState, activeFilePaths, item.name);
+                  return (
+                    <div key={nodeId(item.kind, item.name)} className="relative">
+                      <button
+                        className="w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-left hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                        onClick={() => onSelectResource(item.kind, item.name)}
+                      >
+                        <div className="truncate pr-5 text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                          {item.name}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wide text-zinc-400">
+                          {capLabel(item.capability)}
+                        </div>
+                      </button>
+                      {summary && (
+                        <span className="absolute right-1 top-1">
+                          <DiagnosticBadge summary={summary} size="sm" />
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-400">
-                      {capLabel(item.capability)}
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
