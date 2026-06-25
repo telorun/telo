@@ -1,5 +1,12 @@
 # telo-editor
 
+## 0.8.14
+
+### Patch Changes
+
+- ac76b1f: Publish Tauri desktop binaries (macOS, Windows, Linux) as GitHub Releases on
+  each editor release, and source the bundle version from package.json.
+
 ## 0.8.13
 
 ### Patch Changes
