@@ -27,7 +27,9 @@ Focus on:
 - check if implementation introduces runtime validation in kernel but does not align analyzer to catch it at static analysis time.
 - check if implementation can become a threat for static analysis.
 - make sure that kernel, analyzer, and editor do not know anything about standard modules in `./modules`.
-- if implementation can't be ported to other languages (rust, go)
+- check if implementation can't be ported to other languages (rust, go)
+- check if a fix is treating the cause of the problem instead of just the symptom, and is not a hacky workaround.
+
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals.
 
