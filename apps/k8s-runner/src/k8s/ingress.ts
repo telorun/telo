@@ -50,7 +50,7 @@ export function buildSessionService(
  *  domain — matching the docker runner's proxy scheme and compatible with a
  *  single-label wildcard cert (`*.<domain>`). */
 function hostForPort(config: K8sRunnerConfig, sessionId: string, port: number): string {
-  return `${port}-${sessionId}.${config.ingressBaseDomain}`;
+  return `${port}-${sessionId}.${config.sessionIngressBaseDomain}`;
 }
 
 export function buildSessionIngress(
@@ -87,7 +87,17 @@ export function buildSessionIngress(
       ownerReferences: [podOwnerRef(podName, podUid)],
     },
     spec: {
-      ...(config.ingressClassName ? { ingressClassName: config.ingressClassName } : {}),
+      ...(config.sessionIngressClassName
+        ? { ingressClassName: config.sessionIngressClassName }
+        : {}),
+      // Present the predefined cert (e.g. a Cloudflare Origin cert) so an upstream
+      // in Full (Strict) mode can validate the origin. Only meaningful with routable
+      // hosts; a single wildcard `*.<domain>` Secret covers every session host.
+      ...(config.sessionIngressTlsSecretName && rules.length > 0
+        ? {
+            tls: [{ hosts: rules.map((r) => r.host), secretName: config.sessionIngressTlsSecretName }],
+          }
+        : {}),
       rules,
     },
   };
@@ -104,7 +114,7 @@ export function endpointsFor(
   sessionId: string,
   ports: PortMapping[],
 ): RunnerEndpoint[] {
-  if (!config.ingressBaseDomain || ports.length === 0) {
+  if (!config.sessionIngressBaseDomain || ports.length === 0) {
     return ports.map((p) => ({ host: "", port: p.port, protocol: p.protocol }));
   }
   return ports.map((p) => {

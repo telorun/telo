@@ -30,14 +30,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.runnerNamespace }}
-    {{- if and .Values.ingress.baseDomain .Values.ingress.controllerNamespace }}
+    {{- if and .Values.sessionIngress.baseDomain .Values.sessionIngress.controllerNamespace }}
     # Per-session ingress traffic enters via the ingress controller, usually in
     # its own namespace — without this peer the controller's requests are dropped
     # and the per-session ingress feature breaks.
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.ingress.controllerNamespace }}
+              kubernetes.io/metadata.name: {{ .Values.sessionIngress.controllerNamespace }}
     {{- end }}
   egress:
     # DNS — scoped to the cluster DNS namespace (default kube-system) rather than

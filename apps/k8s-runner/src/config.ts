@@ -85,9 +85,13 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Optional sandbox RuntimeClass (gvisor/kata). Unset → cluster default (runc). */
   runtimeClass?: string;
   /** Wildcard base domain for per-session ingress; unset → logs-only. */
-  ingressBaseDomain?: string;
-  /** Optional IngressClass name for created Ingresses. */
-  ingressClassName?: string;
+  sessionIngressBaseDomain?: string;
+  /** Optional IngressClass name for created session Ingresses. */
+  sessionIngressClassName?: string;
+  /** Optional `kubernetes.io/tls` Secret (in the session namespace) the per-session
+   *  Ingress presents so an upstream (e.g. Cloudflare Full (Strict)) can validate
+   *  the origin. Must cover the wildcard `*.<sessionIngressBaseDomain>`. Unset → no TLS block. */
+  sessionIngressTlsSecretName?: string;
   /** On-cluster image build — the only delivery path (always present). */
   build: ImageBuildConfig;
   /** Runner's own in-cluster base URL, used to build the bundle/build-context
@@ -180,8 +184,9 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
-    ingressBaseDomain: env.RUNNER_INGRESS_BASE_DOMAIN?.trim() || undefined,
-    ingressClassName: env.RUNNER_INGRESS_CLASS?.trim() || undefined,
+    sessionIngressBaseDomain: env.SESSION_INGRESS_BASE_DOMAIN?.trim() || undefined,
+    sessionIngressClassName: env.SESSION_INGRESS_CLASS?.trim() || undefined,
+    sessionIngressTlsSecretName: env.SESSION_INGRESS_TLS_SECRET?.trim() || undefined,
     build,
     selfUrl: selfUrl.replace(/\/+$/, ""),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",

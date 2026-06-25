@@ -286,7 +286,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       spec.onOutput(Buffer.from(`\r\n[runner] failed to attach PTY: ${msg(err)}\r\n`));
     }
 
-    if (config.ingressBaseDomain && spec.ports.length > 0) {
+    if (config.sessionIngressBaseDomain && spec.ports.length > 0) {
       await createIngress(deps, spec.sessionId, podName, podUid, spec.ports).catch((err) => {
         spec.onOutput(Buffer.from(`\r\n[runner] failed to create ingress: ${msg(err)}\r\n`));
       });

@@ -155,12 +155,28 @@ registry:
 
 # Per-session ingress. When baseDomain is empty the runner is logs-only.
 # Requires a wildcard DNS record + wildcard TLS cert + an ingress controller.
-ingress:
+sessionIngress:
   baseDomain: ""
   className: ""
   # Namespace the ingress controller runs in. Set when baseDomain is set so the
   # session NetworkPolicy admits the controller's traffic (e.g. ingress-nginx).
   controllerNamespace: ""
+  # Origin TLS for the per-session Ingress. Set this so the origin presents a cert
+  # (e.g. a Cloudflare Origin cert) and an upstream in Full (Strict) mode can
+  # validate it. The cert MUST cover the wildcard `*.<baseDomain>` — session hosts
+  # are a single label (`<port>-<sessionId>.<baseDomain>`). The Secret lives in
+  # sessionNamespace because the runner creates each session Ingress there. Leave
+  # all empty to skip the TLS block (TLS terminated entirely upstream).
+  tls:
+    # Reference a `kubernetes.io/tls` Secret you manage in sessionNamespace
+    # (cert-manager, `kubectl create secret tls`, your own sync).
+    secretName: ""
+    # OR supply the cert + key and the chart creates the Secret in sessionNamespace
+    # for you. Supply via `--set-file sessionIngress.tls.cert=origin.pem
+    # --set-file sessionIngress.tls.key=origin.key`. When both are set they win over
+    # secretName.
+    cert: ""
+    key: ""
 
 # DoS backstop on the session namespace.
 resourceQuota:

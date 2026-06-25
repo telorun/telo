@@ -76,7 +76,8 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_IMAGE` | `telorun/node:latest-slim` | Default base image; always offered in the picker and the fallback when the catalog is unreachable |
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
-| `RUNNER_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
+| `SESSION_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
+| `SESSION_INGRESS_TLS_SECRET` | _(unset → no TLS block)_ | `kubernetes.io/tls` Secret (in `telo-sessions`) the session Ingress presents; must cover `*.<base-domain>`. Set for Cloudflare Full (Strict) / any origin-cert upstream |
 | `RUNNER_MAX_CPU` | `50m` | CPU ceiling |
 | `RUNNER_MAX_MEMORY` | `100Mi` | Memory ceiling |
 | `RUNNER_MAX_TTL_SECONDS` | `3600` | Wall-clock TTL (Pod `activeDeadlineSeconds`) |
@@ -165,6 +166,28 @@ build.insecureRegistry=true`) derives `build.repository` for you, but works only
 on clusters whose **nodes are configured to trust it** — otherwise an external/
 cloud registry is simpler. Installing with neither a `build.repository` nor
 `registry.enabled` is rejected at template time.
+
+### Origin TLS (Cloudflare et al.)
+
+To have the per-session Ingress present an origin cert (so an upstream like
+Cloudflare in **Full (Strict)** mode validates the origin), give the chart a
+`kubernetes.io/tls` Secret in `telo-sessions`. The cert must cover the wildcard
+`*.<sessionIngress.baseDomain>` — session hosts are a single label
+(`<port>-<sessionId>.<base-domain>`). Two ways:
+
+```bash
+# A — reference a Secret you manage in telo-sessions (cert-manager, your own sync)
+helm install telo-runner ./chart --set sessionIngress.tls.secretName=telo-origin-tls
+
+# B — let the chart create the Secret from your cert + key
+helm install telo-runner ./chart \
+  --set-file sessionIngress.tls.cert=origin.pem \
+  --set-file sessionIngress.tls.key=origin.key
+```
+
+Either wires `SESSION_INGRESS_TLS_SECRET`, and the runner stamps a `spec.tls`
+block on every session Ingress. Leave all three empty to skip TLS at the origin
+(terminated entirely upstream).
 
 > **Egress notes.** (1) The kubelet pulls session images directly and does **not**
 > use cluster DNS, so the in-cluster registry only works where nodes trust it

@@ -1,0 +1,17 @@
+{{- if and .Values.sessionIngress.tls.cert .Values.sessionIngress.tls.key }}
+# Origin TLS for per-session Ingresses. Created in sessionNamespace because the
+# runner creates each session Ingress there, and a kubernetes.io/tls Secret is
+# namespace-scoped. Skip this and set sessionIngress.tls.secretName to reference a
+# Secret you manage yourself (cert-manager, kubectl, your own sync).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "telo-k8s-runner.name" . }}-ingress-tls
+  namespace: {{ .Values.sessionNamespace }}
+  labels:
+    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+stringData:
+  tls.crt: {{ .Values.sessionIngress.tls.cert | quote }}
+  tls.key: {{ .Values.sessionIngress.tls.key | quote }}
+{{- end }}

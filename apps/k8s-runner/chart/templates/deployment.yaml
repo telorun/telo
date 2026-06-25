@@ -121,13 +121,18 @@ spec:
             - name: RUNNER_RUNTIME_CLASS
               value: {{ .Values.session.runtimeClass | quote }}
             {{- end }}
-            {{- if .Values.ingress.baseDomain }}
-            - name: RUNNER_INGRESS_BASE_DOMAIN
-              value: {{ .Values.ingress.baseDomain | quote }}
+            {{- if .Values.sessionIngress.baseDomain }}
+            - name: SESSION_INGRESS_BASE_DOMAIN
+              value: {{ .Values.sessionIngress.baseDomain | quote }}
             {{- end }}
-            {{- if .Values.ingress.className }}
-            - name: RUNNER_INGRESS_CLASS
-              value: {{ .Values.ingress.className | quote }}
+            {{- if .Values.sessionIngress.className }}
+            - name: SESSION_INGRESS_CLASS
+              value: {{ .Values.sessionIngress.className | quote }}
+            {{- end }}
+            {{- $sessionIngressTls := include "telo-k8s-runner.sessionIngressTlsSecretName" . }}
+            {{- if $sessionIngressTls }}
+            - name: SESSION_INGRESS_TLS_SECRET
+              value: {{ $sessionIngressTls | quote }}
             {{- end }}
             - name: RUNNER_MAX_CPU
               value: {{ .Values.limits.maxCpu | quote }}
