@@ -9,6 +9,11 @@ import { APPLICATION_KIND_ID, isModuleRootKind, moduleRootFormSchema } from "../
 import { ModuleRootTargetsSummary } from "./ModuleRootDetailBody";
 import { Button } from "./ui/button";
 import type { RefResolver } from "./resource-schema-form/ref-candidates";
+import {
+  startsWith,
+  toSegments,
+  type FieldDiagnostic,
+} from "./resource-schema-form/field-diagnostics";
 import type { ResolvedResourceOption, TypeKindOption } from "./ResourceSchemaForm";
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
 import { PickCanvas } from "./views/pick-canvas";
@@ -262,6 +267,24 @@ export function DetailPanel({
     graphContext?.kind === resource.kind && graphContext?.name === resource.name;
   const detailSummary = summarizeResource(diagState, filePaths, resource.name);
 
+  // Diagnostics for the form currently shown — each analyzer path is relative
+  // to the resource root, so strip the form's pointer-scope prefix and keep the
+  // remainder for per-field matching. Plain const (not memoized): hooks can't
+  // run past the early return above, and the diagnostic set is small.
+  const formDiagnostics: FieldDiagnostic[] = (() => {
+    if (!selectionContext) return [];
+    const scope = toSegments(selectionContext.pointer);
+    const out: FieldDiagnostic[] = [];
+    for (const { diagnostic } of detailSummary?.diagnostics ?? []) {
+      const path = (diagnostic.data as { path?: string } | undefined)?.path;
+      if (!path) continue;
+      const segments = toSegments(path);
+      if (!startsWith(segments, scope)) continue;
+      out.push({ segments: segments.slice(scope.length), diagnostic });
+    }
+    return out;
+  })();
+
   return (
     <div className="flex h-full w-xl flex-col overflow-hidden border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-100 px-3 dark:border-zinc-800">
@@ -306,6 +329,7 @@ export function DetailPanel({
               typeKinds={typeKinds}
               registry={registry}
               flat={isModuleRootKind(resource.kind)}
+              fieldDiagnostics={formDiagnostics}
             />
           </div>
         ) : !resourceSchema ? (
