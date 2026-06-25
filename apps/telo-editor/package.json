@@ -26,7 +26,8 @@
     "preview": "vite preview",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
