@@ -7,8 +7,8 @@ import { buildSessionIngress, endpointsFor } from "./ingress.js";
 
 const config = {
   sessionNamespace: "telo-sessions",
-  ingressBaseDomain: "telo.run",
-  ingressClassName: "nginx",
+  sessionIngressBaseDomain: "telo.run",
+  sessionIngressClassName: "nginx",
   managedByLabel: "telo-k8s-runner",
 } as K8sRunnerConfig;
 
@@ -39,7 +39,7 @@ describe("endpointsFor", () => {
   });
 
   it("leaves hosts blank when no ingress base domain is configured", () => {
-    const logsOnly = { ...config, ingressBaseDomain: undefined } as K8sRunnerConfig;
+    const logsOnly = { ...config, sessionIngressBaseDomain: undefined } as K8sRunnerConfig;
     expect(endpointsFor(logsOnly, sessionId, ports)).toEqual([
       { host: "", port: 8080, protocol: "tcp" },
       { host: "", port: 9090, protocol: "tcp" },
@@ -99,5 +99,48 @@ describe("buildSessionIngress", () => {
     );
     expect(hosts).toEqual([]);
     expect(ingress.spec?.rules).toEqual([]);
+  });
+
+  it("omits the tls block when no tls secret is configured", () => {
+    const { ingress } = buildSessionIngress(
+      config,
+      sessionId,
+      `telo-run-${sessionId}`,
+      "pod",
+      "uid",
+      ports,
+    );
+    expect(ingress.spec?.tls).toBeUndefined();
+  });
+
+  it("presents the configured tls secret for every tcp host", () => {
+    const tlsConfig = { ...config, sessionIngressTlsSecretName: "telo-origin-tls" } as K8sRunnerConfig;
+    const { ingress } = buildSessionIngress(
+      tlsConfig,
+      sessionId,
+      `telo-run-${sessionId}`,
+      "pod",
+      "uid",
+      ports,
+    );
+    expect(ingress.spec?.tls).toEqual([
+      {
+        hosts: [`8080-${sessionId}.telo.run`, `9090-${sessionId}.telo.run`],
+        secretName: "telo-origin-tls",
+      },
+    ]);
+  });
+
+  it("omits the tls block when there are no tcp hosts to secure", () => {
+    const tlsConfig = { ...config, sessionIngressTlsSecretName: "telo-origin-tls" } as K8sRunnerConfig;
+    const { ingress } = buildSessionIngress(
+      tlsConfig,
+      sessionId,
+      `telo-run-${sessionId}`,
+      "pod",
+      "uid",
+      [{ port: 5000, protocol: "udp" }],
+    );
+    expect(ingress.spec?.tls).toBeUndefined();
   });
 });

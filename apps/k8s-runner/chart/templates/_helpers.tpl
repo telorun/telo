@@ -58,3 +58,14 @@ http://{{ include "telo-k8s-runner.registryHost" . }}
 {{ .Values.build.pullSecretName }}
 {{- end -}}
 {{- end -}}
+
+{{/* Per-session ingress TLS Secret name (in the session namespace): chart-created
+     from sessionIngress.tls.cert + sessionIngress.tls.key, else an operator-managed
+     sessionIngress.tls.secretName. Empty when no origin cert is configured. */}}
+{{- define "telo-k8s-runner.sessionIngressTlsSecretName" -}}
+{{- if and .Values.sessionIngress.tls.cert .Values.sessionIngress.tls.key -}}
+{{ include "telo-k8s-runner.name" . }}-ingress-tls
+{{- else if .Values.sessionIngress.tls.secretName -}}
+{{ .Values.sessionIngress.tls.secretName }}
+{{- end -}}
+{{- end -}}
