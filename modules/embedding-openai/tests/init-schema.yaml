@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: EmbeddingOpenaiInitSchemaTest
+  version: 1.0.0
+  description: |
+    Regression for the EmbeddingOpenai.Model init crash: the definition's
+    apiKey.description carries an inline CEL template, which the loader
+    precompiles into a CompiledValue. The kernel must collapse schema sentinels
+    back to their source text before AJV meta-validates the schema — otherwise
+    init throws ERR_RESOURCE_SCHEMA_VALIDATION_FAILED ("description must be
+    string") and every dependent Embedding.Query cascades to
+    ERR_LOCAL_REF_PENDING. Offline: the model is just config, no /embeddings call
+    is ever made.
+imports:
+  EmbeddingOpenai: ../
+  Embedding: ../../embedding
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: EmbeddingOpenai.Model
+metadata: { name: Model }
+model: text-embedding-3-small
+apiKey: dummy-key
+dimensions: 1536
+---
+# A dependent consumer — its ref must resolve, proving the model initialized
+# past schema validation rather than deferring forever.
+kind: Embedding.Query
+metadata: { name: QueryVector }
+model: !ref Model
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Inspect
+    inputs:
+      probe: !cel resources.Model
+    invoke:
+      kind: Run.Value
+      inputs:
+        probe: {}
+      value:
+        model: !cel "'model' in inputs.probe ? inputs.probe.model : null"
+        dimensions: !cel "'dimensions' in inputs.probe ? inputs.probe.dimensions : null"
+        apiKey: !cel "'apiKey' in inputs.probe ? inputs.probe.apiKey : null"
+  - name: Assert
+    inputs:
+      model: !cel steps.Inspect.result.model
+      dimensions: !cel steps.Inspect.result.dimensions
+      apiKey: !cel steps.Inspect.result.apiKey
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          model: { const: text-embedding-3-small }
+          dimensions: { const: 1536 }
+          apiKey: { const: "[redacted]" }
+        required: [model, dimensions, apiKey]
