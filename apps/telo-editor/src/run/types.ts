@@ -150,6 +150,11 @@ export type RunStatus =
  *  session is still `starting`. */
 export type RunPhase = "build" | "provision" | "boot";
 
+/** Per-port reachability of the running app's declared ports, watched by the
+ *  runner and rendered on the endpoint badge (spinner → ok / error). Mirrors
+ *  runner-core's `ReachabilityState`. */
+export type RunReachabilityState = "checking" | "reachable" | "unreachable";
+
 export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
@@ -159,7 +164,9 @@ export type RunEvent =
    *  adapter sources it differently per backend (relayed by a remote runner, or
    *  a direct loopback SSE for the local runner), but RunView consumes it the
    *  same way regardless. */
-  | { type: "debug"; frame: DebugFrame };
+  | { type: "debug"; frame: DebugFrame }
+  /** Per-port reachability transition (keyed by port), rendered on the badge. */
+  | { type: "reachability"; port: number; state: RunReachabilityState };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

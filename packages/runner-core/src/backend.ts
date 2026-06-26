@@ -4,6 +4,7 @@ import type {
   AvailabilityReport,
   PortMapping,
   ProbeConfig,
+  ReachabilityState,
   RunBundle,
   RunPhase,
   RunStatus,
@@ -64,6 +65,10 @@ export interface BackendStartSpec {
   /** A frame relayed from the workload's kernel debug stream. Only called when
    *  `inspect` is true and the backend has connected to the inspect endpoint. */
   onDebug(frame: DebugFrame): void;
+  /** Report a declared port's reachability from the runner network — `checking`
+   *  while the workload comes up, then `reachable`, or `unreachable` after a
+   *  timeout. Surfaced on the editor's endpoint badge, not the log stream. */
+  onReachability(port: number, state: ReachabilityState): void;
   /** True once a user stop / shutdown has been requested — lets the backend
    *  classify a kill as `stopped` rather than `failed`. */
   isUserStopped(): boolean;

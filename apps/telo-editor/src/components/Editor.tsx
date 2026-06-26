@@ -1241,6 +1241,10 @@ export function Editor() {
         runStatus={activeAppRun?.status ?? null}
         runs={activeAppRuns}
         onSelectRun={runContext.selectRun}
+        onStop={(runId) => void runContext.stopRun(runId)}
+        onClearRuns={
+          activeAppPath ? () => runContext.clearRunsForApp(activeAppPath) : undefined
+        }
         onUndo={canUndo ? () => void handleUndo() : undefined}
         onRedo={canRedo ? () => void handleRedo() : undefined}
         canUndo={canUndo}

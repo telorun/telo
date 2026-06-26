@@ -29,13 +29,14 @@ Focus on:
 - make sure that kernel, analyzer, and editor do not know anything about standard modules in `./modules`.
 - check if implementation can't be ported to other languages (rust, go)
 - check if a fix is treating the cause of the problem instead of just the symptom, and is not a hacky workaround.
+- check if code was added to a file that suffers from a large number of responsibilities and should be split into smaller files.
 
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals.
 
-Detect if implementer was struggling with making the implementation natural and decided to hack around.
+Detect if implementer was struggling with making the implementation natural/simple and decided to hack around.
 
-Ground your feedback in specific file paths and line ranges. Provide actionable recommendations for improvement, and prioritize them based on impact and effort.
+Ground your feedback in specific file paths and line ranges. Provide actionable recommendations for improvement, and prioritize them based on impact.
 
 Make sure there is no major version bump in any of the packages or modules.
 

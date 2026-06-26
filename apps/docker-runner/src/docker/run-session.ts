@@ -2,11 +2,12 @@ import type {
   BackendSession,
   DebugFrame,
   PortMapping,
+  ReachabilityState,
   RunnerEndpoint,
   SessionConfig,
   StartFailureStage,
 } from "@telorun/runner-core";
-import { relayDebugStream, SessionStartError } from "@telorun/runner-core";
+import { relayDebugStream, SessionStartError, watchReachability } from "@telorun/runner-core";
 
 /** Port the workload's `--inspect` server binds inside the container. Reached
  *  by the runner over the child network (`http://<container>:<port>/events`);
@@ -87,6 +88,7 @@ export interface SpawnSessionArgs {
   onStatus: (status: import("@telorun/runner-core").RunStatus) => void;
   onOutput: (chunk: Buffer) => void;
   onDebug: (frame: DebugFrame) => void;
+  onReachability: (port: number, state: ReachabilityState) => void;
   isUserStopped: () => boolean;
 }
 
@@ -123,23 +125,39 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
   // (reachable by name over the child network, never host-published) and relay
   // each frame out. Connect-retries while the kernel boots are expected, not
   // errors — relayDebugStream polls until the endpoint answers or we abort.
-  const debugAbort = new AbortController();
+  // Aborts the background watchers (debug relay + reachability) on teardown.
+  const sessionAbort = new AbortController();
   if (args.inspect) {
     void relayDebugStream({
       url: `http://${args.containerName}:${INSPECT_PORT}/events`,
       onFrame: args.onDebug,
-      signal: debugAbort.signal,
+      signal: sessionAbort.signal,
+    });
+  }
+
+  // Reachability check: a container process bound to 127.0.0.1 is unreachable on
+  // its published host port / over the child network, and surfaces only as a
+  // downstream 502. Watch each advertised tcp port the way clients reach it — the
+  // published host port when host-published, else the container by name over the
+  // child network — and report per-port state to the editor's endpoint badge.
+  const tcpPorts = args.ports.filter((p) => p.protocol === "tcp").map((p) => p.port);
+  if (tcpPorts.length > 0) {
+    void watchReachability({
+      host: args.publicBaseUrl ? args.containerName : "127.0.0.1",
+      ports: tcpPorts,
+      onState: (port, state) => args.onReachability(port, state),
+      signal: sessionAbort.signal,
     });
   }
 
   const done = container.wait().then(
     (info) => {
-      debugAbort.abort();
+      sessionAbort.abort();
       args.onStatus(resolveExitStatus(info, args.isUserStopped()));
       endQuietly(ptyStream);
     },
     (err) => {
-      debugAbort.abort();
+      sessionAbort.abort();
       args.onStatus({ kind: "failed", message: `failed to await container: ${errMessage(err)}` });
       endQuietly(ptyStream);
     },
@@ -160,7 +178,7 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
     },
     done,
     stop: () => {
-      debugAbort.abort();
+      sessionAbort.abort();
       return stopContainer(container);
     },
   };

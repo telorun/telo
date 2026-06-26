@@ -19,6 +19,7 @@ import {
   type RunAdapter,
   type RunEvent,
   type RunPhase,
+  type RunReachabilityState,
   type RunRequest,
   type RunSession,
   type RunStatus,
@@ -66,6 +67,9 @@ export interface RunRecord {
    *  of `debugFrames[0]` is `debugFrameSeq - debugFrames.length`. Lets the view
    *  track a "cleared" boundary that survives ring-buffer eviction. */
   debugFrameSeq: number;
+  /** Per-port reachability of declared ports, watched by the runner and rendered
+   *  on the endpoint badge (spinner → ok / error). Keyed by port. */
+  portReachability: Map<number, RunReachabilityState>;
   /** Set when a run restored from the index could not be re-attached — the
    *  session is gone from the runner (evicted past its TTL / runner restarted)
    *  or its adapter can't resume. The list keeps the entry; the view shows a
@@ -113,6 +117,9 @@ interface RunContextValue {
    *  metadata, and removes it from the persisted index. Used to clear a run
    *  whose history is no longer available on the runner. */
   removeRun(runId: string): void;
+  /** Clear an Application's finished run history. A still-live run
+   *  (starting/running) is kept so it isn't orphaned. */
+  clearRunsForApp(appPath: string): void;
   selectRun(runId: string): void;
   openRunView(): void;
   closeRunView(): void;
@@ -365,6 +372,27 @@ export function RunProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearRunsForApp = useCallback(
+    (appPath: string) => {
+      const records = runsByApp.get(appPath) ?? [];
+      // Only the finished runs are "history"; keep any live run so the eviction
+      // effect doesn't tear down (and orphan) a still-running workload.
+      const clearedIds = new Set(records.filter((r) => isTerminal(r.status)).map((r) => r.id));
+      if (clearedIds.size === 0) return;
+      setSelectedRunId((cur) => (cur && clearedIds.has(cur) ? null : cur));
+      setRunsByApp((prev) => {
+        const cur = prev.get(appPath);
+        if (!cur) return prev;
+        const kept = cur.filter((r) => !clearedIds.has(r.id));
+        const next = new Map(prev);
+        if (kept.length > 0) next.set(appPath, kept);
+        else next.delete(appPath);
+        return next;
+      });
+    },
+    [runsByApp],
+  );
+
   const startRun = useCallback(
     async ({
       appPath,
@@ -406,6 +434,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         truncated: false,
         debugFrames: [],
         debugFrameSeq: 0,
+        portReachability: new Map(),
       };
 
       const runtime: RunRuntime = {
@@ -472,6 +501,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       startRun,
       stopRun,
       removeRun,
+      clearRunsForApp,
       selectRun,
       openRunView,
       closeRunView,
@@ -489,6 +519,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       startRun,
       stopRun,
       removeRun,
+      clearRunsForApp,
       selectRun,
       openRunView,
       closeRunView,
@@ -520,6 +551,7 @@ function shellFromEntry(entry: PersistedRunEntry): RunRecord {
     truncated: false,
     debugFrames: [],
     debugFrameSeq: 0,
+    portReachability: new Map(),
   };
 }
 
@@ -556,6 +588,14 @@ function applyRunEvent(
     // relayed *event* frames feed the Events tab; relayed log frames are dropped.
     if (isLogFrame(event.frame)) return;
     updateRecord(runId, (record) => appendDebugFrames(record, [event.frame]));
+    return;
+  }
+
+  if (event.type === "reachability") {
+    updateRecord(runId, (record) => ({
+      ...record,
+      portReachability: new Map(record.portReachability).set(event.port, event.state),
+    }));
     return;
   }
 

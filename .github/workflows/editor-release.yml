@@ -156,8 +156,11 @@ jobs:
           set -euo pipefail
           mkdir -p staged
           # tr normalizes Windows backslash paths so Git bash `cp` resolves them.
+          # -f keeps only single-file deliverables (.dmg/.msi/.exe/.AppImage/.deb)
+          # and skips directory bundles like macOS `telo-editor.app` (shipped via
+          # the .dmg).
           echo "$ARTIFACTS" | jq -r '.[]' | tr '\\' '/' | while read -r p; do
-            [ -e "$p" ] && cp "$p" staged/
+            if [ -f "$p" ]; then cp "$p" staged/; fi
           done
           ls -la staged
 

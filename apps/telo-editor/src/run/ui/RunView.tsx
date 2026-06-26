@@ -20,15 +20,7 @@ import { TerminalView } from "./TerminalView";
  *  RunContext's `selectedRun` — a freshly started run or one picked from the
  *  Run-button history dropdown. */
 export function RunView() {
-  const {
-    selectedRun,
-    unavailableRun,
-    isStarting,
-    stopRun,
-    removeRun,
-    closeRunView,
-    getTerminal,
-  } = useRun();
+  const { selectedRun, unavailableRun, isStarting, removeRun, closeRunView, getTerminal } = useRun();
 
   if (unavailableRun) {
     return (
@@ -62,8 +54,6 @@ export function RunView() {
     );
   }
 
-  const isRunning =
-    selectedRun.status.kind === "starting" || selectedRun.status.kind === "running";
   const terminal = selectedRun.hasTerminal ? getTerminal(selectedRun.id) : null;
 
   return (
@@ -91,14 +81,6 @@ export function RunView() {
           </span>
         )}
         <div className="flex-1" />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void stopRun(selectedRun.id)}
-          disabled={!isRunning}
-        >
-          Stop
-        </Button>
         <Button size="sm" variant="ghost" onClick={closeRunView}>
           ×
         </Button>
@@ -178,6 +160,7 @@ function RunDebugPanel({ run, terminal }: { run: RunRecord; terminal: TerminalBu
       logsSlot={logsSlot}
       defaultTab="logs"
       endpoints={endpoints}
+      endpointReachability={run.portReachability}
       theme={colorMode}
     />
   );
