@@ -1,6 +1,6 @@
 {
   "name": "@telorun/runner-core",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Backend-neutral core for Telo runners: the /v1 session contract, the RunnerBackend interface, the session registry, SSE/byte ring buffers, and bundle handling. Shared by docker-runner and k8s-runner.",
   "keywords": [
     "telo",
