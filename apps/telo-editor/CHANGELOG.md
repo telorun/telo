@@ -1,5 +1,22 @@
 # telo-editor
 
+## 0.9.0
+
+### Minor Changes
+
+- 506fc90: Surface analyzer diagnostics across the editor: each overview-graph node (and
+  Providers & Types strip entry) now shows a severity dot + count with a
+  severity-colored border, and side-pane form fields surface the diagnostics whose
+  path falls under them. The Source tab carries the module's diagnostic badge, and
+  a preview notice sits above the graph canvas noting that visual editing is still
+  incomplete.
+
+### Patch Changes
+
+- 506fc90: Publish Tauri desktop binaries (macOS, Windows, Linux) as GitHub Releases on
+  each editor release, source the bundle version from package.json, and align the
+  dialog plugin's npm package with its Rust crate.
+
 ## 0.8.14
 
 ### Patch Changes

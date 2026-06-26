@@ -1,5 +1,12 @@
 # @telorun/cli
 
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies [ef511d9]
+  - @telorun/kernel@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
