@@ -131,6 +131,11 @@ export type RunStatus =
  */
 export type RunPhase = "build" | "provision" | "boot";
 
+/** Per-port reachability of a running session's declared ports, watched by the
+ *  runner from its own network. Drives the editor's endpoint badge
+ *  (spinner → ok / error) instead of an app-log line. */
+export type ReachabilityState = "checking" | "reachable" | "unreachable";
+
 export type RunEvent =
   | { type: "stdout"; chunk: string }
   | { type: "stderr"; chunk: string }
@@ -138,7 +143,9 @@ export type RunEvent =
   | { type: "progress"; phase: RunPhase; message: string; done?: boolean }
   /** A frame relayed from the workload's kernel debug stream (kernel event or
    *  log line). Only emitted when the session was started with `inspect`. */
-  | { type: "debug"; frame: DebugFrame };
+  | { type: "debug"; frame: DebugFrame }
+  /** A reachability transition for one declared port, keyed by port. */
+  | { type: "reachability"; port: number; state: ReachabilityState };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";

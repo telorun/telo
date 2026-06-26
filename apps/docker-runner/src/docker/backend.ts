@@ -53,6 +53,7 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           onStatus: spec.onStatus,
           onOutput: spec.onOutput,
           onDebug: spec.onDebug,
+          onReachability: spec.onReachability,
           isUserStopped: spec.isUserStopped,
         });
       } catch (err) {

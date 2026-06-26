@@ -1,5 +1,7 @@
 import type { DebugFrame } from "@telorun/debug-wire";
 
+import { abortableDelay } from "../abortable-delay.js";
+
 export interface DebugRelayOptions {
   /** The workload's inspect SSE endpoint, e.g. `http://telo-run-<id>:9230/events`.
    *  Reachable only by the runner over the backend's private network. */
@@ -34,7 +36,7 @@ export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
         headers: { accept: "text/event-stream" },
       });
       if (!res.ok || !res.body) {
-        await delay(RECONNECT_DELAY_MS, signal);
+        await abortableDelay(RECONNECT_DELAY_MS, signal);
         continue;
       }
       await pump(res.body, onFrame, signal);
@@ -42,7 +44,7 @@ export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
       if (signal.aborted) return;
       opts.onError?.(err instanceof Error ? err : new Error(String(err)));
     }
-    await delay(RECONNECT_DELAY_MS, signal);
+    await abortableDelay(RECONNECT_DELAY_MS, signal);
   }
 }
 
@@ -86,19 +88,4 @@ function parseSseData(block: string): DebugFrame | null {
   } catch {
     return null;
   }
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) return resolve();
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

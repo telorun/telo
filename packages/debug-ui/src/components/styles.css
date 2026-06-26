@@ -88,6 +88,26 @@
 .tdbg-endpoint-link:hover {
   border-color: var(--tdbg-accent);
 }
+.tdbg-endpoint-status {
+  flex: none;
+}
+.tdbg-endpoint-status--checking {
+  color: var(--tdbg-muted);
+}
+.tdbg-endpoint-status--reachable {
+  color: var(--tdbg-good);
+}
+.tdbg-endpoint-status--unreachable {
+  color: var(--tdbg-bad);
+}
+.tdbg-spin {
+  animation: tdbg-spin 0.8s linear infinite;
+}
+@keyframes tdbg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 .tdbg-bar {
   position: sticky;

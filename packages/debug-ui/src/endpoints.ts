@@ -13,6 +13,12 @@ export interface AppEndpoint {
   url?: string;
 }
 
+/** Per-port reachability of a running app's endpoint, surfaced as a status icon
+ *  beside the link: a spinner while `checking`, ok when `reachable`, error when
+ *  `unreachable`. Mirrors the runner contract's `ReachabilityState`, kept local so
+ *  debug-ui stays browser-safe with no dependency on the runner package. */
+export type EndpointReachability = "checking" | "reachable" | "unreachable";
+
 /** The link a tcp endpoint resolves to, or `null` for a non-linkable (udp)
  *  endpoint. Prefers an explicit `url`; otherwise derives `http://host:port`. */
 export function endpointHref(endpoint: AppEndpoint): string | null {

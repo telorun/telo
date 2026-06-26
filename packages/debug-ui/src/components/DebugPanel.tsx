@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useState } from "react";
-import type { AppEndpoint } from "../endpoints.js";
+import type { AppEndpoint, EndpointReachability } from "../endpoints.js";
 import { distinctSuffixes, type EventFilter, matchesFilter } from "../filter.js";
 import { type DebugTheme, loadStoredTheme, storeTheme, useResolvedTheme } from "../theme.js";
 import { type DebugEvent, type DebugFrame, isLogFrame } from "../wire.js";
@@ -34,6 +34,9 @@ export interface DebugPanelProps {
    *  header. The standalone {@link DebugWatcher} sources these from the producer's
    *  handshake; the editor passes its resolved run endpoints. */
   endpoints?: readonly AppEndpoint[];
+  /** Per-port reachability for the endpoint badges (spinner / ok / error). The
+   *  editor sources it from the runner's `reachability` events. */
+  endpointReachability?: ReadonlyMap<number, EndpointReachability>;
   /** Color theme. Defaults to `"system"` (follows the OS); an embedding host
    *  (e.g. the editor) passes its own resolved `"light"` / `"dark"`. */
   theme?: DebugTheme;
@@ -58,6 +61,7 @@ export function DebugPanel({
   logsSlot,
   defaultTab = "graph",
   endpoints,
+  endpointReachability,
   theme,
 }: DebugPanelProps) {
   const [tab, setTab] = useState<Tab>(defaultTab);
@@ -109,7 +113,9 @@ export function DebugPanel({
           Logs{logsSlot ? null : <span className="tdbg-tabcount">{logs.length}</span>}
         </button>
         <span className="tdbg-tabs-spacer" />
-        {endpoints && endpoints.length > 0 && <EndpointLinks endpoints={endpoints} />}
+        {endpoints && endpoints.length > 0 && (
+          <EndpointLinks endpoints={endpoints} reachability={endpointReachability} />
+        )}
         <button className="tdbg-btn" onClick={onTogglePause}>
           {paused ? "Resume" : "Pause"}
         </button>

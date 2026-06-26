@@ -238,6 +238,8 @@ async function startSession(
       onDebug: (frame) => {
         if (isEventFrame(frame)) deps.registry.emit(sessionId, { type: "debug", frame });
       },
+      onReachability: (port, state) =>
+        deps.registry.emit(sessionId, { type: "reachability", port, state }),
       isUserStopped: () => entry.userStopped,
     })
     .then(async (session) => {

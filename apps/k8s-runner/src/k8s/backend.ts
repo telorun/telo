@@ -9,7 +9,7 @@ import type {
   RunStatus,
   RunnerBackend,
 } from "@telorun/runner-core";
-import { relayDebugStream, SessionStartError } from "@telorun/runner-core";
+import { relayDebugStream, SessionStartError, watchReachability } from "@telorun/runner-core";
 
 import type { BundleStore } from "../bundle-store.js";
 import type { K8sRunnerConfig } from "../config.js";
@@ -129,6 +129,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     let startDeadline: NodeJS.Timeout | undefined;
     let podIP: string | undefined;
     const debugAbort = new AbortController();
+    const reachAbort = new AbortController();
 
     const stdin = new PassThrough();
     const stdout = new Writable({
@@ -151,6 +152,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       clearStartDeadline();
       abortWatch();
       debugAbort.abort();
+      reachAbort.abort();
       bundleStore.drop(spec.sessionId);
       spec.onStatus(status);
       try {
@@ -292,26 +294,55 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       });
     }
 
+    // The Running watch event usually carries `podIP`; if it lagged, read the
+    // pod once and cache it — shared by the debug relay and the reachability check.
+    const resolvePodIP = async (): Promise<string | undefined> => {
+      if (podIP) return podIP;
+      podIP = await kube.core
+        .readNamespacedPod({ name: podName, namespace: ns })
+        .then((p) => podStatus(p)?.podIP)
+        .catch(() => undefined);
+      return podIP;
+    };
+
     // When inspect is on, relay the workload's in-pod kernel debug stream out
     // over `onDebug`. Reached by pod IP over the cluster network — the inspect
-    // port is never published via Service/Ingress. The Running watch event
-    // usually carries `podIP`; if it lagged, read the pod once to recover it.
+    // port is never published via Service/Ingress.
     if (spec.inspect) {
-      if (!podIP) {
-        podIP = await kube.core
-          .readNamespacedPod({ name: podName, namespace: ns })
-          .then((p) => podStatus(p)?.podIP)
-          .catch(() => undefined);
-      }
-      if (podIP) {
+      const ip = await resolvePodIP();
+      if (ip) {
         void relayDebugStream({
-          url: `http://${podIP}:${INSPECT_PORT}/events`,
+          url: `http://${ip}:${INSPECT_PORT}/events`,
           onFrame: spec.onDebug,
           signal: debugAbort.signal,
         });
       } else {
         spec.onOutput(Buffer.from("\r\n[runner] debug stream unavailable: pod IP unknown\r\n"));
       }
+    }
+
+    // Reachability check: a workload bound to 127.0.0.1 (or listening on the
+    // wrong port) is unreachable on the pod network and surfaces only as a
+    // downstream 502. Watch each advertised tcp port from the runner and report
+    // per-port state to the editor's endpoint badge. Background; finish() aborts it.
+    const tcpPorts = spec.ports.filter((p) => p.protocol === "tcp").map((p) => p.port);
+    if (tcpPorts.length > 0) {
+      void (async () => {
+        const ip = await resolvePodIP();
+        if (reachAbort.signal.aborted) return;
+        if (!ip) {
+          // Couldn't resolve the pod IP to probe — report unverified rather than
+          // leaving the badge spinning forever.
+          for (const port of tcpPorts) spec.onReachability(port, "unreachable");
+          return;
+        }
+        await watchReachability({
+          host: ip,
+          ports: tcpPorts,
+          onState: (port, state) => spec.onReachability(port, state),
+          signal: reachAbort.signal,
+        });
+      })();
     }
 
     // `flipRunning` already announced `running` from the watch's Running

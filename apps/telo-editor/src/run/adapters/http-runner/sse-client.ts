@@ -86,6 +86,13 @@ export function openSseClient(deps: SseClientDeps): SseClient {
       deps.onEvent(parsed);
     }
   };
+  const handleReachability = (e: MessageEvent): void => {
+    const parsed = parseRunEvent(e.data);
+    if (parsed) {
+      persistId(storageKey, e.lastEventId);
+      deps.onEvent(parsed);
+    }
+  };
   const handleGap = (): void => {
     deps.onEvent({
       type: "stderr",
@@ -107,6 +114,7 @@ export function openSseClient(deps: SseClientDeps): SseClient {
   source.addEventListener("status", handleStatus);
   source.addEventListener("progress", handleProgress);
   source.addEventListener("debug", handleDebug);
+  source.addEventListener("reachability", handleReachability);
   source.addEventListener("gap", handleGap);
   source.addEventListener("error", handleError);
 
@@ -118,6 +126,7 @@ export function openSseClient(deps: SseClientDeps): SseClient {
     source.removeEventListener("status", handleStatus);
     source.removeEventListener("progress", handleProgress);
     source.removeEventListener("debug", handleDebug);
+    source.removeEventListener("reachability", handleReachability);
     source.removeEventListener("gap", handleGap);
     source.removeEventListener("error", handleError);
     source.close();
@@ -144,7 +153,8 @@ function isRunEvent(value: unknown): value is RunEvent {
     v.type === "stderr" ||
     v.type === "status" ||
     v.type === "progress" ||
-    v.type === "debug"
+    v.type === "debug" ||
+    v.type === "reachability"
   );
 }
 

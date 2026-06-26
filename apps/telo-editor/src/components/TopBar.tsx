@@ -1,4 +1,4 @@
-import { ChevronDown, Monitor, Moon, Redo2, Sun, Undo2 } from "lucide-react";
+import { ChevronDown, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
@@ -33,6 +33,11 @@ interface TopBarProps {
   runs?: RunRecord[];
   /** Open the output view for a past/selected run. */
   onSelectRun?: (runId: string) => void;
+  /** Stop the active Application's live run — the Stop button shown beside Run
+   *  while a run is in flight. */
+  onStop?: (runId: string) => void;
+  /** Clear the active Application's finished run history (the dropdown's Clear). */
+  onClearRuns?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -48,6 +53,8 @@ export function TopBar({
   runStatus,
   runs = [],
   onSelectRun,
+  onStop,
+  onClearRuns,
   onUndo,
   onRedo,
   canUndo,
@@ -59,10 +66,14 @@ export function TopBar({
     ? summarizeFiles(diagState, getModuleFiles(activeManifest))
     : null;
   const canRun = activeManifest?.kind === "Application";
-  const runInFlight = runStatus?.kind === "starting" || runStatus?.kind === "running";
   const runTerminal =
     runStatus?.kind === "exited" || runStatus?.kind === "failed" || runStatus?.kind === "stopped";
   const runTerminalOk = runStatus?.kind === "exited" && runStatus.code === 0;
+  const liveRun =
+    runs.find((r) => r.status.kind === "starting" || r.status.kind === "running") ?? null;
+  const hasHistory = runs.some(
+    (r) => r.status.kind === "exited" || r.status.kind === "failed" || r.status.kind === "stopped",
+  );
 
   return (
     <div className="flex h-10 items-center border-b border-zinc-200 bg-white px-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -105,28 +116,35 @@ export function TopBar({
           Save
         </Button>
         <div className="flex items-stretch">
-          <Button
-            variant={canRun ? "default" : "ghost"}
-            size="sm"
-            className="rounded-r-none"
-            onClick={canRun ? onRun : undefined}
-            disabled={!canRun}
-          >
-            {runInFlight ? (
-              <span
-                className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
-                aria-hidden
-              />
-            ) : runTerminal ? (
-              <span
-                className={`mr-1 inline-block h-2 w-2 rounded-full ${
-                  runTerminalOk ? "bg-green-500" : "bg-red-500"
-                }`}
-                aria-hidden
-              />
-            ) : null}
-            Run
-          </Button>
+          {liveRun ? (
+            <Button
+              variant="default"
+              size="sm"
+              className="rounded-r-none"
+              onClick={() => onStop?.(liveRun.id)}
+            >
+              <Square className="size-3 fill-current" aria-hidden />
+              Stop
+            </Button>
+          ) : (
+            <Button
+              variant={canRun ? "default" : "ghost"}
+              size="sm"
+              className="rounded-r-none"
+              onClick={canRun ? onRun : undefined}
+              disabled={!canRun}
+            >
+              {runTerminal ? (
+                <span
+                  className={`mr-1 inline-block h-2 w-2 rounded-full ${
+                    runTerminalOk ? "bg-green-500" : "bg-red-500"
+                  }`}
+                  aria-hidden
+                />
+              ) : null}
+              Run
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -141,7 +159,18 @@ export function TopBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>Recent runs</DropdownMenuLabel>
+              <DropdownMenuLabel className="flex items-center justify-between gap-2">
+                Recent runs
+                {hasHistory && (
+                  <button
+                    type="button"
+                    onClick={onClearRuns}
+                    className="font-normal text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  >
+                    Clear
+                  </button>
+                )}
+              </DropdownMenuLabel>
               {runs.length === 0 ? (
                 <DropdownMenuItem disabled>No runs yet</DropdownMenuItem>
               ) : (
