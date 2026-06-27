@@ -81,6 +81,25 @@ export function resolveApplicationEnv(
 }
 
 /**
+ * Collect the host env-var *names* the root Application binds — the `env:` key
+ * of every `variables` / `secrets` / `ports` entry. This is the denied set for
+ * the controller `process.env` guardrail (see `host-env.ts`): a controller must
+ * read these through `ctx.env` / the declared binding, never the raw env var.
+ */
+export function collectDeclaredEnvKeys(manifest: Record<string, any>): string[] {
+  const keys: string[] = [];
+  for (const block of [manifest.variables, manifest.secrets, manifest.ports]) {
+    if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+    for (const entry of Object.values(block as Record<string, { env?: unknown }>)) {
+      if (entry && typeof entry === "object" && typeof entry.env === "string") {
+        keys.push(entry.env);
+      }
+    }
+  }
+  return keys;
+}
+
+/**
  * Build-time cache warm: compile — but do NOT validate — the residual schema
  * for every `variables` / `secrets` / `ports` entry the runtime
  * `resolveApplicationEnv` would, so each standalone validator lands in the

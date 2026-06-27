@@ -13,15 +13,15 @@ The `telorun/node` image ships a Telo kernel and CLI on top of a Node.js base. Y
 The canonical pattern: a **build** stage runs `telo install` to materialize `.telo/`, a **production** stage copies the warmed tree and does no network I/O at boot.
 
 ```dockerfile
-FROM telorun/node:1.4.2-slim AS build
-WORKDIR /srv
-COPY apps/my-app/ apps/my-app/
-RUN telo install apps/my-app/telo.yaml
+FROM telorun/node:<ver>-slim AS build
+WORKDIR /build
+COPY ./apps/my-app/ ./
+RUN telo install .
 
-FROM telorun/node:1.4.2-slim AS production
+FROM telorun/node:<ver>-slim AS production
 WORKDIR /srv
-COPY --from=build /srv /srv
-CMD ["telo", "apps/my-app/telo.yaml"]
+COPY --from=build /build /srv
+CMD ["telo", "."]
 ```
 
 The image has a smart entrypoint (like the official `node` image): a bare manifest path or a flag is routed to `telo`, so the explicit `CMD ["telo", "apps/my-app/telo.yaml", "--watch"]` and the terse `CMD ["apps/my-app/telo.yaml"]` both work. At run time, `docker run … <image> ./manifest.yaml` or `docker run … <image> --watch ./manifest.yaml` reach the CLI, while `docker run … <image> bash` drops into a shell.

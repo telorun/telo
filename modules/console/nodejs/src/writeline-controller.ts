@@ -20,7 +20,7 @@ class ConsoleWriteLineResource implements ResourceInstance<WriteLineInputs, stri
     const rendered = render(output, isTtyStream(this.ctx.stdout as any));
     this.ctx.stdout.write(rendered);
     this.ctx.stdout.write("\n");
-    this.ctx.emit("StdOut.LineWritten", { line: output });
+    this.ctx.emit("LineWritten", { line: output });
     return output;
   }
 }

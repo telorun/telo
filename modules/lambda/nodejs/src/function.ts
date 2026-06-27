@@ -9,7 +9,6 @@ import {
   ResourceInstance,
 } from "@telorun/sdk";
 import { CLASSIFIERS, HandlerKindKey } from "./common/classifier.js";
-import { detectMode } from "./common/mode.js";
 import { pollNext, postError, postResponse } from "./common/runtime-api.js";
 
 const FunctionManifest = Type.Object({
@@ -82,24 +81,14 @@ export class LambdaFunction implements ResourceInstance {
   }
 
   async run(): Promise<void> {
-    const runtimeApi = process.env.AWS_LAMBDA_RUNTIME_API;
-    const mode = detectMode();
+    const runtimeApi = this.ctx.env.AWS_LAMBDA_RUNTIME_API;
     this.releaseHold = this.ctx.acquireHold("lambda-function-running");
 
-    if (mode === "managed") {
-      // AWS owns the outer loop and calls into kernel.invoke via the
-      // bootstrap-exported handler. The hold keeps the process loaded across
-      // AWS invocations; nothing else to do here.
-      return;
-    }
-
-    if (!runtimeApi) {
-      // Defensive: detectMode === "custom" implies the env var is set; surface
-      // the contradiction rather than silently no-op.
-      throw new Error(
-        "Lambda.Function: custom mode detected but $AWS_LAMBDA_RUNTIME_API is unset",
-      );
-    }
+    // Mode is inferred from the environment: managed runtimes (nodejs24.x) leave
+    // $AWS_LAMBDA_RUNTIME_API unset — AWS owns the outer loop and calls the
+    // bootstrap-exported handler, so the hold is all we do here. Custom runtimes
+    // set it to the Runtime API endpoint we poll below.
+    if (!runtimeApi) return;
 
     this.polling = true;
     this.pollAbort = new AbortController();

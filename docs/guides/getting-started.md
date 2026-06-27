@@ -43,7 +43,6 @@ metadata:
   name: HelloConsole
   version: 1.0.0
 imports:
-  Run: std/run@<version>
   Console: std/console@<version>
 targets:
   - invoke: !ref Console.writeLine
@@ -76,7 +75,7 @@ Hello from Telo!
 When you ran `telo ./hello.yaml`, the kernel:
 
 1. **Loaded** the YAML, resolved each import, and compiled any
-   `${{ … }}` CEL expressions into an in-memory registry.
+   `!cel "…"` / `${{ … }}` CEL expressions into an in-memory registry.
 2. **Resolved** the resource dependency graph — `Main` references
    `Console.writeLine`, the singleton exported by the imported `Console` module.
 3. **Initialized** each resource in dependency order, calling its

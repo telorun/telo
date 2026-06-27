@@ -312,7 +312,6 @@ function syntheticSlugForId(id) {
   }
 
   if (id === "cli/README") return "/learn/installation-and-cli";
-  if (id === "tests/README") return "/build/testing";
   if (id === "docs/coding-agents") return "/build/coding-agents";
   if (id.startsWith("docs/guides/")) return `/learn/${id.slice("docs/guides/".length)}`;
 

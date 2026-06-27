@@ -17,7 +17,7 @@ export type { CelHandlers } from "@telorun/templating";
  *
  *  - `variables`: typed from the manifest's `variables` field if it is a schema map
  *    (only module-identity docs — `Telo.Application` / `Telo.Library` — carry this); otherwise registered as `map` (dyn).
- *  - `secrets`, `resources`, `env`: always `map` (dyn — output schemas unknown).
+ *  - `secrets`, `resources`: always `map` (dyn — output schemas unknown).
  *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
  *
  *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
@@ -85,7 +85,6 @@ export function buildTypedCelEnvironment(
 
     env.registerVariable("secrets", "map");
     env.registerVariable("resources", "map");
-    env.registerVariable("env", "map");
 
     if (extraContextSchema?.properties) {
       for (const [name, propSchema] of Object.entries(
@@ -128,7 +127,7 @@ function registerConfigNamespace(
  *
  *  Import inputs are a config-only contract: their expressions are evaluated
  *  against the IMPORTING module's `variables`/`secrets`, never the import's own
- *  values map (the bug) nor the imported child's. `resources`, `env`, and `ports`
+ *  values map (the bug) nor the imported child's. `resources` and `ports`
  *  are registered as empty typed objects, so referencing them is a "No such key"
  *  error that steers authors to a typed `variables` entry. */
 export function buildImportInputCelEnvironment(
@@ -151,10 +150,10 @@ export function buildImportInputCelEnvironment(
     env.registerVariable("variables", "map");
     env.registerVariable("secrets", "map");
   }
-  // Override the base env's dyn `resources`/`env`/`ports` with empty typed objects
-  // so any access (`resources.X`, `env.X`) is a "No such key" error — these
+  // Override the base env's dyn `resources`/`ports` with empty typed objects
+  // so any access (`resources.X`, `ports.X`) is a "No such key" error — these
   // surfaces are not part of the config-only import contract.
-  for (const name of ["resources", "env", "ports"]) {
+  for (const name of ["resources", "ports"]) {
     (env as any).registerVariable({ name, schema: {} });
   }
   return env;

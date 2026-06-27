@@ -101,11 +101,6 @@ const config: Config = {
         return result;
       }
 
-      if (/\/tests\/README\.md$/.test(normalized)) {
-        result.frontMatter.slug = "/build/testing";
-        return result;
-      }
-
       const docsGuideMatch = normalized.match(/\/docs\/guides\/(.+)\.md$/);
       if (docsGuideMatch) {
         result.frontMatter.slug = `/learn/${docsGuideMatch[1]}`;

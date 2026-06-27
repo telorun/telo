@@ -12,31 +12,6 @@ import type {
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
 import { EvaluationContext } from "./evaluation-context.js";
 
-/** Wraps process.env so that missing keys return null instead of throwing in CEL.
- * cel-js uses Object.hasOwn(obj, key) before accessing obj[key], so we must
- * intercept getOwnPropertyDescriptor to report every string key as "own".
- * The `constructor` key is special-cased to return `Object` so cel-js's dyn
- * value-type matcher recognises the proxy as a plain map; Node's process.env
- * has an anonymous-function constructor that cel-js otherwise rejects with
- * "Unsupported type: object". */
-function lenientEnv(env: Record<string, string | undefined>): Record<string, string | null> {
-  return new Proxy(env as Record<string, string | null>, {
-    get(target, key) {
-      if (typeof key !== "string") return (target as any)[key];
-      if (key === "constructor") return Object as unknown as string;
-      return key in target ? (target[key] ?? null) : null;
-    },
-    has() {
-      return true;
-    },
-    getOwnPropertyDescriptor(target, key) {
-      if (typeof key !== "string") return Object.getOwnPropertyDescriptor(target, key);
-      const value = key in target ? (target[key] ?? null) : null;
-      return { configurable: true, enumerable: true, writable: true, value };
-    },
-  });
-}
-
 function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
   const values = new Set<string>();
   for (const value of Object.values(secrets)) {
@@ -155,7 +130,6 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     private targets: BootTarget[] = [],
     createInstance: InstanceFactory = async () => null,
     emit: EmitEvent,
-    private readonly _hostEnv?: Record<string, string | undefined>,
   ) {
     super(source, {}, createInstance, new Set(), emit);
     this._variables = variables;
@@ -461,7 +435,6 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       secrets: this._secrets,
       resources: this._resources,
       ports: this._ports,
-      ...(this._hostEnv ? { env: lenientEnv(this._hostEnv) } : {}),
     };
     this._secretValues = collectSecretValues(this._secrets);
   }

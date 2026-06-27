@@ -57,11 +57,15 @@ For the complete `Telo.Definition` field reference, see [docs/resource-definitio
 
 Before a manifest object is processed, every `${{ ... }}` expression is compiled. This runs as part of loading — any compilation error halts the boot sequence immediately.
 
-The compile step provides `{ env: process.env }` as the initial context, so environment variables are available everywhere:
+Host environment variables reach CEL only through typed root entries: declare a `variables:`/`secrets:`/`ports:` entry with an `env:` key and read it as `${{ variables.X }}` / `${{ secrets.X }}` / `${{ ports.X }}`.
 
 ```yaml
+variables:
+  manifestPath:
+    env: MY_MANIFEST_PATH
+    type: string
 resources:
-  - ${{ env.MY_MANIFEST_PATH }}
+  - ${{ variables.manifestPath }}
 ```
 
 ### Interpolation

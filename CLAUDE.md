@@ -93,6 +93,7 @@ When designing a new module or capability, ask: which of the above does this res
 - `controllers/resource-definition/` — handles `kind: Telo.Definition` and parameterized templates
 - `capabilities/` — base interfaces: runnable, invokable, listener, provider, template, mount
 - `manifest-schemas.ts` — JSON Schema for YAML validation
+- `host-env.ts` — `boot()` replaces global `process.env` with a **guardrail** Proxy that denies a **manifest-derived** set: the env-var names the root Application binds via `variables`/`secrets`/`ports` (`collectDeclaredEnvKeys` in `application-env.ts`). A declared key reads back `undefined` (hidden from `in`/enumeration) with a once-per-key warning, so **controllers can't bypass a declared binding** — they use `ctx.env` or the declared `variables`/`secrets`. Every other key passes through — **no vendor-env allowlist** (a bundled SDK's `NODE_ENV`/`AWS_*`/`BUN_*` reads are undeclared, so untouched). The denied set is process-global and additive across in-process kernels. Kernel `TELO_*`/cache reads and subprocess spawns use `hostEnv()` (real env captured pre-lock); `analyzeOnly` never boots. A guardrail, not isolation; `process.env` is left non-writable. Tested in `tests/host-env.test.ts`.
 
 ## Resource Kinds
 
@@ -109,7 +110,6 @@ A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the 
 - `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Telo.Application`, `Telo.Library`, `Telo.Import`, or `Telo.Definition`
 - `imports` — name-keyed map declaring the module's dependencies. Each key is the PascalCase alias; each value is either a bare **source string** (`Console: std/console@0.9.0`, shorthand for `{ source }`) or the object form `{ source, variables?, secrets?, runtime? }`. The shared loader expands each entry into an internal import before resolution (gated by the `desugarImports` `LoadOptions` flag — on for the kernel's analysis + runtime loads, the import-controller's child load, the analyzer, and `telo check`; off for the editor's round-trip view, which reads the raw map). An alias declared twice in one module scope is a hard `DUPLICATE_IMPORT_ALIAS` diagnostic, not a silent shadow.
 - `targets` — optional; run after all resources init. A flat boot sequence: each entry is a bare reference / `!ref` to a `Telo.Runnable` or `Telo.Service` (`run()`), a gated reference `{ ref, when? }`, or an inline invoke step `{ name?, invoke: <Invocable/Runnable ref>, inputs?, when? }`. Inline steps invoke the referenced resource via the shared `executeInvokeStep` leaf (SDK), with `steps.<name>.result` plumbed into later targets and `when`/`inputs` evaluated against the root scope. Ref-only — `invoke`/`ref` must be a `!ref` to a named resource (inline `{ kind }` definitions and `retry` are not supported here); control flow (`if`/`while`/`switch`/`try`), `with:` scopes, callable `inputs`/`outputs`, and `retry` stay in `Run.Sequence`. A no-targets Application is valid when its work is carried by Services that auto-start on init.
-- Receives `env: process.env` when it is the root loaded manifest — raw `process.env` map for keys the manifest hasn't pre-declared.
 - `variables` / `secrets` — each entry binds a name to a host environment variable via an `env:` key, plus `type:` (`string | integer | number | boolean | object | array`), optional `default:`, and any further JSON Schema keywords. Values resolve at `kernel.load()` into the root `variables.X` / `secrets.X` CEL scope (object / array values are JSON-decoded from the env var; missing required vars or coercion / schema failures aggregate into `ERR_MANIFEST_VALIDATION_FAILED` before any controller init).
 - `ports` — **Application-only** name-keyed map of inbound ports the app listens on. Each entry binds a host env var via `env:`, plus optional `protocol:` (`tcp` default | `udp`) and `default:`; the value is implicitly a port integer (1–65535, no `type:`). Resolves at `kernel.load()` (mirroring `variables`, same `ERR_MANIFEST_VALIDATION_FAILED` aggregation) into the root `ports.X` CEL scope, so a binding resource reads `${{ ports.http }}` as the single source of truth and a runner knows the exposed ports before boot. The analyzer brands each value by `protocol` (`tcp → TcpPort`, `udp → UdpPort`) for static wiring checks (see `x-telo-type`). `Telo.Library` does not get `ports`.
 - `exports` is **forbidden** — an Application is a root with no importer. If you want to export kinds, the file is a Library.
@@ -136,7 +136,7 @@ Loads `Telo.Library` modules into the current scope under PascalCase aliases, de
 - `variables` / `secrets` — values passed into the child library.
 - Each import creates an isolated child `EvaluationContext`; child resources are not visible to root scope.
 - Importing a `Telo.Application` is a hard error — applications are run directly, not imported.
-- Only the root module gets `env: process.env`; child modules are isolated from the host environment.
+- Child modules are isolated from the host environment — only the root Application binds host env vars (via `variables:`/`secrets:`/`ports:` `env:` keys) and forwards them into imports.
 
 ### `kind: Telo.Definition`
 
@@ -190,7 +190,6 @@ Available in `${{ }}`:
 - `resources.<name>` — after that resource's `snapshot()`
 - `steps.<step>.result` — inside `Run.Sequence` steps
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)
-- `env` — only in root module (compile context)
 
 **Null-safety:** dereferencing a value whose schema admits `null` (e.g. `error` inside a `finally` block, typed `["object","null"]`) without a null-guard is a static error (`CEL_NULLABLE_ACCESS`). The analyzer recognises guards through `?:` ternaries and `&&` / `||` short-circuits — `error != null && error.code`, `error == null ? … : error.code`. General: applies to any nullable value in any CEL context (`templating/nodejs/src/cel/analyze.ts` `findNullableAccessIssues`, wired in `engines/cel.ts`).
 

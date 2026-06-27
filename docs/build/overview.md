@@ -6,7 +6,7 @@ description: How to author a Telo manifest — the editor, AI-assisted authoring
 
 # Build
 
-Building a Telo application means writing one or more YAML manifests that declare resources, wire them together, and target what should run on boot. A manifest is the artifact: there is no separate "build step" that compiles it — the same file you author is the file the kernel loads.
+Building a Telo application means writing one or more YAML manifests that declare resources, wire them together, and target what should run on boot.
 
 The pages in this section cover the three ways people work on manifests.
 
@@ -16,7 +16,7 @@ The pages in this section cover the three ways people work on manifests.
 | --- | --- |
 | **[Telo Editor](/build/editor)** | A desktop editor with a topology canvas, inventory, and integrated runner. The fastest way to compose flows visually and iterate against a live container. |
 | **[Coding agents](/build/coding-agents)** | Plug Claude Code, Cursor, or any MCP-aware editor into the Telo registry's MCP server. The agent searches the module catalog, fetches manifests, and authors against the real surface. |
-| **Plain editor** | Manifests are just YAML — any editor works. The [VS Code extension](https://marketplace.visualstudio.com/items?itemName=telorun.telo) supplies the same diagnostics the editor and CLI use. |
+| **Plain editor** | Manifests are just YAML — any editor works. |
 
 All three paths share the same analyzer, so a manifest authored in one tool is consumed identically by the others.
 

@@ -5,6 +5,8 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 
+import { hostEnv } from "../host-env.js";
+
 const CACHE_SUBDIR = ".telo/manifests";
 const HTTP_NAMESPACE = "__http";
 const DEFAULT_MANIFEST_FILENAME = "telo.yaml";
@@ -274,7 +276,7 @@ export function resolveEntryDir(entryPath: string): string | null {
  *  Consumers append the conventional subdirs: `manifests/`, `manifests/__validators/`,
  *  `npm/`. */
 export function resolveCacheRoot(entryPath: string): string | null {
-  const override = process.env.TELO_CACHE_DIR;
+  const override = hostEnv().TELO_CACHE_DIR;
   if (override && override.trim()) return path.resolve(override.trim());
   const entryDir = resolveEntryDir(entryPath);
   return entryDir ? path.join(entryDir, ".telo") : null;

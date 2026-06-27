@@ -20,7 +20,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/build/overview", label: "Overview" },
         { type: "doc", id: "docs/build/editor", label: "Telo Editor" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
-        { type: "doc", id: "tests/README", label: "Testing your manifests" },
+        { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },
       ],
     },
     {
@@ -39,6 +39,8 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         { type: "doc", id: "sdk/README", label: "Overview" },
+        { type: "doc", id: "docs/extend/authoring-a-module", label: "Authoring a Module" },
+        { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
         {
           type: "category",
           label: "Node.js",
@@ -134,12 +136,6 @@ const sidebars: SidebarsConfig = {
               label: "Runtime & Ops",
               items: [
                 { type: "doc", id: "kernel/docs/controllers", label: "Controllers" },
-                { type: "doc", id: "kernel/docs/signals", label: "Signals" },
-                {
-                  type: "doc",
-                  id: "kernel/docs/telemetry-and-observability",
-                  label: "Telemetry & Observability",
-                },
               ],
             },
           ],

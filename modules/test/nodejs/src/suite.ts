@@ -140,15 +140,20 @@ function parseEnvFile(content: string | null): Record<string, string> {
 
 /**
  * Loads .env and .env.local files (in that order) from the directory of
- * the manifest, layered under (and overridden by) process.env.
+ * the manifest, layered under (and overridden by) the host environment.
  *
- * Keys already present in process.env take precedence (same as CLI behaviour).
+ * `hostEnv` is the suite controller's `ctx.env` (the sanctioned host-env
+ * snapshot) — not the locked `process.env` — and takes precedence over the
+ * .env files, matching CLI behaviour.
  */
-function buildEnvForManifest(manifestPath: string): Record<string, string | undefined> {
+function buildEnvForManifest(
+  manifestPath: string,
+  hostEnv: Record<string, string | undefined>,
+): Record<string, string | undefined> {
   const dir = path.dirname(path.resolve(manifestPath));
   const base = parseEnvFile(tryReadFile(path.join(dir, ".env")));
   const local = parseEnvFile(tryReadFile(path.join(dir, ".env.local")));
-  return { ...base, ...local, ...process.env };
+  return { ...base, ...local, ...hostEnv };
 }
 
 async function runOneTest(
@@ -156,13 +161,14 @@ async function runOneTest(
   captureOutput: boolean,
   parentStdout: NodeJS.WritableStream,
   parentStderr: NodeJS.WritableStream,
+  hostEnv: Record<string, string | undefined>,
 ): Promise<TestResult> {
   const start = Date.now();
   const stdout = captureOutput ? new BufferedWritable() : parentStdout;
   const stderr = captureOutput ? new BufferedWritable() : parentStderr;
   try {
     const kernel = new Kernel({
-      env: buildEnvForManifest(testPath),
+      env: buildEnvForManifest(testPath, hostEnv),
       stdout,
       stderr,
       sources: [new LocalFileSource()],
@@ -225,7 +231,7 @@ export async function create(
           if (i >= tests.length) return;
           const testPath = tests[i];
           const label = labelFor(testPath, baseDir);
-          const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr);
+          const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr, ctx.env);
           result.label = label;
           results.push(result);
 
