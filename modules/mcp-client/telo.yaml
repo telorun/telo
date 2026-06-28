@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: mcp-client
   namespace: std
-  version: 0.4.0
+  version: 0.4.1
   description: |
     Model Context Protocol (MCP) client resource kinds. Transport-pluggable:
     Mcp.HttpClient (Streamable HTTP) and Mcp.StdioClient (child-process stdio)
@@ -96,7 +96,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.0?local_path=./nodejs#http-client
+  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#http-client
 schema:
   type: object
   additionalProperties: false
@@ -153,7 +153,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.0?local_path=./nodejs#stdio-client
+  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#stdio-client
 schema:
   type: object
   additionalProperties: false
@@ -206,7 +206,7 @@ metadata:
   name: ToolsCall
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.0?local_path=./nodejs#tools-call
+  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-call
 schema:
   type: object
   additionalProperties: false
@@ -304,7 +304,7 @@ metadata:
   name: ToolsList
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.0?local_path=./nodejs#tools-list
+  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-list
 schema:
   type: object
   additionalProperties: false

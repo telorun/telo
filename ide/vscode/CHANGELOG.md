@@ -1,5 +1,14 @@
 # telo-kernel
 
+## 0.0.51
+
+### Patch Changes
+
+- Updated dependencies [2d9323c]
+- Updated dependencies [4e5d861]
+  - @telorun/analyzer@0.30.0
+  - @telorun/ide-support@0.4.34
+
 ## 0.0.50
 
 ### Patch Changes

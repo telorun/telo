@@ -1,5 +1,13 @@
 # @telorun/console
 
+## 0.9.0
+
+### Minor Changes
+
+- 4e5d861: Rename the event emitted by `Console.WriteLine` from `StdOut.LineWritten` to
+  `LineWritten`. The kind already namespaces its events, so the `StdOut.` prefix
+  was redundant. Subscribers must listen for `LineWritten` instead.
+
 ## 0.8.0
 
 ### Minor Changes
