@@ -61,7 +61,7 @@ function loaderFor(files: Record<string, string>): Loader {
 }
 
 describe("reconcileModuleVersions via loadGraph", () => {
-  it("hoists a same-major skew to the higher version with a warning", async () => {
+  it("hoists a same-major skew to the higher version silently", async () => {
     // app imports std/shared@0.2.0 directly; sub imports std/shared@0.1.0.
     const files: Record<string, string> = {
       "/ws/telo.yaml": [
@@ -78,12 +78,8 @@ describe("reconcileModuleVersions via loadGraph", () => {
 
     const graph = await loaderFor(files).loadGraph("/ws/telo.yaml", { desugarImports: true });
 
-    expect(graph.versionDiagnostics).toHaveLength(1);
-    const diag = graph.versionDiagnostics[0];
-    expect(diag.code).toBe("MODULE_VERSION_HOISTED");
-    expect(diag.severity).toBe(2); // Warning
-    expect((diag.data as { filePath?: string }).filePath).toBe("/ws/sub/telo.yaml");
-    expect((diag.data as { path?: string }).path).toBe("imports.Old");
+    // Additive pre-1.0 hoist: redirect happens, but no diagnostic is emitted.
+    expect(graph.versionDiagnostics).toHaveLength(0);
 
     // Loser (0.1.0) redirected to winner (0.2.0).
     expect(graph.overrides.get("/ws/sub/shared-v1/telo.yaml")).toBe("/ws/shared-v2/telo.yaml");
@@ -92,13 +88,6 @@ describe("reconcileModuleVersions via loadGraph", () => {
     expect(graph.importEdges.get("/ws/sub/telo.yaml")?.get("Old")?.targetSource).toBe(
       "/ws/shared-v2/telo.yaml",
     );
-
-    // The `imports.Old` path resolves to the import line in the importer's
-    // module doc — what both the VS Code (`findPositions`) and editor
-    // (module-doc `positions[0]`) resolvers feed `data.path` against. A present
-    // key means the squiggle lands on the import, not the file header.
-    const importerPos = graph.modules.get("/ws/sub/telo.yaml")?.owner.positions[0];
-    expect(importerPos?.positionIndex.get("imports.Old")).toBeDefined();
   });
 
   it("does not reconcile namespace-less local libraries that merely share a name", async () => {
@@ -170,7 +159,7 @@ describe("reconcileModuleVersions via loadGraph", () => {
     const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph));
 
     expect(diagnostics.find((d) => d.code === "DUPLICATE_IMPORT_ALIAS")).toBeUndefined();
-    // The skew itself is reported once, as a hoist warning.
-    expect(graph.versionDiagnostics.map((d) => d.code)).toEqual(["MODULE_VERSION_HOISTED"]);
+    // The additive skew reconciles silently — no version diagnostic.
+    expect(graph.versionDiagnostics).toHaveLength(0);
   });
 });

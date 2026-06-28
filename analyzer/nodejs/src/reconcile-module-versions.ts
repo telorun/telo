@@ -177,16 +177,10 @@ function hoistDiagnostic(
       data,
     };
   }
-  return {
-    severity: DiagnosticSeverity.Warning,
-    code: "MODULE_VERSION_HOISTED",
-    source: SOURCE,
-    message:
-      `Module '${identity}@${loser.version || "<unknown>"}' was hoisted to '${winner.version}' ` +
-      `because the same module is imported at the higher version elsewhere in the graph. ` +
-      `Pre-1.0 versions are additive, so the higher version is used for every importer.`,
-    data,
-  };
+  // Same-major hoist to a higher version: additive pre-1.0, so the redirect is
+  // non-lossy and by design — resolve to the winner silently, like a package
+  // manager picking the highest compatible version of a transitive dep.
+  return null;
 }
 
 /**
