@@ -9,6 +9,7 @@ metadata:
 imports:
   RecordStream: ../
   JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -16,21 +17,13 @@ targets:
   - !ref TestErrorPropagation
   - !ref TestEarlyCancellation
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: NumberSource }
-code: |
-  async function main() {
-    async function* gen() { yield 1; yield 2; yield 3; }
-    return { output: new Stream(gen()) };
-  }
+items: [ 1, 2, 3 ]
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: FiveItemSource }
-code: |
-  async function main() {
-    async function* gen() { yield 1; yield 2; yield 3; yield 4; yield 5; }
-    return { output: new Stream(gen()) };
-  }
+items: [ 1, 2, 3, 4, 5 ]
 ---
 # Drains only the first two items then breaks. The Tee's `return()` should
 # fire, marking side A closed; side B must still see every item from source.

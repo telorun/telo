@@ -22,7 +22,7 @@ describe("trace context — root scope on a trace's root span", () => {
     });
 
     // A top-level invoke is a trace root → its terminal span carries the scope.
-    await kernel.invoke("JS.Script.Echo", { value: 1 });
+    await kernel.invoke("Run.Value.Echo", { value: 1 });
 
     const ctx = echoes[0]?.context as Record<string, any> | undefined;
     expect(ctx).toBeDefined();
@@ -52,7 +52,7 @@ describe("trace context — root scope on a trace's root span", () => {
     // Outer is the root; its nested Echo invoke inherits the trace and is not a root.
     const outer = {
       invoke: async () => {
-        await rootContext.invoke("JS.Script", "Echo", { value: 1 });
+        await rootContext.invoke("Run.Value", "Echo", { value: 1 });
         return {};
       },
     };

@@ -3,10 +3,8 @@ metadata:
   name: PipelineWithServer
   version: 1.0.0
 imports:
-  Type: ../modules/type
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  JavaScript: ../modules/javascript
   Run: ../modules/run
   Assert: ../modules/assert
 ---
@@ -14,27 +12,13 @@ kind: Run.Sequence
 metadata:
   name: TestServerWithLifecycle
 with:
-  - kind: JavaScript.Script
+  - kind: Run.Value
     metadata:
       name: GreetingHandler
-    code: |
-      function main({ name }) {
-        return {
-          greeting: `Hello ${name}!`,
-        }
-      };
-    inputType:
-      kind: Type.JsonSchema
-      schema:
-        type: object
-        properties:
-          name: { type: string }
-    outputType:
-      kind: Type.JsonSchema
-      schema:
-        type: object
-        properties:
-          greeting: { type: string }
+    inputs:
+      name: { type: string }
+    value:
+      greeting: !cel "'Hello ' + inputs.name + '!'"
   - kind: Http.Api
     metadata:
       name: TestApi

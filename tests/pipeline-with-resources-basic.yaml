@@ -3,8 +3,6 @@ metadata:
   name: PipelineWithResourcesBasic
   version: 1.0.0
 imports:
-  Type: ../modules/type
-  JavaScript: ../modules/javascript
   Run: ../modules/run
   Assert: ../modules/assert
 ---
@@ -12,27 +10,13 @@ kind: Run.Sequence
 metadata:
   name: TestWithResources
 with:
-  - kind: JavaScript.Script
+  - kind: Run.Value
     metadata:
       name: SharedHelper
-    code: |
-      function main({ value }) {
-        return {
-          doubled: value * 2
-        }
-      };
-    inputType:
-      kind: Type.JsonSchema
-      schema:
-        type: object
-        properties:
-          value: { type: number }
-    outputType:
-      kind: Type.JsonSchema
-      schema:
-        type: object
-        properties:
-          doubled: { type: number }
+    inputs:
+      value: { type: number }
+    value:
+      doubled: !cel "inputs.value * 2"
 steps:
   - name: UseHelper
     inputs:

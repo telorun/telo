@@ -72,43 +72,19 @@ code: |
     };
   }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: WeatherImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      city: { type: string }
-    required: [ city ]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      summary: { type: string }
-    required: [ summary ]
-code: |
-  function main({ city }) { return { summary: `Sunny in ${city}` }; }
+inputs:
+  city: { type: string }
+value:
+  summary: !cel "'Sunny in ' + inputs.city"
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: DbImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      table: { type: string }
-    required: [ table ]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      rows: { type: integer }
-    required: [ rows ]
-code: |
-  function main({ table }) { return { rows: table.length }; }
+inputs:
+  table: { type: string }
+value:
+  rows: !cel "inputs.table.size()"
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }

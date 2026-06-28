@@ -39,7 +39,7 @@ describe("application trace span — the app is a trace participant", () => {
     expect(seq?.parentSpanId).toBe(app?.spanId);
 
     // The sequence's step invoke nests under the sequence.
-    expect(echo).toMatchObject({ capability: "invoke", ref: { kind: "JS.Script", name: "Echo" } });
+    expect(echo).toMatchObject({ capability: "invoke", ref: { kind: "Run.Value", name: "Echo" } });
     expect(echo?.parentSpanId).toBe(seq?.spanId);
 
     await kernel.teardown();

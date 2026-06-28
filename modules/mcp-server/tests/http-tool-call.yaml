@@ -4,32 +4,16 @@ imports:
   Mcp: ../
   McpClient: ../../mcp-client
   Http: ../../http-server
-  JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: GetWeatherImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      city: { type: string }
-    required: [ city ]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      summary: { type: string }
-    required: [ summary ]
-code: |
-  function main({ city }) {
-    return { summary: `Sunny in ${city}` };
-  }
+inputs:
+  city: { type: string }
+value:
+  summary: !cel "'Sunny in ' + inputs.city"
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }

@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../..
-  JavaScript: ../../../javascript
 ---
 # `error.cdoe` is a typo for `error.code`. The error context typing inside a
 # catch must flag it → CEL_UNKNOWN_FIELD.
@@ -16,9 +15,8 @@ steps:
     try:
       - name: work
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main() { return 1 }
+          kind: Run.Value
+          value: 1
     catch:
       - name: rethrow
         throw:

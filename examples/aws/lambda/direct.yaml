@@ -18,32 +18,17 @@ metadata:
     full packaging + deploy walkthrough.
 imports:
   Lambda: aws/lambda@0.6.0
-  JS: std/javascript@0.5.0
-  Type: std/type@0.6.0
+  Run: std/run@0.11.1
 targets:
   - !ref Main
 ---
-# User handler: greets the caller by name and counts the times invoked.
-kind: JS.Script
+# User handler: greets the caller by name.
+kind: Run.Value
 metadata: { name: Greet }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ name ]
-    properties:
-      name: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ message ]
-    properties:
-      message: { type: string }
-code: |
-  function main({ name }) {
-    return { message: `Hello, ${name}!` };
-  }
+inputs:
+  name: { type: string }
+value:
+  message: !cel "'Hello, ' + inputs.name + '!'"
 ---
 # Lambda.Direct catches the raw AWS event, maps it into the handler's
 # inputs via CEL, and returns the handler's result.

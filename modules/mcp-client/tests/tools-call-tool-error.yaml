@@ -4,8 +4,6 @@ imports:
   Mcp: ../../mcp-server
   McpClient: ../
   Http: ../../http-server
-  JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
@@ -14,16 +12,12 @@ targets: [ !ref TestRun ]
 # JSON-RPC response carrying the soft tool-failure shape. Mcp.Tools.Call must
 # convert this into an ERR_MCP_TOOL_ERROR throw, which the surrounding
 # Run.Sequence try/catch then observes.
-kind: JS.Script
+kind: Run.Value
 metadata: { name: WeatherImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema: { type: object, properties: { city: { type: string } }, required: [ city ] }
-outputType:
-  kind: Type.JsonSchema
-  schema: { type: object, properties: { summary: { type: string } }, required: [ summary ] }
-code: |
-  function main({ city }) { return { summary: `unreachable ${city}` }; }
+inputs:
+  city: { type: string }
+value:
+  summary: !cel "'unreachable ' + inputs.city"
 ---
 kind: Mcp.Tools
 metadata: { name: BrokenTools }

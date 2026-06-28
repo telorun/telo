@@ -6,8 +6,6 @@ metadata:
 imports:
   Assert: ../../../modules/assert
   Run: ../../../modules/run
-  Type: ../../../modules/type
-  JS: ../../../modules/javascript
 targets:
   - !ref JsonString
   - !ref JsonNumber
@@ -66,30 +64,13 @@ steps:
 # Build a structured value through a step, then stringify it. This mirrors how
 # Mcp.Tools' `result.content[0].text` packages handler output as a JSON string
 # for the MCP client.
-kind: JS.Script
+kind: Run.Value
 metadata: { name: BuildPayload }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      results:
-        type: array
-        items:
-          type: object
-          additionalProperties: true
-      count: { type: integer }
-    required: [ results, count ]
-    additionalProperties: false
-code: |
-  function main() {
-    return { results: [{ id: "std/foo@1.0.0" }, { id: "std/bar@2.0.0" }], count: 2 };
-  }
+value:
+  results:
+    - { id: "std/foo@1.0.0" }
+    - { id: "std/bar@2.0.0" }
+  count: 2
 ---
 kind: Run.Sequence
 metadata: { name: JsonStructured }

@@ -3,9 +3,8 @@ metadata:
   name: templated-server
   version: 1.0.0
 imports:
-  Type: ../../modules/type
   Http: ../../modules/http-server
-  JavaScript: ../../modules/javascript
+  Run: ../../modules/run
 exports:
   kinds:
     - HelloApi
@@ -42,25 +41,11 @@ routes:
               greeting: "${{ result.message }}!"
               nice: "WOW"
 ---
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: SayHello
-code: |
-  function main({ name }) {
-    return {
-      message: `Hello ${name}!`,
-    }
-  };
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      name: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      message: { type: string }
+inputs:
+  name: { type: string }
+value:
+  message: !cel "'Hello ' + inputs.name + '!'"
 ---

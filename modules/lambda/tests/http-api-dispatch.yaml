@@ -9,34 +9,18 @@ metadata:
   version: 1.0.0
 imports:
   Lambda: ..
-  JavaScript: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestHttpApiDispatch
 ---
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: GreetById
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ id ]
-    properties:
-      id: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ message ]
-    properties:
-      message: { type: string }
-code: |
-  function main({ id }) {
-    return { message: `Hello ${id}!` };
-  }
+inputs:
+  id: { type: string }
+value:
+  message: !cel "'Hello ' + inputs.id + '!'"
 ---
 kind: Lambda.HttpApi
 metadata:

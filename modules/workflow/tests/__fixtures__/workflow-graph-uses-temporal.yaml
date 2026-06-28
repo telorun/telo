@@ -5,13 +5,12 @@ metadata:
 imports:
   Workflow: ../../../workflow
   Temporal: ../../../workflow-temporal
-  JS: ../../../javascript
+  Run: ../../../run
 ---
-kind: JS.Script
+kind: Run.Value
 metadata:
   name: Noop
-code: |
-  function main() { return {}; }
+value: {}
 ---
 # Concrete backend: Temporal.Backend declares `extends: Workflow.Backend` (alias form)
 # in workflow-temporal's telo.yaml. That works because the declaring file resolves the

@@ -5,18 +5,17 @@ metadata:
   description: Lead scoring API — designed to exercise as much CEL as possible per request.
 imports:
   Http: ../../modules/http-server
-  JavaScript: ../../modules/javascript
+  Run: ../../modules/run
 targets:
   - !ref Server
 ---
 # Pure passthrough — keeps the handler trivial so per-request time is dominated
 # by CEL evaluation in the route-level inputs and returns blocks.
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: PassThrough
   module: ScoreApi
-code: |
-  function main(input) { return input }
+value: !cel "inputs"
 ---
 kind: Http.Server
 metadata:

@@ -4,32 +4,21 @@ metadata:
   version: 1.0.0
   description: |
     Test fixture: a library that defines an Http.Api whose route handlers use the
-    library's OWN import alias (`JS`) — both an inline `kind:` handler and a
+    library's OWN import alias (`Run`) — both an inline `kind:` handler and a
     `!ref` to a library-local resource. Importers mount the Api in their own
     Http.Server. These handlers are anonymous children / local references of THIS
-    document and must resolve `JS` against THIS library's import map, not the
-    consumer's (which never imports javascript under the alias `JS`).
+    document and must resolve `Run` against THIS library's import map, not the
+    consumer's (which never imports run under the alias `Run`).
 imports:
   Http: ../../../
-  JS: ../../../../javascript
-  Type: ../../../../type
+  Run: ../../../../run
 exports:
   resources:
     - Api
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: LocalGreet }
-code: |
-  async function main() {
-    return { message: "ref handler in scope-lib" };
-  }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      message: { type: string }
-    required: [ message ]
+value: { message: "ref handler in scope-lib" }
 ---
 kind: Http.Api
 metadata: { name: Api }
@@ -39,18 +28,8 @@ routes:
       path: /inline
       method: GET
     handler:
-      kind: JS.Script
-      code: |
-        async function main() {
-          return { message: "inline handler in scope-lib" };
-        }
-      outputType:
-        kind: Type.JsonSchema
-        schema:
-          type: object
-          properties:
-            message: { type: string }
-          required: [ message ]
+      kind: Run.Value
+      value: { message: "inline handler in scope-lib" }
     returns:
       - status: 200
         content:

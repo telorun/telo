@@ -11,6 +11,7 @@ metadata:
 imports:
   RecordStream: ../
   JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -20,17 +21,12 @@ targets:
 ---
 # Source: emits two text-delta parts then a finish part. ExtractText should
 # drop the finish part and yield the two delta strings.
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: AiLikeSource }
-code: |
-  async function main() {
-    async function* gen() {
-      yield { type: "text-delta", delta: "he" };
-      yield { type: "text-delta", delta: "llo" };
-      yield { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" };
-    }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - { type: "text-delta", delta: "he" }
+  - { type: "text-delta", delta: "llo" }
+  - { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }
 ---
 # Drains a Stream<string> into a single concatenated string for assertion.
 kind: JS.Script
@@ -122,15 +118,10 @@ steps:
 ---
 # Source emits a record whose discriminator value isn't listed in `records`.
 # ExtractText must throw ERR_UNKNOWN_RECORD.
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: UnknownSource }
-code: |
-  async function main() {
-    async function* gen() {
-      yield { type: "tool-call-delta", id: "abc", arguments: "{}" };
-    }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - { type: "tool-call-delta", id: "abc", arguments: "{}" }
 ---
 kind: Run.Sequence
 metadata: { name: TestUnknownRecord }

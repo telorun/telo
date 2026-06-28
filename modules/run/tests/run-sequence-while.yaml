@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../
-  JavaScript: ../../javascript
   Assert: ../../assert
 targets:
   - !ref TestWhileLoop
@@ -19,9 +18,11 @@ steps:
     inputs:
       n: 0
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main({ n }) { return { n } }
+      kind: Run.Value
+      inputs:
+        n: { type: number }
+      value:
+        n: !cel "inputs.n"
 
   - name: Increment
     while: "${{ steps.Counter.result.n < 3 }}"
@@ -30,9 +31,11 @@ steps:
         inputs:
           n: "${{ steps.Counter.result.n }}"
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main({ n }) { return { n: n + 1 } }
+          kind: Run.Value
+          inputs:
+            n: { type: number }
+          value:
+            n: !cel "inputs.n + 1.0"
 
   - name: AssertThreeIterations
     inputs:
@@ -49,17 +52,19 @@ steps:
   # --- while: loop body can reference outer steps ---
   - name: Multiplier
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main() { return { factor: 2 } }
+      kind: Run.Value
+      value:
+        factor: 2
 
   - name: Accumulator
     inputs:
       total: 0
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main({ total }) { return { total } }
+      kind: Run.Value
+      inputs:
+        total: { type: number }
+      value:
+        total: !cel "inputs.total"
 
   - name: Multiply
     while: "${{ steps.Accumulator.result.total < 8 }}"
@@ -69,9 +74,12 @@ steps:
           total: "${{ steps.Accumulator.result.total }}"
           factor: "${{ steps.Multiplier.result.factor }}"
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main({ total, factor }) { return { total: total + factor } }
+          kind: Run.Value
+          inputs:
+            total: { type: number }
+            factor: { type: number }
+          value:
+            total: !cel "inputs.total + inputs.factor"
 
   - name: AssertAccumulated
     inputs:

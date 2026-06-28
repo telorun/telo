@@ -49,16 +49,9 @@ outputType:
       path: { type: string }
     required: [ status, serverUrl, path ]
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: Ping }
-code: |
-  async function main() { return { ok: true }; }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties: { ok: { type: boolean } }
-    required: [ ok ]
+value: { ok: true }
 ---
 kind: Http.Api
 metadata: { name: ApiRelative }

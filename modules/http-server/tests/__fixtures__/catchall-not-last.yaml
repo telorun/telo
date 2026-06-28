@@ -4,13 +4,12 @@ metadata:
   version: 1.0.0
 imports:
   Http: ../..
-  JavaScript: ../../../javascript
+  Run: ../../../run
 ---
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: Handler
-code: |
-  function main(input) { return { ok: true } }
+value: { ok: true }
 ---
 # A no-when returns: entry followed by a when:-qualified entry — the later
 # entry is unreachable → CATCHALL_NOT_LAST.

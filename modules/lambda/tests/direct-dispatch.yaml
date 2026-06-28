@@ -8,8 +8,6 @@ metadata:
   version: 1.0.0
 imports:
   Lambda: ..
-  JavaScript: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -17,27 +15,13 @@ targets:
 ---
 # User-supplied invocable. Receives the Direct-resolved inputs and returns
 # a greeting payload.
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: Greet
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ name ]
-    properties:
-      name: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ message ]
-    properties:
-      message: { type: string }
-code: |
-  function main({ name }) {
-    return { message: `Hello ${name}!` };
-  }
+inputs:
+  name: { type: string }
+value:
+  message: !cel "'Hello ' + inputs.name + '!'"
 ---
 # Direct handler: maps the AWS event's `name` field to the JS handler's input,
 # returns the handler's result verbatim.

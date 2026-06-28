@@ -10,11 +10,13 @@ steps:
       computed: !cel "20.0 + 22.0"
       raw: !literal "literal-${{ untouched }}"
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main({ computed, raw }) {
-          return { computed, raw };
-        }
+      kind: Run.Value
+      inputs:
+        computed: { type: number }
+        raw: { type: string }
+      value:
+        computed: !cel "inputs.computed"
+        raw: !cel "inputs.raw"
   - name: AssertPartial
     inputs:
       computed: "${{ steps.CelInPartial.result.computed }}"

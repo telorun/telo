@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../
-  JavaScript: ../../javascript
   Assert: ../../assert
 targets:
   - !ref TestInputs
@@ -23,16 +22,20 @@ steps:
       - name: loud
         inputs: { name: "${{ inputs.name }}" }
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main({ name }) { return { text: "HELLO " + name } }
+          kind: Run.Value
+          inputs:
+            name: { type: string }
+          value:
+            text: !cel "'HELLO ' + inputs.name"
     else:
       - name: quiet
         inputs: { name: "${{ inputs.name }}" }
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main({ name }) { return { text: "hello " + name } }
+          kind: Run.Value
+          inputs:
+            name: { type: string }
+          value:
+            text: !cel "'hello ' + inputs.name"
 outputs:
   loud: "${{ steps.loud.result.text }}"
 ---

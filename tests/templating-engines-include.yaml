@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../modules/run
-  JavaScript: ../modules/javascript
   Assert: ../modules/assert
 include:
   - ./__fixtures__/templating-engines-include-steps.yaml

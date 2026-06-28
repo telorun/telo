@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../..
-  JavaScript: ../../../javascript
 ---
 # Every error field accessed inside the catch is valid → zero analyzer errors.
 kind: Run.Sequence
@@ -15,9 +14,8 @@ steps:
     try:
       - name: work
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main() { return 1 }
+          kind: Run.Value
+          value: 1
     catch:
       - name: rethrow
         throw:

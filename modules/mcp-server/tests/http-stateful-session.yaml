@@ -79,22 +79,10 @@ code: |
     };
   }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: PingImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties: {}
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      pong: { type: boolean }
-    required: [ pong ]
-code: |
-  function main() { return { pong: true }; }
+value:
+  pong: true
 ---
 kind: Mcp.Tools
 metadata: { name: PingTools }

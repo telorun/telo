@@ -8,6 +8,7 @@ metadata:
 imports:
   Console: ../
   JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -15,13 +16,12 @@ targets:
   - !ref TestBytesStream
   - !ref TestInvalidInput
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: StringSource }
-code: |
-  async function main() {
-    async function* gen() { yield "hi "; yield "there"; yield "\n"; }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - "hi "
+  - "there"
+  - "\n"
 ---
 kind: JS.Script
 metadata: { name: BytesSource }
@@ -35,13 +35,10 @@ code: |
     return { output: new Stream(gen()) };
   }
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: BadSource }
-code: |
-  async function main() {
-    async function* gen() { yield 42; }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - 42
 ---
 kind: Console.WriteStream
 metadata: { name: Stdout }

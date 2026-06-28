@@ -3,7 +3,6 @@ metadata:
   name: AppTraceSpanApp
   version: 1.0.0
 imports:
-  JS: ../../../../../modules/javascript
   Run: ../../../../../modules/run
 targets:
   - !ref Seq
@@ -16,8 +15,10 @@ steps:
     invoke: !ref Echo
     inputs: { value: 7 }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata:
   name: Echo
-code: |
-  function main(input) { return { echoed: input.value }; }
+inputs:
+  value: { type: integer }
+value:
+  echoed: !cel "inputs.value"
