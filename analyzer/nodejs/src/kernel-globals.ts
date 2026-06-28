@@ -7,12 +7,12 @@ import { residualEntrySchemaMap } from "./residual-schema.js";
  * `buildTypedCelEnvironment` in cel-environment.ts (CEL type-checking)
  * must stay in sync with this list.
  *
- * Note: `env` is only available in the root module context. Child modules
- * loaded via Telo.Import do not receive host environment variables.
- * There is no `imports` namespace at runtime — import snapshots are stored
- * under `resources.<alias>`.
+ * Note: there is no `imports` namespace at runtime — import snapshots are
+ * stored under `resources.<alias>`. Host environment variables are reached
+ * by declaring a typed `variables:`/`secrets:` entry with an `env:` binding
+ * and referencing `variables.X` / `secrets.X`.
  */
-export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "ports", "env"] as const;
+export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "ports"] as const;
 
 const SYSTEM_KINDS = new Set([
   "Telo.Definition",
@@ -33,7 +33,6 @@ const SYSTEM_KINDS = new Set([
  *   in the outer module; Libraries are only relevant when the caller scoped
  *   the manifest list to a single library's file.
  * - `resources`: enumerates all non-system resource names
- * - `env`: dynamic (runtime env vars, root module only)
  */
 export function buildKernelGlobalsSchema(
   manifests: ResourceManifest[],
@@ -68,7 +67,6 @@ export function buildKernelGlobalsSchema(
         additionalProperties: false,
       },
       ports: buildPortsSchema(moduleManifest?.ports),
-      env: { type: "object", additionalProperties: true },
     },
   };
 }
@@ -117,7 +115,7 @@ function buildSchemaMapSchema(
 
 /**
  * Merge kernel globals into an `x-telo-context` schema so chain-access
- * validation recognises `variables`, `secrets`, `resources`, `env`
+ * validation recognises `variables`, `secrets`, `resources`, `ports`
  * without module authors having to re-declare them.
  *
  * Context-specific properties take precedence over globals (spread order).

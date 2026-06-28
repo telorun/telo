@@ -18,6 +18,7 @@ import {
   type TypeRule,
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { hostEnv } from "./host-env.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
@@ -55,7 +56,9 @@ export class ResourceContextImpl implements ResourceContext {
     args?: ParsedArgs,
     ownerPrefix = "",
   ) {
-    this.env = env ?? process.env;
+    // `ctx.env` is the sanctioned host-env channel for controllers — always the
+    // real environment (kernel passes its snapshot), never the locked Proxy.
+    this.env = env ?? hostEnv();
     this.stdin = stdin ?? process.stdin;
     this.stdout = stdout ?? process.stdout;
     this.stderr = stderr ?? process.stderr;

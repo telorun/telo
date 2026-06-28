@@ -794,8 +794,7 @@ export class EvaluationContext implements IEvaluationContext {
    * trace — `variables`, masked `secrets`, resource `snapshots`, `ports`. Attached
    * to a trace's *root* span so the consumer can inspect what data the execution
    * could reference (beyond its own inputs/outputs). Only a `ModuleContext` owns a
-   * root scope; child scopes return undefined. Host `env` is deliberately omitted
-   * (it is the raw process environment — too broad/sensitive to dump).
+   * root scope; child scopes return undefined.
    */
   protected traceRootScope(): Record<string, unknown> | undefined {
     return undefined;

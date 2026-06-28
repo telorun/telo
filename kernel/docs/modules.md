@@ -23,7 +23,7 @@ Every module file begins with exactly one `Telo.Application` or `Telo.Library` d
 
 - **`targets`**: Optional. Resources to run once initialization completes. Applications whose work is carried entirely by auto-start Services (e.g. an HTTP server) may declare no targets.
 - **`lifecycle`** / **`keepAlive`**: Runtime lifecycle hints.
-- Receives `env: process.env` when loaded as the root manifest. Never valid as the target of an `imports:` entry.
+- Binds host environment variables (via `env:` keys on its `variables:`/`secrets:`/`ports:` entries) when loaded as the root manifest. Never valid as the target of an `imports:` entry.
 
 **Library-only:**
 
@@ -158,15 +158,15 @@ inputs:
 
 ## 5. Root Module (Application)
 
-The root of every running instance is a `Telo.Application`. It is the only module bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration) and the **only** module that has access to the host's environment variables via the `env` object. `Telo.Library` manifests cannot be roots — attempting to `loadFromConfig` on a Library is a hard error.
+The root of every running instance is a `Telo.Application`. It is the only module bootstrapped directly by the Telo runtime (e.g., via a CLI target or deployment configuration) and the **only** module that can bind the host's environment variables — through `env:` keys on its `variables:` / `secrets:` / `ports:` entries. `Telo.Library` manifests cannot be roots — attempting to `loadFromConfig` on a Library is a hard error.
 
-### 5.1 The `env` Capability
+### 5.1 Host Environment Access
 
-The `env` object represents the host process's environment variables and is **exclusively available** in the root Application's own resource CEL. Imported libraries are deliberately isolated from the host environment — they can only receive values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
+Host environment variables are reachable **only** by declaring a typed root entry bound to them. Each `variables:` / `secrets:` entry names a host variable via its `env:` key (and `ports:` entries do the same for inbound ports); the resolved value lands in the `variables.X` / `secrets.X` / `ports.X` CEL scope. There is no raw `env` map in CEL — a host variable that is not declared on the root is not reachable. Imported libraries are deliberately isolated from the host environment: they receive only the values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Available in**: CEL expressions on the root `Telo.Application`'s own resources.
-- **Unavailable in**: an `imports:` entry's `variables:`/`secrets:` — those are a **config-only contract** whose expressions see only the importing module's `variables`/`secrets` (never `env`, `resources`, or `ports`) — and any imported `Telo.Library`, regardless of nesting depth.
-- **Usage**: `${{ env.VARIABLE_NAME }}` in a root-Application resource. To pass an env-derived value into an import, bind it to a typed root `variables:`/`secrets:` entry and forward it as `${{ variables.X }}` / `${{ secrets.X }}`.
+- **Bound by**: an `env:` key on a root `Telo.Application`'s `variables:` / `secrets:` / `ports:` entry, read as `${{ variables.X }}` / `${{ secrets.X }}` / `${{ ports.X }}`.
+- **Unavailable in**: an `imports:` entry's `variables:`/`secrets:` — those are a **config-only contract** whose expressions see only the importing module's `variables`/`secrets` (never `resources` or `ports`) — and any imported `Telo.Library`, regardless of nesting depth.
+- **Forwarding**: to pass an env-derived value into an import, bind it to a typed root `variables:`/`secrets:` entry and forward it as `${{ variables.X }}` / `${{ secrets.X }}`.
 
 ### 5.2 Designating a Root Module
 
@@ -174,7 +174,7 @@ The root is always the `Telo.Application` named on the CLI or by the deployment 
 
 ### 5.3 Example
 
-The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely. The root binds host env into its own typed `variables:`/`secrets:`, then forwards those into each import — an import input is a **config-only** expression that may reference the importing module's `variables`/`secrets`, but not `env` directly.
+The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely. The root binds host env into its own typed `variables:`/`secrets:`, then forwards those into each import — an import input is a **config-only** expression that may reference only the importing module's `variables`/`secrets`.
 
 ```yaml
 # main.yaml (The Root Application)
@@ -196,7 +196,7 @@ variables:
     type: string
 imports:
   # ...then forwarded into each child's explicit contract. Import inputs reference
-  # the importing module's variables/secrets — never `env`. Forwarding is eager and
+  # only the importing module's variables/secrets. Forwarding is eager and
   # per-hop, so a value flows app -> lib -> lib at any depth and resolves in O(1).
   PaymentGateway:
     source: acme/payment-gateway@1.2.0
@@ -212,7 +212,7 @@ imports:
       dbConnectionString: "${{ variables.databaseUrl }}"
 ```
 
-The child modules (`acme/payment-gateway`, `acme/user-service`) never declare or reference `env`. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
+The child modules (`acme/payment-gateway`, `acme/user-service`) never touch the host environment. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
 
 ---
 

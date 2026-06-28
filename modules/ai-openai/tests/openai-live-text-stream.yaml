@@ -9,6 +9,8 @@ metadata:
     a .env.local in this directory; CI: secret on the workflow). NDJSON is
     the only format exercised live; format encoding is covered hermetically
     in the Layer 1 streaming-contract test.
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
   Ai: ../../ai
   AiOpenai: ../
@@ -20,13 +22,13 @@ imports:
 targets:
   - !ref LiveTextStream
 ---
-# apiKey is null-coalesced so the resource passes schema validation when env is
-# unset. The model is just config — no API call until stream() — and the
-# run-step is gated on env presence.
+# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
+# schema validation. The model is just config — no API call until stream() —
+# and the run-step is gated on the key being present.
 kind: AiOpenai.OpenaiModel
 metadata: { name: Live }
 model: gpt-4o-mini
-apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
+apiKey: !cel "secrets.openaiApiKey"
 options:
   temperature: 0
   maxTokens: 32
@@ -73,7 +75,7 @@ kind: Run.Sequence
 metadata: { name: LiveTextStream }
 steps:
   - name: GuardEnv
-    if: "${{ env.OPENAI_API_KEY != null }}"
+    if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: Stream
         inputs:

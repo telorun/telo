@@ -5,6 +5,8 @@ metadata:
   description: |
     Live OpenAI integration test. Skips silently when OPENAI_API_KEY is unset
     (locally: drop a .env.local in this directory; CI: secret on the workflow).
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
   AiOpenai: ../
   Ai: ../../ai
@@ -13,13 +15,13 @@ imports:
 targets:
   - !ref LiveText
 ---
-# apiKey is null-coalesced so the resource passes schema validation when env is
-# unset. The model is constructed (just config — no API call until invoke), but
-# never reached because the run-step is gated.
+# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
+# schema validation. The model is constructed (just config — no API call until
+# invoke), but never reached because the run-step is gated.
 kind: AiOpenai.OpenaiModel
 metadata: { name: Live }
 model: gpt-4o-mini
-apiKey: "${{ env.OPENAI_API_KEY == null ? '' : env.OPENAI_API_KEY }}"
+apiKey: !cel "secrets.openaiApiKey"
 options:
   temperature: 0
   maxTokens: 32
@@ -33,7 +35,7 @@ metadata:
   name: LiveText
 steps:
   - name: GuardEnv
-    if: "${{ env.OPENAI_API_KEY != null }}"
+    if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: Invoke
         inputs:

@@ -8,6 +8,7 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { promisify } from "util";
+import { hostEnv } from "../host-env.js";
 import { tryBuildControllerBundle } from "./bundle-builder.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
@@ -22,7 +23,7 @@ const requireFromHere = createRequire(import.meta.url);
  * sequenced, but predictability beats late-binding here. Override via
  * `TELO_PKG_MANAGER` (e.g. `pnpm`, `bun`).
  */
-const PACKAGE_MANAGER = process.env.TELO_PKG_MANAGER ?? "npm";
+const PACKAGE_MANAGER = hostEnv().TELO_PKG_MANAGER ?? "npm";
 
 /**
  * Make the installer ignore controllers' declared `peerDependencies` ranges.
@@ -637,7 +638,7 @@ async function isLockStale(lockPath: string): Promise<boolean> {
 
 async function runPackageManager(cwd: string, args: string[]): Promise<void> {
   try {
-    await execFileAsync(PACKAGE_MANAGER, args, { cwd, maxBuffer: 32 * 1024 * 1024 });
+    await execFileAsync(PACKAGE_MANAGER, args, { cwd, maxBuffer: 32 * 1024 * 1024, env: hostEnv() });
   } catch (err: any) {
     const isMissing =
       err?.code === "ENOENT" ||
@@ -736,10 +737,11 @@ function computeInstallRoot(entryUrl: string): string {
   }
   const scheme = schemeMatch[1].toLowerCase();
   if (scheme === "http" || scheme === "https") {
+    const env = hostEnv();
     const cacheBase =
-      process.env.TELO_NPM_CACHE_DIR ||
-      (process.env.XDG_CACHE_HOME
-        ? path.join(process.env.XDG_CACHE_HOME, "telo", "remote")
+      env.TELO_NPM_CACHE_DIR ||
+      (env.XDG_CACHE_HOME
+        ? path.join(env.XDG_CACHE_HOME, "telo", "remote")
         : path.join(os.homedir(), ".cache", "telo", "remote"));
     return path.join(cacheBase, sha256(entryUrl), "npm");
   }

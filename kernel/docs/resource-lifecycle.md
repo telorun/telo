@@ -19,7 +19,7 @@ Every resource instance and module in the Telo dependency graph must transition 
 **Phase:** Post-_Loads_ and Post-_Expands_.
 Before the kernel allocates memory or initiates any heavy I/O operations, it must verify the structural integrity of the module.
 
-- **Action:** The kernel validates the provided `variables` and `secrets` against the module's JSON Schema definitions. It also enforces that the `env` object is exclusively accessed by the Root Module.
+- **Action:** The kernel validates the provided `variables` and `secrets` against the module's JSON Schema definitions. Host environment variables are bound only through the root Application's `env:`-keyed `variables:`/`secrets:`/`ports:` entries; child modules never touch the host environment.
 - **Purpose:** Ensures that the module's contract is fully satisfied and all templates are successfully expanded before proceeding.
 
 ### 2.2. `Initialized` (Context Sealing)

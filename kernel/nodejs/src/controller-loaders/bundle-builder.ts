@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
+import { hostEnv } from "../host-env.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
 
 /**
@@ -27,7 +28,7 @@ import { REALM_COLLAPSE_NAMES } from "./realm.js";
 const BUNDLE_PREFIX = ".telobundle.";
 
 function bundlingEnabled(): boolean {
-  const v = process.env.TELO_CONTROLLER_BUNDLE?.trim().toLowerCase();
+  const v = hostEnv().TELO_CONTROLLER_BUNDLE?.trim().toLowerCase();
   return !(v === "0" || v === "false" || v === "no" || v === "off");
 }
 
@@ -224,7 +225,7 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
     // location. esbuild rewrites `__dirname`/`__filename` to `import.meta.url`,
     // so its presence flags this — fall back to the loose import for those.
     if (DIR_RELATIVE.test(out.text)) {
-      if (process.env.TELO_BUNDLE_DEBUG) {
+      if (hostEnv().TELO_BUNDLE_DEBUG) {
         process.stderr.write(`[bundle] skipped ${entryFile}: directory-relative asset resolution\n`);
       }
       return null;
@@ -236,7 +237,7 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
     await fs.writeFile(okMarker(bundleFile), "").catch(() => {});
     return bundleFile;
   } catch (err) {
-    if (process.env.TELO_BUNDLE_DEBUG) {
+    if (hostEnv().TELO_BUNDLE_DEBUG) {
       process.stderr.write(
         `[bundle] skipped ${entryFile}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}\n`,
       );

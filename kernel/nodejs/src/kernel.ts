@@ -32,6 +32,7 @@ import {
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
+import { hostEnv, lockControllerEnv } from "./host-env.js";
 import { KernelTracer } from "./tracing.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
@@ -48,6 +49,7 @@ import {
   resolveCacheRoot,
 } from "./manifest-sources/local-manifest-cache-source.js";
 import {
+  collectDeclaredEnvKeys,
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
   resolveApplicationEnv,
@@ -119,6 +121,9 @@ export class Kernel implements IKernel {
    *  per name. Surfaced via {@link getResolvedPorts} so a host can advertise where
    *  the running app is reachable. */
   private _resolvedPorts: Array<{ name: string; port: number; protocol: "tcp" | "udp" }> = [];
+  // Host env-var names the root Application binds via `variables`/`secrets`/
+  // `ports`; the denied set for the `process.env` guardrail installed at boot.
+  private _declaredEnvKeys: string[] = [];
   /** The `.telo` cache root for this load, resolved once in `load()` and
    *  threaded to the validator, analysis stamp, and npm install root. */
   private _cacheRoot?: string | null;
@@ -148,7 +153,7 @@ export class Kernel implements IKernel {
     this.stdin = options.stdin ?? process.stdin;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
-    this.env = options.env ?? process.env;
+    this.env = options.env ?? hostEnv();
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
     this.loader = new Loader(defaultSources(this.registryUrl), { celHandlers: nodeCelHandlers });
@@ -338,7 +343,6 @@ export class Kernel implements IKernel {
       [],
       this._createInstance.bind(this),
       (event, payload, metadata) => this.eventBus.emit(event, payload, metadata),
-      this.env,
     );
     this.rootContext.tracer = this.tracer;
     // Initialize built-in Runtime definitions first
@@ -551,6 +555,9 @@ export class Kernel implements IKernel {
     }
 
     if (rootApplicationManifest) {
+      this._declaredEnvKeys = collectDeclaredEnvKeys(
+        rootApplicationManifest as Record<string, any>,
+      );
       const { variables, secrets, ports } = resolveApplicationEnv(
         rootApplicationManifest as Record<string, any>,
         this.env,
@@ -605,6 +612,19 @@ export class Kernel implements IKernel {
       throwInvalidState("boot", "load() has not been called");
     }
     this._bootCalled = true;
+
+    // Lock the ambient host environment before any controller runs: a key the
+    // manifest binds via `variables`/`secrets`/`ports` must be read through
+    // `ctx.env` or the declared binding, never the raw `process.env` var. Every
+    // other key passes through. Only real runs reach boot() — analyzeOnly loads
+    // return earlier — so analysis/editor are unaffected. The denied set is
+    // process-global and additive across in-process kernels.
+    lockControllerEnv(this._declaredEnvKeys, (key) => {
+      this.stderr.write(
+        `[telo] controller read process.env.${key} directly — ${key} is a declared ` +
+          `binding; read it through ctx.env or its variable/secret, not raw process.env.\n`,
+      );
+    });
 
     // Call register hooks for controllers actually loaded at this point (built-ins).
     // User-module kinds load their controllers during Phase 3 (Telo.Definition.init),

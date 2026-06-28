@@ -6,6 +6,8 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { promisify } from "util";
 
+import { hostEnv } from "../host-env.js";
+
 const execFileAsync = promisify(execFile);
 const requireFromHere = createRequire(import.meta.url);
 
@@ -211,7 +213,7 @@ export class NapiControllerLoader {
   ): Promise<BuildAndLoadResult> {
     _napiBuildAttempts++;
     try {
-      await execFileAsync("rustc", ["--version"]);
+      await execFileAsync("rustc", ["--version"], { env: hostEnv() });
     } catch {
       throw new ControllerEnvMissingError("rustc not found on PATH");
     }
@@ -225,6 +227,7 @@ export class NapiControllerLoader {
       await execFileAsync("cargo", ["build", "--release"], {
         cwd: cratePath,
         maxBuffer: 32 * 1024 * 1024,
+        env: hostEnv(),
       });
     } catch (err: any) {
       const stderr = err?.stderr ? `\n${err.stderr}` : "";
@@ -308,7 +311,7 @@ async function resolveCrateMetadata(
     "--manifest-path",
     path.join(cratePath, "Cargo.toml"),
     "--no-deps",
-  ], { maxBuffer: 32 * 1024 * 1024 });
+  ], { maxBuffer: 32 * 1024 * 1024, env: hostEnv() });
   const metadata = JSON.parse(result.stdout);
   const cratePackage = metadata.packages?.find(
     (p: any) => p.manifest_path === path.join(cratePath, "Cargo.toml"),

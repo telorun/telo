@@ -144,31 +144,22 @@ jobs:
           projectPath: apps/telo-editor
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-      # Flatten the distributable bundles (.dmg/.msi/.exe/.AppImage/.deb) that
-      # tauri-action reports into one dir for upload. `shell: bash` so the same
-      # script runs on the Windows runner (Git bash); jq is preinstalled on all
-      # GitHub-hosted images.
-      - name: Stage bundles
-        shell: bash
-        env:
-          ARTIFACTS: ${{ steps.tauri.outputs.artifactPaths }}
-        run: |
-          set -euo pipefail
-          mkdir -p staged
-          # tr normalizes Windows backslash paths so Git bash `cp` resolves them.
-          # -f keeps only single-file deliverables (.dmg/.msi/.exe/.AppImage/.deb)
-          # and skips directory bundles like macOS `telo-editor.app` (shipped via
-          # the .dmg).
-          echo "$ARTIFACTS" | jq -r '.[]' | tr '\\' '/' | while read -r p; do
-            if [ -f "$p" ]; then cp "$p" staged/; fi
-          done
-          ls -la staged
-
+      # Glob the single-file deliverables straight from the bundle tree. Reading
+      # the filesystem (rather than tauri-action's `artifactPaths` string) sidesteps
+      # Windows path-format handling, and the per-extension globs skip the macOS
+      # `.app` directory (shipped inside the .dmg). `target/**/release` matches both
+      # the plain (`target/release`, Linux/Windows) and triple-scoped
+      # (`target/<triple>/release`, macOS `--target`) layouts.
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
           name: editor-${{ matrix.label }}
-          path: staged/*
+          path: |
+            apps/telo-editor/src-tauri/target/**/release/bundle/dmg/*.dmg
+            apps/telo-editor/src-tauri/target/**/release/bundle/msi/*.msi
+            apps/telo-editor/src-tauri/target/**/release/bundle/nsis/*.exe
+            apps/telo-editor/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            apps/telo-editor/src-tauri/target/**/release/bundle/deb/*.deb
           if-no-files-found: error
 
   release:

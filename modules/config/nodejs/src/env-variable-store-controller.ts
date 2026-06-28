@@ -13,7 +13,7 @@ class EnvironmentVariableStore implements ResourceInstance, ConfigStoreHandle {
   async init(ctx: ResourceContext): Promise<void> {
     const env: Record<string, string> = {};
     for (const [key, def] of Object.entries(this.resource.schema)) {
-      const val = process.env[key] ?? (def as Record<string, unknown>).default;
+      const val = ctx.env[key] ?? (def as Record<string, unknown>).default;
       if (val !== undefined) env[key] = String(val);
     }
     ctx.validateSchema(env, this.resource.schema);

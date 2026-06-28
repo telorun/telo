@@ -54,11 +54,12 @@ export class McpStdioClient {
     if (!this.manifest.command) {
       throw transportError("Mcp.StdioClient requires a `command` field");
     }
-    // Build the child environment by merging process.env with the manifest's
-    // extra env on top. Filter undefined entries from process.env to satisfy
-    // the SDK's `Record<string, string>` typing.
+    // Build the child environment by merging the host env (via the sanctioned
+    // `ctx.env`, not the locked `process.env`) with the manifest's extra env on
+    // top. Filter undefined entries to satisfy the SDK's `Record<string, string>`
+    // typing.
     const childEnv: Record<string, string> = {};
-    for (const [k, v] of Object.entries(process.env)) {
+    for (const [k, v] of Object.entries(this.ctx.env)) {
       if (typeof v === "string") childEnv[k] = v;
     }
     for (const [k, v] of Object.entries(this.manifest.env ?? {})) {
