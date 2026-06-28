@@ -3,7 +3,7 @@ metadata:
   name: owner-identity-lib
   version: 1.0.0
 imports:
-  JS: ../../../../../../modules/javascript
+  Run: ../../../../../../modules/run
 ---
 kind: Telo.Definition
 metadata:
@@ -25,15 +25,11 @@ schema:
 resources:
   # A fixed child name (not derived from self.name), so two Boxed instances both
   # spawn a child called `inner` — the collision the owner identity must resolve.
-  - kind: JS.Script
+  - kind: Run.Value
     metadata:
       name: inner
-    inputType: { type: object, additionalProperties: true }
-    outputType: { type: object, additionalProperties: true }
-    code: |
-      function main(input) { return { echoed: input.value }; }
+    value:
+      echoed: !cel "self.value"
 provide:
-  kind: JS.Script
+  kind: Run.Value
   name: inner
-inputs:
-  value: ${{ self.value }}

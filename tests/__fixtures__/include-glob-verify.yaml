@@ -7,11 +7,12 @@ steps:
       x: 7
       y: 6
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main({ x, y }) {
-          return { product: x * y }
-        }
+      kind: Run.Value
+      inputs:
+        x: { type: number }
+        y: { type: number }
+      value:
+        product: !cel "inputs.x * inputs.y"
   - name: VerifyProduct
     inputs:
       product: "${{ steps.Multiply.result.product }}"

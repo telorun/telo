@@ -3,7 +3,7 @@ metadata:
   name: provider-template-lib
   version: 1.0.0
 imports:
-  JS: ../../../../../../modules/javascript
+  Run: ../../../../../../modules/run
 ---
 kind: Telo.Definition
 metadata:
@@ -16,17 +16,13 @@ schema:
   properties:
     secret: { type: string }
 resources:
-  - kind: JS.Script
+  - kind: Run.Value
     metadata:
-      name: ${{ self.name }}-source
-    inputType: { type: object, additionalProperties: true }
-    outputType: { type: object, additionalProperties: true }
-    code: |
-      function main(input) { return { raw: input.value }; }
+      name: !cel "self.name + '-source'"
+    value:
+      raw: !cel "self.secret"
 provide:
-  kind: JS.Script
-  name: ${{ self.name }}-source
-inputs:
-  value: ${{ self.secret }}
+  kind: Run.Value
+  name: !cel "self.name + '-source'"
 result:
-  token: "bearer ${{ result.raw }}"
+  token: !cel "'bearer ' + result.raw"

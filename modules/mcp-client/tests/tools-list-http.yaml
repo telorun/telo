@@ -4,22 +4,14 @@ imports:
   Mcp: ../../mcp-server
   McpClient: ../
   Http: ../../http-server
-  JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: PingImpl }
-inputType:
-  kind: Type.JsonSchema
-  schema: { type: object, properties: {}, additionalProperties: true }
-outputType:
-  kind: Type.JsonSchema
-  schema: { type: object, properties: { pong: { type: boolean } }, required: [ pong ] }
-code: |
-  function main() { return { pong: true }; }
+value:
+  pong: true
 ---
 kind: Mcp.Tools
 metadata: { name: ListedTools }

@@ -4,39 +4,24 @@ metadata:
   version: 1.0.0
   description: |
     Regression fixture for cross-import handler injection. Defines an Http.Api
-    (`Api`) whose route handler is a `!ref` to a library-INTERNAL JavaScript.Script
-    (`Greet`). The handler's module (javascript) is imported only HERE, never by
+    (`Api`) whose route handler is a `!ref` to a library-INTERNAL Run.Value
+    (`Greet`). The handler's module (run) is imported only HERE, never by
     the consumer — so the consumer preloads the Http.Api controller (it imports
     http-server) but NOT the handler's controller. Mounting this Api must still
     inject the live `Greet` instance across the import boundary.
 imports:
   Http: ../../../
-  JS: ../../../../javascript
-  Type: ../../../../type
+  Run: ../../../../run
 exports:
   resources:
     - Api
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: Greet }
-code: |
-  async function main({ name }) {
-    return { message: `Hello ${name}!` };
-  }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      name: { type: string }
-    required: [ name ]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      message: { type: string }
-    required: [ message ]
+inputs:
+  name: { type: string }
+value:
+  message: !cel "'Hello ' + inputs.name + '!'"
 ---
 kind: Http.Api
 metadata: { name: Api }

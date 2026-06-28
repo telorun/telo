@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../
-  JavaScript: ../../javascript
   Assert: ../../assert
 targets:
   - !ref TestWhenGuard
@@ -44,9 +43,9 @@ steps:
   # Data-driven guard: step only runs when a prior result satisfies the condition.
   - name: Compute
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main() { return { ready: true } }
+      kind: Run.Value
+      value:
+        ready: true
 
   - name: DataDrivenStep
     when: "${{ steps.Compute.result.ready == true }}"

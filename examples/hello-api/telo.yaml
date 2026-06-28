@@ -4,16 +4,15 @@ metadata:
   version: 1.0.0
   description: |
     Simplest possible HTTP API: a single `GET /v1/hello?name=…` route backed
-    by a typed `JS.Script`. Shows how `Http.Server` mounts an `Http.Api`, how
+    by a typed `Run.Value`. Shows how `Http.Server` mounts an `Http.Api`, how
     the request schema feeds a CEL expression on `inputs`, and how the
-    script's output flows into the response body via `result.*`.
+    handler's output flows into the response body via `result.*`.
 
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Type: std/type@0.6.0
   Http: std/http-server@0.16.0
-  JS: std/javascript@0.5.0
+  Run: std/run@0.11.1
 targets:
   - !ref ExampleServer
 ports:
@@ -67,24 +66,10 @@ routes:
               greeting: "${{ result.message }}!"
               nice: "WOW"
 ---
-kind: JS.Script
+kind: Run.Value
 metadata:
   name: SayHello
-code: |
-  function main({ name }) {
-    return {
-      message: `Hello ${name}!`,
-    }
-  };
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      name: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      message: { type: string }
+inputs:
+  name: { type: string }
+value:
+  message: !cel "'Hello ' + inputs.name + '!'"

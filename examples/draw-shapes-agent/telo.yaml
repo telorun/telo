@@ -28,7 +28,6 @@ imports:
   Image: std/image@0.2.0
   S3: std/s3@0.6.0
   Run: std/run@0.11.1
-  Js: std/javascript@0.5.0
 targets:
   - !ref Server
 ports:
@@ -114,13 +113,13 @@ expiresIn: 3600
 # The unique object key for one request. uuidv4() (a CEL function) supplies the
 # randomness; the script only shapes it into a key, captured as a step result so the
 # handler can hand the SAME id to the agent and later presign it.
-kind: Js.Script
+kind: Run.Value
 metadata:
   name: MakeId
-code: |
-  function main({ seed }) {
-    return { documentId: "drawings/" + seed + ".png" };
-  }
+inputs:
+  seed: { type: string }
+value:
+  documentId: !cel "'drawings/' + inputs.seed + '.png'"
 ---
 # The composite tool the agent calls: render shapes → store → return the image. A
 # Run.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.

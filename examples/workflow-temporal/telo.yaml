@@ -5,7 +5,7 @@ metadata:
   description: |
     Two-step durable workflow (fetch → transform) executed on a Temporal
     backend. Shows how `Workflow.Graph` declares activity nodes that
-    dispatch to ordinary `JS.Script` resources, with per-node timeout and
+    dispatch to ordinary handler resources, with per-node timeout and
     retry policy.
 
     Requires a running Temporal server at `localhost:7233`. The quickest
@@ -19,6 +19,7 @@ imports:
   Workflow: std/workflow@0.1.0
   Temporal: std/workflow-temporal@0.2.1
   JS: std/javascript@0.5.0
+  Run: std/run@0.11.1
 targets:
   - !ref DataSyncWorkflow
 ---
@@ -49,25 +50,13 @@ outputType:
     properties:
       data: { type: object }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata:
   name: TransformData
-code: |
-  function main({ data }) {
-    return { result: data.items.map(i => i.id) };
-  }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      data: { type: object }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      result: { type: array }
+inputs:
+  data: { type: object }
+value:
+  result: !cel "inputs.data.items.map(i, i.id)"
 ---
 kind: Workflow.Graph
 metadata:

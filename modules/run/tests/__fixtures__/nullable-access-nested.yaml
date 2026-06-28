@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../..
-  JavaScript: ../../../javascript
 ---
 # A finally nested inside a catch: the innermost branch governs, so error is
 # nullable there — unguarded error.code must still be flagged even though the
@@ -17,17 +16,15 @@ steps:
     try:
       - name: work
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main() { return 1 }
+          kind: Run.Value
+          value: 1
     catch:
       - name: inner
         try:
           - name: more
             invoke:
-              kind: JavaScript.Script
-              code: |
-                function main() { return 1 }
+              kind: Run.Value
+              value: 1
         finally:
           - name: cleanup
             throw:

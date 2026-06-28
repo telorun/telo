@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../..
-  JavaScript: ../../../javascript
 ---
 # error is nullable inside finally (null on the success path). Accessing
 # error.code without a null-guard must be flagged → CEL_NULLABLE_ACCESS.
@@ -16,9 +15,8 @@ steps:
     try:
       - name: work
         invoke:
-          kind: JavaScript.Script
-          code: |
-            function main() { return 1 }
+          kind: Run.Value
+          value: 1
     finally:
       - name: cleanup
         throw:

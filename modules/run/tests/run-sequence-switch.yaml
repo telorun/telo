@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../
-  JavaScript: ../../javascript
   Assert: ../../assert
 targets:
   - !ref TestSwitch
@@ -106,9 +105,9 @@ steps:
   # --- switch: data-driven dispatch ---
   - name: ComputeRole
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main() { return { role: "admin" } }
+      kind: Run.Value
+      value:
+        role: "admin"
 
   - name: RouteByRole
     switch: "${{ steps.ComputeRole.result.role }}"

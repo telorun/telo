@@ -5,25 +5,20 @@ metadata:
   description: |
     Smoke test for plain-text-codec. Roundtrips a small AsyncIterable of delta
     records through PlainText.Encoder → PlainText.Decoder and asserts the final
-    UTF-8 string. Self-contained: depends only on this codec module + JS/Run/Assert.
+    UTF-8 string. Self-contained: depends only on this codec module + Stream/Run/Assert.
 imports:
   PlainText: ../
-  JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestRoundtrip
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: Source }
-code: |
-  async function main() {
-    async function* gen() {
-      yield { delta: "h" };
-      yield { delta: "i" };
-    }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - { delta: "h" }
+  - { delta: "i" }
 ---
 kind: PlainText.Encoder
 metadata: { name: Encoder }

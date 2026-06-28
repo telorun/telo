@@ -21,28 +21,14 @@ targets:
 # The "echo path" invocable used as the not-found target. It reads `inputs.path`
 # (the value the sibling `inputs:` block produces) and returns it verbatim, so
 # the test can assert that `inputs:` actually reached the handler.
-kind: JS.Script
+kind: Run.Value
 metadata: { name: EchoPath }
-code: |
-  async function main({ path, method }) {
-    return { path, method };
-  }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      path: { type: string }
-      method: { type: string }
-    required: [ path ]
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      path: { type: string }
-      method: { type: string }
-    required: [ path ]
+inputs:
+  path: { type: string }
+  method: { type: string }
+value:
+  path: !cel "inputs.path"
+  method: !cel "inputs.method"
 ---
 kind: HttpClient.Client
 metadata: { name: SelfClient }

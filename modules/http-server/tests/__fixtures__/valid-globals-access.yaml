@@ -4,23 +4,17 @@ metadata:
   version: 1.0.0
 imports:
   Http: ../..
-  JavaScript: ../../../javascript
-  Type: ../../../type
+  Run: ../../../run
 variables:
   apiKey:
     type: string
 ---
-kind: JavaScript.Script
+kind: Run.Value
 metadata:
   name: Handler
-code: |
-  function main(input) { return { ok: true } }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      ok: { type: boolean }
+inputs:
+  key: { type: string }
+value: { ok: true }
 ---
 kind: Http.Api
 metadata:

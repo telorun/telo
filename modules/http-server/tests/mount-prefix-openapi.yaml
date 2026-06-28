@@ -18,27 +18,13 @@ imports:
 targets:
   - !ref Test
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: RootList }
-code: |
-  async function main() { return { where: "root" }; }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties: { where: { type: string } }
-    required: [ where ]
+value: { where: "root" }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: AdminList }
-code: |
-  async function main() { return { where: "admin" }; }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties: { where: { type: string } }
-    required: [ where ]
+value: { where: "admin" }
 ---
 kind: Http.Api
 metadata: { name: RootApi }

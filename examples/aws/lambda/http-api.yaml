@@ -19,30 +19,17 @@ imports:
   Lambda: aws/lambda@0.6.0
   JS: std/javascript@0.5.0
   Type: std/type@0.6.0
+  Run: std/run@0.11.1
 targets:
   - !ref Main
 ---
 # GET /users/{id} → returns a greeting by id.
-kind: JS.Script
+kind: Run.Value
 metadata: { name: GreetById }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ id ]
-    properties:
-      id: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ message ]
-    properties:
-      message: { type: string }
-code: |
-  function main({ id }) {
-    return { message: `Hello, user ${id}!` };
-  }
+inputs:
+  id: { type: string }
+value:
+  message: !cel "'Hello, user ' + inputs.id + '!'"
 ---
 # POST /orders → echoes the parsed JSON body; throws ValidationError on
 # missing fields so the route's catches: block can render a 400.

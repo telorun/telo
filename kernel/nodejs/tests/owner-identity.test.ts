@@ -20,7 +20,7 @@ describe("owner identity — children spawned by a templated kind", () => {
     await kernel.load(APP);
 
     // Both `Lib.Boxed` instances spawn a child literally named `inner`.
-    const children = capture(kernel, "JS.Script.inner.Created");
+    const children = capture(kernel, "Run.Value.inner.Created");
     const alphas = capture(kernel, "Lib.Boxed.alpha.Created");
 
     await kernel.boot();
@@ -28,17 +28,17 @@ describe("owner identity — children spawned by a templated kind", () => {
     // The two children no longer collide: each carries its owner's prefix.
     const childIds = children.map((p) => p.resource.id).sort();
     expect(childIds).toEqual([
-      "Lib.Boxed.alpha/JS.Script.inner",
-      "Lib.Boxed.beta/JS.Script.inner",
+      "Lib.Boxed.alpha/Run.Value.inner",
+      "Lib.Boxed.beta/Run.Value.inner",
     ]);
 
     const byId = new Map(children.map((p) => [p.resource.id, p]));
-    expect(byId.get("Lib.Boxed.alpha/JS.Script.inner")?.owner).toMatchObject({
+    expect(byId.get("Lib.Boxed.alpha/Run.Value.inner")?.owner).toMatchObject({
       kind: "Lib.Boxed",
       name: "alpha",
       id: "Lib.Boxed.alpha",
     });
-    expect(byId.get("Lib.Boxed.beta/JS.Script.inner")?.owner).toMatchObject({
+    expect(byId.get("Lib.Boxed.beta/Run.Value.inner")?.owner).toMatchObject({
       kind: "Lib.Boxed",
       name: "beta",
       id: "Lib.Boxed.beta",

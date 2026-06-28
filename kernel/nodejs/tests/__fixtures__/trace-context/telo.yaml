@@ -3,7 +3,7 @@ metadata:
   name: TraceContextApp
   version: 1.0.0
 imports:
-  JS: ../../../../../modules/javascript
+  Run: ../../../../../modules/run
 variables:
   greeting:
     env: TRACE_CTX_GREETING
@@ -15,8 +15,10 @@ secrets:
     type: string
     default: super-secret-value
 ---
-kind: JS.Script
+kind: Run.Value
 metadata:
   name: Echo
-code: |
-  function main(input) { return { echoed: input.value }; }
+inputs:
+  value: { type: integer }
+value:
+  echoed: !cel "inputs.value"

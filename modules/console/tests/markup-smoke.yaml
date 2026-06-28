@@ -27,7 +27,7 @@ metadata:
     by running examples/chat-console.yaml interactively.
 imports:
   Console: ../
-  JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -70,16 +70,11 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: MarkupSource }
-code: |
-  async function main() {
-    async function* gen() {
-      yield "{cyan hello} ";
-      yield "{magenta.bold world}\n";
-    }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - "{cyan hello} "
+  - "{magenta.bold world}\n"
 ---
 kind: Run.Sequence
 metadata: { name: TestWriteStream }

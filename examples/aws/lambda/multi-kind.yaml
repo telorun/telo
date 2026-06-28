@@ -22,24 +22,15 @@ imports:
   Lambda: aws/lambda@0.6.0
   JS: std/javascript@0.5.0
   Type: std/type@0.6.0
+  Run: std/run@0.11.1
 targets:
   - !ref Main
 ---
 # Three handlers — one per event source.
-kind: JS.Script
+kind: Run.Value
 metadata: { name: GetHealth }
-inputType: { kind: Type.JsonSchema, schema: { type: object } }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    required: [ status ]
-    properties:
-      status: { type: string }
-code: |
-  function main() {
-    return { status: "ok" };
-  }
+value:
+  status: ok
 ---
 kind: JS.Script
 metadata: { name: ProcessEvents }
@@ -64,24 +55,12 @@ code: |
     return { batchItemFailures: [] };
   }
 ---
-kind: JS.Script
+kind: Run.Value
 metadata: { name: AdminPing }
-inputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      caller: { type: string }
-outputType:
-  kind: Type.JsonSchema
-  schema:
-    type: object
-    properties:
-      pong: { type: string }
-code: |
-  function main({ caller }) {
-    return { pong: caller ?? "anonymous" };
-  }
+inputs:
+  caller: { type: string }
+value:
+  pong: !cel "'caller' in inputs && inputs.caller != null ? inputs.caller : 'anonymous'"
 ---
 # HTTP API v2 events → HttpApi handler (matched on event.requestContext.http).
 kind: Lambda.HttpApi

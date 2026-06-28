@@ -10,22 +10,18 @@ metadata:
 imports:
   Sse: ../
   JS: ../../javascript
+  Stream: ../../stream
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestEncode
 ---
-kind: JS.Script
+kind: Stream.Of
 metadata: { name: Source }
-code: |
-  async function main() {
-    async function* gen() {
-      yield { type: "text-delta", delta: "h" };
-      yield { type: "text-delta", delta: "i" };
-      yield { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" };
-    }
-    return { output: new Stream(gen()) };
-  }
+items:
+  - { type: "text-delta", delta: "h" }
+  - { type: "text-delta", delta: "i" }
+  - { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }
 ---
 kind: JS.Script
 metadata: { name: Drain }
