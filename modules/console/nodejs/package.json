@@ -1,6 +1,6 @@
 {
   "name": "@telorun/console",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Telo Console module - Console I/O resource kinds for Telo manifests.",
   "keywords": [
     "telo",

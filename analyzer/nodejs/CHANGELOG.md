@@ -1,5 +1,41 @@
 # @telorun/analyzer
 
+## 0.30.0
+
+### Minor Changes
+
+- 4e5d861: Remove the `env` CEL global. Manifests can no longer read raw host environment
+  variables via `${{ env.X }}` — that path was long superseded by per-field `env:`
+  bindings on typed `variables:` / `secrets:` / `ports:` entries.
+
+  To reach a host variable, declare a typed root entry bound to it and reference
+  the resolved value:
+
+  ```yaml
+  secrets:
+    apiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+  # then: !cel "secrets.apiKey"
+  ```
+
+  The kernel no longer forwards `process.env` into the root module's CEL scope
+  (`this.env` still feeds `variables`/`secrets`/`ports` resolution and the
+  controller `ResourceContext`), and the analyzer drops `env` from the kernel
+  globals, so `env.X` now fails static analysis as an undeclared reference. No
+  deprecation shim — references must migrate to a declared `variables:`/`secrets:`
+  entry.
+
+### Patch Changes
+
+- 2d9323c: Stop warning on additive pre-1.0 version hoists. When the same module is
+  imported at different versions within one major, the graph already resolves
+  every importer to the highest version — a non-lossy, by-design redirect. It no
+  longer emits a `MODULE_VERSION_HOISTED` warning per import edge (which flooded
+  `telo check` and `telo run` output for normal version skew).
+
+  A `MODULE_VERSION_HOISTED` warning is still raised for the genuinely ambiguous
+  case — two sources claiming the same version with differing content — and an
+  incompatible major mismatch remains a hard `MODULE_VERSION_CONFLICT` error.
+
 ## 0.29.0
 
 ### Minor Changes

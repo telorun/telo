@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   namespace: aws
   name: lambda
-  version: 0.6.0
+  version: 0.6.1
   description: >-
     AWS Lambda functions driven by multiple event sources from one artifact.
     `Lambda.Function` is the AWS-facing transport; `Lambda.HttpApi`,
@@ -48,7 +48,7 @@ metadata:
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.5.0?local_path=./nodejs#http-api
+  - pkg:npm/@telorun/lambda@0.5.1?local_path=./nodejs#http-api
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -166,7 +166,7 @@ metadata:
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.5.0?local_path=./nodejs#sqs
+  - pkg:npm/@telorun/lambda@0.5.1?local_path=./nodejs#sqs
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -237,7 +237,7 @@ metadata:
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lambda@0.5.0?local_path=./nodejs#direct
+  - pkg:npm/@telorun/lambda@0.5.1?local_path=./nodejs#direct
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -287,7 +287,7 @@ metadata:
   name: Function
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/lambda@0.5.0?local_path=./nodejs#function
+  - pkg:npm/@telorun/lambda@0.5.1?local_path=./nodejs#function
 schema:
   type: object
   properties:
