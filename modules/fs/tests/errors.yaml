@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: FsErrors
+  version: 1.0.0
+  description: |
+    Fs error paths are surfaced, not swallowed: reading a missing file raises
+    ENOENT naming the path; Fs.FileEdit fails when oldString is absent or matches
+    ambiguously. The same edit with replaceAll succeeds and reports the count.
+imports:
+  Fs: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Fs.DirectoryCreation
+metadata: { name: MakeDir }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileWrite
+metadata: { name: Write }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.File
+metadata: { name: Read }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileEdit
+metadata: { name: Edit }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileRemoval
+metadata: { name: Remove }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Reset
+    try:
+      - name: DoReset
+        inputs: { path: scratch-err, recursive: true }
+        invoke: !ref Remove
+    catch:
+      - name: NoLeftover
+        inputs: { actual: 1, expected: 1 }
+        invoke: !ref Assert.equals
+
+  - name: Mkdir
+    inputs: { path: scratch-err, createParents: true }
+    invoke: !ref MakeDir
+
+  - name: Seed
+    inputs:
+      path: scratch-err/dup.txt
+      content: "x\nx\n"
+    invoke: !ref Write
+
+  - name: ReadMissing
+    try:
+      - name: DoRead
+        inputs: { path: scratch-err/does-not-exist.txt }
+        invoke: !ref Read
+    catch:
+      - name: AssertEnoent
+        inputs:
+          actual: !cel "error.message"
+          pattern: "does-not-exist.txt.*ENOENT"
+        invoke: !ref Assert.matches
+
+  - name: EditAbsent
+    try:
+      - name: DoEdit
+        inputs:
+          path: scratch-err/dup.txt
+          oldString: "not-present"
+          newString: "z"
+        invoke: !ref Edit
+    catch:
+      - name: AssertNotFound
+        inputs:
+          actual: !cel "error.message"
+          pattern: "oldString not found"
+        invoke: !ref Assert.matches
+
+  - name: EditAmbiguous
+    try:
+      - name: DoEdit
+        inputs:
+          path: scratch-err/dup.txt
+          oldString: "x"
+          newString: "y"
+        invoke: !ref Edit
+    catch:
+      - name: AssertAmbiguous
+        inputs:
+          actual: !cel "error.message"
+          pattern: "matches 2 times"
+        invoke: !ref Assert.matches
+
+  - name: EditReplaceAll
+    inputs:
+      path: scratch-err/dup.txt
+      oldString: "x"
+      newString: "y"
+      replaceAll: true
+    invoke: !ref Edit
+
+  - name: AssertReplaceAll
+    inputs:
+      actual: !cel "steps.EditReplaceAll.result.replacements"
+      expected: 2
+    invoke: !ref Assert.equals
+
+  - name: Cleanup
+    inputs: { path: scratch-err, recursive: true }
+    invoke: !ref Remove

@@ -1,0 +1,4 @@
+# Tests create scratch files/dirs here at runtime and remove them on success;
+# keep the directory tracked but ignore everything written into it.
+*
+!.gitignore

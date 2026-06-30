@@ -1,0 +1,75 @@
+{
+  "name": "@telorun/fs",
+  "version": "0.0.0",
+  "description": "Telo fs module - local filesystem access via Node fs/promises.",
+  "keywords": [
+    "telo",
+    "fs",
+    "filesystem",
+    "file",
+    "directory"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/fs/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./file": {
+      "bun": "./src/file-controller.ts",
+      "import": "./dist/file-controller.js"
+    },
+    "./file-write": {
+      "bun": "./src/file-write-controller.ts",
+      "import": "./dist/file-write-controller.js"
+    },
+    "./file-edit": {
+      "bun": "./src/file-edit-controller.ts",
+      "import": "./dist/file-edit-controller.js"
+    },
+    "./directory-listing": {
+      "bun": "./src/directory-listing-controller.ts",
+      "import": "./dist/directory-listing-controller.js"
+    },
+    "./directory-creation": {
+      "bun": "./src/directory-creation-controller.ts",
+      "import": "./dist/directory-creation-controller.js"
+    },
+    "./file-removal": {
+      "bun": "./src/file-removal-controller.ts",
+      "import": "./dist/file-removal-controller.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}
