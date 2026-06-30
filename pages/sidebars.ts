@@ -493,6 +493,7 @@ const sidebars: SidebarsConfig = {
               label: "Scripting",
               items: [
                 { type: "doc", id: "modules/javascript/README", label: "JavaScript" },
+                { type: "doc", id: "modules/shell/README", label: "Shell" },
                 {
                   type: "category",
                   label: "Starlark",

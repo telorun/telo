@@ -1,0 +1,172 @@
+kind: Telo.Library
+metadata:
+  name: shell
+  namespace: std
+  version: 0.0.0
+  description: >-
+    Run shell commands behind a transport-neutral host abstraction. The
+    Shell.Host abstract plus the Command / CommandStream operations; the bundled
+    Shell.LocalHost driver runs commands on the local host via child_process.
+    Remote drivers (SSH, Docker, k8s) ship as their own modules and extend
+    Shell.Host, mirroring the sql / sql-sqlite family.
+---
+# Shell.Host — the abstract execution target every driver implements. A
+# Telo.Provider whose instance exposes the spawn primitive the operations call.
+# Consumers (Shell.Command / Shell.CommandStream) reference it via
+# `x-telo-ref: "std/shell#Host"`; a concrete implementation (Shell.LocalHost,
+# or a future ShellSsh.Host) satisfies the ref. The host owns command
+# composition — `<shell> -c <command>`, env merge, and cwd — so the operations
+# stay backend-agnostic.
+kind: Telo.Abstract
+metadata:
+  name: Host
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: Command
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#shell-command
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [command]
+    properties:
+      command:
+        title: Command
+        description: Shell command line, run as `<shell> -c <command>` on the host.
+        type: string
+      env:
+        title: Environment overlay
+        description: Per-call environment variables, merged over the host's base env.
+        type: object
+        additionalProperties: { type: string }
+      stdin:
+        title: Stdin
+        description: Written to the command's stdin, which is then closed.
+        type: string
+      timeoutMs:
+        title: Timeout (ms)
+        description: Kill the command and fail after this many milliseconds.
+        type: integer
+        minimum: 1
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [stdout, stderr, exitCode]
+    properties:
+      stdout: { type: string }
+      stderr: { type: string }
+      exitCode:
+        description: The command's exit status. A non-zero code is returned, not thrown.
+        type: integer
+schema:
+  type: object
+  additionalProperties: false
+  required: [host]
+  properties:
+    host:
+      title: Host
+      description: Reference to the Shell.Host the command runs on.
+      x-telo-ref: "std/shell#Host"
+  examples:
+    - host: !ref Local
+---
+# Streaming variant. Forwards stdout/stderr as they arrive plus a terminal
+# exit/error record on `result.output` per the streaming-Invocable convention.
+# Display-oriented: there is no declarative path to a scalar exitCode — for
+# pass/fail control flow use Shell.Command.
+kind: Telo.Definition
+metadata:
+  name: CommandStream
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#shell-command-stream
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [command]
+    properties:
+      command:
+        title: Command
+        description: Shell command line, run as `<shell> -c <command>` on the host.
+        type: string
+      env:
+        title: Environment overlay
+        description: Per-call environment variables, merged over the host's base env.
+        type: object
+        additionalProperties: { type: string }
+      stdin:
+        title: Stdin
+        description: Written to the command's stdin, which is then closed.
+        type: string
+      timeoutMs:
+        title: Timeout (ms)
+        description: Kill the command and fail after this many milliseconds.
+        type: integer
+        minimum: 1
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-stream: true
+        description: >-
+          Async iterable of records: `{type: stdout|stderr, chunk}` then a
+          terminal `{type: exit, exitCode, signal}` or `{type: error, error}`.
+schema:
+  type: object
+  additionalProperties: false
+  required: [host]
+  properties:
+    host:
+      title: Host
+      description: Reference to the Shell.Host the command runs on.
+      x-telo-ref: "std/shell#Host"
+  examples:
+    - host: !ref Local
+---
+# Shell.LocalHost — the bundled local driver. Runs commands via Node
+# child_process on the local host. `cwd` sets the working directory commands
+# start in; it is NOT a security boundary (a shell string can `cd` away, use
+# absolute paths, or spawn children). Real isolation comes from where the host
+# runs (the runner sandbox), not this field.
+kind: Telo.Definition
+metadata:
+  name: LocalHost
+capability: Telo.Provider
+extends: Self.Host
+controllers:
+  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#local-host
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: Directory commands start in (default the process working directory). Not a security boundary.
+      type: string
+    shell:
+      title: Shell interpreter
+      description: PATH name or absolute path of the interpreter. Default `/bin/sh` on POSIX, `%ComSpec%` on Windows.
+      type: string
+    env:
+      title: Base environment
+      description: Base environment variables for every command, under the per-call overlay.
+      type: object
+      additionalProperties: { type: string }
+  examples:
+    - cwd: ./workspace
+    - shell: /bin/bash
+      env:
+        CI: "true"
