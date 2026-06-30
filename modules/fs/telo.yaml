@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: fs
   namespace: std
-  version: 0.0.0
+  version: 0.1.0
   description: >-
     Local filesystem access. Read, write, edit, list, create, and remove files
     and directories on the host the kernel runs on, via Node `fs/promises`.
@@ -18,7 +18,7 @@ metadata:
   name: File
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#file
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -74,7 +74,7 @@ metadata:
   name: FileWrite
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-write
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#file-write
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -136,7 +136,7 @@ metadata:
   name: FileEdit
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-edit
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#file-edit
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -197,7 +197,7 @@ metadata:
   name: DirectoryListing
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#directory-listing
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#directory-listing
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -265,7 +265,7 @@ metadata:
   name: DirectoryCreation
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#directory-creation
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#directory-creation
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -316,7 +316,7 @@ metadata:
   name: FileRemoval
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-removal
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#file-removal
 inputType:
   kind: Type.JsonSchema
   schema:
