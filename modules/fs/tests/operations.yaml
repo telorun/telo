@@ -1,0 +1,163 @@
+kind: Telo.Application
+metadata:
+  name: FsOperations
+  version: 1.0.0
+  description: |
+    Fs happy paths in one sequence: create a directory, write a file, read it
+    back, edit it in place, list the tree, round-trip binary via base64, then
+    remove everything. All paths resolve against a scratch `cwd` under
+    __fixtures__ (created and removed by the test).
+imports:
+  Fs: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Fs.DirectoryCreation
+metadata: { name: MakeDir }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileWrite
+metadata: { name: Write }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.File
+metadata: { name: Read }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileEdit
+metadata: { name: Edit }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.DirectoryListing
+metadata: { name: List }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Fs.FileRemoval
+metadata: { name: Remove }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  # Tolerate a scratch dir left by an interrupted prior run so the first
+  # MakeDir below reliably reports `created: true`.
+  - name: Reset
+    try:
+      - name: DoReset
+        inputs: { path: scratch-ops, recursive: true }
+        invoke: !ref Remove
+    catch:
+      - name: NoLeftover
+        inputs: { actual: 1, expected: 1 }
+        invoke: !ref Assert.equals
+
+  - name: Mkdir
+    inputs: { path: scratch-ops, createParents: true }
+    invoke: !ref MakeDir
+
+  - name: MkdirAgain
+    inputs: { path: scratch-ops, createParents: true }
+    invoke: !ref MakeDir
+
+  - name: Write
+    inputs:
+      path: scratch-ops/note.txt
+      content: "version: 1\nhello\n"
+    invoke: !ref Write
+
+  - name: Read
+    inputs: { path: scratch-ops/note.txt }
+    invoke: !ref Read
+
+  - name: Edit
+    inputs:
+      path: scratch-ops/note.txt
+      oldString: "version: 1"
+      newString: "version: 2"
+    invoke: !ref Edit
+
+  - name: ReadEdited
+    inputs: { path: scratch-ops/note.txt }
+    invoke: !ref Read
+
+  - name: WriteBinary
+    inputs:
+      path: scratch-ops/blob.bin
+      content: !cel "'aGVsbG8='"
+      encoding: base64
+    invoke: !ref Write
+
+  - name: ReadBinary
+    inputs: { path: scratch-ops/blob.bin, encoding: base64 }
+    invoke: !ref Read
+
+  # Byte-safety: a file whose bytes around the edited text are not valid UTF-8
+  # (0xFF … 0xFE). The edit must leave those bytes untouched — a UTF-8 round-trip
+  # would replace them with U+FFFD and change the base64.
+  - name: WriteNeedle
+    inputs:
+      path: scratch-ops/needle.bin
+      content: !cel "'/25lZWRsZf4='"
+      encoding: base64
+    invoke: !ref Write
+
+  - name: EditNeedle
+    inputs:
+      path: scratch-ops/needle.bin
+      oldString: needle
+      newString: ok
+    invoke: !ref Edit
+
+  - name: ReadNeedle
+    inputs: { path: scratch-ops/needle.bin, encoding: base64 }
+    invoke: !ref Read
+
+  - name: RemoveNeedle
+    inputs: { path: scratch-ops/needle.bin }
+    invoke: !ref Remove
+
+  - name: List
+    inputs: { path: scratch-ops, recursive: true }
+    invoke: !ref List
+
+  - name: Assert
+    inputs:
+      actual:
+        created: !cel "steps.Mkdir.result.created"
+        createdAgain: !cel "steps.MkdirAgain.result.created"
+        bytesWritten: !cel "steps.Write.result.bytesWritten"
+        read: !cel "steps.Read.result.content"
+        size: !cel "steps.Read.result.size"
+        replacements: !cel "steps.Edit.result.replacements"
+        edited: !cel "steps.ReadEdited.result.content"
+        binary: !cel "steps.ReadBinary.result.content"
+        needleReplacements: !cel "steps.EditNeedle.result.replacements"
+        needleEdited: !cel "steps.ReadNeedle.result.content"
+        entries: !cel "steps.List.result.entries"
+      expected:
+        created: true
+        createdAgain: false
+        bytesWritten: 17
+        read: "version: 1\nhello\n"
+        size: 17
+        replacements: 1
+        edited: "version: 2\nhello\n"
+        binary: "aGVsbG8="
+        needleReplacements: 1
+        needleEdited: "/29r/g=="
+        entries:
+          - { name: blob.bin, path: scratch-ops/blob.bin, type: file, size: 5 }
+          - { name: note.txt, path: scratch-ops/note.txt, type: file, size: 17 }
+    invoke: !ref Assert.equals
+
+  - name: Cleanup
+    inputs: { path: scratch-ops, recursive: true }
+    invoke: !ref Remove
+
+  - name: AssertRemoved
+    inputs:
+      actual: !cel "steps.Cleanup.result.removed"
+      expected: true
+    invoke: !ref Assert.equals

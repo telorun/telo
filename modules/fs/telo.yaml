@@ -1,0 +1,361 @@
+kind: Telo.Library
+metadata:
+  name: fs
+  namespace: std
+  version: 0.0.0
+  description: >-
+    Local filesystem access. Read, write, edit, list, create, and remove files
+    and directories on the host the kernel runs on, via Node `fs/promises`.
+    Buffered (small files); UTF-8 text by default with a base64 escape hatch for
+    binary. Each operation carries an optional `cwd` that invoke paths resolve
+    against. Not a security boundary — isolation comes from where the kernel
+    runs, not these resources.
+---
+# Read a file. Returns its contents (utf8 text or, with `encoding: base64`, the
+# bytes base64-encoded) and byte size.
+kind: Telo.Definition
+metadata:
+  name: File
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path:
+        title: Path
+        description: File to read, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      encoding:
+        title: Encoding
+        description: Text encoding. `base64` returns binary content as a base64 string.
+        type: string
+        enum: [utf8, base64]
+        default: utf8
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content, size]
+    properties:
+      content:
+        title: Content
+        description: File contents — utf8 text, or a base64 string when `encoding: base64`.
+        type: string
+      size:
+        title: Size
+        description: File size in bytes.
+        type: integer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# Write a file, replacing it whole. `createParents` makes missing parent
+# directories. For surgical edits to an existing file use Fs.FileEdit.
+kind: Telo.Definition
+metadata:
+  name: FileWrite
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-write
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, content]
+    properties:
+      path:
+        title: Path
+        description: File to write, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      content:
+        title: Content
+        description: Bytes to write — utf8 text, or a base64 string when `encoding: base64`.
+        type: string
+      encoding:
+        title: Encoding
+        description: How `content` is interpreted. `base64` decodes it to binary first.
+        type: string
+        enum: [utf8, base64]
+        default: utf8
+      createParents:
+        title: Create parents
+        description: Create missing parent directories before writing.
+        type: boolean
+        default: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [bytesWritten]
+    properties:
+      bytesWritten:
+        title: Bytes written
+        description: Number of bytes written to disk.
+        type: integer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# Edit a file in place by exact string replacement. Fails (rather than silently
+# no-op) when `oldString` is absent, or matches more than once without
+# `replaceAll`. Byte-level replacement, so comments and `!cel` tags survive.
+kind: Telo.Definition
+metadata:
+  name: FileEdit
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-edit
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, oldString, newString]
+    properties:
+      path:
+        title: Path
+        description: File to edit, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      oldString:
+        title: Old string
+        description: Exact substring to replace. Must be present, and unique unless `replaceAll`.
+        type: string
+        minLength: 1
+      newString:
+        title: New string
+        description: Replacement text.
+        type: string
+      replaceAll:
+        title: Replace all
+        description: Replace every occurrence instead of requiring a single match.
+        type: boolean
+        default: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [replacements]
+    properties:
+      replacements:
+        title: Replacements
+        description: Number of occurrences replaced.
+        type: integer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# List a directory. Each entry is `{ name, path, type, size }`; `path` is
+# relative to `cwd` so it can be fed back as an input. `recursive` walks
+# subdirectories.
+kind: Telo.Definition
+metadata:
+  name: DirectoryListing
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#directory-listing
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        title: Path
+        description: Directory to list, relative to `cwd`. Defaults to `cwd` itself.
+        type: string
+        minLength: 1
+      recursive:
+        title: Recursive
+        description: Walk subdirectories and include their entries.
+        type: boolean
+        default: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [entries]
+    properties:
+      entries:
+        title: Entries
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, path, type, size]
+          properties:
+            name:
+              description: Entry base name.
+              type: string
+            path:
+              description: Path relative to `cwd`.
+              type: string
+            type:
+              description: Entry kind.
+              type: string
+              enum: [file, directory, other]
+            size:
+              description: Entry size in bytes.
+              type: integer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# Create a directory. `createParents` makes missing ancestors and is idempotent
+# (no error if it already exists); without it, an existing path or missing
+# parent is an error.
+kind: Telo.Definition
+metadata:
+  name: DirectoryCreation
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#directory-creation
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path:
+        title: Path
+        description: Directory to create, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      createParents:
+        title: Create parents
+        description: Make missing ancestor directories; idempotent if the target exists.
+        type: boolean
+        default: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [created]
+    properties:
+      created:
+        title: Created
+        description: True if newly created; false if it already existed (with `createParents`).
+        type: boolean
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# Remove a file, or a directory tree with `recursive`. A missing path is an
+# error.
+kind: Telo.Definition
+metadata:
+  name: FileRemoval
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.0.0?local_path=./nodejs#file-removal
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path:
+        title: Path
+        description: File or directory to remove, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      recursive:
+        title: Recursive
+        description: Remove a directory and everything under it.
+        type: boolean
+        default: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [removed]
+    properties:
+      removed:
+        title: Removed
+        description: True when the path was removed.
+        type: boolean
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace

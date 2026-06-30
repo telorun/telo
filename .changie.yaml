@@ -119,6 +119,13 @@ projects:
       - path: modules/embedding-openai/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: fs
+    key: fs
+    changelog: modules/fs/CHANGELOG.md
+    replacements:
+      - path: modules/fs/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: gzip
     key: gzip
     changelog: modules/gzip/CHANGELOG.md

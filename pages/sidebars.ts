@@ -347,6 +347,7 @@ const sidebars: SidebarsConfig = {
                     },
                   ],
                 },
+                { type: "doc", id: "modules/fs/README", label: "Filesystem" },
                 {
                   type: "category",
                   label: "Image",
