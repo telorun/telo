@@ -1,0 +1,64 @@
+{
+  "name": "@telorun/shell",
+  "version": "0.0.0",
+  "description": "Telo shell module - run shell commands behind a transport-neutral host abstraction.",
+  "keywords": [
+    "telo",
+    "shell",
+    "command",
+    "exec",
+    "process"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/shell/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./local-host": {
+      "types": "./dist/local-host-controller.d.ts",
+      "bun": "./src/local-host-controller.ts",
+      "import": "./dist/local-host-controller.js"
+    },
+    "./shell-command": {
+      "bun": "./src/shell-command-controller.ts",
+      "import": "./dist/shell-command-controller.js"
+    },
+    "./shell-command-stream": {
+      "bun": "./src/shell-command-stream-controller.ts",
+      "import": "./dist/shell-command-stream-controller.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: ShellCommandStreamBasics
+  version: 1.0.0
+  description: |
+    Shell.CommandStream forwards stdout as `{type: stdout, chunk}` records and a
+    terminal `exit` record. RecordStream.ExtractText projects the stdout records
+    to text and PlainText.Decoder collects the stream into a single string.
+imports:
+  Shell: ../
+  RecordStream: ../../record-stream
+  PlainText: ../../plain-text-codec
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Shell.LocalHost
+metadata:
+  name: Local
+---
+kind: RecordStream.ExtractText
+metadata:
+  name: Stdout
+discriminator: type
+records:
+  stdout: { do: emit, field: chunk }
+  stderr: { do: drop }
+  exit: { do: drop }
+  error: { do: throw, field: error }
+---
+kind: PlainText.Decoder
+metadata:
+  name: Collect
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Stream
+    inputs:
+      command: "printf hello-stream"
+    invoke:
+      kind: Shell.CommandStream
+      host: !ref Local
+
+  - name: Project
+    inputs:
+      input: !cel "steps.Stream.result.output"
+    invoke: !ref Stdout
+
+  - name: Text
+    inputs:
+      input: !cel "steps.Project.result.output"
+    invoke: !ref Collect
+
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Text.result.text"
+      expected: hello-stream
+    invoke:
+      kind: Assert.Equals

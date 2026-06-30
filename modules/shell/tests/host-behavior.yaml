@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: ShellHostBehavior
+  version: 1.0.0
+  description: |
+    Shell.LocalHost behaviors: the configured `cwd` is honored, stdin is
+    delivered, a command that ignores stdin doesn't crash the kernel (EPIPE on
+    the writable is absorbed), and `timeoutMs` kills the command and throws.
+imports:
+  Shell: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Shell.LocalHost
+metadata: { name: Root }
+cwd: /
+---
+kind: Shell.LocalHost
+metadata: { name: Local }
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Cwd
+    inputs:
+      command: pwd
+    invoke:
+      kind: Shell.Command
+      host: !ref Root
+
+  - name: Stdin
+    inputs:
+      command: cat
+      stdin: piped-input
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  # `true` exits immediately without reading stdin — writing to it would EPIPE.
+  # The controller absorbs that, so this returns cleanly rather than crashing.
+  - name: StdinIgnored
+    inputs:
+      command: "true"
+      stdin: ignored
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: AssertBasics
+    inputs:
+      actual:
+        cwd: !cel "steps.Cwd.result.stdout"
+        stdin: !cel "steps.Stdin.result.stdout"
+        ignoredCode: !cel "steps.StdinIgnored.result.exitCode"
+      expected:
+        cwd: "/\n"
+        stdin: piped-input
+        ignoredCode: 0
+    invoke:
+      kind: Assert.Equals
+
+  - name: Timeout
+    try:
+      - name: Sleep
+        inputs:
+          command: "sleep 5"
+          timeoutMs: 100
+        invoke:
+          kind: Shell.Command
+          host: !ref Local
+    catch:
+      - name: AssertTimedOut
+        inputs:
+          actual: !cel "error.message"
+          pattern: "timed out"
+        invoke:
+          kind: Assert.Matches

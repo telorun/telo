@@ -1,0 +1,71 @@
+kind: Telo.Application
+metadata:
+  name: ShellCommandBasics
+  version: 1.0.0
+  description: |
+    Shell.Command runs commands on a Shell.LocalHost: captures stdout, returns a
+    non-zero exit code (rather than throwing), honors shell features (pipes), and
+    merges the host's base env with the per-call overlay.
+imports:
+  Shell: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Shell.LocalHost
+metadata:
+  name: Local
+env:
+  GREETING: hi
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Echo
+    inputs:
+      command: "printf hello"
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: Fail
+    inputs:
+      command: "exit 3"
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: Pipe
+    inputs:
+      command: "printf X | cat"
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: Env
+    inputs:
+      command: 'printf %s "$GREETING-$NAME"'
+      env:
+        NAME: world
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: Assert
+    inputs:
+      actual:
+        echoOut: !cel "steps.Echo.result.stdout"
+        echoCode: !cel "steps.Echo.result.exitCode"
+        failCode: !cel "steps.Fail.result.exitCode"
+        pipeOut: !cel "steps.Pipe.result.stdout"
+        envOut: !cel "steps.Env.result.stdout"
+      expected:
+        echoOut: hello
+        echoCode: 0
+        failCode: 3
+        pipeOut: X
+        envOut: hi-world
+    invoke:
+      kind: Assert.Equals

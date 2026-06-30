@@ -245,6 +245,13 @@ projects:
       - path: modules/s3/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: shell
+    key: shell
+    changelog: modules/shell/CHANGELOG.md
+    replacements:
+      - path: modules/shell/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: sql
     key: sql
     changelog: modules/sql/CHANGELOG.md
