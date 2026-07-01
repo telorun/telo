@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: shell
   namespace: std
-  version: 0.0.0
+  version: 0.1.0
   description: >-
     Run shell commands behind a transport-neutral host abstraction. The
     Shell.Host abstract plus the Command / CommandStream operations; the bundled
@@ -27,7 +27,7 @@ metadata:
   name: Command
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#shell-command
+  - pkg:npm/@telorun/shell@0.1.0?local_path=./nodejs#shell-command
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -86,7 +86,7 @@ metadata:
   name: CommandStream
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#shell-command-stream
+  - pkg:npm/@telorun/shell@0.1.0?local_path=./nodejs#shell-command-stream
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -147,7 +147,7 @@ metadata:
 capability: Telo.Provider
 extends: Self.Host
 controllers:
-  - pkg:npm/@telorun/shell@0.0.0?local_path=./nodejs#local-host
+  - pkg:npm/@telorun/shell@0.1.0?local_path=./nodejs#local-host
 schema:
   type: object
   additionalProperties: false
