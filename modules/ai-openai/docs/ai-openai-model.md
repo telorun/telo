@@ -50,7 +50,7 @@ model: !ref Gpt4o
 Both methods call `POST {baseUrl}/chat/completions` directly:
 
 - `invoke({messages, options, tools?})` → buffered request → `{text, usage, finishReason, toolCalls?}`.
-- `stream({messages, options})` → `stream: true` request, parsed from the SSE `data:` frames → `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
+- `stream({messages, options, tools?})` → `stream: true` request, parsed from the SSE `data:` frames → `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
 
 OpenAI `finish_reason` values map into the Ai contract:
 
@@ -66,6 +66,8 @@ OpenAI `finish_reason` values map into the Ai contract:
 `tool-calls` is preserved (not flattened to `other`): `Ai.Agent` drives the tool-use loop on it — when the model requests tools, the returned `toolCalls` are executed and replayed. `Ai.Text` / `Ai.TextStream` never pass `tools`, so they never see this reason.
 
 Tool calls are advertised as OpenAI `tools: [{ type: "function", function: { name, description, parameters } }]` (no `execute` — the agent runs tools itself). The model's `tool_calls` come back with `arguments` as a JSON string; the provider parses each into the `ToolCall.arguments` object. Malformed argument JSON surfaces as an error rather than a silent empty object.
+
+On the **streaming** path, OpenAI splits each tool call across many `delta.tool_calls[]` fragments keyed by `index` — the first carries `id` and `function.name`, later ones append `function.arguments` string fragments. The provider accumulates per index and, at the finish boundary (arguments are only valid JSON once fully joined), emits one `{ type: "tool-call", toolCall }` `StreamPart` per assembled call before the terminal `finish`. This is what lets [`Ai.AgentStream`](../../ai/docs/ai-agent-stream.md) drive a tool-use loop with live token streaming; `Ai.TextStream` never passes `tools`, so it never observes these parts.
 
 ## Multimodal content
 

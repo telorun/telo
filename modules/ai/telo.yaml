@@ -12,6 +12,7 @@ exports:
     - ToolProvider
     - Tools
     - Agent
+    - AgentStream
 ---
 # Ai.Model — the abstract LLM client every provider implements. Like Sql.Connection
 # or Http.Client, it is a Telo.Provider: a configured handle to a backend (model id,
@@ -462,3 +463,142 @@ schema:
         - provider: !ref WeatherTools
         - provider: !ref RegistryTools
           prefix: "registry_"
+---
+# Ai.AgentStream — the streaming tool-use agent. Same loop and config as Ai.Agent,
+# but it forwards the run as a Stream on `result.output` (per the streaming-Invocable
+# convention) instead of a buffered object: the assistant's text streams token-by-token
+# and every tool call surfaces the moment it happens. Pipe `result.output` through a
+# format-codec encoder (Sse.Encoder / Ndjson.Encoder) in an Http.Api `mode: stream`
+# route to serve it over SSE. The stream carries a discriminated union of records:
+# `text-delta` | `tool-call` | `tool-result` | `finish` | `error`.
+kind: Telo.Definition
+metadata:
+  name: AgentStream
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#agent-stream
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      prompt: { type: string }
+      messages:
+        type: array
+        items:
+          type: object
+          properties:
+            role: { type: string, enum: [system, user, assistant, tool] }
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  minItems: 1
+                  items:
+                    oneOf:
+                      - type: object
+                        additionalProperties: false
+                        required: [type, text]
+                        properties:
+                          type: { type: string, const: text }
+                          text: { type: string }
+                      - type: object
+                        additionalProperties: false
+                        required: [type, data, mediaType]
+                        properties:
+                          type: { type: string, const: image }
+                          data:
+                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
+                          mediaType: { type: string }
+          required: [role, content]
+          additionalProperties: false
+      system: { type: string }
+      options: { type: object, additionalProperties: true }
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: >-
+          Async iterable of AgentStreamPart records: `text-delta` (assistant text),
+          `tool-call` (a tool the model requested), `tool-result` (its execution
+          result: `{toolCallId, name, content, error?}`), then a terminal `finish`
+          (accumulated usage + finishReason) or `error`.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    model:
+      title: Model
+      description: Reference to any Ai.Model implementation.
+      x-telo-ref: "std/ai#Model"
+    system:
+      title: System prompt
+      description: Default system message. Runtime inputs.system takes precedence when set.
+      type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+    options:
+      title: Options
+      description: Completion-level option overrides passed to the model each turn.
+      type: object
+      additionalProperties: true
+    maxSteps:
+      title: Max steps
+      description: Maximum model turns before the loop is bounded.
+      type: integer
+      minimum: 1
+      default: 8
+    onMaxSteps:
+      title: On max steps
+      description: throw → emit a terminal error part (ERR_AGENT_MAX_STEPS); return → emit a terminal finish with the last turn's finishReason.
+      type: string
+      enum: [throw, return]
+      default: throw
+    onToolError:
+      title: On tool error
+      description: feedback → emit a tool-result with error:true and continue; throw → emit a terminal error part and end the stream.
+      type: string
+      enum: [feedback, throw]
+      default: feedback
+    toolProviders:
+      title: Tool providers
+      description: Tool sources mounted into the agent — static lists (Ai.Tools) or runtime discovery (e.g. AiMcp.ToolProvider).
+      type: array
+      items:
+        type: object
+        properties:
+          provider:
+            title: Provider
+            description: Reference to any Ai.ToolProvider implementation.
+            x-telo-ref: "std/ai#ToolProvider"
+          prefix:
+            title: Prefix
+            description: Namespaces this provider's tool names to avoid collisions.
+            type: string
+          include:
+            title: Include
+            description: Optional allowlist matched against the provider's bare tool names (before any prefix is applied).
+            type: array
+            items: { type: string }
+          exclude:
+            title: Exclude
+            description: Optional denylist matched against the provider's bare tool names (before any prefix is applied).
+            type: array
+            items: { type: string }
+        required: [provider]
+        additionalProperties: false
+  required: [model]
+  additionalProperties: false
+  examples:
+    - model: !ref Gpt4oMini
+      system: |
+        You author Telo manifests. Use the tools to edit files and validate with
+        `telo check`. Keep replies brief.
+      maxSteps: 12
+      toolProviders:
+        - provider: !ref WorkspaceTools

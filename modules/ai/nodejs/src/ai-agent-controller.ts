@@ -1,14 +1,21 @@
 import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import { isContentPart, isContentParts, type MessageContent } from "./content.js";
+import type { MessageContent } from "./content.js";
+import {
+  assembleTools,
+  buildInitialMessages,
+  dispatchToolCall,
+  mergeAgentOptions,
+  normalizeToolCalls,
+  type AssembledTools,
+  type ToolProviderEntry,
+} from "./agent-tools.js";
 import type {
   AiModelInstance,
-  AiToolProviderInstance,
   CompletionResult,
   FinishReason,
   Message,
   ToolCall,
-  ToolDefinition,
   Usage,
 } from "./types.js";
 
@@ -18,16 +25,9 @@ import type {
  * until the model finishes (no tool calls) or `maxSteps` is reached. Buffered only.
  *
  * The loop lives here (not in the provider) so it is provider-agnostic and observable —
- * every turn's calls + results land in the `steps` trace.
+ * every turn's calls + results land in the `steps` trace. Tool assembly and dispatch
+ * are shared with Ai.AgentStream via `agent-tools.ts`.
  */
-interface ToolProviderEntry {
-  /** Live Ai.ToolProvider instance after Phase 5 injection. */
-  provider: AiToolProviderInstance;
-  prefix?: string;
-  include?: string[];
-  exclude?: string[];
-}
-
 interface AiAgentResource {
   metadata: { name: string; module?: string };
   model: AiModelInstance;
@@ -64,66 +64,27 @@ interface AiAgentOutput {
   steps: StepTrace[];
 }
 
-interface Dispatch {
-  provider: AiToolProviderInstance;
-  bareName: string;
-}
-
-/** Normalize a tool's return value into message content. A string passes through;
- *  content parts (a single part or an array) are carried untouched so an image tool
- *  result reaches the model intact; anything else is JSON-stringified, the historical
- *  default for structured tool output. */
-function toToolContent(output: unknown): MessageContent {
-  if (typeof output === "string") return output;
-  if (isContentParts(output)) return output;
-  if (isContentPart(output)) return [output];
-  return JSON.stringify(output);
-}
-
 class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
   /** Tool set assembled lazily on first invoke and cached (list_changed refresh deferred). */
-  private assembled?: { toolDefs: ToolDefinition[]; dispatch: Map<string, Dispatch> };
+  private assembled?: AssembledTools;
 
   constructor(private readonly resource: AiAgentResource) {}
 
   async invoke(inputs: AiAgentInputs = {}, ctx?: InvokeContext): Promise<AiAgentOutput> {
     const name = this.resource.metadata.name;
+    const label = `Ai.Agent "${name}"`;
     const model = this.resource.model;
     if (!model || typeof model.invoke !== "function") {
       throw new InvokeError(
         "ERR_INVALID_REFERENCE",
-        `Ai.Agent "${name}": 'model' is not a live Ai.Model instance — check that Phase 5 injection ran.`,
+        `${label}: 'model' is not a live Ai.Model instance — check that Phase 5 injection ran.`,
       );
     }
 
-    const hasPrompt = typeof inputs.prompt === "string";
-    const hasMessages = Array.isArray(inputs.messages);
-    if (hasPrompt === hasMessages) {
-      throw new InvokeError(
-        "ERR_INVALID_INPUT",
-        hasPrompt
-          ? `Ai.Agent "${name}": exactly one of 'prompt' or 'messages' may be provided, not both.`
-          : `Ai.Agent "${name}": one of 'prompt' or 'messages' is required.`,
-      );
-    }
+    const messages = buildInitialMessages(inputs, this.resource, label);
+    const mergedOptions = mergeAgentOptions(this.resource, inputs);
 
-    const base: Message[] = hasMessages
-      ? inputs.messages!
-      : [{ role: "user", content: inputs.prompt! }];
-    const systemText = inputs.system ?? this.resource.system;
-    const messages: Message[] =
-      systemText !== undefined
-        ? base[0]?.role === "system"
-          ? [{ role: "system", content: systemText }, ...base.slice(1)]
-          : [{ role: "system", content: systemText }, ...base]
-        : [...base];
-
-    const mergedOptions: Record<string, unknown> = {
-      ...(this.resource.options ?? {}),
-      ...(inputs.options ?? {}),
-    };
-
-    const { toolDefs, dispatch } = await this.assembleTools();
+    const { toolDefs, dispatch } = await this.tools();
     const maxSteps = this.resource.maxSteps ?? 8;
     const onMaxSteps = this.resource.onMaxSteps ?? "throw";
     const onToolError = this.resource.onToolError ?? "feedback";
@@ -150,19 +111,14 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         return { text: result.text, usage, finishReason: result.finishReason, steps };
       }
 
-      // Ensure every call has a stable id, threaded into the tool-result message so the
-      // model can correlate result→call (providers require the match).
-      const normalized: ToolCall[] = calls.map((c, i) => ({
-        id: c.id || `call_${step}_${i}`,
-        name: c.name,
-        arguments: c.arguments ?? {},
-      }));
+      const normalized = normalizeToolCalls(calls, step);
       messages.push({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
 
       const trace: StepTrace = { text: result.text ?? "", toolCalls: normalized, toolResults: [] };
       for (const call of normalized) {
-        const content = await this.dispatchCall(call, dispatch, onToolError, trace);
-        messages.push({ role: "tool", content, toolCallId: call.id });
+        const record = await dispatchToolCall(call, dispatch, onToolError, label);
+        trace.toolResults.push(record);
+        messages.push({ role: "tool", content: record.content, toolCallId: call.id });
       }
       steps.push(trace);
     }
@@ -181,77 +137,12 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     };
   }
 
-  private async dispatchCall(
-    call: ToolCall,
-    dispatch: Map<string, Dispatch>,
-    onToolError: "feedback" | "throw",
-    trace: StepTrace,
-  ): Promise<MessageContent> {
-    const name = this.resource.metadata.name;
-    const target = dispatch.get(call.name);
-    if (!target) {
-      if (onToolError === "throw") {
-        throw new InvokeError(
-          "ERR_AGENT_UNKNOWN_TOOL",
-          `Ai.Agent "${name}": model requested unknown tool "${call.name}".`,
-        );
-      }
-      const content = `Error: no such tool "${call.name}".`;
-      trace.toolResults.push({ toolCallId: call.id, name: call.name, content, error: true });
-      return content;
+  /** Assemble the tool set lazily on first invoke and cache it (list_changed refresh
+   *  deferred). Delegates to the shared unit so both agents assemble identically. */
+  private async tools(): Promise<AssembledTools> {
+    if (!this.assembled) {
+      this.assembled = await assembleTools(this.resource.toolProviders, `Ai.Agent "${this.resource.metadata.name}"`);
     }
-    try {
-      const output = await target.provider.callTool(target.bareName, call.arguments);
-      const content = toToolContent(output);
-      trace.toolResults.push({ toolCallId: call.id, name: call.name, content });
-      return content;
-    } catch (err) {
-      if (onToolError === "throw") throw err;
-      const message = err instanceof Error ? err.message : String(err);
-      const content = `Error: ${message}`;
-      trace.toolResults.push({ toolCallId: call.id, name: call.name, content, error: true });
-      return content;
-    }
-  }
-
-  private async assembleTools(): Promise<{
-    toolDefs: ToolDefinition[];
-    dispatch: Map<string, Dispatch>;
-  }> {
-    if (this.assembled) return this.assembled;
-    const name = this.resource.metadata.name;
-    const toolDefs: ToolDefinition[] = [];
-    const dispatch = new Map<string, Dispatch>();
-
-    for (const entry of this.resource.toolProviders ?? []) {
-      const provider = entry.provider;
-      if (
-        !provider ||
-        typeof provider.listTools !== "function" ||
-        typeof provider.callTool !== "function"
-      ) {
-        throw new InvokeError(
-          "ERR_INVALID_REFERENCE",
-          `Ai.Agent "${name}": a toolProviders entry did not resolve to a live Ai.ToolProvider instance.`,
-        );
-      }
-      const descriptors = await provider.listTools();
-      for (const d of descriptors) {
-        if (entry.include && !entry.include.includes(d.name)) continue;
-        if (entry.exclude && entry.exclude.includes(d.name)) continue;
-        const modelName = (entry.prefix ?? "") + d.name;
-        if (dispatch.has(modelName)) {
-          throw new InvokeError(
-            "ERR_AGENT_TOOL_COLLISION",
-            `Ai.Agent "${name}": duplicate tool name "${modelName}" across providers — set a 'prefix' to disambiguate.`,
-          );
-        }
-        dispatch.set(modelName, { provider, bareName: d.name });
-        toolDefs.push({ name: modelName, description: d.description, parameters: d.parameters });
-      }
-    }
-
-    this.assembled = { toolDefs, dispatch };
     return this.assembled;
   }
 

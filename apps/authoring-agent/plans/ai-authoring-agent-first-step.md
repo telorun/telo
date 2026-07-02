@@ -6,7 +6,7 @@ The telo editor (`apps/telo-editor`) has no AI assistance; manifests are authore
 
 ## Solution
 
-The agent is its **own Telo application** in `apps/authoring-agent` — a long-lived `keepAlive` service the editor runs on a runner exactly like any other bundle, and runnable locally too. Dogfooding: the manifest-authoring assistant is itself a telo manifest, composing `Ai.Agent` (`modules/ai`, OpenAI via `modules/ai-openai`), `Http.Server` (`modules/http-server`), `Run.Sequence` + SQLite for conversation state, and new native tool modules.
+The agent is its **own Telo application** in `apps/authoring-agent` — a long-lived `keepAlive` service the editor runs on a runner exactly like any other bundle, and runnable locally too. Dogfooding: the manifest-authoring assistant is itself a telo manifest, composing `Ai.AgentStream` (`modules/ai`, the streaming tool-use agent — see `modules/ai/plans/agent-stream.md`; OpenAI via `modules/ai-openai`), `Http.Server` (`modules/http-server`), `Run.Sequence` + SQLite for conversation state, and new native tool modules.
 
 New native stdlib modules give the agent its hands:
 
@@ -19,7 +19,7 @@ The agent exposes its own HTTP API on a declared port (ingress-fronted by the ru
 
 1. Editor runs the agent app on a runner; the runner advertises the agent's port URL via the existing `RunStatus.running` endpoints.
 2. Editor seeds the user's workspace by POSTing the workspace files to the agent (`POST /workspace`); the agent writes them under its workspace directory. The `RunBundle` carries only the agent program; the user's files travel separately.
-3. Editor POSTs a chat message; the agent runs its `Ai.Agent` turn (history persisted in SQLite via `Run.Sequence`), editing files through the fs/shell tools.
+3. Editor POSTs a chat message; the agent runs its `Ai.AgentStream` turn (history persisted in SQLite via `Run.Sequence`), editing files through the fs/shell tools.
 4. The agent streams the assistant response **and** one file-mutation event per write back over a single SSE stream (monotonic sequence IDs).
 5. The editor applies each mutation idempotently (content-hash keyed), reloads the affected `ModuleDocument`, re-runs analysis, and persists through its existing `WorkspaceAdapter` — local disk / FSA / localStorage stays the durable home; the agent's remote FS is ephemeral working state.
 
@@ -36,7 +36,7 @@ Sync is **single-writer-per-mode**: in AI mode the agent owns the workspace and 
 - **OpenAI only** — `ai-openai` ships today; no Anthropic provider in this slice.
 - **SSE transport, not WebSocket** — `http-server` speaks HTTP and the editor already has resilient SSE replay; reused rather than rebuilt.
 - **Workspace seeded separately from the agent bundle** — clean separation between the agent program and the files it edits.
-- **SQLite + `Run.Sequence` conversation state** — `Ai.Agent` is stateless; reuses the proven agent-console multi-turn pattern and yields replay for free.
+- **SQLite + `Run.Sequence` conversation state** — `Ai.AgentStream` is stateless; reuses the proven agent-console multi-turn pattern and yields replay for free.
 - **Single-writer-per-mode sync + tree-hash backstop** — eliminates the merge-conflict class; hash reconciliation guarantees convergence after any disconnect and catches bash-written files.
 - **`fs` is path-confined, `shell` is not; isolation is the runner sandbox** — `Fs.*` resolve paths against a `root` the controller enforces (a real boundary for fs-only consumers); `Shell.*`'s `cwd` only sets a starting directory and an arbitrary shell string escapes it. Once an unconfined shell is in the toolset the agent's effective trust boundary is *anything the host user can run*, so containment comes from where the agent runs (the runner sandbox) plus the `kernel/specs/module-grants.md` grants later — not from tool-level paths.
 

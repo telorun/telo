@@ -1,0 +1,158 @@
+kind: Telo.Application
+metadata:
+  name: AgentStreamToolErrorTest
+  version: 1.0.0
+  description: |
+    Verifies Ai.AgentStream's onToolError: throw honours the one-terminal-frame wire
+    contract: a tool throw (here an unknown tool) is converted to a terminal `error`
+    event rather than escaping the generator and truncating the SSE stream. Echo
+    requests a tool that isn't registered; with onToolError: throw, dispatch throws
+    ERR_AGENT_UNKNOWN_TOOL, which the stream must surface as a terminal error frame.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Http: ../../http-server
+  Ndjson: ../../ndjson-codec
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestToolError
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+emitToolCall:
+  name: ghost
+  arguments: {}
+---
+kind: Run.Value
+metadata: { name: Multiplier }
+inputs:
+  a: { type: number }
+  b: { type: number }
+value:
+  product: !cel "inputs.a * inputs.b"
+---
+kind: Ai.Tools
+metadata: { name: LocalTools }
+tools:
+  - tool: !ref Multiplier
+    name: multiply
+    description: Multiply two numbers.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ a, b ]
+      properties:
+        a: { type: number }
+        b: { type: number }
+---
+kind: Ai.AgentStream
+metadata: { name: Assistant }
+model: !ref Echo
+system: "Use tools when needed."
+onToolError: throw
+toolProviders:
+  - provider: !ref LocalTools
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [ prompt ]
+          properties:
+            prompt: { type: string }
+    handler: !ref Assistant
+    inputs:
+      prompt: !cel "request.body.prompt"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: !ref NdjsonEnc
+---
+kind: JS.Script
+metadata: { name: FetchAndSummarize }
+code: |
+  async function main({ url, prompt }) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    const chunks = [];
+    for await (const chunk of r.body) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString("utf8");
+    const events = body.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+    const last = events[events.length - 1];
+    return {
+      lastType: last.type,
+      lastCode: last.error && last.error.code,
+      finishCount: events.filter((e) => e.type === "finish").length,
+      errorCount: events.filter((e) => e.type === "error").length,
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+      prompt: { type: string }
+    required: [ url, prompt ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+---
+kind: Run.Sequence
+metadata: { name: TestToolError }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8952
+    baseUrl: http://127.0.0.1:8952
+    logger: false
+    openapi:
+      info:
+        title: AgentStream tool-error test
+        version: 1.0.0
+    mounts:
+      - path: /
+        mount: !ref Api
+targets:
+  - !ref Server
+steps:
+  - name: Hit
+    inputs:
+      url: http://127.0.0.1:8952/chat
+      prompt: "call the ghost"
+    invoke: !ref FetchAndSummarize
+  - name: AssertTerminalError
+    inputs:
+      lastType: !cel "steps.Hit.result.lastType"
+      lastCode: !cel "steps.Hit.result.lastCode"
+      finishCount: !cel "steps.Hit.result.finishCount"
+      errorCount: !cel "steps.Hit.result.errorCount"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          lastType: { const: "error" }
+          lastCode: { const: "ERR_AGENT_UNKNOWN_TOOL" }
+          finishCount: { const: 0 }
+          errorCount: { const: 1 }
+        required: [ lastType, lastCode, finishCount, errorCount ]

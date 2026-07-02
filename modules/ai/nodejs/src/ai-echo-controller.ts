@@ -53,8 +53,25 @@ class AiEchoModel implements ResourceInstance, AiModelInstance {
     };
   }
 
-  async *stream({ messages }: ModelInvokeInput): AsyncIterable<StreamPart> {
+  async *stream({ messages, tools }: ModelInvokeInput): AsyncIterable<StreamPart> {
     this.maybeThrow(messages);
+    const plan = this.resource.emitToolCall;
+    const alreadyCalled = messages.some((m) => m.role === "tool");
+    // First tool-calling turn: emit a tool-call part and finish with `tool-calls`
+    // (mirroring invoke()), which is what drives the streaming agent's second turn.
+    // A finish left at `stop` would terminate the loop after one turn.
+    if (plan && tools && tools.length > 0 && !alreadyCalled) {
+      yield {
+        type: "tool-call",
+        toolCall: { id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} },
+      };
+      yield {
+        type: "finish",
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        finishReason: "tool-calls",
+      };
+      return;
+    }
     const text = this.buildEchoText(messages);
     // One text-delta per character — gives streaming consumers multiple chunks to
     // observe. Array.from handles surrogate pairs / combining marks by code point.
