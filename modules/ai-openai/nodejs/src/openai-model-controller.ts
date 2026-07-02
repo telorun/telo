@@ -59,8 +59,20 @@ interface OpenAiChatResponse {
   usage?: OpenAiUsage;
 }
 
+/** A tool-call fragment in a streaming `delta`. OpenAI splits one tool call across
+ *  many chunks keyed by `index`: the first carries `id` and `function.name`, later
+ *  ones append `function.arguments` string fragments. */
+interface OpenAiToolCallDelta {
+  index: number;
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
+
 interface OpenAiStreamChunk {
-  choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+  choices?: Array<{
+    delta?: { content?: string; tool_calls?: OpenAiToolCallDelta[] };
+    finish_reason?: string | null;
+  }>;
   usage?: OpenAiUsage;
 }
 
@@ -278,13 +290,36 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
 
       let usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let finishReason: FinishReason = "stop";
+      // Tool calls arrive as fragments across chunks keyed by index; accumulate id,
+      // name, and the concatenated arguments string, then assemble at the finish
+      // boundary (arguments are only valid JSON once fully joined).
+      const toolAcc = new Map<number, { id: string; name: string; args: string }>();
       for await (const data of parseSseData(res.body)) {
         if (data === "[DONE]") break;
         const chunk = JSON.parse(data) as OpenAiStreamChunk;
         const choice = chunk.choices?.[0];
         if (choice?.delta?.content) yield { type: "text-delta", delta: choice.delta.content };
+        for (const tc of choice?.delta?.tool_calls ?? []) {
+          const entry = toolAcc.get(tc.index) ?? { id: "", name: "", args: "" };
+          if (tc.id) entry.id = tc.id;
+          if (tc.function?.name) entry.name = tc.function.name;
+          if (tc.function?.arguments) entry.args += tc.function.arguments;
+          toolAcc.set(tc.index, entry);
+        }
         if (choice?.finish_reason) finishReason = mapFinishReason(choice.finish_reason);
         if (chunk.usage) usage = mapUsage(chunk.usage);
+      }
+      // Emit one assembled tool-call part per accumulated index, in index order,
+      // before the terminal finish.
+      for (const [index, entry] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
+        yield {
+          type: "tool-call",
+          toolCall: {
+            id: entry.id || `call_${index}`,
+            name: entry.name,
+            arguments: parseToolArguments(entry.args, entry.name),
+          },
+        };
       }
       yield { type: "finish", usage, finishReason };
     } catch (err) {

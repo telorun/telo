@@ -97,8 +97,31 @@ export interface ModelInvokeInput {
 export type StreamPartError = { message: string; code?: string; data?: unknown };
 export type StreamPart =
   | { type: "text-delta"; delta: string }
+  | { type: "tool-call"; toolCall: ToolCall }
   | { type: "finish"; usage: Usage; finishReason: FinishReason }
   | { type: "error"; error: StreamPartError };
+
+/** One tool execution's result, as recorded by the agent. Shared shape between the
+ *  buffered agent's `StepTrace.toolResults` and the streaming agent's `tool-result`
+ *  event, so a streaming consumer is never a strictly poorer event than the buffered
+ *  trace. `content` is `MessageContent` — a string, or content parts when a tool
+ *  answers with an image (mirroring the buffered agent). `error` is true when the
+ *  dispatch failed and the message fed back to the model is an error string. */
+export interface ToolResultRecord {
+  toolCallId: string;
+  name: string;
+  content: MessageContent;
+  error?: boolean;
+}
+
+/** Tagged part emitted by a streaming *agent* (`Ai.AgentStream`) — the module's
+ *  streaming deliverable, distinct from the model-facing `StreamPart`. It is a
+ *  superset: the shared members (`text-delta`, `tool-call`, `finish`, `error`) are
+ *  reused from `StreamPart`, and the agent adds `tool-result` for a tool it executed.
+ *  This is the element type the streaming `output` (`x-telo-stream`) carries. */
+export type AgentStreamPart =
+  | StreamPart
+  | { type: "tool-result"; toolResult: ToolResultRecord };
 
 /**
  * Runtime contract every Ai.Model implementation exposes.

@@ -1,0 +1,191 @@
+kind: Telo.Application
+metadata:
+  name: AgentStreamLoopTest
+  version: 1.0.0
+  description: |
+    End-to-end hermetic test for Ai.AgentStream. Echo emits one deterministic tool
+    call (multiply 6×7) on the first turn (finishReason: tool-calls), the Multiplier
+    tool returns {product:42}, and the second turn streams that result back as text.
+    The agent's event stream is served over NDJSON via an Http.Api `mode: stream`
+    route and drained, so the full tool-call → tool-result → text-delta → finish
+    order and the pinned tool-result fields are asserted without a live provider.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Http: ../../http-server
+  Ndjson: ../../ndjson-codec
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestAgentStream
+---
+kind: AiEcho.EchoModel
+metadata: { name: Echo }
+emitToolCall:
+  name: multiply
+  arguments: { a: 6, b: 7 }
+---
+kind: Run.Value
+metadata: { name: Multiplier }
+inputs:
+  a: { type: number }
+  b: { type: number }
+value:
+  product: !cel "inputs.a * inputs.b"
+---
+kind: Ai.Tools
+metadata: { name: LocalTools }
+tools:
+  - tool: !ref Multiplier
+    name: multiply
+    description: Multiply two numbers.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ a, b ]
+      properties:
+        a: { type: number }
+        b: { type: number }
+---
+kind: Ai.AgentStream
+metadata: { name: Assistant }
+model: !ref Echo
+system: "Use tools when needed."
+toolProviders:
+  - provider: !ref LocalTools
+---
+kind: Ndjson.Encoder
+metadata: { name: NdjsonEnc }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [ prompt ]
+          properties:
+            prompt: { type: string }
+    handler: !ref Assistant
+    inputs:
+      prompt: !cel "request.body.prompt"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: !ref NdjsonEnc
+---
+# Fetch the agent stream, parse each NDJSON line into an event, and summarize the
+# sequence into a flat shape the assertion can check by equality.
+kind: JS.Script
+metadata: { name: FetchAndSummarize }
+code: |
+  async function main({ url, prompt }) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    const chunks = [];
+    for await (const chunk of r.body) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString("utf8");
+    const events = body.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+    const first = events[0];
+    const second = events[1];
+    const last = events[events.length - 1];
+    const textDeltas = events.filter((e) => e.type === "text-delta");
+    return {
+      status: r.status,
+      firstType: first.type,
+      firstToolName: first.toolCall && first.toolCall.name,
+      secondType: second.type,
+      secondToolCallId: second.toolResult && second.toolResult.toolCallId,
+      secondContent: second.toolResult && second.toolResult.content,
+      textConcat: textDeltas.map((e) => e.delta).join(""),
+      finishCount: events.filter((e) => e.type === "finish").length,
+      lastType: last.type,
+      lastFinishReason: last.finishReason,
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+      prompt: { type: string }
+    required: [ url, prompt ]
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+---
+kind: Run.Sequence
+metadata: { name: TestAgentStream }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8951
+    baseUrl: http://127.0.0.1:8951
+    logger: false
+    openapi:
+      info:
+        title: AgentStream test
+        version: 1.0.0
+    mounts:
+      - path: /
+        mount: !ref Api
+targets:
+  - !ref Server
+steps:
+  - name: Hit
+    inputs:
+      url: http://127.0.0.1:8951/chat
+      prompt: "multiply 6 and 7"
+    invoke: !ref FetchAndSummarize
+  - name: AssertStream
+    inputs:
+      status: !cel "steps.Hit.result.status"
+      firstType: !cel "steps.Hit.result.firstType"
+      firstToolName: !cel "steps.Hit.result.firstToolName"
+      secondType: !cel "steps.Hit.result.secondType"
+      secondToolCallId: !cel "steps.Hit.result.secondToolCallId"
+      secondContent: !cel "steps.Hit.result.secondContent"
+      textConcat: !cel "steps.Hit.result.textConcat"
+      finishCount: !cel "steps.Hit.result.finishCount"
+      lastType: !cel "steps.Hit.result.lastType"
+      lastFinishReason: !cel "steps.Hit.result.lastFinishReason"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          firstType: { const: "tool-call" }
+          firstToolName: { const: "multiply" }
+          secondType: { const: "tool-result" }
+          secondToolCallId: { const: "echo-call-1" }
+          secondContent: { const: '{"product":42}' }
+          textConcat: { const: '{"product":42}' }
+          finishCount: { const: 1 }
+          lastType: { const: "finish" }
+          lastFinishReason: { const: "stop" }
+        required:
+          - status
+          - firstType
+          - firstToolName
+          - secondType
+          - secondToolCallId
+          - secondContent
+          - textConcat
+          - finishCount
+          - lastType
+          - lastFinishReason

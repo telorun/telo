@@ -61,6 +61,11 @@
       "bun": "./src/ai-agent-controller.ts",
       "import": "./dist/ai-agent-controller.js"
     },
+    "./agent-stream": {
+      "types": "./dist/ai-agent-stream-controller.d.ts",
+      "bun": "./src/ai-agent-stream-controller.ts",
+      "import": "./dist/ai-agent-stream-controller.js"
+    },
     "./redact": {
       "types": "./dist/redact.d.ts",
       "bun": "./src/redact.ts",

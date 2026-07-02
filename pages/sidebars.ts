@@ -155,6 +155,7 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "modules/ai/docs/ai-text-stream", label: "Ai.TextStream" },
                 { type: "doc", id: "modules/ai/docs/ai-tool-provider", label: "Ai.ToolProvider" },
                 { type: "doc", id: "modules/ai/docs/ai-agent", label: "Ai.Agent" },
+                { type: "doc", id: "modules/ai/docs/ai-agent-stream", label: "Ai.AgentStream" },
                 {
                   type: "category",
                   label: "Providers",
