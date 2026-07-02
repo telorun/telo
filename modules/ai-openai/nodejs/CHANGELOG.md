@@ -1,5 +1,16 @@
 # @telorun/ai-openai
 
+## 0.8.0
+
+### Minor Changes
+
+- ea7823a: Surface tool calls on the streaming path. `stream()` now accumulates OpenAI's incremental `delta.tool_calls[]` fragments and emits one assembled `tool-call` `StreamPart` per call before the terminal `finish`, so `Ai.AgentStream` can drive a tool-use loop with live token streaming. Text-only streaming (`Ai.TextStream`) is unaffected.
+
+### Patch Changes
+
+- Updated dependencies [ea7823a]
+  - @telorun/ai@0.7.0
+
 ## 0.7.0
 
 ### Minor Changes
