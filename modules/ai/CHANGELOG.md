@@ -1,5 +1,7 @@
 # Changelog
-## 0.7.0 - 2026-06-13
+## 0.8.0 - 2026-07-02
+### Added
+* Update controller @telorun/ai to 0.7.0.## 0.7.0 - 2026-06-13
 ### Added
 * Update controller @telorun/ai to 0.6.0.## 0.6.0 - 2026-06-07
 ### Added

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai
   namespace: std
-  version: 0.7.0
+  version: 0.8.0
   description: LLM completion primitives with pluggable provider models, plus a tool-use agent
 exports:
   kinds:
@@ -41,7 +41,7 @@ metadata:
   name: Text
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#text
+  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -139,7 +139,7 @@ metadata:
   name: TextStream
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#text-stream
+  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text-stream
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -235,7 +235,7 @@ metadata:
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
-  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#tools
+  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#tools
 schema:
   type: object
   properties:
@@ -325,7 +325,7 @@ metadata:
   name: Agent
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#agent
+  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -476,7 +476,7 @@ metadata:
   name: AgentStream
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.6.0?local_path=./nodejs#agent-stream
+  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent-stream
 inputType:
   kind: Type.JsonSchema
   schema:
