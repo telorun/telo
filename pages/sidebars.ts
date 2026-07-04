@@ -451,6 +451,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     { type: "doc", id: "modules/stream/README", label: "Overview" },
                     { type: "doc", id: "modules/stream/docs/of", label: "Stream.Of" },
+                    { type: "doc", id: "modules/stream/docs/collect", label: "Stream.Collect" },
                   ],
                 },
                 {

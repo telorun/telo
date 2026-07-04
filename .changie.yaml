@@ -49,6 +49,13 @@ projects:
       - path: modules/assert/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: authoring-agent
+    key: authoring-agent
+    changelog: apps/authoring-agent/CHANGELOG.md
+    replacements:
+      - path: apps/authoring-agent/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: benchmark
     key: benchmark
     changelog: modules/benchmark/CHANGELOG.md

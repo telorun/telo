@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: authoring-agent
+  version: 0.0.0
+  description: |
+    AI manifest-authoring agent. Thin HTTP/SSE root over the `chat` library, which
+    owns the chat backend (OpenAI-backed Ai.AgentStream + fs/shell tools + SQLite
+    history + ChatHandler). This root exposes the library's ChatHandler over a
+    declared port and starts the conversation store. Each POST /chat streams the
+    assistant response and tool calls back as Server-Sent Events. Requires
+    OPENAI_API_KEY.
+keepAlive: true
+imports:
+  Chat:
+    source: ./chat
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      dbFile: ./tmp/authoring-agent.sqlite
+      model: gpt-4o
+  Http: ../../modules/http-server
+  Sse: ../../modules/sse-codec
+ports:
+  http:
+    env: PORT
+    default: 8080
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+targets:
+  - !ref Chat.initSchema
+  - !ref Server
+---
+kind: Sse.Encoder
+metadata: { name: SseEnc }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [conversationId, message]
+          properties:
+            conversationId:
+              type: string
+              description: Opaque conversation id; groups messages into a thread.
+              examples: [ "conv-1" ]
+            message:
+              type: string
+              description: The user's message.
+              examples: [ "Add an HTTP health endpoint." ]
+    handler: !ref Chat.chatHandler
+    inputs:
+      conversationId: !cel "request.body.conversationId"
+      message: !cel "request.body.message"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/event-stream:
+            encoder: !ref SseEnc
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+---
+kind: Http.Server
+metadata: { name: Server }
+host: 0.0.0.0
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref Api

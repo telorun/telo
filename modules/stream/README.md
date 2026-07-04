@@ -17,6 +17,7 @@ native way to seed a pipeline with fixed data (instead of a `JS.Script`).
 | Kind | Purpose |
 | --- | --- |
 | `Stream.Of` | Emit a declared list of literal `items` as a `Stream`, in order. |
+| `Stream.Collect` | Consume a `Stream` to completion and return its `items` as an array — the inverse of `Stream.Of`. Draining drives the producer's side effects (e.g. runs an `Ai.AgentStream` turn) and materializes the finite stream for inspection or assertion in CEL. Buffered — bounded by the stream's length. |
 
 > The output is statically an **opaque** stream (no element type), like every
 > Telo stream today. Static element-type validation is a planned evolution — see

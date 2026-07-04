@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: CrossModuleRefInjection
+  version: 1.0.0
+  description: |
+    Regression test for Phase-5 ref injection across the import boundary. The
+    imported `xmodagent` library holds an Ai.Text (`ask`) whose kind is a
+    library-local alias (`Ai.Text`) and whose `model` ref targets a library-internal
+    EchoModel. Invoking the exported `ask` must return the echoed prompt — which only
+    works if injection resolves the library resource's kind through the library's own
+    alias scope and injects the model. Before the fix this failed with
+    ERR_INVALID_REFERENCE ('model' is not a live instance). Hermetic — no provider.
+imports:
+  XMod: ./__fixtures__/xmod-agent
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref Test
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Ask
+    invoke: !ref XMod.ask
+    inputs:
+      prompt: "hello"
+  - name: AssertText
+    inputs:
+      text: !cel "steps.Ask.result.text"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text: { const: "hello" }
+        required: [ text ]

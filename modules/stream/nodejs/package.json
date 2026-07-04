@@ -32,6 +32,11 @@
       "types": "./dist/of-controller.d.ts",
       "bun": "./src/of-controller.ts",
       "import": "./dist/of-controller.js"
+    },
+    "./collect": {
+      "types": "./dist/collect-controller.d.ts",
+      "bun": "./src/collect-controller.ts",
+      "import": "./dist/collect-controller.js"
     }
   },
   "files": [

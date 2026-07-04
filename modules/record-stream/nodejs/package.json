@@ -34,6 +34,11 @@
       "bun": "./src/extract-text-controller.ts",
       "import": "./dist/extract-text-controller.js"
     },
+    "./on-complete": {
+      "types": "./dist/on-complete-controller.d.ts",
+      "bun": "./src/on-complete-controller.ts",
+      "import": "./dist/on-complete-controller.js"
+    },
     "./tee": {
       "types": "./dist/tee-controller.d.ts",
       "bun": "./src/tee-controller.ts",

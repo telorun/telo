@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: StreamCollectSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Stream.Collect — the terminal sink and inverse of Stream.Of.
+    Seeds a stream of tagged records, collects it back to an array, and asserts the
+    round-trip (count, order, and a CEL inspection over the materialized items).
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - { type: text-delta, delta: "he" }
+  - { type: tool-call, name: write_file }
+  - { type: text-delta, delta: "llo" }
+  - { type: finish }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Src
+    invoke: !ref Source
+  - name: Collect
+    inputs:
+      input: !cel "steps.Src.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: Assert
+    inputs:
+      first: !cel "steps.Collect.result.items[0].delta"
+      last: !cel "steps.Collect.result.items[3].type"
+      hasToolCall: !cel "steps.Collect.result.items.exists(r, r.type == 'tool-call' && r.name == 'write_file')"
+      text: !cel "steps.Collect.result.items.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          first: { const: "he" }
+          last: { const: "finish" }
+          hasToolCall: { const: true }
+          text: { const: "hello" }
+        required: [ first, last, hasToolCall, text ]
