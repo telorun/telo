@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: stream
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Generic stream substrate — value-agnostic stream construction and
     operators. `Stream.Of` emits a declared list of literal items as a stream,
@@ -27,7 +27,7 @@ metadata:
   name: Of
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.2.0?local_path=./nodejs#of
+  - pkg:npm/@telorun/stream@0.3.0?local_path=./nodejs#of
 schema:
   type: object
   properties:
@@ -59,7 +59,7 @@ metadata:
   name: Collect
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.2.0?local_path=./nodejs#collect
+  - pkg:npm/@telorun/stream@0.3.0?local_path=./nodejs#collect
 inputType:
   kind: Type.JsonSchema
   schema:
