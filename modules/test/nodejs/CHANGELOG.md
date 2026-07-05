@@ -1,5 +1,11 @@
 # @telorun/test
 
+## 0.4.36
+
+### Patch Changes
+
+- @telorun/kernel@0.40.1
+
 ## 0.4.35
 
 ### Patch Changes
