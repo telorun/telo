@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: xmodagent
+  version: 0.0.0
+  description: |
+    Fixture library for the cross-module ref-injection regression test. It declares
+    a resource (`ask`, an Ai.Text) whose kind uses a library-local import alias (`Ai`)
+    and whose `model` ref points at another library-internal resource (`echo`). When
+    an importer invokes the exported `ask`, Phase-5 injection must resolve `Ai.Text`'s
+    ref-field map through THIS library's alias scope to inject `echo` — the bug the
+    definition-registry per-module-scope fix addresses.
+imports:
+  Ai: ../../../modules/ai
+  AiEcho: ../../../modules/ai/tests/__fixtures__/ai-echo.yaml
+exports:
+  resources:
+    - ask
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Ai.Text
+metadata: { name: ask }
+model: !ref echo

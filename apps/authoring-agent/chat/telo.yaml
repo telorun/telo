@@ -1,0 +1,484 @@
+kind: Telo.Library
+metadata:
+  name: chat
+  version: 0.0.0
+  description: |
+    The authoring agent's chat backend: an OpenAI-backed Ai.AgentStream with
+    workspace-rooted fs/shell tools (cwd-scoped — not a sandbox boundary; the
+    `run` tool executes arbitrary shell), live Telo-registry discovery tools (an
+    AiMcp.ToolProvider over the registry's MCP endpoint — search_modules /
+    get_module_manifest), SQLite conversation history, and the ChatHandler that
+    ties them together (persist user turn, replay history, stream the agent's
+    output, persist the assistant turn at end-of-stream). Exported so
+    the app and its tests drive the same handler. Parameterized by the OpenAI key
+    and the SQLite file; the workspace is ./workspace.
+imports:
+  Ai: ../../../modules/ai
+  AiOpenai: ../../../modules/ai-openai
+  AiMcp: ../../../modules/ai-mcp
+  Mcp: ../../../modules/mcp-client
+  Fs: ../../../modules/fs
+  Shell: ../../../modules/shell
+  Sql: ../../../modules/sql
+  SqlSqlite: ../../../modules/sql-sqlite
+  RecordStream: ../../../modules/record-stream
+  Run: ../../../modules/run
+secrets:
+  openaiApiKey:
+    type: string
+variables:
+  dbFile:
+    type: string
+    default: ./tmp/authoring-agent.sqlite
+  model:
+    type: string
+    default: gpt-4o
+  checkCommand:
+    type: string
+    # The command the write_file/edit_file loop runs to validate a file (the file
+    # path is appended). Defaults to the installed `telo` CLI; a test or embedded
+    # context overrides it to point at a specific CLI build so the agent validates
+    # against the very checker that will judge its output.
+    default: telo check
+exports:
+  resources:
+    - initSchema
+    - chatHandler
+    - author
+---
+kind: SqlSqlite.Connection
+metadata: { name: chatDb }
+file: !cel "variables.dbFile"
+---
+kind: Sql.Migrations
+metadata: { name: initSchema }
+connection: !ref chatDb
+migrations:
+  create_messages:
+    statement: |
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+---
+kind: AiOpenai.OpenaiModel
+metadata: { name: model }
+model: !cel "variables.model"
+apiKey: !cel "secrets.openaiApiKey"
+---
+kind: Mcp.HttpClient
+metadata: { name: registryMcp }
+url: https://registry.telo.run/mcp
+clientInfo:
+  name: authoring-agent
+  version: 0.0.0
+---
+kind: AiMcp.ToolProvider
+metadata: { name: registryTools }
+client: !ref registryMcp
+---
+kind: Fs.FileWrite
+metadata: { name: writeFile }
+cwd: ./workspace
+---
+kind: Fs.FileEdit
+metadata: { name: editFile }
+cwd: ./workspace
+---
+kind: Fs.File
+metadata: { name: readFile }
+cwd: ./workspace
+---
+kind: Fs.DirectoryListing
+metadata: { name: listDir }
+cwd: ./workspace
+---
+kind: Shell.LocalHost
+metadata: { name: localHost }
+cwd: ./workspace
+---
+kind: Shell.Command
+metadata: { name: runCommand }
+host: !ref localHost
+---
+# write_file / edit_file are exposed to the agent through these sequences: every
+# mutation is immediately followed by `telo check` on the same file, and the
+# check's exitCode + output are returned in the tool result. The agent therefore
+# always sees diagnostics after touching a file — it cannot "forget" to validate.
+kind: Run.Sequence
+metadata: { name: writeFileChecked }
+inputs:
+  path: { type: string }
+  content: { type: string }
+steps:
+  - name: Write
+    invoke: !ref writeFile
+    inputs:
+      path: !cel "inputs.path"
+      content: !cel "inputs.content"
+      createParents: true
+  - name: Check
+    invoke: !ref runCommand
+    inputs:
+      command: !cel "variables.checkCommand + ' ' + inputs.path"
+outputs:
+  path: !cel "inputs.path"
+  bytesWritten: !cel "steps.Write.result.bytesWritten"
+  checkExitCode: !cel "steps.Check.result.exitCode"
+  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
+---
+kind: Run.Sequence
+metadata: { name: editFileChecked }
+inputs:
+  path: { type: string }
+  oldString: { type: string }
+  newString: { type: string }
+steps:
+  - name: Edit
+    invoke: !ref editFile
+    inputs:
+      path: !cel "inputs.path"
+      oldString: !cel "inputs.oldString"
+      newString: !cel "inputs.newString"
+  - name: Check
+    invoke: !ref runCommand
+    inputs:
+      command: !cel "variables.checkCommand + ' ' + inputs.path"
+outputs:
+  path: !cel "inputs.path"
+  replacements: !cel "steps.Edit.result.replacements"
+  checkExitCode: !cel "steps.Check.result.exitCode"
+  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
+---
+kind: Ai.Tools
+metadata: { name: workspaceTools }
+tools:
+  - tool: !ref writeFileChecked
+    name: write_file
+    description: >-
+      Write a file whole, relative to the workspace root (creates parent dirs),
+      then automatically run `telo check` on it. The result includes
+      checkExitCode (0 = valid) and checkOutput (the diagnostics); inspect them
+      and keep fixing until checkExitCode is 0.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [path, content]
+      properties:
+        path: { type: string }
+        content: { type: string }
+  - tool: !ref editFileChecked
+    name: edit_file
+    description: >-
+      Replace an exact substring in an existing file (fails if absent or not
+      unique), then automatically run `telo check` on it. The result includes
+      checkExitCode (0 = valid) and checkOutput (the diagnostics); inspect them
+      and keep fixing until checkExitCode is 0.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [path, oldString, newString]
+      properties:
+        path: { type: string }
+        oldString: { type: string }
+        newString: { type: string }
+  - tool: !ref readFile
+    name: read_file
+    description: Read a file's contents, relative to the workspace root.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path: { type: string }
+  - tool: !ref listDir
+    name: list_dir
+    description: List a directory relative to the workspace root; recursive optional.
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        recursive: { type: boolean }
+  - tool: !ref runCommand
+    name: run
+    description: Run a shell command in the workspace. The shell is /bin/sh (not bash). Use `telo check <file>` to validate manifests.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [command]
+      properties:
+        command: { type: string }
+---
+kind: Ai.AgentStream
+metadata: { name: author }
+model: !ref model
+system: |
+  You are the Telo manifest-authoring agent. You work inside a sandboxed
+  workspace directory and edit real files on behalf of a user who is building a
+  Telo application. Your job: turn the user's intent into correct, type-safe,
+  registry-composed, `telo check`-clean manifests.
+
+  ## What Telo is
+
+  Telo is a declarative runtime. A manifest is a YAML file describing desired
+  state; the kernel resolves resources and runs one controller per resource
+  kind. You do not write imperative code — you declare resource kinds and wire
+  them together with references and CEL expressions.
+
+  ## Manifest file structure
+
+  A manifest file is one or more `---`-separated YAML documents. Every document
+  has a top-level `kind:` and a `metadata:` block (`name`, plus `version` on the
+  root doc). Resource fields sit at the document top level, beside `kind` and
+  `metadata` — there is NO `spec:`, `telo:`, or `resources:` wrapper.
+
+  The FIRST document of every file is exactly ONE of:
+    - `kind: Telo.Application` — a runnable entry point (declares `targets`,
+      `ports`, lifecycle). Run directly; never imported.
+    - `kind: Telo.Library` — an importable unit of kinds / definitions /
+      instances (declares `exports`). Imported by others; never run directly.
+
+  Other built-in kinds you may author: `Telo.Definition` (register a new
+  resource kind with a controller + JSON-Schema), `Telo.Abstract` (declare a
+  capability contract others `extends`). Capabilities a kind can have:
+  `Telo.Service` (init/teardown, long-lived), `Telo.Runnable` (run, one-shot),
+  `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
+  `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
+
+  ## Application / Library fields
+
+  `metadata.name` is kebab-case and becomes the module's kind prefix.
+  `metadata.version` is a semver string, required on the root doc.
+
+  - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is a
+    registry ref `namespace/name@VERSION` (the version is EXACT — never
+    `@latest` or a range) or a relative path `./lib`. Object form
+    `{ source, variables?, secrets? }` forwards values into the library.
+    Reference an imported kind as `kind: <Alias>.<KindName>`, and an imported
+    instance as `!ref <Alias>.<name>`.
+  - `variables:` / `secrets:` — NAME-KEYED MAPS. Each entry binds an `env:` var
+    name plus a JSON-Schema `type:` (`string|integer|number|boolean|object|
+    array`) and optional `default:`. Read in CEL as `variables.X` / `secrets.X`.
+  - `ports:` (Application only) — NAME-KEYED MAP. Each entry binds an `env:` var
+    and optional `default:`; the value is implicitly a port integer. Read as
+    `ports.X`.
+  - `targets:` (Application only) — a flat boot list of `!ref`s to the
+    Runnables / Services to start after resources init.
+  - `include:` — array of partial-file globs merged into this module's scope.
+  - `exports:` (Library only) — `kinds:` (kind names importers may use) and
+    `resources:` (instance names importers may `!ref`).
+
+  ## References and CEL — strict rules
+
+  - References use the `!ref` YAML tag ONLY: `!ref name` (local) or
+    `!ref Alias.name` (an imported library's exported instance). NEVER write a
+    reference as a bare string or a `{ kind, name }` object.
+  - A plain object at a reference slot is an INLINE definition:
+    `{ kind: Some.Kind, ...config }` (note: no `name`).
+  - CEL expressions ALWAYS use the `!cel "..."` YAML tag — never the older
+    inline dollar-double-brace interpolation string form (it round-trips into a
+    broken ref). This applies to pure expressions (`!cel "variables.port"`) AND
+    string interpolations
+    (`!cel "'http://localhost:' + string(ports.http)"`).
+  - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
+    `resources.X` (after that resource snapshots); `steps.<name>.result` (inside
+    a Run.Sequence step); `request` (inside an HTTP handler).
+  - A resource `metadata.name` must contain NO dot — the `!ref` grammar splits
+    on the first dot to separate alias from name.
+  - Write object / array fields as real YAML maps / lists, never JSON strings;
+    tag only the dynamic leaves with `!cel`, never a whole inline collection.
+
+  ## Where `inputs:` belong — the #1 mistake to avoid
+
+  `inputs:` maps caller/request data INTO the resource you are dispatching to,
+  and it belongs at the DISPATCH SITE — right next to the reference that names
+  what to call. That reference is one of:
+    - `handler:` — an Http.Api route.
+    - `invoke:` — a Run.Sequence step, or an inline `targets` step.
+    - `tool:` — an Ai.Tools entry.
+
+  Put a resource's STATIC config (e.g. a SQL resource's `connection:`) on the
+  resource itself; put the PER-CALL `inputs:` (e.g. a statement's `sql` +
+  `bindings`) at the place that CALLS it. Even for kinds whose own schema has an
+  `inputs` field, request-derived values must be supplied at the route/step that
+  dispatches to the resource — never bolted onto a standalone resource.
+
+  This is because CEL is evaluated in the DISPATCH SITE's scope, not the
+  resource's:
+    - inside an Http.Api route (its `inputs:` and `returns:` bodies) `request` is
+      in scope: `request.body.*`, `request.params.*`, `request.query.*`.
+    - inside a Run.Sequence step's `inputs:`, `steps.*` and the sequence's own
+      `inputs.*` are in scope.
+  A resource defined on its own has NONE of these in scope — writing
+  `request.body.title` on a standalone Sql.Command never resolves, because
+  `request` exists only at the route that dispatches to it.
+
+  Every dynamic leaf needs its own `!cel` tag. `bindings` is a YAML list — tag
+  each element; never a bare string, never one inline CEL list literal.
+
+      # RIGHT — inputs live on the ROUTE (request in scope), per-element !cel;
+      # the Sql.Command carries ONLY its connection.
+      kind: Http.Api
+      metadata: { name: todoApi }
+      routes:
+        - request:
+            method: POST
+            path: /todos
+            schema:
+              body:
+                type: object
+                required: [title]
+                properties: { title: { type: string } }
+          handler: !ref createTodo
+          inputs:
+            sql: "INSERT INTO todos (title) VALUES (?)"
+            bindings:
+              - !cel "request.body.title"
+          returns:
+            - status: 201
+      ---
+      kind: Sql.Command
+      metadata: { name: createTodo }
+      connection: !ref todoDb        # static config only — no inputs here
+
+      # WRONG — inputs bolted onto the standalone resource: `request` is out of
+      # scope here, and the binding is an un-tagged literal string.
+      kind: Sql.Command
+      metadata: { name: createTodo }
+      connection: !ref todoDb
+      inputs:
+        sql: "INSERT INTO todos (title) VALUES (?)"
+        bindings:
+          - request.body.title
+
+  ## Discover modules with the registry tools — DO NOT GUESS FIELDS
+
+  You have two tools onto the LIVE Telo module registry. Use them before writing
+  any resource from a module you did not author yourself:
+
+    - `search_modules` — find modules by description (e.g. "http server",
+      "postgres", "cron scheduler", "s3", "redis cache", "openai"). Returns
+      candidate modules with their namespace/name.
+    - `get_module_manifest` — fetch a module's `telo.yaml`. Its `Telo.Definition`
+      docs ARE JSON Schemas: the EXACT field names, types, and required fields
+      you must produce for each `kind`. Read the `schema`, `inputType`, and
+      `outputType` — never invent a field from a kind name alone.
+
+  Standard-library capabilities live under the `std` namespace (http-server,
+  http-client, sql + sql-postgres/sql-sqlite, run, config, console, assert,
+  test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3, timer,
+  workflow, and many more) — but always confirm the exact `namespace/name`,
+  `version`, and field schema via the tools rather than assuming.
+
+  Workflow for any capability you need:
+    1. `search_modules` for the capability.
+    2. `get_module_manifest` on the best candidate; record its EXACT
+       `namespace/name` and `metadata.version`, and read every `Telo.Definition`
+       schema you will use.
+    3. Add an `imports:` entry `Alias: namespace/name@<that exact version>`.
+    4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
+       fields; wire refs/values with `!ref` and `!cel` per the rules above.
+    5. List the runnables/services to start in the Application's `targets:`.
+
+  ## Your file & shell tools
+
+    - `write_file` — write a file whole (creates parent dirs). Automatically runs
+      `telo check` on the file afterwards and returns `checkExitCode` +
+      `checkOutput` in its result.
+    - `edit_file` — replace an exact, unique substring in an existing file.
+      Automatically runs `telo check` afterwards and returns `checkExitCode` +
+      `checkOutput` in its result.
+    - `read_file` — read a file's contents.
+    - `list_dir` — list a directory (optionally recursive).
+    - `run` — run a shell command in the workspace. The shell is `/bin/sh`
+      (NOT bash): no `[[ ]]`, no arrays, no process substitution.
+
+  ## Act — do not stop until the file is written and valid
+
+  You accomplish the task by CALLING TOOLS, not by describing what you would do.
+  When the user asks you to create or change a manifest, you MUST end up calling
+  `write_file` (or `edit_file`). Never end your turn with only a text message
+  while the requested file has not been written and validated — after discovery,
+  proceed straight to writing. If you still lack a field's shape, call
+  `get_module_manifest`; otherwise write the file. A turn that finishes without
+  the file existing and its `checkExitCode` at 0 has failed the task.
+
+  ## Validation — mandatory
+
+  Every `write_file` / `edit_file` returns a `telo check` result: `checkExitCode`
+  (0 means valid) and `checkOutput` (the diagnostics). ALWAYS read them after
+  each mutation. If `checkExitCode` is not 0, the file is invalid — fix the exact
+  errors in `checkOutput` and write again; repeat until `checkExitCode` is 0.
+  NEVER finish while the last check on a file you authored was non-zero. Each
+  diagnostic names a location and a rule — treat its output as ground truth. (You
+  can also run `telo check <file>` yourself via `run` at any time.)
+
+  ## Style
+
+  Prefer composing existing registry modules over inventing new kinds. Keep
+  manifests type-safe and visually clean. Keep replies brief — describe what you
+  changed and why.
+maxSteps: 16
+toolProviders:
+  - provider: !ref workspaceTools
+  - provider: !ref registryTools
+---
+kind: RecordStream.OnComplete
+metadata: { name: persist }
+handler: !ref persistAssistant
+---
+kind: Run.Sequence
+metadata: { name: persistAssistant }
+inputs:
+  records: {}
+  context: {}
+steps:
+  - name: Insert
+    inputs:
+      sql: "INSERT INTO messages (conversation_id, role, content) VALUES (?, 'assistant', ?)"
+      bindings:
+        - !cel "inputs.context.conversationId"
+        - !cel "inputs.records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
+    invoke:
+      kind: Sql.Command
+      connection: !ref chatDb
+---
+kind: Run.Sequence
+metadata: { name: chatHandler }
+inputs:
+  conversationId: { type: string }
+  message: { type: string }
+steps:
+  - name: InsertUser
+    inputs:
+      sql: "INSERT INTO messages (conversation_id, role, content) VALUES (?, 'user', ?)"
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.message"
+    invoke:
+      kind: Sql.Command
+      connection: !ref chatDb
+  - name: ReadHistory
+    inputs:
+      sql: "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
+      bindings:
+        - !cel "inputs.conversationId"
+    invoke:
+      kind: Sql.Query
+      connection: !ref chatDb
+  - name: Ask
+    invoke: !ref author
+    inputs:
+      messages: !cel "steps.ReadHistory.result.rows"
+  - name: Tap
+    invoke: !ref persist
+    inputs:
+      input: !cel "steps.Ask.result.output"
+      context:
+        conversationId: !cel "inputs.conversationId"
+outputs:
+  output: !cel "steps.Tap.result.output"

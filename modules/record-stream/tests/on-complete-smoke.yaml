@@ -1,0 +1,162 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamOnCompleteSmoke
+  version: 1.0.0
+  description: |
+    Smoke tests for RecordStream.OnComplete. Verifies the passthrough forwards
+    every item, that the handler fires exactly once on normal completion with the
+    full records + context (asserted via a SQLite insert, the canonical
+    persist-while-streaming pattern), and that early consumer cancellation
+    suppresses the handler.
+imports:
+  RecordStream: ../
+  Stream: ../../stream
+  JS: ../../javascript
+  Run: ../../run
+  Sql: ../../sql
+  SqlSqlite: ../../sql-sqlite
+  Assert: ../../assert
+targets:
+  - !ref InitSchema
+  - !ref TestPersistOnComplete
+  - !ref TestEarlyCancelSuppressesHandler
+---
+kind: SqlSqlite.Connection
+metadata: { name: Db }
+file: ":memory:"
+---
+kind: Sql.Migrations
+metadata: { name: InitSchema }
+connection: !ref Db
+migrations:
+  create_turns:
+    statement: |
+      CREATE TABLE IF NOT EXISTS turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tag TEXT NOT NULL,
+        content TEXT NOT NULL
+      )
+---
+# A tagged-record stream in the shape an agent produces: two text deltas then a
+# terminal finish.
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - { type: text-delta, delta: "he" }
+  - { type: text-delta, delta: "llo" }
+  - { type: finish, finishReason: stop }
+---
+kind: JS.Script
+metadata: { name: CollectArray }
+code: |
+  async function main({ input }) {
+    const items = [];
+    for await (const x of input) items.push(x);
+    return { count: items.length };
+  }
+---
+kind: JS.Script
+metadata: { name: TakeTwo }
+code: |
+  async function main({ input }) {
+    let n = 0;
+    for await (const x of input) { if (++n >= 2) break; }
+    return { count: n };
+  }
+---
+# The completion handler: project the buffered records to the assistant text and
+# persist a row. This is the record→store projection the OnComplete kind delegates.
+kind: Run.Sequence
+metadata: { name: PersistTurn }
+inputs:
+  records: {}
+  context: {}
+steps:
+  - name: Insert
+    inputs:
+      sql: "INSERT INTO turns (tag, content) VALUES (?, ?)"
+      bindings:
+        - !cel "inputs.context.tag"
+        - !cel "inputs.records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+---
+kind: RecordStream.OnComplete
+metadata: { name: Persist }
+handler: !ref PersistTurn
+---
+kind: Run.Sequence
+metadata: { name: TestPersistOnComplete }
+steps:
+  - name: Src
+    invoke: !ref Source
+  - name: Tap
+    inputs:
+      input: !cel "steps.Src.result.output"
+      context: { tag: "t1" }
+    invoke: !ref Persist
+  - name: Drain
+    inputs:
+      input: !cel "steps.Tap.result.output"
+    invoke: !ref CollectArray
+  - name: AssertForwarded
+    inputs:
+      count: !cel "steps.Drain.result.count"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties: { count: { const: 3 } }
+        required: [ count ]
+  - name: Query
+    inputs:
+      sql: "SELECT tag, content FROM turns WHERE tag = 't1'"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+  - name: AssertRow
+    inputs:
+      tag: !cel "steps.Query.result.rows[0].tag"
+      content: !cel "steps.Query.result.rows[0].content"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          tag: { const: "t1" }
+          content: { const: "hello" }
+        required: [ tag, content ]
+---
+# The consumer breaks after two items — completion never happens, so the handler
+# must not fire and no row is written for tag t2.
+kind: Run.Sequence
+metadata: { name: TestEarlyCancelSuppressesHandler }
+steps:
+  - name: Src
+    invoke: !ref Source
+  - name: Tap
+    inputs:
+      input: !cel "steps.Src.result.output"
+      context: { tag: "t2" }
+    invoke: !ref Persist
+  - name: TakeTwo
+    inputs:
+      input: !cel "steps.Tap.result.output"
+    invoke: !ref TakeTwo
+  - name: Query
+    inputs:
+      sql: "SELECT tag FROM turns WHERE tag = 't2'"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+  - name: AssertNoRow
+    inputs:
+      rows: !cel "steps.Query.result.rows"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          rows: { type: array, maxItems: 0 }
+        required: [ rows ]

@@ -13,6 +13,7 @@ metadata:
 exports:
   kinds:
     - Of
+    - Collect
 ---
 # Emit a declared list of literal items as a stream, in order.
 #
@@ -46,3 +47,39 @@ outputType:
         description: Stream of the declared items, in order.
     required: [ output ]
     additionalProperties: false
+---
+# Terminal stream sink — the inverse of Stream.Of. Consumes `input` fully and
+# returns every item as `items`, in order. Draining drives the producer's side
+# effects (so it runs an upstream agent / pipeline); `items` materializes the finite
+# stream so a caller can inspect, assert, or aggregate it in CEL (e.g.
+# `items.exists(r, r.type == 'tool-call')`). Value-agnostic and buffered — bounded by
+# the stream's length. For an unbounded stream, drain incrementally instead.
+kind: Telo.Definition
+metadata:
+  name: Collect
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/stream@0.2.0?local_path=./nodejs#collect
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable to consume to completion.
+    required: [ input ]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      items:
+        type: array
+        description: Every item observed on `input`, in order.
+    required: [ items ]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

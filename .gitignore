@@ -1,6 +1,9 @@
 # Runtime artifacts
 tmp/
 *.db
+# authoring-agent writes into a process-cwd-relative ./workspace (e.g. the repo
+# root when tests run from there); its output is scratch, never committed.
+/workspace/
 
 # Generated docs (rebuilt on every docusaurus build)
 examples/INDEX.md

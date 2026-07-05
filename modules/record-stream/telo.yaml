@@ -13,6 +13,7 @@ exports:
   kinds:
     - ExtractText
     - Tee
+    - OnComplete
 ---
 # Project a discriminated stream of records to a `Stream<string>`.
 #
@@ -124,4 +125,57 @@ outputType:
     additionalProperties: false
 schema:
   type: object
+  additionalProperties: false
+---
+# Passthrough that fires a side effect once the input completes. Every item forwards
+# to `output` in order as it arrives (the consumer streams live); when `input` runs to
+# its end, the `handler` Invocable is called once with `{ records, context }` — records
+# is the full list observed, context is the opaque caller data from the `context` input.
+# The canonical use is persist-while-streaming: stream an AI/agent response to a client
+# via `output` and, at end-of-stream, `handler` writes the turn to a store. Projection
+# from records to the store's shape lives in `handler` (typically a Run.Sequence) — this
+# kind does no CEL and knows nothing of the store. `handler` is not called if the input
+# errors or the consumer cancels early. Records are buffered in memory, bounded by the
+# input stream's length.
+kind: Telo.Definition
+metadata:
+  name: OnComplete
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/record-stream@0.5.1?local_path=./nodejs#on-complete
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-stream: true
+        description: Async iterable to forward and observe.
+      context:
+        description: Opaque caller data forwarded to the completion handler as `context`.
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-stream: true
+        description: Every item from `input`, in order.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    handler:
+      title: Handler
+      description: >-
+        Invocable or Runnable (e.g. a Run.Sequence) called once, after `input`
+        completes normally, with `{ records, context }`. Not called if the input
+        errors or the consumer cancels early.
+      anyOf:
+        - x-telo-ref: "telo#Invocable"
+        - x-telo-ref: "telo#Runnable"
+  required: [handler]
   additionalProperties: false

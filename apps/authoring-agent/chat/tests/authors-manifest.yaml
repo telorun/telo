@@ -1,0 +1,143 @@
+kind: Telo.Application
+metadata:
+  name: ChatAuthorsManifest
+  version: 1.0.0
+  description: |
+    Live integration test for the chat library: drives the exported ChatHandler
+    with a real OpenAI model and asserts the agent authors a REAL, non-trivial
+    Telo application — a SQLite-backed Todo REST API (HTTP server + CRUD routes +
+    a migrated table) — by DISCOVERING every module it needs through the registry
+    MCP tools (search_modules / get_module_manifest) and importing each at its
+    exact published version. It drains the event stream (which runs the agent +
+    its fs / shell / registry tools, including the agent's own `telo check`), then
+    independently asserts: (1) the agent called get_module_manifest (registry
+    discovery actually happened), (2) `telo check` on the authored file passes —
+    which can only succeed if every import version resolves against the live
+    registry and the http/sql resources are wired correctly, and (3) the file
+    composed the real http-server + sql modules and wired the /todos routes —
+    proving a genuine multi-module app, not a self-contained stub. Skips
+    silently when OPENAI_API_KEY is unset (locally: drop a .env.local here; CI:
+    secret on the workflow); when the key is present it also needs outbound
+    access to registry.telo.run, or the run fails.
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      # In-memory store so every run starts with empty history. A persistent file
+      # would replay a "task already done" conversation on re-runs, and the model
+      # would answer with text instead of calling write_file again.
+      dbFile: ":memory:"
+      model: gpt-4o
+      # The agent's fs tools run from ./workspace, so point its check loop at the
+      # repo CLI relative to that cwd. This makes the agent validate against the
+      # exact checker the AssertValid step below uses (not a globally-installed
+      # `telo`, which CI does not have) — so their verdicts always agree.
+      checkCommand: bun ../cli/nodejs/bin/telo.ts check
+  Shell: ../../../../modules/shell
+  Stream: ../../../../modules/stream
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref Chat.initSchema
+  - !ref TestAuthors
+---
+kind: Shell.LocalHost
+metadata: { name: RepoHost }
+---
+kind: Shell.Command
+metadata: { name: TeloCheck }
+host: !ref RepoHost
+---
+kind: Run.Sequence
+metadata: { name: TestAuthors }
+# The whole live run is gated on the key being present, so `pnpm test` (and fork
+# PRs without the secret) skip it silently instead of failing on a missing key.
+steps:
+  - name: RunIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: Chat
+        invoke: !ref Chat.chatHandler
+        inputs:
+          conversationId: authors-1
+          message: |
+            Create a manifest file `todo-api.yaml`: a REAL, runnable Telo.Application
+            named "todo-api" (version 1.0.0) — a small REST API for a todo list,
+            persisted to a SQLite database:
+              - it listens on a port `http` bound to the PORT env var, default 8080;
+              - the SQLite file is bound to a `dbFile` variable (env DB_FILE, default
+                ./todos.sqlite);
+              - on startup it ensures a `todos` table exists
+                (id, title, done, created_at);
+              - POST /todos — create a todo from a JSON body `{ "title": "..." }` and
+                return the created row (including its id) as JSON;
+              - GET /todos — return all todos as a JSON array;
+              - GET /todos/{id} — return one todo, or 404 if it does not exist;
+              - DELETE /todos/{id} — delete a todo and return 204.
+            You do not know these modules' fields or versions — DISCOVER them with the
+            registry tools: search_modules for the HTTP server module and the
+            SQLite/SQL modules, then get_module_manifest to read each one's exact
+            `metadata.version` and the JSON-Schema of every kind you use. Import each
+            at its exact version and wire the server, routes, connection, migration,
+            and queries from the schemas (no guessing).
+            Validate with `telo check todo-api.yaml` and fix every error until it
+            passes.
+      # Consume the agent's event stream (driving its tool calls / file writes) and
+      # materialize the events so we can assert over them.
+      - name: Drain
+        invoke:
+          kind: Stream.Collect
+        inputs:
+          input: !cel "steps.Chat.result.output"
+      - name: AssertWrote
+        inputs:
+          calledWriteFile: !cel "steps.Drain.result.items.exists(r, r.type == 'tool-call' && r.toolCall.name == 'write_file')"
+          calledRegistry: !cel "steps.Drain.result.items.exists(r, r.type == 'tool-call' && r.toolCall.name == 'get_module_manifest')"
+          toolNames: !cel "steps.Drain.result.items.filter(r, r.type == 'tool-call').map(r, r.toolCall.name)"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              calledWriteFile: { const: true }
+              calledRegistry: { const: true }
+            required: [calledWriteFile, calledRegistry]
+      # Independently validate the manifest the agent authored.
+      - name: Validate
+        inputs:
+          command: "bun ./cli/nodejs/bin/telo.ts check ./workspace/todo-api.yaml"
+        invoke: !ref TeloCheck
+      - name: AssertValid
+        inputs:
+          exitCode: !cel "steps.Validate.result.exitCode"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              exitCode: { const: 0 }
+            required: [exitCode]
+      # Prove the manifest is a real, multi-module app — it composed the live
+      # http-server and sql modules (not a self-contained stub) and wired the
+      # requested /todos routes.
+      - name: Content
+        inputs:
+          command: "grep -q 'http-server' ./workspace/todo-api.yaml && grep -qi 'sql' ./workspace/todo-api.yaml && grep -q '/todos' ./workspace/todo-api.yaml"
+        invoke: !ref TeloCheck
+      - name: AssertContent
+        inputs:
+          exitCode: !cel "steps.Content.result.exitCode"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              exitCode: { const: 0 }
+            required: [exitCode]

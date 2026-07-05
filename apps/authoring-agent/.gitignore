@@ -1,0 +1,6 @@
+# Agent-generated files land in the workspace; keep only the placeholder.
+workspace/*
+!workspace/.gitkeep
+
+# SQLite conversation store and other run artifacts.
+tmp/
