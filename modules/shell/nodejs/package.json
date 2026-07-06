@@ -1,6 +1,6 @@
 {
   "name": "@telorun/shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo shell module - run shell commands behind a transport-neutral host abstraction.",
   "keywords": [
     "telo",

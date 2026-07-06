@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: lease
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Lease.Critical — a declarative critical section over a Cache.Store. Wraps a
     body and owns the whole acquire → run → release lifecycle around it, so a
@@ -35,7 +35,7 @@ metadata:
   name: Critical
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lease@0.1.0?local_path=./nodejs#critical
+  - pkg:npm/@telorun/lease@0.2.0?local_path=./nodejs#critical
 inputType:
   kind: Type.JsonSchema
   schema:
