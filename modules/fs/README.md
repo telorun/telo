@@ -7,7 +7,7 @@ base64 escape hatch for binary.
 
 ## Kinds
 
-All six are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
+All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
 `Ai.Tools` for an agent.
 
 - **`Fs.File`** — read a file. `{ path, encoding? }` → `{ content, size }`.
@@ -25,6 +25,22 @@ All six are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them 
   already existed); without, an existing path or missing parent is an error.
 - **`Fs.FileRemoval`** — remove a file, or a tree with `recursive`.
   `{ path, recursive? }` → `{ removed }`.
+- **`Fs.TreeSnapshot`** — content-hash a directory tree.
+  `{ path?, exclude? }` → `{ files: [{ path, hash }] }`, `hash` the sha256 hex
+  of the file's bytes. A content hash is a reliable change detector where
+  `DirectoryListing`'s `size` is not (equal size ≠ equal content), so two
+  snapshots diff to an exact change set. `exclude` skips entries by base name at
+  any depth (e.g. `node_modules`, `.git`, `dist`).
+- **`Fs.TreeSync`** — apply an **explicit** change set.
+  `{ write?: [{ path, content, encoding? }], delete?: [path] }` →
+  `{ written, deleted }`. Writes each file (creating parents), then removes each
+  deleted path — but never implicitly deletes a file absent from the set, so one
+  call serves both a full seed (all files, empty `delete`) and a partial delta
+  (only what changed) without disturbing untouched files.
+
+`TreeSnapshot` + `TreeSync` compose into two-way tree sync: snapshot both sides,
+diff the hashes, and push exactly the differing files as a `TreeSync` write/delete
+set.
 
 ## `cwd`
 

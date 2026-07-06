@@ -15,15 +15,17 @@ interface EncoderOutputs {
 
 /**
  * Server-Sent Events encoder. Each item becomes one frame:
- *   `event: <type>\ndata: <json>\n\n`
+ *   `[id: <id>\n]event: <type>\ndata: <json>\n\n`
  *
- * Item shape: `{type: string, ...rest}` — the `type` becomes the SSE event,
- * the rest of the object becomes the JSON-encoded data payload. Bare strings
- * are framed as a generic `message` event whose data is the JSON-encoded
- * string (i.e. quoted, with backslash escapes for embedded newlines / quotes).
- * This is intentional: SSE `data:` lines must not contain literal newlines, so
- * JSON encoding is the safe default. Authors who need raw-text-on-wire should
- * use `PlainText.Encoder` instead.
+ * Item shape: an object whose optional `type` becomes the SSE event (default
+ * `message` when absent) and whose optional `id` (string / number) becomes the
+ * SSE `id:` line — the reconnection cursor a client echoes as `Last-Event-ID`.
+ * All remaining fields become the JSON-encoded data payload. A typeless object
+ * (e.g. a `{ id, data }` replay-journal envelope) frames as a `message` event
+ * carrying an `id:` line, so a resumable stream needs no bespoke shaping. Bare
+ * strings frame as a `message` event whose data is the JSON-encoded string.
+ * `data:` lines must not contain literal newlines, so JSON encoding is the safe
+ * default; authors who need raw-text-on-wire should use `PlainText.Encoder`.
  *
  * Mid-stream error: if the upstream iterable throws, emit a final
  * `event: error\ndata: {"message":"..."}\n\n` then end.
@@ -63,14 +65,36 @@ function formatFrame(item: unknown, name: string): string {
   if (typeof item === "string") {
     return `event: message\ndata: ${JSON.stringify(item)}\n\n`;
   }
-  if (!item || typeof item !== "object" || typeof (item as any).type !== "string") {
+  if (!item || typeof item !== "object") {
     throw new InvokeError(
       "ERR_INVALID_INPUT",
-      `Sse.Encoder "${name}": items must be {type: string, ...} or string; got ${typeof item}.`,
+      `Sse.Encoder "${name}": items must be an object or string; got ${typeof item}.`,
     );
   }
-  const { type, ...rest } = item as { type: string; [k: string]: unknown };
-  return `event: ${type}\ndata: ${JSON.stringify(rest)}\n\n`;
+  const { type, id, ...rest } = item as { type?: unknown; id?: unknown; [k: string]: unknown };
+  if (type !== undefined && typeof type !== "string") {
+    throw new InvokeError(
+      "ERR_INVALID_INPUT",
+      `Sse.Encoder "${name}": 'type' must be a string when present; got ${typeof type}.`,
+    );
+  }
+  // A newline in 'type'/'id' would terminate the SSE field and inject arbitrary
+  // frames (the wire uses \n to delimit fields and \n\n to end an event).
+  if (typeof type === "string" && /[\r\n]/.test(type)) {
+    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'type' must not contain a newline.`);
+  }
+  if (typeof id === "string" && /[\r\n]/.test(id)) {
+    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'id' must not contain a newline.`);
+  }
+  if (typeof id === "number" && !Number.isFinite(id)) {
+    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'id' must be a finite number.`);
+  }
+  const event = typeof type === "string" ? type : "message";
+  // Accept bigint too — a CEL integer id can cross the boundary as one, and
+  // silently dropping it would break Last-Event-ID resumption without a signal.
+  const idLine =
+    typeof id === "string" || typeof id === "number" || typeof id === "bigint" ? `id: ${id}\n` : "";
+  return `${idLine}event: ${event}\ndata: ${JSON.stringify(rest)}\n\n`;
 }
 
 export function register(_ctx: ControllerContext): void {}

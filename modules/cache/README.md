@@ -7,6 +7,7 @@ The backend-pluggable cache abstract for Telo. `Cache.Store` is the contract eve
 - **Backend-pluggable** — write `!ref` to a `Cache.Store`; swap memory ↔ Redis without touching consumers.
 - **Freshness-aware** — entries carry a fresh window (`ttl`) and an optional stale grace window (`staleTtl`); a lookup reports `fresh`, `stale`, or `miss`.
 - **Read-through decorator** — `Cache.View` wraps any invocable and serves it from cache, with stale-while-revalidate (background or synchronous) and stale-if-error.
+- **Atomic counters** — the store contract includes `increment(key, delta, ttlMs)`, a race-free counter with a fixed window (expiry set only when first created). It backs correct reserve/settle budgets (`RateLimit.Budget`), quotas, and metrics where a `get`-then-`set` read-modify-write would race.
 
 ## Kinds
 

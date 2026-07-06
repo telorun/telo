@@ -33,6 +33,11 @@
       "types": "./dist/guard-controller.d.ts",
       "bun": "./src/guard-controller.ts",
       "import": "./dist/guard-controller.js"
+    },
+    "./budget": {
+      "types": "./dist/budget-controller.d.ts",
+      "bun": "./src/budget-controller.ts",
+      "import": "./dist/budget-controller.js"
     }
   },
   "files": [

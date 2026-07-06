@@ -331,6 +331,7 @@ const sidebars: SidebarsConfig = {
                   ],
                 },
                 { type: "doc", id: "modules/rate-limit/README", label: "Rate Limit" },
+                { type: "doc", id: "modules/lease/README", label: "Lease" },
                 {
                   type: "category",
                   label: "S3",

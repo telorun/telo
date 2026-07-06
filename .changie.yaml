@@ -182,6 +182,13 @@ projects:
       - path: modules/lambda/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: lease
+    key: lease
+    changelog: modules/lease/CHANGELOG.md
+    replacements:
+      - path: modules/lease/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: mcp-client
     key: mcp-client
     changelog: modules/mcp-client/CHANGELOG.md

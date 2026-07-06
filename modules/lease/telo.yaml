@@ -1,0 +1,107 @@
+kind: Telo.Library
+metadata:
+  name: lease
+  namespace: std
+  version: 0.1.0
+  description: |
+    Lease.Critical — a declarative critical section over a Cache.Store. Wraps a
+    body and owns the whole acquire → run → release lifecycle around it, so a
+    caller never issues imperative acquire/release calls (mirroring how
+    Cache.View wraps caching and Sql.Transaction wraps begin/commit/rollback).
+    At most one holder per `key`; a second attempt while one is active does NOT
+    run the body and reports the current holder (branch on `acquired` — skip, or
+    return 409). Leases are time-bounded (`ttl`): if a holder dies without
+    releasing, the lease self-heals on expiry. The atomic gate is Cache.Store's
+    `increment`, so the mutex is race-free across concurrent callers and shared
+    across instances when the store is (e.g. CacheRedis.Store).
+imports:
+  Cache: ../cache
+exports:
+  kinds:
+    - Critical
+---
+# Lease.Critical — run a body under a keyed lease, auto-managing acquire/
+# release. Two modes:
+#   - default (synchronous): acquire → run `invoke` inline → release on return
+#     OR error → { acquired: true, result } (or { acquired: false, holder }).
+#     For cron-overlap prevention, migrations, singleflight, idempotent handlers.
+#   - detach: true (async span): acquire → dispatch `invoke` DETACHED, hold the
+#     lease across it, release on the detached body's terminal → returns
+#     { acquired } synchronously (no result). For "one background operation per
+#     key" — the lease must own the detach so it can hold across a body that
+#     outlives the call.
+kind: Telo.Definition
+metadata:
+  name: Critical
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/lease@0.1.0?local_path=./nodejs#critical
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key:
+        type: string
+        description: >-
+          The mutex key — one holder at a time per key (a conversation, a job
+          name, a tenant). An empty key fails closed (not acquired).
+      holder:
+        type: string
+        description: >-
+          Opaque token identifying this holder, returned to a loser as `holder`
+          (e.g. an active turn id). Doubles as the release token, so a stale
+          holder can't release a lease another owner has since taken over. A
+          unique token is generated when omitted.
+      inputs:
+        type: object
+        additionalProperties: true
+        description: Inputs forwarded to the wrapped `invoke` body when the lease is acquired.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    required: [acquired]
+    properties:
+      acquired:
+        type: boolean
+        description: Whether this call acquired the lease and ran the body.
+      holder:
+        description: When not acquired, the current holder's token (0/absent if unknown).
+      result:
+        description: The body's result (synchronous mode only; absent when `detach` or not acquired).
+schema:
+  type: object
+  additionalProperties: false
+  required: [store, ttl, invoke]
+  properties:
+    store:
+      title: Store
+      description: Reference to the Cache.Store backing the lease (memory, or Redis for cross-instance).
+      x-telo-ref: "std/cache#Store"
+    ttl:
+      title: TTL
+      type: string
+      x-telo-eval: compile
+      description: >-
+        Lease lifetime as a duration (`30s`, `5m`). On expiry the lease frees
+        (self-healing if a holder dies), so set it comfortably above the body's
+        max expected duration.
+    detach:
+      title: Detach
+      type: boolean
+      default: false
+      description: >-
+        When true, dispatch the body detached and hold the lease until its
+        terminal (returns `{ acquired }` immediately). When false, run the body
+        inline and release on return.
+    invoke:
+      title: Invoke
+      description: The invocable or runnable run under the lease when acquired.
+      type: object
+      anyOf:
+        - x-telo-ref: "telo#Invocable"
+        - x-telo-ref: "telo#Runnable"

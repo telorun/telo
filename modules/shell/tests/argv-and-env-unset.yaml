@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: ShellArgvAndEnvUnset
+  version: 1.0.0
+  description: |
+    Shell.Command's argv form execs a program directly with no shell, so an
+    argument carrying shell metacharacters is passed through literally (no
+    injection). A `null` env value unsets an inherited host variable, keeping it
+    out of the child — which a plain override cannot do.
+imports:
+  Shell: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Shell.LocalHost
+metadata:
+  name: Local
+env:
+  SECRET: shh
+  KEEP: "yes"
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  # argv: `a; b` reaches the program as one literal argument, not two commands.
+  - name: Argv
+    inputs:
+      args:
+        - node
+        - -e
+        - "process.stdout.write(process.argv[1])"
+        - "a; b && echo pwned"
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  # env null unsets an inherited host var; KEEP is untouched.
+  - name: Unset
+    inputs:
+      command: 'printf %s "$SECRET|$KEEP"'
+      env:
+        SECRET: null
+    invoke:
+      kind: Shell.Command
+      host: !ref Local
+
+  - name: Assert
+    inputs:
+      actual:
+        argvOut: !cel "steps.Argv.result.stdout"
+        unsetOut: !cel "steps.Unset.result.stdout"
+      expected:
+        argvOut: "a; b && echo pwned"
+        unsetOut: "|yes"
+    invoke:
+      kind: Assert.Equals

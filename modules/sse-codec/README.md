@@ -1,6 +1,6 @@
 # SSE Codec
 
-Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder produces one SSE frame per item (`event: <type>\ndata: <json>\n\n`).
+Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder produces one SSE frame per item (`[id: <id>\n]event: <type>\ndata: <json>\n\n`).
 
 ## Why use this
 
@@ -13,6 +13,19 @@ Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder
 | Kind | Purpose |
 | --- | --- |
 | `Sse.Encoder` | Encode an async iterable of event records into SSE frames. |
+
+## Record shape
+
+Each item is an object: an optional `type` becomes the SSE `event:` (default
+`message`), an optional `id` (string/number) becomes the SSE `id:` line — the
+`Last-Event-ID` reconnection cursor — and the remaining fields become the
+JSON-encoded `data:` payload. A bare string frames as a `message` event whose
+data is the JSON-encoded string.
+
+Because a typeless object frames as a `message` event with an `id:` line, a
+`{ id, data }` replay-journal envelope (from `RecordStream.JournalSource`) can be
+piped straight to the encoder for a **resumable** stream — the client checkpoints
+`id` and reconnects with `?lastEventId=` (or the native `Last-Event-ID` header).
 
 ## Example
 

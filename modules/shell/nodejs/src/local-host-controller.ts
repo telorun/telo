@@ -2,6 +2,7 @@ import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/
 import { spawn, type ChildProcess } from "node:child_process";
 import type {
   BufferedResult,
+  CommandSpec,
   ExecutionHandle,
   RunOptions,
   ShellHost,
@@ -23,7 +24,7 @@ interface LocalHostManifest {
   metadata: { name: string; module: string };
   cwd?: string;
   shell?: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | null>;
 }
 
 /** Filter the kernel-sanctioned host env (`ctx.env`) down to defined entries. */
@@ -31,6 +32,24 @@ function toEnvRecord(env: Record<string, string | undefined>): Record<string, st
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+/** Layer env overlays over a base, where a `null` value **unsets** a key —
+ *  letting a caller drop an inherited variable (e.g. a secret) from the child,
+ *  which a plain string override cannot do. */
+function mergeEnv(
+  base: Record<string, string>,
+  ...overlays: Array<Record<string, string | null> | undefined>
+): Record<string, string> {
+  const out: Record<string, string> = { ...base };
+  for (const overlay of overlays) {
+    if (!overlay) continue;
+    for (const [key, value] of Object.entries(overlay)) {
+      if (value === null) delete out[key];
+      else out[key] = value;
+    }
   }
   return out;
 }
@@ -43,6 +62,21 @@ function defaultShell(hostEnv: Record<string, string>): string {
 function shellInvocation(shell: string, command: string): { file: string; args: string[] } {
   if (process.platform === "win32") return { file: shell, args: ["/d", "/s", "/c", command] };
   return { file: shell, args: ["-c", command] };
+}
+
+/** Resolve a `CommandSpec` into the program + args to spawn, plus a display
+ *  label for errors. `args` execs directly (no shell); `command` goes through
+ *  `<shell> -c`. */
+function resolveInvocation(
+  shell: string,
+  spec: CommandSpec,
+): { file: string; args: string[]; label: string } {
+  if ("args" in spec) {
+    const [file, ...rest] = spec.args;
+    return { file, args: rest, label: spec.args.join(" ") };
+  }
+  const { file, args } = shellInvocation(shell, spec.command);
+  return { file, args, label: spec.command };
 }
 
 /** Spawn the shell as its own process-group leader (POSIX) so the whole tree
@@ -226,7 +260,7 @@ class LocalShellHost implements ShellHost, ResourceInstance {
   constructor(
     private readonly cwd: string,
     private readonly shell: string,
-    private readonly baseEnv: Record<string, string>,
+    private readonly baseEnv: Record<string, string | null>,
     private readonly hostEnv: Record<string, string>,
   ) {}
 
@@ -234,17 +268,17 @@ class LocalShellHost implements ShellHost, ResourceInstance {
     return {};
   }
 
-  exec(command: string, options: RunOptions, ctx?: InvokeContext): ExecutionHandle {
-    const { file, args } = shellInvocation(this.shell, command);
+  exec(commandSpec: CommandSpec, options: RunOptions, ctx?: InvokeContext): ExecutionHandle {
+    const { file, args, label } = resolveInvocation(this.shell, commandSpec);
     const spec: SpawnSpec = {
       file,
       args,
       cwd: this.cwd,
-      env: { ...this.hostEnv, ...this.baseEnv, ...(options.env ?? {}) },
+      env: mergeEnv(this.hostEnv, this.baseEnv, options.env),
       signal: ctx?.cancellation.signal,
       timeoutMs: options.timeoutMs,
       stdin: options.stdin,
-      command,
+      command: label,
     };
     return {
       buffered: () => runBuffered(spec),

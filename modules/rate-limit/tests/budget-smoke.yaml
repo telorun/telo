@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: RateLimitBudgetSmokeTest
+  version: 1.0.0
+  description: |
+    A weighted budget with limit=100 per window. Two 40-unit reservations fit
+    (total 80); a third is refused and refunded (total stays 80). Settling the
+    first reservation to an actual cost of 10 refunds 30 (total 50), so a later
+    40-unit reservation fits again. An empty key fails closed.
+imports:
+  RateLimit: ../
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: RateLimit.Budget
+metadata: { name: Budget }
+store: !ref Mem
+limit: 100
+window: "60s"
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: reserve1
+    invoke: !ref Budget
+    inputs: { op: reserve, key: global, amount: 40 }
+  - name: reserve2
+    invoke: !ref Budget
+    inputs: { op: reserve, key: global, amount: 40 }
+  - name: reserve3
+    invoke: !ref Budget
+    inputs: { op: reserve, key: global, amount: 40 }
+  - name: settle1
+    invoke: !ref Budget
+    inputs:
+      op: settle
+      key: global
+      amount: 10
+      reserved: !cel "steps.reserve1.result.reserved"
+  - name: reserve4
+    invoke: !ref Budget
+    inputs: { op: reserve, key: global, amount: 40 }
+  - name: empty
+    invoke: !ref Budget
+    inputs: { op: reserve, key: "", amount: 5 }
+  - name: Assert
+    inputs:
+      actual:
+        r1Allowed: !cel "steps.reserve1.result.allowed"
+        r1Remaining: !cel "steps.reserve1.result.remaining"
+        r2Remaining: !cel "steps.reserve2.result.remaining"
+        r3Allowed: !cel "steps.reserve3.result.allowed"
+        r3Reserved: !cel "steps.reserve3.result.reserved"
+        settleTotal: !cel "steps.settle1.result.total"
+        r4Allowed: !cel "steps.reserve4.result.allowed"
+        r4Remaining: !cel "steps.reserve4.result.remaining"
+        emptyAllowed: !cel "steps.empty.result.allowed"
+      expected:
+        r1Allowed: true
+        r1Remaining: 60
+        r2Remaining: 20
+        r3Allowed: false
+        r3Reserved: 0
+        settleTotal: 50
+        r4Allowed: true
+        r4Remaining: 10
+        emptyAllowed: false
+    invoke: !ref Assert.equals

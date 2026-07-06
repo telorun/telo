@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: LeaseCriticalSmoke
+  version: 1.0.0
+  description: |
+    Lease.Critical over a memory store. Verifies: the body runs under the lease
+    and its result is returned; while the lease is held a second acquire of the
+    same key does NOT run (reports the holder) — shown deterministically by the
+    body re-entering the same lock; and once released the key can be acquired
+    again.
+imports:
+  Lease: ../
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: Lease.Critical
+metadata: { name: Lock }
+store: !ref Mem
+ttl: 30s
+invoke: !ref Body
+---
+# The body of the held lease re-enters the SAME lock with the same key. Because
+# the outer holder still owns it, the re-entry is refused and reports the holder.
+kind: Run.Sequence
+metadata: { name: Body }
+inputs: {}
+steps:
+  - name: Reenter
+    invoke: !ref Lock
+    inputs:
+      key: k1
+      holder: B
+      inputs: {}
+outputs:
+  reenterAcquired: !cel "steps.Reenter.result.acquired"
+  reenterHolder: !cel "steps.Reenter.result.holder"
+---
+kind: Lease.Critical
+metadata: { name: Plain }
+store: !ref Mem
+ttl: 30s
+invoke: !ref Const
+---
+kind: Run.Value
+metadata: { name: Const }
+value:
+  ok: 1
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Conflict
+    invoke: !ref Lock
+    inputs:
+      key: k1
+      holder: A
+      inputs: {}
+  - name: Happy1
+    invoke: !ref Plain
+    inputs:
+      key: k2
+      inputs: {}
+  # Released after Happy1 returned, so the same key acquires again.
+  - name: Happy2
+    invoke: !ref Plain
+    inputs:
+      key: k2
+      inputs: {}
+  - name: Assert
+    inputs:
+      actual:
+        outerAcquired: !cel "steps.Conflict.result.acquired"
+        reenterAcquired: !cel "steps.Conflict.result.result.reenterAcquired"
+        reenterHolder: !cel "steps.Conflict.result.result.reenterHolder"
+        happy1Acquired: !cel "steps.Happy1.result.acquired"
+        happy1Ok: !cel "steps.Happy1.result.result.ok"
+        happy2Acquired: !cel "steps.Happy2.result.acquired"
+      expected:
+        outerAcquired: true
+        reenterAcquired: false
+        reenterHolder: A
+        happy1Acquired: true
+        happy1Ok: 1
+        happy2Acquired: true
+    invoke: !ref Assert.equals

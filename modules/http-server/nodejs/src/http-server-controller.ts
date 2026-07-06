@@ -155,20 +155,30 @@ class HttpServer implements ResourceInstance {
     }
 
     if (this.resource.cors) {
-      await this.app.register(cors, {
-        origin: this.resource.cors.origin,
-        methods: this.resource.cors.methods,
-        allowedHeaders: this.resource.cors.allowedHeaders,
-        exposedHeaders: this.resource.cors.exposedHeaders,
-        credentials: this.resource.cors.credentials,
-        maxAge: this.resource.cors.maxAge,
-        cacheControl: this.resource.cors.cacheControl,
-        preflightContinue: this.resource.cors.preflightContinue,
-        optionsSuccessStatus: this.resource.cors.optionsSuccessStatus,
-        preflight: this.resource.cors.preflight,
-        strictPreflight: this.resource.cors.strictPreflight,
-        hideOptionsRoute: this.resource.cors.hideOptionsRoute,
-      });
+      // Only forward the fields the manifest actually set. Spreading `undefined`
+      // for an unset option overrides @fastify/cors's own defaults with
+      // `undefined` — notably `preflight: undefined` disables the preflight 204
+      // reply (its `OPTIONS *` handler then `callNotFound()`s → 404), which a
+      // browser reports as "preflight … does not have HTTP ok status".
+      const cfg = this.resource.cors;
+      const corsOptions: Record<string, unknown> = {};
+      for (const key of [
+        "origin",
+        "methods",
+        "allowedHeaders",
+        "exposedHeaders",
+        "credentials",
+        "maxAge",
+        "cacheControl",
+        "preflightContinue",
+        "optionsSuccessStatus",
+        "preflight",
+        "strictPreflight",
+        "hideOptionsRoute",
+      ] as const) {
+        if (cfg[key] !== undefined) corsOptions[key] = cfg[key];
+      }
+      await this.app.register(cors, corsOptions);
     }
 
     // Register custom error handler for validation errors
