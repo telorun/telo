@@ -960,3 +960,43 @@ describe("analyzeWorkspace — imported library kinds", () => {
     ).toBe(9);
   });
 });
+
+describe("analyzeWorkspace — YAML parse failures", () => {
+  it("surfaces the parse error and suppresses the analyze cascade on the broken file", async () => {
+    // The unquoted description contains `: ` inside backticks, which the
+    // spec-compliant parser reads as a nested mapping. The mangled `toJSON()`
+    // would otherwise drive spurious schema violations that bury the real error.
+    const files: Record<string, string> = {
+      "/ws/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "outputType:",
+        "  schema:",
+        "    properties:",
+        "      content:",
+        "        description: File contents — base64 when `encoding: base64`.",
+      ].join("\n"),
+    };
+    const adapter = inMemoryAdapter(files);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values())
+      for (const list of fileMap.values()) for (const d of list) all.push(d);
+    for (const list of diagnostics.byFile.values()) for (const d of list) all.push(d);
+
+    expect(
+      all.some((d) => d.code === "MANIFEST_PARSE_FAILED"),
+      "the real parse error must surface",
+    ).toBe(true);
+    // The analyze-derived cascade from the mangled tree (e.g. the disallowed
+    // `outputType` on an Application) is dropped for the parse-failed file.
+    expect(
+      all.filter((d) => d.code !== "MANIFEST_PARSE_FAILED"),
+      `expected no analyze diagnostics on the broken file, got: ${JSON.stringify(all, null, 2)}`,
+    ).toHaveLength(0);
+  });
+});

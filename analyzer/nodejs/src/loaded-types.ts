@@ -85,6 +85,11 @@ export interface LoadedGraph {
    *  error for a major mismatch). Surfaced alongside `analyze()` diagnostics by
    *  every consumer (CLI, editor, VS Code). */
   versionDiagnostics: AnalysisDiagnostic[];
+  /** YAML parse failures aggregated from every file's `parseErrors`. A file
+   *  that fails to parse yields a mangled `toJSON()` projection, so these are
+   *  fatal Error diagnostics — surfaced alongside `analyze()` output by every
+   *  consumer (CLI, editor, VS Code) and treated as fatal by the kernel. */
+  parseDiagnostics: AnalysisDiagnostic[];
   /** Surface-level errors that did not abort the graph load (e.g. an import
    *  whose target failed to fetch). */
   errors: GraphLoadError[];

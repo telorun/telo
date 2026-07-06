@@ -366,6 +366,19 @@ export class Kernel implements IKernel {
     if (analysisGraph.errors.length > 0) {
       throw analysisGraph.errors[0].error;
     }
+    // A YAML parse failure yields a mangled manifest tree — fatal before any
+    // controller sees it, and more fundamental than a version conflict.
+    if (analysisGraph.parseDiagnostics.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        analysisGraph.parseDiagnostics
+          .map((d) => {
+            const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+            return filePath ? `${filePath}: ${d.message}` : d.message;
+          })
+          .join("\n"),
+      );
+    }
     this._loadedGraph = analysisGraph;
     // Version reconciliation: an incompatible major mismatch is fatal (the
     // hoist override would silently run the wrong major); a same-major hoist is
