@@ -1,4 +1,4 @@
 project: fs
 kind: Fixed
-body: Quote description strings containing a colon-space inside backticks (e.g. `encoding: base64`) so the registry's strict YAML parser accepts the manifest on publish.
+body: "Quote description strings containing a colon-space inside backticks (e.g. `encoding: base64`) so the registry's strict YAML parser accepts the manifest on publish."
 time: 2026-07-06T17:49:28.000000000Z
