@@ -33,17 +33,33 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [command]
+    oneOf:
+      - required: [command]
+      - required: [args]
     properties:
       command:
         title: Command
-        description: Shell command line, run as `<shell> -c <command>` on the host.
+        description: Shell command line, run as `<shell> -c <command>` on the host. Mutually exclusive with `args`.
         type: string
+        minLength: 1
+      args:
+        title: Argv
+        description: >-
+          Program plus arguments, executed DIRECTLY without a shell (`args[0]`
+          is the program). An argument is never reinterpreted as shell syntax,
+          so an untrusted value (e.g. a file path) cannot inject. Mutually
+          exclusive with `command`.
+        type: array
+        minItems: 1
+        items: { type: string }
       env:
         title: Environment overlay
-        description: Per-call environment variables, merged over the host's base env.
+        description: >-
+          Per-call environment variables, merged over the host's base env. A
+          `null` value UNSETS an inherited variable (e.g. to keep a secret out
+          of the child).
         type: object
-        additionalProperties: { type: string }
+        additionalProperties: { type: [string, "null"] }
       stdin:
         title: Stdin
         description: Written to the command's stdin, which is then closed.
@@ -92,17 +108,30 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [command]
+    oneOf:
+      - required: [command]
+      - required: [args]
     properties:
       command:
         title: Command
-        description: Shell command line, run as `<shell> -c <command>` on the host.
+        description: Shell command line, run as `<shell> -c <command>` on the host. Mutually exclusive with `args`.
         type: string
+        minLength: 1
+      args:
+        title: Argv
+        description: >-
+          Program plus arguments, executed DIRECTLY without a shell (`args[0]`
+          is the program). Mutually exclusive with `command`.
+        type: array
+        minItems: 1
+        items: { type: string }
       env:
         title: Environment overlay
-        description: Per-call environment variables, merged over the host's base env.
+        description: >-
+          Per-call environment variables, merged over the host's base env. A
+          `null` value UNSETS an inherited variable.
         type: object
-        additionalProperties: { type: string }
+        additionalProperties: { type: [string, "null"] }
       stdin:
         title: Stdin
         description: Written to the command's stdin, which is then closed.
@@ -162,9 +191,12 @@ schema:
       type: string
     env:
       title: Base environment
-      description: Base environment variables for every command, under the per-call overlay.
+      description: >-
+        Base environment variables for every command, under the per-call
+        overlay. A `null` value UNSETS an inherited variable (e.g. to keep a
+        secret out of every child spawned on this host).
       type: object
-      additionalProperties: { type: string }
+      additionalProperties: { type: [string, "null"] }
   examples:
     - cwd: ./workspace
     - shell: /bin/bash

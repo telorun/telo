@@ -309,6 +309,145 @@ schema:
   examples:
     - cwd: ./workspace
 ---
+# A recursive content-hash walk of a directory: every regular file as
+# `{ path, hash }` (sha256 hex of its bytes), `path` relative to `cwd`. Unlike
+# DirectoryListing's `size`, a content hash is a reliable change detector
+# (equal size != equal content), so two snapshots diff to an exact change set.
+# `exclude` skips entries by base name (e.g. node_modules, .git) at any depth.
+kind: Telo.Definition
+metadata:
+  name: TreeSnapshot
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#tree-snapshot
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        title: Path
+        description: Directory to walk, relative to `cwd`. Defaults to `cwd` itself.
+        type: string
+        minLength: 1
+      exclude:
+        title: Exclude
+        description: >-
+          Base names to skip at any depth (a directory match is not descended).
+          Typically vendor / build / cache dirs like node_modules, .git, dist.
+        type: array
+        items: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [files]
+    properties:
+      files:
+        title: Files
+        description: One entry per regular file, sorted by path.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, hash]
+          properties:
+            path:
+              description: Path relative to `cwd`.
+              type: string
+            hash:
+              description: sha256 hex digest of the file's bytes.
+              type: string
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
+# Apply an EXPLICIT change set to a tree: write each listed file (creating
+# parents) and remove each deleted path. It does NOT implicitly delete files
+# absent from the set, so one call serves both a full seed (all files, empty
+# `delete`) and a partial delta (only what changed) without disturbing
+# untouched files. Writes are applied before deletes.
+kind: Telo.Definition
+metadata:
+  name: TreeSync
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/fs@0.1.0?local_path=./nodejs#tree-sync
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      write:
+        title: Write
+        description: Files to write whole (parents created). Absent from the set means untouched.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, content]
+          properties:
+            path:
+              description: File to write, relative to `cwd`.
+              type: string
+              minLength: 1
+            content:
+              description: Bytes to write — utf8 text, or a base64 string when `encoding: base64`.
+              type: string
+            encoding:
+              description: How `content` is interpreted. `base64` decodes it to binary first.
+              type: string
+              enum: [utf8, base64]
+              default: utf8
+      delete:
+        title: Delete
+        description: Paths to remove (relative to `cwd`). A missing path is not an error; a directory is removed recursively.
+        type: array
+        items: { type: string, minLength: 1 }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [written, deleted]
+    properties:
+      written:
+        title: Written
+        description: Number of files written.
+        type: integer
+      deleted:
+        title: Deleted
+        description: Number of delete paths processed.
+        type: integer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Base directory invoke paths resolve against. A relative value — and the
+        default — resolves against the process working directory. Not a security
+        boundary.
+      type: string
+      x-telo-eval: compile
+  examples:
+    - cwd: ./workspace
+---
 # Remove a file, or a directory tree with `recursive`. A missing path is an
 # error.
 kind: Telo.Definition

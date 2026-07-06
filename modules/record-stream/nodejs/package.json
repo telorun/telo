@@ -43,6 +43,21 @@
       "types": "./dist/tee-controller.d.ts",
       "bun": "./src/tee-controller.ts",
       "import": "./dist/tee-controller.js"
+    },
+    "./journal": {
+      "types": "./dist/journal-controller.d.ts",
+      "bun": "./src/journal-controller.ts",
+      "import": "./dist/journal-controller.js"
+    },
+    "./journal-sink": {
+      "types": "./dist/journal-sink-controller.d.ts",
+      "bun": "./src/journal-sink-controller.ts",
+      "import": "./dist/journal-sink-controller.js"
+    },
+    "./journal-source": {
+      "types": "./dist/journal-source-controller.d.ts",
+      "bun": "./src/journal-source-controller.ts",
+      "import": "./dist/journal-source-controller.js"
     }
   },
   "files": [

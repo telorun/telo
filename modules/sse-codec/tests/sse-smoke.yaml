@@ -15,6 +15,7 @@ imports:
   Assert: ../../assert
 targets:
   - !ref TestEncode
+  - !ref TestResumeEnvelope
 ---
 kind: Stream.Of
 metadata: { name: Source }
@@ -58,4 +59,38 @@ steps:
         properties:
           text:
             const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
+        required: [ text ]
+---
+# Resumable-envelope framing: a typeless `{ id, data }` item (a replay-journal
+# entry) frames as a `message` event carrying an `id:` line, so a client can
+# checkpoint and reconnect. The `id` becomes the SSE id line; the rest is data.
+kind: Stream.Of
+metadata: { name: ResumeSource }
+items:
+  - { id: 1, data: { type: "text-delta", delta: "h" } }
+  - { id: 2, data: { type: "finish" } }
+---
+kind: Run.Sequence
+metadata: { name: TestResumeEnvelope }
+steps:
+  - name: Source
+    invoke: !ref ResumeSource
+  - name: Encode
+    inputs:
+      input: !cel "steps.Source.result.output"
+    invoke: !ref Encoder
+  - name: Drain
+    inputs:
+      bytes: !cel "steps.Encode.result.output"
+    invoke: !ref Drain
+  - name: Assert
+    inputs:
+      text: !cel "steps.Drain.result.text"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          text:
+            const: "id: 1\nevent: message\ndata: {\"data\":{\"type\":\"text-delta\",\"delta\":\"h\"}}\n\nid: 2\nevent: message\ndata: {\"data\":{\"type\":\"finish\"}}\n\n"
         required: [ text ]

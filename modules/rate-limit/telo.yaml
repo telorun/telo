@@ -14,6 +14,7 @@ imports:
 exports:
   kinds:
     - Guard
+    - Budget
 ---
 kind: Telo.Definition
 metadata:
@@ -63,7 +64,99 @@ schema:
       type: integer
       minimum: 1
       description: Maximum requests permitted per key within `window`.
+      x-telo-eval: compile
     window:
       title: Window
       type: string
       description: Sliding window as a duration (`60s`, `1m`, `1h`).
+      x-telo-eval: compile
+---
+# RateLimit.Budget — a windowed, WEIGHTED spend budget over a Cache.Store.
+# Where Guard counts requests (+1 each), Budget debits an arbitrary cost so it
+# can bound token spend, bytes, or any metered resource. Two-phase: `reserve`
+# atomically debits a worst-case cost (refunding + denying if it would exceed
+# `limit`), `settle` adjusts to the actual cost. The atomic reserve closes the
+# concurrent-burst race and charge-on-start closes the reserve-then-abandon
+# leak, so the ceiling is a hard bound. Backend must expose an atomic counter
+# (Cache.Store.increment) — both bundled stores do.
+kind: Telo.Definition
+metadata:
+  name: Budget
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/rate-limit@0.2.0?local_path=./nodejs#budget
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [op, key, amount]
+    additionalProperties: false
+    properties:
+      op:
+        type: string
+        enum: [reserve, settle]
+        description: >-
+          `reserve` debits a worst-case cost at the start of a unit of work;
+          `settle` adjusts that reservation to the actual cost on any terminal
+          path.
+      key:
+        type: string
+        description: >-
+          The budget bucket key (e.g. `global`, a tenant, an API key). An empty
+          key fails closed (denied), never merged into one shared bucket.
+      amount:
+        type: integer
+        minimum: 0
+        description: >-
+          On `reserve`: the worst-case cost to debit up front. On `settle`: the
+          ACTUAL cost measured for the unit of work.
+      reserved:
+        type: integer
+        minimum: 0
+        description: >-
+          On `settle` only: the `reserved` value the matching `reserve`
+          returned. The refund is `reserved − amount`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      allowed:
+        type: boolean
+        description: "`reserve`: whether the reservation fit under the ceiling."
+      remaining:
+        type: integer
+        description: "`reserve`: budget remaining in the window after this reservation (0 when denied)."
+      retryAfter:
+        type: integer
+        description: "`reserve`: seconds until the window frees (0 when allowed)."
+      reserved:
+        type: integer
+        description: "`reserve`: the amount actually reserved — pass it back to `settle` (0 when denied)."
+      settled:
+        type: boolean
+        description: "`settle`: true once the reservation has been adjusted to actual."
+      total:
+        type: integer
+        description: "`settle`: the window's counter total after settling."
+schema:
+  type: object
+  required: [store, limit, window]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the Cache.Store holding the budget counters.
+      x-telo-ref: "std/cache#Store"
+    limit:
+      title: Limit
+      type: integer
+      minimum: 1
+      description: Maximum total weighted cost permitted per key within `window`.
+      x-telo-eval: compile
+    window:
+      title: Window
+      type: string
+      description: Budget window as a duration (`60s`, `1m`, `1h`).
+      x-telo-eval: compile

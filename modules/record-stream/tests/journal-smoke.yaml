@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamJournalSmoke
+  version: 1.0.0
+  description: |
+    RecordStream.Journal round-trip. A stream is drained into the journal under a
+    key via JournalSink; JournalSource then replays it as `{ id, data }` entries —
+    fully from id 0, and from an offset (fromId=1) to model a client resuming from
+    its last seen id. Ids are monotonic and 1-based; data is preserved intact.
+imports:
+  RecordStream: ../
+  Stream: ../../stream
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: RecordStream.Journal
+metadata: { name: Turns }
+---
+kind: RecordStream.JournalSink
+metadata: { name: Sink }
+journal: !ref Turns
+---
+kind: RecordStream.JournalSource
+metadata: { name: Source }
+journal: !ref Turns
+---
+kind: Stream.Of
+metadata: { name: TurnStream }
+items:
+  - { type: text-delta, delta: "he" }
+  - { type: text-delta, delta: "llo" }
+  - { type: finish, finishReason: stop }
+---
+kind: JS.Script
+metadata: { name: Collect }
+code: |
+  async function main({ input }) {
+    const ids = [];
+    const types = [];
+    const deltas = [];
+    for await (const e of input) {
+      ids.push(e.id);
+      types.push(e.data.type);
+      deltas.push(e.data.delta || "");
+    }
+    return { ids, types, deltas };
+  }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Src
+    invoke: !ref TurnStream
+  - name: Write
+    invoke: !ref Sink
+    inputs:
+      key: t1
+      input: !cel "steps.Src.result.output"
+
+  - name: ReadAll
+    invoke: !ref Source
+    inputs: { key: t1, fromId: 0 }
+  - name: CollectAll
+    invoke: !ref Collect
+    inputs: { input: !cel "steps.ReadAll.result.output" }
+
+  - name: ReadResume
+    invoke: !ref Source
+    inputs: { key: t1, fromId: 1 }
+  - name: CollectResume
+    invoke: !ref Collect
+    inputs: { input: !cel "steps.ReadResume.result.output" }
+
+  - name: Assert
+    inputs:
+      actual:
+        writtenCount: !cel "steps.Write.result.count"
+        allIds: !cel "steps.CollectAll.result.ids"
+        allTypes: !cel "steps.CollectAll.result.types"
+        allDeltas: !cel "steps.CollectAll.result.deltas"
+        resumeIds: !cel "steps.CollectResume.result.ids"
+        resumeDeltas: !cel "steps.CollectResume.result.deltas"
+      expected:
+        writtenCount: 3
+        allIds: [1, 2, 3]
+        allTypes: [text-delta, text-delta, finish]
+        allDeltas: ["he", "llo", ""]
+        resumeIds: [2, 3]
+        resumeDeltas: ["llo", ""]
+    invoke: !ref Assert.equals

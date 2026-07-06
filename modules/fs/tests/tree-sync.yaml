@@ -1,0 +1,103 @@
+kind: Telo.Application
+metadata:
+  name: FsTreeSync
+  version: 1.0.0
+  description: |
+    Fs.TreeSync applies an explicit write/delete set; Fs.TreeSnapshot content-
+    hashes the result. Verifies: a full seed writes every file; `exclude` skips
+    a vendor dir; equal content yields an equal hash; a delta writes changed
+    files and deletes removed ones without touching untouched files.
+imports:
+  Fs: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Fs.TreeSync
+metadata: { name: Sync }
+cwd: ./modules/fs/tests/__fixtures__/scratch-tree
+---
+kind: Fs.TreeSnapshot
+metadata: { name: Snap }
+cwd: ./modules/fs/tests/__fixtures__/scratch-tree
+---
+kind: Fs.FileRemoval
+metadata: { name: Remove }
+cwd: ./modules/fs/tests/__fixtures__
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Reset
+    try:
+      - name: DoReset
+        inputs: { path: scratch-tree, recursive: true }
+        invoke: !ref Remove
+    catch:
+      - name: NoLeftover
+        inputs: { actual: 1, expected: 1 }
+        invoke: !ref Assert.equals
+
+  # Full seed: two nested files with identical content, plus a vendor file.
+  - name: Seed
+    inputs:
+      write:
+        - { path: a/b.txt, content: "alpha\n" }
+        - { path: c.txt, content: "alpha\n" }
+        - { path: node_modules/junk.txt, content: "beta\n" }
+    invoke: !ref Sync
+
+  - name: SnapSeed
+    inputs: { exclude: [node_modules] }
+    invoke: !ref Snap
+
+  # Delta: change c.txt, delete a/b.txt. node_modules and its content untouched.
+  - name: Delta
+    inputs:
+      write:
+        - { path: c.txt, content: "gamma\n" }
+      delete: [a/b.txt]
+    invoke: !ref Sync
+
+  - name: SnapDelta
+    inputs: { exclude: [node_modules] }
+    invoke: !ref Snap
+
+  # No exclude: the vendor file is now visible, proving exclude was the only
+  # reason it was hidden (and that untouched files survive the delta).
+  - name: SnapAll
+    invoke: !ref Snap
+
+  - name: Assert
+    inputs:
+      actual:
+        seedWritten: !cel "steps.Seed.result.written"
+        seedPaths: !cel "steps.SnapSeed.result.files.map(f, f.path)"
+        # Equal content => equal hash (a/b.txt and c.txt both "alpha\n").
+        hashAB: !cel "steps.SnapSeed.result.files.filter(f, f.path == 'a/b.txt')[0].hash"
+        hashC: !cel "steps.SnapSeed.result.files.filter(f, f.path == 'c.txt')[0].hash"
+        # Exact sha256 of "alpha\n".
+        knownAlpha: !cel "steps.SnapSeed.result.files.filter(f, f.path == 'c.txt')[0].hash"
+        deltaDeleted: !cel "steps.Delta.result.deleted"
+        deltaWritten: !cel "steps.Delta.result.written"
+        deltaPaths: !cel "steps.SnapDelta.result.files.map(f, f.path)"
+        # c.txt now "gamma\n".
+        hashCDelta: !cel "steps.SnapDelta.result.files.filter(f, f.path == 'c.txt')[0].hash"
+        allPaths: !cel "steps.SnapAll.result.files.map(f, f.path)"
+      expected:
+        seedWritten: 3
+        seedPaths: [a/b.txt, c.txt]
+        hashAB: b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060
+        hashC: b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060
+        knownAlpha: b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060
+        deltaDeleted: 1
+        deltaWritten: 1
+        deltaPaths: [c.txt]
+        hashCDelta: ae9a6306a205417afddd14316cc1d0d5e04a98f1be10865dce643925ee070ce2
+        allPaths: [c.txt, node_modules/junk.txt]
+    invoke: !ref Assert.equals
+
+  - name: Cleanup
+    inputs: { path: scratch-tree, recursive: true }
+    invoke: !ref Remove

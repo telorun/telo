@@ -58,6 +58,27 @@ class MemoryStore implements ResourceInstance, CacheStore {
     this.entries.delete(key);
   }
 
+  // Atomic within the single-threaded event loop: no `await` between the read
+  // and the write, so concurrent increments can't interleave. The expiry is set
+  // only when the counter is first created this window (fixed window).
+  async increment(key: string, delta: number, ttlMs: number): Promise<number> {
+    const now = Date.now();
+    const entry = this.entries.get(key);
+    if (!entry || now >= entry.expireAt) {
+      this.entries.delete(key);
+      this.entries.set(key, { value: delta, storedAt: now, freshUntil: now + ttlMs, expireAt: now + ttlMs });
+      while (this.entries.size > this.maxEntries) {
+        const oldest = this.entries.keys().next().value;
+        if (oldest === undefined) break;
+        this.entries.delete(oldest);
+      }
+      return delta;
+    }
+    const next = (typeof entry.value === "number" ? entry.value : 0) + delta;
+    entry.value = next;
+    return next;
+  }
+
   async provide(): Promise<MemoryStore> {
     return this;
   }

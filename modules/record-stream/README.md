@@ -16,6 +16,9 @@ Stream operations on structured records. Format-neutral transformers, sources, a
 | `RecordStream.ExtractText` | Project a discriminated `Stream<record>` to `Stream<string>` via a per-variant action map. |
 | `RecordStream.Tee` | Fan one input stream out to two consumers; each output sees every item. |
 | `RecordStream.OnComplete` | Forward a stream while firing a handler once, at end-of-stream, with every item observed. |
+| `RecordStream.Journal` | An in-memory, keyed, offset-addressable replay buffer (Provider). |
+| `RecordStream.JournalSink` | Drain a stream into a Journal under a key (monotonic ids). |
+| `RecordStream.JournalSource` | Read a resumable stream from a Journal, from any id, tailing live. |
 
 ## Example
 
@@ -131,3 +134,46 @@ Wired into an HTTP stream route, `handler` runs after the last frame flushes to 
 - `handler` is called **once**, after `input` runs to its end. Not called if the input throws (the error propagates) or the consumer cancels early (`break` / aborted response) — completion means the input reached its end.
 - Records are buffered in memory, bounded by the input stream's length (same envelope as `Tee`).
 - A `handler` error is not swallowed: it propagates as the output stream terminates.
+
+## RecordStream.Journal — resumable, offset-addressable replay
+
+`OnComplete` and `Tee` observe a stream as it is consumed **once**; neither
+survives the consumer disconnecting. `Journal` decouples producing a stream from
+consuming it, so a **detached** stream becomes **resumable**: a producer streams
+records into a keyed buffer, and any number of consumers read them back from any
+offset — replaying what they missed, then tailing live until the key completes.
+
+This is the backbone of a resumable transport (e.g. an SSE endpoint that
+survives a page refresh): start the work detached into the journal under a
+`turnId`, hand the client that id, and let it read `JournalSource` with its last
+seen `id` as `fromId` (an SSE `Last-Event-ID`). It reconnects to exactly where it
+dropped off.
+
+Three kinds compose:
+
+- **`RecordStream.Journal`** (Provider) — the in-memory buffer store. Keyed;
+  each record gets a monotonic 1-based `id`. Process-local; buffers are retained
+  until discarded.
+- **`RecordStream.JournalSink`** — `{ key, input }` drains a stream into the
+  journal under `key`. On normal completion the key is **finished**; on error it
+  is **failed** (the error is recorded for readers, then rethrown — never
+  swallowed). Invoke it **without awaiting** to run work detached: return the
+  `key` to the client immediately while the stream fills the journal.
+- **`RecordStream.JournalSource`** — `{ key, fromId? }` → `{ output }` of
+  `{ id, data }` entries with `id` greater than `fromId` (0 replays from the
+  start), then tails live until the key is finished or failed.
+
+```yaml
+kind: RecordStream.Journal
+metadata: { name: Turns }
+---
+kind: RecordStream.JournalSink
+metadata: { name: Sink }
+journal: !ref Turns
+---
+kind: RecordStream.JournalSource
+metadata: { name: Source }
+journal: !ref Turns
+# POST route: invoke Sink { key: turnId, input: <agent stream> } detached, return turnId.
+# GET  route: invoke Source { key: turnId, fromId: <Last-Event-ID> } → SSE-encode { id, data }.
+```

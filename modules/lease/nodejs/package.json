@@ -1,0 +1,59 @@
+{
+  "name": "@telorun/lease",
+  "version": "0.1.0",
+  "description": "Telo lease module — Lease.Critical, a declarative critical section over a Cache.Store.",
+  "keywords": [
+    "telo",
+    "lease",
+    "lock",
+    "mutex",
+    "critical-section"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/lease/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./critical": {
+      "types": "./dist/critical-controller.d.ts",
+      "bun": "./src/critical-controller.ts",
+      "import": "./dist/critical-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "dependencies": {
+    "@telorun/cache": "workspace:*"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

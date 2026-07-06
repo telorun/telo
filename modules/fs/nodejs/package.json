@@ -53,6 +53,14 @@
     "./file-removal": {
       "bun": "./src/file-removal-controller.ts",
       "import": "./dist/file-removal-controller.js"
+    },
+    "./tree-snapshot": {
+      "bun": "./src/tree-snapshot-controller.ts",
+      "import": "./dist/tree-snapshot-controller.js"
+    },
+    "./tree-sync": {
+      "bun": "./src/tree-sync-controller.ts",
+      "import": "./dist/tree-sync-controller.js"
     }
   },
   "files": [

@@ -111,6 +111,23 @@ class RedisStore implements ResourceInstance, CacheStore {
     }
   }
 
+  // INCRBY + set-expiry-if-none in one atomic Lua script: race-free across
+  // concurrent callers, and the fixed window is set only when the counter is
+  // first created (PTTL < 0), never extended by later increments.
+  async increment(key: string, delta: number, ttlMs: number): Promise<number> {
+    const LUA =
+      "local v = redis.call('INCRBY', KEYS[1], ARGV[1]); " +
+      "if redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end; " +
+      "return v";
+    try {
+      const total = await this.redis.eval(LUA, 1, this.key(key), String(Math.trunc(delta)), String(ttlMs));
+      await this.exitDegraded();
+      return Number(total);
+    } catch (err) {
+      return this.onFailure(err, () => this.fallback!.increment(key, delta, ttlMs));
+    }
+  }
+
   /** On a Redis failure: enter degraded mode (observable). Serve from the
    *  fallback if configured, else surface the error — never swallow it. */
   private async onFailure<T>(err: unknown, fromFallback: () => Promise<T>): Promise<T> {
