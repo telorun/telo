@@ -494,6 +494,13 @@ async function publishOne(
     );
     return false;
   }
+  // A parse failure yields a mangled manifest tree; analyzing it would drown the
+  // real error under spurious schema violations. Report the parse diagnostics
+  // and stop before analysis — mirrors the kernel's load-time short-circuit.
+  if (analysisGraph.parseDiagnostics.length > 0) {
+    formatAnalysisDiagnostics(analysisGraph.parseDiagnostics, analysisGraph, log, filePath);
+    return false;
+  }
   const analysisManifests = flattenForAnalyzer(analysisGraph);
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
   const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisGraph, log, filePath);

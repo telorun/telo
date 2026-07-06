@@ -200,12 +200,26 @@ export function activate(context: vscode.ExtensionContext): void {
     const manifests = flattenForAnalyzer(graph);
 
     const registry = new AnalysisRegistry();
+    // A file that fails to parse yields a mangled `toJSON()` tree; its
+    // analyze-derived diagnostics are spurious and would bury the real parse
+    // error. Drop only those (routed to a parse-failed file) — unlike the
+    // one-shot CLI, an editor closure spans many files, most still valid, so
+    // the rest keep full analysis and the registry stays populated.
+    const parseFailedFiles = new Set(
+      graph.parseDiagnostics
+        .map((d) => (d.data as { filePath?: string } | undefined)?.filePath)
+        .filter((f): f is string => Boolean(f)),
+    );
+    const analysisDiagnostics = analyzer
+      .analyze(manifests, undefined, registry)
+      .filter((d) => !parseFailedFiles.has(findPositions(graph, d.data)?.file ?? entryFilePath));
     // Loader-produced version-reconciliation diagnostics (hoist / major
     // mismatch) carry `data.filePath` + `data.path: imports.<alias>`, so the
     // shared `findPositions` resolver lands them on the importer's import line.
     const rawDiagnostics = [
+      ...graph.parseDiagnostics,
       ...graph.versionDiagnostics,
-      ...analyzer.analyze(manifests, undefined, registry),
+      ...analysisDiagnostics,
     ];
 
     const diagnosticsByFile = new Map<string, vscode.Diagnostic[]>();

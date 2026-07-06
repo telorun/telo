@@ -46,7 +46,7 @@ outputType:
     properties:
       content:
         title: Content
-        description: File contents — utf8 text, or a base64 string when `encoding: base64`.
+        description: "File contents — utf8 text, or a base64 string when `encoding: base64`."
         type: string
       size:
         title: Size
@@ -89,7 +89,7 @@ inputType:
         minLength: 1
       content:
         title: Content
-        description: Bytes to write — utf8 text, or a base64 string when `encoding: base64`.
+        description: "Bytes to write — utf8 text, or a base64 string when `encoding: base64`."
         type: string
       encoding:
         title: Encoding
@@ -406,7 +406,7 @@ inputType:
               type: string
               minLength: 1
             content:
-              description: Bytes to write — utf8 text, or a base64 string when `encoding: base64`.
+              description: "Bytes to write — utf8 text, or a base64 string when `encoding: base64`."
               type: string
             encoding:
               description: How `content` is interpreted. `base64` decodes it to binary first.

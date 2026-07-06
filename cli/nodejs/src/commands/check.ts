@@ -22,6 +22,18 @@ async function checkOne(
       const first = graph.errors[0];
       throw first.error;
     }
+    // A file that fails to parse yields a mangled `toJSON()` tree; running
+    // `analyze()` over it emits a cascade of spurious secondary diagnostics that
+    // bury the real parse error. Report the parse (and version) diagnostics and
+    // stop before analysis — mirrors the kernel, which throws on parse failure.
+    if (graph.parseDiagnostics.length > 0) {
+      return formatAnalysisDiagnostics(
+        [...graph.parseDiagnostics, ...graph.versionDiagnostics],
+        graph,
+        log,
+        entryPath,
+      );
+    }
     const manifests = flattenForAnalyzer(graph);
     // Version-reconciliation diagnostics (hoist warnings / major-mismatch
     // errors) are produced by the loader, not `analyze()`; merge them in so a

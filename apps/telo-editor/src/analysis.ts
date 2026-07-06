@@ -119,6 +119,17 @@ function analyzeClosure(
   const registry = new AnalysisRegistry();
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
+  // A file that fails to parse yields a mangled `toJSON()` tree; its
+  // analyze-derived diagnostics are spurious and would bury the real parse
+  // error (routed separately below). Drop only those — unlike the one-shot
+  // CLI, a closure spans many files, most still valid, so the rest keep full
+  // analysis and the registry stays populated.
+  const parseFailedFiles = new Set(
+    graph.parseDiagnostics
+      .map((d) => (d.data as { filePath?: string } | undefined)?.filePath)
+      .filter((f): f is string => Boolean(f)),
+  );
+
   // Files local to this closure's root: the entry module's owner + its
   // `include:` partials, keyed by the same `metadata.source` values
   // `flattenForAnalyzer` stamps (each file's canonical source).
@@ -175,6 +186,8 @@ function analyzeClosure(
     const stampedFilePath = data?.filePath;
     const filePath =
       kind && name ? (stampedFilePath ?? sourceByManifest.get(`${kind}/${name}`)) : undefined;
+    const routedFile = filePath ?? stampedFilePath;
+    if (routedFile && parseFailedFiles.has(routedFile)) continue;
     const ownerPosition =
       filePath && kind && name ? positions.get(`${filePath}::${kind}::${name}`) : undefined;
     const normalized = normalizeDiagnostic(diag, {
@@ -234,6 +247,18 @@ function analyzeClosure(
         sourceLine: moduleDocPos?.sourceLine,
       }),
     );
+  }
+
+  // Parse-failure diagnostics are graph-level too: a file that fails to parse
+  // yields a mangled manifest tree no closure claims. Route by `data.filePath`,
+  // carrying the diagnostic's own YAML-reported range.
+  for (const pd of graph.parseDiagnostics) {
+    const filePath = (pd.data as { filePath?: string } | undefined)?.filePath;
+    if (!filePath) continue;
+    const dedupKey = `parse::${filePath}::${pd.code}::${pd.message}`;
+    if (acc.unknownSeen.has(dedupKey)) continue;
+    acc.unknownSeen.add(dedupKey);
+    appendByFile(filePath, normalizeDiagnostic(pd, { registry }));
   }
 
   // Registry routing: a root-local file resolves completions against THIS

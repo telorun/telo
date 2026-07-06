@@ -15,6 +15,32 @@ export interface ParseOptions {
   celEnv?: Environment;
 }
 
+/** Append an actionable hint to raw yaml-parser messages that are otherwise
+ *  cryptic. The parser reports `BLOCK_AS_IMPLICIT_KEY` ("Nested mappings are
+ *  not allowed in compact mappings") when a plain (unquoted) scalar contains
+ *  `: ` (colon-space) — the parser reads the colon as a nested key. Telling the
+ *  author to quote the value turns an opaque error into a one-step fix. */
+function augmentParseMessage(err: import("yaml").YAMLError): string {
+  if (err.code === "BLOCK_AS_IMPLICIT_KEY") {
+    return `${err.message}\n\nHint: a plain (unquoted) value cannot contain ': ' (colon followed by a space) — the parser reads it as a nested mapping. Wrap the value in quotes, e.g. \`description: "… \`encoding: base64\` …"\`.`;
+  }
+  return err.message;
+}
+
+/** The yaml lib reports 1-based `{line, col}` pairs; convert to a 0-based
+ *  analyzer `Range`. Returns undefined when the error carried no position. */
+function rangeFromLinePos(
+  linePos: import("yaml").YAMLError["linePos"],
+): import("./types.js").Range | undefined {
+  const start = linePos?.[0];
+  if (!start) return undefined;
+  const end = linePos?.[1] ?? start;
+  return {
+    start: { line: start.line - 1, character: start.col - 1 },
+    end: { line: end.line - 1, character: end.col - 1 },
+  };
+}
+
 /** Pure: text in, structured load result out. No I/O, no caches. */
 export function parseLoadedFile(
   source: string,
@@ -30,7 +56,8 @@ export function parseLoadedFile(
     for (const err of doc.errors) {
       parseErrors.push({
         documentIndex,
-        message: err.message,
+        message: augmentParseMessage(err),
+        range: rangeFromLinePos(err.linePos),
       });
     }
   });

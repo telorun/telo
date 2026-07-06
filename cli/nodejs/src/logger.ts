@@ -80,8 +80,11 @@ export function formatAnalysisDiagnostics(
       fieldPath !== undefined && located?.positionIndex
         ? located.positionIndex.get(fieldPath)
         : undefined;
-    const line = (fieldRange?.start.line ?? located?.sourceLine ?? 0) + 1;
-    const col = (fieldRange?.start.character ?? 0) + 1;
+    // Prefer a field-path position, then the diagnostic's own range (parse
+    // errors carry one), then the doc's source line.
+    const start = fieldRange?.start ?? d.range?.start;
+    const line = (start?.line ?? located?.sourceLine ?? 0) + 1;
+    const col = (start?.character ?? 0) + 1;
 
     const loc = `${displaySource}:${line}:${col}`;
     const severityLabel =

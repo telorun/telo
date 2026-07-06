@@ -13,11 +13,36 @@ import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
 import {
+  type AnalysisDiagnostic,
   DEFAULT_MANIFEST_FILENAME,
+  DiagnosticSeverity,
   type LoadOptions,
   type LoaderInitOptions,
   type ManifestSource,
 } from "./types.js";
+
+/** Project every file's YAML `parseErrors` into fatal Error diagnostics. Each
+ *  carries `data.filePath` so `findPositions` routes it to the failing file. */
+function collectParseDiagnostics(
+  modules: Map<string, LoadedModule>,
+): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const mod of modules.values()) {
+    for (const file of [mod.owner, ...mod.partials]) {
+      for (const err of file.parseErrors) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "MANIFEST_PARSE_FAILED",
+          source: "telo-analyzer",
+          message: err.message,
+          range: err.range,
+          data: { filePath: file.source },
+        });
+      }
+    }
+  }
+  return diagnostics;
+}
 
 const SYSTEM_KINDS = new Set([
   "Telo.Application",
@@ -309,6 +334,7 @@ export class Loader {
       importEdges,
       overrides,
       versionDiagnostics: diagnostics,
+      parseDiagnostics: collectParseDiagnostics(modules),
       errors,
     };
   }
