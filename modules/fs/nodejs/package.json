@@ -1,6 +1,6 @@
 {
   "name": "@telorun/fs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo fs module - local filesystem access via Node fs/promises.",
   "keywords": [
     "telo",

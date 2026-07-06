@@ -1,6 +1,6 @@
 {
   "name": "@telorun/lease",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Telo lease module — Lease.Critical, a declarative critical section over a Cache.Store.",
   "keywords": [
     "telo",
