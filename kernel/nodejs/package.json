@@ -1,6 +1,6 @@
 {
   "name": "@telorun/kernel",
-  "version": "0.40.1",
+  "version": "0.40.2",
   "description": "Telo Runtime - A lightweight, polyglot execution host.",
   "keywords": [
     "telo",
