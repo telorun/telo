@@ -76,6 +76,10 @@ export interface ImageBuildConfig {
 }
 
 export interface K8sRunnerConfig extends RunnerCoreConfig {
+  /** Identity advertised on `/v1/capabilities` — the editor labels the runner
+   *  with these. */
+  displayName: string;
+  description: string;
   /** Namespace where session Pods/Services/Ingresses are created. */
   sessionNamespace: string;
   /** Default image for spawned session Pods (telorun/node). */
@@ -100,6 +104,11 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
   limits: LimitCeilings;
+  /** Ceilings for operator-predefined app sessions (`RUNNER_APPS`). Separate
+   *  from `limits` — apps are operator-curated and long-lived, so they get
+   *  roomier defaults than anonymous session code without loosening the
+   *  anonymous ceiling. */
+  appLimits: LimitCeilings;
   /** Menu of base images a session may pick (advertised as the `image` enum). */
   baseImageCatalog: BaseImageCatalogConfig;
 }
@@ -180,6 +189,9 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
 
   return {
     ...loadCoreConfig(env, { port: DEFAULT_PORT }),
+    displayName: env.RUNNER_DISPLAY_NAME?.trim() || "Telo Runner",
+    description:
+      env.RUNNER_DESCRIPTION?.trim() || "Runs the Telo application in a cloud environment",
     sessionNamespace: env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions",
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
@@ -195,6 +207,16 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
       memory: env.RUNNER_MAX_MEMORY?.trim() || "100Mi",
       ttlSeconds: parsePositiveInt(env.RUNNER_MAX_TTL_SECONDS, 3600, "RUNNER_MAX_TTL_SECONDS"),
       ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "512Mi",
+    },
+    appLimits: {
+      cpu: env.RUNNER_APP_MAX_CPU?.trim() || "500m",
+      memory: env.RUNNER_APP_MAX_MEMORY?.trim() || "512Mi",
+      ttlSeconds: parsePositiveInt(
+        env.RUNNER_APP_MAX_TTL_SECONDS,
+        21600,
+        "RUNNER_APP_MAX_TTL_SECONDS",
+      ),
+      ephemeralStorage: env.RUNNER_APP_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
     },
     baseImageCatalog: loadBaseImageCatalogConfig(env),
   };

@@ -53,8 +53,10 @@ export interface SessionDockerClient {
 export interface CreateContainerOpts {
   Image: string;
   name: string;
-  Cmd: string[];
-  WorkingDir: string;
+  /** Omitted for a self-contained image, which runs its own baked CMD. */
+  Cmd?: string[];
+  /** Omitted for a self-contained image, which uses its own baked WORKDIR. */
+  WorkingDir?: string;
   Env: string[];
   Tty: boolean;
   OpenStdin: boolean;
@@ -85,6 +87,11 @@ export interface SpawnSessionArgs {
   bundleVolume: string;
   childNetwork: string;
   inspect: boolean;
+  /** When true the image is fully self-contained (the app + its controllers are
+   *  baked in): the runner does NOT mount a bundle over `/srv` and does NOT
+   *  override the command — the image boots its own baked CMD/WORKDIR. This is
+   *  how operator-predefined app sessions are launched. */
+  selfContained?: boolean;
   onStatus: (status: import("@telorun/runner-core").RunStatus) => void;
   onOutput: (chunk: Buffer) => void;
   onDebug: (frame: DebugFrame) => void;
@@ -253,14 +260,15 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   // `--inspect 0.0.0.0:<port> --no-open` so the kernel serves its debug stream
   // on the child network. 0.0.0.0 (not the CLI's loopback default) lets the
   // runner reach it across the container boundary.
+  // A self-contained image boots its own baked CMD/WORKDIR with no bundle mount;
+  // otherwise the runner runs `telo <entry>` in the per-session bundle workdir.
   const cmd = args.inspect
     ? ["telo", args.entryRelativePath, "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"]
     : ["telo", args.entryRelativePath];
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,
-    Cmd: cmd,
-    WorkingDir: args.workingDir,
+    ...(args.selfContained ? {} : { Cmd: cmd, WorkingDir: args.workingDir }),
     Env: envArray,
     Tty: true,
     OpenStdin: true,
@@ -270,7 +278,7 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
     AttachStderr: true,
     ...(exposedPorts ? { ExposedPorts: exposedPorts } : {}),
     HostConfig: {
-      Binds: [`${args.bundleVolume}:/srv`],
+      Binds: args.selfContained ? [] : [`${args.bundleVolume}:/srv`],
       AutoRemove: true,
       NetworkMode: args.childNetwork,
       ...(portBindings ? { PortBindings: portBindings } : {}),

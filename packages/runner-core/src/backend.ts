@@ -48,6 +48,11 @@ export interface BackendStartSpec {
   env: Record<string, string>;
   ports: PortMapping[];
   config: SessionConfig;
+  /** True for an operator-predefined app session (`StartSessionRequest.app`):
+   *  `config.image` is self-contained (app + controllers baked in), so the
+   *  backend runs the image's own entrypoint and stages no bundle — `bundle`
+   *  is an empty placeholder. */
+  selfContained: boolean;
   /** When true, launch the workload with `--inspect` and relay its kernel debug
    *  stream via `onDebug`. The inspect endpoint stays reachable only by the
    *  runner — never published outward. */

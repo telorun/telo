@@ -25,8 +25,7 @@ tauri-plugin-dialog = "2.0"
 tauri-plugin-fs = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["process", "io-util", "rt-multi-thread", "time", "macros", "sync"] }
-tempfile = "3"
+tokio = { version = "1", features = ["process", "io-util", "net", "rt-multi-thread", "time", "macros", "sync"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

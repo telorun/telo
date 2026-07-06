@@ -1,0 +1,4 @@
+project: authoring-agent
+kind: Added
+body: "History seeding: `POST /conversations/{id}/messages` bulk-imports the rows a previous session persisted (idempotent `INSERT OR IGNORE` by uuidv7 id), so a client can ferry the conversation into a fresh per-session instance — the model then sees the same history the client shows"
+time: 2026-07-09T17:05:00.000000000+00:00

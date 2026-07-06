@@ -73,6 +73,10 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       return issues;
     },
 
+    async resolveBaseUrl(config) {
+      return validateBaseUrl(config.baseUrl) ? null : config.baseUrl;
+    },
+
     async fetchCapabilities(config): Promise<RunnerCapabilities | null> {
       if (validateBaseUrl(config.baseUrl)) return null;
       const base = trimTrailingSlash(config.baseUrl);
@@ -130,7 +134,12 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       if (!probeRes.ok) {
         return { status: "unavailable", message: `Runner returned HTTP ${probeRes.status} on /v1/probe.` };
       }
-      return (await probeRes.json()) as AvailabilityReport;
+      const report = (await probeRes.json()) as AvailabilityReport;
+      // `action` is a local behavior object (a callable), never a wire field —
+      // drop anything a remote runner put there so the banner can't render a
+      // button whose `run` isn't a function.
+      if (report && typeof report === "object") delete (report as { action?: unknown }).action;
+      return report;
     },
 
     async getTerms(config): Promise<RunnerTerms | null> {

@@ -1,11 +1,13 @@
 import "@radix-ui/themes/styles.css";
 import "react-complex-tree/lib/style-modern.css";
+import "streamdown/styles.css";
 import "./app/globals.css";
 
 import { Theme } from "@radix-ui/themes";
 import { createRoot } from "react-dom/client";
 import { Editor } from "./components/Editor";
 import { RunProvider, setupAdapters } from "./run";
+import { AgentProvider } from "./agent";
 import { ColorModeProvider, useColorMode } from "./theme/color-mode";
 
 setupAdapters();
@@ -17,7 +19,9 @@ function ThemedApp() {
   return (
     <Theme appearance={mode}>
       <RunProvider>
-        <Editor />
+        <AgentProvider>
+          <Editor />
+        </AgentProvider>
       </RunProvider>
     </Theme>
   );

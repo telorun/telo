@@ -6,6 +6,10 @@ name: Publish Docker Images
 #                       `:latest`. Application artifacts (registry,
 #                       docker-runner) are not npm-gated, so they publish
 #                       both `:latest` and `:sha-<short>` on every push.
+#                       authoring-agent publishes an immutable `:<version>-slim`
+#                       per agent release (changie-owned metadata.version) plus
+#                       a mutable `:latest-slim`. No sha tags; the embedded telo
+#                       runtime is the newest published CLI at build time.
 #  * workflow_call    → release images (semver-tagged, all variants, multi-arch).
 #                       Caller passes `published-packages` (the
 #                       changesets/action `publishedPackages` JSON output) so
@@ -19,6 +23,7 @@ on:
       - "apps/k8s-runner/**"
       - "packages/runner-core/**"
       - "apps/registry/**"
+      - "apps/authoring-agent/**"
       - "modules/**"
       - "cli/**"
       - "kernel/**"
@@ -469,3 +474,84 @@ jobs:
           tags: ${{ steps.imgtags.outputs.tags }}
           cache-from: type=gha,scope=k8s-runner
           cache-to: type=gha,mode=max,scope=k8s-runner
+
+  authoring-agent:
+    name: Build telorun/authoring-agent
+    # Publishes only when the agent's changie-owned metadata.version moved this
+    # commit (agent release): an immutable :<version>-slim plus the mutable
+    # :latest-slim (operator app catalogs typically pull latest-slim with
+    # pullPolicy always). The embedded telo runtime is the newest published
+    # CLI: the just-published version on a CLI release, otherwise
+    # cli/nodejs/package.json — either way the telorun/node base is live on
+    # Docker Hub, so no sha kernel is needed. The "version packages" commit is
+    # skipped on the push path (its base may still be publishing concurrently);
+    # it rides the workflow_call release path like the other app images.
+    # `always()` lets this job run when kernel-release was skipped (push path).
+    if: |
+      always() &&
+      (inputs.release ||
+       (github.event_name == 'push' &&
+        !contains(github.event.head_commit.message, 'chore(release): version packages'))) &&
+      needs.context.result == 'success' &&
+      (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
+    needs: [context, kernel-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # HEAD^ needed to detect a metadata.version bump
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Decide whether to publish and compute tags
+        id: decide
+        env:
+          CLI_VERSION: ${{ needs.context.outputs.cli-version }}
+        run: |
+          ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
+          AGENT_NOW=$(ver < apps/authoring-agent/telo.yaml)
+          AGENT_PREV=$(git show HEAD^:apps/authoring-agent/telo.yaml 2>/dev/null | ver || true)
+          if [ -z "$AGENT_NOW" ]; then
+            echo "Could not read metadata.version from apps/authoring-agent/telo.yaml" >&2
+            exit 1
+          fi
+
+          if [ "$AGENT_NOW" = "$AGENT_PREV" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to publish (agent version unchanged)."
+            exit 0
+          fi
+
+          if [ -n "$CLI_VERSION" ]; then
+            TELO_V="$CLI_VERSION"
+          else
+            TELO_V=$(jq -r .version cli/nodejs/package.json)
+          fi
+
+          {
+            echo "publish=true"
+            echo "telo-version=$TELO_V"
+            echo 'tags<<EOF'
+            echo "telorun/authoring-agent:${AGENT_NOW}-slim"
+            echo "telorun/authoring-agent:latest-slim"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        if: steps.decide.outputs.publish == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push authoring-agent
+        if: steps.decide.outputs.publish == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/authoring-agent
+          file: apps/authoring-agent/Dockerfile
+          target: production
+          push: true
+          build-args: |
+            TELO_NODE_VERSION=${{ steps.decide.outputs.telo-version }}
+          tags: ${{ steps.decide.outputs.tags }}
+          cache-from: type=gha,scope=authoring-agent
+          cache-to: type=gha,mode=max,scope=authoring-agent

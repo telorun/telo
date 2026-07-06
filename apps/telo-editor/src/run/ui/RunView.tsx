@@ -28,6 +28,7 @@ export function RunView() {
         adapterDisplayName={unavailableRun.adapterDisplayName}
         message={unavailableRun.message}
         remediation={unavailableRun.remediation}
+        action={unavailableRun.action}
         onRecheck={unavailableRun.recheck}
         onClose={closeRunView}
       />

@@ -5,6 +5,7 @@ export type {
 } from "./context";
 export { RunProvider, useRun } from "./context";
 export type {
+  AvailabilityAction,
   AvailabilityReport,
   ConfigIssue,
   RunAdapter,
@@ -29,7 +30,7 @@ export { RunView } from "./ui/RunView";
 
 import { isTauri } from "@tauri-apps/api/core";
 import { registry } from "./registry";
-import { tauriDockerAdapter } from "./adapters/tauri-docker/adapter";
+import { localDockerAdapter } from "./adapters/local-docker/adapter";
 import { httpRunnerAdapter } from "./adapters/http-runner/adapter";
 
 /** Registers all built-in adapter *types* with the registry exactly once.
@@ -37,17 +38,17 @@ import { httpRunnerAdapter } from "./adapters/http-runner/adapter";
  *  provider during HMR doesn't double-register. Runner *instances* (the
  *  user-managed list) live in settings, not here.
  *
- *  The tauri-docker adapter only works inside a Tauri window — `invoke()`
- *  has no target in a plain browser, so registering it outside that
- *  environment would let the user open a config form that throws on every
- *  probe. When `isTauri()` is false we skip registration.
+ *  The local-docker adapter only works inside a Tauri window — its supervisor
+ *  `invoke()`s have no target in a plain browser, so registering it outside
+ *  that environment would let the user open a config form that throws on
+ *  every probe. When `isTauri()` is false we skip registration.
  *
  *  The http-runner adapter is an HTTP client and works in both Tauri and
  *  plain-browser contexts — always registered. It serves docker-runner,
  *  k8s-runner, and Telo Cloud via the same `/v1` contract. */
 export function setupAdapters(): void {
-  if (isTauri() && !registry.get(tauriDockerAdapter.id)) {
-    registry.register(tauriDockerAdapter);
+  if (isTauri() && !registry.get(localDockerAdapter.id)) {
+    registry.register(localDockerAdapter);
   }
   if (!registry.get(httpRunnerAdapter.id)) {
     registry.register(httpRunnerAdapter);

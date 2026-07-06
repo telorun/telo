@@ -34,12 +34,14 @@ imports:
       # would replay a "task already done" conversation on re-runs, and the model
       # would answer with text instead of calling write_file again.
       dbFile: ":memory:"
-      model: gpt-4o
+      model: gpt-5.2
       # The agent's fs tools run from ./workspace, so point its check loop at the
       # repo CLI relative to that cwd. This makes the agent validate against the
       # exact checker the AssertValid step below uses (not a globally-installed
-      # `telo`, which CI does not have) — so their verdicts always agree.
-      checkCommand: bun ../cli/nodejs/bin/telo.ts check
+      # `telo`, which CI does not have) — so their verdicts always agree. Argv
+      # form (program + args), not a shell string — the file path is appended and
+      # execed directly.
+      checkArgv: [bun, ../cli/nodejs/bin/telo.ts, check]
   Shell: ../../../../modules/shell
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
@@ -64,9 +66,10 @@ steps:
     if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: Chat
-        invoke: !ref Chat.chatHandler
+        invoke: !ref Chat.chatStart
         inputs:
           conversationId: authors-1
+          clientIp: test-runner
           message: |
             Create a manifest file `todo-api.yaml`: a REAL, runnable Telo.Application
             named "todo-api" (version 1.0.0) — a small REST API for a todo list,
@@ -89,18 +92,24 @@ steps:
             and queries from the schemas (no guessing).
             Validate with `telo check todo-api.yaml` and fix every error until it
             passes.
-      # Consume the agent's event stream (driving its tool calls / file writes) and
-      # materialize the events so we can assert over them.
+      # The turn runs detached into the journal under the returned turnId. Read
+      # it back through the journal source — it replays from the start and tails
+      # live until the turn completes — then materialize the { id, data } envelopes.
+      - name: Read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.Chat.result.turnId"
+          fromId: 0
       - name: Drain
         invoke:
           kind: Stream.Collect
         inputs:
-          input: !cel "steps.Chat.result.output"
+          input: !cel "steps.Read.result.output"
       - name: AssertWrote
         inputs:
-          calledWriteFile: !cel "steps.Drain.result.items.exists(r, r.type == 'tool-call' && r.toolCall.name == 'write_file')"
-          calledRegistry: !cel "steps.Drain.result.items.exists(r, r.type == 'tool-call' && r.toolCall.name == 'get_module_manifest')"
-          toolNames: !cel "steps.Drain.result.items.filter(r, r.type == 'tool-call').map(r, r.toolCall.name)"
+          calledWriteFile: !cel "steps.Drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
+          calledRegistry: !cel "steps.Drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'get_module_manifest')"
+          toolNames: !cel "steps.Drain.result.items.filter(r, r.data.type == 'tool-call').map(r, r.data.toolCall.name)"
         invoke:
           kind: Assert.Schema
           schema:

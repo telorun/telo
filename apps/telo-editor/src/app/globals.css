@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Streamdown (assistant markdown) ships its utility classes inside its dist,
+   which Tailwind v4 doesn't scan by default — without this the code-block copy/
+   download toolbar loses its layout classes and wraps to a new line. The class
+   literals live in a hashed chunk, so scan the whole dist dir. */
+@source "../../node_modules/streamdown/dist";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

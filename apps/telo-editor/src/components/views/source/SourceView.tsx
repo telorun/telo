@@ -35,7 +35,9 @@ interface TabState {
  *  if the tab isn't dirty and the canonical text differs from what the tab
  *  last showed, we update. */
 
-export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps) {
+const READ_ONLY_MESSAGE = { value: "Editing is paused while the agent is working." };
+
+export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: ViewProps) {
   const sourceFiles = viewData.sourceFiles;
   const firstFilePath = sourceFiles[0]?.filePath;
   const lastConsumedNonceRef = useRef<number | null>(null);
@@ -376,6 +378,8 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
+              readOnly,
+              readOnlyMessage: READ_ONLY_MESSAGE,
               // Re-parent hover/suggest/context widgets to document.body.
               // Without this, popovers anchored near the top of the buffer
               // open upward and get clipped by the editor's ancestor
@@ -446,6 +450,8 @@ export function SourceView({ viewData, onSourceEdit, revealRequest }: ViewProps)
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   tabSize: 2,
+                  readOnly,
+                  readOnlyMessage: READ_ONLY_MESSAGE,
                 }}
               />
             </TabsContent>

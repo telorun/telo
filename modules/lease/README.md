@@ -46,6 +46,20 @@ invoke: !ref turnRunner
 ```
 Use for "at most one background operation per key" — a per-conversation agent turn, a per-tenant reconciliation, a per-resource webhook processor.
 
+## Cancelling a detached body (`op: cancel`)
+
+A running detached body can be ended early by invoking the same `Lease.Critical` with `op: cancel`:
+
+```yaml
+# abort handler invokes it with { op: cancel, key: conversationId, holder: turnId }
+#   running & holder matches → { cancelled: true, holder }
+#   idle key / holder mismatch → { cancelled: false, holder? }
+```
+
+The body runs under a lease-owned cancellation scope, so the cancel trips its cancellation token: every honoring leaf (a model call, a `Timer.Delay`, a fetch) aborts, the body reaches its terminal, and the lease releases as usual. The `holder` guard makes the cancel safe against races — a stale caller naming an old turn id cannot kill a newer occupant of the key. A body ending because it was cancelled is an expected terminal, not a failure.
+
+Cancellation state is **process-local**: the cancel must reach the same instance that dispatched the body (a shared Redis store spans the *lease* across instances, not the cancel).
+
 ## `holder`
 
 The optional `holder` input is an opaque token identifying this holder; it's returned to a loser (so a 409 can name the in-flight operation) and doubles as the **release guard** — a stale holder whose lease already expired and was taken over by another owner cannot release the new owner's lease. A unique token is generated when omitted.

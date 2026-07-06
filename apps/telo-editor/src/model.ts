@@ -18,7 +18,7 @@ export interface RunnerInstance {
   name: string;
   /** The runner's advertised description, shown under the name. */
   description?: string;
-  /** Which adapter type drives this runner: "http-runner" | "tauri-docker". */
+  /** Which adapter type drives this runner: "http-runner" | "local-docker". */
   adapterId: string;
   /** The adapter's opaque config (baseUrl, …). */
   config: unknown;

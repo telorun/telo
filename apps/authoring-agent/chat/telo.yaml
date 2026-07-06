@@ -4,25 +4,32 @@ metadata:
   version: 0.0.0
   description: |
     The authoring agent's chat backend: an OpenAI-backed Ai.AgentStream with
-    workspace-rooted fs/shell tools (cwd-scoped — not a sandbox boundary; the
-    `run` tool executes arbitrary shell), live Telo-registry discovery tools (an
+    workspace-rooted fs tools (write_file / edit_file / read_file / list_dir /
+    delete_file) plus an on-demand telo_check tool. There is NO command / `run`
+    tool — `telo check` runs automatically after every write/edit, and telo_check
+    reuses the same fixed argv (path appended, execed without a shell) as a
+    keyless subprocess (OPENAI_API_KEY unset), so the agent always validates and
+    can never run arbitrary commands or reach the operator's key. Plus live Telo-registry discovery tools (an
     AiMcp.ToolProvider over the registry's MCP endpoint — search_modules /
     get_module_manifest), SQLite conversation history, and the ChatHandler that
     ties them together (persist user turn, replay history, stream the agent's
-    output, persist the assistant turn at end-of-stream). Exported so
-    the app and its tests drive the same handler. Parameterized by the OpenAI key
-    and the SQLite file; the workspace is ./workspace.
+    output, persist the assistant turn at end-of-stream). Exported so the app and
+    its tests drive the same handler. Parameterized by the OpenAI key and the
+    SQLite file; the workspace is ./workspace.
 imports:
-  Ai: ../../../modules/ai
-  AiOpenai: ../../../modules/ai-openai
-  AiMcp: ../../../modules/ai-mcp
-  Mcp: ../../../modules/mcp-client
-  Fs: ../../../modules/fs
-  Shell: ../../../modules/shell
-  Sql: ../../../modules/sql
-  SqlSqlite: ../../../modules/sql-sqlite
-  RecordStream: ../../../modules/record-stream
-  Run: ../../../modules/run
+  Ai: std/ai@0.8.0
+  AiOpenai: std/ai-openai@0.9.0
+  AiMcp: std/ai-mcp@0.5.1
+  Mcp: std/mcp-client@0.4.1
+  Fs: std/fs@0.2.1
+  Shell: std/shell@0.2.0
+  Sql: std/sql@0.11.0
+  SqlSqlite: std/sql-sqlite@0.2.1
+  RecordStream: std/record-stream@0.7.0
+  Run: std/run@0.11.1
+  Lease: std/lease@0.2.0
+  CacheMemory: std/cache-memory@0.3.0
+  RateLimit: std/rate-limit@0.3.0
 secrets:
   openaiApiKey:
     type: string
@@ -32,19 +39,46 @@ variables:
     default: ./tmp/authoring-agent.sqlite
   model:
     type: string
-    default: gpt-4o
-  checkCommand:
+    default: gpt-5.2
+  budgetLimit:
+    type: integer
+    # Max total tokens spent across all turns per window (operator spend cap).
+    default: 4000000
+  budgetWindow:
     type: string
-    # The command the write_file/edit_file loop runs to validate a file (the file
-    # path is appended). Defaults to the installed `telo` CLI; a test or embedded
-    # context overrides it to point at a specific CLI build so the agent validates
+    default: "1h"
+  reservePerTurn:
+    type: integer
+    # Worst-case tokens debited at turn start; settled to actual on completion.
+    default: 40000
+  ipLimit:
+    type: integer
+    # Max turns started per client IP per window (coarse per-abuser throttle).
+    default: 20
+  ipWindow:
+    type: string
+    default: "1m"
+  checkArgv:
+    type: array
+    items: { type: string }
+    # The argv (program + fixed args) the write_file/edit_file loop runs to
+    # validate a file; the file path is appended as a final argument and the
+    # whole thing is execed WITHOUT a shell (no injection from an agent-chosen
+    # path). Defaults to the installed `telo` CLI; a test or embedded context
+    # overrides it to point at a specific CLI build so the agent validates
     # against the very checker that will judge its output.
-    default: telo check
+    default: [telo, check]
 exports:
   resources:
     - initSchema
-    - chatHandler
+    - chatStart
+    - journalSource
     - author
+    - readFile
+    - treeSnapshot
+    - treeSync
+    - historyQuery
+    - importMessages
 ---
 kind: SqlSqlite.Connection
 metadata: { name: chatDb }
@@ -57,7 +91,7 @@ migrations:
   create_messages:
     statement: |
       CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         conversation_id TEXT NOT NULL,
         role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
         content TEXT NOT NULL,
@@ -96,13 +130,138 @@ kind: Fs.DirectoryListing
 metadata: { name: listDir }
 cwd: ./workspace
 ---
+kind: Fs.FileRemoval
+metadata: { name: removeFile }
+cwd: ./workspace
+---
+# Whole-workspace sync primitives, exported so the app's /workspace routes can
+# snapshot (content-hash tree) and apply an explicit write/delete change set.
+kind: Fs.TreeSnapshot
+metadata: { name: treeSnapshot }
+cwd: ./workspace
+---
+kind: Fs.TreeSync
+metadata: { name: treeSync }
+cwd: ./workspace
+---
+# Resumable-turn transport: the agent turn runs detached, journaling its stream
+# under the turnId; a GET events route replays the journal from a client's last
+# seen id and then tails live, so a turn survives a page refresh.
+kind: RecordStream.Journal
+metadata: { name: turnJournal }
+---
+kind: RecordStream.JournalSink
+metadata: { name: journalSink }
+journal: !ref turnJournal
+---
+kind: RecordStream.JournalSource
+metadata: { name: journalSource }
+journal: !ref turnJournal
+---
+# Conversation history for GET /conversations/{id} — lets a client (a reload or
+# a new device) restore its transcript. The route supplies the sql + bindings.
+kind: Sql.Query
+metadata: { name: historyQuery }
+connection: !ref chatDb
+---
+# Bulk-import conversation rows a client ferries back into this session's DB.
+# A fresh per-session container starts with an empty history even though the
+# conversation continues — the client holds the durable copy of the rows a
+# previous session persisted (via GET /conversations/{id}) and seeds them here
+# before its first turn. INSERT OR IGNORE on the uuidv7 primary key makes the
+# import idempotent, and preserving the original ids keeps ReadHistory's
+# ORDER BY id chronological.
+kind: Run.Iteration
+metadata: { name: importMessages }
+inputs:
+  conversationId: { type: string }
+  messages:
+    type: array
+    items:
+      type: object
+      required: [id, role, content, createdAt]
+      properties:
+        id: { type: string }
+        role: { type: string }
+        content: { type: string }
+        createdAt: { type: string }
+collection: !cel "inputs.messages"
+steps:
+  - name: Insert
+    inputs:
+      sql: "INSERT OR IGNORE INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
+      bindings:
+        - !cel "item.id"
+        - !cel "inputs.conversationId"
+        - !cel "item.role"
+        - !cel "item.content"
+        - !cel "item.createdAt"
+    invoke:
+      kind: Sql.Command
+      connection: !ref chatDb
+---
+# Shared coordination state (turn lease + spend budget). A CacheMemory.Store for
+# a single instance; swap to a CacheRedis.Store to bound spend and serialize
+# turns across instances — the Cache.Store seam makes it a one-line change.
+kind: CacheMemory.Store
+metadata: { name: stateStore }
+---
+# One in-flight turn per conversation. detach mode: the POST handler acquires and
+# gets { acquired } synchronously (200 vs 409), while the turn runs detached and
+# the lease frees on its terminal. ttl self-heals a conversation if a turn dies.
+kind: Lease.Critical
+metadata: { name: turnLock }
+store: !ref stateStore
+ttl: 10m
+detach: true
+invoke: !ref turnRunner
+---
+# Operator spend cap over the shared store. Reserved worst-case at turn start
+# (429 when over ceiling), settled to actual token usage on the turn's terminal.
+kind: RateLimit.Budget
+metadata: { name: budget }
+store: !ref stateStore
+limit: !cel "variables.budgetLimit"
+window: !cel "variables.budgetWindow"
+---
+# Coarse per-client-IP throttle. Only slows an individual abuser (a rotated IP
+# dodges it); the global budget is the hard operator-cost bound.
+kind: RateLimit.Guard
+metadata: { name: ipGuard }
+store: !ref stateStore
+limit: !cel "variables.ipLimit"
+window: !cel "variables.ipWindow"
+---
 kind: Shell.LocalHost
 metadata: { name: localHost }
 cwd: ./workspace
+# Scrub the operator's OpenAI key from every subprocess spawned on this host
+# (the auto-`telo check`). The key is read only in-process by OpenaiModel; no
+# exposed tool executes agent content in-process, so unsetting it here means no
+# anonymous prompt can reach it through the one keyless subprocess we spawn.
+env:
+  OPENAI_API_KEY: null
 ---
 kind: Shell.Command
 metadata: { name: runCommand }
 host: !ref localHost
+---
+# Standalone `telo check` exposed as a tool. Same fixed argv as the write/edit
+# loops — the agent supplies only the path, appended to `variables.checkArgv`
+# and execed WITHOUT a shell — so this grants validation, not command access.
+kind: Run.Sequence
+metadata: { name: checkFile }
+inputs:
+  path: { type: string }
+steps:
+  - name: Check
+    invoke: !ref runCommand
+    inputs:
+      args: !cel "variables.checkArgv + [inputs.path]"
+outputs:
+  path: !cel "inputs.path"
+  checkExitCode: !cel "steps.Check.result.exitCode"
+  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
 ---
 # write_file / edit_file are exposed to the agent through these sequences: every
 # mutation is immediately followed by `telo check` on the same file, and the
@@ -123,7 +282,7 @@ steps:
   - name: Check
     invoke: !ref runCommand
     inputs:
-      command: !cel "variables.checkCommand + ' ' + inputs.path"
+      args: !cel "variables.checkArgv + [inputs.path]"
 outputs:
   path: !cel "inputs.path"
   bytesWritten: !cel "steps.Write.result.bytesWritten"
@@ -146,7 +305,7 @@ steps:
   - name: Check
     invoke: !ref runCommand
     inputs:
-      command: !cel "variables.checkCommand + ' ' + inputs.path"
+      args: !cel "variables.checkArgv + [inputs.path]"
 outputs:
   path: !cel "inputs.path"
   replacements: !cel "steps.Edit.result.replacements"
@@ -203,15 +362,33 @@ tools:
       properties:
         path: { type: string }
         recursive: { type: boolean }
-  - tool: !ref runCommand
-    name: run
-    description: Run a shell command in the workspace. The shell is /bin/sh (not bash). Use `telo check <file>` to validate manifests.
+  - tool: !ref removeFile
+    name: delete_file
+    description: >-
+      Delete a file, relative to the workspace root (or a directory tree with
+      recursive: true). Fails if the path does not exist. After deleting a file
+      other manifests reference, run telo_check on them to catch dangling
+      imports or refs.
     parameters:
       type: object
       additionalProperties: false
-      required: [command]
+      required: [path]
       properties:
-        command: { type: string }
+        path: { type: string }
+        recursive: { type: boolean }
+  - tool: !ref checkFile
+    name: telo_check
+    description: >-
+      Run `telo check` on a manifest file, relative to the workspace root. Use
+      it to re-validate a file you did not just write — e.g. after deleting or
+      renaming something it references. The result includes checkExitCode
+      (0 = valid) and checkOutput (the diagnostics).
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path: { type: string }
 ---
 kind: Ai.AgentStream
 metadata: { name: author }
@@ -394,8 +571,13 @@ system: |
       `checkOutput` in its result.
     - `read_file` — read a file's contents.
     - `list_dir` — list a directory (optionally recursive).
-    - `run` — run a shell command in the workspace. The shell is `/bin/sh`
-      (NOT bash): no `[[ ]]`, no arrays, no process substitution.
+    - `delete_file` — delete a file (or a directory tree with `recursive`).
+    - `telo_check` — run `telo check` on a manifest file on demand. Use it to
+      re-validate files you did not just write — e.g. every file that referenced
+      something you deleted or renamed.
+
+  There is no shell / command tool. Validation is automatic (see below); you
+  cannot and need not run arbitrary commands.
 
   ## Act — do not stop until the file is written and valid
 
@@ -414,8 +596,7 @@ system: |
   each mutation. If `checkExitCode` is not 0, the file is invalid — fix the exact
   errors in `checkOutput` and write again; repeat until `checkExitCode` is 0.
   NEVER finish while the last check on a file you authored was non-zero. Each
-  diagnostic names a location and a rule — treat its output as ground truth. (You
-  can also run `telo check <file>` yourself via `run` at any time.)
+  diagnostic names a location and a rule — treat its output as ground truth.
 
   ## Style
 
@@ -439,29 +620,106 @@ inputs:
 steps:
   - name: Insert
     inputs:
-      sql: "INSERT INTO messages (conversation_id, role, content) VALUES (?, 'assistant', ?)"
+      sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', ?)"
       bindings:
+        - !cel "uuidv7()"
         - !cel "inputs.context.conversationId"
         - !cel "inputs.records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
     invoke:
       kind: Sql.Command
       connection: !ref chatDb
+  # Settle the reservation to the turn's actual token usage (from the finish
+  # record), refunding the unused remainder. Fires on normal completion; an
+  # errored turn keeps its worst-case reservation.
+  - name: Settle
+    invoke: !ref budget
+    inputs:
+      op: settle
+      key: "global"
+      amount: !cel "size(inputs.records.filter(r, r.type == 'finish')) > 0 ? inputs.records.filter(r, r.type == 'finish')[0].usage.totalTokens : inputs.context.reserved"
+      reserved: !cel "inputs.context.reserved"
 ---
+# POST /chat entry. Persists the user message under a fresh uuidv7 id (which
+# becomes the turnId), starts the agent turn DETACHED into the journal under
+# that turnId, and returns { turnId } immediately — off the response path.
+# The client then consumes GET /chat/{turnId}/events to stream the reply, so a
+# reload can re-attach and resume the pending turn.
 kind: Run.Sequence
-metadata: { name: chatHandler }
+metadata: { name: chatStart }
 inputs:
   conversationId: { type: string }
   message: { type: string }
+  clientIp: { type: string }
 steps:
-  - name: InsertUser
+  # Per-IP throttle first — a rate-limited client doesn't touch the budget.
+  - name: Guard
+    invoke: !ref ipGuard
     inputs:
-      sql: "INSERT INTO messages (conversation_id, role, content) VALUES (?, 'user', ?)"
-      bindings:
-        - !cel "inputs.conversationId"
-        - !cel "inputs.message"
-    invoke:
-      kind: Sql.Command
-      connection: !ref chatDb
+      key: !cel "inputs.clientIp"
+  - name: Gate
+    if: !cel "steps.Guard.result.allowed"
+    then:
+      # Reserve worst-case spend up front. A denied reserve refunds itself, so an
+      # over-ceiling request is a clean 429 with no turn started.
+      - name: Reserve
+        invoke: !ref budget
+        inputs:
+          op: reserve
+          key: "global"
+          amount: !cel "variables.reservePerTurn"
+      - name: Admit
+        if: !cel "steps.Reserve.result.allowed"
+        then:
+          - name: InsertUser
+            inputs:
+              sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?) RETURNING id"
+              bindings:
+                - !cel "uuidv7()"
+                - !cel "inputs.conversationId"
+                - !cel "inputs.message"
+            invoke:
+              kind: Sql.Query
+              connection: !ref chatDb
+          - name: StartTurn
+            invoke: !ref turnLock
+            inputs:
+              key: !cel "inputs.conversationId"
+              holder: !cel "string(steps.InsertUser.result.rows[0].id)"
+              inputs:
+                conversationId: !cel "inputs.conversationId"
+                turnId: !cel "string(steps.InsertUser.result.rows[0].id)"
+                reserved: !cel "steps.Reserve.result.reserved"
+          # Overlapping turn (409) — refund the reservation since no turn runs.
+          - name: MaybeRefund
+            if: !cel "!steps.StartTurn.result.acquired"
+            then:
+              - name: Refund
+                invoke: !ref budget
+                inputs:
+                  op: settle
+                  key: "global"
+                  amount: 0
+                  reserved: !cel "steps.Reserve.result.reserved"
+outputs:
+  # allowed=false → 429 (per-IP throttle OR spend ceiling); allowed && !acquired
+  # → 409 (turn in flight, holder is its turnId); allowed && acquired → 200.
+  allowed: !cel "steps.Guard.result.allowed && steps.Reserve.result.allowed"
+  retryAfter: !cel "steps.Guard.result.allowed ? steps.Reserve.result.retryAfter : steps.Guard.result.retryAfter"
+  acquired: !cel "steps.Guard.result.allowed && steps.Reserve.result.allowed && steps.StartTurn.result.acquired"
+  turnId: !cel "(steps.Guard.result.allowed && steps.Reserve.result.allowed) ? string(steps.InsertUser.result.rows[0].id) : ''"
+  activeTurnId: !cel "(steps.Guard.result.allowed && steps.Reserve.result.allowed) ? steps.StartTurn.result.holder : ''"
+---
+# The detached turn body: replay history, stream the agent, persist the assistant
+# turn at end-of-stream (Tap), and journal every record under the turnId (Sink)
+# so GET /chat/{turnId}/events can replay + tail it. Runs off the request path;
+# has no outputs.
+kind: Run.Sequence
+metadata: { name: turnRunner }
+inputs:
+  conversationId: { type: string }
+  turnId: { type: string }
+  reserved: { type: integer }
+steps:
   - name: ReadHistory
     inputs:
       sql: "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
@@ -480,5 +738,9 @@ steps:
       input: !cel "steps.Ask.result.output"
       context:
         conversationId: !cel "inputs.conversationId"
-outputs:
-  output: !cel "steps.Tap.result.output"
+        reserved: !cel "inputs.reserved"
+  - name: Sink
+    invoke: !ref journalSink
+    inputs:
+      key: !cel "inputs.turnId"
+      input: !cel "steps.Tap.result.output"

@@ -17,13 +17,19 @@ imports:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
       dbFile: ./tmp/authoring-agent.sqlite
-      model: gpt-4o
-  Http: ../../modules/http-server
-  Sse: ../../modules/sse-codec
+      model: gpt-5.2
+      budgetLimit: !cel "variables.budgetLimit"
+  Http: std/http-server@0.16.1
+  Sse: std/sse-codec@0.5.0
 ports:
   http:
     env: PORT
     default: 8080
+variables:
+  budgetLimit:
+    env: BUDGET_LIMIT
+    type: integer
+    default: 4000000
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -48,16 +54,69 @@ routes:
           properties:
             conversationId:
               type: string
-              description: Opaque conversation id; groups messages into a thread.
-              examples: [ "conv-1" ]
+              format: uuid
+              description: Conversation id (UUID); groups messages into a thread.
+              examples: [ "f47ac10b-58cc-4372-a567-0e02b2c3d479" ]
             message:
               type: string
               description: The user's message.
               examples: [ "Add an HTTP health endpoint." ]
-    handler: !ref Chat.chatHandler
+    handler: !ref Chat.chatStart
     inputs:
       conversationId: !cel "request.body.conversationId"
       message: !cel "request.body.message"
+      clientIp: !cel "request.ip"
+    returns:
+      - status: 200
+        when: !cel "result.acquired"
+        content:
+          application/json:
+            body:
+              turnId: !cel "result.turnId"
+      # Operator spend ceiling reached — no turn started.
+      - status: 429
+        when: !cel "!result.allowed"
+        content:
+          application/json:
+            body:
+              error: at capacity
+              retryAfter: !cel "result.retryAfter"
+      # A turn is already in flight for this conversation — reject the overlap so
+      # two AI turns can never write the shared workspace at once.
+      - status: 409
+        when: !cel "result.allowed && !result.acquired"
+        content:
+          application/json:
+            body:
+              error: turn already in progress
+              activeTurnId: !cel "result.activeTurnId"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  # Resumable event stream for a turn. Replays the journal from the client's last
+  # seen id (?lastEventId=) and then tails live, so a reload re-attaches to an
+  # in-flight turn. Each frame is a { id, data } envelope; the client checkpoints
+  # `id` and sends it back as ?lastEventId on reconnect.
+  - request:
+      path: /chat/{turnId}/events
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [turnId]
+          properties:
+            turnId: { type: string }
+        query:
+          type: object
+          properties:
+            lastEventId: { type: string }
+    handler: !ref Chat.journalSource
+    inputs:
+      key: !cel "request.params.turnId"
+      fromId: !cel "has(request.query.lastEventId) ? int(request.query.lastEventId) : 0"
     returns:
       - status: 200
         mode: stream
@@ -70,11 +129,176 @@ routes:
           application/json:
             body:
               error: !cel "error.message"
+  # Whole-workspace sync. GET returns a content-hash tree the editor diffs
+  # against its own files; POST applies an explicit write/delete change set;
+  # GET /workspace/file returns one file's contents.
+  - request:
+      path: /workspace
+      method: GET
+    handler: !ref Chat.treeSnapshot
+    inputs:
+      exclude: [node_modules, .telo, .git, dist]
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  - request:
+      path: /workspace
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            write:
+              type: array
+              items:
+                type: object
+                required: [path, content]
+                properties:
+                  path: { type: string }
+                  content: { type: string }
+                  encoding: { type: string, enum: [utf8, base64] }
+            delete:
+              type: array
+              items: { type: string }
+    handler: !ref Chat.treeSync
+    inputs:
+      write: !cel "has(request.body.write) ? request.body.write : []"
+      delete: !cel "has(request.body.delete) ? request.body.delete : []"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              written: !cel "result.written"
+              deleted: !cel "result.deleted"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  # Conversation transcript for resume — a reload or new device restores its
+  # message history. Active-turn detection is via GET /chat/{turnId}/events on
+  # the client's last known turnId (a done journal replays and ends; a live one
+  # tails).
+  - request:
+      path: /conversations/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+    handler: !ref Chat.historyQuery
+    inputs:
+      sql: "SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC"
+      bindings:
+        - !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              messages: !cel "result.rows"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  # History seeding — the inverse of the GET above. A fresh per-session
+  # container starts with an empty DB even though the conversation continues;
+  # the client ferries back the rows a previous session persisted, before its
+  # first turn. Idempotent: INSERT OR IGNORE on the uuidv7 row id.
+  - request:
+      path: /conversations/{id}/messages
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+        body:
+          type: object
+          required: [messages]
+          properties:
+            messages:
+              type: array
+              items:
+                type: object
+                required: [id, role, content, createdAt]
+                properties:
+                  id: { type: string }
+                  role: { type: string, enum: [system, user, assistant] }
+                  content: { type: string }
+                  createdAt: { type: string }
+    handler: !ref Chat.importMessages
+    inputs:
+      conversationId: !cel "request.params.id"
+      messages: !cel "request.body.messages"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              ok: true
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  - request:
+      path: /workspace/file
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [path]
+          properties:
+            path: { type: string }
+    handler: !ref Chat.readFile
+    inputs:
+      path: !cel "request.query.path"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              content: !cel "result.content"
+              size: !cel "result.size"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
 ---
 kind: Http.Server
 metadata: { name: Server }
 host: 0.0.0.0
 port: !cel "ports.http"
+# Behind the ingress proxy: derive request.ip from the rightmost X-Forwarded-For
+# hop (the proxy's) so the per-IP guard can't be spoofed by a client-set header.
+trustProxy: 1
+# The editor is a browser/desktop client on a different origin; allow it to call
+# the chat + workspace routes cross-origin. Tighten `origin` to the deployed
+# editor origin in production.
+cors:
+  origin: "*"
+  methods: [GET, POST, OPTIONS]
+  allowedHeaders: [content-type]
 mounts:
   - path: /
     mount: !ref Api

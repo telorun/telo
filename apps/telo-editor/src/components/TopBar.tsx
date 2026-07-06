@@ -1,4 +1,4 @@
-import { ChevronDown, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
+import { ChevronDown, MessageSquare, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
@@ -42,6 +42,9 @@ interface TopBarProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  /** Toggle the authoring-agent chat side panel. */
+  onToggleChat?: () => void;
+  chatOpen?: boolean;
 }
 
 export function TopBar({
@@ -59,6 +62,8 @@ export function TopBar({
   onRedo,
   canUndo,
   canRedo,
+  onToggleChat,
+  chatOpen,
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
   const diagState = useDiagnosticsState();
@@ -189,6 +194,16 @@ export function TopBar({
           </DropdownMenu>
         </div>
         <ThemeToggleButton />
+        {onToggleChat && (
+          <Button
+            variant={chatOpen ? "secondary" : "ghost"}
+            size="sm"
+            onClick={onToggleChat}
+            title="Authoring agent"
+          >
+            <MessageSquare className="size-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
         </Button>

@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import {
   buildServer as coreBuildServer,
+  loadResolvedApps,
   loadTermsFromEnv,
   stopAllSessions,
   type ServerHandle,
@@ -13,6 +14,7 @@ import { loadRunnerConfig, RunnerConfigError, type RunnerConfig } from "./config
 import { createDockerClient, type DockerClient } from "./docker/client.js";
 import { createDockerBackend } from "./docker/backend.js";
 import type { SessionDockerClient } from "./docker/run-session.js";
+import { loadRunnerEnvFiles } from "./load-env.js";
 import { sweepOrphanBundles } from "./session/bundle-sweep.js";
 
 const VERSION: string = packageJson.version;
@@ -40,6 +42,9 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // none (no gate); an operator can still require them by setting the env.
     capabilities: { ...dockerRunnerCapabilities, terms: loadTermsFromEnv(process.env) },
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
+    // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
+    // /v1/capabilities and enforced by the core session route.
+    apps: loadResolvedApps(process.env),
     registry: deps.registry,
   });
 }
@@ -87,6 +92,10 @@ export async function verifyBootState(
 }
 
 async function main(): Promise<void> {
+  // Load `.env` / `.env.local` before reading config so secret-bearing config
+  // (e.g. the RUNNER_APPS catalog) can live in a file.
+  loadRunnerEnvFiles();
+
   let runnerConfig: RunnerConfig;
   try {
     runnerConfig = loadRunnerConfig(process.env);

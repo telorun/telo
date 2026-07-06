@@ -12,6 +12,10 @@ import type { RefWrite } from "./topology/application-canvas-model";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
+  /** True while the authoring agent holds the workspace (a turn is in flight):
+   *  every edit surface renders read-only/blocked — writes are also rejected at
+   *  the persist chokepoint, but the views must make the lock visible. */
+  readOnly: boolean;
   viewData: ModuleViewData;
   /** Analysis registry for the active module's closure — supplies the field
    *  maps / capability lookups the overview graph needs. Null before the first
