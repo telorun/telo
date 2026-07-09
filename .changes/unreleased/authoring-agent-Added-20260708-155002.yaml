@@ -1,4 +1,0 @@
-project: authoring-agent
-kind: Added
-body: "Publish the `telorun/authoring-agent` Docker image on every agent release — an immutable `<version>-slim` plus the mutable `latest-slim`, built on the newest published telo runtime"
-time: 2026-07-08T15:50:02.330483918+00:00

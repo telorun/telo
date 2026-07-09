@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: s3
   namespace: std
-  version: 0.6.0
+  version: 0.6.1
   description: >-
     S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, RustFS).
     `S3.Bucket` configures a bucket handle; `S3.Put`, `S3.Get` (streams object
@@ -22,7 +22,7 @@ metadata:
   name: Bucket
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-bucket
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-bucket
 schema:
   type: object
   examples:
@@ -62,7 +62,7 @@ metadata:
   name: List
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-list
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-list
 schema:
   type: object
   examples:
@@ -80,7 +80,7 @@ metadata:
   name: Put
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-put
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-put
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -138,7 +138,7 @@ metadata:
   name: Get
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-get
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-get
 throws:
   codes:
     ERR_NOT_FOUND:
@@ -197,7 +197,7 @@ metadata:
   name: Delete
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-delete
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-delete
 throws:
   codes:
     ERR_INVALID_REFERENCE:
@@ -252,7 +252,7 @@ metadata:
   name: PresignedUrl
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/s3@0.5.0?local_path=./nodejs#s3-presigned-url
+  - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-presigned-url
 throws:
   codes:
     ERR_INVALID_INPUT:
