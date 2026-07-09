@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
+import type { AvailabilityAction } from "../types";
 
 interface Props {
   adapterDisplayName: string;
   message: string;
   remediation?: string;
+  /** Adapter-provided remedy (e.g. starting the editor-managed local runner).
+   *  Its `description` states the consequences and is shown before the button. */
+  action?: AvailabilityAction;
   onRecheck?: () => Promise<void>;
   onClose: () => void;
 }
@@ -13,18 +17,40 @@ export function AdapterUnavailable({
   adapterDisplayName,
   message,
   remediation,
+  action,
   onRecheck,
   onClose,
 }: Props) {
   const [rechecking, setRechecking] = useState(false);
+  const [actionRunning, setActionRunning] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function handleRecheck() {
     if (!onRecheck) return;
     setRechecking(true);
+    setActionError(null);
     try {
       await onRecheck();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setRechecking(false);
+    }
+  }
+
+  async function handleAction() {
+    if (!action) return;
+    setActionRunning(true);
+    setActionError(null);
+    try {
+      await action.run();
+      // Success flows back through the caller's recheck — for the run banner
+      // that re-probes and restarts the interrupted run.
+      await onRecheck?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionRunning(false);
     }
   }
 
@@ -38,10 +64,28 @@ export function AdapterUnavailable({
         {remediation && (
           <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{remediation}</p>
         )}
+        {action && (
+          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{action.description}</p>
+        )}
+        {actionError && (
+          <p className="mt-2 whitespace-pre-wrap break-words text-left font-mono text-xs text-red-600 dark:text-red-400">
+            {actionError}
+          </p>
+        )}
       </div>
       <div className="flex gap-2">
+        {action && (
+          <Button size="sm" onClick={handleAction} disabled={actionRunning || rechecking}>
+            {actionRunning ? "Starting…" : action.label}
+          </Button>
+        )}
         {onRecheck && (
-          <Button size="sm" onClick={handleRecheck} disabled={rechecking}>
+          <Button
+            size="sm"
+            variant={action ? "outline" : "default"}
+            onClick={handleRecheck}
+            disabled={rechecking || actionRunning}
+          >
             {rechecking ? "Checking…" : "Recheck"}
           </Button>
         )}

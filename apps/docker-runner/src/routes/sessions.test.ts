@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 
 import { buildServer } from "../server.js";
@@ -620,5 +620,62 @@ describe("inspection URL", () => {
     h = await buildHarness();
     const { status } = await running({ ...VALID_START_BODY, inspect: true });
     expect(status.inspectUrl).toBeUndefined();
+  });
+});
+
+describe("POST /v1/sessions app (predefined application) sessions", () => {
+  const APP_BODY = { app: "tool", env: { CLIENT_VAR: "x", SERVICE_TOKEN: "tok-client" } };
+  const CATALOG = '{"tool":{"image":"acme/tool:1","env":{"SERVICE_TOKEN":"tok-operator"}}}';
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects an unknown app name (empty catalog)", async () => {
+    vi.stubEnv("RUNNER_APPS", "");
+    const h = await buildHarness();
+    try {
+      const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: APP_BODY });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("unknown_app");
+    } finally {
+      await teardownHarness(h);
+    }
+  });
+
+  it("launches the catalog image with operator env; client values for owned keys are dropped", async () => {
+    vi.stubEnv("RUNNER_APPS", CATALOG);
+    const h = await buildHarness();
+    try {
+      const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: APP_BODY });
+      expect(res.statusCode).toBe(201);
+      const { sessionId } = res.json() as { sessionId: string };
+      await waitFor(
+        () => h.docker._lastCreateOpts != null || h.registry.get(sessionId)?.status.kind === "failed",
+        "start settled",
+      );
+      const opts = h.docker._lastCreateOpts!;
+      expect(opts.Image).toBe("acme/tool:1");
+      expect(opts.Env).toContain("SERVICE_TOKEN=tok-operator");
+      expect(opts.Env).toContain("CLIENT_VAR=x");
+      expect(opts.Env).not.toContain("SERVICE_TOKEN=tok-client");
+    } finally {
+      await teardownHarness(h);
+    }
+  });
+
+  it("still requires bundle + config for a regular session", async () => {
+    const h = await buildHarness();
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: "/v1/sessions",
+        payload: { env: {} },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("invalid_request");
+    } finally {
+      await teardownHarness(h);
+    }
   });
 });

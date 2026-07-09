@@ -1,0 +1,4 @@
+project: authoring-agent
+kind: Added
+body: "Agent tools: `delete_file` (workspace-rooted Fs.FileRemoval) and on-demand `telo_check` (same keyless fixed-argv subprocess as the auto-check after write/edit)"
+time: 2026-07-08T18:23:01.939621134+00:00

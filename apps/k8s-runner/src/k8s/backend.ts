@@ -17,7 +17,7 @@ import { clampLimits } from "../limits.js";
 import type { KubeClient } from "./client.js";
 import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
-import { buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
+import { buildAppPod, buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
 
 /** Minimal surface of the websocket client-node's Attach returns. */
 interface ResizableSocket {
@@ -68,47 +68,65 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // The /v1 contract carries no per-request limits yet, so `requested` is
     // undefined and the configured ceiling is always the effective limit. When
     // a control plane begins passing limits, plumb them here — the clamp is
-    // already min(requested, ceiling).
-    const limits = clampLimits(config.limits, undefined);
+    // already min(requested, ceiling). App sessions (operator-curated,
+    // long-lived) get their own roomier ceilings.
+    const limits = clampLimits(spec.selfContained ? config.appLimits : config.limits, undefined);
 
-    // Prebuild a self-contained per-app image on-cluster (controllers + module
-    // manifests baked in) and run it directly. Controller resolution never
-    // happens on the session start path, so a slow or unreachable package
-    // registry can't stall a session. Throws SessionStartError on a build
-    // failure, carrying the build pod's log tail.
-    const image = await ensureSessionImage(
-      {
-        kube,
-        build: config.build,
-        bundleStore,
-        initImage: config.initImage,
-        managedByLabel: config.managedByLabel,
-      },
-      {
-        bundle: spec.bundle,
-        entryRelativePath: spec.entryRelativePath,
-        baseImage: spec.config.image || config.defaultImage,
+    let pod: V1Pod;
+    if (spec.selfContained) {
+      // Operator-predefined app (catalog image): self-contained, no build and
+      // no bundle to deliver — the pod runs the image's own entrypoint with
+      // the env the core route already merged.
+      pod = buildAppPod({
+        config,
+        sessionId: spec.sessionId,
+        podName,
+        env: spec.env,
+        ports: spec.ports,
+        limits,
+        image: spec.config.image,
         pullPolicy: spec.config.pullPolicy,
-        onProgress: (message, done) => spec.onProgress("build", message, done),
-      },
-    );
+      });
+    } else {
+      // Prebuild a self-contained per-app image on-cluster (controllers + module
+      // manifests baked in) and run it directly. Controller resolution never
+      // happens on the session start path, so a slow or unreachable package
+      // registry can't stall a session. Throws SessionStartError on a build
+      // failure, carrying the build pod's log tail.
+      const image = await ensureSessionImage(
+        {
+          kube,
+          build: config.build,
+          bundleStore,
+          initImage: config.initImage,
+          managedByLabel: config.managedByLabel,
+        },
+        {
+          bundle: spec.bundle,
+          entryRelativePath: spec.entryRelativePath,
+          baseImage: spec.config.image || config.defaultImage,
+          pullPolicy: spec.config.pullPolicy,
+          onProgress: (message, done) => spec.onProgress("build", message, done),
+        },
+      );
 
-    // The image is keyed on the dependency closure only, so deliver the
-    // per-session body to the Pod's /app at boot via a tokenized, single-use URL.
-    const bundleUrl = await bundleStore.stageSessionBundle(spec.sessionId, spec.bundle);
+      // The image is keyed on the dependency closure only, so deliver the
+      // per-session body to the Pod's /app at boot via a tokenized, single-use URL.
+      const bundleUrl = await bundleStore.stageSessionBundle(spec.sessionId, spec.bundle);
 
-    const pod = buildSessionPod({
-      config,
-      sessionId: spec.sessionId,
-      podName,
-      entryRelativePath: spec.entryRelativePath,
-      env: spec.env,
-      ports: spec.ports,
-      limits,
-      image,
-      bundleUrl,
-      inspect: spec.inspect,
-    });
+      pod = buildSessionPod({
+        config,
+        sessionId: spec.sessionId,
+        podName,
+        entryRelativePath: spec.entryRelativePath,
+        env: spec.env,
+        ports: spec.ports,
+        limits,
+        image,
+        bundleUrl,
+        inspect: spec.inspect,
+      });
+    }
 
     let podUid: string;
     try {

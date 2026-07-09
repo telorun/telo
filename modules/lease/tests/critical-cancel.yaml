@@ -1,0 +1,107 @@
+kind: Telo.Application
+metadata:
+  name: LeaseCriticalCancel
+  version: 1.0.0
+  description: |
+    Lease.Critical `op: cancel` over a detached body. Verifies: a running
+    detached body is cancelled (its Timer.Delay leaf aborts) and the lease
+    releases on its terminal so the key acquires again; a mismatched `holder`
+    guard refuses the cancel and reports the running holder; and cancelling an
+    idle key is a no-op (`cancelled: false`).
+imports:
+  Lease: ../
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: CacheMemory.Store
+metadata: { name: Mem }
+---
+kind: Lease.Critical
+metadata: { name: Turn }
+store: !ref Mem
+ttl: 30s
+detach: true
+invoke: !ref Slow
+---
+# Long enough that the body can only end via cancellation within the test run.
+kind: Run.Sequence
+metadata: { name: Slow }
+inputs: {}
+steps:
+  - name: Wait
+    invoke: !ref Pause
+    inputs:
+      duration: 30s
+---
+kind: Timer.Delay
+metadata: { name: Pause }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Start
+    invoke: !ref Turn
+    inputs:
+      key: c1
+      holder: T1
+      inputs: {}
+  - name: CancelWrongHolder
+    invoke: !ref Turn
+    inputs:
+      op: cancel
+      key: c1
+      holder: OTHER
+  - name: Cancel
+    invoke: !ref Turn
+    inputs:
+      op: cancel
+      key: c1
+      holder: T1
+  - name: CancelIdleKey
+    invoke: !ref Turn
+    inputs:
+      op: cancel
+      key: never-started
+  # The cancelled body's terminal (release) lands within a few microtasks; give
+  # it a beat before proving the key is free again.
+  - name: Settle
+    invoke: !ref Pause
+    inputs:
+      duration: 300ms
+  - name: Reacquire
+    invoke: !ref Turn
+    inputs:
+      key: c1
+      holder: T2
+      inputs: {}
+  # Don't leave the reacquired 30s body running past the test.
+  - name: Cleanup
+    invoke: !ref Turn
+    inputs:
+      op: cancel
+      key: c1
+      holder: T2
+  - name: Assert
+    inputs:
+      actual:
+        startAcquired: !cel "steps.Start.result.acquired"
+        wrongHolderCancelled: !cel "steps.CancelWrongHolder.result.cancelled"
+        wrongHolderReported: !cel "steps.CancelWrongHolder.result.holder"
+        cancelled: !cel "steps.Cancel.result.cancelled"
+        idleCancelled: !cel "steps.CancelIdleKey.result.cancelled"
+        reacquired: !cel "steps.Reacquire.result.acquired"
+        cleanupCancelled: !cel "steps.Cleanup.result.cancelled"
+      expected:
+        startAcquired: true
+        wrongHolderCancelled: false
+        wrongHolderReported: T1
+        cancelled: true
+        idleCancelled: false
+        reacquired: true
+        cleanupCancelled: true
+    invoke: !ref Assert.equals

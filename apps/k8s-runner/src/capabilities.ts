@@ -4,6 +4,16 @@ import {
   type RunnerTerms,
 } from "@telorun/runner-core";
 
+export interface KubernetesRunnerCapabilitiesOptions {
+  /** Identity shown as the runner's label in the editor; operator-configurable
+   *  via RUNNER_DISPLAY_NAME / RUNNER_DESCRIPTION. */
+  displayName: string;
+  description: string;
+  defaultImage: string;
+  terms?: RunnerTerms;
+  imageEnum?: string[];
+}
+
 /** What k8s-runner advertises on `/v1/capabilities`. The runner serves
  *  untrusted/anonymous code under a hard-ceiling policy. `image` is a base-image
  *  picker: when an `imageEnum` is supplied (the resolved Docker Hub catalog) the
@@ -17,14 +27,13 @@ import {
  *  `terms`, when set (operator-provided via RUNNER_TERMS_*), are enforced: a
  *  session won't start until the client acknowledges the current version. */
 export function kubernetesRunnerCapabilities(
-  defaultImage: string,
-  terms?: RunnerTerms,
-  imageEnum?: string[],
+  opts: KubernetesRunnerCapabilitiesOptions,
 ): RunnerCapabilities {
+  const { displayName, description, defaultImage, terms, imageEnum } = opts;
   return {
-    displayName: "Telo Public Cloud",
-    description:
-      "Runs the Telo application in sandboxed cloud environment with capped CPU and memory.",
+    displayName,
+    description,
+    features: { io: true, ports: true },
     config: {
       schema: sessionConfigSchema({
         imageDefault: defaultImage,
@@ -34,7 +43,6 @@ export function kubernetesRunnerCapabilities(
           "Base-image freshness. `always` rebuilds the session image when the base tag has moved upstream (Docker Hub only); `missing` and `never` reuse the cached build.",
       }),
     },
-    features: { io: true, ports: true },
     terms,
   };
 }

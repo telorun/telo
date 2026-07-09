@@ -1,6 +1,7 @@
 import {
   BaseImageCatalog,
   buildServer as coreBuildServer,
+  loadResolvedApps,
   loadTermsFromEnv,
   stopAllSessions,
   type RunnerBackend,
@@ -37,8 +38,17 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     config: deps.config,
     version: VERSION,
     capabilities: () =>
-      kubernetesRunnerCapabilities(deps.config.defaultImage, terms, catalog?.current()),
+      kubernetesRunnerCapabilities({
+        displayName: deps.config.displayName,
+        description: deps.config.description,
+        defaultImage: deps.config.defaultImage,
+        terms,
+        imageEnum: catalog?.current(),
+      }),
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
+    // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
+    // /v1/capabilities; app sessions run the catalog image directly (no build).
+    apps: loadResolvedApps(process.env),
     validateConfig: catalog
       ? (sessionConfig: SessionConfig): string | undefined =>
           catalog.isAllowed(sessionConfig.image)

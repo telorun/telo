@@ -58,6 +58,20 @@ function isUnder(child: string, parent: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/** Directory of the nearest `package.json` at or above `entryFile` — the
+ *  controller's own installed package root. Used to scope which relative imports
+ *  are the package's OWN modules (externalized to stay shared) versus a bundled
+ *  dependency's internals (inlined). Null if none is found. */
+async function packageRootOf(entryFile: string): Promise<string | null> {
+  let dir = path.dirname(entryFile);
+  for (;;) {
+    if (await pathExists(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 const typeModuleCache = new Map<string, boolean>();
 
 /** Whether `entryFile` is an ES module: `.mjs` / non-`.js` (e.g. `.ts`) yes,
@@ -215,7 +229,7 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
       platform: "node",
       logLevel: "silent",
       write: false,
-      plugins: [nativeExternalsPlugin()],
+      plugins: [nativeExternalsPlugin(path.dirname(bundleFile), await packageRootOf(entryFile))],
     });
     const out = result.outputFiles?.[0];
     if (!out) return null;
@@ -260,7 +274,7 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
  *    as it would loose (the controller's own try/catch handles the absence).
  * Everything else (the controller's own files + third-party JS) inlines.
  */
-function nativeExternalsPlugin(): import("esbuild").Plugin {
+function nativeExternalsPlugin(bundleDir: string, pkgRoot: string | null): import("esbuild").Plugin {
   const realm = new Set(REALM_COLLAPSE_NAMES);
   const decided = new Map<string, boolean>();
   return {
@@ -268,6 +282,50 @@ function nativeExternalsPlugin(): import("esbuild").Plugin {
     setup(build) {
       // A direct `.node` binary import can never be bundled.
       build.onResolve({ filter: /\.node$/ }, () => ({ external: true }));
+      // Keep the controller PACKAGE's OWN modules loose (its relative imports)
+      // rather than inlining them. A package's controllers are bundled per-entry
+      // (one bundle per `create`/`register` file), so inlining a shared relative
+      // module (e.g. a class definition plus process-local state used by several
+      // controllers) would give EACH controller bundle a private copy:
+      // `instanceof` across the package's controllers fails and shared state
+      // splits. Externalizing leaves the module a loose file, so Node loads one
+      // shared copy across every controller of the package — the intra-package
+      // analogue of the `@telorun/*` realm externalization below. Bundling still
+      // collapses the `node_modules` tree (the cold-start target).
+      //
+      // Scope is deliberate: ONLY the controller package's own files, resolved to
+      // a real, runtime-loadable JS file, are externalized.
+      //  - A relative import inside an inlined `node_modules` dependency stays
+      //    bundled — its path isn't relative to our bundle, and it's not a
+      //    cross-controller shared module (`pkgRoot` gate).
+      //  - We externalize the RESOLVED file, not the source specifier, because a
+      //    compiled `./x.js` may not be a valid Node-ESM path on its own
+      //    (extension / index / `../shared` layout esbuild resolves but Node
+      //    doesn't); a non-JS target (a `.ts` source with no built `.js`) is left
+      //    to inline so esbuild transpiles it rather than emitting an unloadable
+      //    import. `pluginData` guards recursion into our own resolver.
+      build.onResolve({ filter: /^\.\.?(\/|$)/ }, async (args) => {
+        if (!pkgRoot || args.kind === "entry-point") return null;
+        if ((args.pluginData as { teloResolving?: boolean } | undefined)?.teloResolving) return null;
+        const resolved = await build.resolve(args.path, {
+          kind: args.kind,
+          resolveDir: args.resolveDir,
+          importer: args.importer,
+          pluginData: { teloResolving: true },
+        });
+        if (resolved.errors.length > 0 || !resolved.path || resolved.namespace !== "file") {
+          return null; // unresolvable / virtual module → inline (esbuild default)
+        }
+        // Own-package file only: under pkgRoot and not inside a nested dependency.
+        const relToPkg = path.relative(pkgRoot, resolved.path);
+        if (relToPkg.startsWith("..") || path.isAbsolute(relToPkg)) return null;
+        if (relToPkg.split(path.sep).includes("node_modules")) return null;
+        // Must be a runtime-loadable JS file; otherwise inline (transpile).
+        const ext = path.extname(resolved.path).toLowerCase();
+        if (ext !== ".js" && ext !== ".mjs" && ext !== ".cjs") return null;
+        const rel = path.relative(bundleDir, resolved.path).split(path.sep).join("/");
+        return { path: rel.startsWith(".") ? rel : `./${rel}`, external: true };
+      });
       // Bare specifiers only (paths starting with `.` or `/` are relative/absolute).
       build.onResolve({ filter: /^[^./]/ }, async (args) => {
         if (path.isAbsolute(args.path)) return null;

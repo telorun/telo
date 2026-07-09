@@ -29,6 +29,7 @@ Optional, with defaults:
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set. Terms stay disabled unless one of these is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/sessions` `{ app }`: `{"<name>": {"image", "env"?, "pullPolicy"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always"}}` |
 
 ## Standalone
 

@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import type { ModuleKind, ViewId } from "../../model";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
@@ -39,6 +40,15 @@ function isTabVisible(tab: TabEntry, kind: ModuleKind): boolean {
   return true;
 }
 
+/** Views that are edit surfaces: while the agent holds the workspace they get a
+ *  pointer-blocking overlay. Browse-only views (resources/definitions/kinds)
+ *  stay interactive, and Source handles its own Monaco read-only mode. */
+const OVERLAY_LOCKED_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>([
+  "topology",
+  "imports",
+  "deployment",
+]);
+
 export function ViewContainer({ activeView, onChangeView, viewProps }: ViewContainerProps) {
   const kind = viewProps.viewData.manifest.kind;
   const visibleTabs = VIEW_TABS.filter((t) => isTabVisible(t, kind));
@@ -71,7 +81,14 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         ))}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      {viewProps.readOnly && (
+        <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+          <Lock className="size-3 shrink-0" />
+          Editing is paused while the agent is working.
+        </div>
+      )}
+
+      <div className="relative flex flex-1 overflow-hidden">
         {renderedView === "topology" && <TopologyView {...viewProps} />}
         {renderedView === "imports" && <ImportsView {...viewProps} />}
         {renderedView === "definitions" && <DefinitionsView {...viewProps} />}
@@ -83,6 +100,12 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
             manifest={viewProps.viewData.manifest}
             environment={viewProps.deployment.activeEnvironment}
             onSetEnvVars={viewProps.deployment.onSetEnvVars}
+          />
+        )}
+        {viewProps.readOnly && renderedView && OVERLAY_LOCKED_VIEWS.has(renderedView) && (
+          <div
+            aria-hidden
+            className="absolute inset-0 z-10 cursor-not-allowed bg-white/40 dark:bg-zinc-950/40"
           />
         )}
       </div>

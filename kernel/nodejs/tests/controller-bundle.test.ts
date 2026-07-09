@@ -65,6 +65,25 @@ describe("controller bundling", () => {
     await write("node_modules/nativedep/prebuilds/.keep", "");
     await write("node_modules/ctrl-native/package.json", JSON.stringify({ name: "ctrl-native", version: "1.0.0", type: "module", main: "index.js" }));
     await write("node_modules/ctrl-native/index.js", `import { NATIVE_MARKER } from "nativedep";\nexport function create() { return { m: NATIVE_MARKER }; }`);
+    // A package with TWO controller entries that share a relative module holding
+    // a class. Each entry is bundled separately; inlining the shared module would
+    // give each bundle its own copy of the class, so an instance made by one
+    // controller would fail `instanceof` in the other. The shared module must
+    // stay external + loose so both bundles resolve the same copy.
+    await write("node_modules/sharedpkg/package.json", JSON.stringify({ name: "sharedpkg", version: "1.0.0", type: "module", exports: { "./a": "./a.js", "./b": "./b.js" } }));
+    await write("node_modules/sharedpkg/store.js", `export class Store { constructor() { this.tag = "STORE_INTERNAL"; } }\nexport const make = () => new Store();\nexport const isStore = (v) => v instanceof Store;`);
+    await write("node_modules/sharedpkg/a.js", `import { make } from "./store.js";\nexport function create() { return make(); }`);
+    await write("node_modules/sharedpkg/b.js", `import { isStore } from "./store.js";\nexport function create() { return { isStore }; }`);
+    // A dependency with its OWN internal relative import. When a controller pulls
+    // it in, that internal `./inner.js` must stay INLINED with the dep (it's not
+    // the controller package's shared module, and its path isn't relative to the
+    // bundle) — externalizing it breaks any dependency that spreads across
+    // internal relative modules.
+    await write("node_modules/deprel/package.json", JSON.stringify({ name: "deprel", version: "1.0.0", type: "module", main: "index.js" }));
+    await write("node_modules/deprel/inner.js", `export const INNER = "DEPREL_INNER";`);
+    await write("node_modules/deprel/index.js", `import { INNER } from "./inner.js";\nexport const VALUE = INNER;`);
+    await write("node_modules/ctrl-deprel/package.json", JSON.stringify({ name: "ctrl-deprel", version: "1.0.0", type: "module", main: "index.js" }));
+    await write("node_modules/ctrl-deprel/index.js", `import { VALUE } from "deprel";\nexport function create() { return { value: VALUE }; }`);
     // Bundling is on by default — exercise that, not an explicit enable.
     delete process.env.TELO_CONTROLLER_BUNDLE;
   });
@@ -136,6 +155,43 @@ describe("controller bundling", () => {
     const code = await fs.readFile(bundle!, "utf8");
     expect(code).not.toContain("NATIVE_INLINED"); // not inlined
     expect(code).toContain("nativedep"); // kept as an external import
+  });
+
+  it("keeps a package's own relative modules loose so its controllers share one class identity", async () => {
+    const pkg = path.join(root, "node_modules/sharedpkg");
+    const bundleA = await tryBuildControllerBundle(root, path.join(pkg, "a.js"));
+    const bundleB = await tryBuildControllerBundle(root, path.join(pkg, "b.js"));
+    expect(bundleA).toBeTruthy();
+    expect(bundleB).toBeTruthy();
+
+    // The shared relative module is NOT inlined into either bundle — each keeps
+    // it as an external `./store.js` import that resolves to the one loose file.
+    const codeA = await fs.readFile(bundleA!, "utf8");
+    expect(codeA).not.toContain("STORE_INTERNAL");
+    expect(codeA).toContain("./store.js");
+
+    // Cross-controller identity: an instance created by controller `a` passes the
+    // `instanceof` check inside controller `b`. Inlining would duplicate `Store`
+    // and make this false — the exact JournalStore failure.
+    const modA = await import(pathToFileURL(bundleA!).href);
+    const modB = await import(pathToFileURL(bundleB!).href);
+    const instance = await modA.create();
+    const { isStore } = await modB.create();
+    expect(isStore(instance)).toBe(true);
+  });
+
+  it("inlines a dependency's own internal relative imports (only the controller package's are externalized)", async () => {
+    const entry = path.join(root, "node_modules/ctrl-deprel/index.js");
+    const bundle = await tryBuildControllerBundle(root, entry);
+    expect(bundle).toBeTruthy();
+    const code = await fs.readFile(bundle!, "utf8");
+    // The dep AND its internal module are inlined — not externalized to a loose
+    // path that wouldn't resolve from the bundle's location.
+    expect(code).toContain("DEPREL_INNER");
+    expect(code).not.toMatch(/from\s+["']\.\.?\/.*inner/);
+    // And it loads + runs.
+    const mod = await import(pathToFileURL(bundle!).href);
+    expect((await mod.create()).value).toBe("DEPREL_INNER");
   });
 
   it("is disabled by the TELO_CONTROLLER_BUNDLE=0 kill-switch", async () => {

@@ -52,6 +52,12 @@ import {
   useRun,
 } from "../run";
 import type { RunnerTerms } from "../run";
+import { useAgent } from "../agent";
+import type { WorkspaceBridge } from "../agent";
+import { sha256Hex } from "../agent/hash";
+import { AGENT_APP_NAME } from "../agent/launch";
+import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
+import { AgentPanel } from "./agent/AgentPanel";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { findMissingRequiredEnv } from "./views/deployment/declared-env";
 import type { DeclaredEnvEntry } from "./views/deployment/DeclaredEnvEditor";
@@ -132,6 +138,10 @@ export function Editor() {
     DEFAULT_SETTINGS,
   );
   const runContext = useRun();
+  const agent = useAgent();
+  const agentLocked = agent.locked;
+  const agentLockedRef = useRef(agentLocked);
+  agentLockedRef.current = agentLocked;
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The pending terms gate: the runner's terms, the runner they belong to, and
@@ -161,6 +171,117 @@ export function Editor() {
     refreshFileTree,
     afterFileMutation,
   } = useWorkspaceLifecycle({ state, setState, settings, persistedHint, setError });
+
+  // Bridge the editor's workspace to the authoring agent: content-hash the tree
+  // for two-way sync, and reflect the agent's writes back through the same
+  // WorkspaceAdapter + afterFileMutation the manual editors use. One conversation
+  // per workspace, keyed by rootDir.
+  const agentRootDir = state.workspace?.rootDir ?? null;
+  const {
+    registerWorkspace: registerAgentWorkspace,
+    setConversation: setAgentConversation,
+    setRunner: setAgentRunner,
+  } = agent;
+  const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
+    if (!agentRootDir) return null;
+    const abs = (rel: string) => (rel ? pathJoin(agentRootDir, rel) : agentRootDir);
+    return {
+      async snapshot() {
+        const adapter = workspaceAdapterRef.current;
+        const out = new Map<string, string>();
+        if (!adapter) return out;
+        const walk = async (rel: string) => {
+          for (const entry of await adapter.listDir(abs(rel))) {
+            if (SYNC_EXCLUDED_DIRS.has(entry.name)) continue;
+            const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+            if (entry.isDirectory) await walk(childRel);
+            else out.set(childRel, await sha256Hex(await adapter.readFile(abs(childRel))));
+          }
+        };
+        await walk("");
+        return out;
+      },
+      async readFile(rel) {
+        const adapter = workspaceAdapterRef.current;
+        if (!adapter) throw new Error("no workspace open");
+        return adapter.readFile(abs(rel));
+      },
+      async applyChanges(writes, deletes) {
+        const adapter = workspaceAdapterRef.current;
+        if (!adapter) return;
+        const affected: string[] = [];
+        for (const w of writes) {
+          await adapter.writeFile(abs(w.path), w.content);
+          affected.push(abs(w.path));
+        }
+        for (const d of deletes) {
+          try {
+            await adapter.delete(abs(d));
+            affected.push(abs(d));
+          } catch {
+            /* already gone */
+          }
+        }
+        if (affected.length) await afterFileMutation(affected);
+      },
+    };
+  }, [agentRootDir, afterFileMutation, workspaceAdapterRef]);
+
+  useEffect(() => {
+    registerAgentWorkspace(workspaceBridge);
+    return () => registerAgentWorkspace(null);
+  }, [registerAgentWorkspace, workspaceBridge]);
+
+  useEffect(() => {
+    setAgentConversation(agentRootDir);
+  }, [setAgentConversation, agentRootDir]);
+
+  // The active runner is where a per-session agent instance is launched. The
+  // agent entry point shows only when the runner offers the authoring agent as
+  // a predefined app on /v1/capabilities — the runner resolves the image and
+  // injects the operator secrets server-side; the editor only asks by name.
+  const [agentSupported, setAgentSupported] = useState(false);
+  useEffect(() => {
+    const runner = settings.runners.find((r) => r.id === settings.activeRunnerId);
+    const config = runner?.config as { baseUrl?: string } | undefined;
+    const adapter = runner ? runRegistry.get(runner.adapterId) : undefined;
+    let cancelled = false;
+    // The runner's dialable URL isn't always a config field — the local-docker
+    // adapter resolves it from its supervisor — so ask the adapter.
+    if (adapter?.resolveBaseUrl && runner) {
+      adapter
+        .resolveBaseUrl(runner.config)
+        .then((baseUrl) => {
+          if (!cancelled) setAgentRunner(baseUrl);
+        })
+        .catch(() => {
+          if (!cancelled) setAgentRunner(null);
+        });
+    } else {
+      setAgentRunner(config?.baseUrl ?? null);
+    }
+    setAgentSupported(false);
+    const cancel = () => {
+      cancelled = true;
+    };
+    if (!runner || !adapter?.fetchCapabilities) return cancel;
+    adapter
+      .fetchCapabilities(runner.config as never)
+      .then((caps) => {
+        if (!cancelled) {
+          setAgentSupported(caps?.apps?.some((a) => a.name === AGENT_APP_NAME) === true);
+        }
+      })
+      .catch(() => {
+        // Unreachable / malformed — the run UI surfaces the fault; here the
+        // app just stays unoffered, hiding the agent entry point.
+        if (!cancelled) setAgentSupported(false);
+      });
+    return cancel;
+  }, [setAgentRunner, settings.runners, settings.activeRunnerId]);
+  // The dev override URL bypasses the runner entirely, so it keeps the agent
+  // reachable (and its settings editable) regardless of the capability.
+  const agentVisible = agentSupported || agent.overrideUrl.trim() !== "";
 
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // History manager lives in state so (a) construction runs in an effect, not
@@ -380,6 +501,7 @@ export function Editor() {
         adapterDisplayName: adapter.displayName,
         message: availability.message,
         remediation: availability.remediation,
+        action: availability.action,
         recheck: async () => {
           const again = await adapter.isAvailable(config);
           if (again.status === "ready") {
@@ -506,6 +628,14 @@ export function Editor() {
   ): Promise<Workspace> {
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return workspace;
+    // Single chokepoint for every manifest write (form edits, source edits,
+    // undo/redo, import ops): while an agent turn holds the workspace, nothing
+    // may land — a mid-turn write isn't in the agent's seeded tree and the
+    // end-of-turn reconcile would silently revert it.
+    if (agentLockedRef.current) {
+      setError("Editing is paused while the agent is working.");
+      return workspace;
+    }
 
     const mgr = opts?.skipHistory ? null : historyManager;
     const preTexts = new Map<string, string>();
@@ -643,12 +773,15 @@ export function Editor() {
     (p: string) => workspaceAdapterRef.current!.readFile(p),
     [],
   );
-  const saveFileCb = useCallback(
-    (p: string, text: string) => workspaceAdapterRef.current!.writeFile(p, text),
-    [],
-  );
+  const saveFileCb = useCallback((p: string, text: string) => {
+    if (agentLockedRef.current) {
+      return Promise.reject(new Error("Editing is paused while the agent is working."));
+    }
+    return workspaceAdapterRef.current!.writeFile(p, text);
+  }, []);
 
   async function handleCreateFile(parentDir: string, name: string) {
+    if (agentLocked) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const path = pathJoin(parentDir, name);
@@ -663,6 +796,7 @@ export function Editor() {
   }
 
   async function handleCreateFolder(parentDir: string, name: string) {
+    if (agentLocked) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const path = pathJoin(parentDir, name);
@@ -680,6 +814,7 @@ export function Editor() {
   }
 
   async function handleRenamePath(path: string, newName: string) {
+    if (agentLocked) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const dest = pathJoin(pathDirname(path), newName);
@@ -695,6 +830,7 @@ export function Editor() {
   }
 
   async function handleMovePath(from: string, toDir: string) {
+    if (agentLocked) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     if (toDir === pathDirname(from)) return;
@@ -712,6 +848,7 @@ export function Editor() {
   }
 
   async function handleDeletePath(path: string) {
+    if (agentLocked) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     if (!window.confirm(`Delete ${pathBasename(path)}? This cannot be undone.`)) return;
@@ -1249,6 +1386,8 @@ export function Editor() {
         onRedo={canRedo ? () => void handleRedo() : undefined}
         canUndo={canUndo}
         canRedo={canRedo}
+        onToggleChat={agentVisible ? agent.togglePanel : undefined}
+        chatOpen={agent.panelOpen}
       />
 
       {error && (
@@ -1301,12 +1440,14 @@ export function Editor() {
                   filePath={activeTab.path}
                   readFile={readFileCb}
                   saveFile={saveFileCb}
+                  readOnly={agentLocked}
                 />
               ) : activeTab?.type === "module" && viewData ? (
                 <ViewContainer
                   activeView={state.activeView}
                   onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
                   viewProps={{
+                      readOnly: agentLocked,
                       viewData,
                       registry:
                         (state.activeModulePath
@@ -1359,6 +1500,7 @@ export function Editor() {
             </div>
           </div>
         )}
+        {agentVisible && agent.panelOpen && <AgentPanel className="w-96 shrink-0" />}
       </div>
       <SettingsModal
         open={settingsOpen}

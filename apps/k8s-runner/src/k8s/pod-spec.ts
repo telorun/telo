@@ -2,7 +2,7 @@ import type { V1Pod } from "@kubernetes/client-node";
 
 import type { K8sRunnerConfig } from "../config.js";
 import type { ResolvedLimits } from "../limits.js";
-import type { PortMapping } from "@telorun/runner-core";
+import type { PortMapping, PullPolicy } from "@telorun/runner-core";
 
 export interface BuildPodArgs {
   config: K8sRunnerConfig;
@@ -177,4 +177,99 @@ function hardenedContainerSecurity(): Record<string, unknown> {
     runAsNonRoot: true,
     capabilities: { drop: ["ALL"] },
   };
+}
+
+export interface BuildAppPodArgs {
+  config: K8sRunnerConfig;
+  sessionId: string;
+  podName: string;
+  env: Record<string, string>;
+  ports: PortMapping[];
+  limits: ResolvedLimits;
+  /** Self-contained image from the operator's app catalog — app + controllers
+   *  baked in; the pod runs the image's own entrypoint. */
+  image: string;
+  pullPolicy: PullPolicy;
+}
+
+/**
+ * Builds a Pod for an operator-predefined app session (`RUNNER_APPS`). Unlike
+ * session pods the image is operator-curated, not anonymous code, so the
+ * write-path hardening is relaxed: the image's own filesystem layout and user
+ * apply (a self-contained app may write inside its own image directories),
+ * with no rootfs read-only forcing and no bundle initContainer. Everything
+ * else stays on: seccomp RuntimeDefault, all capabilities dropped, no
+ * privilege escalation, no ServiceAccount token, the sandbox RuntimeClass when
+ * configured, and the app resource ceilings.
+ */
+export function buildAppPod(args: BuildAppPodArgs): V1Pod {
+  const { config, limits } = args;
+
+  return {
+    apiVersion: "v1",
+    kind: "Pod",
+    metadata: {
+      name: args.podName,
+      namespace: config.sessionNamespace,
+      labels: {
+        "app.kubernetes.io/managed-by": config.managedByLabel,
+        "telo.run/session-id": args.sessionId,
+      },
+    },
+    spec: {
+      restartPolicy: "Never",
+      activeDeadlineSeconds: limits.ttlSeconds,
+      automountServiceAccountToken: false,
+      ...(config.build.imagePullSecret
+        ? { imagePullSecrets: [{ name: config.build.imagePullSecret }] }
+        : {}),
+      ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
+      securityContext: {
+        seccompProfile: { type: "RuntimeDefault" },
+      },
+      containers: [
+        {
+          name: "session",
+          image: args.image,
+          imagePullPolicy: pullPolicyToK8s(args.pullPolicy),
+          env: [
+            ...Object.entries(args.env).map(([name, value]) => ({ name, value })),
+            { name: "FORCE_COLOR", value: "1" },
+          ],
+          stdin: true,
+          stdinOnce: false,
+          tty: true,
+          ...(args.ports.length > 0
+            ? { ports: args.ports.map((p) => ({ containerPort: p.port, protocol: p.protocol.toUpperCase() })) }
+            : {}),
+          resources: {
+            limits: {
+              cpu: limits.cpu,
+              memory: limits.memory,
+              "ephemeral-storage": limits.ephemeralStorage,
+            },
+            requests: {
+              cpu: limits.cpu,
+              memory: limits.memory,
+            },
+          },
+          securityContext: {
+            allowPrivilegeEscalation: false,
+            capabilities: { drop: ["ALL"] },
+          },
+        },
+      ],
+    },
+  };
+}
+
+function pullPolicyToK8s(policy: PullPolicy): string {
+  switch (policy) {
+    case "always":
+      return "Always";
+    case "never":
+      return "Never";
+    default:
+      return "IfNotPresent";
+  }
 }

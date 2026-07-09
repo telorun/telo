@@ -11,6 +11,10 @@ interface FileEditorProps {
   filePath: string;
   readFile: (path: string) => Promise<string>;
   saveFile: (path: string, text: string) => Promise<void>;
+  /** True while the authoring agent holds the workspace — the buffer renders
+   *  read-only (saves are also rejected upstream, but typing must be blocked
+   *  visibly, not swallowed at save time). */
+  readOnly?: boolean;
 }
 
 /** Raw-text editor for a non-telo workspace file. Loads content via the
@@ -18,7 +22,7 @@ interface FileEditorProps {
  *  files render a placeholder instead of feeding garbage into the editor.
  *  Keyed by `filePath` at the call site, so switching tabs remounts with the
  *  next file's content; an unsaved buffer is flushed on unmount. */
-export function FileEditor({ filePath, readFile, saveFile }: FileEditorProps) {
+export function FileEditor({ filePath, readFile, saveFile, readOnly = false }: FileEditorProps) {
   const binary = isBinaryFile(filePath);
   const monacoTheme = useMonacoTheme();
   const [text, setText] = useState<string | null>(null);
@@ -126,6 +130,8 @@ export function FileEditor({ filePath, readFile, saveFile }: FileEditorProps) {
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 2,
+            readOnly,
+            readOnlyMessage: { value: "Editing is paused while the agent is working." },
             fixedOverflowWidgets: true,
           }}
         />

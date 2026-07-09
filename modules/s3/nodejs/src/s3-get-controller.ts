@@ -1,7 +1,7 @@
-import { GetObjectCommand, S3ServiceException } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { InvokeError, Stream, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { S3BucketResource } from "./s3-bucket-controller.js";
-import { resolveBucket } from "./s3-bucket-ref.js";
+import { isS3NotFound, resolveBucket } from "./s3-bucket-ref.js";
 
 interface S3GetManifest {
   // x-telo-ref "std/s3#Bucket": Phase 5 injects the live S3.Bucket instance here.
@@ -32,10 +32,10 @@ class S3GetResource implements ResourceInstance<S3GetInputs, S3GetOutput> {
         new GetObjectCommand({ Bucket: bucket.bucketName, Key: input.key }),
       );
     } catch (err) {
-      if (
-        err instanceof S3ServiceException &&
-        (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404)
-      ) {
+      // The client belongs to the S3.Bucket controller's bundle, so an
+      // `instanceof S3ServiceException` check here (a different bundle's copy of
+      // the SDK) would be false — classify structurally instead.
+      if (isS3NotFound(err)) {
         throw new InvokeError("ERR_NOT_FOUND", `S3 object not found: ${input.key}`);
       }
       throw err;

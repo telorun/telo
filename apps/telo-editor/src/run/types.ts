@@ -23,6 +23,13 @@ export interface RunAdapter<Config = unknown> {
 
   isAvailable(config: Config): Promise<AvailabilityReport>;
 
+  /** The base URL the runner's HTTP contract is reachable on right now, or
+   *  `null` when it isn't. For most adapters this is a config field; the
+   *  local-docker adapter resolves it from its supervisor. Consumers that dial
+   *  the runner directly (the authoring agent) use this instead of reading
+   *  config shapes. */
+  resolveBaseUrl?(config: Config): Promise<string | null>;
+
   /** The runner's usage agreement that must be accepted before a session may
    *  start, or `null` when this runner has none (e.g. local development). The
    *  runner enforces it server-side; the editor surfaces it and records the
@@ -51,6 +58,10 @@ export interface RunnerCapabilities {
   /** Advertised by every runner; reserved for future editor use (e.g. hiding
    *  the terminal when `io` is false). Not consumed yet. */
   features: { io: boolean; ports: boolean };
+  /** Operator-predefined applications the runner can launch by name (mirrors
+   *  runner-core's `RunnerAppDescriptor`). The agent entry point shows only
+   *  when an app named `authoring-agent` is offered. */
+  apps?: Array<{ name: string; title?: string; description?: string }>;
   /** Operator-defined usage agreement enforced before a session starts; absent
    *  when the runner has none. */
   terms?: RunnerTerms;
@@ -77,7 +88,18 @@ export class TermsRequiredError extends Error {
 export type AvailabilityReport =
   | { status: "ready" }
   | { status: "needs-setup"; issues: ConfigIssue[] }
-  | { status: "unavailable"; message: string; remediation?: string };
+  | { status: "unavailable"; message: string; remediation?: string; action?: AvailabilityAction };
+
+/** A user-invocable remedy carried on an `unavailable` report — e.g. starting
+ *  the editor-managed local runner. `description` spells out the consequences
+ *  of invoking it, shown beside the button before the user commits. Surfaces
+ *  that render availability reports offer the action generically; no adapter
+ *  special-casing. */
+export interface AvailabilityAction {
+  label: string;
+  description: string;
+  run(): Promise<void>;
+}
 
 export interface ConfigIssue {
   path: string;

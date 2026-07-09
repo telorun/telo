@@ -1,0 +1,87 @@
+kind: Telo.Application
+metadata:
+  name: S3E2ENotFound
+  version: 1.0.0
+  description: |
+    S3.Get on a missing key must surface a structured ERR_NOT_FOUND, not a raw
+    backend error. Regression guard for the cross-controller identity trap: the
+    S3 client lives in the S3.Bucket controller, so classifying the not-found by
+    `instanceof S3ServiceException` breaks once controllers are bundled
+    separately (each inlines its own @aws-sdk copy). Connection defaults match
+    the docker-compose `storage` service; override via the `S3_*` env vars.
+imports:
+  S3: ../../
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  s3Endpoint:
+    env: S3_ENDPOINT
+    type: string
+    default: http://localhost:9000
+  bucketName:
+    env: S3_E2E_BUCKET
+    type: string
+    default: telo-s3-e2e
+  forcePathStyle:
+    env: S3_FORCE_PATH_STYLE
+    type: boolean
+    default: true
+secrets:
+  accessKeyId:
+    env: S3_ACCESS_KEY_ID
+    type: string
+    default: telo-registry-access
+  secretAccessKey:
+    env: S3_SECRET_ACCESS_KEY
+    type: string
+    default: telo-registry-secret
+targets:
+  - !ref CheckNotFound
+---
+kind: S3.Bucket
+metadata: { name: Store }
+bucketName: !cel "variables.bucketName"
+endpoint: !cel "variables.s3Endpoint"
+forcePathStyle: !cel "variables.forcePathStyle"
+accessKeyId: !cel "secrets.accessKeyId"
+secretAccessKey: !cel "secrets.secretAccessKey"
+createIfMissing: true
+---
+kind: S3.Get
+metadata: { name: GetObject }
+bucketRef: !ref Store
+---
+kind: Run.Sequence
+metadata: { name: CheckNotFound }
+steps:
+  - name: attempt
+    try:
+      - name: get
+        invoke: !ref GetObject
+        inputs:
+          key: e2e/definitely-absent.txt
+      # Reached only if Get did NOT throw — force a failure so a swallowed
+      # not-found can't pass silently.
+      - name: unreachable
+        inputs:
+          reached: true
+        invoke:
+          kind: Assert.Schema
+          metadata: { name: AssertShouldHaveThrown }
+          schema:
+            type: object
+            properties:
+              reached: { const: false }
+            required: [ reached ]
+    catch:
+      - name: assertNotFound
+        inputs:
+          code: !cel "error.code"
+        invoke:
+          kind: Assert.Schema
+          metadata: { name: AssertGetMissingNotFound }
+          schema:
+            type: object
+            properties:
+              code: { const: ERR_NOT_FOUND }
+            required: [ code ]

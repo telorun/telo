@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import type { RunnerTerms } from "./contract.js";
+import type { PullPolicy, RunnerTerms } from "./contract.js";
 
 /**
  * Backend-neutral runner configuration. Concrete runners (docker, k8s) extend
@@ -89,6 +89,121 @@ function resolveTermsBody(env: NodeJS.ProcessEnv): string | undefined {
  *  edit to the body changes it, which re-prompts every client. */
 function hashTermsVersion(body: string): string {
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
+}
+
+/**
+ * An operator-predefined application entry in `RUNNER_APPS`. The catalog is the
+ * whole gate: a client launches an app by name and can neither pick the image
+ * nor read the injected env, so no allowlist beyond the catalog is needed.
+ *
+ * The catalog may embed secrets (`env` values), so treat the whole `RUNNER_APPS`
+ * value as secret material (docker: a `.env.local` file; k8s: source it from a
+ * Secret). Only `name`/`title`/`description` are ever advertised outward —
+ * `image` and `env` never leave the runner.
+ */
+export interface RunnerAppConfig {
+  image: string;
+  /** Env injected verbatim into the app's workload (operator secrets included).
+   *  A client-supplied value for any key defined here is dropped — operator
+   *  values always win. */
+  env?: Record<string, string>;
+  /** Workload image pull policy (default `missing`); `always` keeps a moving
+   *  tag like `latest-slim` fresh. */
+  pullPolicy?: PullPolicy;
+  title?: string;
+  description?: string;
+}
+
+/** A validated catalog entry with defaults applied, keyed back by its name. */
+export interface ResolvedRunnerApp {
+  name: string;
+  image: string;
+  env: Record<string, string>;
+  pullPolicy: PullPolicy;
+  title?: string;
+  description?: string;
+}
+
+const PULL_POLICIES: readonly string[] = ["missing", "always", "never"];
+
+/**
+ * Parse the `RUNNER_APPS` JSON catalog ({ "<name>": RunnerAppConfig }).
+ * Returns `undefined` when unset (no apps offered). Malformed JSON or entries
+ * are a hard `RunnerConfigError` — a broken catalog must not silently drop
+ * the apps.
+ */
+export function loadAppsFromEnv(
+  env: NodeJS.ProcessEnv,
+): Record<string, RunnerAppConfig> | undefined {
+  const raw = env.RUNNER_APPS?.trim();
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new RunnerConfigError(`RUNNER_APPS is not valid JSON: ${(err as Error).message}`);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new RunnerConfigError("RUNNER_APPS must be a JSON object mapping app name → app config.");
+  }
+  // Null-prototype map so an app literally named `__proto__` is stored as a
+  // plain key rather than mutating the object's prototype.
+  const catalog: Record<string, RunnerAppConfig> = Object.create(null);
+  for (const [name, value] of Object.entries(parsed)) {
+    catalog[name] = validateAppEntry(name, value);
+  }
+  return catalog;
+}
+
+function validateAppEntry(name: string, value: unknown): RunnerAppConfig {
+  const fail = (detail: string): never => {
+    throw new RunnerConfigError(`RUNNER_APPS entry '${name}' ${detail}`);
+  };
+  if (name.trim() === "") fail("has an empty name.");
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail("must be an object.");
+  }
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.image !== "string" || entry.image.trim() === "") {
+    fail("needs a non-empty string 'image'.");
+  }
+  if (
+    entry.env !== undefined &&
+    (entry.env === null ||
+      typeof entry.env !== "object" ||
+      Array.isArray(entry.env) ||
+      Object.values(entry.env).some((v) => typeof v !== "string"))
+  ) {
+    fail("has an invalid 'env' — expected an object of string values.");
+  }
+  if (entry.pullPolicy !== undefined && !PULL_POLICIES.includes(entry.pullPolicy as string)) {
+    fail(`has an invalid 'pullPolicy' — expected one of ${PULL_POLICIES.join(", ")}.`);
+  }
+  for (const key of ["title", "description"] as const) {
+    if (entry[key] !== undefined && typeof entry[key] !== "string") {
+      fail(`has an invalid '${key}' — expected a string.`);
+    }
+  }
+  return entry as unknown as RunnerAppConfig;
+}
+
+/** The catalog runners pass to `buildServer`: `RUNNER_APPS` validated with
+ *  defaults applied; empty when unset. The catalog is pure operator
+ *  configuration — runner-core knows nothing about any specific app. */
+export function loadResolvedApps(env: NodeJS.ProcessEnv): Record<string, ResolvedRunnerApp> {
+  const catalog = loadAppsFromEnv(env) ?? {};
+  const resolved: Record<string, ResolvedRunnerApp> = Object.create(null);
+  for (const [name, entry] of Object.entries(catalog)) {
+    resolved[name] = {
+      name,
+      image: entry.image,
+      env: entry.env ?? {},
+      pullPolicy: entry.pullPolicy ?? "missing",
+      title: entry.title,
+      description: entry.description,
+    };
+  }
+  return resolved;
 }
 
 export function parseCorsOrigins(raw: string | undefined): string[] | "*" {

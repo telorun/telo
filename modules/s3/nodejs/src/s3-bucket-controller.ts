@@ -3,10 +3,10 @@ import {
   HeadBucketCommand,
   PutBucketPolicyCommand,
   S3Client,
-  S3ServiceException,
 } from "@aws-sdk/client-s3";
 import { Static, Type } from "@sinclair/typebox";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { isS3NotFound, s3ErrorName } from "./s3-bucket-ref.js";
 
 export const schema = Type.Object({
   bucketName: Type.String(),
@@ -66,10 +66,9 @@ async function ensureBucket(instance: S3BucketResource): Promise<void> {
   try {
     await instance.getClient().send(new CreateBucketCommand({ Bucket: instance.bucketName }));
   } catch (err) {
-    if (err instanceof S3ServiceException) {
-      if (err.name === "BucketAlreadyOwnedByYou" || err.name === "BucketAlreadyExists") {
-        return;
-      }
+    const name = s3ErrorName(err);
+    if (name === "BucketAlreadyOwnedByYou" || name === "BucketAlreadyExists") {
+      return;
     }
     throw err;
   }
@@ -80,10 +79,8 @@ async function bucketExists(instance: S3BucketResource): Promise<boolean> {
     await instance.getClient().send(new HeadBucketCommand({ Bucket: instance.bucketName }));
     return true;
   } catch (err) {
-    if (err instanceof S3ServiceException) {
-      if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
-        return false;
-      }
+    if (isS3NotFound(err)) {
+      return false;
     }
     throw err;
   }

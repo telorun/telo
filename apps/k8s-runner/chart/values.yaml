@@ -26,6 +26,11 @@ runner:
   # would double-manage pods). The Deployment hard-codes replicas: 1.
   port: 8062
   logLevel: info
+  # Identity the runner advertises on /v1/capabilities (the editor shows it as
+  # the runner's label). Empty → code defaults ("Telo Runner" / "Runs the Telo
+  # application in a cloud environment").
+  displayName: ""
+  description: ""
   # Cap on retained sessions (live + recently-exited, kept for editor re-attach).
   # At capacity the oldest exited session is evicted before a new run is rejected,
   # so this is a history-depth knob, not just a concurrency cap. Matches the code
@@ -73,6 +78,21 @@ limits:
   maxMemory: "100Mi"
   maxTtlSeconds: 3600
   maxEphemeralStorage: "512Mi"
+
+# Operator-predefined applications the runner can launch by name (advertised on
+# /v1/capabilities as `apps` — identity only; image and env never surface).
+# Empty catalog → no apps offered. The chart has no knowledge of any specific
+# app — the catalog and its secrets are entirely operator-supplied.
+apps:
+  # RUNNER_APPS JSON: {"<name>": {"image", "env"?, "pullPolicy"?, "title"?,
+  # "description"?}}. `env` is injected verbatim into the app's workload and
+  # may embed secrets (clients can never set those keys) — use catalogSecret
+  # instead of this inline value whenever it does.
+  catalog: ""
+  # Existing Secret holding the full RUNNER_APPS JSON under `key`. Takes
+  # precedence over the inline `catalog`.
+  catalogSecret: ""
+  catalogSecretKey: "RUNNER_APPS"
 
 session:
   # Image spawned for each run. Always offered in the picker below and used as

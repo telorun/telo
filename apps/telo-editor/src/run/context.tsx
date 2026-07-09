@@ -16,6 +16,7 @@ import { loadRunIndex, saveRunIndex, type PersistedRunEntry } from "./run-index"
 import { TerminalBuffer } from "./terminal-buffer";
 import {
   isTerminal,
+  type AvailabilityAction,
   type RunAdapter,
   type RunEvent,
   type RunPhase,
@@ -84,6 +85,9 @@ export interface UnavailableRun {
   adapterDisplayName: string;
   message: string;
   remediation?: string;
+  /** Adapter-provided remedy carried on the availability report (e.g. starting
+   *  the editor-managed local runner); rendered as a button beside Recheck. */
+  action?: AvailabilityAction;
   /** Optional re-probe so the Recheck button can retry without going back
    *  through Editor's entire Run flow. */
   recheck?: () => Promise<void>;
@@ -347,7 +351,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       // If stop rejected, the exit task may already have emitted a terminal
       // status via the subscription — let that drive UI state.
-      console.warn("run_stop invoke failed:", err);
+      console.warn("session stop failed:", err);
     }
   }, []);
 

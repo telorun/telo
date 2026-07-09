@@ -17,3 +17,28 @@ export function resolveBucket(bucketRef: S3BucketResource | undefined): S3Bucket
   }
   return bucketRef;
 }
+
+/** The S3.Bucket client is shared across every S3 controller. When controllers
+ *  are bundled separately (`telo install`), each inlines its own copy of
+ *  `@aws-sdk/client-s3`, so an error thrown by the shared client is NOT an
+ *  `instanceof S3ServiceException` in a different controller's bundle. Classify
+ *  such errors by their structural fields (`name` / `$metadata.httpStatusCode`)
+ *  — which the SDK always sets — rather than by class identity. */
+export function s3ErrorName(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null
+    ? (err as { name?: string }).name
+    : undefined;
+}
+
+export function s3ErrorStatus(err: unknown): number | undefined {
+  return typeof err === "object" && err !== null
+    ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+    : undefined;
+}
+
+/** Structural "resource does not exist" check — a missing object (`NoSuchKey`)
+ *  or bucket (`NotFound`), or any 404. Dual-realm safe (see above). */
+export function isS3NotFound(err: unknown): boolean {
+  const name = s3ErrorName(err);
+  return name === "NoSuchKey" || name === "NotFound" || s3ErrorStatus(err) === 404;
+}

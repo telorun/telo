@@ -30,6 +30,10 @@ exports:
 #     { acquired } synchronously (no result). For "one background operation per
 #     key" — the lease must own the detach so it can hold across a body that
 #     outlives the call.
+# A detached body can be ended early with `op: cancel` for its key: the body's
+# cancellation token trips (honoring leaves — model calls, timers, fetches —
+# abort) and the lease releases on its terminal. Cancellation is process-local
+# to the instance that dispatched the body.
 kind: Telo.Definition
 metadata:
   name: Critical
@@ -43,6 +47,16 @@ inputType:
     additionalProperties: false
     required: [key]
     properties:
+      op:
+        type: string
+        enum: [run, cancel]
+        default: run
+        description: >-
+          `run` (default) acquires the lease and runs the body. `cancel` cancels
+          the DETACHED body currently running under `key` (no acquire): its
+          cancellation token trips and the lease releases on the body's
+          terminal. Returns `cancelled: false` when nothing runs under the key
+          or a supplied `holder` doesn't match.
       key:
         type: string
         description: >-
@@ -54,7 +68,8 @@ inputType:
           Opaque token identifying this holder, returned to a loser as `holder`
           (e.g. an active turn id). Doubles as the release token, so a stale
           holder can't release a lease another owner has since taken over. A
-          unique token is generated when omitted.
+          unique token is generated when omitted. With `op: cancel` it is a
+          guard: the cancel applies only when it matches the running holder.
       inputs:
         type: object
         additionalProperties: true
@@ -68,11 +83,16 @@ outputType:
     properties:
       acquired:
         type: boolean
-        description: Whether this call acquired the lease and ran the body.
+        description: "Whether this call acquired the lease and ran the body (always false for `op: cancel`)."
       holder:
         description: When not acquired, the current holder's token (0/absent if unknown).
       result:
         description: The body's result (synchronous mode only; absent when `detach` or not acquired).
+      cancelled:
+        type: boolean
+        description: >-
+          `op: cancel` only — whether a running detached body was cancelled
+          (false when the key is idle or the `holder` guard didn't match).
 schema:
   type: object
   additionalProperties: false

@@ -72,6 +72,13 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | --- | --- | --- |
 | `RUNNER_SELF_URL` | _(required)_ | Runner's in-cluster base URL (bundle fetch) |
 | `PORT` | `8062` | HTTP listen port |
+| `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
+| `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape. App sessions run the catalog image directly as a pod — no on-cluster build |
+| `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling for predefined-app pods (separate from the anonymous-session ceiling) |
+| `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling for predefined-app pods |
+| `RUNNER_APP_MAX_TTL_SECONDS` | `21600` | Wall-clock TTL for predefined-app pods (agent sessions are long-lived) |
+| `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling for predefined-app pods |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | `telorun/node:latest-slim` | Default base image; always offered in the picker and the fallback when the catalog is unreachable |
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |

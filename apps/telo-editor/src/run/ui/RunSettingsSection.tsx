@@ -3,11 +3,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import type { RunnerInstance } from "../../model";
+import { stopLocalRunner } from "../adapters/local-docker/supervisor";
 import { registry } from "../registry";
-import type { AvailabilityReport, ConfigIssue, RunAdapter, RunnerCapabilities } from "../types";
+import type {
+  AvailabilityAction,
+  AvailabilityReport,
+  ConfigIssue,
+  RunAdapter,
+  RunnerCapabilities,
+} from "../types";
 import { RunnerEditDialog } from "./RunnerEditDialog";
 
 const HTTP_RUNNER_ADAPTER_ID = "http-runner";
+const LOCAL_DOCKER_ADAPTER_ID = "local-docker";
 
 interface RunSettingsSectionProps {
   runners: RunnerInstance[];
@@ -128,7 +136,7 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
 
   // Fetch the runner's own advertised name/description so the row shows what the
   // runner reports — not a stored placeholder. Adapters without a capabilities
-  // endpoint (tauri-docker) skip this and fall back to the adapter's own labels.
+  // endpoint skip this and fall back to the adapter's own labels.
   useEffect(() => {
     if (!adapter?.fetchCapabilities) {
       setCaps(null);
@@ -244,11 +252,19 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
       </div>
 
       {selected && (
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
+        <div className="flex items-start justify-between gap-2 border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
           <AvailabilitySummary report={report} checking={checking} probeError={probeError} />
-          <Button size="sm" variant="outline" onClick={probe} disabled={checking || !adapter}>
-            {checking ? "Checking…" : "Recheck"}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {report?.status === "unavailable" && report.action && (
+              <ActionButton action={report.action} onDone={probe} />
+            )}
+            {runner.adapterId === LOCAL_DOCKER_ADAPTER_ID && report?.status === "ready" && (
+              <StopLocalRunnerButton onDone={probe} />
+            )}
+            <Button size="sm" variant="outline" onClick={probe} disabled={checking || !adapter}>
+              {checking ? "Checking…" : "Recheck"}
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -304,6 +320,77 @@ function AvailabilitySummary({ report, checking, probeError }: StatusProps) {
       <p>{report.message}</p>
       {report.remediation && (
         <p className="mt-0.5 text-red-600 dark:text-red-400">{report.remediation}</p>
+      )}
+      {report.action && (
+        <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">{report.action.description}</p>
+      )}
+    </div>
+  );
+}
+
+/** Runs an availability report's adapter-provided remedy (e.g. starting the
+ *  local runner), then re-probes so the row reflects the new state. */
+function ActionButton({ action, onDone }: { action: AvailabilityAction; onDone: () => Promise<void> }) {
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setRunning(true);
+    setError(null);
+    try {
+      await action.run();
+      await onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button size="sm" onClick={handleClick} disabled={running}>
+        {running ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="size-3.5 animate-spin" /> Starting…
+          </span>
+        ) : (
+          action.label
+        )}
+      </Button>
+      {error && (
+        <p className="max-w-56 text-right text-xs text-red-600 dark:text-red-400">{error}</p>
+      )}
+    </div>
+  );
+}
+
+/** Tears the editor-managed local runner down (stops all its sessions and
+ *  removes the container + bundle volume), then re-probes the row. */
+function StopLocalRunnerButton({ onDone }: { onDone: () => Promise<void> }) {
+  const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setStopping(true);
+    setError(null);
+    try {
+      await stopLocalRunner();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStopping(false);
+      await onDone();
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button size="sm" variant="outline" onClick={handleClick} disabled={stopping}>
+        {stopping ? "Stopping…" : "Stop local runner"}
+      </Button>
+      {error && (
+        <p className="max-w-56 text-right text-xs text-red-600 dark:text-red-400">{error}</p>
       )}
     </div>
   );

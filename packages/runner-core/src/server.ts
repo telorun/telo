@@ -3,8 +3,8 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
-import type { RunnerCoreConfig } from "./config.js";
-import type { RunnerCapabilities, SessionConfig } from "./contract.js";
+import type { ResolvedRunnerApp, RunnerCoreConfig } from "./config.js";
+import type { RunnerAppDescriptor, RunnerCapabilities, SessionConfig } from "./contract.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
@@ -25,8 +25,13 @@ export interface ServerDeps {
   /** Runner's default registry URL, passed to workloads as TELO_REGISTRY_URL. */
   defaultRegistryUrl?: string;
   /** Backend config gate, enforced on `POST /v1/sessions` before the workload
-   *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`. */
+   *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`.
+   *  Not consulted for app sessions — their image comes from `apps`. */
   validateConfig?: (config: SessionConfig) => string | undefined;
+  /** Operator-predefined applications launchable by name (usually
+   *  `loadResolvedApps(process.env)`). Advertised on /v1/capabilities as
+   *  `apps` descriptors; the session route resolves and gates against it. */
+  apps?: Record<string, ResolvedRunnerApp>;
   registry?: SessionRegistry;
 }
 
@@ -58,13 +63,26 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       replayBufferBytes: deps.config.replayBufferBytes,
     });
 
+  // The app catalog is injected into the served capabilities document here, so
+  // what /v1/capabilities advertises and what the session route accepts can
+  // never drift — both come from `deps.apps`.
+  const appDescriptors: RunnerAppDescriptor[] = Object.values(deps.apps ?? {}).map(
+    ({ name, title, description }) => ({ name, title, description }),
+  );
+  const withApps = (caps: RunnerCapabilities): RunnerCapabilities =>
+    appDescriptors.length > 0 ? { ...caps, apps: appDescriptors } : caps;
+  const capabilitiesGetter =
+    typeof deps.capabilities === "function"
+      ? () => withApps((deps.capabilities as () => RunnerCapabilities)())
+      : withApps(deps.capabilities);
+
   // Terms are stable across the process — resolve the capabilities once for them
   // even when `capabilities` is a getter (the route still re-resolves per request).
   const capabilitiesValue =
-    typeof deps.capabilities === "function" ? deps.capabilities() : deps.capabilities;
+    typeof capabilitiesGetter === "function" ? capabilitiesGetter() : capabilitiesGetter;
 
   await app.register(healthRoute(deps.version));
-  await app.register(capabilitiesRoute(deps.capabilities));
+  await app.register(capabilitiesRoute(capabilitiesGetter));
   await app.register(probeRoute({ backend: deps.backend }));
   await app.register(
     sessionsRoute({
@@ -76,6 +94,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       // The capabilities document is the single source of the runner's terms;
       // the session route enforces what /v1/capabilities advertises.
       terms: capabilitiesValue.terms,
+      apps: deps.apps,
     }),
   );
   await app.register(ioRoute({ registry, corsOrigins: deps.config.corsOrigins }));

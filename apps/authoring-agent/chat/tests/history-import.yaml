@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: ChatHistoryImport
+  version: 1.0.0
+  description: |
+    Exercises history seeding without any AI: importMessages bulk-inserts the
+    rows a client ferries back into a fresh session's empty DB, idempotently
+    (INSERT OR IGNORE by id — a re-import must not duplicate or overwrite), and
+    historyQuery reads the conversation back in id order — the exact pair the
+    app's POST /conversations/{id}/messages and GET /conversations/{id} routes
+    dispatch to.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      # importMessages/historyQuery never touch the model; the key is only a
+      # required import input here.
+      openaiApiKey: dummy-key-never-used
+    variables:
+      dbFile: ":memory:"
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref Chat.initSchema
+  - !ref Test
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Seed
+    invoke: !ref Chat.importMessages
+    inputs:
+      conversationId: c1
+      messages:
+        - { id: m1, role: user, content: hello, createdAt: "2026-07-09 10:00:00" }
+        - { id: m2, role: assistant, content: hi!, createdAt: "2026-07-09 10:00:05" }
+  # Re-import with one duplicate (mutated content) and one new row: the
+  # duplicate must neither double nor overwrite, the new row must land.
+  - name: Reseed
+    invoke: !ref Chat.importMessages
+    inputs:
+      conversationId: c1
+      messages:
+        - { id: m2, role: assistant, content: changed, createdAt: "2026-07-09 10:00:05" }
+        - { id: m3, role: user, content: next, createdAt: "2026-07-09 10:01:00" }
+  - name: Read
+    invoke: !ref Chat.historyQuery
+    inputs:
+      sql: "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
+      bindings:
+        - c1
+  - name: Assert
+    inputs:
+      actual:
+        ids: !cel "steps.Read.result.rows.map(r, r.id)"
+        contents: !cel "steps.Read.result.rows.map(r, r.content)"
+      expected:
+        ids: [m1, m2, m3]
+        contents: [hello, hi!, next]
+    invoke: !ref Assert.equals

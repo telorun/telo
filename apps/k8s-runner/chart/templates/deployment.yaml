@@ -52,6 +52,24 @@ spec:
               value: "{{ .Values.runner.port }}"
             - name: LOG_LEVEL
               value: "{{ .Values.runner.logLevel }}"
+            {{- if .Values.runner.displayName }}
+            - name: RUNNER_DISPLAY_NAME
+              value: {{ .Values.runner.displayName | quote }}
+            {{- end }}
+            {{- if .Values.runner.description }}
+            - name: RUNNER_DESCRIPTION
+              value: {{ .Values.runner.description | quote }}
+            {{- end }}
+            {{- if .Values.apps.catalogSecret }}
+            - name: RUNNER_APPS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apps.catalogSecret | quote }}
+                  key: {{ .Values.apps.catalogSecretKey | quote }}
+            {{- else if .Values.apps.catalog }}
+            - name: RUNNER_APPS
+              value: {{ .Values.apps.catalog | quote }}
+            {{- end }}
             - name: RUNNER_MAX_SESSIONS
               value: "{{ .Values.runner.maxSessions }}"
             - name: RUNNER_SELF_URL
