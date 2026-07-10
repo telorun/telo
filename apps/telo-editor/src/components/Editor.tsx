@@ -181,6 +181,7 @@ export function Editor() {
     registerWorkspace: registerAgentWorkspace,
     setConversation: setAgentConversation,
     setRunner: setAgentRunner,
+    setRunnerAcceptedTerms: setAgentRunnerTerms,
   } = agent;
   const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
     if (!agentRootDir) return null;
@@ -261,6 +262,7 @@ export function Editor() {
       setAgentRunner(config?.baseUrl ?? null);
     }
     setAgentSupported(false);
+    setAgentRunnerTerms(null);
     const cancel = () => {
       cancelled = true;
     };
@@ -268,9 +270,16 @@ export function Editor() {
     adapter
       .fetchCapabilities(runner.config as never)
       .then((caps) => {
-        if (!cancelled) {
-          setAgentSupported(caps?.apps?.some((a) => a.name === AGENT_APP_NAME) === true);
-        }
+        if (cancelled) return;
+        setAgentSupported(caps?.apps?.some((a) => a.name === AGENT_APP_NAME) === true);
+        // A terms-enforcing runner 428s the agent launch without the accepted
+        // version header; the run flow's acceptance (per runner + version)
+        // carries over to agent sessions.
+        setAgentRunnerTerms(
+          caps?.terms && isTermsAcceptedFor(runner.id, caps.terms.version)
+            ? caps.terms.version
+            : null,
+        );
       })
       .catch(() => {
         // Unreachable / malformed — the run UI surfaces the fault; here the
@@ -278,7 +287,7 @@ export function Editor() {
         if (!cancelled) setAgentSupported(false);
       });
     return cancel;
-  }, [setAgentRunner, settings.runners, settings.activeRunnerId]);
+  }, [setAgentRunner, setAgentRunnerTerms, settings.runners, settings.activeRunnerId]);
   // The dev override URL bypasses the runner entirely, so it keeps the agent
   // reachable (and its settings editable) regardless of the capability.
   const agentVisible = agentSupported || agent.overrideUrl.trim() !== "";
@@ -1519,6 +1528,11 @@ export function Editor() {
         onAccept={() => {
           if (!termsGate) return;
           acceptTermsFor(termsGate.runnerId, termsGate.terms.version);
+          // Agent launches send the same acceptance; update it live so the
+          // agent doesn't stay 428-gated until the next runner switch.
+          if (termsGate.runnerId === settings.activeRunnerId) {
+            setAgentRunnerTerms(termsGate.terms.version);
+          }
           const { filePath } = termsGate;
           setTermsGate(null);
           void handleRunModuleRef.current(filePath);

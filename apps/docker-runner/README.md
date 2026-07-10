@@ -29,7 +29,7 @@ Optional, with defaults:
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set. Terms stay disabled unless one of these is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/sessions` `{ app }`: `{"<name>": {"image", "env"?, "pullPolicy"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always"}}` |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always"}}` |
 
 ## Standalone
 
@@ -78,6 +78,10 @@ On success: `201 { sessionId, streamUrl, createdAt }`. Start is all-or-nothing u
 - `409 too_many_sessions` — concurrent session cap hit.
 - `502 pull_failed` (`stage: "pull" | "inspect"`) — registry unreachable or image missing under `pullPolicy: "never"`.
 - `503 start_failed` (`stage: "daemon" | "create" | "attach" | "start"`) — daemon-level failure.
+
+### `POST /v1/apps/:name/sessions`
+
+Creation door for operator-predefined applications (`RUNNER_APPS`). Body: `{ env?, ports?, inspect? }` — no bundle, no config; the runner resolves the image and injects the app's operator env from the catalog (client-supplied values for those keys are dropped). On success: `201 { sessionId, streamUrl, createdAt }` — the session lives in the same collection as bundle sessions (status / DELETE / events / io under `/v1/sessions/:id`). `404 unknown_app` when the catalog doesn't offer the name; the same terms gate (`428`) applies.
 
 ### `GET /v1/sessions/:id`
 

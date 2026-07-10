@@ -5,6 +5,7 @@ import websocket from "@fastify/websocket";
 import type { RunnerBackend } from "./backend.js";
 import type { ResolvedRunnerApp, RunnerCoreConfig } from "./config.js";
 import type { RunnerAppDescriptor, RunnerCapabilities, SessionConfig } from "./contract.js";
+import { appsRoute } from "./routes/apps.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
@@ -30,7 +31,8 @@ export interface ServerDeps {
   validateConfig?: (config: SessionConfig) => string | undefined;
   /** Operator-predefined applications launchable by name (usually
    *  `loadResolvedApps(process.env)`). Advertised on /v1/capabilities as
-   *  `apps` descriptors; the session route resolves and gates against it. */
+   *  `apps` descriptors; sessions of them are created via
+   *  `POST /v1/apps/:name/sessions`. */
   apps?: Record<string, ResolvedRunnerApp>;
   registry?: SessionRegistry;
 }
@@ -92,7 +94,15 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       defaultRegistryUrl: deps.defaultRegistryUrl,
       validateConfig: deps.validateConfig,
       // The capabilities document is the single source of the runner's terms;
-      // the session route enforces what /v1/capabilities advertises.
+      // every session-creating route enforces what /v1/capabilities advertises.
+      terms: capabilitiesValue.terms,
+    }),
+  );
+  await app.register(
+    appsRoute({
+      backend: deps.backend,
+      registry,
+      defaultRegistryUrl: deps.defaultRegistryUrl,
       terms: capabilitiesValue.terms,
       apps: deps.apps,
     }),

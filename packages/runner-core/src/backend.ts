@@ -48,7 +48,7 @@ export interface BackendStartSpec {
   env: Record<string, string>;
   ports: PortMapping[];
   config: SessionConfig;
-  /** True for an operator-predefined app session (`StartSessionRequest.app`):
+  /** True for an operator-predefined app session (`POST /v1/apps/:name/sessions`):
    *  `config.image` is self-contained (app + controllers baked in), so the
    *  backend runs the image's own entrypoint and stages no bundle — `bundle`
    *  is an empty placeholder. */

@@ -28,6 +28,7 @@ export { healthRoute } from "./routes/health.js";
 export { capabilitiesRoute } from "./routes/capabilities.js";
 export { probeRoute, type ProbeRouteDeps } from "./routes/probe.js";
 export { sessionsRoute, type SessionsRouteDeps } from "./routes/sessions.js";
+export { appsRoute, type AppsRouteDeps } from "./routes/apps.js";
 export { ioRoute, type IoRouteDeps } from "./routes/io.js";
 export { relayDebugStream, type DebugRelayOptions } from "./debug/relay.js";
 export {

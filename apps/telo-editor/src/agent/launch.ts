@@ -3,14 +3,19 @@
  * launch is its OWN isolated container (private workspace, DB, journal) — the
  * per-instance isolation that makes the agent multi-user. The agent is an
  * operator-predefined app: the editor requests it by name and the runner
- * resolves the image and injects the operator's OPENAI_API_KEY server-side —
- * the editor never holds a key nor picks an image.
+ * resolves the image and injects the operator's credentials server-side —
+ * the editor never holds a secret nor picks an image.
  */
 
 /** Well-known app name in the runner's predefined-app catalog. */
 export const AGENT_APP_NAME = "authoring-agent";
 
 const AGENT_PORT = 8080;
+
+/** Header carrying the accepted terms version (mirrors runner-core's
+ *  `ACCEPTED_TERMS_HEADER`; local constant so editor code doesn't import the
+ *  Node-only package). */
+const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
 export interface LaunchedAgent {
   /** Base URL of this session's agent instance. */
@@ -30,21 +35,32 @@ interface RunnerEndpoint {
   url?: string;
 }
 
-export async function launchAgentSession(runnerBaseUrl: string): Promise<LaunchedAgent> {
+export async function launchAgentSession(
+  runnerBaseUrl: string,
+  acceptedTermsVersion?: string | null,
+): Promise<LaunchedAgent> {
   const base = runnerBaseUrl.replace(/\/$/, "");
-  const res = await fetch(`${base}/v1/sessions`, {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  // Agent sessions ride the same terms enforcement as runs (428 without it).
+  if (acceptedTermsVersion) headers[ACCEPTED_TERMS_HEADER] = acceptedTermsVersion;
+  const res = await fetch(`${base}/v1/apps/${encodeURIComponent(AGENT_APP_NAME)}/sessions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify({
-      app: AGENT_APP_NAME,
       env: {},
       ports: [{ port: AGENT_PORT, protocol: "tcp" }],
     }),
   });
-  if (!res.ok) {
+  if (res.status === 428) {
     throw new Error(
-      `Failed to launch the authoring agent on the runner (${res.status}). Does it offer the '${AGENT_APP_NAME}' app?`,
+      "Accept the usage terms before using the agent: run any application once to review and accept them, then try again.",
     );
+  }
+  if (res.status === 404) {
+    throw new Error("The authoring agent is not available.");
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to start the authoring agent (${res.status}).`);
   }
   const { sessionId, streamUrl } = (await res.json()) as { sessionId: string; streamUrl: string };
   // Tap the container's PTY output (the /io byte channel — separate from the
