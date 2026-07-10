@@ -11,7 +11,7 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Http: std/http-server@0.16.0
+  Http: std/http-server@0.16.1
   Run: std/run@0.11.1
 targets:
   - !ref ExampleServer

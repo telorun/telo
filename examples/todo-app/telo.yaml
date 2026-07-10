@@ -8,7 +8,7 @@ metadata:
     surface is one declarative Crud.Resource — list / read / create / update /
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
-  Http: std/http-server@0.16.0
+  Http: std/http-server@0.16.1
   Sql: std/sql@0.11.0
   SqlSqlite: std/sql-sqlite@0.2.1
   Crud: std/crud@0.3.0

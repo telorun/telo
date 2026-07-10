@@ -27,7 +27,7 @@ imports:
   SqlSqlite: std/sql-sqlite@0.2.1
   RecordStream: std/record-stream@0.7.0
   Run: std/run@0.11.1
-  Lease: std/lease@0.2.0
+  Lease: std/lease@0.3.0
   CacheMemory: std/cache-memory@0.3.0
   RateLimit: std/rate-limit@0.3.0
 secrets:

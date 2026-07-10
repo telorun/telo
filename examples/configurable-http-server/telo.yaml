@@ -14,7 +14,7 @@ metadata:
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
 imports:
-  Http: std/http-server@0.16.0
+  Http: std/http-server@0.16.1
   JavaScript: std/javascript@0.5.0
 targets:
   - !ref PaymentServer

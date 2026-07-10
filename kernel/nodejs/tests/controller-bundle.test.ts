@@ -74,6 +74,16 @@ describe("controller bundling", () => {
     await write("node_modules/sharedpkg/store.js", `export class Store { constructor() { this.tag = "STORE_INTERNAL"; } }\nexport const make = () => new Store();\nexport const isStore = (v) => v instanceof Store;`);
     await write("node_modules/sharedpkg/a.js", `import { make } from "./store.js";\nexport function create() { return make(); }`);
     await write("node_modules/sharedpkg/b.js", `import { isStore } from "./store.js";\nexport function create() { return { isStore }; }`);
+    // Same shape, but shipped as TypeScript SOURCE (`.ts`), loaded from `src/`
+    // under a TS-aware runtime — the published-module layout (e.g.
+    // record-stream's `journal-store`). Controllers import `./store.js` but the
+    // resolved file is `store.ts`; that TS sibling must still be externalized, or
+    // each controller inlines its own `Store` and cross-controller `instanceof`
+    // splits (the real "invalid journal reference" failure).
+    await write("node_modules/sharedpkg-ts/package.json", JSON.stringify({ name: "sharedpkg-ts", version: "1.0.0", type: "module" }));
+    await write("node_modules/sharedpkg-ts/store.ts", `export class Store { tag = "STORE_TS_INTERNAL"; }\nexport const make = () => new Store();\nexport const isStore = (v: unknown) => v instanceof Store;`);
+    await write("node_modules/sharedpkg-ts/a.ts", `import { make } from "./store.js";\nexport function create() { return make(); }`);
+    await write("node_modules/sharedpkg-ts/b.ts", `import { isStore } from "./store.js";\nexport function create() { return { isStore }; }`);
     // A dependency with its OWN internal relative import. When a controller pulls
     // it in, that internal `./inner.js` must stay INLINED with the dep (it's not
     // the controller package's shared module, and its path isn't relative to the
@@ -178,6 +188,24 @@ describe("controller bundling", () => {
     const instance = await modA.create();
     const { isStore } = await modB.create();
     expect(isStore(instance)).toBe(true);
+  });
+
+  it("externalizes a `.ts`-source shared module too (published src/ layout, not just built .js)", async () => {
+    const pkg = path.join(root, "node_modules/sharedpkg-ts");
+    const bundleA = await tryBuildControllerBundle(root, path.join(pkg, "a.ts"));
+    const bundleB = await tryBuildControllerBundle(root, path.join(pkg, "b.ts"));
+    expect(bundleA).toBeTruthy();
+    expect(bundleB).toBeTruthy();
+
+    // Both bundles must keep the shared `store.ts` as an external import to the
+    // one loose file, NOT inline it. (Runtime `instanceof` round-trip isn't
+    // exercised here: Node/vitest can't `import()` a `.ts` external — only the
+    // real Bun runtime can — so the static externalization IS the guarantee.)
+    for (const bundle of [bundleA!, bundleB!]) {
+      const code = await fs.readFile(bundle, "utf8");
+      expect(code).not.toContain("STORE_TS_INTERNAL");
+      expect(code).toContain("./store.ts");
+    }
   });
 
   it("inlines a dependency's own internal relative imports (only the controller package's are externalized)", async () => {
