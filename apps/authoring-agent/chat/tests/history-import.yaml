@@ -18,8 +18,8 @@ imports:
       openaiApiKey: dummy-key-never-used
     variables:
       dbFile: ":memory:"
-  Run: ../../../../modules/run
-  Assert: ../../../../modules/assert
+  Run: std/run@0.11.1
+  Assert: std/assert@0.8.14
 targets:
   - !ref Chat.initSchema
   - !ref Test

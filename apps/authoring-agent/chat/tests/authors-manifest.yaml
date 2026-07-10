@@ -42,10 +42,10 @@ imports:
       # form (program + args), not a shell string — the file path is appended and
       # execed directly.
       checkArgv: [bun, ../cli/nodejs/bin/telo.ts, check]
-  Shell: ../../../../modules/shell
-  Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
-  Assert: ../../../../modules/assert
+  Shell: std/shell@0.2.0
+  Stream: std/stream@0.3.0
+  Run: std/run@0.11.1
+  Assert: std/assert@0.8.14
 targets:
   - !ref Chat.initSchema
   - !ref TestAuthors

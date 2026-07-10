@@ -45,6 +45,12 @@ function sanitize(s: string): string {
   return s.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+/** Extensions of a package's own relative modules that are externalized (kept a
+ *  single loose copy) rather than inlined per controller bundle. TS extensions
+ *  are included because published modules are loaded from their `src/*.ts` under
+ *  a TS-aware runtime (Bun), so the shared `.ts` file must keep one identity. */
+const EXTERNALIZABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"]);
+
 async function realpathOrNull(p: string): Promise<string | null> {
   try {
     return await fs.realpath(p);
@@ -320,9 +326,15 @@ function nativeExternalsPlugin(bundleDir: string, pkgRoot: string | null): impor
         const relToPkg = path.relative(pkgRoot, resolved.path);
         if (relToPkg.startsWith("..") || path.isAbsolute(relToPkg)) return null;
         if (relToPkg.split(path.sep).includes("node_modules")) return null;
-        // Must be a runtime-loadable JS file; otherwise inline (transpile).
+        // Must be a runtime-loadable module; otherwise inline (transpile). The
+        // loose file is loaded by the SAME runtime as this bundle — and a package
+        // shipped as `.ts` source (loaded via Bun) has `.ts` entries, so a `.ts`
+        // sibling resolves for that runtime too. TS extensions MUST be
+        // externalized, not inlined: inlining gives each controller its own copy
+        // of a shared module (e.g. record-stream's `journal-store`), splitting
+        // `instanceof` / process-local state across the package's controllers.
         const ext = path.extname(resolved.path).toLowerCase();
-        if (ext !== ".js" && ext !== ".mjs" && ext !== ".cjs") return null;
+        if (!EXTERNALIZABLE_EXTENSIONS.has(ext)) return null;
         const rel = path.relative(bundleDir, resolved.path).split(path.sep).join("/");
         return { path: rel.startsWith(".") ? rel : `./${rel}`, external: true };
       });

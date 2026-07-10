@@ -6,9 +6,9 @@ metadata:
   version: 0.4.2
 imports:
   Type: std/type@0.6.0
-  Http: std/http-server@0.16.0
+  Http: std/http-server@0.16.1
   HttpClient: std/http-client@0.7.0
-  S3: std/s3@0.6.0
+  S3: std/s3@0.6.1
   Sql: std/sql@0.11.0
   Postgres: std/sql-postgres@0.2.0
   Run: std/run@0.11.1

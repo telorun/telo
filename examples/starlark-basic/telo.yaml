@@ -6,7 +6,7 @@ metadata:
 imports:
   Type: std/type@0.6.0
   Starlark: std/starlark@0.6.0
-  Console: std/console@0.9.0
+  Console: std/console@0.10.0
 targets:
   - name: Step1
     invoke: !ref ExampleStarlarkScript
