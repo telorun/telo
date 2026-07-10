@@ -1,4 +1,4 @@
-import type { LoadedGraph, ManifestSource } from "@telorun/analyzer";
+import { splitIntegrity, verifyIntegrity, type LoadedGraph, type ManifestSource } from "@telorun/analyzer";
 import { createHash } from "crypto";
 import { statSync } from "fs";
 import * as fs from "fs/promises";
@@ -63,10 +63,13 @@ function disambiguatePath(pathname: string, search: string, hash: string): strin
  *  Returns `null` for unsupported URLs (file://, memory://, relative paths)
  *  or for path-traversal attempts that would escape `cacheRoot`. */
 function cachePathForUrl(
-  url: string,
+  rawUrl: string,
   cacheRoot: string,
   registryUrl: string,
 ): string | null {
+  // Strip any inline integrity fragment so the cache path is derived from the
+  // bare ref/URL — the hash never participates in on-disk keying.
+  const url = splitIntegrity(rawUrl).base;
   const trimmedRegistry = registryUrl.replace(/\/+$/, "");
 
   // 1. Registry ref form: namespace/name@version
@@ -157,6 +160,15 @@ export class LocalManifestCacheSource implements ManifestSource {
       throw new Error(
         `LocalManifestCacheSource does not support '${url}' (cache miss or unsupported scheme)`,
       );
+    }
+    // Verify the cached bytes against the import's inline hash before serving.
+    // A mismatch is a terminal error — a poisoned cache must never be trusted,
+    // and unlike the compiled-validator cache this is not a self-healing miss.
+    const { integrity } = splitIntegrity(url);
+    if (integrity) {
+      const bytes = await fs.readFile(mapped);
+      await verifyIntegrity(new Uint8Array(bytes), integrity, splitIntegrity(url).base);
+      return { text: bytes.toString("utf-8"), source: pathToFileURL(mapped).href };
     }
     const text = await fs.readFile(mapped, "utf-8");
     return { text, source: pathToFileURL(mapped).href };

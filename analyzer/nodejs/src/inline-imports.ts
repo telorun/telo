@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedFile } from "./loaded-types.js";
+import { foldIntegrity } from "./sources/integrity.js";
 import { isModuleKind } from "./module-kinds.js";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { PositionIndex } from "./types.js";
@@ -42,10 +43,15 @@ export function inlineImportManifests(
         : undefined;
     if (!entry || typeof entry.source !== "string") continue;
 
+    // The object form carries integrity as a sibling `integrity:` field; fold it
+    // into the source string as a `#sha256-...` fragment so every downstream
+    // consumer sees a single representation (the scalar form already inlines it).
+    const source = foldIntegrity(entry.source, entry.integrity);
+
     const manifest = {
       kind: "Telo.Import",
       metadata: { name: alias },
-      source: entry.source,
+      source,
       ...(entry.variables !== undefined ? { variables: entry.variables } : {}),
       ...(entry.secrets !== undefined ? { secrets: entry.secrets } : {}),
       ...(entry.runtime !== undefined ? { runtime: entry.runtime } : {}),

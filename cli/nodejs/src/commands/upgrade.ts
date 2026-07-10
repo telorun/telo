@@ -1,3 +1,4 @@
+import { splitIntegrity } from "@telorun/analyzer";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
 import * as path from "path";
@@ -5,7 +6,8 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
-import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
+import { fetchManifestHash } from "../registry-hash.js";
+import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
@@ -18,8 +20,10 @@ interface ParsedRef {
   rawVersion: string;
 }
 
-/** Parse `<namespace>/<name>@<version>`. Exported for tests. */
-export function parseModuleRef(source: string): ParsedRef | null {
+/** Parse `<namespace>/<name>@<version>`. A trailing `#sha256-...` integrity
+ *  fragment is stripped first (a pinned import still parses). Exported for tests. */
+export function parseUpgradeRef(rawSource: string): ParsedRef | null {
+  const source = splitIntegrity(rawSource).base;
   const atIdx = source.lastIndexOf("@");
   if (atIdx <= 0 || atIdx === source.length - 1) return null;
   const modulePath = source.slice(0, atIdx);
@@ -90,6 +94,9 @@ interface ImportUpgrade {
 interface UpgradeResult {
   changed: boolean;
   upgrades: ImportUpgrade[];
+  /** Imports already at the latest version that were newly pinned (integrity
+   *  hash added without a version change). */
+  pinned: number;
   unchanged: number;
   skipped: number;
   errors: number;
@@ -131,6 +138,7 @@ export async function upgradeManifest(args: {
   const result: UpgradeResult = {
     changed: false,
     upgrades: [],
+    pinned: 0,
     unchanged: 0,
     skipped: 0,
     errors: 0,
@@ -161,10 +169,51 @@ export async function upgradeManifest(args: {
   const moduleDoc = findModuleDoc(docs);
   const importRefs = moduleDoc ? importSourceRefs(moduleDoc) : [];
 
+  // An import already at the latest version isn't upgraded — but if it carries
+  // no integrity hash yet (neither a `#sha256-...` fragment nor an object-form
+  // `integrity:` sibling), pin it in place. Best-effort: a failed hash fetch
+  // leaves it unpinned. This is what lets `telo upgrade` pin a rarely-changing
+  // module whose version never moves.
+  const ensurePinned = async (
+    importRef: ImportSourceRef,
+    namespace: string,
+    name: string,
+    version: string,
+  ): Promise<void> => {
+    if (splitIntegrity(importRef.source).integrity || importRef.integrity) {
+      console.log(`  ${log.ok("=")}  ${namespace}/${name}  ${log.dim(`already at ${version}, pinned`)}`);
+      result.unchanged++;
+      return;
+    }
+    const pin = `${namespace}/${name}@${version}`;
+    let hash: string;
+    try {
+      hash = await fetchManifestHash(registryUrl, pin);
+    } catch (err) {
+      console.log(
+        `  ${log.warn("!")}  ${namespace}/${name}  ${log.dim(`already at ${version}, left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
+      );
+      result.unchanged++;
+      return;
+    }
+    const edit = buildSourceEdit(importRef.node, content, `${pin}#${hash}`);
+    if (!edit) {
+      console.error(
+        `  ${log.error("✗")}  ${namespace}/${name}  source scalar has no range — skipping`,
+      );
+      result.errors++;
+      return;
+    }
+    edits.push(edit);
+    result.changed = true;
+    result.pinned++;
+    console.log(`  ${log.ok("+")}  ${namespace}/${name}  ${log.dim(`already at ${version},`)} ${log.ok("pinned")}`);
+  };
+
   for (const importRef of importRefs) {
     const source = importRef.source;
 
-    const ref = parseModuleRef(source);
+    const ref = parseUpgradeRef(source);
     if (!ref) {
       console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not a registry ref)")}`);
       result.skipped++;
@@ -212,27 +261,26 @@ export async function upgradeManifest(args: {
     const currentPublished = published.some((v) => semver.eq(v, ref.version!));
     const cmp = semver.compare(best, ref.version);
 
-    // The pinned version is in the registry and matches the latest pick — nothing to do.
-    if (currentPublished && cmp === 0) {
-      console.log(
-        `  ${log.ok("=")}  ${ref.namespace}/${ref.name}  ${log.dim(`already at ${ref.version}`)}`,
-      );
-      result.unchanged++;
+    // Already at the latest published version (`cmp < 0` is defensive — `best`
+    // is the max of `published` and `currentPublished` means the pin is in that
+    // list). Nothing to upgrade; ensure it carries an integrity hash.
+    if (currentPublished && cmp <= 0) {
+      await ensurePinned(importRef, ref.namespace, ref.name, ref.version);
       continue;
     }
 
-    // currentPublished && cmp < 0 shouldn't be possible — `best` is the max of
-    // `published`, and `currentPublished` means the pin is in that list. Keep a
-    // defensive branch so we don't silently swallow it.
-    if (currentPublished && cmp < 0) {
+    // Re-pin to the new version's integrity hash. Best-effort: if the hash
+    // fetch fails, still rewrite the version but leave it unpinned (warn).
+    let newPin = `${ref.namespace}/${ref.name}@${best}`;
+    try {
+      newPin = `${newPin}#${await fetchManifestHash(registryUrl, newPin)}`;
+    } catch (err) {
       console.log(
-        `  ${log.ok("=")}  ${ref.namespace}/${ref.name}  ${log.dim(`already at ${ref.version}`)}`,
+        `  ${log.warn("!")}  ${ref.namespace}/${ref.name}  ${log.dim(`left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
       );
-      result.unchanged++;
-      continue;
     }
 
-    const edit = buildSourceEdit(importRef.node, content, `${ref.namespace}/${ref.name}@${best}`);
+    const edit = buildSourceEdit(importRef.node, content, newPin);
     if (!edit) {
       // No range info — extremely unlikely for a freshly parsed doc, but bail
       // out loudly rather than silently dropping the rewrite.
@@ -335,7 +383,7 @@ export async function upgradeOne(
 
   if (resolveError) {
     console.error(`${displayPath}  ${log.error("error")}  ${resolveError}`);
-    return { changed: false, upgrades: [], unchanged: 0, skipped: 0, errors: 1 };
+    return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors: 1 };
   }
 
   let content: string;
@@ -346,7 +394,7 @@ export async function upgradeOne(
       `${displayPath}  ${log.error("error")}  cannot read file: ` +
         (err instanceof Error ? err.message : String(err)),
     );
-    return { changed: false, upgrades: [], unchanged: 0, skipped: 0, errors: 1 };
+    return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors: 1 };
   }
 
   const { content: nextContent, result } = await upgradeManifest({
@@ -362,7 +410,8 @@ export async function upgradeOne(
   }
 
   if (result.changed && dryRun) {
-    console.log(`  ${log.dim(`dry-run: ${result.upgrades.length} import(s) would be updated`)}`);
+    const count = result.upgrades.length + result.pinned;
+    console.log(`  ${log.dim(`dry-run: ${count} import(s) would be updated`)}`);
   }
 
   return result;
@@ -380,6 +429,7 @@ export async function upgrade(argv: {
     argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 
   let totalUpgrades = 0;
+  let totalPinned = 0;
   let totalUnchanged = 0;
   let totalSkipped = 0;
   let totalErrors = 0;
@@ -387,6 +437,7 @@ export async function upgrade(argv: {
   for (const p of argv.paths) {
     const r = await upgradeOne(p, registryUrl, argv.includePrerelease, argv.dryRun, log);
     totalUpgrades += r.upgrades.length;
+    totalPinned += r.pinned;
     totalUnchanged += r.unchanged;
     totalSkipped += r.skipped;
     totalErrors += r.errors;
@@ -396,6 +447,7 @@ export async function upgrade(argv: {
   parts.push(
     `${totalUpgrades} upgraded${argv.dryRun && totalUpgrades > 0 ? log.dim(" (dry-run)") : ""}`,
   );
+  if (totalPinned > 0) parts.push(`${totalPinned} newly pinned`);
   if (totalUnchanged > 0) parts.push(log.dim(`${totalUnchanged} already current`));
   if (totalSkipped > 0) parts.push(log.dim(`${totalSkipped} skipped`));
   if (totalErrors > 0) parts.push(log.error(`${totalErrors} error${totalErrors !== 1 ? "s" : ""}`));

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import nock from "nock";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  parseModuleRef,
+  parseUpgradeRef,
   pickLatest,
   upgradeManifest,
   upgradeOne,
@@ -15,12 +15,12 @@ const REGISTRY = "https://registry.example.test";
 const log = createLogger(false);
 
 // ---------------------------------------------------------------------------
-// parseModuleRef — pure
+// parseUpgradeRef — pure
 // ---------------------------------------------------------------------------
 
-describe("parseModuleRef", () => {
+describe("parseUpgradeRef", () => {
   it("parses a well-formed registry ref", () => {
-    expect(parseModuleRef("std/run@1.2.3")).toEqual({
+    expect(parseUpgradeRef("std/run@1.2.3")).toEqual({
       namespace: "std",
       name: "run",
       version: "1.2.3",
@@ -29,13 +29,13 @@ describe("parseModuleRef", () => {
   });
 
   it("normalizes a v-prefixed version via semver.valid", () => {
-    const parsed = parseModuleRef("std/run@v1.2.3");
+    const parsed = parseUpgradeRef("std/run@v1.2.3");
     expect(parsed?.version).toBe("1.2.3");
     expect(parsed?.rawVersion).toBe("v1.2.3");
   });
 
   it("returns version: null when the version segment is not valid semver", () => {
-    const parsed = parseModuleRef("std/run@not-a-version");
+    const parsed = parseUpgradeRef("std/run@not-a-version");
     expect(parsed).not.toBeNull();
     expect(parsed?.version).toBeNull();
     // rawVersion is preserved so the diagnostic can quote what the user wrote.
@@ -43,28 +43,28 @@ describe("parseModuleRef", () => {
   });
 
   it("rejects relative paths", () => {
-    expect(parseModuleRef("../sibling")).toBeNull();
-    expect(parseModuleRef("./sub")).toBeNull();
+    expect(parseUpgradeRef("../sibling")).toBeNull();
+    expect(parseUpgradeRef("./sub")).toBeNull();
   });
 
   it("rejects HTTP(S) URLs", () => {
-    expect(parseModuleRef("https://example.com/x@1.0.0")).toBeNull();
+    expect(parseUpgradeRef("https://example.com/x@1.0.0")).toBeNull();
   });
 
   it("rejects refs with no namespace separator", () => {
-    expect(parseModuleRef("standalone@1.0.0")).toBeNull();
+    expect(parseUpgradeRef("standalone@1.0.0")).toBeNull();
   });
 
   it("rejects refs with a missing version segment", () => {
-    expect(parseModuleRef("std/run@")).toBeNull();
-    expect(parseModuleRef("std/run")).toBeNull();
+    expect(parseUpgradeRef("std/run@")).toBeNull();
+    expect(parseUpgradeRef("std/run")).toBeNull();
   });
 
   it("rejects multi-slash names (registry refs have exactly one `/`)", () => {
     // Without this guard the registry GET would land on `/std/foo/bar` and
     // surface as "no published versions" instead of being skipped as
     // non-registry.
-    expect(parseModuleRef("std/foo/bar@1.0.0")).toBeNull();
+    expect(parseUpgradeRef("std/foo/bar@1.0.0")).toBeNull();
   });
 });
 
@@ -126,6 +126,10 @@ function mockVersions(namespace: string, name: string, versions: string[]) {
     });
 }
 
+function mockManifest(namespace: string, name: string, version: string, body = "kind: Telo.Library\n") {
+  return nock(REGISTRY).get(`/${namespace}/${name}/${version}/telo.yaml`).reply(200, body);
+}
+
 beforeAll(() => {
   nock.disableNetConnect();
 });
@@ -139,8 +143,8 @@ afterEach(() => {
 });
 
 describe("upgradeManifest — registry interactions (in-memory)", () => {
-  it("leaves an already-current pin untouched and returns the original content byte-for-byte", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7" }]);
+  it("leaves an already-current, already-pinned import untouched (byte-for-byte, no manifest fetch)", async () => {
+    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7#sha256-EXISTING" }]);
     mockVersions("std", "run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
@@ -152,7 +156,44 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
 
     expect(result.upgrades).toEqual([]);
     expect(result.unchanged).toBe(1);
+    expect(result.pinned).toBe(0);
     expect(result.errors).toBe(0);
+    expect(content).toBe(input);
+  });
+
+  it("pins an already-current unpinned import in place (no version change)", async () => {
+    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7" }]);
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockManifest("std", "run", "0.2.7");
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      registryUrl: REGISTRY,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([]);
+    expect(result.pinned).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(content).toMatch(/Run: std\/run@0\.2\.7#sha256-[A-Za-z0-9_-]+/);
+  });
+
+  it("leaves an already-current import unpinned when the manifest fetch fails (best-effort)", async () => {
+    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7" }]);
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    // telo.yaml endpoint intentionally not mocked → hash fetch fails.
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      registryUrl: REGISTRY,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([]);
+    expect(result.pinned).toBe(0);
+    expect(result.unchanged).toBe(1);
     expect(content).toBe(input);
   });
 

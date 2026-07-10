@@ -15,6 +15,11 @@ export interface ImportSourceRef {
   alias: string;
   /** Current source string value. */
   source: string;
+  /** Object-form `integrity:` sibling value, when present. The scalar form
+   *  carries integrity inside `source` (a `#sha256-...` fragment) instead, so
+   *  this is only set for the object form. A caller pinning imports must treat
+   *  either representation as an existing author pin. */
+  integrity?: string;
   /** The YAML Scalar node holding the source value — carries `.range`, used
    *  for byte-level splices that preserve quote style and unrelated bytes. */
   node: unknown;
@@ -43,9 +48,15 @@ export function importSourceRefs(moduleDoc: Document): ImportSourceRef[] {
     } else if (isMap(value)) {
       const sourceNode = value.get("source", true);
       if (isScalar(sourceNode) && typeof sourceNode.value === "string") {
+        const integrityNode = value.get("integrity", true);
+        const integrity =
+          isScalar(integrityNode) && typeof integrityNode.value === "string"
+            ? integrityNode.value
+            : undefined;
         out.push({
           alias,
           source: sourceNode.value,
+          integrity,
           node: sourceNode,
           path: ["imports", alias, "source"],
         });

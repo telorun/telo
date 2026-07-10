@@ -227,6 +227,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           additionalProperties: true,
         },
         source: { type: "string" },
+        integrity: { type: "string" },
         variables: { type: "object" },
         secrets: { type: "object" },
         runtime: {
@@ -361,6 +362,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
+        // Integrity hash of the decompressed payload tar (`module.tar.gz`,
+        // telo.yaml excluded), written by `telo publish`. Pinned transitively
+        // by the importer's `#sha256-...` hash over this telo.yaml; verified at
+        // extract time. See plans/federated-registries.md.
+        filesIntegrity: { type: "string" },
         // Inline imports — name-keyed map sugar for separate `Telo.Import`
         // documents. The key is the PascalCase alias (the import's
         // `metadata.name`). Each value is either a bare source string
@@ -378,6 +384,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 required: ["source"],
                 properties: {
                   source: { type: "string" },
+                  integrity: { type: "string" },
                   variables: { type: "object" },
                   secrets: { type: "object" },
                   runtime: {
@@ -492,6 +499,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
+        // Integrity hash of the decompressed payload tar (`module.tar.gz`,
+        // telo.yaml excluded), written by `telo publish`. Pinned transitively
+        // by the importer's `#sha256-...` hash over this telo.yaml; verified at
+        // extract time. See plans/federated-registries.md.
+        filesIntegrity: { type: "string" },
         // Inline imports — same name-keyed map sugar as Telo.Application; the
         // loader desugars each entry into a synthetic Telo.Import. See the
         // Application schema above and analyzer/nodejs/src/inline-imports.ts.
@@ -505,6 +517,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 required: ["source"],
                 properties: {
                   source: { type: "string" },
+                  integrity: { type: "string" },
                   variables: { type: "object" },
                   secrets: { type: "object" },
                   runtime: {
