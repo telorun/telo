@@ -1,5 +1,11 @@
 # @telorun/runner-core
 
+## 0.8.0
+
+### Minor Changes
+
+- 73ed5ba: Predefined app sessions get their own creation door: `POST /v1/apps/:name/sessions` (`{ env?, ports?, inspect? }`; `404 unknown_app`; same terms gate) replaces the `app` field on `POST /v1/sessions`, whose body schema is strict again (`bundle` + `config` required). Created sessions live in the shared `/v1/sessions` collection (status / DELETE / events / io unchanged)
+
 ## 0.7.0
 
 ### Minor Changes

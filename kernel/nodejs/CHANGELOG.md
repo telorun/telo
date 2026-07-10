@@ -1,5 +1,43 @@
 # @telorun/kernel
 
+## 0.42.0
+
+### Minor Changes
+
+- 2ff9027: Add inline module integrity — remote imports may carry a `#sha256-<base64url>`
+  fragment (or an `integrity:` sibling on the object form) that pins the fetched
+  `telo.yaml` bytes. Every source `read()` (registry, HTTP, and the kernel's
+  on-disk manifest cache) hashes the fetched bytes and fails the load on a
+  mismatch — a terminal error, never a self-healing cache miss. A canonical
+  `parseModuleRef`/`splitIntegrity` in the analyzer strips the fragment at every
+  path-building site so it never pollutes fetch URLs or cache paths.
+
+  Bundle modules (`files:` → `module.tar.gz`) pin their payload with a
+  `filesIntegrity` field on the manifest — a canonical per-file content digest
+  that `telo publish` writes and `extract` verifies before unpacking. Because the
+  importer's hash covers the manifest, the payload is pinned transitively.
+
+  `telo publish` pins each remote import to its dependency's hash (best-effort:
+  unresolvable imports are warned, not fatal; `--frozen` makes them hard errors).
+  `telo upgrade` re-pins on a version change and also pins already-current imports
+  in place (so a rarely-changing module whose version never moves still gets a
+  hash), both best-effort.
+
+### Patch Changes
+
+- b7d378a: Fix controller bundling still splitting a package's shared module when the
+  package is loaded from its TypeScript source (`src/*.ts`). The shared-module
+  externalization only kept `.js`/`.mjs`/`.cjs` siblings loose and inlined `.ts`
+  ones — but published modules are loaded from `src/*.ts` under Bun, so a shared
+  `.ts` module (e.g. record-stream's `journal-store`) was inlined per controller,
+  giving each its own class copy. `instanceof` across the package's controllers
+  then failed, surfacing at runtime as `RecordStream: invalid journal reference`.
+  TypeScript extensions are now externalized like JS: the loose file is loaded by
+  the same (TS-aware) runtime as the bundle, so a `.ts` sibling resolves and keeps
+  one identity across the package's controllers.
+- Updated dependencies [2ff9027]
+  - @telorun/analyzer@0.32.0
+
 ## 0.41.0
 
 ### Patch Changes

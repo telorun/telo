@@ -1,6 +1,6 @@
 {
   "name": "@telorun/analyzer",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Telo Analyzer - Static manifest validator for Telo manifests.",
   "keywords": [
     "telo",
