@@ -30,8 +30,8 @@ export interface RunnerCapabilities {
    *  matching `terms.version`. The editor surfaces it and records acceptance. */
   terms?: RunnerTerms;
   /** Operator-predefined applications this runner can launch by name
-   *  (`StartSessionRequest.app`). Absent/empty when none are offered — clients
-   *  hide the corresponding entry points. */
+   *  (`POST /v1/apps/:name/sessions`). Absent/empty when none are offered —
+   *  clients hide the corresponding entry points. */
   apps?: RunnerAppDescriptor[];
 }
 
@@ -59,7 +59,7 @@ export interface RunnerFeatures {
  *  secrets. Which apps exist is pure operator configuration (`RUNNER_APPS`);
  *  the runner has no built-in knowledge of any specific app. */
 export interface RunnerAppDescriptor {
-  /** Wire id requested via `StartSessionRequest.app`. */
+  /** Wire id: an app session is created via `POST /v1/apps/<name>/sessions`. */
   name: string;
   title?: string;
   description?: string;
@@ -119,17 +119,10 @@ export interface RunnerEndpoint {
 }
 
 export interface StartSessionRequest {
-  /** Launch an operator-predefined application by name (see
-   *  {@link RunnerAppDescriptor}) instead of a client bundle. The runner
-   *  resolves the image and injects the app's operator env server-side;
-   *  `bundle` and `config.image` are ignored. */
-  app?: string;
-  /** Required unless `app` is set. */
-  bundle?: RunBundle;
+  bundle: RunBundle;
   env: Record<string, string>;
   ports?: PortMapping[];
-  /** Required unless `app` is set. */
-  config?: SessionConfig;
+  config: SessionConfig;
   /** Request the kernel debug stream. When true the runner launches the
    *  workload with `--inspect`, subscribes to the in-workload inspect endpoint
    *  (reachable only by the runner — never published outward), and relays each

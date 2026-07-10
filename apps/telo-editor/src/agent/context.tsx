@@ -47,6 +47,10 @@ interface AgentContextValue {
   registerWorkspace: (bridge: WorkspaceBridge | null) => void;
   /** The active runner's base URL, used to launch a per-session agent. */
   setRunner: (baseUrl: string | null) => void;
+  /** The runner's terms version the user has accepted (null when the runner
+   *  has no terms or they aren't accepted yet) — sent on the agent launch so
+   *  a terms-enforcing runner doesn't 428 it. */
+  setRunnerAcceptedTerms: (version: string | null) => void;
 }
 
 /** Recover a tool result's structured fields from its `content`. Tool outputs
@@ -118,6 +122,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const overrideRef = useRef(overrideUrl);
   overrideRef.current = overrideUrl;
   const runnerBaseRef = useRef<string | null>(null);
+  const runnerTermsRef = useRef<string | null>(null);
   const launchedRef = useRef<LaunchedAgent | null>(null);
   const historyRef = useRef<AgentHistoryRow[]>([]);
   historyRef.current = history;
@@ -157,7 +162,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       throw new Error("No runner selected — pick a runner in settings, or set a dev agent URL.");
     }
     setStatus("launching");
-    const launched = await launchAgentSession(runnerBaseRef.current);
+    const launched = await launchAgentSession(runnerBaseRef.current, runnerTermsRef.current);
     launchedRef.current = launched;
     agentUrlRef.current = launched.agentUrl;
   }, []);
@@ -195,6 +200,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, []);
   const setRunner = useCallback((base: string | null) => {
     runnerBaseRef.current = base;
+  }, []);
+  const setRunnerAcceptedTerms = useCallback((version: string | null) => {
+    runnerTermsRef.current = version;
   }, []);
 
   const updateAssistant = useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
@@ -574,6 +582,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setConversation,
     registerWorkspace,
     setRunner,
+    setRunnerAcceptedTerms,
   };
 
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;

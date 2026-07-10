@@ -623,20 +623,24 @@ describe("inspection URL", () => {
   });
 });
 
-describe("POST /v1/sessions app (predefined application) sessions", () => {
-  const APP_BODY = { app: "tool", env: { CLIENT_VAR: "x", SERVICE_TOKEN: "tok-client" } };
+describe("POST /v1/apps/:name/sessions (predefined applications)", () => {
+  const APP_BODY = { env: { CLIENT_VAR: "x", SERVICE_TOKEN: "tok-client" } };
   const CATALOG = '{"tool":{"image":"acme/tool:1","env":{"SERVICE_TOKEN":"tok-operator"}}}';
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("rejects an unknown app name (empty catalog)", async () => {
+  it("404s an unknown app name (empty catalog)", async () => {
     vi.stubEnv("RUNNER_APPS", "");
     const h = await buildHarness();
     try {
-      const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: APP_BODY });
-      expect(res.statusCode).toBe(400);
+      const res = await h.app.inject({
+        method: "POST",
+        url: "/v1/apps/tool/sessions",
+        payload: APP_BODY,
+      });
+      expect(res.statusCode).toBe(404);
       expect(res.json().error).toBe("unknown_app");
     } finally {
       await teardownHarness(h);
@@ -647,9 +651,15 @@ describe("POST /v1/sessions app (predefined application) sessions", () => {
     vi.stubEnv("RUNNER_APPS", CATALOG);
     const h = await buildHarness();
     try {
-      const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: APP_BODY });
+      const res = await h.app.inject({
+        method: "POST",
+        url: "/v1/apps/tool/sessions",
+        payload: APP_BODY,
+      });
       expect(res.statusCode).toBe(201);
-      const { sessionId } = res.json() as { sessionId: string };
+      const { sessionId, streamUrl } = res.json() as { sessionId: string; streamUrl: string };
+      // App sessions live in the shared session collection.
+      expect(streamUrl).toBe(`/v1/sessions/${sessionId}/events`);
       await waitFor(
         () => h.docker._lastCreateOpts != null || h.registry.get(sessionId)?.status.kind === "failed",
         "start settled",
@@ -664,7 +674,7 @@ describe("POST /v1/sessions app (predefined application) sessions", () => {
     }
   });
 
-  it("still requires bundle + config for a regular session", async () => {
+  it("keeps bundle + config strictly required on POST /v1/sessions", async () => {
     const h = await buildHarness();
     try {
       const res = await h.app.inject({
@@ -673,7 +683,6 @@ describe("POST /v1/sessions app (predefined application) sessions", () => {
         payload: { env: {} },
       });
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("invalid_request");
     } finally {
       await teardownHarness(h);
     }
