@@ -53,6 +53,15 @@ export type { DocumentPosition } from "./position-metadata.js";
 export { HttpSource } from "./sources/http-source.js";
 export { RegistrySource } from "./sources/registry-source.js";
 export { defaultSources } from "./sources/default-sources.js";
+export {
+  splitIntegrity,
+  foldIntegrity,
+  verifyIntegrity,
+  verifiedFetch,
+  sha256Base64Url,
+} from "./sources/integrity.js";
+export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
+export type { ParsedModuleRef } from "./sources/module-ref.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";
 export type {

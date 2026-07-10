@@ -1,4 +1,5 @@
 import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "../types.js";
+import { splitIntegrity, verifiedFetch } from "./integrity.js";
 
 export class HttpSource implements ManifestSource {
   supports(url: string): boolean {
@@ -6,14 +7,10 @@ export class HttpSource implements ManifestSource {
   }
 
   async read(url: string): Promise<{ text: string; source: string }> {
-    const fetchUrl = url.includes(".yaml") ? url : `${url}/${DEFAULT_MANIFEST_FILENAME}`;
-    const response = await fetch(fetchUrl);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch manifest from ${fetchUrl}: ${response.status} ${response.statusText}`,
-      );
-    }
-    return { text: await response.text(), source: fetchUrl };
+    const { base, integrity } = splitIntegrity(url);
+    const fetchUrl = base.includes(".yaml") ? base : `${base}/${DEFAULT_MANIFEST_FILENAME}`;
+    const { text } = await verifiedFetch(fetchUrl, integrity, fetchUrl);
+    return { text, source: fetchUrl };
   }
 
   resolveRelative(base: string, relative: string): string {

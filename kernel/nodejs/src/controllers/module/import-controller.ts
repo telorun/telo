@@ -1,4 +1,4 @@
-import { AnalysisRegistry, DiagnosticSeverity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DiagnosticSeverity, foldIntegrity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
@@ -11,7 +11,11 @@ export async function create(
 ): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
 
-  const moduleSource: string = resource.module ?? resource.source;
+  const rawSource: string = resource.module ?? resource.source;
+  // A directly-authored Telo.Import may carry integrity as a sibling field;
+  // fold it into the ref as a `#sha256-...` fragment (the desugared inline
+  // imports already inline it) so the source chain verifies the fetched bytes.
+  const moduleSource: string = foldIntegrity(rawSource, resource.integrity);
 
   // Resolve relative source paths against the manifest's OWN file URL (stamped onto
   // `metadata.source` by the loader), not the parent module context's source. When a
@@ -334,6 +338,7 @@ export const schema = {
       additionalProperties: true,
     },
     source: { type: "string" },
+    integrity: { type: "string" },
     variables: { type: "object" },
     secrets: { type: "object" },
     runtime: {

@@ -3,6 +3,7 @@ import type { LoadedModule, LoadedGraph } from "@telorun/analyzer";
 import { existsSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { computeFilesIntegrity } from "./files-integrity.js";
 import { readTarGz } from "./tar.js";
 
 const MANIFEST_FILENAME = "telo.yaml";
@@ -21,6 +22,16 @@ function declaresFiles(module: LoadedModule): boolean {
     (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
   ) as { files?: unknown } | undefined;
   return Array.isArray(doc?.files) && doc.files.length > 0;
+}
+
+/** The `filesIntegrity` hash declared on the module's owner doc, if any. It
+ *  pins the decompressed payload tar; `telo.yaml` itself is already pinned by
+ *  the importer's `#sha256-...` hash. */
+function filesIntegrityOf(module: LoadedModule): string | undefined {
+  const doc = module.owner.manifests.find(
+    (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
+  ) as { filesIntegrity?: unknown } | undefined;
+  return typeof doc?.filesIntegrity === "string" ? doc.filesIntegrity : undefined;
 }
 
 /** A module fetched from the registry / an HTTP URL — its assets live in a
@@ -112,6 +123,28 @@ export async function extractModuleBundles(
     } catch (err) {
       onWarn(`could not unpack bundle ${url}: ${err instanceof Error ? err.message : String(err)}`);
       continue;
+    }
+
+    // Verify the payload against the manifest's `filesIntegrity` before writing
+    // anything to disk. A mismatch is a terminal error (not the best-effort
+    // onWarn path above) — a tampered bundle must never be extracted. The digest
+    // is recomputed from the file contents (framing-independent); the manifest
+    // that carries it is itself pinned by the importer's `#sha256-...` hash.
+    const integrity = filesIntegrityOf(module);
+    if (integrity) {
+      const actual = await computeFilesIntegrity(
+        entries.map((e) => ({
+          name: e.name,
+          content: typeof e.content === "string" ? Buffer.from(e.content) : e.content,
+        })),
+      );
+      if (actual !== integrity) {
+        throw new Error(
+          `Integrity check failed for bundle ${url}: filesIntegrity expected ${integrity}, ` +
+            `got ${actual}. The payload does not match the recorded hash — the module may ` +
+            `have been tampered with or republished.`,
+        );
+      }
     }
 
     const realModuleDir = path.resolve(moduleDir) + path.sep;

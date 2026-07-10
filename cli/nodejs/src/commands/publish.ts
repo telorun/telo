@@ -2,12 +2,14 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
+import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
 import { LocalFileSource } from "@telorun/kernel";
+import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { selectFiles } from "../bundle/select-files.js";
+import { computeFilesIntegrity } from "../bundle/files-integrity.js";
 import { makeTarGz } from "../bundle/tar.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
@@ -171,6 +173,16 @@ export function readFilesPatterns(content: string): string[] {
   return first.files.filter((p: unknown): p is string => typeof p === "string");
 }
 
+/** Write `filesIntegrity` onto the module doc so the published `telo.yaml`
+ *  pins its payload — transitively covered by importers' `#sha256-...` hash. */
+function injectFilesIntegrity(content: string, hash: string): string {
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const moduleDoc = findModuleDoc(docs);
+  if (!moduleDoc) return content;
+  moduleDoc.set("filesIntegrity", hash);
+  return docs.map((d) => d.toString()).join("---\n");
+}
+
 // ---------------------------------------------------------------------------
 // Relative import canonicalization — turn an `imports:` entry's relative
 // `../sibling` source into `<namespace>/<name>@<version>` so the published
@@ -221,6 +233,60 @@ export async function canonicalizeRelativeImports(
 
   if (!changed) return content;
   return docs.map((d) => d.toString()).join("---\n");
+}
+
+// ---------------------------------------------------------------------------
+// Import integrity pinning — rewrite each remote `imports:` ref to carry a
+// `#sha256-...` hash of the dependency's published telo.yaml, so an importer's
+// hash over THIS manifest transitively pins its dependencies (Merkle chain).
+//
+// Best-effort by default: an import that cannot be resolved (dependency not
+// published yet, network error) is warned and left unpinned — publish is never
+// blocked. `frozen` flips that to a hard error. An import the author already
+// pinned is left untouched. Relative/path imports are exempt (not fetched).
+// ---------------------------------------------------------------------------
+
+export async function pinImports(
+  content: string,
+  registry: string,
+  frozen: boolean,
+  log: Logger,
+): Promise<{ content: string; pinned: number; unresolved: string[] }> {
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const moduleDoc = findModuleDoc(docs);
+  const unresolved: string[] = [];
+  let pinned = 0;
+  if (!moduleDoc) return { content, pinned, unresolved };
+
+  for (const importRef of importSourceRefs(moduleDoc)) {
+    const source = importRef.source;
+    if (source.startsWith(".") || source.startsWith("/")) continue; // local, exempt
+    // Author already pinned — via a `#sha256-...` fragment on the source, or an
+    // object-form `integrity:` sibling. Never overwrite an explicit pin.
+    if (splitIntegrity(source).integrity || importRef.integrity) continue;
+
+    let hash: string;
+    try {
+      hash = await fetchManifestHash(registry, source);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (frozen) {
+        throw new Error(`--frozen: could not pin import '${source}': ${message}`);
+      }
+      unresolved.push(source);
+      stepWarn(log, "pin", `${source} — left unpinned (${message})`);
+      continue;
+    }
+
+    moduleDoc.setIn(importRef.path, `${source}#${hash}`);
+    pinned++;
+  }
+
+  return {
+    content: pinned > 0 ? docs.map((d) => d.toString()).join("---\n") : content,
+    pinned,
+    unresolved,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +423,7 @@ async function publishOne(
   bump: BumpLevel | undefined,
   dryRun: boolean,
   skipControllers: boolean,
+  frozen: boolean,
   log: Logger,
 ): Promise<boolean> {
   let content: string;
@@ -523,6 +590,24 @@ async function publishOne(
     return false;
   }
 
+  // Pin each remote import to its dependency's telo.yaml hash. Best-effort:
+  // unresolved imports are warned and left unpinned unless --frozen. Runs after
+  // canonicalization so relative siblings are already registry refs.
+  if (!dryRun) {
+    try {
+      const result = await pinImports(content, registry, frozen, log);
+      content = result.content;
+      if (result.pinned > 0 || result.unresolved.length > 0) {
+        stepOk(log, "pin", `${result.pinned} import(s) pinned, ${result.unresolved.length} unresolved`);
+      }
+    } catch (err) {
+      console.error(
+        log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
   // Expand include globs and inline partial file contents before pushing
   content = expandAndInlineIncludes(content, manifestDir);
 
@@ -548,13 +633,14 @@ async function publishOne(
 
   let push: { body: string | Buffer; contentType: string; urlSuffix: string } | undefined;
   if (bundledFiles.length > 0) {
-    const tarGz = await makeTarGz([
-      { name: "telo.yaml", content },
-      ...bundledFiles.map((rel) => ({
-        name: rel,
-        content: fs.readFileSync(path.resolve(manifestDir, rel)),
-      })),
-    ]);
+    const payload = bundledFiles.map((rel) => ({
+      name: rel,
+      content: fs.readFileSync(path.resolve(manifestDir, rel)),
+    }));
+    // Pin the payload in the manifest before it enters the tarball. The digest
+    // excludes telo.yaml, so injecting it does not change the digest.
+    content = injectFilesIntegrity(content, await computeFilesIntegrity(payload));
+    const tarGz = await makeTarGz([{ name: "telo.yaml", content }, ...payload]);
     stepOk(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml`);
     push = { body: tarGz, contentType: "application/gzip", urlSuffix: "/module.tar.gz" };
   }
@@ -576,6 +662,7 @@ export async function publish(argv: {
   bump?: BumpLevel;
   dryRun: boolean;
   skipControllers: boolean;
+  frozen: boolean;
 }): Promise<void> {
   if (argv.bump && argv.skipControllers) {
     console.error("error: --bump and --skip-controllers are mutually exclusive");
@@ -594,6 +681,7 @@ export async function publish(argv: {
       argv.bump,
       argv.dryRun,
       argv.skipControllers,
+      argv.frozen,
       log,
     );
     if (!ok) failed = true;
@@ -634,6 +722,12 @@ export function publishCommand(yargs: Argv): Argv {
           default: false,
           describe:
             "Skip controller build/publish/PURL rewrite; only run static analysis and push the manifest to the Telo registry",
+        })
+        .option("frozen", {
+          type: "boolean",
+          default: false,
+          describe:
+            "Fail if any remote import cannot be pinned to its dependency's integrity hash (default: best-effort — warn and continue)",
         }),
     async (argv) => {
       await publish(argv as any);
