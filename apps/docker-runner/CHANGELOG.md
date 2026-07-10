@@ -1,5 +1,21 @@
 # @telorun/docker-runner
 
+## 0.8.0
+
+### Minor Changes
+
+- 721a241: Load `.env` / `.env.local` (dotenv-flow) from the runner package directory at
+  startup, so operator secrets like `OPENAI_API_KEY` (injected into app sessions
+  from the `RUNNER_APPS` catalog) can live in a file instead of being threaded
+  through the container's environment. Existing environment variables always take
+  precedence over file values.
+- 721a241: Operator-predefined app catalog: runners advertise launchable applications on `/v1/capabilities` (`apps`) and `POST /v1/sessions` accepts `app: <name>` instead of a bundle — the runner resolves the image and injects the app's operator env server-side, all from the `RUNNER_APPS` JSON config (no app is built in; runners know nothing about any specific application). Replaces the `TELO_SELF_CONTAINED` sentinel; k8s-runner runs app sessions as direct pods (no image build) under separate `RUNNER_APP_MAX_*` ceilings
+
+### Patch Changes
+
+- Updated dependencies [721a241]
+  - @telorun/runner-core@0.7.0
+
 ## 0.7.0
 
 ### Minor Changes
