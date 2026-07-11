@@ -156,12 +156,14 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     const owner = fs.readFileSync(consumerManifestPath, "utf-8");
     const localFileSource = new LocalFileSource();
     const loader = new Loader([localFileSource, ...defaultSources()]);
-    const out = await canonicalizeRelativeImports(
+    const { content: out, refs } = await canonicalizeRelativeImports(
       owner,
       consumerManifestPath,
+      "https://registry.telo.run",
       loader,
       localFileSource,
     );
+    expect(refs).toEqual(["test/somelib@2.5.1"]);
 
     // Re-parse and verify:
     //   1. Tagged values in `Some.Resource` survived the setIn mutation.
@@ -208,7 +210,13 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     const localFileSource = new LocalFileSource();
     const loader = new Loader([localFileSource, ...defaultSources()]);
     void pathToFileURL(manifestPath);
-    const out = await canonicalizeRelativeImports(text, manifestPath, loader, localFileSource);
+    const { content: out } = await canonicalizeRelativeImports(
+      text,
+      manifestPath,
+      "https://registry.telo.run",
+      loader,
+      localFileSource,
+    );
     // No imports → no mutation → returned content is identical.
     expect(out).toBe(text);
   });

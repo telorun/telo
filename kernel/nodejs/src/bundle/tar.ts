@@ -2,17 +2,29 @@ import { extract as tarExtract, pack as tarPack } from "tar-stream";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { Readable } from "node:stream";
 
+import type { PayloadFile } from "./files-integrity.js";
+
 export interface BundleEntry {
   /** POSIX-relative path inside the archive (e.g. `telo.yaml`, `public/app.js`). */
   name: string;
   content: Buffer | string;
 }
 
+/** Normalize decoded tar entries to `PayloadFile`s (Buffer-backed content) —
+ *  the fixed step both transports run after `readTarGz`. */
+export function toPayloadFiles(entries: BundleEntry[]): PayloadFile[] {
+  return entries.map((e) => ({
+    name: e.name,
+    content: typeof e.content === "string" ? Buffer.from(e.content) : e.content,
+  }));
+}
+
 /**
- * Pack `entries` into a gzipped tar (`module.tar.gz`). The CLI's own writer —
- * deliberately not the runner's `apps/k8s-runner/src/tar.ts`, which is coupled
- * to `@telorun/runner-core`'s `RunBundle`. Artifacts are small (a manifest plus
- * a built frontend), so buffering the whole archive before gzip is fine.
+ * Pack `entries` into a gzipped tar (`module.tar.gz`) — the module-artifact
+ * writer shared by `telo publish` and the transports. Artifacts are small (a
+ * manifest plus a built frontend), so buffering the whole archive before gzip
+ * is fine. (Distinct from `apps/k8s-runner/src/tar.ts`, which is coupled to
+ * `@telorun/runner-core`'s `RunBundle`.)
  */
 export async function makeTarGz(entries: BundleEntry[]): Promise<Buffer> {
   const pack = tarPack();

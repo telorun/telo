@@ -3,14 +3,12 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
-import { LocalFileSource } from "@telorun/kernel";
+import { LocalFileSource, defaultTransportRegistry } from "@telorun/kernel";
 import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { selectFiles } from "../bundle/select-files.js";
-import { computeFilesIntegrity } from "../bundle/files-integrity.js";
-import { makeTarGz } from "../bundle/tar.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
@@ -173,36 +171,36 @@ export function readFilesPatterns(content: string): string[] {
   return first.files.filter((p: unknown): p is string => typeof p === "string");
 }
 
-/** Write `filesIntegrity` onto the module doc so the published `telo.yaml`
- *  pins its payload — transitively covered by importers' `#sha256-...` hash. */
-function injectFilesIntegrity(content: string, hash: string): string {
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const moduleDoc = findModuleDoc(docs);
-  if (!moduleDoc) return content;
-  moduleDoc.set("filesIntegrity", hash);
-  return docs.map((d) => d.toString()).join("---\n");
-}
-
 // ---------------------------------------------------------------------------
 // Relative import canonicalization — turn an `imports:` entry's relative
-// `../sibling` source into `<namespace>/<name>@<version>` so the published
-// manifest is self-contained. A relative path is only meaningful on the
-// publisher's disk; once the artifact is in the registry, `..` collapses the
-// version segment of the registry URL and breaks resolution for downstream
-// consumers.
+// `../sibling` source into an absolute ref so the published manifest is
+// self-contained. A relative path is only meaningful on the publisher's disk;
+// a published artifact (an OCI blob, or a registry version URL) cannot resolve
+// `..`. The sibling's **location** comes from the publish destination (identity
+// is the ref) — for OCI via the destination transport's `resolveRelative`, for
+// an HTTP registry the path defaults to the sibling's `<namespace>/<name>`. The
+// **version** always comes from the sibling's own authoritative metadata.
 // ---------------------------------------------------------------------------
 
 export async function canonicalizeRelativeImports(
   content: string,
   manifestPath: string,
+  destination: string,
   loader: Loader,
   localFileSource: LocalFileSource,
-): Promise<string> {
+): Promise<{ content: string; refs: string[] }> {
   const baseUrl = pathToFileURL(manifestPath).href;
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
   const moduleDoc = findModuleDoc(docs);
-  if (!moduleDoc) return content;
-  let changed = false;
+  const refs: string[] = [];
+  if (!moduleDoc) return { content, refs };
+
+  // The destination's transport owns the scheme-specific "where does a sibling
+  // land" rule — publish never branches on transport shape.
+  const transport = defaultTransportRegistry().forRef(destination);
+  if (!transport) {
+    throw new Error(`no transport owns publish destination '${destination}'`);
+  }
 
   for (const importRef of importSourceRefs(moduleDoc)) {
     const source = importRef.source;
@@ -221,18 +219,19 @@ export async function canonicalizeRelativeImports(
       name?: string;
       version?: string;
     };
-    if (!namespace || !name || !version) {
+    if (!version) {
       throw new Error(
-        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.namespace/name/version, required for canonicalization.`,
+        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.version, required for canonicalization.`,
       );
     }
 
-    moduleDoc.setIn(importRef.path, `${namespace}/${name}@${version}`);
-    changed = true;
+    const ref = transport.canonicalizeSiblingRef(destination, source, { namespace, name, version });
+    moduleDoc.setIn(importRef.path, ref);
+    refs.push(ref);
   }
 
-  if (!changed) return content;
-  return docs.map((d) => d.toString()).join("---\n");
+  if (refs.length === 0) return { content, refs };
+  return { content: docs.map((d) => d.toString()).join("---\n"), refs };
 }
 
 // ---------------------------------------------------------------------------
@@ -290,108 +289,6 @@ export async function pinImports(
 }
 
 // ---------------------------------------------------------------------------
-// Telo registry push
-// ---------------------------------------------------------------------------
-
-const MAX_PUSH_ATTEMPTS = 4;
-const PUSH_BASE_DELAY_MS = 1000;
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 425 || status === 429 || status >= 500;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function pushToTeloRegistry(
-  content: string,
-  filePath: string,
-  registry: string,
-  log: Logger,
-  push: { body: string | Buffer; contentType: string; urlSuffix: string } = {
-    body: content,
-    contentType: "text/yaml",
-    urlSuffix: "",
-  },
-): Promise<{ ok: boolean; label: string; url: string }> {
-  const firstDoc =
-    content.split(/^---$/m)[0].trim() || content.split(/^---\n/m)[1]?.trim() || content;
-
-  const nsMatch = firstDoc.match(/^\s{2,4}namespace:\s*["']?([^\s"']+)["']?/m);
-  const nameMatch = firstDoc.match(/^\s{2,4}name:\s*["']?([^\s"']+)["']?/m);
-  const versionMatch = firstDoc.match(/^\s{2,4}version:\s*["']?([^\s"']+)["']?/m);
-
-  const namespace = nsMatch?.[1];
-  const name = nameMatch?.[1];
-  const version = versionMatch?.[1];
-
-  if (!namespace || !name || !version) {
-    console.error(
-      log.error("error") +
-        `  ${filePath}: metadata must include namespace, name, and version.\n` +
-        `  Found: namespace=${namespace ?? "(missing)"}, name=${name ?? "(missing)"}, version=${version ?? "(missing)"}`,
-    );
-    return { ok: false, label: "", url: "" };
-  }
-
-  const base = `${registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
-  const url = `${base}${push.urlSuffix}`;
-  const label = `${namespace}/${name}@${version}`;
-
-  const headers: Record<string, string> = { "content-type": push.contentType };
-  const token = process.env.TELO_REGISTRY_TOKEN;
-  if (token) headers.authorization = `Bearer ${token}`;
-
-  let res: Response | null = null;
-  let networkErr: unknown = null;
-
-  for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
-    networkErr = null;
-    try {
-      res = await fetch(url, { method: "PUT", headers, body: push.body as BodyInit });
-    } catch (err) {
-      networkErr = err;
-      res = null;
-    }
-
-    const transient = networkErr != null || (res != null && isRetryableStatus(res.status));
-    if (!transient) break;
-    if (attempt === MAX_PUSH_ATTEMPTS) break;
-
-    const reason = networkErr
-      ? `network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`
-      : `HTTP ${res!.status}`;
-
-    // Drain the body so the underlying connection can be reused for the retry.
-    if (res) await res.text().catch(() => {});
-
-    const delay = PUSH_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
-    console.error(
-      `    ${"retry".padEnd(STEP_WIDTH)}${log.warn(reason)}  attempt ${attempt}/${MAX_PUSH_ATTEMPTS - 1}, waiting ${Math.round(delay / 100) / 10}s`,
-    );
-    await sleep(delay);
-  }
-
-  if (networkErr) {
-    console.error(
-      log.error("error") +
-        `  Network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)} (after ${MAX_PUSH_ATTEMPTS} attempts)`,
-    );
-    return { ok: false, label, url };
-  }
-
-  if (!res!.ok) {
-    const contentType = res!.headers.get("content-type") ?? "";
-    const body = contentType.includes("application/json") ? await res!.json() : await res!.text();
-    console.error(log.error("error") + `  Push failed (${res!.status}): ${JSON.stringify(body)}`);
-    return { ok: false, label, url };
-  }
-
-  return { ok: true, label, url };
-}
-
-// ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
@@ -419,6 +316,7 @@ function stepDry(log: Logger, label: string, detail: string) {
 
 async function publishOne(
   filePath: string,
+  destination: string,
   registry: string,
   bump: BumpLevel | undefined,
   dryRun: boolean,
@@ -576,18 +474,42 @@ async function publishOne(
   }
   stepOk(log, "check", "static analysis passed");
 
-  // Canonicalize relative `imports:` sources to `<namespace>/<name>@<version>`
-  // so the registry artifact is portable. Done after analysis so the dev's on-disk
-  // manifest (with relative paths) is what gets validated. Reuses the analysis
-  // loader so sibling-library reads are cache hits.
+  // Canonicalize relative `imports:` sources to an absolute ref (destination
+  // repo + sibling version) so the published artifact is portable. Done after
+  // analysis so the dev's on-disk manifest (with relative paths) is validated.
+  let canonicalizedRefs: string[] = [];
   try {
-    content = await canonicalizeRelativeImports(content, filePath, analysisLoader, localFileSource);
+    const canon = await canonicalizeRelativeImports(content, filePath, destination, analysisLoader, localFileSource);
+    content = canon.content;
+    canonicalizedRefs = canon.refs;
   } catch (err) {
     console.error(
       log.error("error") +
         `  Failed to canonicalize relative imports: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
+  }
+
+  // Strict: a published app does not publish its siblings, so every ref derived
+  // from a relative import must already resolve at its published location — a
+  // dangling one is a hard error (publish the sibling first, or earlier in this
+  // invocation). Skipped on --dry-run (nothing is published yet).
+  if (!dryRun) {
+    const transports = defaultTransportRegistry(registry);
+    for (const ref of canonicalizedRefs) {
+      try {
+        const transport = transports.forRef(ref);
+        if (!transport) throw new Error(`no transport owns '${ref}'`);
+        await transport.source.read(ref);
+      } catch (err) {
+        console.error(
+          log.error("error") +
+            `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
+            `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      }
+    }
   }
 
   // Pin each remote import to its dependency's telo.yaml hash. Best-effort:
@@ -631,25 +553,60 @@ async function publishOne(
     return true;
   }
 
-  let push: { body: string | Buffer; contentType: string; urlSuffix: string } | undefined;
+  const payload = bundledFiles.map((rel) => ({
+    name: rel,
+    content: fs.readFileSync(path.resolve(manifestDir, rel)),
+  }));
   if (bundledFiles.length > 0) {
-    const payload = bundledFiles.map((rel) => ({
-      name: rel,
-      content: fs.readFileSync(path.resolve(manifestDir, rel)),
-    }));
-    // Pin the payload in the manifest before it enters the tarball. The digest
-    // excludes telo.yaml, so injecting it does not change the digest.
-    content = injectFilesIntegrity(content, await computeFilesIntegrity(payload));
-    const tarGz = await makeTarGz([{ name: "telo.yaml", content }, ...payload]);
     stepOk(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml`);
-    push = { body: tarGz, contentType: "application/gzip", urlSuffix: "/module.tar.gz" };
   }
 
-  const { ok, label, url } = await pushToTeloRegistry(content, filePath, registry, log, push);
-  if (!ok) return false;
+  // The transport its scheme selects owns the artifact shape (HTTP: telo.yaml +
+  // module.tar.gz; OCI: one blob), payload pinning, and retry.
+  let result;
+  try {
+    result = await defaultTransportRegistry(registry).publish(
+      destination,
+      { manifest: content, files: payload },
+      {
+        token: process.env.TELO_REGISTRY_TOKEN,
+        onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>
+          console.error(
+            `    ${"retry".padEnd(STEP_WIDTH)}${log.warn(reason)}  attempt ${attempt}/${maxAttempts - 1}, ` +
+              `waiting ${Math.round(delayMs / 100) / 10}s`,
+          ),
+      },
+    );
+  } catch (err) {
+    console.error(log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
 
-  stepOk(log, "push", `${label} → ${url}`);
+  stepOk(log, "push", `${result.label} → ${result.url}`);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Destination-first positional — `telo publish <destination?> <paths…>`. The
+// destination's scheme selects the publish transport; when omitted, the default
+// registry is the destination. A leading positional is a destination only when
+// it carries a scheme or looks like a host, never when it is a real path.
+// ---------------------------------------------------------------------------
+
+function looksLikeDestination(arg: string): boolean {
+  if (arg.startsWith("oci://") || arg.startsWith("http://") || arg.startsWith("https://")) {
+    return true;
+  }
+  if (arg.startsWith(".") || arg.startsWith("/")) return false;
+  if (fs.existsSync(arg)) return false; // a real local file/dir wins
+  if (arg.endsWith(".yaml") || arg.endsWith(".yml")) return false;
+  // Host-like: the first path segment carries a dot (registry.telo.run, ghcr.io).
+  return arg.split("/")[0].includes(".");
+}
+
+/** A bare-host destination (no scheme) is an HTTP registry base. */
+function normalizeDestination(dest: string): string {
+  return dest.includes("://") ? dest : `https://${dest}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,14 +626,28 @@ export async function publish(argv: {
     process.exit(1);
   }
 
+  // The push destination is the default registry unless a leading positional
+  // names one. `registry` stays the default used to resolve/pin dependencies.
+  let paths = argv.paths;
+  let destination = argv.registry;
+  if (paths.length > 0 && looksLikeDestination(paths[0])) {
+    destination = normalizeDestination(paths[0]);
+    paths = paths.slice(1);
+  }
+  if (paths.length === 0) {
+    console.error("error: no manifest paths to publish");
+    process.exit(1);
+  }
+
   const log = createLogger(false);
   let failed = false;
-  for (const p of argv.paths) {
+  for (const p of paths) {
     const filePath = path.resolve(process.cwd(), p);
     const relPath = path.relative(process.cwd(), filePath);
-    console.log(`\nPublishing ${log.dim(relPath)}`);
+    console.log(`\nPublishing ${log.dim(relPath)}${log.dim(` → ${destination}`)}`);
     const ok = await publishOne(
       filePath,
+      destination,
       argv.registry,
       argv.bump,
       argv.dryRun,
@@ -693,11 +664,12 @@ export async function publish(argv: {
 export function publishCommand(yargs: Argv): Argv {
   return yargs.command(
     "publish <paths..>",
-    "Publish one or more module manifests to the Telo registry",
+    "Publish one or more module manifests to a registry (HTTP or OCI)",
     (y) =>
       y
         .positional("paths", {
-          describe: "Paths to telo.yaml files to publish",
+          describe:
+            "Optional leading destination (oci://host/repo, https://…, or a bare host) followed by paths to telo.yaml files to publish",
           type: "string",
           array: true,
           demandOption: true,
@@ -705,7 +677,7 @@ export function publishCommand(yargs: Argv): Argv {
         .option("registry", {
           type: "string",
           default: "https://registry.telo.run",
-          describe: "Registry base URL",
+          describe: "Default registry base URL for resolving/pinning dependencies",
         })
         .option("bump", {
           type: "string",

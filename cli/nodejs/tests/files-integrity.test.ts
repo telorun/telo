@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFilesIntegrity } from "../src/bundle/files-integrity.js";
+import { computeFilesIntegrity } from "@telorun/kernel";
 
 describe("computeFilesIntegrity", () => {
   it("is stable regardless of input order", async () => {

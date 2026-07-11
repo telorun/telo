@@ -21,7 +21,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readTarGz } from "../../../cli/nodejs/src/bundle/tar.js";
+import { readTarGz } from "@telorun/kernel";
 
 const REGISTRY = process.env.TELO_REGISTRY_URL ?? "http://registry.telo.localhost:8060";
 const NS = "std";
