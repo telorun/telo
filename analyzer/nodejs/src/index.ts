@@ -59,6 +59,7 @@ export {
   verifyIntegrity,
   verifiedFetch,
   sha256Base64Url,
+  IntegrityError,
 } from "./sources/integrity.js";
 export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
 export type { ParsedModuleRef } from "./sources/module-ref.js";

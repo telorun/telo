@@ -11,6 +11,17 @@
  *  only algorithm accepted today; the prefix leaves room to migrate. */
 const INTEGRITY_FRAGMENT = /#(sha256-[A-Za-z0-9_+/=-]+)$/;
 
+/** A failed integrity/tamper check — always terminal, never best-effort. A
+ *  distinct type so a caller doing best-effort network handling (e.g. the
+ *  bundle extractor warning-and-skipping on a fetch blip) can still let a
+ *  tamper error propagate rather than swallow it. */
+export class IntegrityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IntegrityError";
+  }
+}
+
 /** Split a trailing integrity fragment off a ref/URL. Returns the bare ref in
  *  `base` (safe to build fetch URLs and cache paths from) and the fragment in
  *  `integrity` (e.g. `sha256-<base64url>`), or `undefined` when absent. */
@@ -64,14 +75,14 @@ export async function verifyIntegrity(
   const algorithm = dash > 0 ? integrity.slice(0, dash) : "";
   const expected = dash > 0 ? integrity.slice(dash + 1) : "";
   if (algorithm !== "sha256") {
-    throw new Error(
+    throw new IntegrityError(
       `Unsupported integrity algorithm '${algorithm || integrity}' for ${describe}. ` +
         `Only sha256 is supported (sha256-<base64url>).`,
     );
   }
   const actual = await sha256Base64Url(bytes);
   if (actual !== normalizeDigest(expected)) {
-    throw new Error(
+    throw new IntegrityError(
       `Integrity check failed for ${describe}: expected sha256-${normalizeDigest(expected)}, ` +
         `got sha256-${actual}. The fetched bytes do not match the recorded hash — ` +
         `the module may have been tampered with or republished.`,

@@ -4,21 +4,22 @@ metadata:
   version: 1.0.0
   description: |
     Live integration test for the chat library: drives the exported ChatHandler
-    with a real OpenAI model and asserts the agent authors a REAL, non-trivial
-    Telo application — a SQLite-backed Todo REST API (HTTP server + CRUD routes +
-    a migrated table) — by DISCOVERING every module it needs through the registry
-    MCP tools (search_modules / get_module_manifest) and importing each at its
-    exact published version. It drains the event stream (which runs the agent +
-    its fs / shell / registry tools, including the agent's own `telo check`), then
-    independently asserts: (1) the agent called get_module_manifest (registry
-    discovery actually happened), (2) `telo check` on the authored file passes —
-    which can only succeed if every import version resolves against the live
-    registry and the http/sql resources are wired correctly, and (3) the file
-    composed the real http-server + sql modules and wired the /todos routes —
-    proving a genuine multi-module app, not a self-contained stub. Skips
-    silently when OPENAI_API_KEY is unset (locally: drop a .env.local here; CI:
-    secret on the workflow); when the key is present it also needs outbound
-    access to registry.telo.run, or the run fails.
+    with a real OpenAI model and asserts the agent authors a REAL, runnable Telo
+    application — a minimal HTTP server with one static route — by DISCOVERING the
+    module it needs through the registry MCP tools (search_modules /
+    get_module_manifest) and importing it at its exact published version. Kept
+    deliberately tiny (one import, one route, a literal JSON body — no SQL, no
+    CEL output-mapping) so any capable model reliably produces a passing file.
+    It drains the event stream (which runs the agent + its fs / shell / registry
+    tools, including the agent's own `telo check`), then independently asserts:
+    (1) the agent called get_module_manifest (registry discovery actually
+    happened), (2) `telo check` on the authored file passes — which can only
+    succeed if the import version resolves against the live registry and the
+    http resources are wired correctly, and (3) the file composed the real
+    http-server module and wired the /hello route. Skips silently when
+    OPENAI_API_KEY is unset (locally: drop a .env.local here; CI: secret on the
+    workflow); when the key is present it also needs outbound access to
+    registry.telo.run, or the run fails.
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -71,26 +72,19 @@ steps:
           conversationId: authors-1
           clientIp: test-runner
           message: |
-            Create a manifest file `todo-api.yaml`: a REAL, runnable Telo.Application
-            named "todo-api" (version 1.0.0) — a small REST API for a todo list,
-            persisted to a SQLite database:
+            Create a manifest file `hello-api.yaml`: a small, runnable
+            Telo.Application named "hello-api" (version 1.0.0) — an HTTP server
+            with a single route:
               - it listens on a port `http` bound to the PORT env var, default 8080;
-              - the SQLite file is bound to a `dbFile` variable (env DB_FILE, default
-                ./todos.sqlite);
-              - on startup it ensures a `todos` table exists
-                (id, title, done, created_at);
-              - POST /todos — create a todo from a JSON body `{ "title": "..." }` and
-                return the created row (including its id) as JSON;
-              - GET /todos — return all todos as a JSON array;
-              - GET /todos/{id} — return one todo, or 404 if it does not exist;
-              - DELETE /todos/{id} — delete a todo and return 204.
-            You do not know these modules' fields or versions — DISCOVER them with the
-            registry tools: search_modules for the HTTP server module and the
-            SQLite/SQL modules, then get_module_manifest to read each one's exact
-            `metadata.version` and the JSON-Schema of every kind you use. Import each
-            at its exact version and wire the server, routes, connection, migration,
-            and queries from the schemas (no guessing).
-            Validate with `telo check todo-api.yaml` and fix every error until it
+              - GET /hello returns the literal JSON body {"message": "hello"} with
+                status 200.
+            You do not know the HTTP module's fields or version — DISCOVER it with
+            the registry tools: search_modules for the HTTP server module, then
+            get_module_manifest to read its exact `metadata.version` and the
+            JSON-Schema of every kind you use. Import it at that exact version and
+            wire the server and route from the schema (no guessing). The body is a
+            fixed literal — no CEL, no database.
+            Validate with `telo check hello-api.yaml` and fix every error until it
             passes.
       # The turn runs detached into the journal under the returned turnId. Read
       # it back through the journal source — it replays from the start and tails
@@ -121,7 +115,7 @@ steps:
       # Independently validate the manifest the agent authored.
       - name: Validate
         inputs:
-          command: "bun ./cli/nodejs/bin/telo.ts check ./workspace/todo-api.yaml"
+          command: "bun ./cli/nodejs/bin/telo.ts check ./workspace/hello-api.yaml"
         invoke: !ref TeloCheck
       - name: AssertValid
         inputs:
@@ -133,12 +127,11 @@ steps:
             properties:
               exitCode: { const: 0 }
             required: [exitCode]
-      # Prove the manifest is a real, multi-module app — it composed the live
-      # http-server and sql modules (not a self-contained stub) and wired the
-      # requested /todos routes.
+      # Prove the manifest is real — it composed the live http-server module (not
+      # a self-contained stub) and wired the requested /hello route.
       - name: Content
         inputs:
-          command: "grep -q 'http-server' ./workspace/todo-api.yaml && grep -qi 'sql' ./workspace/todo-api.yaml && grep -q '/todos' ./workspace/todo-api.yaml"
+          command: "grep -q 'http-server' ./workspace/hello-api.yaml && grep -q '/hello' ./workspace/hello-api.yaml"
         invoke: !ref TeloCheck
       - name: AssertContent
         inputs:

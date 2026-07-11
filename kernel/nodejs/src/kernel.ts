@@ -1,7 +1,6 @@
 import {
   AnalysisRegistry,
   buildEvalPaths,
-  defaultSources,
   flattenForAnalyzer,
   flattenLoadedModule,
   isModuleKind,
@@ -48,6 +47,7 @@ import {
 import {
   resolveCacheRoot,
 } from "./manifest-sources/local-manifest-cache-source.js";
+import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
   precompileApplicationEnvSchemas,
@@ -156,7 +156,12 @@ export class Kernel implements IKernel {
     this.env = options.env ?? hostEnv();
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
-    this.loader = new Loader(defaultSources(this.registryUrl), { celHandlers: nodeCelHandlers });
+    // Resolution sources come from the transport registry, so a scheme-owning
+    // transport (OCI, later S3) joins the loader's dispatch chain by being
+    // registered — no source-chain edits here.
+    this.loader = new Loader(defaultTransportRegistry(this.registryUrl).sources(), {
+      celHandlers: nodeCelHandlers,
+    });
     for (const source of options.sources) {
       this.loader.register(source);
     }

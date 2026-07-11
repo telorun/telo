@@ -1,6 +1,6 @@
-import { sha256Base64Url } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, sha256Base64Url } from "@telorun/analyzer";
 
-const MANIFEST_FILENAME = "telo.yaml";
+import { findOwnerDoc, parseManifestDocs } from "./module-manifest.js";
 
 export interface PayloadFile {
   /** POSIX-relative path inside the bundle. */
@@ -23,11 +23,24 @@ export interface PayloadFile {
 export async function computeFilesIntegrity(files: PayloadFile[]): Promise<string> {
   const lines: string[] = [];
   for (const file of files) {
-    if (file.name === MANIFEST_FILENAME) continue;
+    if (file.name === DEFAULT_MANIFEST_FILENAME) continue;
     const bytes = file.content instanceof Uint8Array ? file.content : new Uint8Array(file.content);
     lines.push(`${file.name}\0${await sha256Base64Url(bytes)}`);
   }
   lines.sort();
   const canonical = new TextEncoder().encode(lines.join("\n"));
   return `sha256-${await sha256Base64Url(canonical)}`;
+}
+
+/** Write `filesIntegrity` onto the manifest's owner doc so the published
+ *  `telo.yaml` pins its payload — transitively covered by importers'
+ *  `#sha256-...` hash. The digest excludes `telo.yaml`, so injecting it does
+ *  not change the digest. Returns the manifest unchanged when it has no owner
+ *  doc. */
+export function injectFilesIntegrity(manifest: string, hash: string): string {
+  const docs = parseManifestDocs(manifest);
+  const owner = findOwnerDoc(docs);
+  if (!owner) return manifest;
+  owner.set("filesIntegrity", hash);
+  return docs.map((d) => d.toString()).join("---\n");
 }

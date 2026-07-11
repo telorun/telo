@@ -11,6 +11,17 @@ describe("buildCelEnvironment", () => {
     expect(env.parse("values({'x': 1, 'y': 2})")({})).toEqual([1n, 2n]);
   });
 
+  it("type-checks heterogeneous aggregate literals (cel-go default, unify to dyn)", () => {
+    const env = buildCelEnvironment();
+    // Concrete mixed list/map: cel-go unifies to dyn instead of erroring.
+    expect(env.check("[1, 'two']")).toMatchObject({ valid: true });
+    expect(env.check("{'a': 1, 'b': true}")).toMatchObject({ valid: true });
+    // The manifest-world case: map value type inferred as dyn absorbs a bool.
+    expect(
+      env.check("items.map(r, {'id': r.id, 'done': r.done == 1})", { items: [] }),
+    ).toMatchObject({ valid: true });
+  });
+
   it("calls user-supplied handlers for sha256", () => {
     const env = buildCelEnvironment({ sha256: (s) => `H(${s})` });
     expect(env.parse("sha256('hello')")({})).toBe("H(hello)");

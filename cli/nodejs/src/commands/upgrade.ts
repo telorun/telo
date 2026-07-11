@@ -1,4 +1,5 @@
 import { splitIntegrity } from "@telorun/analyzer";
+import { defaultTransportRegistry } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
 import * as path from "path";
@@ -48,31 +49,18 @@ export function parseUpgradeRef(rawSource: string): ParsedRef | null {
   return { namespace, name, version: semver.valid(rawVersion), rawVersion };
 }
 
-interface VersionsResponse {
-  name?: string;
-  version?: string;
-  versions?: string[];
-}
-
 async function fetchPublishedVersions(
   registryUrl: string,
   namespace: string,
   name: string,
 ): Promise<string[] | null> {
-  const base = registryUrl.replace(/\/+$/, "");
-  const url = `${base}/${namespace}/${name}`;
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new Error(`Registry returned ${res.status} ${res.statusText} for ${namespace}/${name}`);
-  }
-  const body = (await res.json()) as VersionsResponse;
-  if (!Array.isArray(body.versions)) return [];
+  // Dispatch through the transport that owns the ref (the version segment is
+  // irrelevant to enumeration — only the `<ns>/<name>` path is used).
+  const raw = await defaultTransportRegistry(registryUrl).listVersions(`${namespace}/${name}@0.0.0`);
+  if (raw === null) return null;
   // Normalize via semver.valid so downstream string-equality matches on the
   // pin compare the same canonical form (handles `v` prefix, whitespace, etc).
-  return body.versions
-    .map((v) => semver.valid(v))
-    .filter((v): v is string => v !== null);
+  return raw.map((v) => semver.valid(v)).filter((v): v is string => v !== null);
 }
 
 /** Exported for tests. */

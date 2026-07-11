@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { selectFiles } from "../src/bundle/select-files.js";
-import { makeTarGz, readTarGz } from "../src/bundle/tar.js";
+import { makeTarGz, readTarGz } from "@telorun/kernel";
 
 let workdir: string;
 

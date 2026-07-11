@@ -73,7 +73,11 @@ export function deriveSignatures(signature: string): string[] {
 
 export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): Environment {
   const h: CelHandlers = { ...STUB_HANDLERS, ...handlers };
-  let env = new Environment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true });
+  // cel-go defaults HomogeneousAggregateLiterals OFF: heterogeneous list/map
+  // literals unify to `dyn` rather than erroring. cel-js flips that default to
+  // strict; we align with cel-go so manifests (dyn-heavy: request, rows, …)
+  // don't hit false positives the runtime evaluates fine.
+  let env = new Environment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true, homogeneousAggregateLiterals: false });
   for (const fn of CEL_FUNCTIONS) {
     const impl = fn.build(h);
     // `register` lists one cel-js signature per arity (overloaded functions).

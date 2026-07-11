@@ -1,17 +1,14 @@
 import { splitIntegrity, verifyIntegrity, type LoadedGraph, type ManifestSource } from "@telorun/analyzer";
-import { createHash } from "crypto";
 import { statSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 
 import { hostEnv } from "../host-env.js";
+import { TransportRegistry, defaultTransportRegistry } from "../transports/transport-registry.js";
 
 const CACHE_SUBDIR = ".telo/manifests";
-const HTTP_NAMESPACE = "__http";
-const DEFAULT_MANIFEST_FILENAME = "telo.yaml";
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
-const QUERY_HASH_LENGTH = 12;
 
 /** Verify that `candidate` resolves to a path under `root`. Returns the
  *  candidate path on success, `null` when any segment escapes the root.
@@ -27,104 +24,22 @@ function joinUnder(root: string, ...segments: string[]): string | null {
   return candidate;
 }
 
-/** Mirror `HttpSource.read`'s `fetchUrl` derivation: when the URL does not
- *  already point at a YAML file, append `/telo.yaml`. Used by both the
- *  reader and writer so a raw import URL and the canonical source it
- *  resolves to map to the same cache path. */
-function normalizePathname(url: string, parsed: URL): string {
-  let pathname = parsed.pathname;
-  if (!url.includes(".yaml")) {
-    pathname = pathname.endsWith("/")
-      ? `${pathname}${DEFAULT_MANIFEST_FILENAME}`
-      : `${pathname}/${DEFAULT_MANIFEST_FILENAME}`;
-  }
-  return pathname;
-}
-
-/** Compute a short hash of `search + hash` so two URLs that differ only in
- *  query / fragment do not collide at the same cache path. Inserted before
- *  the final extension so the filename stays readable. */
-function disambiguatePath(pathname: string, search: string, hash: string): string {
-  if (!search && !hash) return pathname;
-  const digest = createHash("sha256")
-    .update(search + hash)
-    .digest("hex")
-    .slice(0, QUERY_HASH_LENGTH);
-  const ext = path.extname(pathname);
-  const base = pathname.slice(0, pathname.length - ext.length);
-  return `${base}.${digest}${ext}`;
-}
-
 /** Single source of truth for URL → cache path. Used identically by the
  *  reader (cache lookup) and writer (install-time persistence). For any
- *  given import URL — registry ref, direct registry URL, or arbitrary
- *  HTTP — both sides land on the same file.
+ *  given import ref — registry ref, direct registry URL, arbitrary HTTP, or
+ *  (once registered) `oci://` — both sides land on the same file, because the
+ *  owning transport decides the layout via {@link Transport.cacheLocation}.
  *
- *  Returns `null` for unsupported URLs (file://, memory://, relative paths)
- *  or for path-traversal attempts that would escape `cacheRoot`. */
+ *  Returns `null` for unsupported refs (file://, memory://, relative paths) or
+ *  for path-traversal attempts that would escape `cacheRoot`. */
 function cachePathForUrl(
   rawUrl: string,
   cacheRoot: string,
-  registryUrl: string,
+  transports: TransportRegistry,
 ): string | null {
-  // Strip any inline integrity fragment so the cache path is derived from the
-  // bare ref/URL — the hash never participates in on-disk keying.
-  const url = splitIntegrity(rawUrl).base;
-  const trimmedRegistry = registryUrl.replace(/\/+$/, "");
-
-  // 1. Registry ref form: namespace/name@version
-  if (
-    !url.startsWith("http://") &&
-    !url.startsWith("https://") &&
-    !url.startsWith("/") &&
-    !url.startsWith(".") &&
-    !url.startsWith("file://") &&
-    !url.startsWith("memory://") &&
-    url.includes("@") &&
-    url.includes("/")
-  ) {
-    const atIdx = url.lastIndexOf("@");
-    if (atIdx <= 0 || atIdx === url.length - 1) return null;
-    const modulePath = url.slice(0, atIdx);
-    if (!modulePath.includes("/")) return null;
-    const version = url.slice(atIdx + 1).replace(/^v/, "");
-    if (!version) return null;
-    return joinUnder(cacheRoot, modulePath, version, DEFAULT_MANIFEST_FILENAME);
-  }
-
-  // 2. HTTP(S) URL — could be a direct registry URL or arbitrary external.
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return null;
-    }
-    const pathname = normalizePathname(url, parsed);
-
-    // 2a. URL is on the configured registry, with no query/fragment:
-    //     fold into the registry layout so the writer that received a
-    //     registry-ref canonical and the reader that sees a direct URL
-    //     both resolve to the same file.
-    const normalizedUrl = `${parsed.protocol}//${parsed.host}${pathname}`;
-    if (
-      !parsed.search &&
-      !parsed.hash &&
-      (normalizedUrl === trimmedRegistry || normalizedUrl.startsWith(`${trimmedRegistry}/`))
-    ) {
-      const rel = normalizedUrl.slice(trimmedRegistry.length + 1);
-      if (!rel) return null;
-      return joinUnder(cacheRoot, ...rel.split("/"));
-    }
-
-    // 2b. Arbitrary HTTP(S) URL → __http subtree, with a short query-hash
-    //     suffix when query / fragment are present to prevent collisions.
-    const cleanPath = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    const disambiguated = disambiguatePath(cleanPath, parsed.search, parsed.hash);
-    return joinUnder(cacheRoot, HTTP_NAMESPACE, parsed.host, ...disambiguated.split("/"));
-  }
-
-  return null;
+  const segments = transports.cacheLocation(rawUrl);
+  if (!segments) return null;
+  return joinUnder(cacheRoot, ...segments);
 }
 
 /**
@@ -136,7 +51,7 @@ function cachePathForUrl(
  */
 export class LocalManifestCacheSource implements ManifestSource {
   private readonly cacheRoot: string;
-  private readonly registryUrl: string;
+  private readonly transports: TransportRegistry;
 
   constructor(
     entryDir: string,
@@ -147,7 +62,7 @@ export class LocalManifestCacheSource implements ManifestSource {
     // single `resolveCacheRoot` (honours `TELO_CACHE_DIR`); when absent we fall
     // back to the entry-anchored default so library/test callers are unchanged.
     this.cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
-    this.registryUrl = registryUrl;
+    this.transports = defaultTransportRegistry(registryUrl);
   }
 
   supports(url: string): boolean {
@@ -184,7 +99,7 @@ export class LocalManifestCacheSource implements ManifestSource {
   }
 
   private tryMap(url: string): string | null {
-    const candidate = cachePathForUrl(url, this.cacheRoot, this.registryUrl);
+    const candidate = cachePathForUrl(url, this.cacheRoot, this.transports);
     if (!candidate) return null;
     // Require a regular file. A directory, dangling symlink, or stat failure
     // (ENOENT, EACCES, EISDIR-on-component) all fall through as a cache miss
@@ -213,7 +128,7 @@ export function cachePathForCanonical(
   manifestsDir?: string,
 ): string | null {
   const cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
-  return cachePathForUrl(canonicalSource, cacheRoot, registryUrl);
+  return cachePathForUrl(canonicalSource, cacheRoot, defaultTransportRegistry(registryUrl));
 }
 
 /**

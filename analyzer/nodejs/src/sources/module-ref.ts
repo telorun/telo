@@ -10,17 +10,18 @@ export interface ParsedModuleRef {
 }
 
 /** True when `url` has the bare registry-ref shape `namespace/name@version`
- *  (no scheme, no leading `/` or `.`, contains both `@` and `/`). The integrity
- *  fragment, if any, does not affect the classification. */
+ *  (no scheme of any kind, no leading `/` or `.`, contains both `@` and `/`).
+ *  The integrity fragment, if any, does not affect the classification.
+ *
+ *  A registry ref never carries a `scheme://` — that guard is what keeps an
+ *  `oci://…@ver` (or future `s3://…`) ref from being misrouted here, so a
+ *  scheme-owning transport claims it instead. */
 export function isRegistryRef(url: string): boolean {
   const { base } = splitIntegrity(url);
   return (
-    !base.startsWith("http://") &&
-    !base.startsWith("https://") &&
+    !base.includes("://") &&
     !base.startsWith("/") &&
     !base.startsWith(".") &&
-    !base.startsWith("file://") &&
-    !base.startsWith("memory://") &&
     base.includes("@") &&
     base.includes("/")
   );
