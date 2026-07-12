@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-07-02
+## 0.10.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.9.0 - 2026-07-02
 ### Added
 * Update controller @telorun/ai-openai to 0.8.0.## 0.8.0 - 2026-06-13
 ### Added

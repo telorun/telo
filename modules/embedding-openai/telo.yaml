@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: embedding-openai
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     EmbeddingOpenai.Model — OpenAI-compatible backend for the Embedding.Model
     abstract. Speaks the OpenAI /embeddings HTTP API directly (no vendor SDK),

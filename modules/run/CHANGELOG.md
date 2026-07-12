@@ -1,5 +1,7 @@
 # Changelog
-## 0.11.1 - 2026-06-24
+## 0.12.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.11.1 - 2026-06-24
 ### Fixed
 * Update controller @telorun/run to 0.9.1.## 0.11.0 - 2026-06-20
 ### Added

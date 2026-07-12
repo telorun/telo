@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql-postgres
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     SqlPostgres.Connection — a PostgreSQL backend for the Sql.Connection
     abstract. Speaks the standard `postgres://` URL with libpq `sslmode`,

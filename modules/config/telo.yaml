@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "config"
   namespace: std
-  version: "0.4.1"
+  version: "0.5.0"
   description: >-
     Environment and configuration providers. Deprecated in favour of
     application-level `variables:` / `secrets:` with `env:` bindings; retained

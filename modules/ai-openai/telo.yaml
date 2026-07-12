@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-openai
   namespace: std
-  version: 0.9.0
+  version: 0.10.0
   description: OpenAI-compatible provider for Ai.Model (direct /chat/completions HTTP API, no vendor SDK).
 imports:
   Ai: ../ai

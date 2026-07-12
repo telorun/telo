@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: cache
   namespace: std
-  version: 0.3.0
+  version: 0.4.0
   description: |
     The Cache.Store abstract — a backend-pluggable, freshness-aware key/value
     cache — plus the Lookup / Entry invocables and the View read-through

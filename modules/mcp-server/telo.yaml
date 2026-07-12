@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "mcp-server"
   namespace: std
-  version: "0.7.0"
+  version: "0.8.0"
   description: >-
     Serve the Model Context Protocol over stdio or HTTP. Bundle tools, resources,
     and prompts as `Mcp.Tools` / `Mcp.Resources` / `Mcp.Prompts`, then expose them

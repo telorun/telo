@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: http-dispatch
   namespace: std
-  version: 0.6.0
+  version: 0.7.0
   description: >-
     Internal shared value-shapes for HTTP transports — the canonical request
     matcher and response (`returns` / `catches`) schemas that `http-server` and

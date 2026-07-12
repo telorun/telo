@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: pdf
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     PDF primitives — rasterize pages to PNG images and author editable
     AcroForm fields at measured coordinates. Both kinds share one coordinate

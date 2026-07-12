@@ -1,5 +1,7 @@
 # Changelog
-## 0.6.0 - 2026-06-23
+## 0.7.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.6.0 - 2026-06-23
 ### Added
 * Update controller @telorun/type to 0.5.0.## 0.5.0 - 2026-06-20
 ### Added
