@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     The VectorStore.Store abstract — a backend-pluggable vector index — plus the
     Record / Match / Removal invocables that upsert, query, and delete vectors

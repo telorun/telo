@@ -1,5 +1,7 @@
 # Changelog
-## 0.3.0 - 2026-06-23
+## 0.4.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.3.0 - 2026-06-23
 ### Added
 * Add a required `model` (a `Type.JsonSchema`) to `Crud.Resource` that validates request bodies — POST against the full schema, PUT against a partial where nothing is required.
 * Add `singular`/`plural` names to `Crud.Resource`. `table` now defaults from `plural` and the item path parameter from `<singular>Id` (overridable via `idParam`, renaming only the URL parameter — the PK column stays `id`); the generated OpenAPI operations are named from the singular/plural nouns and tagged with `plural`.

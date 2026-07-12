@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: plain-text-codec
   namespace: std
-  version: 0.4.1
+  version: 0.5.0
   description: |
     Plain-text codec — UTF-8 string ↔ byte iterables. Encoder accepts
     `{delta: string}` (the AI streaming shape), bare strings, or `Uint8Array`

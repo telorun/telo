@@ -1,2 +1,4 @@
 # Changelog
-## 0.2.1
+## 0.3.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.2.1

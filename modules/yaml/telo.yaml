@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: yaml
   namespace: std
-  version: 0.4.1
+  version: 0.5.0
   description: |
     YAML parsing for Telo manifests. Currently exposes `Yaml.Parse` — a batch
     parser that accepts a UTF-8 string and returns the parsed documents as plain

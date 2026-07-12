@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store-memory
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     VectorStoreMemory.Store — an in-process vector index for the VectorStore
     abstract. Cosine / dot / euclidean similarity over a Map; zero external

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: gzip
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Gzip codec — Uint8Array stream ↔ Uint8Array stream. Encoder wraps Node
     `zlib.createGzip()` (compress); Decoder wraps `zlib.createGunzip()`

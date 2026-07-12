@@ -1,5 +1,9 @@
 # Changelog
-## 0.8.15 - 2026-07-10
+## 0.9.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.
+### Fixed
+* Update controller @telorun/assert to 0.7.25.## 0.8.15 - 2026-07-10
 ### Fixed
 * Update controller @telorun/assert to 0.7.24.## 0.8.14 - 2026-07-06
 ### Fixed

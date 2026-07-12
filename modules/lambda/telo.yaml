@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   namespace: aws
   name: lambda
-  version: 0.6.1
+  version: 0.7.0
   description: >-
     AWS Lambda functions driven by multiple event sources from one artifact.
     `Lambda.Function` is the AWS-facing transport; `Lambda.HttpApi`,

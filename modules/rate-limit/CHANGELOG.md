@@ -1,5 +1,7 @@
 # Changelog
-## 0.3.0 - 2026-07-06
+## 0.4.0 - 2026-07-12
+### Added
+* Describe exported resource kinds via metadata.description for semantic discovery.## 0.3.0 - 2026-07-06
 ### Added
 * Update controller @telorun/rate-limit to 0.3.0.## 0.2.0 - 2026-06-20
 ### Added

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ndjson-codec
   namespace: std
-  version: 0.4.1
+  version: 0.5.0
   description: |
     NDJSON codec — JSON-record stream ↔ byte iterables. Encoder produces one
     JSON-encoded record per line (`JSON.stringify(item) + "\n"`). Decoder

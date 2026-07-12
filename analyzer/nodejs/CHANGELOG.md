@@ -1,5 +1,73 @@
 # @telorun/analyzer
 
+## 0.33.0
+
+### Minor Changes
+
+- 3961e35: Add the `KIND_MISSING_DESCRIPTION` warning: a `Telo.Library` that exports a
+  locally-defined kind whose `Telo.Definition` has no `metadata.description` now
+  gets a non-blocking warning. The description is the primary text the
+  federated-discovery hub embeds for semantic `search_resources`, so exported
+  kinds should carry one. Re-exported kinds (`exports.kinds: [Alias.Kind]`) and
+  non-exported internal kinds are not flagged, and the check only fires when a
+  library is analyzed directly — importing an under-described library never leaks
+  warnings to its consumer.
+- b5a325f: Validate `Run.Sequence`-style step `invoke` references. The reference field map
+  deliberately does not descend into step `invoke` slots (they sit behind the
+  shared step `$ref`, and descending would make Phase 5 inject live instances
+  there), so these slots escaped `validateReferences` entirely — a step
+  `invoke: !ref <name>` that named a missing instance, or a _kind_ instead of an
+  exported instance (`invoke: !ref Stream.Of`), passed `telo check` and only
+  failed at runtime with `ERR_RESOURCE_NOT_FOUND`. A new pass covers exactly those
+  slots in two dimensions: after sentinel resolution, an invoke value still a
+  `!ref` sentinel is reported as `UNRESOLVED_REFERENCE` (missing instance /
+  kind-instead-of-instance), and a resolved instance whose capability structurally
+  has no invoke/run method (`Telo.Provider` / `Telo.Mount` / `Telo.Type` /
+  `Telo.Template`) is reported as `REFERENCE_KIND_MISMATCH` — the static mirror of
+  the runtime `ERR_RESOURCE_NOT_INVOKABLE` (`Telo.Service` is excluded, since some
+  services are invocable). Generic and topology-driven — it walks steps via the
+  same `x-telo-step-context` / `x-telo-topology-role` annotations as the
+  step-context builder (through a shared step-walker), so nested branches
+  (then/else/do/catch/cases) are covered and no resource kind is hardcoded, and it
+  applies the same cross-module partial-analysis guard as `validateReferences`.
+- 9a92bf1: Add a `Transport` abstraction that owns everything ref-scheme-specific about a
+  module's lifecycle — manifest read, full-artifact fetch, cache path, version
+  list, and publish — and ship two implementations behind it: the existing HTTP
+  registry (`RegistryTransport`) and a new OCI transport (`OciTransport`). The
+  loader, cache, `telo upgrade`, `telo install`, and `telo publish` no longer
+  branch on ref shape; they ask the transport registry which transport owns a ref
+  and delegate, so adding a backend is "implement one interface and register it."
+
+  `OciTransport` resolves and publishes `oci://host/repo@version` modules to any
+  OCI distribution registry (GHCR / ECR / Docker Hub / Harbor) over a hand-rolled
+  minimal client — pull/push manifest + blob, the `WWW-Authenticate` token
+  handshake, and the ambient Docker credential chain (`~/.docker/config.json` +
+  `docker-credential-*`). A module is one artifact: a single tar blob carrying
+  `telo.yaml` and the `files:` payload, pushed under a standard OCI artifact
+  manifest (`artifactType: application/vnd.telo.module.v1+tar`).
+
+  `telo publish` gains a destination-first positional — `telo publish
+<destination?> <paths…>` — whose scheme selects the transport (`oci://` → OCI,
+  `https://` / bare host → HTTP registry, omitted → the default registry). Bare
+  `telo publish .` is unchanged. Relative sibling imports are canonicalized
+  against the destination (OCI: via the destination repo; HTTP: the sibling's
+  `<namespace>/<name>`), pinned to the sibling's own version, and every derived
+  ref is verified to resolve at its published location before publishing.
+
+  Telo's inline `#sha256-…` hash stays authoritative across transports: the
+  manifest is verified against it and the payload against the manifest's
+  `filesIntegrity`, the same Merkle chain regardless of backend. A tamper failure
+  is a distinct `IntegrityError` (always terminal, never a best-effort skip). The
+  `isRegistryRef` shape-test now rejects any `scheme://`, so an `oci://…` ref can
+  never be misrouted to the default registry or a garbage cache path. The tar and
+  `filesIntegrity` helpers moved from the CLI into the kernel so both transports
+  share one implementation.
+
+### Patch Changes
+
+- Updated dependencies [9a92bf1]
+  - @telorun/templating@0.10.1
+
 ## 0.32.0
 
 ### Minor Changes

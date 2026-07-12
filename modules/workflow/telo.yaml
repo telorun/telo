@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: workflow
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: Workflow orchestration with pluggable backend providers
 exports:
   kinds:
