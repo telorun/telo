@@ -1,0 +1,40 @@
+kind: Telo.Application
+metadata:
+  name: StreamOfRuntimeSmokeTest
+  version: 1.0.0
+  description: |
+    Stream.Of emits items supplied at invoke time, not just statically. The
+    declared `items` act as a default that runtime invoke inputs override — the
+    read-through-cache pattern where one branch streams a value computed at
+    request time. Seeds a placeholder list statically, overrides it with runtime
+    items, and asserts the runtime values won.
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Stream.Of
+metadata: { name: Source }
+items: [ "placeholder" ]
+---
+kind: Stream.Collect
+metadata: { name: Collect }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Emit
+    invoke: !ref Source
+    inputs:
+      items: !cel "['runtime-a', 'runtime-b']"
+  - name: Collect
+    invoke: !ref Collect
+    inputs:
+      input: !cel "steps.Emit.result.output"
+  - name: Assert
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "join(steps.Collect.result.items, ',')"
+      expected: "runtime-a,runtime-b"

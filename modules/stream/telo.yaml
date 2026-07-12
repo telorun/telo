@@ -5,9 +5,10 @@ metadata:
   version: 0.3.0
   description: |
     Generic stream substrate — value-agnostic stream construction and
-    operators. `Stream.Of` emits a declared list of literal items as a stream,
-    in order. The element type flows at runtime (items may be strings, objects,
-    numbers); statically the output is an opaque stream, like every Telo stream.
+    operators. `Stream.Of` emits a list of items as a stream, in order —
+    declared statically or supplied at invoke time. The element type flows at
+    runtime (items may be strings, objects, numbers); statically the output is
+    an opaque stream, like every Telo stream.
     Element-type validation is a planned evolution (see the stream-element-typing
     plan and the `x-telo-stream: { items }` form).
 exports:
@@ -15,7 +16,13 @@ exports:
     - Of
     - Collect
 ---
-# Emit a declared list of literal items as a stream, in order.
+# Emit a list of items as a stream, in order — declared statically or supplied
+# at invoke time.
+#
+# `items` may be declared as a static resource field (fixed data, no JS) or
+# passed as invoke inputs to emit values computed at request time (e.g. a
+# read-through cache hit streaming a stored value). Runtime inputs take
+# precedence over the declared list; when neither is present the stream is empty.
 #
 # Value-agnostic: `items` may hold strings, objects, numbers — whatever the
 # downstream consumer expects (e.g. strings into PlainText.Encoder, AI-shape
@@ -25,7 +32,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Of
-  description: Emits a declared list of literal items as a stream, in order.
+  description: Emits a list of items as a stream, in order — declared statically or supplied at invoke time.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.3.0?local_path=./nodejs#of
@@ -34,10 +41,19 @@ schema:
   properties:
     items:
       title: Items
-      description: Literal values to emit as a stream, in order.
+      description: Literal values to emit as a stream, in order. Optional — a static default overridden by runtime invoke inputs.
       type: array
-  required: [ items ]
   additionalProperties: false
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      items:
+        title: Items
+        description: Runtime values to emit as a stream, in order. When provided, overrides the statically-declared items.
+        type: array
+    additionalProperties: false
 outputType:
   kind: Type.JsonSchema
   schema:
