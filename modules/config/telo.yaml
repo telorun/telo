@@ -17,6 +17,7 @@ exports:
 kind: "Telo.Definition"
 metadata:
   name: "EnvironmentVariableStore"
+  description: Provides a schema-typed store of configuration values sourced from environment variables.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.3.2?local_path=./nodejs#env-variable-store-controller
@@ -35,6 +36,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Variables"
+  description: Provides non-secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.3.2?local_path=./nodejs#variables-controller
@@ -64,6 +66,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Secrets"
+  description: Provides secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.3.2?local_path=./nodejs#secrets-controller

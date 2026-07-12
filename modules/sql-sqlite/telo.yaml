@@ -18,6 +18,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Connection
+  description: Provides a file-backed or in-memory SQLite connection for Sql.Connection operations.
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:

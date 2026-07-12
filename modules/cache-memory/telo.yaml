@@ -16,6 +16,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
+  description: In-process freshness-aware Cache.Store backend with FIFO eviction for single-instance use and tests.
 capability: Telo.Provider
 extends: Cache.Store
 controllers:

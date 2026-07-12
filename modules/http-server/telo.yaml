@@ -22,6 +22,7 @@ exports:
 kind: "Telo.Definition"
 metadata:
   name: "Server"
+  description: Listens on a TCP port and serves mounted routers, with CORS, OpenAPI docs, and custom content-type parsers.
 capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/http-server@0.15.1?local_path=./nodejs#http-server
@@ -311,6 +312,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Api"
+  description: Mountable router whose routes match requests, map inputs via CEL to a handler, and render conditional typed responses.
 capability: Telo.Mount
 topology: Router
 controllers:
@@ -668,6 +670,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Static"
+  description: Serves a directory of static files as a mountable router, with SPA fallback and Cache-Control options.
 capability: Telo.Mount
 controllers:
   - pkg:npm/@telorun/http-server@0.15.1?local_path=./nodejs#http-static

@@ -16,6 +16,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Backend
+  description: Provides a Temporal-backed workflow backend for Workflow.Graph execution.
 capability: Telo.Provider
 extends: Workflow.Backend
 controllers:

@@ -11,6 +11,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Suite
+  description: Discovers test manifests by glob and runs them with optional filtering and bounded concurrency.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/test@0.4.39?local_path=./nodejs#suite

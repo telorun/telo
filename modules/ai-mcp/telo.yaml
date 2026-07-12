@@ -21,6 +21,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: ToolProvider
+  description: Expose an MCP server's tools to an Ai.Agent by wrapping any Mcp.Client as an Ai.ToolProvider.
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:

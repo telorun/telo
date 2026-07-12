@@ -22,6 +22,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Request
+  description: Schema-only carrier publishing the canonical HTTP request matcher shape (method, path, query, body, headers).
 capability: Telo.Type
 schema:
   type: object
@@ -91,6 +92,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Outcomes
+  description: Schema-only carrier publishing the canonical HTTP response returns/catches value-shapes for HTTP transports.
 capability: Telo.Type
 schema:
   type: object

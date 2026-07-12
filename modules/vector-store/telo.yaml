@@ -69,6 +69,7 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Record
+  description: Upserts a batch of vectors with ids and metadata into a vector store, returning the written ids.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#record
@@ -120,6 +121,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Match
+  description: Runs a nearest-neighbour vector query against a store, returning the top-K matches with scores and metadata.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#match
@@ -180,6 +182,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Removal
+  description: Deletes vectors from a store by id list and/or metadata filter, returning the count removed.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#removal

@@ -25,6 +25,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Resource
+  description: Mounts a REST CRUD API (list/read/create/update/delete) over a SQL table, validating bodies against a model.
 capability: Telo.Mount
 schema:
   type: object

@@ -19,6 +19,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Delay
+  description: Waits for a given duration then completes, optionally echoing a value; honors invocation cancellation.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/timer@0.1.1?local_path=./nodejs#delay

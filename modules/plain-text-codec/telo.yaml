@@ -21,6 +21,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
+  description: Encodes {delta}/string/Uint8Array records into a UTF-8 byte stream.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
@@ -34,6 +35,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Decoder
+  description: Collects a byte stream into a single UTF-8 string.
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:

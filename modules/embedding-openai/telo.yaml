@@ -18,6 +18,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Model
+  description: Configure an OpenAI-compatible embeddings model via the direct /embeddings API for Embedding consumers.
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:

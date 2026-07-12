@@ -93,6 +93,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: HttpClient
+  description: Connects to an MCP endpoint over Streamable HTTP, managing session handshake and dispatching JSON-RPC requests.
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
@@ -150,6 +151,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: StdioClient
+  description: Spawns and manages an MCP server child process, exchanging JSON-RPC over its stdin/stdout.
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
@@ -204,6 +206,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: ToolsCall
+  description: Invokes a named MCP tool via tools/call on a referenced Mcp.Client and returns its content blocks.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-call
@@ -302,6 +305,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: ToolsList
+  description: Lists the tools advertised by an MCP server via tools/list on a referenced Mcp.Client.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-list

@@ -32,6 +32,7 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Lookup
+  description: Reads a key from a Cache.Store, reporting a miss, fresh, or stale hit with the value and its age.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#lookup
@@ -76,6 +77,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Entry
+  description: Writes a value into a Cache.Store under a key with fresh (ttl) and stale-grace (staleTtl) windows.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#entry
@@ -129,6 +131,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: View
+  description: Read-through cache over a Cache.Store serving a wrapped invocable's result, refreshing per revalidate.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#view

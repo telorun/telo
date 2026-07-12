@@ -39,6 +39,7 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Text
+  description: Generate a buffered text completion from a prompt or messages using any Ai.Model.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text
@@ -137,6 +138,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: TextStream
+  description: Stream an LLM text completion token-by-token as StreamPart records from any Ai.Model.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text-stream
@@ -232,6 +234,7 @@ capability: Telo.Mount
 kind: Telo.Definition
 metadata:
   name: Tools
+  description: Expose a static list of Telo.Invocables as callable tools for an Ai.Agent.
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
@@ -323,6 +326,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Agent
+  description: "Run a tool-use loop: call the model, execute requested tools, and replay results until it finishes."
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent
@@ -474,6 +478,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: AgentStream
+  description: Run a streaming tool-use loop, emitting text deltas, tool calls, and results as a Stream.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent-stream

@@ -40,7 +40,7 @@ Provide only important feedback that would significantly improve the plan. Avoid
 
 Do not summarize what is sound about the plan.
 
-List top 3 real issues in the plan.
+List top 3 real issues in the plan and propose options to solve them.
 Always be sure about the issues you list. If you are not sure whether something is an issue then investigate more.
 Keep the list of issues very concise.
 Never point to any source code or line numbers in the codebase. Focus on behaviour and design issues in the plan itself, not on implementation details.
