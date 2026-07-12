@@ -1,7 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
-import { defaultRegistry, isTaggedSentinel } from "@telorun/templating";
+import { defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { AliasResolver, scopeResolverForModule } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
@@ -238,6 +238,73 @@ function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Reco
 }
 
 /**
+ * Generic, role-driven walk over an `x-telo-step-context` step array. Calls
+ * `visit(step, stepPath)` for every step — top-level and nested through the
+ * `x-telo-topology-role` forms (`branch`, `branch-list`, `case-map`). This is
+ * the single definition of how steps nest, shared by `buildStepContextSchema`
+ * (which types `steps.<name>.result`) and `validateStepInvokeReferences` (which
+ * checks invoke refs), so the topology contract lives in one place — adding a
+ * role or nesting form updates both consumers at once. No resource kind is
+ * hardcoded; recursion is driven entirely by the schema annotations.
+ */
+function walkStepArray(
+  steps: unknown[],
+  stepItemSchema: Record<string, any> | undefined,
+  rootSchema: Record<string, any>,
+  basePath: string,
+  visit: (step: Record<string, any>, stepPath: string) => void,
+): void {
+  const dispatchRole = (
+    data: unknown,
+    role: string,
+    itemsSchema: Record<string, any> | undefined,
+    path: string,
+  ): void => {
+    if (role === "branch" && Array.isArray(data)) {
+      walkStepArray(data, stepItemSchema, rootSchema, path, visit);
+    } else if (role === "case-map" && data && typeof data === "object" && !Array.isArray(data)) {
+      for (const [caseKey, arr] of Object.entries(data as Record<string, unknown>)) {
+        if (Array.isArray(arr)) walkStepArray(arr, stepItemSchema, rootSchema, `${path}.${caseKey}`, visit);
+      }
+    } else if (role === "branch-list" && Array.isArray(data)) {
+      const entrySchema = resolveLocalRef(itemsSchema, rootSchema);
+      if (!entrySchema) return;
+      data.forEach((entry, i) => {
+        if (!entry || typeof entry !== "object") return;
+        for (const [subKey, subSchema] of gatherPropertySchemas(entrySchema)) {
+          const subRole = subSchema["x-telo-topology-role"];
+          if (typeof subRole !== "string") continue;
+          dispatchRole(
+            (entry as Record<string, any>)[subKey],
+            subRole,
+            subSchema.items as Record<string, any> | undefined,
+            `${path}[${i}].${subKey}`,
+          );
+        }
+      });
+    }
+  };
+
+  steps.forEach((step, i) => {
+    if (!step || typeof step !== "object") return;
+    const s = step as Record<string, any>;
+    const stepPath = `${basePath}[${i}]`;
+    visit(s, stepPath);
+    if (!stepItemSchema) return;
+    for (const [propKey, propSchema] of gatherPropertySchemas(stepItemSchema)) {
+      const role = propSchema["x-telo-topology-role"];
+      if (typeof role !== "string") continue;
+      dispatchRole(
+        s[propKey],
+        role,
+        propSchema.items as Record<string, any> | undefined,
+        `${stepPath}.${propKey}`,
+      );
+    }
+  });
+}
+
+/**
  * Build a `steps` context schema from `x-telo-step-context` annotation.
  * Walks each step in the manifest array, resolves the invoked resource's outputType,
  * and builds `steps.<name>.result` context entries.
@@ -291,90 +358,47 @@ function buildStepContextSchema(
 
     const stepProperties: Record<string, any> = {};
 
-    const dispatchRole = (
-      data: unknown,
-      role: string,
-      itemsSchema: Record<string, any> | undefined,
-    ): void => {
-      if (role === "branch" && Array.isArray(data)) {
-        collectSteps(data);
-      } else if (role === "case-map" && data && typeof data === "object" && !Array.isArray(data)) {
-        for (const arr of Object.values(data as Record<string, unknown>)) {
-          if (Array.isArray(arr)) collectSteps(arr);
+    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s) => {
+      const name = s.name;
+      const invoke = s[invokeField] as Record<string, any> | undefined;
+      // Only invoke steps register a `steps.<name>.result` entry — control-flow
+      // wrappers (try/if/while/switch/throw) don't produce a result and must
+      // not shadow real entries with a permissive `additionalProperties: true`,
+      // or unknown step references slip through chain validation.
+      if (typeof name !== "string" || !invoke || typeof invoke !== "object") return;
+      let outputSchema: Record<string, any> | undefined;
+      const invokedKind = invoke.kind as string | undefined;
+      const invokedName = invoke.name as string | undefined;
+      if (invokedName) {
+        const invokedManifest = allManifests.find(
+          (m) =>
+            (m.metadata as any)?.name === invokedName &&
+            (!invokedKind || m.kind === invokedKind),
+        ) as Record<string, any> | undefined;
+        if (invokedManifest) {
+          outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
         }
-      } else if (role === "branch-list" && Array.isArray(data)) {
-        const entrySchema = resolveLocalRef(itemsSchema, defSchema);
-        if (!entrySchema) return;
-        for (const entry of data) {
-          if (!entry || typeof entry !== "object") continue;
-          for (const [subKey, subSchema] of gatherPropertySchemas(entrySchema)) {
-            const subRole = subSchema["x-telo-topology-role"];
-            if (typeof subRole !== "string") continue;
-            dispatchRole(
-              (entry as Record<string, any>)[subKey],
-              subRole,
-              subSchema.items as Record<string, any> | undefined,
-            );
-          }
-        }
+      } else {
+        outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
       }
-    };
-
-    function collectSteps(items: unknown[]): void {
-      for (const step of items) {
-        if (!step || typeof step !== "object") continue;
-        const s = step as Record<string, any>;
-        const name = s.name;
-        const invoke = s[invokeField] as Record<string, any> | undefined;
-        // Only invoke steps register a `steps.<name>.result` entry — control-flow
-        // wrappers (try/if/while/switch/throw) don't produce a result and must
-        // not shadow real entries with a permissive `additionalProperties: true`,
-        // or unknown step references slip through chain validation.
-        if (typeof name === "string" && invoke && typeof invoke === "object") {
-          let outputSchema: Record<string, any> | undefined;
-          const invokedKind = invoke.kind as string | undefined;
-          const invokedName = invoke.name as string | undefined;
-          if (invokedName) {
-            const invokedManifest = allManifests.find(
-              (m) =>
-                (m.metadata as any)?.name === invokedName &&
-                (!invokedKind || m.kind === invokedKind),
-            ) as Record<string, any> | undefined;
-            if (invokedManifest) {
-              outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
-            }
-          } else {
-            outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
-          }
-          // Fallback: pull outputType from the kind's Telo.Definition. The
-          // resource manifest typically doesn't carry outputType; the def does.
-          if (!outputSchema && invokedKind) {
-            outputSchema = lookupDefinitionTypeField(
-              invokedKind,
-              outputTypeField,
-              defs,
-              aliases,
-              allManifests,
-            );
-          }
-          stepProperties[name] = {
-            type: "object",
-            properties: {
-              result: outputSchema ?? { type: "object", additionalProperties: true },
-            },
-          };
-        }
-        if (stepItemSchema) {
-          for (const [propKey, propSchema] of gatherPropertySchemas(stepItemSchema)) {
-            const role = propSchema["x-telo-topology-role"];
-            if (typeof role !== "string") continue;
-            dispatchRole(s[propKey], role, propSchema.items as Record<string, any> | undefined);
-          }
-        }
+      // Fallback: pull outputType from the kind's Telo.Definition. The
+      // resource manifest typically doesn't carry outputType; the def does.
+      if (!outputSchema && invokedKind) {
+        outputSchema = lookupDefinitionTypeField(
+          invokedKind,
+          outputTypeField,
+          defs,
+          aliases,
+          allManifests,
+        );
       }
-    }
-
-    collectSteps(steps);
+      stepProperties[name] = {
+        type: "object",
+        properties: {
+          result: outputSchema ?? { type: "object", additionalProperties: true },
+        },
+      };
+    });
 
     if (Object.keys(stepProperties).length > 0) {
       return {
@@ -385,6 +409,192 @@ function buildStepContextSchema(
   }
 
   return undefined;
+}
+
+/**
+ * Capabilities whose instances structurally expose no `invoke`/`run` method, so
+ * a step `invoke` of one always fails at runtime with ERR_RESOURCE_NOT_INVOKABLE
+ * (kernel dispatch checks method presence, not capability — evaluation-context.ts).
+ * `Telo.Service` is intentionally absent: some services are invocable (a function
+ * handler dispatched directly, e.g. `Lambda.Function`), so it can't be rejected
+ * statically without false positives. This is the sound subset of the runtime rule.
+ */
+const NON_INVOKABLE_CAPABILITIES = new Set([
+  "Telo.Provider",
+  "Telo.Mount",
+  "Telo.Type",
+  "Telo.Template",
+]);
+
+/**
+ * Validate `x-telo-step-context` step `invoke` references (e.g. `Run.Sequence`
+ * steps).
+ *
+ * The reference field map deliberately does NOT descend into step `invoke`
+ * slots — they sit behind a local `$ref` to the shared step definition, and
+ * turning the descent on would make Phase 5 inject live instances there,
+ * breaking the invoke dispatch path (see `reference-field-map.ts`). A
+ * consequence is that `validateReferences` never sees these slots, so a bad
+ * step invoke passes `telo check` and only fails at runtime. This pass covers
+ * exactly those slots, in two dimensions:
+ *   - Existence: an `invoke: !ref <name>` that names a missing instance — or a
+ *     *kind* instead of an exported instance (`!ref Stream.Of`) — is a still-a-
+ *     sentinel after Phase 2.5 resolution → `UNRESOLVED_REFERENCE` (runtime
+ *     `ERR_RESOURCE_NOT_FOUND`).
+ *   - Invokability: a resolved instance whose capability structurally has no
+ *     invoke/run method (`NON_INVOKABLE_CAPABILITIES`) → `REFERENCE_KIND_MISMATCH`
+ *     (runtime `ERR_RESOURCE_NOT_INVOKABLE`).
+ *
+ * Generic and topology-driven — it walks steps via the same `x-telo-step-context`
+ * / `x-telo-topology-role` annotations `buildStepContextSchema` uses (through the
+ * shared `walkStepArray`), so nested branches (then/else/do/catch/cases) are
+ * covered and no `Run.Sequence` field name is hardcoded. The cross-module
+ * partial-analysis guard mirrors `validateReferences`, so a reference into an
+ * unloaded import is skipped rather than false-flagged.
+ */
+function validateStepInvokeReferences(
+  allManifests: Record<string, any>[],
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+
+  // Local instance names + loaded-module set — same construction as
+  // validateReferences, so the cross-module guard behaves identically.
+  const localNames = new Set<string>();
+  const loadedModules = new Set<string>();
+
+  // Also collect names of resources nested inside a manifest tree — notably
+  // `with:`-scoped resources (an `x-telo-scope` region the field map does not
+  // extract to a top-level manifest). A step can invoke one by bare name, so
+  // omitting them would false-flag a valid `!ref`. Conservative: any nested
+  // object carrying both a `kind` and a `metadata.name` is a resource
+  // definition; scope visibility is left to the runtime.
+  const collectNestedNames = (value: unknown): void => {
+    if (!value || typeof value !== "object" || isTaggedSentinel(value)) return;
+    if (Array.isArray(value)) {
+      for (const item of value) collectNestedNames(item);
+      return;
+    }
+    const obj = value as Record<string, unknown>;
+    const name = (obj.metadata as { name?: unknown } | undefined)?.name;
+    if (typeof obj.kind === "string" && typeof name === "string") localNames.add(name);
+    for (const v of Object.values(obj)) collectNestedNames(v);
+  };
+
+  for (const r of allManifests) {
+    if (r.kind === "Telo.Import") {
+      const m = (r.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
+      if (typeof m === "string") loadedModules.add(m);
+      continue;
+    }
+    const meta = r.metadata as { name?: unknown; module?: unknown; forwardedExport?: unknown };
+    if (typeof meta?.name !== "string" || REF_VALIDATION_SKIP_KINDS.has(r.kind)) continue;
+    if (meta.forwardedExport === true) {
+      if (typeof meta.module === "string") loadedModules.add(meta.module);
+      continue;
+    }
+    localNames.add(meta.name);
+    collectNestedNames(r);
+  }
+
+  const validateInvoke = (
+    value: unknown,
+    resource: { kind: string; name: string },
+    filePath: string | undefined,
+    path: string,
+  ): void => {
+    if (isRefSentinel(value)) {
+      // An unresolved `!ref` is a miss: a real instance would have resolved to
+      // `{kind, name}` in Phase 2.5.
+      const refName = value.source;
+      const dot = refName.indexOf(".");
+      const aliasPrefix = dot > 0 ? refName.slice(0, dot) : undefined;
+
+      if (aliasPrefix && aliasPrefix !== "Self" && aliases.hasAlias(aliasPrefix)) {
+        const module = aliases.moduleForAlias(aliasPrefix);
+        // Partial single-file analysis (import not loaded) — skip to avoid a false miss.
+        if (module && !loadedModules.has(module)) return;
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "UNRESOLVED_REFERENCE",
+          source: SOURCE,
+          message: `${resource.kind}/${resource.name}: step invoke at '${path}' → '${refName}' is not an exported instance of module '${module ?? aliasPrefix}' (reference a declared instance, not a kind)`,
+          data: { resource, filePath, path },
+        });
+        return;
+      }
+
+      const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
+      if (localNames.has(localName)) return;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "UNRESOLVED_REFERENCE",
+        source: SOURCE,
+        message: `${resource.kind}/${resource.name}: step invoke at '${path}' → resource '${localName}' not found`,
+        data: { resource, filePath, path },
+      });
+      return;
+    }
+
+    // Resolved `{kind, name}` (or an inline `{kind, …}` definition) — the
+    // instance exists. Mirror the kernel's ERR_RESOURCE_NOT_INVOKABLE, which
+    // fires when the instance has neither an `invoke` nor a `run` method
+    // (evaluation-context.ts). That is a per-instance property, not a pure
+    // capability, so only capabilities that STRUCTURALLY expose no such method
+    // are rejected statically — Service is intentionally excluded, since some
+    // services are invocable (e.g. a function handler dispatched directly).
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const kind = (value as Record<string, unknown>).kind;
+    if (typeof kind !== "string") return;
+    const capability = defs.resolve(aliases.resolveKind(kind) ?? kind)?.capability;
+    if (typeof capability === "string" && NON_INVOKABLE_CAPABILITIES.has(capability)) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "REFERENCE_KIND_MISMATCH",
+        source: SOURCE,
+        message: `${resource.kind}/${resource.name}: step invoke at '${path}' → '${kind}' is a ${capability} and cannot be invoked in a step — it has no invoke or run method (runtime ERR_RESOURCE_NOT_INVOKABLE)`,
+        data: { resource, filePath, path },
+      });
+    }
+  };
+
+  for (const m of allManifests) {
+    const meta = m.metadata as { name?: unknown; source?: unknown; forwardedExport?: unknown };
+    if (
+      typeof meta?.name !== "string" ||
+      REF_VALIDATION_SKIP_KINDS.has(m.kind) ||
+      meta.forwardedExport === true
+    )
+      continue;
+    const def = defs.resolve(aliases.resolveKind(m.kind) ?? m.kind);
+    const defSchema = def?.schema as Record<string, any> | undefined;
+    if (!defSchema?.properties) continue;
+    const resource = { kind: m.kind, name: meta.name };
+    const filePath = typeof meta.source === "string" ? meta.source : undefined;
+
+    for (const [fieldName, fieldSchema] of Object.entries(
+      defSchema.properties as Record<string, any>,
+    )) {
+      const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
+      const invokeField = stepCtx?.invoke;
+      if (!invokeField) continue;
+      const steps = m[fieldName];
+      if (!Array.isArray(steps)) continue;
+      const stepItemSchema = resolveLocalRef(
+        fieldSchema.items as Record<string, any> | undefined,
+        defSchema,
+      );
+
+      walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s, stepPath) => {
+        const invoke = s[invokeField];
+        if (invoke === undefined || invoke === null) return;
+        validateInvoke(invoke, resource, filePath, `${stepPath}.${invokeField}`);
+      });
+    }
+  }
+
+  return diagnostics;
 }
 
 /**
@@ -1409,6 +1619,11 @@ export class StaticAnalyzer {
     diagnostics.push(
       ...validateReferences(allManifests, { aliases, definitions: defs, aliasesByModule }),
     );
+
+    // Validate step `invoke` references — the slots the reference field map
+    // deliberately skips (behind the step `$ref`), so a missing instance or a
+    // kind-instead-of-instance ref there is caught statically, not at runtime.
+    diagnostics.push(...validateStepInvokeReferences(allManifests, defs, aliases));
 
     // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
     diagnostics.push(...validateExtends(allManifests, defs, aliases));
