@@ -21,6 +21,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Rasterizer
+  description: Renders one page of a PDF to an image at a configurable scale, reporting the pixel dimensions.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/pdf@0.2.0?local_path=./nodejs#rasterizer
@@ -125,6 +126,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: FormFields
+  description: Adds editable AcroForm text/checkbox fields to a PDF at image-pixel coordinates, returning new PDF bytes.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/pdf@0.2.0?local_path=./nodejs#form-fields

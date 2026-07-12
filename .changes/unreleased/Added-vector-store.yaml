@@ -1,0 +1,4 @@
+project: vector-store
+kind: Added
+body: Describe exported resource kinds via metadata.description for semantic discovery.
+time: 2026-07-12T17:12:16.000000000Z

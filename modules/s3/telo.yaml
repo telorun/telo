@@ -20,6 +20,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Bucket
+  description: Provides a configured handle to an S3-compatible bucket, with optional create-if-missing and public-read.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-bucket
@@ -60,6 +61,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: List
+  description: Lists object keys in the referenced S3 bucket.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-list
@@ -78,6 +80,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Put
+  description: Uploads an object (string or binary body) under a key in the referenced S3 bucket.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-put
@@ -136,6 +139,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Get
+  description: Streams an object's bytes from the referenced S3 bucket by key.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-get
@@ -195,6 +199,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: Delete
+  description: Deletes an object from the referenced S3 bucket by key (idempotent).
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-delete
@@ -250,6 +255,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: PresignedUrl
+  description: Generates a time-limited SigV4 presigned URL for downloading or uploading an object.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/s3@0.5.1?local_path=./nodejs#s3-presigned-url

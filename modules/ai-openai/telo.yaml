@@ -13,6 +13,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: OpenaiModel
+  description: Configure an OpenAI-compatible chat model via the direct /chat/completions API for Ai consumers.
 capability: Telo.Provider
 extends: Ai.Model
 controllers:

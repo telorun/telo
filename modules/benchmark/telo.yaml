@@ -11,6 +11,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Suite
+  description: Runs weighted load scenarios against invocable resources and reports latency and error-rate metrics.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/benchmark@0.4.1?local_path=./nodejs#suite

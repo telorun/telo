@@ -5,6 +5,7 @@ import { hideBin } from "yargs/helpers";
 import { celCommand } from "./commands/cel.js";
 import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
+import { moduleCommand } from "./commands/module.js";
 import { publishCommand } from "./commands/publish.js";
 import { runCommand } from "./commands/run.js";
 import { upgradeCommand } from "./commands/upgrade.js";
@@ -16,6 +17,7 @@ let cli = yargs(hideBin(process.argv))
 cli = celCommand(cli) as typeof cli;
 cli = checkCommand(cli) as typeof cli;
 cli = installCommand(cli) as typeof cli;
+cli = moduleCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
 cli = runCommand(cli) as typeof cli;
 cli = upgradeCommand(cli) as typeof cli;

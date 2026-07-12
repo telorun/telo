@@ -20,6 +20,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
+  description: Encodes each event record as a Server-Sent Events frame (event/data) of bytes.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:

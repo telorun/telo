@@ -19,6 +19,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Blank
+  description: Produces a solid-color image canvas of the given size, encoded as PNG/JPEG/WebP bytes.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#blank
@@ -112,6 +113,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Overlay
+  description: Draws labelled rectangles onto an image and returns the annotated image as encoded bytes.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#overlay

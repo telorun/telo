@@ -37,6 +37,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Critical
+  description: Runs an invocable under a keyed, TTL-bounded lease so at most one holder per key runs the body.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/lease@0.3.0?local_path=./nodejs#critical

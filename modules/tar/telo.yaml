@@ -20,6 +20,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Pack
+  description: Builds a tar archive byte stream from an ordered list of { path, contents } entries.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#pack
@@ -67,6 +68,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Extract
+  description: Extracts one named entry from a tar byte stream as a byte stream.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#extract

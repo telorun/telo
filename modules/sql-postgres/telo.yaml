@@ -18,6 +18,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Connection
+  description: Provides a pooled PostgreSQL connection for Sql.Connection operations, configured by a postgres:// URL.
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:

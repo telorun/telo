@@ -25,6 +25,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Of
+  description: Emits a declared list of literal items as a stream, in order.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.3.0?local_path=./nodejs#of
@@ -57,6 +58,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: Collect
+  description: Drains an input stream to completion and returns every item as an array, in order.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.3.0?local_path=./nodejs#collect

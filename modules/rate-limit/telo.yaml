@@ -19,6 +19,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Guard
+  description: Sliding-window rate limiter over a Cache.Store returning an allow/deny verdict with remaining and retry-after.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/rate-limit@0.3.0?local_path=./nodejs#guard
@@ -82,6 +83,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Budget
+  description: Windowed weighted-spend budget over a Cache.Store using two-phase reserve/settle to bound metered cost per key.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/rate-limit@0.3.0?local_path=./nodejs#budget

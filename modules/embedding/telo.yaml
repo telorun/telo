@@ -33,6 +33,7 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Query
+  description: Embed one or more search queries into vectors for retrieval using any Embedding.Model.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/embedding@0.2.0?local_path=./nodejs#query
@@ -94,6 +95,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Passage
+  description: Embed one or more stored passages into vectors for indexing using any Embedding.Model.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/embedding@0.2.0?local_path=./nodejs#passage

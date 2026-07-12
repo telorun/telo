@@ -25,6 +25,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: ModuleContext
+  description: Asserts on the state of a named module's evaluation context during a test.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#module-context
@@ -44,6 +45,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Schema
+  description: Asserts that a value conforms to the given JSON Schema.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#schema
@@ -73,6 +75,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Events
+  description: Asserts emitted events match an ordered sequence of expected patterns and payloads.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#events
@@ -115,6 +118,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Manifest
+  description: Analyzes a manifest file and asserts its expected diagnostics or load failure.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#manifest
@@ -167,6 +171,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Equals
+  description: Asserts that a value deep-equals an expected value.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#equals
@@ -200,6 +205,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Matches
+  description: Asserts that a string matches a JavaScript regular expression pattern.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#matches
@@ -236,6 +242,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Contains
+  description: Asserts that a string contains a substring or an array contains an element.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.7.24?local_path=./nodejs#contains

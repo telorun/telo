@@ -17,6 +17,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Parse
+  description: Parses a UTF-8 YAML string into its documents, returning multi-document files as docs[].
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/yaml@0.4.1?local_path=./nodejs#parse

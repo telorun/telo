@@ -17,6 +17,7 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Graph
+  description: Runs a graph of invocable nodes on a pluggable workflow backend.
 capability: Telo.Runnable
 schema:
   type: object

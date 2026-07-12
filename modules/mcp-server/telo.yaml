@@ -21,6 +21,7 @@ exports:
 kind: "Telo.Definition"
 metadata:
   name: "Tools"
+  description: Bundles MCP tool entries advertised via tools/list and dispatched via tools/call to handler resources.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.7.0?local_path=./nodejs#tools
@@ -175,6 +176,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Resources"
+  description: Bundles MCP resource entries advertised via resources/list and read via resources/read.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.7.0?local_path=./nodejs#resources
@@ -260,6 +262,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Prompts"
+  description: Bundles MCP prompt entries advertised via prompts/list and fetched via prompts/get.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.7.0?local_path=./nodejs#prompts
@@ -346,6 +349,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "StdioServer"
+  description: Serves an MCP server over stdin/stdout, exposing referenced tool, resource, and prompt bundles.
 capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/mcp-server@0.7.0?local_path=./nodejs#stdio-server
@@ -400,6 +404,7 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "HttpEndpoint"
+  description: Mounts an MCP server on an Http.Server, serving tool/resource/prompt bundles over HTTP with optional per-session state.
 capability: Telo.Mount
 controllers:
   - pkg:npm/@telorun/mcp-server@0.7.0?local_path=./nodejs#http-endpoint

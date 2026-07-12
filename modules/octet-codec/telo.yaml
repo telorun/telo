@@ -18,6 +18,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
+  description: Passes byte-stream chunks through unchanged (identity encoder for application/octet-stream).
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
@@ -30,6 +31,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Decoder
+  description: Collects a byte stream into a single Uint8Array.
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:

@@ -45,6 +45,7 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: HttpApi
+  description: Handles API Gateway HTTP API v2 events, routing requests to a handler and mapping results to HTTP responses.
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
@@ -163,6 +164,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Sqs
+  description: Handles SQS queue events, invoking a handler per message and returning partial-batch-failure results.
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
@@ -234,6 +236,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Direct
+  description: Handles direct SDK, Step Functions, or internal invocations, passing the raw payload to a handler.
 extends: Self.Handler
 capability: Telo.Invocable
 controllers:
@@ -285,6 +288,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Function
+  description: Classifies each incoming AWS event by shape and dispatches it to the matching Lambda handler.
 capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/lambda@0.5.1?local_path=./nodejs#function

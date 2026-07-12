@@ -17,6 +17,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
+  description: Provides an in-process vector index with cosine/dot/euclidean similarity for the VectorStore abstract.
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:

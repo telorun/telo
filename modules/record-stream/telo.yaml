@@ -31,6 +31,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: ExtractText
+  description: Projects a discriminated stream of records to a Stream<string> via a per-variant emit/drop/throw action map.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#extract-text
@@ -100,6 +101,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Tee
+  description: Fans one input stream out to two output branches, each receiving every item in order.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#tee
@@ -143,6 +145,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: OnComplete
+  description: Forwards a stream live and, once it completes normally, invokes a handler once with all observed records.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#on-complete
@@ -194,6 +197,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Journal
+  description: Provides an in-memory, keyed, offset-addressable replay buffer that makes a detached stream resumable.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal
@@ -209,6 +213,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: JournalSink
+  description: Drains a stream into a Journal under a key, appending each record with a monotonic id.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal-sink
@@ -253,6 +258,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: JournalSource
+  description: Reads a resumable stream from a Journal starting after fromId, then tails live until the key finishes.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal-source
