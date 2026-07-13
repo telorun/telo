@@ -222,8 +222,22 @@ export class HttpServerApi implements ResourceInstance {
           this.ctx.moduleContext,
           this.ctx.validateSchema.bind(this.ctx),
           sink,
-          (err, errCtx) =>
-            this.ctx.emitEvent("Http.Api.streamFailed", {
+          (err, errCtx) => {
+            // Headers are already flushed, so this failure can't reach Fastify's
+            // error handler (which logs pre-stream throws) — log it here, on the
+            // same request logger `logger:` configures, so a mid-stream failure
+            // isn't silent server-side. The event below stays for debug tooling.
+            reply.log.error(
+              {
+                err,
+                path: route.request.path,
+                method: route.request.method,
+                status: errCtx.status,
+                mime: errCtx.mime,
+              },
+              "Http.Api stream failed after response headers were flushed",
+            );
+            return this.ctx.emitEvent("Http.Api.streamFailed", {
               path: route.request.path,
               method: route.request.method,
               status: errCtx.status,
@@ -232,7 +246,8 @@ export class HttpServerApi implements ResourceInstance {
                 err instanceof Error
                   ? { message: err.message, stack: err.stack, code: (err as { code?: string }).code }
                   : { message: String(err) },
-            }),
+            });
+          },
         );
       },
     });

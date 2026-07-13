@@ -152,6 +152,8 @@ If a `mode: stream` `returns:` entry matches, the response is committed (status 
 
 The format-codec encoders embed *in-band* error frames at their own level: `Ndjson.Encoder` emits `{"type":"error","error":{"message":"..."}}` and ends; `Sse.Encoder` emits `event: error\ndata: ...\n\n` and ends; `PlainText.Encoder` and `Octet.Encoder` propagate the error and abort the transport.
 
+Regardless of encoder, a mid-stream failure is logged server-side on the server's request logger (the one `Http.Server.logger` configures) at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling.
+
 ## `notFoundHandler`
 
 `Http.Server.notFoundHandler` accepts the same `returns:` and `catches:` split as a route handler — same `content:` map shape, same Accept-header negotiation, same stream-mode rules. The `invoke:` resource runs when Fastify can't match any mounted route; its return value flows through `returns:`, its `InvokeError` throws through `catches:`.
