@@ -1,6 +1,6 @@
 {
   "name": "@telorun/assert",
-  "version": "0.7.26",
+  "version": "0.7.27",
   "description": "Telo Assert module - Assertion resource kinds for Telo manifests.",
   "keywords": [
     "telo",
