@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: BaseCelCleanTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref TestBaseCelClean
+---
+# A base mapping made entirely of !cel values must analyze CLEAN. Regression for
+# a bug where raw !cel sentinels in a base mapping were AJV-checked against the
+# parent field's type and falsely raised BASE_SCHEMA_MISMATCH when the defining
+# library was analyzed as a root. Complements base-schema-mismatch.yaml (which
+# asserts a wrong LITERAL is still caught).
+kind: Assert.Manifest
+metadata:
+  name: TestBaseCelClean
+source: ./__fixtures__/base-cel-clean/telo.yaml
+expect:
+  errors: []

@@ -1,5 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
+import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { effectiveAuthorSchema, resolveParent, type DefResolver } from "./extends-resolution.js";
@@ -7,10 +8,14 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
-/** True when a value subtree contains a compiled CEL leaf — such a value can
- *  produce anything at runtime, so its type is not statically checkable. */
+/** True when a value subtree contains a CEL leaf — either a compiled CEL value
+ *  (post-precompile) or the raw `!cel` tagged sentinel the analyzer sees at
+ *  `telo check` time (this validator runs on the un-precompiled tree). Such a
+ *  value can produce anything at runtime, so its type is not statically
+ *  checkable. */
 function containsCel(value: unknown): boolean {
   if (isCompiledValue(value)) return true;
+  if (isTaggedSentinel(value) && value.engine === "cel") return true;
   if (Array.isArray(value)) return value.some(containsCel);
   if (value && typeof value === "object") {
     return Object.values(value as Record<string, unknown>).some(containsCel);
