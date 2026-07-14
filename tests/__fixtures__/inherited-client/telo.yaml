@@ -1,0 +1,47 @@
+kind: Telo.Library
+metadata:
+  name: inherited-client
+  namespace: test
+  version: 0.1.0
+  description: >-
+    Fixture library exercising general kind inheritance — a client kind that
+    extends the concrete std/http-client Client and maps a friendly config onto
+    the parent via base:.
+imports:
+  Http: ../../../modules/http-client
+exports:
+  kinds:
+    - PlaceholderClient
+    - TaggedClient
+---
+# No `base:` — a pure additive extension (merge case). The author-facing schema is
+# merge(Http.Client, own): the parent's baseUrl/headers/timeout PLUS `label`. The
+# child carries the parent's config fields directly; they forward to the inherited
+# controller. Exercises the effective-schema field map + merge-case forwarding.
+kind: Telo.Definition
+metadata:
+  name: TaggedClient
+extends: Http.Client
+schema:
+  type: object
+  properties:
+    label:
+      type: string
+---
+# Inherits Http.Client's controller and capability (a Provider consumed at
+# construction). base: maps the friendly { host } onto the parent's baseUrl /
+# headers. Because base: is present, the author surface is exactly { host }.
+kind: Telo.Definition
+metadata:
+  name: PlaceholderClient
+extends: Http.Client
+schema:
+  type: object
+  required: [host]
+  properties:
+    host:
+      type: string
+base:
+  baseUrl: !cel "'https://' + self.host"
+  headers:
+    X-From: !cel "'placeholder-' + self.host"

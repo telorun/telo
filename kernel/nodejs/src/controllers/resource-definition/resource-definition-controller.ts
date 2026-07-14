@@ -1,12 +1,21 @@
 import type {
   ControllerContext,
   ResourceContext,
+  ResourceDefinition as ResourceDefinitionManifest,
   ResourceInstance,
   RuntimeResource,
 } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
+import {
+  controllerBearingAncestor,
+  hasOwnControllerOrTemplate,
+  inheritedCapability,
+  type DefResolver,
+} from "@telorun/analyzer";
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { createTemplateController } from "./resource-template-controller.js";
+import { createInheritedController } from "./resource-inherited-controller.js";
 
 type ResourceDefinitionResource = RuntimeResource & {
   kind: "Telo.Definition";
@@ -17,6 +26,8 @@ type ResourceDefinitionResource = RuntimeResource & {
   };
   schema: Record<string, any>;
   capability?: string;
+  extends?: string;
+  base?: Record<string, any>;
   controllers?: Array<string>;
   provide?: unknown;
 };
@@ -31,6 +42,60 @@ class ResourceDefinition implements ResourceInstance {
   constructor(readonly resource: ResourceDefinitionResource) {}
 
   async init(ctx: ResourceContext) {
+    const definingCtx = ctx.moduleContext;
+    // Resolve an `extends`/kind target (alias or canonical form) to its
+    // definition against the DEFINING library's scope — where the `extends`
+    // alias was declared.
+    const resolveDef: DefResolver = (kind) => {
+      let canonical = kind;
+      try {
+        canonical = definingCtx.resolveKind(kind);
+      } catch {
+        // ungated / unqualified — fall back to the raw kind below
+      }
+      return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
+    };
+
+    // Inherited-controller delegation: a definition that `extends` a concrete
+    // kind, declares no own `controllers:` / template body, inherits the parent
+    // controller by delegation and maps its config via `base:`.
+    if (this.resource.extends && !hasOwnControllerOrTemplate(this.resource as ResourceDefinitionManifest)) {
+      const parentDef = resolveDef(this.resource.extends);
+      if (!parentDef) {
+        // The parent's Telo.Definition (and thus its controller) isn't loaded
+        // yet — defer; the multi-pass init loop retries once its import resolves.
+        throw new RuntimeError(
+          "ERR_LOCAL_REF_PENDING",
+          `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
+        );
+      }
+      if (controllerBearingAncestor(this.resource as ResourceDefinitionManifest, resolveDef)) {
+        // Capability is inherited and immutable — stamp the resolved capability
+        // so every consumer that reads `definition.capability` (compile-CEL eval
+        // paths, `capabilityOf`, lifecycle role) sees the effective role without
+        // re-walking `extends`.
+        if (!this.resource.capability) {
+          const inherited = inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef);
+          if (inherited) this.resource.capability = inherited;
+        }
+        const controllerInstance = createInheritedController(
+          this.resource as ResourceDefinitionManifest,
+          definingCtx,
+          resolveDef,
+        );
+        ctx.registerDefinition(this.resource);
+        await ctx.registerController(
+          this.resource.metadata.module,
+          this.resource.metadata.name,
+          controllerInstance,
+        );
+        return;
+      }
+      // Otherwise the chain reaches no controller-bearing concrete ancestor
+      // (e.g. it implements a pure abstract) — fall through to the normal
+      // template / controller handling below.
+    }
+
     if (!this.resource.controllers?.length) {
       if (this.resource.capability === "Telo.Provider" && this.resource.provide == null) {
         throw new Error(

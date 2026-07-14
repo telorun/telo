@@ -58,6 +58,11 @@ export interface ResourceDefinition {
    *  and by editor hosts rendering typed input forms. */
   inputType?: string | Record<string, any>;
   outputType?: string | Record<string, any>;
+  /** Construction mapping for an inherited (concrete-`extends`) definition — an
+   *  object of CEL expressions over `self` that builds the parent kind's config,
+   *  passed once to the inherited controller's `create()`. Mirrors the
+   *  `inputs:`/`result:` top-level-sibling factoring. */
+  base?: Record<string, any>;
   controllers?: Array<{
     runtime: string;
     entry: string;

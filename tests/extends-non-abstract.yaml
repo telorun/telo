@@ -1,17 +1,19 @@
 kind: Telo.Application
 metadata:
-  name: ExtendsNonAbstractTest
+  name: ExtendsCapabilityMismatchTest
   version: 1.0.0
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestExtendsNonAbstract
+  - !ref TestExtendsCapabilityMismatch
 ---
-# Asserts the analyzer emits EXTENDS_NON_ABSTRACT when `extends` targets a concrete definition.
+# Extending a concrete kind is now valid (general single inheritance). What stays
+# forbidden is changing the lifecycle role — asserts the analyzer emits
+# EXTENDS_CAPABILITY_MISMATCH when `capability` differs from the inherited one.
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsNonAbstract
+  name: TestExtendsCapabilityMismatch
 source: ./__fixtures__/extends-non-abstract.yaml
 expect:
   errors:
-    - code: EXTENDS_NON_ABSTRACT
+    - code: EXTENDS_CAPABILITY_MISMATCH

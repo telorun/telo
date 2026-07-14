@@ -280,7 +280,14 @@ function resolveClientConfig(client: unknown, ctx: ResourceContext): Record<stri
     return instance.snapshot();
   }
 
-  // Local Http.Client resource.
+  // Local reference. Prefer the live instance: a kind that inherits Http.Client
+  // by `extends` (general single inheritance) is a delegated Client whose
+  // snapshot() carries the resolved baseUrl/headers — its raw manifest holds the
+  // child's own config (e.g. `host`), not a Client config. Only fall back to the
+  // raw manifest for a genuine Http.Client at a scope site where no live instance
+  // is registered.
+  const live = ctx.moduleContext.resourceInstances.get(name)?.instance;
+  if (hasSnapshot(live)) return live.snapshot();
   const resource = ctx.getResourcesByName("Client", name);
   if (!resource) {
     throw new Error(`Http.Request: Http.Client "${name}" not found.`);

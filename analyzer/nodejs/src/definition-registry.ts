@@ -8,6 +8,7 @@ import {
   type ReferenceFieldMap,
 } from "./reference-field-map.js";
 import { createAjv, formatSingleError, navigateJsonPointer } from "./schema-compat.js";
+import { effectiveAuthorSchema } from "./extends-resolution.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 export class DefinitionRegistry {
@@ -37,7 +38,11 @@ export class DefinitionRegistry {
     const { name, module: mod } = definition.metadata;
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
-    this.fieldMaps.set(key, buildReferenceFieldMap(definition.schema ?? {}));
+    // Field maps derive from the AUTHOR-FACING (inheritance-resolved) schema, which
+    // depends on the parent — possibly registered after this child. Clear the cache
+    // so any already-computed map recomputes against the now-larger def set; the
+    // maps rebuild lazily on first `getFieldMap` (after all defs are registered).
+    this.fieldMaps.clear();
     // `capability` populates extendedBy for backward-compat with the legacy pattern where
     // a concrete definition overloaded `capability: <AbstractKind>` to mean "implements
     // this abstract." The canonical pattern is `extends` (below). Both populate the index,
@@ -204,9 +209,19 @@ export class DefinitionRegistry {
     return this.defs.get(kind);
   }
 
-  /** Returns the cached reference field map for the given kind, built once during register(). */
+  /** Returns the reference field map for the given kind, computed lazily from the
+   *  kind's AUTHOR-FACING (inheritance-resolved) schema and memoized. Lazy so a
+   *  child registered before its parent still sees the parent's inherited ref
+   *  slots once both are present. */
   getFieldMap(kind: string): ReferenceFieldMap | undefined {
-    return this.fieldMaps.get(kind);
+    const cached = this.fieldMaps.get(kind);
+    if (cached) return cached;
+    const def = this.defs.get(kind);
+    if (!def) return undefined;
+    const schema = effectiveAuthorSchema(def, (k) => this.resolve(k));
+    const map = buildReferenceFieldMap(schema ?? {});
+    this.fieldMaps.set(kind, map);
+    return map;
   }
 
   /** Returns the field map for `kind`, falling back to the alias-resolved kind when not found. */

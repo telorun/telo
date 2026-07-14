@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: InheritedHttpClientTest
+  version: 1.0.0
+imports:
+  Ph: ./__fixtures__/inherited-client/telo.yaml
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref TestInheritedClient
+---
+# A PlaceholderClient IS an Http.Client (inherits its controller + capability),
+# constructed from { host } via the definition's base: mapping.
+kind: Ph.PlaceholderClient
+metadata:
+  name: Placeholder
+host: jsonplaceholder.typicode.com
+---
+# The inherited client drops into Http.Request's `client` slot with no special
+# handling — it duck-types as a Client (its snapshot() carries baseUrl/headers).
+kind: Run.Sequence
+metadata:
+  name: TestInheritedClient
+steps:
+  - name: FetchUser
+    inputs: {}
+    invoke:
+      kind: Http.Request
+      client: !ref Placeholder
+      url: /users/1
+      method: GET
+
+  - name: AssertResponse
+    inputs:
+      status: !cel "steps.FetchUser.result.status"
+      id: !cel "steps.FetchUser.result.body.id"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status:
+            type: integer
+            const: 200
+          id:
+            type: integer
+            const: 1
+        required:
+          - status
+          - id

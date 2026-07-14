@@ -209,6 +209,21 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             },
           },
         },
+        // `base:` ("super(...)") — construction mapping for an inherited
+        // (concrete-`extends`) definition. Its CEL is evaluated once against
+        // `self` (typed from this definition's `schema:`) to build the parent
+        // kind's config. Same `self`-only scope as a resource body.
+        base: {
+          type: "object",
+          additionalProperties: true,
+          "x-telo-context": {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              self: { "x-telo-context-from-root": "schema" },
+            },
+          },
+        },
       },
     },
   },

@@ -41,6 +41,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "sdk/README", label: "Overview" },
         { type: "doc", id: "docs/extend/authoring-a-module", label: "Authoring a Module" },
         { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
+        { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
         {
           type: "category",
           label: "Node.js",

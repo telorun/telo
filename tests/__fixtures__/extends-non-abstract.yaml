@@ -1,17 +1,19 @@
 kind: Telo.Application
 metadata:
-  name: ExtendsNonAbstract
+  name: ExtendsCapabilityMismatch
   version: 1.0.0
 imports:
   AbstractLib: ./abstract-lib.yaml
 ---
-# `extends` points at AbstractLib.Concrete, which is a Telo.Definition (concrete),
-# not a Telo.Abstract. The analyzer should flag EXTENDS_NON_ABSTRACT.
+# General single inheritance allows extending a concrete kind. What it forbids is
+# changing the lifecycle role: `SecondHand` declares `capability: Telo.Provider`
+# but extends `AbstractLib.Concrete` whose capability is `Telo.Invocable` — a
+# hard EXTENDS_CAPABILITY_MISMATCH.
 kind: Telo.Definition
 metadata:
   name: SecondHand
   module: SecondHandLocal
-capability: Telo.Invocable
+capability: Telo.Provider
 extends: AbstractLib.Concrete
 schema:
   type: object

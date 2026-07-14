@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: BaseSchemaMismatchTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref TestBaseMismatch
+---
+# base: maps a wrong literal type onto the parent's config — asserts the analyzer
+# statically catches it (BASE_SCHEMA_MISMATCH) instead of deferring to boot.
+kind: Assert.Manifest
+metadata:
+  name: TestBaseMismatch
+source: ./__fixtures__/base-mismatch/telo.yaml
+expect:
+  errors:
+    - code: BASE_SCHEMA_MISMATCH

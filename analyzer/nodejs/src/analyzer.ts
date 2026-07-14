@@ -11,6 +11,7 @@ import {
   type CelHandlers,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { effectiveAuthorSchema } from "./extends-resolution.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
 import { computeSuggestKind } from "./kind-suggest.js";
@@ -39,6 +40,7 @@ import {
 } from "./validate-cel-context.js";
 import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
 import { validateExtends } from "./validate-extends.js";
+import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateKindDescriptions } from "./validate-kind-descriptions.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -123,8 +125,20 @@ const SOURCE = "telo-analyzer";
  *  property the user declared in `schema:` plus synthetic `name` / `kind` and
  *  the metadata sub-object (kept open since metadata legitimately carries
  *  arbitrary user-added fields). */
-function buildSelfSchema(definition: Record<string, any>): Record<string, any> {
-  const userSchema = (definition.schema ?? {}) as Record<string, any>;
+function buildSelfSchema(
+  definition: Record<string, any>,
+  defs?: DefinitionRegistry,
+  aliases?: AliasResolver,
+): Record<string, any> {
+  // The author-facing schema resolves inheritance: with `base:` the child's own
+  // schema (the parent's config is internal); without it, `merge(parent, own)`.
+  const userSchema = (
+    defs
+      ? effectiveAuthorSchema(definition as unknown as ResourceDefinition, (k) =>
+          defs.resolve(aliases?.resolveKind(k) ?? k) ?? defs.resolve(k),
+        )
+      : (definition.schema ?? {})
+  ) as Record<string, any>;
   const userProps = (userSchema.properties ?? {}) as Record<string, any>;
   const userRequired = Array.isArray(userSchema.required) ? userSchema.required : [];
   return {
@@ -193,7 +207,7 @@ function manifestRootForResolver(
   const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests);
   return {
     ...m,
-    schema: buildSelfSchema(m),
+    schema: buildSelfSchema(m, defs, aliases),
     ...(inputs ? { inputType: inputs } : {}),
   };
 }
@@ -1230,21 +1244,28 @@ export class StaticAnalyzer {
         continue;
       }
 
-      // Validate resource config against definition schema.
+      // Validate resource config against the definition's AUTHOR-FACING schema —
+      // inheritance-resolved: with `base:` the child's own schema (parent config
+      // is internal), else `merge(parent, own)` so a `base:`-less `extends` child
+      // is validated against the inherited fields it may set. For a definition
+      // that neither extends nor uses `base:` this is exactly its own schema.
       // `kind` and `metadata` are implicit on every resource — inject them so module
       // authors don't have to repeat them when using additionalProperties: false.
-      if (definition.schema) {
+      const authorSchema = effectiveAuthorSchema(definition, (k) =>
+        defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+      );
+      if (authorSchema && Object.keys(authorSchema).length > 0) {
         const schema =
-          definition.schema.additionalProperties === false
+          authorSchema.additionalProperties === false
             ? {
-                ...definition.schema,
+                ...authorSchema,
                 properties: {
                   kind: { type: "string" },
                   metadata: { type: "object" },
-                  ...definition.schema.properties,
+                  ...authorSchema.properties,
                 },
               }
-            : definition.schema;
+            : authorSchema;
         // Phase 1: CEL type checking — walk data+schema together, check env.check() return types.
         // A Telo.Import's variables/secrets are a config-only contract evaluated against the
         // IMPORTING module's scope, so type them from the owning module doc (matched by
@@ -1627,6 +1648,8 @@ export class StaticAnalyzer {
 
     // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
     diagnostics.push(...validateExtends(allManifests, defs, aliases));
+
+    diagnostics.push(...validateBaseMapping(allManifests, defs, aliases));
 
     // Validate provider coherence rules for `provide:` template-target definitions.
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
