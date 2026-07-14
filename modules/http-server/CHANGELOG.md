@@ -1,5 +1,7 @@
 # Changelog
-## 0.17.0 - 2026-07-12
+## 0.17.1 - 2026-07-14
+### Fixed
+* Update controller @telorun/http-server to 0.15.2.## 0.17.0 - 2026-07-12
 ### Added
 * Describe exported resource kinds via metadata.description for semantic discovery.## 0.16.1 - 2026-07-06
 ### Fixed

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: test
   namespace: std
-  version: 0.5.0
+  version: 0.5.1
   description: Test discovery and execution
 exports:
   kinds:
@@ -14,7 +14,7 @@ metadata:
   description: Discovers test manifests by glob and runs them with optional filtering and bounded concurrency.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.4.40?local_path=./nodejs#suite
+  - pkg:npm/@telorun/test@0.4.41?local_path=./nodejs#suite
 schema:
   type: object
   properties:
