@@ -10,7 +10,7 @@ Determine whether the implementation is sound, sustainable long-term, and aligne
 - **Polyglot architecture** — Telo must support controllers and runtimes in any language, not just Node.js
 - **Visual editing** — Telo manifests must remain visually editable in a GUI editor; solutions must not break declarative structure or introduce constructs that can't be represented visually
 - **Performance** — the init loop, CEL evaluation, and resource resolution must stay fast; solutions must not introduce unnecessary overhead
-- **Static analysis** — YAML manifests must remain statically analyzable; solutions must preserve the ability to validate references, type-check CEL expressions, and detect errors without running the kernel
+- **Static analysis — THE SINGLE MOST IMPORTANT GOAL IN TELO** — YAML manifests must remain statically analyzable; solutions must preserve the ability to validate references, type-check CEL expressions, and detect errors without running the kernel. This is NON-NEGOTIABLE and OVERRIDES every other consideration, including the "ignore plan deviations" rule below. Static analysis must NEVER be deferred, omitted, weakened, or left as a "follow-up" — not even when the plan/spec explicitly says so. If the kernel validates something at runtime that the analyzer does not catch statically, that is ALWAYS a top-priority blocking finding, regardless of whether it was a documented, intentional deferral. A documented deferral of a static check is not an excuse — it is exactly the defect to flag most loudly.
 - **Developer friendly** — Errors must not be swallowed; they should be surfaced clearly to developers. Error messages must be actionable and informative, guiding developers to concrete place in YAML manifest that needs fixing.
 
 Focus on:
@@ -31,8 +31,7 @@ Focus on:
 - check if a fix is treating the cause of the problem instead of just the symptom, and is not a hacky workaround.
 - check if code was added to a file that suffers from a large number of responsibilities and should be split into smaller files.
 
-
-Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals.
+Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals. EXCEPTION: never ignore a gap in static analysis — see the Static analysis goal above. A missing/deferred static check is always a blocking finding even if the plan sanctioned it.
 
 Detect if implementer was struggling with making the implementation natural/simple and decided to hack around.
 

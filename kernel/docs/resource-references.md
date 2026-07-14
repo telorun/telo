@@ -100,7 +100,7 @@ schema:
 
 ## 4. Kind-Level Narrowing
 
-Referencing a concrete kind (`x-telo-ref: "std/http-server#Middleware"`) constrains a slot to a specific resource kind. All reference shapes are structurally identical — the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind.
+Referencing a concrete kind (`x-telo-ref: "std/http-server#Middleware"`) constrains a slot to that resource kind **or any kind that transitively `extends` it** (general single inheritance — subtypes are substitutable). Referencing an abstract kind accepts every kind that transitively extends it. Both use the same transitive subtype index; the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind against the target kind and its descendants. All reference shapes are structurally identical.
 
 For slots that accept multiple specific kinds, use `anyOf`. Place `x-telo-ref` inside each branch:
 

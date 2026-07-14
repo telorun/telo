@@ -22,6 +22,18 @@ export {
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
 export { buildEvalPaths, evalPathCovers } from "./eval-paths.js";
+export {
+  ancestorChain,
+  controllerBearingAncestor,
+  effectiveAuthorSchema,
+  hasOwnControllerOrTemplate,
+  inheritedCapability,
+  isInheritedDelegation,
+  resolveParent,
+} from "./extends-resolution.js";
+export type { DefResolver } from "./extends-resolution.js";
+export { buildReferenceFieldMap, isRefEntry, isScopeEntry } from "./reference-field-map.js";
+export type { ReferenceFieldMap, RefFieldEntry } from "./reference-field-map.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

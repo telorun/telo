@@ -144,9 +144,10 @@ Loads `Telo.Library` modules into the current scope under PascalCase aliases, de
 Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 
 - `metadata.name` — kind suffix; full kind = `<module-name>.<Name>`
-- `capability` — one of the kernel capabilities (see below). Names the lifecycle role only; never a user-declared abstract kind.
-- `extends` — alias-form reference to a `Telo.Abstract` this definition implements (e.g. `Ai.Model`, `Self.Encoder`). The prefix must be an import alias declared in the same file (an `imports:` entry). **`Self`** is auto-registered as an alias pointing at the declaring library's own module name — use `Self.<Kind>` when the kind lives in the same `Telo.Library` as the definition (no import to alias against, since a self-import would loop the loader). `Self` resolves the library's own kinds **ungated** — independent of `exports.kinds`, which gates importers, not internal use. This is what lets a library declare an instance of a kind it does not export (`kind: Self.WriteLine`) so it can export the instance instead (see `exports.resources`). The kernel registers `Self` in each import's child context so `Self.<Kind>` resolves at runtime, not just in the analyzer.
-- `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development
+- `capability` — one of the kernel capabilities (see below). Names the lifecycle role only; never a user-declared abstract kind. **Inherited and immutable** when `extends` is present: omit it to inherit the ancestor's, or restate it identically; a *different* capability than an ancestor is a hard error (`EXTENDS_CAPABILITY_MISMATCH` + kernel guard).
+- `extends` — alias-form reference to **any** kind this definition specializes — an abstract (implements-this-contract) **or a concrete kind (single inheritance)**. Single-parent, transitive, Liskov-substitutable: a child is accepted at every `x-telo-ref`/`!ref` slot its ancestor is, transitively. The prefix must be an import alias declared in the same file (an `imports:` entry). **`Self`** is auto-registered as an alias pointing at the declaring library's own module name — use `Self.<Kind>` when the kind lives in the same `Telo.Library` as the definition (no import to alias against, since a self-import would loop the loader). `Self` resolves the library's own kinds **ungated** — independent of `exports.kinds`, which gates importers, not internal use. This is what lets a library declare an instance of a kind it does not export (`kind: Self.WriteLine`) so it can export the instance instead (see `exports.resources`). The kernel registers `Self` in each import's child context so `Self.<Kind>` resolves at runtime, not just in the analyzer. **Inheriting a concrete kind:** when a child declares no own `controllers:`/template body, the kernel's `resource-definition-controller` resolves the controller-bearing ancestor, evaluates the child's `base:` mapping, calls the ancestor controller's `create()` with the mapped config, and **returns that instance verbatim** — so the child *is* a parent instance and duck-types identically (e.g. inherits `.snapshot()`). See the kind-inheritance guide (`docs/extend/kind-inheritance.md`).
+- `base` — **("super(...)")** construction mapping for a concrete-`extends` definition: an object of CEL expressions over `self` (typed from the child's own schema), evaluated once and passed to the inherited controller's `create()` as the parent's config. Mirrors the `inputs:`/`result:` top-level-sibling factoring. When `base:` is present the child's **author-facing schema is its own schema only** (the parent's config fields are internal, set solely through `base:`, so the child genuinely narrows); without `base:`, an `extends`-child's author schema is `merge(parent, own)` (pure additive extension). `resources.<child>` value-flow reads follow the **parent's** value-flow (snapshot / `outputType`), never the child's input schema.
+- `controllers` — `pkg:npm` locator; `local_path` is a relative fallback for local development. Omit on a concrete-`extends` child to inherit the parent's controller by delegation (see `extends` / `base`).
 - `schema` — JSON Schema with `x-telo-*` annotations
 - `resources` / `invoke` / `run` / `provide` — template-internal bodies. `invoke:` / `provide:` / `run:` describe the dispatch target only; `inputs:` (values passed to the target) and `result:` (post-call mapping applied to the target's output, works with `invoke:` or `provide:`) live as **top-level siblings** on the definition, matching how Run.Sequence steps factor `{ name, inputs, invoke }`. CEL expressions inside these fields are statically validated against `self` (always — typed from this definition's `schema:`). The `inputs` CEL variable (typed from `inputType:`, falling back to the `extends:`-declared abstract's `inputType:`) is available inside `resources[].*` and the top-level `inputs:` sibling **only for invocable / runnable definitions** — provider definitions take no caller args (`provide()` is parameterless), so no `inputs` variable is exposed inside their bodies. Inside top-level `result:` the `result` variable is typed from the dispatch target's `outputType:`. The produced top-level `result` value is AJV-checked against the abstract this definition `extends` (`outputType`); top-level `inputs` is AJV-checked against the dispatch target's `inputType` when declared.
 
@@ -160,6 +161,8 @@ Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 - `Telo.Type` — pure schema definition, no runtime instance
 
 Defined as `Telo.Abstract` entries in `builtins.ts`.
+
+**`Telo.Abstract`** is the **non-instantiable** flavor of a base kind: it uniquely means *no default implementation — must be extended* (load-bearing for `Sql.Connection`, `Codec.Encoder`, `Ai.Model`, …). Since general `extends` now specializes concrete kinds too, an abstract's only remaining special behavior is that instantiating one is an error and it has no `base:`/controller to inherit. Reach for a `Telo.Abstract` when you want a contract with no default implementation; use plain `extends` of a concrete kind (with `base:`) when you want to reuse an existing controller under a friendlier schema.
 
 ## x-telo-\* Schema Annotations
 
@@ -229,3 +232,14 @@ Two release tracks, split by artifact:
 ## Keep CLAUDE.md up to date
 
 Sync this file after any significant architectural change.
+
+## Keep the authoring agent in sync — MANDATORY
+
+`apps/authoring-agent` is an AI agent that authors Telo manifests for users. Its
+system prompt (`apps/authoring-agent/chat/telo.yaml`, the `system:` block) is a
+full primer that encodes the current Telo architecture — resource kinds,
+capabilities, reference/CEL rules, import/export semantics, and authoring patterns
+(composition, inheritance, etc.). **Any change to Telo's architecture MUST include
+a matching update to that system prompt**, as part of the same change — never a
+follow-up. A stale primer makes the agent emit manifests against an outdated
+surface. Treat it like this file and the module docs: syncing it is not optional.

@@ -29,20 +29,24 @@ function checkKind(
     if (!targetKind) return [];
     const targetDef = registry.resolve(targetKind);
     if (!targetDef) return [];
+    // Liskov substitutability: a value satisfies the slot when it transitively
+    // extends the target kind, or — for a CONCRETE target — IS that kind.
+    // `getByExtends` is the same transitive subtype index for abstract and
+    // concrete targets alike; an abstract is satisfied only by an implementer,
+    // never by the abstract kind itself (which is non-instantiable).
+    if (targetDef.kind !== "Telo.Abstract" && resolved === targetKind) return [];
+    const subtypes = registry.getByExtends(targetKind);
+    const subtypeKinds = new Set(subtypes.map((d) => `${d.metadata.module}.${d.metadata.name}`));
+    if (subtypeKinds.has(resolved)) return [];
     if (targetDef.kind === "Telo.Abstract") {
-      const implementing = registry.getByExtends(targetKind);
-      if (implementing.length === 0) return []; // partial context — no implementations loaded yet
-      const implementingKinds = new Set(
-        implementing.map((d) => `${d.metadata.module}.${d.metadata.name}`),
-      );
-      if (implementingKinds.has(resolved)) return [];
-      const options = [...implementingKinds].join(", ");
+      if (subtypes.length === 0) return []; // partial context — no implementations loaded yet
+      const options = [...subtypeKinds].join(", ");
       errors.push(
         `'${kind}' does not implement '${targetKind}' (known implementations: ${options})`,
       );
     } else {
-      if (resolved === targetKind) return [];
-      errors.push(`'${kind}' (resolved: '${resolved}') does not match required '${targetKind}'`);
+      const options = subtypeKinds.size > 0 ? ` or a subtype (${[...subtypeKinds].join(", ")})` : "";
+      errors.push(`'${kind}' (resolved: '${resolved}') does not match required '${targetKind}'${options}`);
     }
   }
   return errors;

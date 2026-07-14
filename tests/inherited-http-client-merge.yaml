@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: InheritedHttpClientMergeTest
+  version: 1.0.0
+imports:
+  Ph: ./__fixtures__/inherited-client/telo.yaml
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref TestMergeClient
+---
+# TaggedClient extends Http.Client with NO base: — additive merge. The author sets
+# the parent's baseUrl directly (inherited field) plus its own `label`.
+kind: Ph.TaggedClient
+metadata:
+  name: Tagged
+baseUrl: https://jsonplaceholder.typicode.com
+label: demo
+---
+kind: Run.Sequence
+metadata:
+  name: TestMergeClient
+steps:
+  - name: FetchUser
+    inputs: {}
+    invoke:
+      kind: Http.Request
+      client: !ref Tagged
+      url: /users/2
+      method: GET
+  - name: AssertResponse
+    inputs:
+      status: !cel "steps.FetchUser.result.status"
+      id: !cel "steps.FetchUser.result.body.id"
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          status: { type: integer, const: 200 }
+          id: { type: integer, const: 2 }
+        required: [status, id]

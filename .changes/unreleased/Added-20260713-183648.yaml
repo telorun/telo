@@ -1,0 +1,6 @@
+project: authoring-agent
+kind: Added
+body: 'Primer covers general kind inheritance: extends any kind, the base: construction
+  mapping, inherited-and-immutable capability, and when to use inheritance vs. templated
+  composition.'
+time: 2026-07-13T18:36:48.414947043Z

@@ -412,6 +412,20 @@ export class ResourceContextImpl implements ResourceContext {
     this.kernel.registerLazyController(moduleName, kindName, fingerprint, load);
   }
 
+  /**
+   * Run the create phase for an inherited (concrete-`extends`) definition's
+   * parent kind, returning the native parent instance (or null when the parent
+   * controller isn't registered yet — a retry). A typed internal seam for the
+   * inherited-controller delegation; off the public SDK `ResourceContext`
+   * surface, like `registerLazyController`.
+   */
+  createInheritedInstance(
+    evalContext: IEvaluationContext,
+    resource: Record<string, unknown>,
+  ): Promise<ResourceInstance | null> {
+    return this.kernel.createInheritedInstance(evalContext, resource as ResourceManifest);
+  }
+
   registerDefinition(def: any) {
     this.kernel.registerResourceDefinition(def);
   }

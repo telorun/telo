@@ -13,7 +13,7 @@ Everything Telo runs is a resource of some *kind* — `Http.Server`, `Run.Sequen
 
 The kernel binds them: when a resource of your kind is initialized, it loads the controller named by the definition's PURL and calls `create()` to get the live instance.
 
-This guide covers the controller-backed path. If your kind is a **composition of kinds that already exist**, you can skip the controller entirely and build it in YAML — see [Templated Definitions](/extend/templated-definitions). Prefer a template whenever it fits; reach for a controller when you need a runtime API the kernel doesn't expose.
+This guide covers the controller-backed path. Two ways skip the controller entirely and build a kind in YAML: if your kind is a **composition of kinds that already exist**, see [Templated Definitions](/extend/templated-definitions); if it is **one existing kind, specialized** (a preconfigured client, a narrowed variant), `extends` that kind and map its config with `base:` — see [Kind Inheritance](/extend/kind-inheritance). Prefer either whenever it fits; reach for a controller when you need a runtime API the kernel doesn't expose.
 
 This guide walks the smallest real example — `Console.WriteLine` — from declaration to a published, importable kind. For the field-by-field reference, see [Resource Definition](/reference/kernel/resource-definition).
 

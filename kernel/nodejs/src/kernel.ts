@@ -1119,6 +1119,23 @@ export class Kernel implements IKernel {
   }
 
   /**
+   * Create phase for an inherited (concrete-`extends`) definition's parent: runs
+   * the ordinary create pipeline (controller resolution + lazy load, schema
+   * validation, compile-CEL expansion, ctx creation) for the parent-kind
+   * manifest built from `base:`, and returns the native parent instance. The
+   * inherited child's controller returns this verbatim so the child duck-types
+   * as its parent. Null means the parent controller isn't registered yet — the
+   * caller propagates it as the create-phase retry signal.
+   */
+  async createInheritedInstance(
+    evalContext: IEvaluationContext,
+    resource: ResourceManifest,
+  ): Promise<ResourceInstance | null> {
+    const created = await this._createInstance(evalContext, resource);
+    return created?.instance ?? null;
+  }
+
+  /**
    * Phase 5 — Inject live instances into reference fields of a resource config.
    *
    * Called between create() and init() for every resource. Walks the definition's

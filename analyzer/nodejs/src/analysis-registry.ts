@@ -262,16 +262,17 @@ export class AnalysisRegistry {
     const targetDef = this.defs.resolve(targetKind);
     if (!targetDef) return undefined;
 
+    // General single inheritance: the accepted set is the target kind plus every
+    // kind that transitively extends it (subtypes are substitutable). A concrete
+    // target contributes itself and any specializations; an abstract contributes
+    // its implementations. Same transitive index for both.
     const out = new Set<string>();
-    if (targetDef.kind === "Telo.Abstract") {
-      for (const def of this.defs.getByExtends(targetKind)) {
-        const module = (def.metadata as { module?: string } | undefined)?.module;
-        if (module && def.metadata?.name) {
-          out.add(`${module}.${def.metadata.name as string}`);
-        }
+    if (targetDef.kind !== "Telo.Abstract") out.add(targetKind);
+    for (const def of this.defs.getByExtends(targetKind)) {
+      const module = (def.metadata as { module?: string } | undefined)?.module;
+      if (module && def.metadata?.name) {
+        out.add(`${module}.${def.metadata.name as string}`);
       }
-    } else {
-      out.add(targetKind);
     }
     return out;
   }

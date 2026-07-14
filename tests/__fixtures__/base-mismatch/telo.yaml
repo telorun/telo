@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: base-mismatch
+  namespace: test
+  version: 0.1.0
+imports:
+  Http: ../../../modules/http-client
+exports:
+  kinds:
+    - BadClient
+---
+# base: maps `timeout` to a string, but Http.Client's timeout is an integer —
+# BASE_SCHEMA_MISMATCH. baseUrl is a literal string (valid, exercises the pass).
+kind: Telo.Definition
+metadata:
+  name: BadClient
+extends: Http.Client
+schema:
+  type: object
+  required: [host]
+  properties:
+    host: { type: string }
+base:
+  baseUrl: !cel "'https://' + self.host"
+  timeout: not-a-number

@@ -1,6 +1,7 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -119,16 +120,28 @@ export function validateExtends(
                 message: `${label}: 'extends' target '${extendsValue}' (resolved: '${canonical}') is not a registered definition.`,
                 data: { resource, filePath, path: "extends" },
               });
-            } else if (targetDef.kind !== "Telo.Abstract") {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: "EXTENDS_NON_ABSTRACT",
-                source: SOURCE,
-                message:
-                  `${label}: 'extends' target '${extendsValue}' (resolved: '${canonical}') is a ${targetDef.kind}, not a Telo.Abstract. ` +
-                  `Only Telo.Abstract declarations may be extended.`,
-                data: { resource, filePath, path: "extends" },
-              });
+            } else {
+              // General single inheritance: any concrete or abstract kind may be
+              // extended. What inheritance must NOT do is change the lifecycle
+              // role — a child that restates `capability` differently from an
+              // ancestor is a hard error (no silent capability change).
+              const resolveDef: DefResolver = (k) =>
+                registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
+              const ownCap = (m as { capability?: unknown }).capability;
+              const ownCapResolved =
+                typeof ownCap === "string" ? aliases.resolveKind(ownCap) ?? ownCap : undefined;
+              const ancestorCap = inheritedCapability(targetDef, resolveDef);
+              if (ownCapResolved && ancestorCap && ownCapResolved !== ancestorCap) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "EXTENDS_CAPABILITY_MISMATCH",
+                  source: SOURCE,
+                  message:
+                    `${label}: declares 'capability: ${ownCap}' but extends '${extendsValue}' whose inherited capability is '${ancestorCap}'. ` +
+                    `Capability is inherited and immutable — omit 'capability' or restate it identically.`,
+                  data: { resource, filePath, path: "capability" },
+                });
+              }
             }
           }
         }

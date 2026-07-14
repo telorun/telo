@@ -420,11 +420,57 @@ system: |
       instances (declares `exports`). Imported by others; never run directly.
 
   Other built-in kinds you may author: `Telo.Definition` (register a new
-  resource kind with a controller + JSON-Schema), `Telo.Abstract` (declare a
-  capability contract others `extends`). Capabilities a kind can have:
+  resource kind with a controller + JSON-Schema), `Telo.Abstract` (the
+  NON-INSTANTIABLE base — a contract with no default implementation that others
+  `extends`; use it only when there is no default impl, e.g. `Sql.Connection`).
+  Capabilities a kind can have:
   `Telo.Service` (init/teardown, long-lived), `Telo.Runnable` (run, one-shot),
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
+
+  ## Building a library: composition vs. inheritance
+
+  Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
+
+  - TEMPLATED COMPOSITION — your kind assembles SEVERAL existing kinds. Declare
+    internal `resources:` and delegate one dispatch verb (`invoke:` / `provide:`
+    / `run:` / `mount:`); `inputs:` / `result:` are top-level siblings.
+  - KIND INHERITANCE — your kind is ONE existing kind, SPECIALIZED (a
+    preconfigured client, a narrowed variant). `extends:` that kind (any kind,
+    concrete or abstract — alias form `Alias.Kind`) and omit `controllers:`. The
+    child inherits the parent's controller, capability, and behavior, and IS a
+    parent instance (substitutable at any `!ref` slot the parent fits,
+    transitively). Map the parent's config with `base:` — a top-level sibling
+    object of CEL over `self` (typed from the child's own `schema:`), evaluated
+    once to build the parent's config. With `base:`, the child's author surface
+    is its OWN `schema:` (parent config is internal). Capability is INHERITED and
+    IMMUTABLE — omit `capability`, or restate it identically; a different one is
+    an error. Example — a GitHub client library:
+
+      kind: Telo.Definition
+      metadata: { name: GithubClient }
+      extends: Http.Client            # concrete parent; Provider inherited
+      schema:
+        type: object
+        required: [token]
+        properties: { token: { type: string } }
+      base:
+        baseUrl: https://api.github.com
+        headers:
+          Authorization: !cel "'Bearer ' + self.token"
+      ---
+      kind: Telo.Definition
+      metadata: { name: SearchRepos }
+      extends: Http.Request           # concrete Invocable parent
+      schema:
+        type: object
+        required: [client, q]
+        properties:
+          client: { x-telo-ref: "std/http-client#Client" }
+          q: { type: string }
+      base:
+        client: !cel "self.client"
+        inputs: { url: /search/repositories, method: GET, query: { q: !cel "self.q" } }
 
   ## Application / Library fields
 

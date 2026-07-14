@@ -1,6 +1,7 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { controllerBearingAncestor, type DefResolver } from "./extends-resolution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -234,7 +235,16 @@ export function validateProviderCoherence(
       }
     }
 
-    if (capability === "Telo.Provider" && !hasControllers && !hasProvide) {
+    // A definition that inherits a controller by delegation (concrete `extends`,
+    // no own controller/template) satisfies the implementation requirement
+    // through its parent — `base:` supplies the parent's config.
+    const resolveDef: DefResolver = (k) =>
+      registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
+    const inheritsController =
+      typeof md.extends === "string" &&
+      controllerBearingAncestor(m as ResourceDefinition, resolveDef) !== undefined;
+
+    if (capability === "Telo.Provider" && !hasControllers && !hasProvide && !inheritsController) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "PROVIDER_MISSING_IMPLEMENTATION",
