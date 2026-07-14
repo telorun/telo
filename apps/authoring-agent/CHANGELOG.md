@@ -1,5 +1,7 @@
 # Changelog
-## 0.1.0 - 2026-07-09
+## 0.2.0 - 2026-07-14
+### Added
+* Primer covers general kind inheritance: extends any kind, the base: construction mapping, inherited-and-immutable capability, and when to use inheritance vs. templated composition.## 0.1.0 - 2026-07-09
 ### Added
 * Publish the `telorun/authoring-agent` Docker image on every agent release — an immutable `<version>-slim` plus the mutable `latest-slim`, built on the newest published telo runtime
 * Agent tools: `delete_file` (workspace-rooted Fs.FileRemoval) and on-demand `telo_check` (same keyless fixed-argv subprocess as the auto-check after write/edit)
