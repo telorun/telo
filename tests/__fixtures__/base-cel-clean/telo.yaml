@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: base-cel-clean
+  namespace: test
+  version: 0.1.0
+  description: A base mapping built entirely from CEL values must analyze clean.
+imports:
+  Http: ../../../modules/http-client
+exports:
+  kinds:
+    - CelClient
+---
+# Inherits the concrete Http.Client and maps a friendly { host } onto the parent
+# via base:, using only !cel values (a bare expression and one nested in headers).
+# At `telo check` time these are raw `!cel` tagged sentinels, not compiled values;
+# base validation must SKIP them (their runtime type isn't statically knowable)
+# rather than AJV-check them and falsely raise BASE_SCHEMA_MISMATCH.
+kind: Telo.Definition
+metadata:
+  name: CelClient
+  description: An HTTP client configured from a friendly host via a CEL mapping.
+extends: Http.Client
+schema:
+  type: object
+  required: [host]
+  properties:
+    host:
+      type: string
+base:
+  baseUrl: !cel "'https://' + self.host"
+  headers:
+    Authorization: !cel "'Bearer ' + self.host"
