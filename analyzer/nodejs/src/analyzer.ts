@@ -42,7 +42,6 @@ import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
-import { validateKindDescriptions } from "./validate-kind-descriptions.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
 import { validateReferenceForms } from "./validate-reference-forms.js";
@@ -1653,9 +1652,6 @@ export class StaticAnalyzer {
 
     // Validate provider coherence rules for `provide:` template-target definitions.
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
-
-    // Warn about exported kinds lacking a metadata.description (semantic-search input).
-    diagnostics.push(...validateKindDescriptions(allManifests));
 
     // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
     diagnostics.push(
