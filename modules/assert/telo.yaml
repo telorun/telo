@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: assert
   namespace: std
-  version: 0.9.2
+  version: 0.9.3
   description: Assertion and value verification for testing
 exports:
   kinds:
@@ -28,7 +28,7 @@ metadata:
   description: Asserts on the state of a named module's evaluation context during a test.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#module-context
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#module-context
 schema:
   type: object
   properties:
@@ -48,7 +48,7 @@ metadata:
   description: Asserts that a value conforms to the given JSON Schema.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#schema
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#schema
 schema:
   type: object
   examples:
@@ -78,7 +78,7 @@ metadata:
   description: Asserts emitted events match an ordered sequence of expected patterns and payloads.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#events
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#events
 schema:
   type: object
   properties:
@@ -121,7 +121,7 @@ metadata:
   description: Analyzes a manifest file and asserts its expected diagnostics or load failure.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#manifest
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#manifest
 schema:
   type: object
   properties:
@@ -174,7 +174,7 @@ metadata:
   description: Asserts that a value deep-equals an expected value.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#equals
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#equals
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -208,7 +208,7 @@ metadata:
   description: Asserts that a string matches a JavaScript regular expression pattern.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#matches
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#matches
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -245,7 +245,7 @@ metadata:
   description: Asserts that a string contains a substring or an array contains an element.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/assert@0.7.27?local_path=./nodejs#contains
+  - pkg:npm/@telorun/assert@0.7.28?local_path=./nodejs#contains
 inputType:
   kind: Type.JsonSchema
   schema:

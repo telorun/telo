@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.2 - 2026-07-14
+## 0.9.3 - 2026-07-17
+### Fixed
+* Update controller @telorun/assert to 0.7.28.## 0.9.2 - 2026-07-14
 ### Fixed
 * Update controller @telorun/assert to 0.7.27.## 0.9.1 - 2026-07-14
 ### Fixed
