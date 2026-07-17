@@ -30,8 +30,13 @@ search API, and the MCP endpoint are all resources in one manifest.
   `kind:` field is the importer's own alias, so hits carry the bare suffix plus
   the exact module ref.
 - **Serves discovery** over HTTP (the `telo.sh` verbs) and MCP. Ranking is
-  lexical (Postgres full-text + trigram); the semantic (vector) arm lands in a
-  later phase behind the same endpoints.
+  **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
+  trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest
+  version has its kinds embedded (a self-hosted embeddinggemma-300m model via
+  the `std/embedding` stack) into a pgvector index (`std/vector-store-pgvector`,
+  same database); at query the vector arm returns the nearest kind ids and one
+  `Sql.Query` RRF-fuses them with the lexical rank. Intent-shaped queries
+  ("store files in object storage") resolve even without a substring match.
 
 ## HTTP surface
 
@@ -53,7 +58,8 @@ touches this app.
 | Env | Purpose |
 | --- | --- |
 | `PORT` | HTTP port (default 8040) |
-| `DB_CONNECTION` | Postgres connection string (needs `pg_trgm`, available in stock Postgres) |
+| `DB_CONNECTION` | Postgres connection string (needs `pg_trgm` + the `vector` extension — use a `pgvector/pgvector` image) |
+| `EMBEDDER_BASE_URL` | OpenAI-compatible `/v1` base URL of the self-hosted embeddinggemma-300m sidecar (semantic search); the compose sidecar uses the ungated `onnx-community` mirror, no token needed |
 | `MANIFEST_BUCKET_NAME` / `MANIFEST_BUCKET_ENDPOINT` | S3-compatible manifest cache (R2 / MinIO / RustFS) |
 | `MANIFEST_BUCKET_ACCESS_KEY_ID` / `MANIFEST_BUCKET_SECRET_ACCESS_KEY` | Bucket credentials |
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
@@ -89,10 +95,17 @@ pnpm run telo apps/hub/telo.yaml
   another module's definition, so they produce no `resource_kinds` row for the
   re-exporting library — the kind surfaces only under its defining module. A
   chain-following indexer is a follow-up.
-- **Ranking is lexical only.** The semantic (vector) arm and RRF fusion land
-  in Phase 2 behind the same endpoints.
 - **No public registration.** Modules enter via the curated `SEED_REFS` list;
   the self-service `/register` flow with moderation is Phase 3.
+- **Schema-derived passage enrichment is a follow-up.** The embedded passage is
+  composed from the kind name, capability, and curated descriptions; pulling
+  `title`/`description` strings out of each kind's `schema`/`inputType`/
+  `outputType` (graceful degradation for thin descriptions) is not yet wired.
+
+> **Interim import.** The hub imports `vector-store-pgvector` by relative path
+> (`../../modules/vector-store-pgvector`) until that module is published to the
+> registry. Flip it to `std/vector-store-pgvector@0.1.0` once it ships — the
+> Docker `telo install` build resolves the registry form.
 
 ## Tests
 

@@ -1,0 +1,67 @@
+kind: Telo.Library
+metadata:
+  name: vector-store-pgvector
+  namespace: std
+  version: 0.1.0
+  description: |
+    VectorStorePgvector.Store — a Postgres/pgvector index for the VectorStore
+    abstract. Cosine / dot / euclidean similarity via pgvector distance
+    operators over a dedicated table inside an existing Sql.Connection. The
+    backend owns its table (name configurable) and provisions the `vector`
+    extension, the table, and its ANN index on init, so it coexists with the
+    app's other tables in a single database. Mirrors the cache / cache-*
+    family — a concrete backend that extends the vector-store Store abstract.
+imports:
+  VectorStore: ../vector-store
+  Sql: ../sql
+exports:
+  kinds:
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: Provides a Postgres/pgvector-backed vector index (cosine/dot/euclidean) for the VectorStore abstract.
+capability: Telo.Provider
+extends: VectorStore.Store
+controllers:
+  - pkg:npm/@telorun/vector-store-pgvector@0.1.0?local_path=./nodejs#store
+schema:
+  type: object
+  required: [connection, dimensions]
+  additionalProperties: false
+  properties:
+    connection:
+      title: Connection
+      description: Reference to the Postgres Sql.Connection the vectors table lives in.
+      x-telo-ref: "std/sql#Connection"
+    dimensions:
+      title: Dimensions
+      type: integer
+      minimum: 1
+      description: >-
+        Vector length; the backing column is `vector(dimensions)`. Fixed at
+        provisioning — inserts / queries of other lengths are rejected. Changing
+        it requires dropping the table (a re-embed), never an in-place edit.
+    metric:
+      title: Metric
+      type: string
+      enum: [cosine, dot, euclidean]
+      default: cosine
+      description: >-
+        Similarity metric used to rank matches — maps to the pgvector `<=>`
+        (cosine), `<#>` (inner product), and `<->` (L2) operators and their
+        matching ANN index opclass. Higher `score` is always better.
+    table:
+      title: Table
+      type: string
+      default: vectors
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      description: >-
+        Table name the backend owns for storing vectors; created on init if
+        absent. Lives in the same database as the connection's other tables.
+  examples:
+    - connection: !ref Db
+      dimensions: 768
+      metric: cosine
+      table: resource_vectors

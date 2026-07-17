@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     End-to-end tests for the hub's discovery HTTP surface, run against a live
-    hub at http://localhost:8090 that has tracked the seeded refs
+    hub at http://localhost:8040 that has tracked the seeded refs
     (std/console, std/timer). Covers /health, per-resource and per-module
     search, /refs typeahead, and /module/versions including its 404 path.
 imports:
@@ -14,6 +14,7 @@ imports:
 targets:
   - !ref Health
   - !ref SearchResources_FindsSeededKind
+  - !ref SearchResources_SemanticMatch
   - !ref SearchModules_GroupsByModule
   - !ref Refs_FuzzyMatchesSeededRef
   - !ref ModuleVersions_ListsSeededVersions
@@ -56,7 +57,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitSearchResources }
-      url: http://localhost:8090/search/resources?q=delay
+      url: http://localhost:8040/search/resources?q=delay
       method: GET
   - name: assert
     inputs:
@@ -112,7 +113,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitSearchModules }
-      url: http://localhost:8090/search/modules?q=console
+      url: http://localhost:8040/search/modules?q=console
       method: GET
   - name: assert
     inputs:
@@ -165,7 +166,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitRefs }
-      url: http://localhost:8090/refs?q=consol
+      url: http://localhost:8040/refs?q=consol
       method: GET
   - name: assert
     inputs:
@@ -200,7 +201,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitModuleVersions }
-      url: http://localhost:8090/module/versions?ref=std/timer
+      url: http://localhost:8040/module/versions?ref=std/timer
       method: GET
   - name: assert
     inputs:
@@ -231,7 +232,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitUntrackedVersions }
-      url: http://localhost:8090/module/versions?ref=e2e/nonexistent-module
+      url: http://localhost:8040/module/versions?ref=e2e/nonexistent-module
       method: GET
   - name: assert
     inputs:
@@ -249,4 +250,47 @@ steps:
             properties:
               error: { const: Module not tracked }
             required: [error]
+        required: [status, body]
+---
+# Semantic ranking (Phase 2): an intent-shaped query with NO substring or
+# lexical overlap with the kind ("delay") must still surface Timer.Delay via
+# the vector arm. This can only pass if ingest embedded the seeded kinds and the
+# RRF query fuses the vector hits — it fails on lexical-only ranking.
+kind: Run.Sequence
+metadata: { name: SearchResources_SemanticMatch }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitSemanticSearch }
+      url: "http://localhost:8040/search/resources?q=pause%20execution%20for%20a%20while"
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertSemanticSearch }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              hits:
+                type: array
+                minItems: 1
+                contains:
+                  type: object
+                  properties:
+                    kind: { const: Delay }
+                    module:
+                      type: object
+                      properties:
+                        ref: { const: std/timer }
+                      required: [ref]
+                  required: [kind, module]
+            required: [hits]
         required: [status, body]

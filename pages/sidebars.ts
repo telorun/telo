@@ -329,6 +329,11 @@ const sidebars: SidebarsConfig = {
                       id: "modules/vector-store-memory/README",
                       label: "Vector Store Memory",
                     },
+                    {
+                      type: "doc",
+                      id: "modules/vector-store-pgvector/README",
+                      label: "Vector Store pgvector",
+                    },
                   ],
                 },
                 { type: "doc", id: "modules/rate-limit/README", label: "Rate Limit" },
