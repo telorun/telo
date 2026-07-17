@@ -161,6 +161,13 @@ projects:
       - path: modules/http-server/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
+  - label: hub
+    key: hub
+    changelog: apps/hub/CHANGELOG.md
+    replacements:
+      - path: apps/hub/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: image
     key: image
     changelog: modules/image/CHANGELOG.md

@@ -1,11 +1,13 @@
 import type { ManifestSource } from "@telorun/analyzer";
-import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, ManifestCacheSource } from "@telorun/analyzer";
 import type { AppSettings, RegistryServer } from "../model";
 
 export function isRegistryImportSource(source: string): boolean {
   return (
-    !source.startsWith("http://") &&
-    !source.startsWith("https://") &&
+    // A registry ref never carries a scheme — the guard keeps `oci://…@ver`
+    // (or a future `s3://`) from being misrouted here, matching the
+    // analyzer's `isRegistryRef`.
+    !source.includes("://") &&
     !source.startsWith("/") &&
     !source.startsWith(".") &&
     source.includes("@") &&
@@ -131,7 +133,13 @@ export function createRegistryAdapters(settings: AppSettings): ManifestSource[] 
     };
   }
 
-  return settings.registryServers
+  const adapters: ManifestSource[] = settings.registryServers
     .filter((s) => s.enabled)
     .map((s) => createSettingsRegistryAdapter(s.url));
+  // A custom manifest-cache endpoint (self-hosted hub) resolves `oci://`
+  // imports; it precedes the loader's built-in default so it wins for oci refs.
+  if (settings.manifestCacheUrl?.trim()) {
+    adapters.push(new ManifestCacheSource(settings.manifestCacheUrl.trim()));
+  }
+  return adapters;
 }

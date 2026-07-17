@@ -479,10 +479,12 @@ system: |
 
   - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is a
     registry ref `namespace/name@VERSION` (the version is EXACT — never
-    `@latest` or a range) or a relative path `./lib`. Object form
-    `{ source, variables?, secrets? }` forwards values into the library.
-    Reference an imported kind as `kind: <Alias>.<KindName>`, and an imported
-    instance as `!ref <Alias>.<name>`.
+    `@latest` or a range), an OCI ref `oci://host/repo@VERSION` (a module
+    published to any OCI registry; may carry a `#sha256-…` integrity pin), or
+    a relative path `./lib`. Object form `{ source, variables?, secrets? }`
+    forwards values into the library. Reference an imported kind as
+    `kind: <Alias>.<KindName>`, and an imported instance as
+    `!ref <Alias>.<name>`.
   - `variables:` / `secrets:` — NAME-KEYED MAPS. Each entry binds an `env:` var
     name plus a JSON-Schema `type:` (`string|integer|number|boolean|object|
     array`) and optional `default:`. Read in CEL as `variables.X` / `secrets.X`.

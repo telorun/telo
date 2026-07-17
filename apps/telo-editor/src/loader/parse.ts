@@ -1,4 +1,4 @@
-import { RegistrySource, isModuleKind } from "@telorun/analyzer";
+import { RegistrySource, isModuleKind, isOciRef } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   ImportKind,
@@ -13,6 +13,7 @@ import { isRegistryImportSource } from "./registry";
 const registryImportMatcher = new RegistrySource();
 
 export function classifyImport(source: string): ImportKind {
+  if (isOciRef(source)) return "oci";
   if (source.startsWith("pkg:") || /^https?:\/\//.test(source)) return "remote";
   if (isRegistryImportSource(source) && registryImportMatcher.supports(source)) return "registry";
   return "local";

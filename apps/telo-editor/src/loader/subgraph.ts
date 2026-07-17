@@ -1,5 +1,11 @@
 import type { ManifestSource } from "@telorun/analyzer";
-import { HttpSource, Loader, flattenLoadedModule, isModuleKind } from "@telorun/analyzer";
+import {
+  HttpSource,
+  Loader,
+  ManifestCacheSource,
+  flattenLoadedModule,
+  isModuleKind,
+} from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import type {
   ModuleDocument,
@@ -52,13 +58,23 @@ export function createEditorLoader(
   localAdapter: ManifestSource,
   registryAdapters: ManifestSource[],
 ): Loader {
-  // The editor supplies its own registry adapters (or a blocker that fails with
-  // an actionable "configure a registry" message), so it takes the built-in
-  // HTTP source but not the built-in RegistrySource.
-  const registrySources = registryAdapters.length
-    ? registryAdapters
-    : [registryFallbackBlocker];
-  return new Loader([...registrySources, localAdapter, new HttpSource()]);
+  // The editor supplies its own registry adapters, so it takes the built-in
+  // HTTP source but not the built-in RegistrySource. The blocker sits right
+  // after them unconditionally: an enabled registry server claims its refs
+  // first, and a registry ref nothing claims (none configured, or the array
+  // holds only a settings-sourced manifest-cache adapter) fails with the
+  // actionable "configure a registry" message instead of a local read error.
+  // A browser can't speak the OCI protocol, so `oci://` imports resolve
+  // against the hub's static manifest cache — a settings-sourced adapter in
+  // `registryAdapters` wins over the built-in default, and both come before
+  // the local adapter, which would otherwise claim the ref.
+  return new Loader([
+    ...registryAdapters,
+    registryFallbackBlocker,
+    new ManifestCacheSource(),
+    localAdapter,
+    new HttpSource(),
+  ]);
 }
 
 // ---------------------------------------------------------------------------

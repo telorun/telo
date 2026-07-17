@@ -1,0 +1,914 @@
+# Telo Hub — federated discovery
+#
+# Umbrella metadata index over Telo modules hosted on any transport (HTTP
+# registry, OCI). Registered module refs are tracked through the generic
+# `telo module versions|digest|manifest` CLI verbs, each version's `telo.yaml`
+# is cached to the static manifest bucket (the editor's browser-safe OCI read
+# path), and every `Telo.Definition` is indexed one row per
+# `(module-version, resource-kind)` for per-resource search. The hub stores
+# only derived metadata — never artifact payloads — so it can vanish and every
+# install still works (resolution is origin-direct).
+
+kind: Telo.Application
+metadata:
+  name: telo-hub
+  version: 0.1.0
+  description: >-
+    Federated discovery hub: tracks registered module refs across transports,
+    caches manifests, and serves per-resource search over HTTP and MCP.
+imports:
+  Type: std/type@0.7.0
+  Http: std/http-server@0.17.1
+  Sql: std/sql@0.11.0
+  Postgres: std/sql-postgres@0.3.0
+  Run: std/run@0.12.0
+  Shell: std/shell@0.2.0
+  S3: std/s3@0.7.0
+  Yaml: std/yaml@0.5.0
+  Mcp: std/mcp-server@0.8.0
+  Timer: std/timer@0.3.0
+  PlainText: std/plain-text-codec@0.5.0
+  Console: std/console@0.10.0
+ports:
+  http:
+    env: PORT
+    default: 8040
+variables:
+  dbConnection:
+    env: DB_CONNECTION
+    type: string
+  bucketName:
+    env: MANIFEST_BUCKET_NAME
+    type: string
+  bucketEndpoint:
+    env: MANIFEST_BUCKET_ENDPOINT
+    type: string
+  bucketForcePathStyle:
+    env: MANIFEST_BUCKET_FORCE_PATH_STYLE
+    type: boolean
+    default: false
+  # Curated first-party ref list, JSON array (e.g. '["std/console","oci://ghcr.io/acme/telo-s3"]').
+  # Registered idempotently on boot; public registration is a later phase.
+  seedRefs:
+    env: SEED_REFS
+    type: array
+    default: []
+  trackInterval:
+    env: TRACK_INTERVAL
+    type: string
+    default: 15m
+  # Disable the periodic tracker (tests / one-shot ingest drive TrackAll directly).
+  trackLoop:
+    env: TRACK_LOOP
+    type: boolean
+    default: true
+  # Path of the telo CLI the tracker shells out to (`telo` on PATH by default).
+  teloBin:
+    env: TELO_BIN
+    type: string
+    default: telo
+secrets:
+  bucketAccessKeyId:
+    env: MANIFEST_BUCKET_ACCESS_KEY_ID
+    type: string
+  bucketSecretAccessKey:
+    env: MANIFEST_BUCKET_SECRET_ACCESS_KEY
+    type: string
+targets:
+  - !ref Migrations
+  - !ref SeedModules
+  - !ref HubServer
+  - ref: !ref TrackLoop
+    when: !cel "variables.trackLoop"
+---
+# ── Storage ───────────────────────────────────────────────────────────────────
+# The static manifest cache (manifests.telo.sh in production): an S3-compatible
+# bucket (Cloudflare R2 / MinIO) the tracker writes each version's telo.yaml
+# into at the deterministic `<transport>/<host>/<path…>/<version>/telo.yaml`
+# key — the key the `telo` CLI computes with the analyzer's shared helper, so
+# the write key and the editor's read key never drift. Never artifact payloads.
+
+kind: S3.Bucket
+metadata:
+  name: ManifestStore
+bucketName: !cel "variables.bucketName"
+endpoint: !cel "variables.bucketEndpoint"
+forcePathStyle: !cel "variables.bucketForcePathStyle"
+accessKeyId: !cel "secrets.bucketAccessKeyId"
+secretAccessKey: !cel "secrets.bucketSecretAccessKey"
+createIfMissing: true
+# The manifest cache is the public, cookieless read plane — the editor fetches
+# cached telo.yaml with anonymous CORS GETs. On R2 public access comes from the
+# domain binding instead; this covers S3-compatible local/dev backends.
+publicRead: true
+---
+kind: S3.Put
+metadata:
+  name: PutManifest
+bucketRef: !ref ManifestStore
+---
+kind: S3.Get
+metadata:
+  name: GetManifest
+bucketRef: !ref ManifestStore
+---
+# ── Database ──────────────────────────────────────────────────────────────────
+
+kind: Postgres.Connection
+metadata:
+  name: Db
+connectionString: !cel "variables.dbConnection"
+---
+kind: Sql.Query
+metadata:
+  name: Query
+connection: !ref Db
+---
+kind: Sql.Command
+metadata:
+  name: Exec
+connection: !ref Db
+---
+kind: Sql.Migrations
+metadata:
+  name: Migrations
+connection: !ref Db
+migrations:
+  "20260716120000_CreateDiscoverySchema":
+    statements:
+      - |
+        CREATE TABLE modules (
+          id              BIGSERIAL PRIMARY KEY,
+          ref             TEXT NOT NULL UNIQUE,
+          transport       TEXT NOT NULL,
+          latest_version  TEXT,
+          registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_tracked_at TIMESTAMPTZ,
+          last_error      TEXT
+        )
+      - |
+        CREATE TABLE module_versions (
+          module_id    BIGINT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+          version      TEXT NOT NULL,
+          digest       TEXT NOT NULL,
+          module_name  TEXT NOT NULL DEFAULT '',
+          description  TEXT NOT NULL DEFAULT '',
+          manifest_key TEXT NOT NULL,
+          tracked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (module_id, version)
+        )
+      - |
+        CREATE TABLE resource_kinds (
+          id          BIGSERIAL PRIMARY KEY,
+          module_id   BIGINT NOT NULL,
+          version     TEXT NOT NULL,
+          name        TEXT NOT NULL,
+          capability  TEXT NOT NULL DEFAULT '',
+          abstract    BOOLEAN NOT NULL DEFAULT FALSE,
+          exported    BOOLEAN NOT NULL DEFAULT FALSE,
+          description TEXT NOT NULL DEFAULT '',
+          search      TSVECTOR GENERATED ALWAYS AS
+                        (to_tsvector('english', name || ' ' || description)) STORED,
+          UNIQUE (module_id, version, name),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+      - CREATE EXTENSION IF NOT EXISTS pg_trgm
+      - CREATE INDEX resource_kinds_search_idx ON resource_kinds USING GIN (search)
+      - CREATE INDEX modules_ref_trgm_idx ON modules USING GIN (ref gin_trgm_ops)
+---
+# ── Local shell (tracker → telo CLI) ─────────────────────────────────────────
+# Every transport-specific read goes through the generic `telo module …` CLI
+# verbs — the tracker never speaks OCI or the registry protocol directly.
+
+kind: Shell.LocalHost
+metadata:
+  name: LocalShell
+---
+kind: Shell.Command
+metadata:
+  name: TeloCli
+host: !ref LocalShell
+---
+kind: Yaml.Parse
+metadata:
+  name: ParseYaml
+---
+kind: Timer.Delay
+metadata:
+  name: Sleep
+---
+kind: Console.WriteLine
+metadata:
+  name: LogLine
+---
+# ── Registration (curated seed) ──────────────────────────────────────────────
+
+kind: Run.Iteration
+metadata:
+  name: SeedModules
+collection: !cel "variables.seedRefs"
+steps:
+  - name: register
+    invoke: !ref RegisterModule
+    inputs:
+      ref: !cel "string(item)"
+---
+kind: Run.Sequence
+metadata:
+  name: RegisterModule
+inputs:
+  ref: { type: string }
+steps:
+  - name: upsert
+    invoke: !ref Exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (ref, transport) VALUES ($1, $2)
+        ON CONFLICT (ref) DO NOTHING
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'registry'"
+---
+# ── Ingest tracker ────────────────────────────────────────────────────────────
+# One pass: enumerate every registered module's versions, digest-reconcile each
+# version, ingest new/moved content. Version content immutability is a
+# convention no transport enforces — a tag can be re-pushed — so each version's
+# resolved digest is recorded and re-checked on every track; a steady-state
+# track is digest-compare-only.
+
+kind: Run.Loop
+metadata:
+  name: TrackLoop
+condition: !cel "true"
+steps:
+  # A pass-level failure (a transient Postgres hiccup on the module SELECT,
+  # say) must not kill the loop — the tracker would never re-track again. It
+  # is logged, never swallowed, and the next interval retries; per-module
+  # failures are already recorded on their own rows inside TrackAll.
+  - name: guard
+    try:
+      - name: track
+        invoke: !ref TrackAll
+    catch:
+      - name: log
+        invoke: !ref LogLine
+        inputs:
+          output: !cel "'{red tracking pass failed} ' + error.code + ': ' + error.message"
+  - name: sleep
+    invoke: !ref Sleep
+    inputs:
+      duration: !cel "variables.trackInterval"
+---
+kind: Run.Sequence
+metadata:
+  name: TrackAll
+steps:
+  - name: modules
+    invoke: !ref Query
+    inputs:
+      sql: SELECT id, ref FROM modules ORDER BY id
+  - name: each
+    invoke: !ref TrackEachModule
+    inputs:
+      modules: !cel "steps.modules.result.rows"
+outputs:
+  tracked: !cel "steps.modules.result.rows.size()"
+---
+kind: Run.Iteration
+metadata:
+  name: TrackEachModule
+inputs:
+  modules: { type: array }
+collection: !cel "inputs.modules"
+concurrency: 2
+steps:
+  # A broken module must not abort the whole track — the failure is recorded
+  # on its row (surfaced via /refs and the module tables), never swallowed.
+  - name: guard
+    try:
+      - name: track
+        invoke: !ref TrackModule
+        inputs:
+          moduleId: !cel "item.id"
+          ref: !cel "item.ref"
+    catch:
+      - name: record-failure
+        invoke: !ref Exec
+        inputs:
+          sql: UPDATE modules SET last_error = $2, last_tracked_at = NOW() WHERE id = $1
+          bindings:
+            - !cel "item.id"
+            - !cel "error.code + ': ' + error.message"
+---
+kind: Run.Sequence
+metadata:
+  name: TrackModule
+inputs:
+  moduleId: { type: integer }
+  ref: { type: string }
+steps:
+  - name: versionsCmd
+    invoke: !ref TeloCli
+    inputs:
+      args:
+        - !cel "variables.teloBin"
+        - module
+        - versions
+        - !cel "inputs.ref"
+        - --json
+      timeoutMs: 120000
+  - name: versionsGate
+    if: !cel "steps.versionsCmd.result.exitCode != 0"
+    then:
+      - name: fail
+        throw:
+          code: TRACK_VERSIONS_FAILED
+          message: !cel "'telo module versions ' + inputs.ref + ' failed: ' + steps.versionsCmd.result.stderr"
+  - name: versions
+    invoke: !ref ParseYaml
+    inputs:
+      text: !cel "steps.versionsCmd.result.stdout"
+  - name: eachVersion
+    invoke: !ref TrackEachVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      # An OCI repo's `latest` tag is an alias, not a version — never ingested.
+      versions: !cel "steps.versions.result.docs[0].filter(v, v != 'latest')"
+  - name: updateLatest
+    if: !cel "steps.versions.result.docs[0].filter(v, v != 'latest').size() > 0"
+    then:
+      # `telo module versions --json` emits newest-first, so [0] is the latest.
+      - name: set
+        invoke: !ref Exec
+        inputs:
+          sql: >-
+            UPDATE modules
+            SET latest_version = $2, last_tracked_at = NOW(), last_error = NULL
+            WHERE id = $1
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "steps.versions.result.docs[0].filter(v, v != 'latest')[0]"
+---
+kind: Run.Iteration
+metadata:
+  name: TrackEachVersion
+inputs:
+  moduleId: { type: integer }
+  ref: { type: string }
+  versions: { type: array }
+collection: !cel "inputs.versions"
+steps:
+  - name: sync
+    invoke: !ref SyncVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      version: !cel "string(item)"
+---
+# Digest-reconcile one version: an unchanged digest is skipped (cheap read, no
+# re-download); a new or moved digest re-ingests — re-read telo.yaml, re-cache
+# to the same bucket key, re-extract its resource kinds.
+kind: Run.Sequence
+metadata:
+  name: SyncVersion
+inputs:
+  moduleId: { type: integer }
+  ref: { type: string }
+  version: { type: string }
+steps:
+  - name: digestCmd
+    invoke: !ref TeloCli
+    inputs:
+      args:
+        - !cel "variables.teloBin"
+        - module
+        - digest
+        - !cel "inputs.ref + '@' + inputs.version"
+        - --json
+      timeoutMs: 60000
+  - name: digestGate
+    if: !cel "steps.digestCmd.result.exitCode != 0"
+    then:
+      - name: fail
+        throw:
+          code: TRACK_DIGEST_FAILED
+          message: !cel "'telo module digest ' + inputs.ref + '@' + inputs.version + ' failed: ' + steps.digestCmd.result.stderr"
+  - name: digest
+    invoke: !ref ParseYaml
+    inputs:
+      text: !cel "steps.digestCmd.result.stdout"
+  - name: existing
+    invoke: !ref Query
+    inputs:
+      sql: SELECT digest FROM module_versions WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: ingest
+    if: !cel "steps.existing.result.rows.size() == 0 || steps.existing.result.rows[0].digest != steps.digest.result.docs[0].digest"
+    then:
+      - name: manifestCmd
+        invoke: !ref TeloCli
+        inputs:
+          args:
+            - !cel "variables.teloBin"
+            - module
+            - manifest
+            - !cel "inputs.ref + '@' + inputs.version"
+            - --json
+          timeoutMs: 120000
+      - name: manifestGate
+        if: !cel "steps.manifestCmd.result.exitCode != 0"
+        then:
+          - name: fail
+            throw:
+              code: TRACK_MANIFEST_FAILED
+              message: !cel "'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: ' + steps.manifestCmd.result.stderr"
+      - name: manifestJson
+        invoke: !ref ParseYaml
+        inputs:
+          text: !cel "steps.manifestCmd.result.stdout"
+      - name: cache
+        invoke: !ref PutManifest
+        inputs:
+          key: !cel "steps.manifestJson.result.docs[0].cacheKey"
+          body: !cel "steps.manifestJson.result.docs[0].manifest"
+          contentType: text/yaml
+      - name: docs
+        invoke: !ref ParseYaml
+        inputs:
+          text: !cel "steps.manifestJson.result.docs[0].manifest"
+      - name: upsertVersion
+        invoke: !ref Exec
+        inputs:
+          sql: >-
+            INSERT INTO module_versions
+              (module_id, version, digest, module_name, description, manifest_key)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (module_id, version) DO UPDATE SET
+              digest = EXCLUDED.digest,
+              module_name = EXCLUDED.module_name,
+              description = EXCLUDED.description,
+              manifest_key = EXCLUDED.manifest_key,
+              tracked_at = NOW()
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "inputs.version"
+            - !cel "steps.digest.result.docs[0].digest"
+            - !cel "steps.docs.result.docs[0].metadata.name"
+            - !cel "steps.docs.result.docs[0].metadata.?description.orValue('')"
+            - !cel "steps.manifestJson.result.docs[0].cacheKey"
+      - name: clearKinds
+        invoke: !ref Exec
+        inputs:
+          sql: DELETE FROM resource_kinds WHERE module_id = $1 AND version = $2
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "inputs.version"
+      - name: insertKinds
+        invoke: !ref InsertKinds
+        inputs:
+          moduleId: !cel "inputs.moduleId"
+          version: !cel "inputs.version"
+          docs: !cel "steps.docs.result.docs"
+---
+# One relational row per (module-version, resource-kind). A kind's identity is
+# (location ref + suffix) — the prefix in a manifest's `kind:` field is the
+# importer's own alias, so only the suffix is stored.
+kind: Run.Iteration
+metadata:
+  name: InsertKinds
+inputs:
+  moduleId: { type: integer }
+  version: { type: string }
+  docs: { type: array }
+collection: !cel "inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract')"
+steps:
+  - name: insert
+    invoke: !ref Exec
+    inputs:
+      sql: >-
+        INSERT INTO resource_kinds
+          (module_id, version, name, capability, abstract, exported, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (module_id, version, name) DO UPDATE SET
+          capability = EXCLUDED.capability,
+          abstract = EXCLUDED.abstract,
+          exported = EXCLUDED.exported,
+          description = EXCLUDED.description
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "item.metadata.name"
+        - !cel "item.?capability.orValue('')"
+        - !cel "item.kind == 'Telo.Abstract'"
+        # Mirrors the kernel's gate (module-context `registerImport`): a
+        # missing OR empty `exports.kinds` list means no restriction — every
+        # kind is importable; a non-empty list gates to the listed names.
+        # Re-exported entries (`Alias.Kind`) name another module's kind, never
+        # a local definition, so they don't mark local rows (see README).
+        - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports && inputs.docs[0].exports.kinds.size() > 0 ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
+        - !cel "item.metadata.?description.orValue('')"
+---
+# ── Search (lexical, Phase 1) ─────────────────────────────────────────────────
+# Postgres full-text over kind name/description plus a substring boost, joined
+# to each module's latest tracked version only. The semantic (vector) arm and
+# RRF fusion land in Phase 2 behind these same endpoints.
+
+kind: Run.Sequence
+metadata:
+  name: SearchResources
+inputs:
+  q: { type: string }
+steps:
+  - name: query
+    invoke: !ref Query
+    inputs:
+      # OR-recall over the kind text + owning module description (any term may
+      # hit), ranked so all-terms matches and kind-name substrings score higher.
+      sql: >-
+        WITH q AS (
+          SELECT plainto_tsquery('english', $1) AS andq,
+                 CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
+                      ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+        )
+        SELECT rk.name AS kind, rk.capability, rk.description,
+               m.ref, rk.version,
+               COALESCE(mv.description, '') AS module_description,
+               (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END)::float8 AS score
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        LEFT JOIN module_versions mv
+          ON mv.module_id = rk.module_id AND mv.version = rk.version
+        CROSS JOIN q
+        CROSS JOIN LATERAL (
+          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
+        ) v
+        WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq)
+           OR rk.name ILIKE '%' || $1 || '%'
+        ORDER BY score DESC, rk.name
+        LIMIT 20
+      bindings:
+        - !cel "inputs.q"
+outputs:
+  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score})"
+---
+# Module-first projection: the same hits grouped by owning module, with every
+# exported kind included so a module card needs no second manifest fetch.
+kind: Run.Sequence
+metadata:
+  name: SearchModules
+inputs:
+  q: { type: string }
+steps:
+  - name: query
+    invoke: !ref Query
+    inputs:
+      sql: >-
+        WITH q AS (
+          SELECT plainto_tsquery('english', $1) AS andq,
+                 CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
+                      ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+        ),
+        hits AS (
+          SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
+                 m.ref, COALESCE(mv.description, '') AS module_description,
+                 (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                  + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                  + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END)::float8 AS score
+          FROM resource_kinds rk
+          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+          LEFT JOIN module_versions mv
+            ON mv.module_id = rk.module_id AND mv.version = rk.version
+          CROSS JOIN q
+          CROSS JOIN LATERAL (
+            SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
+          ) v
+          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq)
+             OR rk.name ILIKE '%' || $1 || '%'
+        )
+        SELECT h.ref, h.version, h.module_description,
+               MAX(h.score)::float8 AS score,
+               json_agg(json_build_object('kind', h.name, 'capability', h.capability,
+                                          'description', h.description, 'score', h.score)
+                        ORDER BY h.score DESC) AS matched_kinds,
+               (SELECT COALESCE(json_agg(rk2.name ORDER BY rk2.name), '[]'::json)
+                FROM resource_kinds rk2
+                WHERE rk2.module_id = h.module_id AND rk2.version = h.version
+                  AND rk2.exported) AS exported_kinds
+        FROM hits h
+        GROUP BY h.module_id, h.ref, h.version, h.module_description
+        ORDER BY MAX(h.score) DESC
+        LIMIT 20
+      bindings:
+        - !cel "inputs.q"
+outputs:
+  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds})"
+---
+# ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
+# Re-keyed off the location ref (an OCI module has no namespace/name). Reads
+# the cached telo.yaml from the manifest bucket; a missing row falls back to a
+# sentinel key that 404s into the Module-not-found catch.
+kind: Run.Sequence
+metadata:
+  name: GetModuleManifest
+inputs:
+  ref: { type: string }
+  version: { type: string }
+steps:
+  - name: resolve
+    invoke: !ref Query
+    inputs:
+      sql: >-
+        SELECT mv.manifest_key FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+          AND (($2 = 'latest' AND mv.version = m.latest_version) OR mv.version = $2)
+        LIMIT 1
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.version"
+  - name: fetch
+    invoke: !ref GetManifest
+    inputs:
+      key: !cel "steps.resolve.result.rows.size() > 0 ? steps.resolve.result.rows[0].manifest_key : '__not_found__'"
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: !cel "steps.fetch.result.output"
+outputs:
+  text: !cel "steps.decode.result.text"
+---
+# ── HTTP surface (telo.sh) ────────────────────────────────────────────────────
+# The cloud CLI: the generic read verbs plus discovery as HTTP paths. Dynamic
+# reads only — the static manifest read lives on the bucket domain, and
+# install/run stay origin-direct and never touch this app.
+
+kind: Http.Server
+metadata:
+  name: HubServer
+host: "0.0.0.0"
+port: !cel "ports.http"
+logger: true
+cors:
+  origin: "*"
+  methods: "GET,OPTIONS"
+openapi:
+  info:
+    title: Telo Hub
+    # The HTTP API's own version, not the app version (which changie owns) —
+    # deliberately outside the release replacement, like the registry's.
+    version: 1.0.0
+    description: >-
+      Federated discovery over Telo modules: per-resource search, ref
+      autocomplete, and version enumeration for registered modules.
+mounts:
+  - path: /mcp
+    mount: !ref McpHttp
+  - path: /
+    mount: !ref PublicApi
+---
+kind: Http.Api
+metadata:
+  name: PublicApi
+routes:
+  - request:
+      path: /search/resources
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q: { type: string, default: "", description: "Search query over resource kinds." }
+    handler: !ref SearchResources
+    inputs:
+      q: !cel "request.query.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              query: !cel "request.query.q"
+              hits: !cel "result.hits"
+
+  - request:
+      path: /search/modules
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q: { type: string, default: "", description: "Search query, results grouped by module." }
+    handler: !ref SearchModules
+    inputs:
+      q: !cel "request.query.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              query: !cel "request.query.q"
+              hits: !cel "result.hits"
+
+  # Lexical ref typeahead (pg_trgm): completes a ref whose name the author
+  # already knows — the memorable token at an OCI path's tail matches without
+  # the scheme/host boilerplate, and a typo still hits. Not the semantic
+  # /search/* — no embedder in this path, ever.
+  - request:
+      path: /refs
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q: { type: string, default: "", description: "Fuzzy substring over registered refs." }
+    handler:
+      kind: Sql.Query
+      connection: !ref Db
+    inputs:
+      sql: >-
+        SELECT m.ref,
+               COALESCE(m.latest_version, '') AS "latestVersion",
+               COALESCE(mv.description, '') AS description
+        FROM modules m
+        LEFT JOIN module_versions mv
+          ON mv.module_id = m.id AND mv.version = m.latest_version
+        WHERE m.ref % $1 OR m.ref ILIKE '%' || $1 || '%'
+        ORDER BY (CASE WHEN regexp_replace(m.ref, '.*/', '') ILIKE '%' || $1 || '%' THEN 1 ELSE 0 END) DESC,
+                 similarity(m.ref, $1) DESC, m.ref
+        LIMIT 20
+      bindings:
+        - !cel "request.query.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              query: !cel "request.query.q"
+              refs: !cel "result.rows"
+
+  - request:
+      path: /module/versions
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Module ref exactly as registered." }
+          required: [ref]
+    handler:
+      kind: Sql.Query
+      connection: !ref Db
+    inputs:
+      sql: >-
+        SELECT mv.version FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+        ORDER BY (CASE WHEN mv.version ~ '^[0-9]+(\.[0-9]+)*$'
+                       THEN string_to_array(mv.version, '.')::int[] END) ASC NULLS LAST,
+                 mv.version ASC
+      bindings:
+        - !cel "request.query.ref"
+    returns:
+      - status: 200
+        when: !cel "result.rows.size() > 0"
+        content:
+          application/json:
+            body:
+              ref: !cel "request.query.ref"
+              versions: !cel "result.rows.map(r, r.version)"
+      - status: 404
+        content:
+          application/json:
+            body:
+              error: Module not tracked
+
+  - request:
+      path: /health
+      method: GET
+    handler:
+      kind: Run.Value
+      value:
+        status: ok
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              status: !cel "result.status"
+---
+# ── MCP surface ───────────────────────────────────────────────────────────────
+
+kind: Mcp.Tools
+metadata:
+  name: HubTools
+entries:
+  # search_resources — the unit an LLM composes with is a resource kind it can
+  # import, not a package. Each hit carries the kind suffix and the exact
+  # module location ref to import it under a chosen alias.
+  - name: search_resources
+    description: |
+      Search resource kinds across every registered Telo module, on any host or
+      transport. Each hit carries the kind suffix (e.g. `Bucket` — the prefix
+      is YOUR import alias), its capability and description, and the owning
+      module's exact location ref + version. Follow up with
+      `get_module_manifest(ref)` to read the full schemas.
+    argumentsSchema:
+      type: object
+      properties:
+        query: { type: string, description: "What the resource should do (name or description)." }
+      required: [query]
+      additionalProperties: false
+    handler: !ref SearchResources
+    inputs:
+      q: !cel "request.arguments.query"
+    result:
+      content:
+        - type: text
+          text: !cel "json({'query': request.arguments.query, 'hits': result.hits})"
+
+  # get_module_manifest — keyed off the module's location ref (an OCI module
+  # has no namespace/name), serving the tracker-cached telo.yaml.
+  - name: get_module_manifest
+    description: |
+      Fetch the raw `telo.yaml` for a tracked module by its location ref
+      (e.g. `oci://ghcr.io/acme/telo-s3` or `std/console`). The response
+      contains the `Telo.Library` and `Telo.Definition` docs that fully
+      describe the module's public surface. `version` defaults to `latest`
+      (the latest tracked version).
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Module location ref exactly as returned by search_resources." }
+        version:
+          type: string
+          default: latest
+          description: Exact version to fetch, or `latest` (default).
+      required: [ref]
+      additionalProperties: false
+    handler: !ref GetModuleManifest
+    inputs:
+      ref: !cel "request.arguments.ref"
+      version: !cel "request.arguments.?version.orValue('latest')"
+    result:
+      content:
+        - type: text
+          text: !cel "result.text"
+    catches:
+      - when: !cel "error.code == 'ERR_NOT_FOUND'"
+        error:
+          code: -32004
+          message: Module not found
+      - when: !cel "error.code == 'ERR_INVALID_REFERENCE' || error.code == 'ERR_INVALID_RESPONSE'"
+        error:
+          code: -32603
+          message: !cel "error.message"
+---
+kind: Mcp.HttpEndpoint
+metadata:
+  name: McpHttp
+serverInfo:
+  name: telo-hub
+  version: 0.1.0
+instructions: !literal |
+  This MCP server is the **Telo hub** — federated discovery over Telo modules
+  hosted on any registry or OCI host. Telo is a declarative runtime: YAML
+  manifests describe desired state; the kernel resolves resources and runs a
+  controller per kind. CEL expressions are written as `!cel "..."` tags.
+
+  Fetch these for full context:
+  - https://telo.run/llms.txt — guide & kind reference.
+  - https://telo.run/examples.md — working example manifests.
+  - https://telo.run/cel.md — CEL function reference.
+
+  ## Tools
+  - `search_resources(query)` — find resource KINDS by what they do. Each hit
+    carries the kind suffix (`Bucket`), its capability/description, and the
+    owning module's exact location ref + version.
+  - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
+    by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
+    field shapes you must produce. `version` defaults to `latest`.
+
+  ## Composing an application
+  1. `search_resources` for each capability you need.
+  2. `get_module_manifest` on each hit's `module.ref`; read the
+     `Telo.Definition` schemas — never guess fields from a kind name.
+  3. Write one `Telo.Application`. Declare dependencies in the `imports` map
+     (PascalCase alias → the hit's `ref@version`, e.g.
+     `S3: oci://ghcr.io/acme/telo-s3@1.2.0`). A hit's kind suffix is written as
+     `<YourAlias>.<suffix>` — the prefix is the alias you chose, never a fixed
+     name. `targets` lists the runnables/services to start.
+
+  ## Must-know
+  - No `spec:` wrapper — resource fields sit at the doc top level.
+  - `variables:` / `secrets:` entries each need an `env:` var name and a
+    JSON-Schema `type:`.
+  - Tag dynamic leaves with `!cel`, not whole inline collections.
+  - Install/run resolve against the module's own host — the hub only stores
+    discovery metadata and cached manifests, never artifact payloads.
+tools:
+  - !ref HubTools

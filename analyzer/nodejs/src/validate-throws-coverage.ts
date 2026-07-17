@@ -1,4 +1,5 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
+import { isTaggedSentinel } from "@telorun/templating";
 import type { ResourceManifest } from "@telorun/sdk";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -15,7 +16,8 @@ const SOURCE = "telo-analyzer";
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
 interface OutcomeEntry {
-  when?: string;
+  /** Inline `"${{ … }}"` string or a `!cel` TaggedSentinel. */
+  when?: unknown;
   body?: unknown;
   headers?: Record<string, unknown>;
   status?: number;
@@ -137,14 +139,21 @@ function resolveHandlerRef(sibling: unknown): { kind: string; name?: string } | 
  *  Parenthesised nestings of `||` over equality/in are flattened.
  *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
 function extractCoveredCodes(
-  whenExpr: string,
+  whenExpr: unknown,
   env: Environment,
 ): { proven: boolean; codes: Set<string> } {
-  const match = whenExpr.match(/\$\{\{\s*([^}]+?)\s*\}\}/);
-  if (!match) return { proven: false, codes: new Set() };
+  // The `when:` value is either a `!cel` TaggedSentinel (carrying the raw CEL
+  // source) or an inline `"${{ … }}"` string — both forms are load-equivalent.
+  const source =
+    isTaggedSentinel(whenExpr) && whenExpr.engine === "cel"
+      ? whenExpr.source
+      : typeof whenExpr === "string"
+        ? whenExpr.match(/\$\{\{\s*([^}]+?)\s*\}\}/)?.[1]
+        : undefined;
+  if (!source) return { proven: false, codes: new Set() };
   let ast: ASTNode;
   try {
-    ast = env.parse(match[1].trim()).ast;
+    ast = env.parse(source.trim()).ast;
   } catch {
     return { proven: false, codes: new Set() };
   }

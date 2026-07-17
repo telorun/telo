@@ -125,6 +125,11 @@ export class OciTransport implements Transport {
     return tags;
   }
 
+  async digest(ref: string): Promise<string | null> {
+    const { host, repo, reference } = parseOciRef(ref);
+    return new OciClient(host, repo).headManifest(reference);
+  }
+
   async fetchArtifact(ref: string): Promise<FetchedArtifact> {
     return pullVerified(ref);
   }

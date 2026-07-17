@@ -1,0 +1,105 @@
+kind: Telo.Application
+metadata:
+  name: HubE2EMcpTools
+  version: 1.0.0
+  description: |
+    End-to-end tests for the hub's MCP endpoint at /mcp, run against a live
+    hub at http://localhost:8090 that has tracked the seeded refs. Locks in
+    the two-tool discovery loop: `search_resources` returns kind hits carrying
+    the exact module location ref, and `get_module_manifest(ref)` returns the
+    tracker-cached telo.yaml for that ref.
+imports:
+  McpClient: std/mcp-client@0.5.0
+  Run: std/run@0.12.0
+  Assert: std/assert@0.9.2
+  Yaml: std/yaml@0.5.0
+targets:
+  - !ref SearchResources_ReturnsKindHits
+  - !ref GetModuleManifest_ReturnsCachedYaml
+---
+kind: McpClient.HttpClient
+metadata: { name: HubMcp }
+url: http://localhost:8040/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsCall
+metadata: { name: McpToolCall }
+client: !ref HubMcp
+---
+kind: Yaml.Parse
+metadata: { name: ParsePayload }
+---
+kind: Run.Sequence
+metadata: { name: SearchResources_ReturnsKindHits }
+steps:
+  - name: call
+    invoke: !ref McpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        query: delay a task
+  - name: parse
+    invoke: !ref ParsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      payload: !cel "steps.parse.result.docs[0]"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertSearchPayload }
+      schema:
+        type: object
+        properties:
+          payload:
+            type: object
+            properties:
+              query: { const: delay a task }
+              hits:
+                type: array
+                contains:
+                  type: object
+                  properties:
+                    kind: { const: Delay }
+                    module:
+                      type: object
+                      properties:
+                        ref: { const: std/timer }
+                      required: [ref]
+                  required: [kind, module]
+            required: [query, hits]
+        required: [payload]
+---
+kind: Run.Sequence
+metadata: { name: GetModuleManifest_ReturnsCachedYaml }
+steps:
+  - name: call
+    invoke: !ref McpToolCall
+    inputs:
+      name: get_module_manifest
+      arguments:
+        ref: std/timer
+  - name: parse
+    invoke: !ref ParsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      ownerDoc: !cel "steps.parse.result.docs[0]"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertManifestPayload }
+      schema:
+        type: object
+        properties:
+          ownerDoc:
+            type: object
+            properties:
+              kind: { const: Telo.Library }
+              metadata:
+                type: object
+                properties:
+                  name: { const: timer }
+                required: [name]
+            required: [kind, metadata]
+        required: [ownerDoc]

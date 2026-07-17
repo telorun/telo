@@ -150,6 +150,26 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
             </div>
           </div>
         </div>
+
+        <div className="mt-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            Manifest Cache
+          </p>
+          <p className="mb-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Resolves <code>oci://</code> imports. Leave empty for the public default
+            (manifests.telo.sh); point a self-hosted hub&apos;s bucket here.
+          </p>
+          <input
+            type="text"
+            placeholder="https://manifests.telo.sh"
+            value={settings.manifestCacheUrl ?? ''}
+            onChange={e => {
+              const manifestCacheUrl = e.target.value
+              onChange(s => ({ ...s, manifestCacheUrl: manifestCacheUrl || undefined }))
+            }}
+            className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )

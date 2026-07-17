@@ -1,4 +1,5 @@
 import { IntegrityError } from "@telorun/analyzer";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OciTransport } from "../src/transports/oci/oci-transport.js";
@@ -80,9 +81,14 @@ function mockRegistry(opts: { requireAuth?: boolean } = {}) {
         return new Response(null, { status: 201 });
       }
       const man = manifests.get(key);
-      return man
-        ? new Response(man, { status: 200, headers: { "content-type": "application/json" } })
-        : new Response(null, { status: 404 });
+      if (!man) return new Response(null, { status: 404 });
+      const headers = {
+        "content-type": "application/json",
+        "docker-content-digest": `sha256:${createHash("sha256").update(man).digest("hex")}`,
+      };
+      return method === "HEAD"
+        ? new Response(null, { status: 200, headers })
+        : new Response(man, { status: 200, headers });
     }
     if ((m = p.match(/^\/v2\/(.+)\/tags\/list$/))) {
       const repo = m[1];
@@ -180,6 +186,41 @@ describe("OciTransport round-trip against a mock registry", () => {
     const read = await t.source.read("oci://reg.test/aws/telo-s3@1.2.0");
     expect(read.text).toContain("name: s3");
     expect(reg.tokenRequests()).toBeGreaterThan(0);
+  });
+
+  it("reports a version's content digest via HEAD, null when missing", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+    const digest = await t.digest("oci://reg.test/aws/telo-s3@1.2.0");
+    expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // Stable across reads — the tracker compares it for equality on every track.
+    expect(await t.digest("oci://reg.test/aws/telo-s3@1.2.0")).toBe(digest);
+    expect(await t.digest("oci://reg.test/aws/telo-s3@9.9.9")).toBeNull();
+  });
+
+  it("follows tags/list pagination Link headers", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const pages = [
+      new Response(JSON.stringify({ tags: ["1.0.0", "1.1.0"] }), {
+        status: 200,
+        headers: { link: '</v2/aws/telo-s3/tags/list?last=1.1.0&n=1000>; rel="next"' },
+      }),
+      new Response(JSON.stringify({ tags: ["1.2.0"] }), { status: 200 }),
+    ];
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      urls.push(String(input));
+      return pages.shift() ?? new Response(JSON.stringify({ tags: [] }), { status: 200 });
+    });
+    const t = new OciTransport();
+
+    expect(await t.listVersions("oci://reg.test/aws/telo-s3")).toEqual(["1.0.0", "1.1.0", "1.2.0"]);
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toContain("last=1.1.0");
   });
 
   it("hard-fails a pinned read when the inline hash does not match", async () => {

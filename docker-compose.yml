@@ -18,6 +18,7 @@ services:
       default:
         aliases:
           - registry.telo.localhost
+          - hub.telo.localhost
           - editor.telo.localhost
           - storage.telo.localhost
           - runner.telo.localhost
@@ -51,6 +52,43 @@ services:
       # workflow's `--wait-timeout 120s` so compose and the healthcheck
       # converge on the same failure point — no risk of compose timing
       # out while the healthcheck would still have passed.
+      retries: 18
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  hub:
+    image: telorun/hub:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./apps/hub/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    volumes:
+      - .:/app
+      # Anonymous volume overlay: telo writes its install cache here at boot
+      # (same rationale as the registry service).
+      - /app/apps/hub/.telo
+    working_dir: /app
+    ports:
+      - "${HUB_PORT:-8040}:8040"
+    environment:
+      DB_CONNECTION: "postgres://postgres:postgres@db/hub"
+      MANIFEST_BUCKET_NAME: telo-manifests
+      MANIFEST_BUCKET_ENDPOINT: http://storage:9000
+      MANIFEST_BUCKET_ACCESS_KEY_ID: telo-registry-access
+      MANIFEST_BUCKET_SECRET_ACCESS_KEY: telo-registry-secret
+      MANIFEST_BUCKET_FORCE_PATH_STYLE: "true"
+      # Curated seed; the tracker enumerates these refs' versions on boot and
+      # every TRACK_INTERVAL thereafter.
+      SEED_REFS: '["std/console","std/timer"]'
+      # The dev image runs from the mounted repo, so the tracker shells out to
+      # the workspace CLI build (`pnpm --filter @telorun/cli build` first).
+      TELO_BIN: /app/cli/nodejs/bin/telo.mjs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8040/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 2s
       retries: 18
       start_period: 5s
     depends_on:
@@ -125,6 +163,10 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql
+      # First-init only: creates the hub's database beside the registry's (one
+      # server, two databases — both apps own a `modules` table). On an existing
+      # volume: docker compose exec db psql -U postgres -c 'CREATE DATABASE hub'
+      - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
