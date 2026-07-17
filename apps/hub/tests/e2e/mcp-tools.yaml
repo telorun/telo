@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     End-to-end tests for the hub's MCP endpoint at /mcp, run against a live
-    hub at http://localhost:8090 that has tracked the seeded refs. Locks in
+    hub at http://localhost:8040 that has tracked the seeded refs. Locks in
     the two-tool discovery loop: `search_resources` returns kind hits carrying
     the exact module location ref, and `get_module_manifest(ref)` returns the
     tracker-cached telo.yaml for that ref.

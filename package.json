@@ -30,6 +30,7 @@
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:e2e": "bun ./cli/nodejs/bin/telo.ts ./apps/registry/test-suite-e2e.yaml",
     "test:e2e:s3": "bun ./cli/nodejs/bin/telo.ts ./modules/s3/test-suite-e2e.yaml",
+    "test:e2e:hub": "bun ./cli/nodejs/bin/telo.ts ./apps/hub/test-suite-e2e.yaml",
     "test:e2e:bundle": "bun --env-file=apps/registry/.env.local ./apps/registry/tests/e2e-bundle.ts",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
     "test:docker": "docker build --target rust-slim -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/workspace -w /workspace telo:ci ./test-suite.yaml",

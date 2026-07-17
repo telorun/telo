@@ -371,6 +371,13 @@ projects:
       - path: modules/vector-store-memory/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: vector-store-pgvector
+    key: vector-store-pgvector
+    changelog: modules/vector-store-pgvector/CHANGELOG.md
+    replacements:
+      - path: modules/vector-store-pgvector/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: workflow
     key: workflow
     changelog: modules/workflow/CHANGELOG.md

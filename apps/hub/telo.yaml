@@ -29,6 +29,14 @@ imports:
   Timer: std/timer@0.3.0
   PlainText: std/plain-text-codec@0.5.0
   Console: std/console@0.10.0
+  Embedding: std/embedding@0.2.0
+  EmbeddingOpenai: std/embedding-openai@0.2.0
+  VectorStore: std/vector-store@0.3.0
+  # Interim relative path: vector-store-pgvector@0.1.0 is not yet published to
+  # the registry. Flip to `std/vector-store-pgvector@0.1.0` once it ships (the
+  # changeset/changie fragments drive that release); the registry-resolved
+  # form is what the Docker `telo install` build expects.
+  VectorStorePgvector: ../../modules/vector-store-pgvector
 ports:
   http:
     env: PORT
@@ -67,6 +75,11 @@ variables:
     env: TELO_BIN
     type: string
     default: telo
+  # Self-hosted embeddinggemma-300m server, OpenAI-compatible /embeddings API.
+  # The `/v1` base URL the embedding controller appends `/embeddings` to.
+  embedderBaseUrl:
+    env: EMBEDDER_BASE_URL
+    type: string
 secrets:
   bucketAccessKeyId:
     env: MANIFEST_BUCKET_ACCESS_KEY_ID
@@ -177,6 +190,58 @@ migrations:
       - CREATE INDEX resource_kinds_search_idx ON resource_kinds USING GIN (search)
       - CREATE INDEX modules_ref_trgm_idx ON modules USING GIN (ref gin_trgm_ops)
 ---
+# ── Semantic search: embedding model + pgvector index ────────────────────────
+# The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
+# the vector index is a pgvector table the backend owns, living in the same
+# database as the relational rows. The RRF search query never touches that
+# table — it only fuses the ids VectorStore.Match returns (see Search).
+
+kind: EmbeddingOpenai.Model
+metadata:
+  name: Embedder
+# Pinned to the stored vectors: embeddinggemma-300m → 768 dims. A model change
+# is a re-embed, never an in-place swap. apiKey is a placeholder — the
+# self-hosted server needs none.
+model: embeddinggemma-300m
+apiKey: unused
+baseUrl: !cel "variables.embedderBaseUrl"
+---
+kind: Embedding.Passage
+metadata:
+  name: EmbedPassage
+model: !ref Embedder
+---
+kind: Embedding.Query
+metadata:
+  name: EmbedQuery
+model: !ref Embedder
+---
+# The vectors table (`resource_vectors`) is provisioned by this Store on init —
+# CREATE EXTENSION vector + table + HNSW index. 768 dims is fixed at creation.
+kind: VectorStorePgvector.Store
+metadata:
+  name: VectorIndex
+connection: !ref Db
+dimensions: 768
+metric: cosine
+table: resource_vectors
+---
+kind: VectorStore.Record
+metadata:
+  name: VectorUpsert
+store: !ref VectorIndex
+---
+kind: VectorStore.Match
+metadata:
+  name: VectorMatch
+store: !ref VectorIndex
+topK: 50
+---
+kind: VectorStore.Removal
+metadata:
+  name: VectorRemove
+store: !ref VectorIndex
+---
 # ── Local shell (tracker → telo CLI) ─────────────────────────────────────────
 # Every transport-specific read goes through the generic `telo module …` CLI
 # verbs — the tracker never speaks OCI or the registry protocol directly.
@@ -201,6 +266,15 @@ metadata:
 kind: Console.WriteLine
 metadata:
   name: LogLine
+---
+# Concrete versions (drops the `latest` alias), newest-first. The single home of
+# the "exclude latest" rule, reused across the tracker's version steps.
+kind: Run.Value
+metadata:
+  name: ConcreteVersions
+inputs:
+  versions: { type: array }
+value: !cel "inputs.versions.filter(v, v != 'latest')"
 ---
 # ── Registration (curated seed) ──────────────────────────────────────────────
 
@@ -329,17 +403,24 @@ steps:
     invoke: !ref ParseYaml
     inputs:
       text: !cel "steps.versionsCmd.result.stdout"
+  # Concrete versions, newest-first — the "exclude latest alias" rule lives here
+  # once (an OCI repo's `latest` tag is an alias, not a version, never ingested).
+  - name: concrete
+    invoke: !ref ConcreteVersions
+    inputs:
+      versions: !cel "steps.versions.result.docs[0]"
   - name: eachVersion
     invoke: !ref TrackEachVersion
     inputs:
       moduleId: !cel "inputs.moduleId"
       ref: !cel "inputs.ref"
-      # An OCI repo's `latest` tag is an alias, not a version — never ingested.
-      versions: !cel "steps.versions.result.docs[0].filter(v, v != 'latest')"
+      versions: !cel "steps.concrete.result"
+      # [0] is the latest — the only version we embed. Empty when the module has
+      # no concrete versions (the iteration is then a no-op).
+      latestVersion: !cel "size(steps.concrete.result) > 0 ? steps.concrete.result[0] : ''"
   - name: updateLatest
-    if: !cel "steps.versions.result.docs[0].filter(v, v != 'latest').size() > 0"
+    if: !cel "size(steps.concrete.result) > 0"
     then:
-      # `telo module versions --json` emits newest-first, so [0] is the latest.
       - name: set
         invoke: !ref Exec
         inputs:
@@ -349,7 +430,7 @@ steps:
             WHERE id = $1
           bindings:
             - !cel "inputs.moduleId"
-            - !cel "steps.versions.result.docs[0].filter(v, v != 'latest')[0]"
+            - !cel "steps.concrete.result[0]"
 ---
 kind: Run.Iteration
 metadata:
@@ -358,6 +439,7 @@ inputs:
   moduleId: { type: integer }
   ref: { type: string }
   versions: { type: array }
+  latestVersion: { type: string }
 collection: !cel "inputs.versions"
 steps:
   - name: sync
@@ -366,6 +448,7 @@ steps:
       moduleId: !cel "inputs.moduleId"
       ref: !cel "inputs.ref"
       version: !cel "string(item)"
+      latestVersion: !cel "inputs.latestVersion"
 ---
 # Digest-reconcile one version: an unchanged digest is skipped (cheap read, no
 # re-download); a new or moved digest re-ingests — re-read telo.yaml, re-cache
@@ -377,6 +460,7 @@ inputs:
   moduleId: { type: integer }
   ref: { type: string }
   version: { type: string }
+  latestVersion: { type: string }
 steps:
   - name: digestCmd
     invoke: !ref TeloCli
@@ -473,6 +557,56 @@ steps:
           moduleId: !cel "inputs.moduleId"
           version: !cel "inputs.version"
           docs: !cel "steps.docs.result.docs"
+      # Embed only the module's latest version, superseding any prior vectors so
+      # the vector table holds exactly one vector per (module, resource-kind).
+      # Older versions keep their relational rows (pinned reads, history) but no
+      # vector, keeping near-identical versions out of the ANN top-K.
+      - name: embedLatest
+        if: !cel "inputs.version == inputs.latestVersion"
+        then:
+          # Read back the just-inserted rows for their ids — the vector id is the
+          # resource_kinds row id, the join key the RRF search fuses on.
+          - name: kindRows
+            invoke: !ref Query
+            inputs:
+              sql: >-
+                SELECT id, name, capability, description
+                FROM resource_kinds WHERE module_id = $1 AND version = $2 ORDER BY id
+              bindings:
+                - !cel "inputs.moduleId"
+                - !cel "inputs.version"
+          # Drop every existing vector for this module first: a re-ingest
+          # reassigns resource_kinds ids, so superseding by (module, version)
+          # is insufficient — purge all, then re-upsert the latest.
+          - name: purge
+            invoke: !ref VectorRemove
+            inputs:
+              metadataFilter:
+                module_id: !cel "inputs.moduleId"
+          - name: embed
+            if: !cel "steps.kindRows.result.rows.size() > 0"
+            then:
+              # Composed passage: kind name + capability + curated description,
+              # framed by the owning module's name + description. The curated
+              # line is the primary signal (schema-derived enrichment is a
+              # follow-up — see plans/federated-discovery.md).
+              - name: passages
+                invoke: !ref EmbedPassage
+                inputs:
+                  input: !cel >-
+                    steps.kindRows.result.rows.map(r,
+                      r.name + ' (' + r.capability + '). ' + r.description +
+                      ' — from module ' + steps.docs.result.docs[0].metadata.name + ': ' +
+                      steps.docs.result.docs[0].metadata.?description.orValue(''))
+              - name: upsert
+                invoke: !ref VectorUpsert
+                inputs:
+                  items: !cel >-
+                    enumerate(steps.kindRows.result.rows).map(e, {
+                      'id': string(e.value.id),
+                      'vector': steps.passages.result.embeddings[e.index],
+                      'metadata': {'module_id': inputs.moduleId, 'version': inputs.version, 'name': e.value.name}
+                    })
 ---
 # One relational row per (module-version, resource-kind). A kind's identity is
 # (location ref + suffix) — the prefix in a manifest's `kind:` field is the
@@ -512,10 +646,14 @@ steps:
         - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports && inputs.docs[0].exports.kinds.size() > 0 ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
         - !cel "item.metadata.?description.orValue('')"
 ---
-# ── Search (lexical, Phase 1) ─────────────────────────────────────────────────
-# Postgres full-text over kind name/description plus a substring boost, joined
-# to each module's latest tracked version only. The semantic (vector) arm and
-# RRF fusion land in Phase 2 behind these same endpoints.
+# ── Search (hybrid: lexical + semantic RRF) ──────────────────────────────────
+# Two arms fused by Reciprocal Rank Fusion. The vector arm embeds the query and
+# asks VectorStore.Match for the nearest resource-kind ids — the ANN stays
+# inside the vector-store abstraction. The lexical arm is Postgres full-text
+# over kind name/description. A single Sql.Query takes the matched ids as a
+# bound JSON param, RRF-fuses their rank with the lexical rank, and joins the
+# relational rows — the vectors table is never touched here. Empty query → the
+# vector arm is skipped and results degrade to lexical-only.
 
 kind: Run.Sequence
 metadata:
@@ -523,48 +661,89 @@ metadata:
 inputs:
   q: { type: string }
 steps:
+  - name: vector
+    if: !cel "inputs.q != ''"
+    then:
+      - name: embed
+        invoke: !ref EmbedQuery
+        inputs:
+          input: !cel "inputs.q"
+      - name: match
+        invoke: !ref VectorMatch
+        inputs:
+          vector: !cel "steps.embed.result.embeddings[0]"
   - name: query
     invoke: !ref Query
     inputs:
-      # OR-recall over the kind text + owning module description (any term may
-      # hit), ranked so all-terms matches and kind-name substrings score higher.
+      # $1 = query text, $2 = the vector arm's matches as JSON (ordered best-first,
+      # so ORDINALITY is the vector rank); '[]' when the arm was skipped.
       sql: >-
         WITH q AS (
           SELECT plainto_tsquery('english', $1) AS andq,
                  CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
                       ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+        ),
+        vec AS (
+          SELECT (elem->>'id')::bigint AS id, ord::int AS rank
+          FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
+        ),
+        lex AS (
+          SELECT rk.id,
+                 ROW_NUMBER() OVER (
+                   ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                             + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                             + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
+                 ) AS rank
+          FROM resource_kinds rk
+          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+          CROSS JOIN q
+          CROSS JOIN LATERAL (
+            SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
+          ) v
+          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%'
+          ORDER BY rank
+          LIMIT 100
+        ),
+        fused AS (
+          SELECT id, SUM(1.0 / (60 + rank)) AS score
+          FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
+          GROUP BY id
         )
         SELECT rk.name AS kind, rk.capability, rk.description,
-               m.ref, rk.version,
-               COALESCE(mv.description, '') AS module_description,
-               (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END)::float8 AS score
-        FROM resource_kinds rk
+               m.ref, rk.version, COALESCE(mv.description, '') AS module_description,
+               f.score::float8 AS score
+        FROM fused f
+        JOIN resource_kinds rk ON rk.id = f.id
         JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        LEFT JOIN module_versions mv
-          ON mv.module_id = rk.module_id AND mv.version = rk.version
-        CROSS JOIN q
-        CROSS JOIN LATERAL (
-          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
-        ) v
-        WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq)
-           OR rk.name ILIKE '%' || $1 || '%'
-        ORDER BY score DESC, rk.name
+        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+        ORDER BY f.score DESC, rk.name
         LIMIT 20
       bindings:
         - !cel "inputs.q"
+        - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
 outputs:
   hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score})"
 ---
-# Module-first projection: the same hits grouped by owning module, with every
-# exported kind included so a module card needs no second manifest fetch.
+# Module-first projection: the same fused hits grouped by owning module, with
+# every exported kind included so a module card needs no second manifest fetch.
 kind: Run.Sequence
 metadata:
   name: SearchModules
 inputs:
   q: { type: string }
 steps:
+  - name: vector
+    if: !cel "inputs.q != ''"
+    then:
+      - name: embed
+        invoke: !ref EmbedQuery
+        inputs:
+          input: !cel "inputs.q"
+      - name: match
+        invoke: !ref VectorMatch
+        inputs:
+          vector: !cel "steps.embed.result.embeddings[0]"
   - name: query
     invoke: !ref Query
     inputs:
@@ -574,22 +753,40 @@ steps:
                  CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
                       ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
         ),
-        hits AS (
-          SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
-                 m.ref, COALESCE(mv.description, '') AS module_description,
-                 (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                  + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                  + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END)::float8 AS score
+        vec AS (
+          SELECT (elem->>'id')::bigint AS id, ord::int AS rank
+          FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
+        ),
+        lex AS (
+          SELECT rk.id,
+                 ROW_NUMBER() OVER (
+                   ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                             + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                             + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
+                 ) AS rank
           FROM resource_kinds rk
           JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-          LEFT JOIN module_versions mv
-            ON mv.module_id = rk.module_id AND mv.version = rk.version
+          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
           CROSS JOIN q
           CROSS JOIN LATERAL (
             SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
           ) v
-          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq)
-             OR rk.name ILIKE '%' || $1 || '%'
+          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%'
+          ORDER BY rank
+          LIMIT 100
+        ),
+        fused AS (
+          SELECT id, SUM(1.0 / (60 + rank)) AS score
+          FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
+          GROUP BY id
+        ),
+        hits AS (
+          SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
+                 m.ref, COALESCE(mv.description, '') AS module_description, f.score
+          FROM fused f
+          JOIN resource_kinds rk ON rk.id = f.id
+          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
         )
         SELECT h.ref, h.version, h.module_description,
                MAX(h.score)::float8 AS score,
@@ -606,6 +803,7 @@ steps:
         LIMIT 20
       bindings:
         - !cel "inputs.q"
+        - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
 outputs:
   hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds})"
 ---

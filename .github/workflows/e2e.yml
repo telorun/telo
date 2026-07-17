@@ -88,6 +88,93 @@ jobs:
           docker compose down -v
           rm -f apps/registry/.env.local
 
+  # Brings up the discovery-hub stack (db=pgvector, storage, embedder, hub) via
+  # docker-compose and runs `apps/hub/test-suite-e2e.yaml` against the live HTTP
+  # + MCP surface. The embedder is a self-hosted embeddinggemma-300m sidecar, so
+  # the suite exercises the full semantic (vector) ranking path, not just lexical.
+  hub:
+    name: Hub E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check hub manifest
+        run: pnpm run check apps/hub/telo.yaml
+
+      # The hub's tracker shells out to the built CLI (`TELO_BIN` →
+      # cli/nodejs/bin/telo.mjs → dist/cli.js), so the workspace must be built
+      # before the container boots.
+      - name: Build workspace packages
+        run: pnpm -r run build
+
+      - name: Bring up hub stack
+        run: |
+          mkdir -p apps/hub/.telo
+          # Generous wait-timeout: the embedder pulls the TEI image and downloads
+          # the embeddinggemma-300m ONNX weights on first boot before it is healthy.
+          docker compose up -d --build --wait --wait-timeout 420 db storage embedder hub \
+            || { echo "::group::hub stack failed to come up"; \
+                 docker compose ps -a; docker compose logs --no-color; \
+                 echo "::endgroup::"; exit 1; }
+
+      - name: Wait for first tracking pass to embed
+        run: |
+          # The hub is healthy before its first tracking pass finishes; the
+          # semantic assertion needs the seeded kinds embedded into pgvector.
+          for i in $(seq 1 60); do
+            n=$(docker compose exec -T db psql -U postgres -d hub -tAc \
+                  "SELECT count(*) FROM resource_vectors" 2>/dev/null | tr -d '[:space:]' || echo 0)
+            echo "resource_vectors rows: ${n:-0}"
+            [ "${n:-0}" -gt 0 ] 2>/dev/null && exit 0
+            sleep 5
+          done
+          echo "::error::hub never populated resource_vectors (embedding pass did not complete)"
+          docker compose logs --no-color hub embedder
+          exit 1
+
+      - name: Run hub e2e suite
+        run: pnpm run test:e2e:hub
+
+      - name: Dump stack logs on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Stop hub stack
+        if: always()
+        run: docker compose down -v
+
   # Brings up only the `storage` (rustfs) service — published on :9000 — and
   # runs the s3 module's e2e suite against the live S3 API from the host. Covers
   # the Put/Get/List/Delete lifecycle plus a cross-import-boundary bucketRef
