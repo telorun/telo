@@ -1,5 +1,55 @@
 # @telorun/kernel
 
+## 0.45.0
+
+### Minor Changes
+
+- d88a397: Federated discovery, phase 1 — the ingest/search spine behind the telo hub.
+
+  - **analyzer**: browser-safe `manifestCacheKey` / `manifestCacheUrl` /
+    `ociManifestCacheCoords` helpers plus `ManifestCacheSource`, resolving
+    `oci://` imports against the hub's static manifest cache
+    (`manifests.telo.sh`) with `#sha256-…` verification for pinned refs. The OCI
+    ref grammar (`parseOciRef` / `isOciRef` / `OCI_SCHEME`) moves here from the
+    kernel so the tracker's write key and the editor's read key share one source
+    of truth. The throws-coverage check now reads `when:` clauses written with
+    the `!cel` tag (previously only the inline `${{ }}` string form parsed).
+  - **kernel**: `Transport.digest(ref)` — a cheap content-identity digest per
+    version (OCI: `Docker-Content-Digest` via HEAD; HTTP: hash of the
+    `telo.yaml` bytes) so the discovery tracker can detect re-pushed tags
+    without re-downloading. OCI `tags/list` now follows pagination `Link`
+    headers. New `TELO_EGRESS=public-only` egress guard refuses transport
+    fetches to private/loopback/link-local/CGNAT hosts (SSRF guard for
+    deployments that fetch registered, attacker-suppliable refs).
+  - **cli**: `telo module digest <ref>` (the digest verb the tracker records and
+    re-checks), `telo module manifest --json` (emits `{ ref, cacheKey,
+manifest }` with the shared cache key), and `telo search "<query>"` /
+    `telo search --kinds` — a thin client of the hub's `/search/*` endpoints
+    (`TELO_HUB_URL`, default `https://telo.sh`).
+
+### Patch Changes
+
+- d88a397: Make the controller-install lock (`.telo/npm/.lock`) robust in containers.
+
+  The staleness check probed the recorded holder PID for liveness, but PID
+  identity is unreliable across container restarts and PID namespaces —
+  deterministic PID reuse made an unrelated process (often the very process
+  trying to acquire the lock) look like the dead holder on the same hostname, so
+  a stale lock either deadlocked the boot or burned the full 5-minute wait before
+  failing, all silently.
+
+  The lock is now heartbeat-based: the holder refreshes the lock file's mtime
+  every 5s while it works, and a waiter reclaims any lock whose mtime is older
+  than 30s (holder crashed/killed/vanished). mtime age is the only reclaim
+  signal — the `{pid, host}` in the lock body is diagnostics, never probed.
+  Reclaim is an atomic `rename` to a unique tombstone, so two waiters that both
+  observe a stale lock can't both reclaim it. A wait longer than 2s now prints a
+  stderr notice instead of looking like a hang.
+
+- Updated dependencies [56c810b]
+- Updated dependencies [d88a397]
+  - @telorun/analyzer@0.35.0
+
 ## 0.44.1
 
 ### Patch Changes
