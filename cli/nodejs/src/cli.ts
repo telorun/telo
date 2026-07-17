@@ -8,6 +8,7 @@ import { installCommand } from "./commands/install.js";
 import { moduleCommand } from "./commands/module.js";
 import { publishCommand } from "./commands/publish.js";
 import { runCommand } from "./commands/run.js";
+import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 
 let cli = yargs(hideBin(process.argv))
@@ -20,6 +21,7 @@ cli = installCommand(cli) as typeof cli;
 cli = moduleCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
 cli = runCommand(cli) as typeof cli;
+cli = searchCommand(cli) as typeof cli;
 cli = upgradeCommand(cli) as typeof cli;
 
 cli

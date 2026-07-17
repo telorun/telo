@@ -89,6 +89,16 @@ export interface Transport {
    *  the out-of-band bundle fetch that used to sit outside the source chain. */
   fetchArtifact(ref: string): Promise<FetchedArtifact>;
 
+  /** Cheap content-identity digest of what `ref` currently resolves to — no
+   *  payload download. Opaque and transport-specific (OCI: the image manifest's
+   *  `sha256:<hex>` content digest; HTTP: `sha256-<base64url>` over the
+   *  `telo.yaml` bytes), so compare for equality only, never across transports.
+   *  Returns `null` when the version does not exist. Version content
+   *  immutability is a convention no transport enforces — a tag can be
+   *  re-pushed to different bytes — so the discovery tracker records this
+   *  digest per version and re-checks it on every track. */
+  digest(ref: string): Promise<string | null>;
+
   /** Push `bundle` to `destination` (a base ref / repo whose scheme this
    *  transport owns), pinning the payload and writing the transport-native
    *  artifact shape. Throws on failure. Used by `telo publish`. */

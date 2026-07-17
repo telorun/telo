@@ -5,6 +5,7 @@ import {
   RegistrySource,
   isRegistryRef,
   parseModuleRef,
+  sha256Base64Url,
   splitIntegrity,
   type ManifestSource,
 } from "@telorun/analyzer";
@@ -13,6 +14,7 @@ import { createHash } from "crypto";
 import { computeFilesIntegrity, injectFilesIntegrity } from "../bundle/files-integrity.js";
 import { readOwnerManifest } from "../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../bundle/tar.js";
+import { assertPublicEgress } from "./egress-guard.js";
 import type {
   FetchedArtifact,
   PublishBundle,
@@ -88,7 +90,12 @@ export class RegistryTransport implements Transport {
       this.httpSource.supports(ref) ? this.httpSource : this.registrySource;
     this.source = {
       supports: (url) => this.supports(url),
-      read: (url) => pick(url).read(url),
+      read: async (url) => {
+        // The browser-safe sources do the fetch; the Node-side egress policy
+        // is enforced here, on the host the read will actually hit.
+        await assertPublicEgress(this.httpSource.supports(url) ? url : this.registryUrl);
+        return pick(url).read(url);
+      },
       resolveRelative: (base, relative) => pick(base).resolveRelative(base, relative),
     };
   }
@@ -151,6 +158,7 @@ export class RegistryTransport implements Transport {
     if (!isRegistryRef(ref)) return null;
     const { modulePath } = parseModuleRef(ref);
     const url = `${this.registryUrl.replace(/\/+$/, "")}/${modulePath}`;
+    await assertPublicEgress(url);
     const res = await fetch(url, { headers: { accept: "application/json" } });
     if (res.status === 404) return null;
     if (!res.ok) {
@@ -158,6 +166,30 @@ export class RegistryTransport implements Transport {
     }
     const body = (await res.json()) as VersionsResponse;
     return Array.isArray(body.versions) ? body.versions : [];
+  }
+
+  async digest(ref: string): Promise<string | null> {
+    // Mirrors the sources' fetch-URL derivation: a direct URL points at (or
+    // contains) the YAML file; a bare registry ref folds into the registry
+    // layout. The digest is Telo's canonical hash over the `telo.yaml` bytes.
+    const { base } = splitIntegrity(ref);
+    let fetchUrl: string;
+    if (base.startsWith("http://") || base.startsWith("https://")) {
+      fetchUrl = base.includes(".yaml") ? base : `${base}/${DEFAULT_MANIFEST_FILENAME}`;
+    } else if (isRegistryRef(ref)) {
+      const { modulePath, version } = parseModuleRef(ref);
+      fetchUrl = `${this.registryUrl.replace(/\/+$/, "")}/${modulePath}/${version}/${DEFAULT_MANIFEST_FILENAME}`;
+    } else {
+      return null;
+    }
+    await assertPublicEgress(fetchUrl);
+    const res = await fetch(fetchUrl);
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`Registry returned ${res.status} ${res.statusText} for ${fetchUrl}`);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return `sha256-${await sha256Base64Url(bytes)}`;
   }
 
   async fetchArtifact(ref: string): Promise<FetchedArtifact> {
@@ -168,6 +200,7 @@ export class RegistryTransport implements Transport {
 
     // The payload rides beside the manifest as `module.tar.gz`.
     const tarUrl = source.replace(/\/telo\.yaml$/, "/module.tar.gz");
+    await assertPublicEgress(tarUrl);
     const res = await fetch(tarUrl);
     if (!res.ok) {
       throw new Error(`could not fetch bundle ${tarUrl}: ${res.status} ${res.statusText}`);

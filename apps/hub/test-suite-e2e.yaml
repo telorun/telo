@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: HubE2ESuite
+  version: 1.0.0
+  description: |
+    End-to-end suite for the discovery hub. Hits a live hub at
+    http://localhost:8040 (the docker-compose `hub` service), which must be up
+    and have finished its first tracking pass over the seeded refs
+    (std/console, std/timer) before running. Kept separate from the in-process
+    suite (`test-suite.yaml` at the repo root), which has no Postgres or S3
+    backend and therefore can't exercise these routes.
+imports:
+  Test: ../../modules/test
+targets:
+  - !ref RunAll
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "tests/e2e/*.yaml"

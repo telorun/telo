@@ -1,0 +1,252 @@
+kind: Telo.Application
+metadata:
+  name: HubE2EDiscoveryRoutes
+  version: 1.0.0
+  description: |
+    End-to-end tests for the hub's discovery HTTP surface, run against a live
+    hub at http://localhost:8090 that has tracked the seeded refs
+    (std/console, std/timer). Covers /health, per-resource and per-module
+    search, /refs typeahead, and /module/versions including its 404 path.
+imports:
+  HttpClient: std/http-client@0.8.0
+  Run: std/run@0.12.0
+  Assert: std/assert@0.9.2
+targets:
+  - !ref Health
+  - !ref SearchResources_FindsSeededKind
+  - !ref SearchModules_GroupsByModule
+  - !ref Refs_FuzzyMatchesSeededRef
+  - !ref ModuleVersions_ListsSeededVersions
+  - !ref ModuleVersions_UntrackedReturns404
+---
+kind: Run.Sequence
+metadata: { name: Health }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitHealth }
+      url: http://localhost:8040/health
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertHealth }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              status: { const: ok }
+            required: [status]
+        required: [status, body]
+---
+# The seeded std/timer module defines Timer.Delay; an intent-shaped lexical
+# query on "delay" must surface it as a kind hit carrying the exact location
+# ref + version (the shape search_resources / the editor build on).
+kind: Run.Sequence
+metadata: { name: SearchResources_FindsSeededKind }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitSearchResources }
+      url: http://localhost:8090/search/resources?q=delay
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertSearchResources }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              query: { const: delay }
+              hits:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kind: { type: string }
+                    capability: { type: string }
+                    description: { type: string }
+                    module:
+                      type: object
+                      properties:
+                        ref: { type: string }
+                        version: { type: string }
+                        description: { type: string }
+                      required: [ref, version, description]
+                    score: { type: number }
+                  required: [kind, capability, module, score]
+                contains:
+                  type: object
+                  properties:
+                    kind: { const: Delay }
+                    module:
+                      type: object
+                      properties:
+                        ref: { const: std/timer }
+                      required: [ref]
+                  required: [kind, module]
+            required: [query, hits]
+        required: [status, body]
+---
+# The module-first projection groups the same hits and lists every exported
+# kind, so a module card needs no second manifest fetch.
+kind: Run.Sequence
+metadata: { name: SearchModules_GroupsByModule }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitSearchModules }
+      url: http://localhost:8090/search/modules?q=console
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertSearchModules }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              hits:
+                type: array
+                contains:
+                  type: object
+                  properties:
+                    module:
+                      type: object
+                      properties:
+                        ref: { const: std/console }
+                      required: [ref]
+                    matchedKinds:
+                      type: array
+                      minItems: 1
+                      items:
+                        type: object
+                        properties:
+                          kind: { type: string }
+                          capability: { type: string }
+                          description: { type: string }
+                          score: { type: number }
+                        required: [kind, capability, score]
+                    exportedKinds:
+                      type: array
+                      contains: { const: WriteLine }
+                  required: [module, matchedKinds, exportedKinds]
+            required: [hits]
+        required: [status, body]
+---
+# Lexical typeahead: a partial (even typo-adjacent) token must complete to the
+# registered ref, deduped to the latest tracked version.
+kind: Run.Sequence
+metadata: { name: Refs_FuzzyMatchesSeededRef }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitRefs }
+      url: http://localhost:8090/refs?q=consol
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertRefs }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              refs:
+                type: array
+                contains:
+                  type: object
+                  properties:
+                    ref: { const: std/console }
+                    latestVersion: { type: string, minLength: 1 }
+                    description: { type: string }
+                  required: [ref, latestVersion, description]
+            required: [refs]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: ModuleVersions_ListsSeededVersions }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitModuleVersions }
+      url: http://localhost:8090/module/versions?ref=std/timer
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertModuleVersions }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              ref: { const: std/timer }
+              versions:
+                type: array
+                minItems: 1
+                contains: { const: 0.1.0 }
+            required: [ref, versions]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: ModuleVersions_UntrackedReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitUntrackedVersions }
+      url: http://localhost:8090/module/versions?ref=e2e/nonexistent-module
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertUntrackedVersions }
+      schema:
+        type: object
+        properties:
+          status: { const: 404 }
+          body:
+            type: object
+            properties:
+              error: { const: Module not tracked }
+            required: [error]
+        required: [status, body]

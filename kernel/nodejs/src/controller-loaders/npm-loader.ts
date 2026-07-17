@@ -44,21 +44,38 @@ const PEER_INSTALL_FLAGS: ReadonlyArray<string> =
       : [];
 
 /**
- * Maximum age before a held lock is considered abandoned. `npm install` on a
- * cold cache for a tree with one or two controllers is comfortably under a
- * minute on modern hardware; tuning higher would let zombie locks persist.
+ * A held lock is refreshed (its mtime bumped) every {@link LOCK_HEARTBEAT_MS}
+ * by the holder. Staleness is judged purely by mtime age — a lock older than
+ * this means the holder stopped heartbeating (crashed, was killed, or its
+ * container vanished), so it is safe to reclaim. This deliberately does NOT
+ * probe the recorded PID for liveness: PID identity is meaningless across
+ * container restarts and PID namespaces (deterministic PID reuse makes an
+ * unrelated process look like the dead holder on the same hostname), which is
+ * exactly what deadlocked container boots. The `{pid, host}` in the lock body
+ * is diagnostics for humans, never a reclaim signal. Must be comfortably
+ * larger than the heartbeat interval so a briefly-descheduled holder (GC
+ * pause, busy event loop) is not reclaimed out from under itself.
  */
-const LOCK_STALE_MS = 60_000;
+const LOCK_STALE_MS = 30_000;
+
+/** How often the holder refreshes the lock mtime while `fn` runs. Well under
+ *  {@link LOCK_STALE_MS} so several heartbeats are missed before a live holder
+ *  is ever judged stale. */
+const LOCK_HEARTBEAT_MS = 5_000;
 
 /**
  * Total wall-clock cap for waiting on the install lock — enough for a slow
- * first install on a peer process to finish, short enough that a deadlocked
- * CI job fails loudly rather than hanging for hours. The retry interval
- * trades wakeup latency vs. wasted polls; 500ms is well below the lock
- * holder's typical hold time.
+ * first install on a peer process to finish, short enough that a genuinely
+ * deadlocked CI job fails loudly rather than hanging for hours. The retry
+ * interval trades wakeup latency vs. wasted polls; 500ms is well below the
+ * lock holder's typical hold time.
  */
 const LOCK_WAIT_MAX_MS = 5 * 60_000;
 const LOCK_RETRY_MS = 500;
+
+/** After this long waiting on a lock, emit one stderr line so a slow wait is
+ *  visible instead of looking like a silent hang. */
+const LOCK_WAIT_NOTICE_MS = 2_000;
 
 /**
  * Tells the dispatcher (and any UI consumer downstream) which branch the
@@ -532,9 +549,17 @@ async function resolveKernelPackageRoot(name: string): Promise<string | null> {
 
 /**
  * Acquire a process-portable lock on `<root>/.lock` and execute fn while
- * holding it. Implementation: `fs.open(path, 'wx')` is atomic on POSIX and
- * Windows; concurrent processes serialize naturally. PID + start time live
- * inside the lock file so a crashed-holder lock can be detected and reclaimed.
+ * holding it. `fs.open(path, 'wx')` is atomic on POSIX and Windows, so
+ * concurrent processes serialize naturally.
+ *
+ * Liveness is a heartbeat: the holder bumps the lock's mtime every
+ * {@link LOCK_HEARTBEAT_MS} while `fn` runs, and a waiter reclaims a lock whose
+ * mtime is older than {@link LOCK_STALE_MS} (holder crashed/killed/vanished).
+ * mtime age is the *only* reclaim signal — the recorded `{pid, host}` is
+ * diagnostics, never probed for liveness, because PID identity is unreliable
+ * across container restarts and PID namespaces (the failure that deadlocked
+ * container boots). Reclaim is via atomic rename to a unique tombstone so two
+ * waiters that both see the lock stale can't both win.
  *
  * The lock guards the install-root manifest write, the package-manager
  * invocation, and any state-file writes. It does NOT serialize *reads* of
@@ -548,6 +573,7 @@ async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Pr
   const lockBody = JSON.stringify({ pid: process.pid, host: os.hostname(), startedAt: Date.now() });
   let handle: import("fs/promises").FileHandle | null = null;
   const waitedSince = Date.now();
+  let noticed = false;
   while (true) {
     try {
       handle = await fs.open(lockPath, "wx");
@@ -555,31 +581,41 @@ async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Pr
       break;
     } catch (err: any) {
       if (err?.code !== "EEXIST") throw err;
-      // Lock exists. Inspect its mtime + PID. If older than LOCK_STALE_MS and
-      // the holding PID isn't alive (or is on another host), reclaim.
-      if (await isLockStale(lockPath)) {
-        await fs.rm(lockPath, { force: true });
-        continue;
-      }
-      if (Date.now() - waitedSince > LOCK_WAIT_MAX_MS) {
+      // Lock exists. Reclaim it only if its heartbeat has gone silent.
+      if (await reclaimIfStale(lockPath)) continue;
+      const waited = Date.now() - waitedSince;
+      if (waited > LOCK_WAIT_MAX_MS) {
         throw new Error(
           `[telo] timed out waiting for install lock at ${lockPath} ` +
-            `(held >${LOCK_WAIT_MAX_MS / 60_000} min). ` +
+            `(held >${LOCK_WAIT_MAX_MS / 60_000} min with a live heartbeat). ` +
             `Inspect the lock file or remove it manually if no other Telo process is running.`,
         );
+      }
+      if (!noticed && waited > LOCK_WAIT_NOTICE_MS) {
+        noticed = true;
+        process.stderr.write(`[telo] waiting for controller install lock at ${lockPath}…\n`);
       }
       await sleep(LOCK_RETRY_MS);
     }
   }
 
+  // Keep the lock fresh while `fn` runs so a slow-but-live install is never
+  // reclaimed. `unref` so the heartbeat can't by itself keep the process alive.
+  const heartbeat = setInterval(() => {
+    const now = new Date();
+    fs.utimes(lockPath, now, now).catch(() => {});
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
+
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     // The fd close races nothing important: if it fails, the FD is reaped on
     // process exit. The unlink is the dangerous one — a non-ENOENT failure
     // (permissions, read-only mount) means every subsequent kernel waits
     // LOCK_STALE_MS before reclaiming. Surface it so the cause is visible
-    // rather than hiding behind a silent five-minute hang.
+    // rather than hiding behind a silent hang.
     await handle!.close().catch(() => {});
     try {
       await fs.rm(lockPath, { force: true });
@@ -593,47 +629,36 @@ async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Pr
   }
 }
 
-async function isLockStale(lockPath: string): Promise<boolean> {
+/**
+ * If the lock at `lockPath` is stale (mtime older than {@link LOCK_STALE_MS}, so
+ * its holder stopped heartbeating), atomically claim and remove it and return
+ * true; otherwise return false. The claim is a `rename` to a unique tombstone:
+ * `rename` is atomic and fails for all but one racer, so two processes that
+ * both observe the same stale lock cannot both reclaim it — the loser's rename
+ * throws ENOENT (the file is already gone) and it simply retries the open.
+ */
+async function reclaimIfStale(lockPath: string): Promise<boolean> {
   let stat: import("fs").Stats;
   try {
     stat = await fs.stat(lockPath);
   } catch (err: any) {
-    // Race: lock vanished while we inspected it. The next open() will succeed.
-    if (err?.code === "ENOENT") return false;
+    // Race: lock vanished while we inspected it. Retry the open immediately.
+    if (err?.code === "ENOENT") return true;
     throw err;
   }
-  const age = Date.now() - stat.mtimeMs;
-  if (age < LOCK_STALE_MS) return false;
+  if (Date.now() - stat.mtimeMs < LOCK_STALE_MS) return false;
 
-  let body: string;
+  // Stale — the holder's heartbeat is silent. Claim via atomic rename; only one
+  // racer wins, the rest get ENOENT and fall back to retrying the open.
+  const tombstone = `${lockPath}.stale.${process.pid}.${stat.mtimeMs}`;
   try {
-    body = await fs.readFile(lockPath, "utf8");
+    await fs.rename(lockPath, tombstone);
   } catch (err: any) {
-    if (err?.code === "ENOENT") return false;
+    if (err?.code === "ENOENT") return true; // another waiter reclaimed it first
     throw err;
   }
-  // A zero-byte or unparseable lock file is interpreted as stale: a previous
-  // holder crashed mid-write (empty body) or got partially flushed (truncated
-  // JSON). Treating either as held would deadlock; throwing here would block
-  // every controller load behind a broken file the operator may not even
-  // notice exists.
-  if (!body) return true;
-  let parsed: { pid?: number; host?: string };
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return true;
-  }
-  if (!parsed?.pid) return true;
-  if (parsed.host && parsed.host !== os.hostname()) return false; // different host: assume held
-  try {
-    // signal 0 throws if the PID isn't alive (or is owned by a different user)
-    process.kill(parsed.pid, 0);
-    return false;
-  } catch (err: any) {
-    // ESRCH = no such process. EPERM = exists but we can't signal it; treat as alive.
-    return err?.code === "ESRCH";
-  }
+  await fs.rm(tombstone, { force: true });
+  return true;
 }
 
 async function runPackageManager(cwd: string, args: string[]): Promise<void> {
@@ -1043,6 +1068,10 @@ export const __testing__ = {
   resolveExportTargetValue,
   tryResolveFile,
   computeInstallRoot,
+  withInstallLock,
+  reclaimIfStale,
+  LOCK_STALE_MS,
+  LOCK_HEARTBEAT_MS,
   EXPORTS_MAX_DEPTH,
   DEFAULT_RESOLVER_CONDITIONS,
   REALM_COLLAPSE_NAMES,

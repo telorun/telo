@@ -2,6 +2,10 @@ http://registry.telo.localhost:8060 {
 	reverse_proxy registry:3000
 }
 
+http://hub.telo.localhost:8060 {
+	reverse_proxy hub:8040
+}
+
 http://editor.telo.localhost:8060 {
 	reverse_proxy editor:5173
 }

@@ -28,6 +28,11 @@ export interface RunnerInstance {
 
 export interface AppSettings {
   registryServers: RegistryServer[];
+  /** Base URL of the hub's static manifest cache used to resolve `oci://`
+   *  imports (a browser can't speak the OCI protocol). Empty/undefined uses
+   *  the public default (`manifests.telo.sh`); a self-hosted hub points this
+   *  at its own bucket endpoint. */
+  manifestCacheUrl?: string;
   /** The user's runners. The Run button uses the one whose id is
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];
@@ -112,7 +117,7 @@ export interface LibraryManifest extends BaseParsedManifest {
 /** A parsed module, discriminated on `kind`. */
 export type ParsedManifest = ApplicationManifest | LibraryManifest;
 
-export type ImportKind = "local" | "registry" | "remote";
+export type ImportKind = "local" | "registry" | "remote" | "oci";
 
 export interface ParsedImport {
   name: string;

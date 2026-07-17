@@ -47,6 +47,12 @@ export class TransportRegistry {
     return this.require(ref).fetchArtifact(ref);
   }
 
+  /** Cheap content-identity digest for `ref` via its owning transport; `null`
+   *  when the version does not exist. Throws when no transport owns the ref. */
+  digest(ref: string): Promise<string | null> {
+    return this.require(ref).digest(ref);
+  }
+
   /** Publish `bundle` to `destination` via the transport its scheme selects.
    *  Throws when no transport owns the destination. */
   publish(

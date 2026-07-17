@@ -1,5 +1,5 @@
 import type { ManifestSource } from "@telorun/analyzer";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyzeWorkspace } from "./analysis";
 import { loadWorkspace } from "./loader";
 import type { DirEntry, WorkspaceAdapter } from "./model";
@@ -997,6 +997,87 @@ describe("analyzeWorkspace — YAML parse failures", () => {
     expect(
       all.filter((d) => d.code !== "MANIFEST_PARSE_FAILED"),
       `expected no analyze diagnostics on the broken file, got: ${JSON.stringify(all, null, 2)}`,
+    ).toHaveLength(0);
+  });
+});
+
+describe("analyzeWorkspace — oci:// imports via the manifest cache", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const LIBRARY = [
+    "kind: Telo.Library",
+    "metadata:",
+    "  name: s3",
+    "  namespace: aws",
+    "  version: 1.2.0",
+    "exports:",
+    "  kinds:",
+    "    - Bucket",
+    "---",
+    "kind: Telo.Definition",
+    "metadata:",
+    "  name: Bucket",
+    "capability: Telo.Provider",
+    "controllers:",
+    "  pkg:npm: '@telorun/s3'",
+    "schema:",
+    "  type: object",
+    "  properties:",
+    "    bucketName: { type: string }",
+    "",
+  ].join("\n");
+
+  it("resolves an oci import's kinds from manifests.telo.sh", async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetched.push(url);
+      if (url === "https://manifests.telo.sh/oci/ghcr.io/aws/telo-s3/1.2.0/telo.yaml") {
+        return new Response(LIBRARY, { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const files: Record<string, string> = {
+      "/ws/app/telo.yaml": [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: app",
+        "  version: 1.0.0",
+        "imports:",
+        "  S3: oci://ghcr.io/aws/telo-s3@1.2.0",
+        "---",
+        "kind: S3.Bucket",
+        "metadata:",
+        "  name: store",
+        "bucketName: files",
+        "",
+      ].join("\n"),
+    };
+
+    const adapter = inMemoryAdapter(files);
+    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
+
+    const appManifest = workspace.modules.get("/ws/app/telo.yaml");
+    expect(appManifest, "app manifest should be loaded").toBeTruthy();
+    const s3Import = appManifest!.imports.find((i) => i.name === "S3");
+    expect(s3Import?.importKind).toBe("oci");
+
+    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
+
+    const all: Array<{ code?: string; message: string }> = [];
+    for (const fileMap of diagnostics.byResource.values())
+      for (const list of fileMap.values()) for (const d of list) all.push(d);
+    for (const list of diagnostics.byFile.values()) for (const d of list) all.push(d);
+
+    expect(
+      fetched.some((u) => u === "https://manifests.telo.sh/oci/ghcr.io/aws/telo-s3/1.2.0/telo.yaml"),
+      `the import should resolve against the manifest cache, fetched: ${JSON.stringify(fetched)}`,
+    ).toBe(true);
+    const undefinedKind = all.filter((d) => d.code === "UNDEFINED_KIND");
+    expect(
+      undefinedKind,
+      `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
     ).toHaveLength(0);
   });
 });

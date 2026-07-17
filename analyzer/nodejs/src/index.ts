@@ -75,6 +75,16 @@ export {
 } from "./sources/integrity.js";
 export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
 export type { ParsedModuleRef } from "./sources/module-ref.js";
+export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
+export type { ParsedOciRef } from "./sources/oci-ref.js";
+export {
+  MANIFEST_CACHE_BASE_URL,
+  ManifestCacheSource,
+  manifestCacheKey,
+  manifestCacheUrl,
+  ociManifestCacheCoords,
+} from "./sources/manifest-cache.js";
+export type { ManifestCacheCoords } from "./sources/manifest-cache.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";
 export type {

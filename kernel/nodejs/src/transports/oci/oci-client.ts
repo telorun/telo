@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { assertPublicEgress } from "../egress-guard.js";
 import { resolveDockerCredential } from "./docker-credentials.js";
 
 export const TELO_LAYER_MEDIA_TYPE = "application/vnd.telo.module.v1+tar";
@@ -35,6 +36,17 @@ export interface OciManifest {
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/** Resolve the `rel="next"` target of a `Link` header against the registry
+ *  origin, or `null` when there is no next page. */
+function nextPageUrl(linkHeader: string | null, origin: string): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(",")) {
+    const m = part.match(/<([^>]+)>\s*;[^,]*rel="?next"?/i);
+    if (m) return new URL(m[1], origin).href;
+  }
+  return null;
 }
 
 /** Parse a `WWW-Authenticate: Bearer realm="...",service="...",scope="..."` header. */
@@ -82,6 +94,9 @@ export class OciClient {
     init: RequestInit,
     scope: string,
   ): Promise<Response> {
+    // Registry refs are attacker-suppliable once public registration exists —
+    // refuse non-public hosts under TELO_EGRESS=public-only (no-op otherwise).
+    await assertPublicEgress(url);
     const withToken = (token?: string): RequestInit => {
       const headers = new Headers(init.headers);
       if (token) headers.set("authorization", `Bearer ${token}`);
@@ -107,6 +122,10 @@ export class OciClient {
   private async fetchToken(challenge: string, scope: string): Promise<string | null> {
     const params = parseBearerChallenge(challenge);
     if (!params.realm) return null;
+    // The token realm comes from the registry's own WWW-Authenticate header —
+    // an attacker-controlled registry could point it anywhere, so it is
+    // egress-checked like any other host.
+    await assertPublicEgress(params.realm);
     const tokenUrl = new URL(params.realm);
     if (params.service) tokenUrl.searchParams.set("service", params.service);
     tokenUrl.searchParams.set("scope", params.scope || scope);
@@ -147,16 +166,58 @@ export class OciClient {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  async listTags(): Promise<string[]> {
-    const res = await this.authedFetch(`${this.base()}/tags/list`, {}, this.pullScope());
-    if (res.status === 404) return [];
-    if (!res.ok) {
+  /** Content-identity digest of the manifest a reference resolves to, via a
+   *  HEAD request — no blob download. Falls back to hashing the manifest body
+   *  when the registry omits `Docker-Content-Digest`. `null` when the
+   *  reference does not exist. */
+  async headManifest(reference: string): Promise<string | null> {
+    const url = `${this.base()}/manifests/${reference}`;
+    const head = await this.authedFetch(
+      url,
+      { method: "HEAD", headers: { accept: MANIFEST_ACCEPT } },
+      this.pullScope(),
+    );
+    await head.text().catch(() => {});
+    if (head.status === 404) return null;
+    if (!head.ok) {
       throw new Error(
-        `OCI list tags for ${this.repo} on ${this.host} failed: ${res.status} ${res.statusText}`,
+        `OCI head manifest ${this.repo}:${reference} on ${this.host} failed: ${head.status} ${head.statusText}`,
       );
     }
-    const body = (await res.json()) as { tags?: string[] | null };
-    return Array.isArray(body.tags) ? body.tags : [];
+    const digest = head.headers.get("docker-content-digest");
+    if (digest) return digest;
+
+    const res = await this.authedFetch(url, { headers: { accept: MANIFEST_ACCEPT } }, this.pullScope());
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(
+        `OCI pull manifest ${this.repo}:${reference} on ${this.host} failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    return `sha256:${sha256Hex(new Uint8Array(await res.arrayBuffer()))}`;
+  }
+
+  /** All tags, following the distribution spec's pagination (`Link: …;
+   *  rel="next"` with `last=` cursors) so a many-versioned repo enumerates
+   *  fully — registries cap a single page (Docker Hub at 100). */
+  async listTags(): Promise<string[]> {
+    const tags: string[] = [];
+    let url: string | null = `${this.base()}/tags/list?n=1000`;
+    const seen = new Set<string>();
+    while (url && !seen.has(url)) {
+      seen.add(url);
+      const res: Response = await this.authedFetch(url, {}, this.pullScope());
+      if (res.status === 404) return tags;
+      if (!res.ok) {
+        throw new Error(
+          `OCI list tags for ${this.repo} on ${this.host} failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const body = (await res.json()) as { tags?: string[] | null };
+      if (Array.isArray(body.tags)) tags.push(...body.tags);
+      url = nextPageUrl(res.headers.get("link"), `https://${this.host}`);
+    }
+    return tags;
   }
 
   /** Upload `bytes` as a blob (skipped when already present), returning its

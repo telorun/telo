@@ -1,4 +1,12 @@
-import { splitIntegrity } from "@telorun/analyzer";
+import {
+  isOciRef,
+  isRegistryRef,
+  manifestCacheKey,
+  ociManifestCacheCoords,
+  parseModuleRef,
+  sha256Base64Url,
+  splitIntegrity,
+} from "@telorun/analyzer";
 import { defaultTransportRegistry, type TransportRegistry } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
@@ -186,10 +194,87 @@ function parseDocs(text: string): Document[] {
   return parseAllDocuments(text, { customTags: defaultCustomTags() }) as Document[];
 }
 
-async function runManifest(argv: { ref: string; registryUrl?: string }): Promise<void> {
+/** The hub manifest-cache key for a versioned remote ref, or `null` when the
+ *  ref has no deterministic cache location (local path, direct URL, digest
+ *  ref). Uses the same analyzer helper as the editor's read path, so the
+ *  tracker's write key and the editor's fetch key never drift. */
+function cacheKeyForRef(ref: string, registryUrl: string): string | null {
+  if (isOciRef(ref)) {
+    const coords = ociManifestCacheCoords(ref);
+    return coords ? manifestCacheKey(coords) : null;
+  }
+  if (!isRegistryRef(ref)) return null;
+  let host: string;
+  try {
+    host = new URL(registryUrl).host;
+  } catch {
+    return null;
+  }
+  const { modulePath, version } = parseModuleRef(ref);
+  return manifestCacheKey({ transport: "registry", host, path: modulePath, version });
+}
+
+async function runManifest(argv: {
+  ref: string;
+  registryUrl?: string;
+  json: boolean;
+}): Promise<void> {
   const log = createLogger(false);
   const text = await loadManifestText(argv.ref, argv.registryUrl, log);
+  if (argv.json) {
+    const cacheKey = localManifestPath(argv.ref)
+      ? null
+      : cacheKeyForRef(argv.ref, resolveRegistryUrl(argv.registryUrl));
+    console.log(JSON.stringify({ ref: argv.ref, cacheKey, manifest: text }));
+    return;
+  }
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
+}
+
+/** Cheap content-identity digest of one published version — what the discovery
+ *  tracker records per version and re-checks on every track to detect a
+ *  re-pushed tag. Opaque and transport-specific: compare for equality only. */
+async function runDigest(argv: {
+  ref: string;
+  registryUrl?: string;
+  json: boolean;
+}): Promise<void> {
+  const log = createLogger(false);
+
+  const emit = (digest: string): void => {
+    if (argv.json) {
+      console.log(JSON.stringify({ ref: argv.ref, digest }));
+      return;
+    }
+    console.log(digest);
+  };
+
+  // Local module — hash the manifest bytes on disk (same form as the registry
+  // transport's digest, so a local and a published copy compare equal).
+  const localPath = localManifestPath(argv.ref);
+  if (localPath) {
+    const text = readFileOrExit(localPath, log);
+    emit(`sha256-${await sha256Base64Url(new TextEncoder().encode(text))}`);
+    return;
+  }
+
+  const registry = defaultTransportRegistry(resolveRegistryUrl(argv.registryUrl));
+  if (!registry.forRef(argv.ref)) {
+    console.error(`${log.error("error")}  no transport handles '${argv.ref}'`);
+    process.exit(1);
+  }
+  let digest: string | null;
+  try {
+    digest = await registry.digest(argv.ref);
+  } catch (err) {
+    console.error(`${log.error("error")}  ${errMsg(err)}`);
+    process.exit(1);
+  }
+  if (digest === null) {
+    console.error(`${log.error("error")}  module not found: ${argv.ref}`);
+    process.exit(1);
+  }
+  emit(digest);
 }
 
 interface ResourceEntry {
@@ -360,9 +445,38 @@ export function moduleCommand(yargs: Argv): Argv {
               .option("registry-url", {
                 type: "string",
                 describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+              })
+              .option("json", {
+                type: "boolean",
+                default: false,
+                describe: "Emit { ref, cacheKey, manifest } as JSON",
               }),
           async (argv) => {
             await runManifest(argv as any);
+          },
+        )
+        .command(
+          "digest <ref>",
+          "Print a version's content-identity digest (cheap read, no payload download)",
+          (yy) =>
+            yy
+              .positional("ref", {
+                describe:
+                  "Module ref: ./path, std/console@0.9.0, oci://host/repo@1.2.0, or an https URL",
+                type: "string",
+                demandOption: true,
+              })
+              .option("registry-url", {
+                type: "string",
+                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+              })
+              .option("json", {
+                type: "boolean",
+                default: false,
+                describe: "Emit { ref, digest } as JSON",
+              }),
+          async (argv) => {
+            await runDigest(argv as any);
           },
         )
         .command(
@@ -413,7 +527,10 @@ export function moduleCommand(yargs: Argv): Argv {
             await runKinds(argv as any);
           },
         )
-        .demandCommand(1, "Specify a module subcommand (versions | manifest | resources | kinds)"),
+        .demandCommand(
+          1,
+          "Specify a module subcommand (versions | manifest | digest | resources | kinds)",
+        ),
     () => {},
   );
 }

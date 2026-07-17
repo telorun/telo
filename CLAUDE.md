@@ -77,6 +77,7 @@ When designing a new module or capability, ask: which of the above does this res
 - `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking)
 - `apps/telo-editor/` — desktop editor (React + Vite + Tauri)
+- `apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions|digest|manifest` CLI verbs, caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)`, and serves `/search/*`, `/refs`, `/module/versions` + the `search_resources` MCP tool (see `plans/federated-discovery.md`)
 - `ide/vscode/` — VS Code extension (YAML diagnostics via analyzer)
 - `tests/` — integration tests (YAML manifests run via kernel)
 - `examples/` — sample manifests

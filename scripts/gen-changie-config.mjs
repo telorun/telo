@@ -41,9 +41,9 @@ function readModuleMeta(manifestPath) {
 // metadata.version — both directories are scanned identically, so onboarding a new module or
 // app needs no edit here, just the manifest. `versionLines` is how many 2-space semver
 // `version:` lines the release replacement intentionally rewrites; 1 except where a manifest
-// deliberately couples extra ones (apps/registry bumps its MCP serverInfo.version alongside
-// metadata.version).
-const VERSION_LINES = { registry: 2 };
+// deliberately couples extra ones (apps/registry and apps/hub bump their MCP
+// serverInfo.version alongside metadata.version).
+const VERSION_LINES = { registry: 2, hub: 2 };
 
 const scan = (baseDir, baseRel) =>
   readdirSync(baseDir, { withFileTypes: true })
