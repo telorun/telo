@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store-pgvector
   namespace: std
-  version: 0.1.0
+  version: 0.2.0
   description: |
     VectorStorePgvector.Store — a Postgres/pgvector index for the VectorStore
     abstract. Cosine / dot / euclidean similarity via pgvector distance
@@ -25,7 +25,7 @@ metadata:
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:
-  - pkg:npm/@telorun/vector-store-pgvector@0.1.0?local_path=./nodejs#store
+  - pkg:npm/@telorun/vector-store-pgvector@0.2.0?local_path=./nodejs#store
 schema:
   type: object
   required: [connection, dimensions]

@@ -1,3 +1,0 @@
-project: hub
-kind: Fixed
-body: GET /module/versions now returns versions newest-first, matching the `telo module versions` CLI verb it mirrors. It previously returned oldest-first, which contradicted the CLI contract and would make an IDE version completion label the oldest version as "latest".
