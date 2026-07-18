@@ -12,7 +12,7 @@
 kind: Telo.Application
 metadata:
   name: telo-hub
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
@@ -1463,7 +1463,7 @@ metadata:
   name: McpHttp
 serverInfo:
   name: telo-hub
-  version: 0.1.0
+  version: 0.2.0
 instructions: !literal |
   This MCP server is the **Telo hub** — federated discovery over Telo modules
   hosted on any registry or OCI host. Telo is a declarative runtime: YAML
