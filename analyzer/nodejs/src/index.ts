@@ -17,6 +17,7 @@ export {
     reExportSpecsFromExports,
     resolveExportedKinds,
     selectModuleManifestsForAnalysis,
+    stampExportedKinds,
     stampReExportedKinds,
     type ParsedExportEntry,
     type ReExportSpec,

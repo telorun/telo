@@ -72,7 +72,13 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   /** Maps import alias → real module name for kind resolution. */
   private readonly importAliases = new Map<string, string>();
 
-  /** Maps import alias → allowed kind names. Absent entry = unrestricted (e.g. Kernel). */
+  /** Maps import alias → allowed kind names, i.e. the target's `exports.kinds` gate.
+   *  A registered set is authoritative: only listed kinds resolve, and an empty set
+   *  exports nothing. An absent entry is unrestricted, which today covers two cases —
+   *  `registerUngatedAlias` (aliases crossing no import boundary: `Self`, the `Telo`
+   *  built-ins) and an import whose target declares no `exports.kinds` at all (the
+   *  legacy permissive default, kept so already-published module versions stay
+   *  importable). Only the latter disappears when kinds go private by default. */
   private readonly importedKinds = new Map<string, Set<string>>();
 
   /** Maps import alias → its child context's exported instances. Registered by the
@@ -191,14 +197,32 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   /**
-   * Register an imported module under the given alias, with the list of kind names
-   * it exports. An empty kinds array means no restriction (used for built-ins like Telo).
+   * Register an imported module under the given alias, gated to the kind names it
+   * exports (its `exports.kinds`). Only listed kinds resolve; an empty list exports
+   * nothing.
+   *
+   * `kinds` is `undefined` for exactly one case: the target declares no `exports.kinds`
+   * at all, the legacy permissive default that keeps already-published module versions
+   * importable. Every such call is a site to delete when kinds go private by default —
+   * for an alias that crosses no import boundary use `registerUngatedAlias` instead, so
+   * the two never get confused.
    */
-  registerImport(alias: string, targetModule: string, kinds: string[]): void {
+  registerImport(alias: string, targetModule: string, kinds?: readonly string[]): void {
     this.importAliases.set(alias, targetModule);
-    if (kinds.length > 0) {
+    if (kinds !== undefined) {
       this.importedKinds.set(alias, new Set(kinds));
     }
+  }
+
+  /**
+   * Register an alias that crosses no import boundary and is therefore never gated:
+   * `Self` (a library resolving its own kinds — `exports.kinds` gates importers, not
+   * internal use) and the `Telo` built-in namespace. Distinct from an ungated
+   * `registerImport` so that making kinds private by default cannot accidentally gate
+   * these to nothing, which would break every built-in kind everywhere.
+   */
+  registerUngatedAlias(alias: string, targetModule: string): void {
+    this.importAliases.set(alias, targetModule);
   }
 
   /** Register an import alias's exported instances for cross-module reference resolution.
@@ -398,7 +422,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     // Re-export override: if this import's exported-kind table maps the suffix to a DIFFERENT
     // owning module, the kind is transitively re-exported (`exports.kinds: [Alias.Kind]`) —
     // resolve to its true owner. A local kind maps to `${realModule}.${suffix}` (no override),
-    // and a module without `exports.kinds` has an empty table (unrestricted, unchanged). Built
+    // and a module without `exports.kinds` has an empty table (nothing re-exported). Built
     // deferred, so before the import inits this returns the un-overridden kind, whose controller
     // miss makes the init loop retry until the table is ready.
     const reExported = this.importedKindResolvers.get(prefix)?.(suffix);

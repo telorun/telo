@@ -30,7 +30,13 @@ export interface ModuleContext extends EvaluationContext {
   setControllerPolicy(policy: ControllerPolicy | undefined): void;
   getControllerPolicy(): ControllerPolicy | undefined;
 
-  registerImport(alias: string, targetModule: string, kinds: string[]): void;
+  /** Register an imported module under `alias`, gated to `kinds` (its `exports.kinds`).
+   *  Only listed kinds resolve; an empty list exports nothing. `kinds` is `undefined` only
+   *  when the target declares no `exports.kinds` at all — the legacy permissive default. */
+  registerImport(alias: string, targetModule: string, kinds?: readonly string[]): void;
+  /** Register an alias that crosses no import boundary and is therefore never gated:
+   *  `Self` (a library's own kinds) and the `Telo` built-in namespace. */
+  registerUngatedAlias(alias: string, targetModule: string): void;
   /** Resolve a cross-module exported-instance reference `Alias.name` to its `{kind, name}`
    *  ref (canonical kind), gated by the import's `exports.resources`. Returns undefined when
    *  the alias is unknown, the name isn't exported, or the import hasn't initialized yet. */

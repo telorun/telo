@@ -2,12 +2,19 @@ kind: Telo.Library
 metadata:
   name: owner-identity-lib
   version: 1.0.0
+exports:
+  kinds:
+    - Boxed
 imports:
   Run: ../../../../../../modules/run
 ---
 kind: Telo.Definition
 metadata:
   name: Boxed
+  description: >-
+    Test fixture: a provider template whose child resource has a FIXED name, so
+    two instances both spawn a child called `inner` — exercises owner-identity
+    resolution of the resulting name collision.
 capability: Telo.Provider
 schema:
   type: object

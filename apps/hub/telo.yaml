@@ -922,11 +922,11 @@ steps:
         - !cel "item.?capability.orValue('')"
         - !cel "item.kind == 'Telo.Abstract'"
         # Mirrors the kernel's gate (module-context `registerImport`): a
-        # missing OR empty `exports.kinds` list means no restriction — every
-        # kind is importable; a non-empty list gates to the listed names.
+        # missing `exports.kinds` list means no restriction — every kind is
+        # importable; a declared list gates to the listed names.
         # Re-exported entries (`Alias.Kind`) name another module's kind, never
         # a local definition, so they don't mark local rows (see README).
-        - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports && inputs.docs[0].exports.kinds.size() > 0 ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
+        - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
         - !cel "item.metadata.?description.orValue('')"
 ---
 # A library's exported singleton INSTANCES (`exports.resources`) — the other

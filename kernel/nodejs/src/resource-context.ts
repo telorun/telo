@@ -466,7 +466,9 @@ export class ResourceContextImpl implements ResourceContext {
     await this.kernel.emitRuntimeEvent(event, payload);
   }
 
-  registerModuleImport(alias: string, targetModule: string, kinds: string[]): void {
+  /** `kinds` is the target's `exports.kinds` gate; omit it for an unrestricted alias
+   *  (one crossing no import boundary). See `ModuleContext.registerImport`. */
+  registerModuleImport(alias: string, targetModule: string, kinds?: readonly string[]): void {
     this.moduleContext.registerImport(alias, targetModule, kinds);
   }
 

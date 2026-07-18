@@ -44,8 +44,16 @@ export class AnalysisRegistry {
     this.defs.registerModuleIdentity(namespace, name);
   }
 
-  registerImport(alias: string, target: string, kinds: string[]): void {
+  /** `kinds` is the target's `exports.kinds` gate — only listed kinds resolve, and an
+   *  empty list exports nothing. Omit it only for a target declaring no `exports.kinds`
+   *  (the legacy permissive default); see `AliasResolver.registerImport`. */
+  registerImport(alias: string, target: string, kinds?: readonly string[]): void {
     this.aliases.registerImport(alias, target, kinds);
+  }
+
+  /** An alias crossing no import boundary, never gated — `Self`, the `Telo` built-ins. */
+  registerUngatedAlias(alias: string, target: string): void {
+    this.aliases.registerUngatedAlias(alias, target);
   }
 
   resolveKind(kind: string): string | undefined {

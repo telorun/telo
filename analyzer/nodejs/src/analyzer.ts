@@ -896,29 +896,33 @@ export class StaticAnalyzer {
         // Lets same-library `extends:` work (e.g. `extends: Self.Encoder` for a
         // concrete kind whose abstract lives in the same Telo.Library) without
         // requiring a self-import (which would loop the loader). Resolves
-        // through the same alias machinery as user-declared Telo.Imports —
-        // honours the library's `exports.kinds` list, no special cases.
+        // through the same alias machinery as user-declared Telo.Imports.
         if (moduleName) {
           // `Self` resolves the library's own kinds UNGATED — a library may reference
           // its own kinds regardless of `exports.kinds`, which gates importers, not
           // internal use. This is what lets a library declare an instance of a kind it
           // does not export (e.g. console's `writeLine`) to enforce a singleton.
           if (rootModules.has(moduleName)) {
-            aliases.registerImport("Self", moduleName, []);
+            aliases.registerUngatedAlias("Self", moduleName);
           } else {
             let libResolver = aliasesByModule.get(moduleName);
             if (!libResolver) {
               libResolver = new AliasResolver();
               aliasesByModule.set(moduleName, libResolver);
             }
-            libResolver.registerImport("Self", moduleName, []);
+            libResolver.registerUngatedAlias("Self", moduleName);
           }
         }
       }
       if (m.kind === "Telo.Import") {
         const alias = m.metadata.name as string;
         const source = (m as any).source as string | undefined;
-        const exportedKinds: string[] = (m as any).exports?.kinds ?? [];
+        // The target's `exports.kinds` gate, stamped onto this import by
+        // `stampExportedKinds` (the `Telo.Import` doc has no `exports` field of its own —
+        // the target `Telo.Library` doc it comes from is dropped for non-root modules).
+        // Undefined means the target declares no gate, i.e. unrestricted.
+        const exportedKinds = (m.metadata as { exportedKinds?: string[] } | undefined)
+          ?.exportedKinds;
         const resolvedModuleName = (m.metadata as any).resolvedModuleName as string | undefined;
         const resolvedNamespace = (m.metadata as any).resolvedNamespace as
           | string
@@ -1001,7 +1005,7 @@ export class StaticAnalyzer {
         aliasesByModule.set(ownModule, libResolver);
       }
       if (!libResolver.hasAlias("Self")) {
-        libResolver.registerImport("Self", ownModule, []);
+        libResolver.registerUngatedAlias("Self", ownModule);
       }
     }
 
@@ -1227,7 +1231,38 @@ export class StaticAnalyzer {
       // reference-resolution paths: own-module scope first, root/consumer aliases last.
       const ownModule = (m.metadata as { module?: string } | undefined)?.module;
       const scopeResolver = scopeResolverForModule(ownModule, rootModules, aliasesByModule);
-      const resolvedKind = scopeResolver?.resolveKind(m.kind) ?? aliases.resolveKind(m.kind);
+      // Either scope resolving it wins; otherwise a gate rejection is more specific than
+      // "unknown alias", so surface that.
+      const scoped = scopeResolver?.resolveKindResult(m.kind);
+      const rooted = aliases.resolveKindResult(m.kind);
+      const kindResult =
+        scoped?.status === "ok"
+          ? scoped
+          : rooted.status === "ok"
+            ? rooted
+            : scoped?.status === "gated"
+              ? scoped
+              : rooted;
+
+      // The gate is checked BEFORE any definition lookup. `defs` is keyed
+      // `<metadata.module>.<Kind>`, so a library whose `metadata.name` equals the alias it
+      // is imported under (e.g. module `Foo` imported as `Foo`) makes the raw `defs.resolve(m.kind)`
+      // below hit directly — which would accept a kind the module does not export, leaving
+      // the analyzer more permissive than the kernel.
+      if (kindResult.status === "gated") {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "KIND_NOT_EXPORTED",
+          source: SOURCE,
+          message:
+            `Kind '${m.kind}' is not exported by module '${kindResult.module}'. ` +
+            `Add '${m.kind.slice(m.kind.indexOf(".") + 1)}' to that module's exports.kinds ` +
+            `to make it importable. Exported kinds: ${kindResult.exported.join(", ") || "(none)"}.`,
+          data: { resource, filePath, path: "kind" },
+        });
+        continue;
+      }
+      const resolvedKind = kindResult.status === "ok" ? kindResult.kind : undefined;
       const definition =
         defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
       if (!definition) {

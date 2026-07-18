@@ -8,11 +8,23 @@ export class AliasResolver {
    *  import's own module. Resolved before the normal `<module>.<suffix>` construction. */
   private readonly reExportedKinds = new Map<string, string>();
 
-  registerImport(alias: string, targetModule: string, exportedKinds: string[]): void {
+  /** Register an import alias gated to the target's `exports.kinds`. Only listed kinds
+   *  resolve; an empty list exports nothing. `exportedKinds` is `undefined` for exactly one
+   *  case — the target declares no `exports.kinds` at all (the legacy permissive default,
+   *  kept so already-published module versions stay importable), which is the site to delete
+   *  when kinds go private. For an alias crossing no import boundary use
+   *  `registerUngatedAlias`. Mirrors `ModuleContext.registerImport`. */
+  registerImport(alias: string, targetModule: string, exportedKinds?: readonly string[]): void {
     this.importAliases.set(alias, targetModule);
-    if (exportedKinds.length > 0) {
+    if (exportedKinds !== undefined) {
       this.importedKinds.set(alias, new Set(exportedKinds));
     }
+  }
+
+  /** Register an alias that crosses no import boundary and is therefore never gated —
+   *  `Self`, a library resolving its own kinds. See `ModuleContext.registerUngatedAlias`. */
+  registerUngatedAlias(alias: string, targetModule: string): void {
+    this.importAliases.set(alias, targetModule);
   }
 
   /** Register that `<alias>.<suffix>` re-exports the kind canonically named `canonicalKind`
@@ -30,24 +42,45 @@ export class AliasResolver {
     return this.importAliases.get(alias);
   }
 
-  /** Resolves "Http.Api" → "http-server.Api". Returns undefined if alias is unknown. */
-  resolveKind(kind: string): string | undefined {
-    if (!kind) {
-      return undefined;
-    }
+  /** Resolve an alias-qualified kind, reporting WHY it failed. One parse, one gate check —
+   *  callers that need the reason and callers that only need the name share this, so they
+   *  cannot drift on dot-splitting, re-export precedence, or gate order.
+   *
+   *  - `ok`      — resolved to a canonical `<module>.<Kind>`.
+   *  - `gated`   — the alias is known and the target owns the name, but its `exports.kinds`
+   *                does not list it. A distinct outcome so callers can say "not exported"
+   *                instead of the misleading "no such kind".
+   *  - `unknown` — unqualified kind, or an alias this scope never imported. */
+  resolveKindResult(
+    kind: string,
+  ):
+    | { status: "ok"; kind: string }
+    | { status: "gated"; module: string; exported: string[] }
+    | { status: "unknown" } {
+    if (!kind) return { status: "unknown" };
     const dot = kind.indexOf(".");
-    if (dot === -1) return undefined;
+    if (dot === -1) return { status: "unknown" };
     const prefix = kind.slice(0, dot);
     const suffix = kind.slice(dot + 1);
     // Re-export takes precedence: a re-exported kind resolves to its true owning module,
-    // not `${prefix-target}.${suffix}` (and bypasses the gate — it's explicitly re-exported).
+    // not `${prefix-target}.${suffix}`. It is listed in the re-exporting library's own
+    // `exports.kinds` (that is how it got here), so this is not a gate bypass.
     const reExported = this.reExportedKinds.get(`${prefix}.${suffix}`);
-    if (reExported) return reExported;
+    if (reExported) return { status: "ok", kind: reExported };
     const realModule = this.importAliases.get(prefix);
-    if (!realModule) return undefined;
+    if (!realModule) return { status: "unknown" };
     const allowed = this.importedKinds.get(prefix);
-    if (allowed !== undefined && !allowed.has(suffix)) return undefined;
-    return `${realModule}.${suffix}`;
+    if (allowed !== undefined && !allowed.has(suffix)) {
+      return { status: "gated", module: realModule, exported: [...allowed] };
+    }
+    return { status: "ok", kind: `${realModule}.${suffix}` };
+  }
+
+  /** Resolves "Http.Api" → "http-server.Api". Undefined if the alias is unknown OR the kind
+   *  is gated out — use `resolveKindResult` when the difference matters. */
+  resolveKind(kind: string): string | undefined {
+    const r = this.resolveKindResult(kind);
+    return r.status === "ok" ? r.kind : undefined;
   }
 
   hasAlias(alias: string): boolean {

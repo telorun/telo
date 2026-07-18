@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: UnexportedKindTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref TestUnexportedKind
+---
+# The `exports.kinds` gate: a library's kinds are private unless explicitly exported.
+# The fixture's library defines `Public` and `Private` but exports only `Public`, so a
+# consumer referencing `Lib.Private` must be rejected — and told to add it to exports.kinds
+# rather than receiving a "no such kind" suggestion echoing back what it wrote.
+kind: Assert.Manifest
+metadata:
+  name: TestUnexportedKind
+source: ./__fixtures__/unexported-kind.yaml
+expect:
+  errors:
+    - code: KIND_NOT_EXPORTED

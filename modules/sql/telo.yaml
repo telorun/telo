@@ -8,6 +8,15 @@ metadata:
     Query / Command / Selection / Transaction / Migrations operations. Concrete
     drivers ship as their own modules (sql-postgres, sql-sqlite) and extend
     Connection, mirroring the cache / cache-* family.
+exports:
+  kinds:
+    - Connection
+    - Query
+    - Command
+    - Transaction
+    - Selection
+    - Migration
+    - Migrations
 ---
 # Sql.Connection — the abstract database handle every driver implements. A
 # Telo.Provider: a configured connection to a backend, NOT an operation you
@@ -19,11 +28,25 @@ metadata:
 kind: Telo.Abstract
 metadata:
   name: Connection
+  description: >-
+    The abstract database handle every SQL driver implements — a configured,
+    long-lived connection to a database backend, not an operation you invoke.
+    Query, Command, Selection, Transaction and Migrations all reference one;
+    concrete drivers (sql-postgres, sql-sqlite) extend it and each fixes its own
+    native bind-placeholder style, so inline CEL parameters in statements stay
+    dialect-neutral.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
 metadata:
   name: Query
+  description: >-
+    Runs a SQL query against a connection and returns the result rows plus
+    `rowCount`. Use it for `SELECT` and PostgreSQL `… RETURNING`; mutations with
+    no row result belong in Sql.Command. Inline CEL interpolations in the SQL
+    text are bound as parameters rather than spliced in, so queries stay
+    injection-safe and dialect-neutral; an optional transaction reference runs
+    the query inside an open transaction.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-query
@@ -92,6 +115,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Command
+  description: >-
+    Executes a SQL statement that changes data and reports how many rows it
+    affected — `INSERT`, `UPDATE`, `DELETE` without `RETURNING`. Rows are not
+    read back (use Sql.Query for that). Inline CEL interpolations in the
+    statement bind as parameters instead of being spliced into the text, and an
+    optional transaction reference runs the statement inside an open
+    transaction.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-command
@@ -163,6 +193,12 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Transaction
+  description: >-
+    Wraps another invocable resource in a database transaction: opens one on the
+    referenced connection, invokes the `steps` resource with the supplied
+    bindings, then commits on success or rolls back if it throws. Queries and
+    commands join the transaction by referencing this resource, so a group of
+    writes becomes all-or-nothing.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-transaction
@@ -188,6 +224,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Selection
+  description: >-
+    Builds and runs a `SELECT` from structured parts instead of raw SQL text —
+    table, columns, where clauses, group by / having, order by, limit and
+    offset, plus distinct / PostgreSQL `DISTINCT ON`. Filter values and
+    limit/offset come from invocation inputs and are bound as parameters, so the
+    query stays visually editable and injection-safe; declare `inputType` /
+    `outputType` to type the call.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-selection
@@ -314,6 +357,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Migration
+  description: >-
+    [Deprecated] A single standalone schema-migration script, identified by a
+    durable `version` key recorded in the migrations tracking table so it runs
+    at most once. Its body runs as a script and may hold several
+    `;`-separated statements. Any Sql.Migrations in the same module scope
+    discovers and merges it, but new manifests should declare migrations inline
+    under the keyed `migrations` map instead.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migration
@@ -352,6 +402,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Migrations
+  description: >-
+    Runs database schema migrations against a connection at startup: an ordered
+    map of migrations keyed by a durable ledger id, applied in lexicographic key
+    order, each inside its own transaction and recorded in a tracking table so
+    it is applied exactly once. Each entry is a single `statement` or an ordered
+    list of `statements`; renaming a key makes the migrator treat it as new and
+    re-run it.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migrations

@@ -2,12 +2,19 @@ kind: Telo.Library
 metadata:
   name: provider-template-lib
   version: 1.0.0
+exports:
+  kinds:
+    - TokenProvider
 imports:
   Run: ../../../../../../modules/run
 ---
 kind: Telo.Definition
 metadata:
   name: TokenProvider
+  description: >-
+    Test fixture: a template-form provider WITH a top-level `result:` mapping,
+    which rewrites the child's raw value into a bearer token before `provide()`
+    returns it.
 capability: Telo.Provider
 schema:
   type: object
