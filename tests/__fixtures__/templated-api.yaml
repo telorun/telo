@@ -6,7 +6,10 @@ imports:
   Http: ../../modules/http-server
   Run: ../../modules/run
 exports:
-  kinds:
+  # `HelloApi` is a resource instance (`kind: Http.Api`), not a kind — it belongs in
+  # `resources:`, as its non-fixture twin (examples/templated-api/library.yaml) has it.
+  # Under `kinds:` it declared a gate exporting zero real kinds.
+  resources:
     - HelloApi
 ---
 kind: Http.Api

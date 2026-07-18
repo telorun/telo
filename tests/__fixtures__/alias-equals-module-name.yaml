@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: AliasEqualsModuleNameFixture
+  version: 1.0.0
+imports:
+  # Alias matches the target's `metadata.name`, so `Lib.Private` is itself a valid
+  # definition-registry key. The gate must still reject it.
+  Lib: ./alias-equals-module-name-lib.yaml
+targets:
+  - !ref usesPrivate
+---
+kind: Lib.Private
+metadata:
+  name: usesPrivate

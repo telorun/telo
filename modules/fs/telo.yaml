@@ -10,12 +10,27 @@ metadata:
     binary. Each operation carries an optional `cwd` that invoke paths resolve
     against. Not a security boundary — isolation comes from where the kernel
     runs, not these resources.
+exports:
+  kinds:
+    - File
+    - FileWrite
+    - FileEdit
+    - DirectoryListing
+    - DirectoryCreation
+    - TreeSnapshot
+    - TreeSync
+    - FileRemoval
 ---
 # Read a file. Returns its contents (utf8 text or, with `encoding: base64`, the
 # bytes base64-encoded) and byte size.
 kind: Telo.Definition
 metadata:
   name: File
+  description: >-
+    Reads a file from the local filesystem and returns its contents plus byte
+    size — utf8 text by default, or the raw bytes base64-encoded with
+    `encoding: base64`. Buffered whole into memory (no streaming), and the
+    invoke path resolves against the resource's `cwd` unless it is absolute.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file
@@ -72,6 +87,12 @@ schema:
 kind: Telo.Definition
 metadata:
   name: FileWrite
+  description: >-
+    Writes a file on the local filesystem, replacing it whole, and reports the
+    number of bytes written. Content is utf8 text or a base64 string decoded to
+    binary; `createParents` makes missing parent directories first. The path
+    resolves against the resource's `cwd` unless absolute — for surgical
+    in-place changes to an existing file use Fs.FileEdit instead.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-write
@@ -134,6 +155,12 @@ schema:
 kind: Telo.Definition
 metadata:
   name: FileEdit
+  description: >-
+    Edits an existing file in place by exact string replacement and returns how
+    many occurrences were replaced. It fails rather than silently no-opping when
+    the old string is absent or matches more than once without `replaceAll`.
+    Replacement is byte-level, so surrounding comments and YAML tags survive
+    untouched; the path resolves against the resource's `cwd`.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-edit
@@ -195,6 +222,12 @@ schema:
 kind: Telo.Definition
 metadata:
   name: DirectoryListing
+  description: >-
+    Lists the contents of a directory, returning one entry per item with its
+    base name, path, type (file / directory / other) and size in bytes. Set
+    `recursive` to walk subdirectories too. Entry paths come back relative to
+    the resource's `cwd`, so they can be fed straight into a read, write or
+    remove call.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-listing
@@ -263,6 +296,12 @@ schema:
 kind: Telo.Definition
 metadata:
   name: DirectoryCreation
+  description: >-
+    Creates a directory on the local filesystem, reporting whether it was newly
+    created or already existed. With `createParents` it also makes missing
+    ancestor directories and is idempotent; without it, an existing path or a
+    missing parent is an error. The path resolves against the resource's `cwd`
+    unless absolute.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-creation
@@ -317,6 +356,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: TreeSnapshot
+  description: >-
+    Walks a directory tree recursively and returns every regular file as a path
+    plus the sha256 hex digest of its bytes, sorted by path. Because it hashes
+    content rather than comparing sizes or timestamps, two snapshots diff into
+    an exact change set — useful for detecting edits, syncing, or caching.
+    `exclude` skips entries by base name at any depth (node_modules, .git,
+    dist); paths are relative to the resource's `cwd`.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-snapshot
@@ -383,6 +429,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: TreeSync
+  description: >-
+    Applies an explicit batch change set to a directory tree in one call:
+    writes each listed file whole (creating parent directories) and removes each
+    listed path, writes first then deletes, returning the counts of each. Files
+    absent from the set are left untouched — it never implicitly deletes — so
+    the same operation serves both a full seed and a partial delta. Paths
+    resolve against the resource's `cwd`.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-sync
@@ -453,6 +506,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: FileRemoval
+  description: >-
+    Deletes a file from the local filesystem, or a whole directory tree when
+    `recursive` is set. A missing path is an error rather than a silent no-op.
+    The path resolves against the resource's `cwd` unless absolute.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-removal

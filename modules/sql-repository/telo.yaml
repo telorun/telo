@@ -4,12 +4,24 @@ metadata:
   namespace: std
   version: 0.5.0
   description: Named CRUD handlers that generate SQL from domain operations
+exports:
+  kinds:
+    - Read
+    - Create
+    - Update
+    - Delete
 imports:
   Sql: ../sql
 ---
 kind: Telo.Definition
 metadata:
   name: Read
+  description: >-
+    Fetches rows from a database table by generating a `SELECT * FROM <table>`
+    query, appending a `WHERE col = ?` clause joined with AND for each entry in
+    the invocation's `filters` map (no filters means every row). Runs the query
+    over a referenced SQL connection with the filter values passed as positional
+    bindings, and returns the matching rows.
 capability: Telo.Invocable
 schema:
   type: object
@@ -44,6 +56,12 @@ invoke:
 kind: Telo.Definition
 metadata:
   name: Create
+  description: >-
+    Inserts a new row into a database table by generating an
+    `INSERT INTO <table> (cols) VALUES (?, ?, …)` statement from the keys of the
+    invocation's `data` object, so a domain object maps straight to a column
+    list. Executes the statement over a referenced SQL connection with the
+    object's values passed as positional bindings.
 capability: Telo.Invocable
 schema:
   type: object
@@ -76,6 +94,12 @@ inputs:
 kind: Telo.Definition
 metadata:
   name: Delete
+  description: >-
+    Removes rows from a database table by generating a
+    `DELETE FROM <table> WHERE col = ? AND …` statement from the invocation's
+    `filters` map, executed over a referenced SQL connection with the filter
+    values as positional bindings. A WHERE clause is always emitted, so at least
+    one filter is required to target the rows to delete.
 capability: Telo.Invocable
 schema:
   type: object
@@ -108,6 +132,12 @@ inputs:
 kind: Telo.Definition
 metadata:
   name: Update
+  description: >-
+    Modifies existing rows in a database table by generating an
+    `UPDATE <table> SET col = ? … WHERE col = ? AND …` statement, taking the
+    assigned columns from the invocation's `data` object and the row selection
+    from its `filters` map. Executes over a referenced SQL connection with the
+    data values followed by the filter values as positional bindings.
 capability: Telo.Invocable
 schema:
   type: object

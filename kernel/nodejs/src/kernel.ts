@@ -276,7 +276,7 @@ export class Kernel implements IKernel {
   private async loadBuiltinDefinitions(): Promise<void> {
     // Declare built-in module namespaces upfront so getContext() can distinguish
     // "not yet populated" from a completely unknown module name.
-    this.rootContext.registerImport("Telo", "Telo", []); // built-ins, unrestricted
+    this.rootContext.registerUngatedAlias("Telo", "Telo"); // built-ins — no import boundary
 
     // Register built-in definitions with the controller registry.
     // AnalysisRegistry's underlying DefinitionRegistry already seeds KERNEL_BUILTINS on construction.

@@ -2,12 +2,18 @@ kind: Telo.Library
 metadata:
   name: provider-template-raw-lib
   version: 1.0.0
+exports:
+  kinds:
+    - RawProvider
 imports:
   Run: ../../../../../../modules/run
 ---
 kind: Telo.Definition
 metadata:
   name: RawProvider
+  description: >-
+    Test fixture: a template-form provider with NO top-level `result:` mapping,
+    so `provide()` returns the child resource's value verbatim.
 capability: Telo.Provider
 schema:
   type: object

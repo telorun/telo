@@ -16,7 +16,9 @@ function buildRegistry(): AnalysisRegistry {
   // DefinitionRegistry constructor. Telo.Invocable is also a built-in
   // abstract — no need to redeclare it here.
   registry.registerModuleIdentity("std", "test-module");
-  registry.registerImport("Test", "test-module", []);
+  // A real import is gated by the target's `exports.kinds`, so list what this
+  // fixture library publishes rather than leaving the gate empty.
+  registry.registerImport("Test", "test-module", ["Step", "Sequence"]);
 
   const stepDef: ResourceDefinition = {
     kind: "Telo.Definition",
@@ -229,7 +231,7 @@ describe("buildCompletions — cursor on the `kind:` line itself", () => {
     // resource's own `kind:` line.
     const domainRegistry = new AnalysisRegistry();
     domainRegistry.registerModuleIdentity("std", "test-module");
-    domainRegistry.registerImport("Test", "test-module", []);
+    domainRegistry.registerImport("Test", "test-module", ["Widget"]);
     domainRegistry.registerDefinition({
       kind: "Telo.Definition",
       metadata: { name: "Widget", module: "test-module" },
@@ -373,7 +375,7 @@ describe("buildCompletions — deeply nested list-item paths", () => {
   // single `- ` list marker.
   const registry = new AnalysisRegistry();
   registry.registerModuleIdentity("std", "test-module");
-  registry.registerImport("Test", "test-module", []);
+  registry.registerImport("Test", "test-module", ["Api"]);
   registry.registerDefinition({
     kind: "Telo.Definition",
     metadata: { name: "Api", module: "test-module" },

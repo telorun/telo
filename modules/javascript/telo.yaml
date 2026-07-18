@@ -7,10 +7,20 @@ metadata:
     Run JavaScript inside a manifest. `JavaScript.Script` executes a
     `main(input)` function with optional typed inputs / outputs. A last
     resort — prefer a declarative resource kind where one exists.
+exports:
+  kinds:
+    - Script
 ---
 kind: "Telo.Definition"
 metadata:
   name: "Script"
+  description: >-
+    Runs inline JavaScript source on the Node.js runtime as an invocable
+    resource: the `code` field must define a `main(input)` function whose
+    return value becomes the invocation result, validated against the
+    optional `inputType` / `outputType` type references. Intended as a last
+    resort for one-off glue — prefer a declarative resource kind whenever one
+    exists.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/javascript@0.4.1?local_path=./nodejs#script

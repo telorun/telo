@@ -4,10 +4,21 @@ metadata:
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows
+exports:
+  kinds:
+    - Script
 ---
 kind: Telo.Definition
 metadata:
   name: Script
+  description: >-
+    Evaluates embedded Starlark source — the sandboxed, Python-like
+    configuration language — as an invocable resource, with controller
+    implementations for both Node.js and Rust. The `code` field must define a
+    `run(input)` function; its return value becomes the invocation result and
+    is validated against the optional `inputType` / `outputType` type
+    references. Starlark is deterministic and has no I/O or host access, so it
+    suits pure data transformation and policy logic rather than side effects.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/starlark@0.4.1?local_path=./nodejs#script

@@ -9,6 +9,12 @@ metadata:
     Shell.LocalHost driver runs commands on the local host via child_process.
     Remote drivers (SSH, Docker, k8s) ship as their own modules and extend
     Shell.Host, mirroring the sql / sql-sqlite family.
+exports:
+  kinds:
+    - Host
+    - Command
+    - CommandStream
+    - LocalHost
 ---
 # Shell.Host — the abstract execution target every driver implements. A
 # Telo.Provider whose instance exposes the spawn primitive the operations call.
@@ -20,11 +26,26 @@ metadata:
 kind: Telo.Abstract
 metadata:
   name: Host
+  description: >-
+    Abstract execution target for shell commands — the contract every backend
+    driver extends, whether local, SSH, Docker, or Kubernetes. It owns command
+    composition (`<shell> -c <command>`), environment merging, and the working
+    directory, so Shell.Command / Shell.CommandStream stay backend-agnostic and
+    reference it through `x-telo-ref: "std/shell#Host"`. Not instantiable —
+    supply a concrete implementation such as Shell.LocalHost.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
 metadata:
   name: Command
+  description: >-
+    Run a shell command or program to completion on a Shell.Host and get the
+    buffered result back as `{ stdout, stderr, exitCode }`. Pass `command` for a
+    shell command line (`<shell> -c ...`) or `args` for direct argv execution
+    with no shell parsing, so untrusted values cannot inject. Supports stdin
+    text, a per-call environment overlay (a `null` value unsets an inherited
+    variable), and a kill timeout; a non-zero exit code is returned, not thrown,
+    so callers branch on it in CEL.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/shell@0.2.0?local_path=./nodejs#shell-command
@@ -100,6 +121,14 @@ schema:
 kind: Telo.Definition
 metadata:
   name: CommandStream
+  description: >-
+    Streaming variant of running a shell command on a Shell.Host: instead of
+    buffering, it emits stdout and stderr chunks on `result.output` as they
+    arrive, followed by a terminal `{type: exit, exitCode, signal}` or
+    `{type: error}` record. Use it to tail or live-render long-running command
+    output (pipe it into Console.WriteStream); because there is no declarative
+    path to a scalar exit code, use Shell.Command when the result drives
+    pass/fail control flow.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/shell@0.2.0?local_path=./nodejs#shell-command-stream
@@ -173,6 +202,13 @@ schema:
 kind: Telo.Definition
 metadata:
   name: LocalHost
+  description: >-
+    The bundled Shell.Host driver that executes commands on the local machine
+    via Node's child_process. Configures the working directory commands start
+    in, the shell interpreter (`/bin/sh` on POSIX, `%ComSpec%` on Windows), and
+    a base environment that per-call overlays merge over (a `null` value unsets
+    an inherited variable). `cwd` is not a security boundary — real isolation
+    comes from where the host process itself runs.
 capability: Telo.Provider
 extends: Self.Host
 controllers:

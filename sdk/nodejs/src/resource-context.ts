@@ -95,7 +95,9 @@ export interface ResourceContext extends ControllerContext {
   createTypeValidator(typeRef: string | Record<string, any> | undefined): DataValidator;
   registerController(moduleName: string, kindName: string, controllerInstance: any): Promise<void>;
   registerDefinition(definition: any): void;
-  registerModuleImport(alias: string, targetModule: string, kinds: string[]): void;
+  /** `kinds` is the target's `exports.kinds` gate; `undefined` only when the target
+   *  declares none (the legacy permissive default). */
+  registerModuleImport(alias: string, targetModule: string, kinds?: readonly string[]): void;
   /**
    * Resolved controller-selection policy for the module declaring this resource.
    * `undefined` when no policy was stamped (root module, or import without

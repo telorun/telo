@@ -2,12 +2,18 @@ kind: Telo.Library
 metadata:
   name: invoke-result-lib
   version: 1.0.0
+exports:
+  kinds:
+    - GreetWrapper
 imports:
   JS: ../../../../../../modules/javascript
 ---
 kind: Telo.Definition
 metadata:
   name: GreetWrapper
+  description: >-
+    Test fixture: an invocable template that dispatches to a JS.Script and
+    reshapes its output through a top-level `result:` mapping.
 capability: Telo.Invocable
 schema:
   type: object

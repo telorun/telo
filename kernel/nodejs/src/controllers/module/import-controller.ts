@@ -155,7 +155,7 @@ export async function create(
   // A library references its own kinds via `Self.<Kind>` (e.g. when it declares an
   // instance to export). Register `Self` → the library's own module in the child context
   // so those resolve at runtime — ungated, since this is internal use, not an importer.
-  childCtx.registerImport("Self", targetModule, []);
+  childCtx.registerUngatedAlias("Self", targetModule);
 
   // Stamp the resolved controller policy on the child only when the import
   // specifies a `runtime:` field that resolves to something other than the
@@ -216,8 +216,16 @@ export async function create(
   // of an imported library's kind). `parseExportEntry` (shared with the analyzer) yields
   // `{name, alias?}` — `name` is the exported kind suffix, `alias` (when set) names this
   // library's own import it re-exports from.
-  const kindEntries = ((moduleManifest.exports?.kinds ?? []) as string[]).map(parseExportEntry);
-  const exportedKindSuffixes = kindEntries.map((k) => k.name);
+  // A library that declares `exports.kinds` is gated to exactly that list (an empty list
+  // exports nothing). One that declares none registers an unrestricted gate (`undefined`)
+  // — the legacy permissive default, kept so already-published module versions, whose
+  // manifests can no longer gain an `exports.kinds` block, stay importable. Flipping this
+  // to a gated `[]` makes kinds private by default and is a breaking change for every such
+  // version; it needs the ecosystem republished with explicit exports first.
+  const declaredKinds = moduleManifest.exports?.kinds as string[] | undefined;
+  const kindEntries = (declaredKinds ?? []).map(parseExportEntry);
+  const exportedKindSuffixes =
+    declaredKinds === undefined ? undefined : kindEntries.map((k) => k.name);
   // `exports.resources` entries are a bare name (`Db`, a locally-owned export) or a dotted
   // `Alias.Name` (re-export of an imported instance, under name `Name`) — same grammar as
   // `exports.kinds`.

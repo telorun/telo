@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: UnexportedKindFixture
+  version: 1.0.0
+imports:
+  Lib: ./unexported-kind-lib.yaml
+targets:
+  - !ref usesPrivate
+---
+# `Private` is not listed in the library's `exports.kinds`, so this reference
+# must not resolve — kinds are reachable only when explicitly exported.
+kind: Lib.Private
+metadata:
+  name: usesPrivate

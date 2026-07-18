@@ -4,10 +4,20 @@ metadata:
   namespace: std
   version: 0.8.0
   description: HTTP request client for testing and orchestration
+exports:
+  kinds:
+    - Client
+    - Request
 ---
 kind: "Telo.Definition"
 metadata:
   name: "Client"
+  description: >-
+    Holds shared HTTP connection settings — base URL, default headers such as
+    Authorization, request timeout and redirect handling — as a reusable
+    resource. It performs no calls itself; Request resources reference it and
+    inherit these defaults, resolving their relative paths against the base URL
+    and merging their own headers over the client's.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/http-client@0.7.0?local_path=./nodejs#http-client
@@ -44,6 +54,14 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Request"
+  description: >-
+    Performs an outbound HTTP call — GET, POST, PUT, PATCH, DELETE or any other
+    method — with a URL, query parameters, headers and a JSON or string body
+    supplied per invocation. Returns the status code, lowercase-keyed response
+    headers and a body parsed as JSON when the content type says so (raw string
+    otherwise), and can optionally stream the body, retry network failures, or
+    throw on 4xx/5xx. When a Client is referenced the URL may be a relative path
+    and the client's headers and timeout apply as defaults.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@0.7.0?local_path=./nodejs#http-request

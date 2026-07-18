@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: AliasEqualsModuleNameTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref TestAliasEqualsModuleName
+---
+# The `exports.kinds` gate must not be sidestepped by naming. The definition registry is
+# keyed `<metadata.module>.<Kind>`, so a library called `Lib` imported under the alias `Lib`
+# makes the raw kind string `Lib.Private` a valid registry key — looking the definition up
+# before consulting the gate accepted a kind the module does not export, while the kernel
+# threw at boot. That divergence is the defect class the static gate exists to remove.
+kind: Assert.Manifest
+metadata:
+  name: TestAliasEqualsModuleName
+source: ./__fixtures__/alias-equals-module-name.yaml
+expect:
+  errors:
+    - code: KIND_NOT_EXPORTED

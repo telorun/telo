@@ -495,7 +495,13 @@ system: |
     Runnables / Services to start after resources init.
   - `include:` — array of partial-file globs merged into this module's scope.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
-    `resources:` (instance names importers may `!ref`).
+    `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
+    the library into a gate: ONLY the listed kinds are importable, and using an
+    unlisted one is a hard `KIND_NOT_EXPORTED` error. A library that declares no
+    `kinds:` at all is currently ungated (every kind importable) — legacy
+    behaviour, so never rely on it: list every kind you intend to be public.
+    `resources:` is already gated the same way, and `Self.<Kind>` resolves a
+    library's own kinds internally regardless of either list.
 
   ## References and CEL — strict rules
 

@@ -35,10 +35,11 @@ search API, and the MCP endpoint are all resources in one manifest.
 - **Indexes a library's exported instances too** (`module_resources`). A public
   surface is two lists: `exports.kinds` (kinds you may instantiate) and
   `exports.resources` (ready-made singletons referenced as
-  `!ref <Alias>.<name>`). A library may offer either or both — `std/console`
-  exports *no* kinds, only `writeLine`/`readLine` — so a kinds-only index showed
-  none of its actual entry points. Surfaced as `exportedResources` on a module
-  hit; not independently searchable yet (display-only).
+  `!ref <Alias>.<name>`). A library may offer either or both — a library that
+  exports only ready-made singletons and no kinds at all is legitimate, so a
+  kinds-only index showed none of its actual entry points. Surfaced as
+  `exportedResources` on a module hit; not independently searchable yet
+  (display-only).
 - **Serves discovery** over HTTP (the `telo.sh` verbs) and MCP. Ranking is
   **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
   trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest

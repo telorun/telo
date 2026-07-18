@@ -2,6 +2,9 @@ kind: Telo.Library
 metadata:
   name: provider-missing-impl-lib
   version: 1.0.0
+exports:
+  kinds:
+    - BrokenProvider
 ---
 # Telo.Provider with neither `controllers:` (TS-backed) nor `provide:` (template-backed).
 # The analyzer rejects this with PROVIDER_MISSING_IMPLEMENTATION; this fixture
@@ -9,6 +12,10 @@ metadata:
 kind: Telo.Definition
 metadata:
   name: BrokenProvider
+  description: >-
+    Test fixture: a provider declaring neither `controllers:` nor `provide:`, so
+    it has no implementation — asserts the kernel surfaces the same failure the
+    analyzer reports as PROVIDER_MISSING_IMPLEMENTATION.
 capability: Telo.Provider
 schema:
   type: object

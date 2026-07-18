@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  # `metadata.name` deliberately equals the alias importers use, so the definition
+  # registry key (`<module>.<Kind>`) matches the raw, unresolved kind string.
+  name: Lib
+  version: 1.0.0
+  description: >-
+    Test fixture whose module name equals the import alias, so an unexported kind
+    is reachable by a direct definition-registry lookup that skips the gate.
+exports:
+  kinds:
+    - Public
+---
+kind: Telo.Definition
+metadata:
+  name: Public
+  description: Listed in exports.kinds — importers may reference it.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/javascript@0.9.0?local_path=../../modules/javascript/nodejs#script
+schema:
+  type: object
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Private
+  description: Absent from exports.kinds — referencing it must raise KIND_NOT_EXPORTED.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/javascript@0.9.0?local_path=../../modules/javascript/nodejs#script
+schema:
+  type: object
+  additionalProperties: false

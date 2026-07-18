@@ -239,10 +239,16 @@ export function forwardReExportManifests(
  *  maps one of that module's import aliases to the imported module's name. Graph-agnostic —
  *  shared by the CLI graph path and the editor's workspace projection. */
 export function resolveExportedKinds(
-  modules: ReadonlyArray<{ module: string; exportsKinds: readonly string[] }>,
+  modules: ReadonlyArray<{ module: string; exportsKinds: readonly string[] | undefined }>,
   aliasToModule: (module: string, alias: string) => string | undefined,
 ): Map<string, Map<string, string>> {
   const out = new Map<string, Map<string, string>>();
+  // Modules declaring NO `exports.kinds` export every kind they define (the legacy permissive
+  // default), so they have no table to look a re-exported suffix up in. `[]` is a real gate
+  // that exports nothing — the two must stay distinguishable here.
+  const ungated = new Set(
+    modules.filter((m) => m.exportsKinds === undefined).map((m) => m.module),
+  );
   const tableFor = (m: string): Map<string, string> => {
     let t = out.get(m);
     if (!t) out.set(m, (t = new Map()));
@@ -252,7 +258,7 @@ export function resolveExportedKinds(
     let changed = false;
     for (const { module, exportsKinds } of modules) {
       const table = tableFor(module);
-      for (const entry of exportsKinds) {
+      for (const entry of exportsKinds ?? []) {
         const { name: suffix, alias } = parseExportEntry(entry);
         if (table.has(suffix)) continue;
         if (!alias) {
@@ -261,7 +267,14 @@ export function resolveExportedKinds(
           continue;
         }
         const source = aliasToModule(module, alias);
-        const canonical = source ? out.get(source)?.get(suffix) : undefined;
+        // Re-exporting FROM an ungated module resolves straight to it: the kernel derives
+        // the gate from the raw entry list and allows this, so dropping it here would make
+        // the analyzer reject a manifest the runtime accepts — the exact shape the migration
+        // path relies on (a gated wrapper over an already-published, ungated module).
+        const canonical = source
+          ? (out.get(source)?.get(suffix) ??
+            (ungated.has(source) ? `${source}.${suffix}` : undefined))
+          : undefined;
         if (canonical) {
           table.set(suffix, canonical);
           changed = true;
@@ -295,11 +308,41 @@ export function stampReExportedKinds(
   }
 }
 
+/** Stamp `metadata.exportedKinds` (the target's `exports.kinds` gate as bare suffixes) onto
+ *  every `Telo.Import` whose target declares one, so the analyzer enforces the same gate the
+ *  kernel does. Stamped on `metadata` for the same reason as `reExportedKinds` — the
+ *  `Telo.Import` schema forbids extra top-level fields.
+ *
+ *  The gate comes from the DECLARED entries, parsed exactly as the kernel parses them
+ *  (`parseExportEntry` — `Alias.Kind` yields `Kind`), never from the resolved re-export
+ *  table. That table drops a re-export whose source module declares no `exports.kinds`, so
+ *  deriving the gate from it would reject `exports.kinds: [Cee.Thing]` — a gate the kernel
+ *  honours — as "not exported".
+ *
+ *  A target that declares no `exports.kinds` is absent from `gatedModules` and goes unstamped,
+ *  which the analyzer reads as unrestricted. That is the legacy permissive default, kept so
+ *  already-published module versions stay importable; making kinds private by default means
+ *  stamping every loaded target instead, which breaks those versions (see import-controller). */
+export function stampExportedKinds(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
+  declaredKinds: ReadonlyMap<string, readonly string[]>,
+): void {
+  for (const { manifest, targetModule } of imports) {
+    const declared = declaredKinds.get(targetModule);
+    if (!declared) continue;
+    (manifest.metadata as Record<string, unknown>).exportedKinds = [...declared];
+  }
+}
+
 /** CLI/kernel adapter: collect re-export specs + alias map from a LoadedGraph. */
 function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void {
   const ownerSourceOf = new Map<string, string>();
   const specs: ReExportSpec[] = [];
-  const kindModules: Array<{ module: string; exportsKinds: string[] }> = [];
+  const kindModules: Array<{ module: string; exportsKinds: string[] | undefined }> = [];
+  // Modules that DECLARE `exports.kinds` → the gate, as bare suffixes parsed the same way
+  // the kernel parses them. A module that declares none is absent, leaving importers ungated
+  // (see stampExportedKinds).
+  const declaredKinds = new Map<string, readonly string[]>();
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue; // root is an Application — no exports
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as
@@ -309,7 +352,10 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     if (!libDoc || !moduleName) continue;
     ownerSourceOf.set(moduleName, mod.owner.source);
     specs.push(...reExportSpecsFromExports(moduleName, libDoc.exports?.resources));
-    kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds ?? [] });
+    kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds });
+    if (libDoc.exports?.kinds !== undefined) {
+      declaredKinds.set(moduleName, libDoc.exports.kinds.map((e) => parseExportEntry(e).name));
+    }
   }
   const aliasToModule = (module: string, alias: string): string | undefined => {
     const ownerSource = ownerSourceOf.get(module);
@@ -331,6 +377,7 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     if (target) imports.push({ manifest: m, targetModule: target });
   }
   stampReExportedKinds(imports, exportedKinds);
+  stampExportedKinds(imports, declaredKinds);
 }
 
 /** Project a LoadedModule (owner + partials) to a flat ResourceManifest[]
