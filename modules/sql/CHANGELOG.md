@@ -1,5 +1,7 @@
 # Changelog
-## 0.11.0 - 2026-06-24
+## 0.12.0 - 2026-07-18
+### Added
+* Declare `exports.kinds` explicitly, listing every kind the module already exported implicitly, and add a `metadata.description` to every exported kind (and exported resource) so the discovery hub can index them for semantic search. No change to what importers can reference — the module previously relied on the loader treating an absent `exports.kinds` as "export everything", and now states its public kind surface outright.## 0.11.0 - 2026-06-24
 ### Added
 * Annotate Sql.Selection 'where', 'having', 'limit', and 'offset' as CEL slots (x-telo-context over 'inputs') so the analyzer recognizes them as evaluated fields. The controller already expanded them at invoke time; without the annotation the new CEL_IN_NON_EVAL_FIELD check flagged a !cel there as never evaluated.## 0.10.0 - 2026-06-20
 ### Added
