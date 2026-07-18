@@ -1,0 +1,18 @@
+# dependencies
+/node_modules
+
+# build output
+/dist
+
+# misc
+.DS_Store
+
+# debug
+npm-debug.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# typescript
+*.tsbuildinfo

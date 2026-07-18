@@ -1,0 +1,3 @@
+project: hub
+kind: Added
+body: Open self-service registration — POST /register validates a submitted module ref (shape gate, then the telo module versions/manifest CLI verbs), registers it, and indexes its latest version inline so a 200 means it is immediately searchable. Rate-limited per client IP (default 5 per 10m, 429 + Retry-After); the periodic tracker stays on as the reconciler and backfills older versions. The browser-facing form is the new apps/hub-web SPA on hub.telo.run.

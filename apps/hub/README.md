@@ -7,7 +7,9 @@ search API, and the MCP endpoint are all resources in one manifest.
 
 ## What it does
 
-- **Tracks registered module refs** across transports (HTTP registry, OCI).
+- **Tracks registered module refs** across transports — the HTTP registry
+  (`<ns>/<name>`), OCI (`oci://<host>/<repo>`), and a direct manifest URL
+  (`https://<host>/<path>/telo.yaml`, transport `url`).
   A pull tracker periodically enumerates each registered module's versions by
   shelling out to the generic CLI verbs — `telo module versions <ref>`,
   `telo module digest <ref@version>`, `telo module manifest <ref@version> --json`
@@ -28,7 +30,15 @@ search API, and the MCP endpoint are all resources in one manifest.
   (or a human) searches for is a resource kind it can import, not a package. A
   kind's identity is `(location ref + suffix)`; the prefix in a manifest's
   `kind:` field is the importer's own alias, so hits carry the bare suffix plus
-  the exact module ref.
+  the exact module ref. Only **exported** kinds are searchable — a kind a library
+  gates out of `exports.kinds` is not importable, so it is never returned.
+- **Indexes a library's exported instances too** (`module_resources`). A public
+  surface is two lists: `exports.kinds` (kinds you may instantiate) and
+  `exports.resources` (ready-made singletons referenced as
+  `!ref <Alias>.<name>`). A library may offer either or both — `std/console`
+  exports *no* kinds, only `writeLine`/`readLine` — so a kinds-only index showed
+  none of its actual entry points. Surfaced as `exportedResources` on a module
+  hit; not independently searchable yet (display-only).
 - **Serves discovery** over HTTP (the `telo.sh` verbs) and MCP. Ranking is
   **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
   trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest
@@ -46,6 +56,7 @@ search API, and the MCP endpoint are all resources in one manifest.
 | `telo search --kinds "<query>"` | `GET /search/resources?q=…` (flat kind hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
+| register a module | `POST /register` (`{ ref }` → validate + index; open, no auth) |
 | MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
 | liveness | `GET /health` |
 
@@ -63,10 +74,12 @@ touches this app.
 | `MANIFEST_BUCKET_NAME` / `MANIFEST_BUCKET_ENDPOINT` | S3-compatible manifest cache (R2 / MinIO / RustFS) |
 | `MANIFEST_BUCKET_ACCESS_KEY_ID` / `MANIFEST_BUCKET_SECRET_ACCESS_KEY` | Bucket credentials |
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
-| `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; public registration is a later phase) |
+| `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
 | `TRACK_INTERVAL` | Delay between tracking passes (default `15m`) |
 | `TRACK_LOOP` | `false` disables the periodic tracker (tests drive `TrackAll` directly) |
 | `TELO_BIN` | Path of the telo CLI the tracker shells out to (default `telo`) |
+| `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
+| `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
 | `TELO_EGRESS` | `public-only` refuses tracker fetches to private/loopback/link-local hosts (set in the production image) |
 
 ## Run locally
@@ -88,15 +101,73 @@ SEED_REFS='["std/console","std/timer"]' \
 pnpm run telo apps/hub/telo.yaml
 ```
 
-## Phase 1 limitations
+## Registration
+
+Modules enter the index two ways:
+
+- **Curated seed** — the `SEED_REFS` JSON array, registered idempotently on boot.
+- **Self-service `POST /register`** — open and unauthenticated, so it is layered:
+  1. **Per-IP rate limit** (`RateLimit.Guard`, default 5 per 10m) — exceeded
+     requests get a `429` with `Retry-After`. Rejected refs still consume budget,
+     so hammering junk is not free.
+  2. **Shape gate** — the ref must look like a remote module ref: `<ns>/<name>`,
+     `oci://<host>/<path>`, or `https://<host>/<path>`. This is a security
+     boundary, not a nicety: the CLI resolves a path-like or cwd-resolvable ref
+     as a **local** manifest read off disk, short-circuiting before any egress
+     check, so an ungated `/etc/passwd` would make this endpoint a filesystem
+     existence oracle. It also rejects a leading `-` (so `--help` can't be read
+     as a flag), plaintext `http://`, and a userinfo authority
+     (`https://evil.com@internal/…`).
+  3. **Resolution check** — `telo module versions`, then `telo module manifest`
+     at the latest version, confirm it's a real Telo module. The manifest's root
+     doc must be a **`Telo.Library`**: an Application is a runnable root that
+     cannot be imported, so it defines no importable kinds and would store a
+     record indexing nothing.
+  4. **Insert, then index the latest version inline** — bounded, constant work
+     (one digest + one manifest read + one embed) regardless of how many versions
+     the module has, so a `200` means it is actually searchable. The periodic
+     loop backfills older versions; only the latest is embedded/searched anyway.
+
+  The row is inserted *before* the inline index, so even if that fails the module
+  stays registered and the loop retries it. A malformed, unreachable, or
+  non-module ref returns `400` with the reason; an indexing failure is logged
+  server-side with its cause and returns only the error **code** (this endpoint
+  is anonymous — raw messages can carry host paths or upstream detail). There is
+  **no moderation queue**; the hub never vouches for content (trust lives at host
+  + integrity-hash).
+
+The periodic tracker remains the **reconciler**: it picks up new versions,
+re-pushed digests, and any module whose inline first track failed.
+
+The browser-facing registration form is a separate static SPA,
+[`apps/hub-web`](../hub-web) (deployed to GitHub Pages at `hub.telo.run`), which
+POSTs to this verb cross-origin.
+
+### `url` transport — weaker guarantees
+
+A direct manifest URL addresses **one file**, not a versioned repo, so it differs
+from registry/OCI refs in ways worth knowing:
+
+- **Its version list is always one entry** — whatever `metadata.version` the file
+  currently declares (a manifest without one can't be registered at all).
+- **It is effectively latest-only for install.** `telo install` resolves the URL
+  to whatever it serves *now*, so a pinned `#sha256-…` breaks once the file
+  changes. A moving URL (`refs/heads/main`) is legal but mutable by design.
+- **Superseded versions survive only in the hub's cache.** When the file's
+  version is bumped, the previous version's bytes are gone from origin, so for
+  `url` modules the hub is the sole archive — a real dent in the otherwise
+  load-bearing "the hub can vanish and every install still works" property.
+
+Content changes are still caught: each track re-checks the digest and re-ingests
+when it moves, so the index and cache never drift from what the URL serves.
+
+## Limitations & follow-ups
 
 - **Re-exported kinds are not indexed.** A library's `exports.kinds` may
   re-export an imported kind (`Alias.Kind`, transitive); those entries name
   another module's definition, so they produce no `resource_kinds` row for the
   re-exporting library — the kind surfaces only under its defining module. A
   chain-following indexer is a follow-up.
-- **No public registration.** Modules enter via the curated `SEED_REFS` list;
-  the self-service `/register` flow with moderation is Phase 3.
 - **Schema-derived passage enrichment is a follow-up.** The embedded passage is
   composed from the kind name, capability, and curated descriptions; pulling
   `title`/`description` strings out of each kind's `schema`/`inputType`/

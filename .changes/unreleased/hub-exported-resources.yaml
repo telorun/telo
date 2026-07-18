@@ -1,0 +1,10 @@
+project: hub
+kind: Added
+body: >-
+  Index a library's exported singleton instances (`exports.resources`), not just
+  its kinds — a new `module_resources` table, surfaced as `exportedResources` on
+  a module search hit and in the hub-web detail drawer. A public surface is two
+  lists, so a module like std/console (which exports no kinds at all, only
+  `writeLine`/`readLine`) previously showed none of its entry points. Search now
+  also returns only exported kinds — one gated out of `exports.kinds` is not
+  importable, so returning it handed callers a reference they could not write.

@@ -21,10 +21,40 @@ exports:
 # (Embedding.Query / Embedding.Passage) reference it via
 # `x-telo-ref: "std/embedding#Model"`; a concrete implementation
 # (EmbeddingOpenai.Model, …) satisfies the ref.
+#
+# The prompt templates live here, on the model, because they are a property of
+# the checkpoint — embeddinggemma, E5 and BGE each mandate their own fixed
+# wrapper per retrieval intent. Declaring them once means the query and passage
+# sides can never drift apart: indexing with one wrapper and searching with
+# another silently destroys recall, and that failure is invisible at every layer
+# above. Backends inherit these fields via `extends` (merge(parent, own)).
 kind: Telo.Abstract
 metadata:
   name: Model
 capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    queryPrompt:
+      title: Query Prompt
+      description: >-
+        Template wrapping each text embedded with the `query` intent. Must
+        contain the `{text}` placeholder, replaced with the input. Omit for
+        symmetric models that take raw text.
+      type: string
+      x-telo-eval: compile
+      examples:
+        - "task: search result | query: {text}"
+    passagePrompt:
+      title: Passage Prompt
+      description: >-
+        Template wrapping each text embedded with the `passage` intent. Must
+        contain the `{text}` placeholder, replaced with the input. Omit for
+        symmetric models that take raw text.
+      type: string
+      x-telo-eval: compile
+      examples:
+        - "title: none | text: {text}"
 ---
 # Embedding.Query — embeds search queries. The controller passes the retrieval
 # intent `query` to the backend (mapped to the vendor's search_query /

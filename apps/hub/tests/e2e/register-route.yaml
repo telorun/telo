@@ -1,0 +1,151 @@
+kind: Telo.Application
+metadata:
+  name: HubE2ERegisterRoute
+  version: 1.0.0
+  description: |
+    End-to-end tests for the hub's open self-service registration verb
+    (POST /register), run against a live hub at http://localhost:8040. Covers
+    the validate-and-index success path (a reachable Telo module returns 200 and
+    becomes registered) and the inline-error path (an unresolvable ref returns
+    400 with a reason, never tracked).
+imports:
+  HttpClient: std/http-client@0.8.0
+  Run: std/run@0.12.0
+  Assert: std/assert@0.9.2
+targets:
+  - !ref Register_ValidRefSucceeds
+  - !ref Register_InvalidRefReturns400
+  - !ref Register_LocalPathRejected
+  - !ref Register_ApplicationRejected
+---
+# A reachable Telo module (the seeded std/console) validates and registers.
+# Re-registering an already-tracked ref is idempotent (INSERT ... ON CONFLICT
+# DO NOTHING), so this stays green regardless of prior runs.
+kind: Run.Sequence
+metadata: { name: Register_ValidRefSucceeds }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostValidRegister }
+      url: http://localhost:8040/register
+      method: POST
+      body:
+        ref: std/console
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertValidRegister }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              registered: { const: true }
+              ref: { const: std/console }
+            required: [registered, ref]
+        required: [status, body]
+---
+# An unresolvable ref fails validation → 400 with an inline reason, never
+# inserted for tracking.
+kind: Run.Sequence
+metadata: { name: Register_InvalidRefReturns400 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostInvalidRegister }
+      url: http://localhost:8040/register
+      method: POST
+      body:
+        ref: e2e/nonexistent-module-xyz
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertInvalidRegister }
+      schema:
+        type: object
+        properties:
+          status: { const: 400 }
+          body:
+            type: object
+            properties:
+              error: { type: string, minLength: 1 }
+            required: [error]
+        required: [status, body]
+---
+# Security boundary: a local/path-like ref must be rejected by the shape gate
+# BEFORE any CLI subprocess runs. The CLI resolves a cwd-resolvable ref as a
+# local manifest read off disk, so without the gate this endpoint would be a
+# filesystem existence oracle. An existing and a non-existing path must be
+# indistinguishable in the response.
+kind: Run.Sequence
+metadata: { name: Register_LocalPathRejected }
+steps:
+  - name: existing
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostLocalExisting }
+      url: http://localhost:8040/register
+      method: POST
+      body:
+        ref: /etc/passwd
+  - name: missing
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostLocalMissing }
+      url: http://localhost:8040/register
+      method: POST
+      body:
+        ref: /etc/telo-e2e-definitely-absent
+  - name: assert
+    inputs:
+      existingStatus: !cel "steps.existing.result.status"
+      missingStatus: !cel "steps.missing.result.status"
+      # Identical bodies ⇒ no existence oracle.
+      identical: !cel "json(steps.existing.result.body) == json(steps.missing.result.body)"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertLocalPathRejected }
+      schema:
+        type: object
+        properties:
+          existingStatus: { const: 400 }
+          missingStatus: { const: 400 }
+          identical: { const: true }
+        required: [existingStatus, missingStatus, identical]
+---
+# Only a Telo.Library is registerable — an Application cannot be imported, so it
+# defines no importable kinds and would store a record that indexes nothing.
+kind: Run.Sequence
+metadata: { name: Register_ApplicationRejected }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostApplicationRef }
+      url: http://localhost:8040/register
+      method: POST
+      body:
+        ref: https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/agent-console/telo.yaml
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      error: !cel "steps.hit.result.body.error"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertApplicationRejected }
+      schema:
+        type: object
+        properties:
+          status: { const: 400 }
+          error: { type: string, pattern: "only a Telo.Library can be registered" }
+        required: [status, error]

@@ -1,6 +1,10 @@
 // Deterministic fake embedding backend for offline tests. Produces a stable
 // vector from the text + intent so query and passage embeddings differ (which
 // is what an asymmetric model does), without any network call.
+//
+// Deliberately dependency-free: this fixture sits under `__fixtures__`, outside
+// the pnpm workspace globs, so it can never reliably link a workspace package.
+// Prompt-template behaviour is covered by embedding-openai's unit tests.
 
 function deterministicVector(text, intent, dimensions) {
   const seed = intent === "query" ? 1 : 2;

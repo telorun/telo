@@ -29,8 +29,17 @@ imports:
   Timer: std/timer@0.3.0
   PlainText: std/plain-text-codec@0.5.0
   Console: std/console@0.10.0
-  Embedding: std/embedding@0.2.0
-  EmbeddingOpenai: std/embedding-openai@0.2.0
+  # Interim relative paths: the queryPrompt / passagePrompt contract on
+  # Embedding.Model is unpublished. A registry pin resolves to the published
+  # 0.2.0 (no prompt fields) and version-hoisting drags embedding-openai's own
+  # `../embedding` onto that same copy, so both must be local or neither is.
+  # Flip both back to `std/…@<version>` once released.
+  Embedding: ../../modules/embedding
+  EmbeddingOpenai: ../../modules/embedding-openai
+  # cache-memory's local source is ahead of the registry (0.4.0 unpublished);
+  # pin the published 0.3.0 so the Docker `telo install` build resolves.
+  CacheMemory: std/cache-memory@0.3.0
+  RateLimit: std/rate-limit@0.4.0
   VectorStore: std/vector-store@0.3.0
   # Interim relative path: vector-store-pgvector@0.1.0 is not yet published to
   # the registry. Flip to `std/vector-store-pgvector@0.1.0` once it ships (the
@@ -80,6 +89,17 @@ variables:
   embedderBaseUrl:
     env: EMBEDDER_BASE_URL
     type: string
+  # Per-IP budget for the open /register verb. Registration is unauthenticated
+  # and does real work (subprocess + remote reads + an embedding call), so it is
+  # the one endpoint that must not be free to hammer.
+  registerRateLimit:
+    env: REGISTER_RATE_LIMIT
+    type: integer
+    default: 5
+  registerRateWindow:
+    env: REGISTER_RATE_WINDOW
+    type: string
+    default: 10m
 secrets:
   bucketAccessKeyId:
     env: MANIFEST_BUCKET_ACCESS_KEY_ID
@@ -189,6 +209,27 @@ migrations:
       - CREATE EXTENSION IF NOT EXISTS pg_trgm
       - CREATE INDEX resource_kinds_search_idx ON resource_kinds USING GIN (search)
       - CREATE INDEX modules_ref_trgm_idx ON modules USING GIN (ref gin_trgm_ops)
+  # A library's public surface is two lists, not one: `exports.kinds` (kinds an
+  # importer may instantiate) and `exports.resources` (ready-made singleton
+  # INSTANCES referenced as `!ref <Alias>.<name>`). Only the first was indexed,
+  # so a module like std/console — which exports no kinds at all, just
+  # `writeLine`/`readLine` — surfaced none of its actual entry points.
+  "20260718090000_CreateModuleResources":
+    statements:
+      - |
+        CREATE TABLE module_resources (
+          id        BIGSERIAL PRIMARY KEY,
+          module_id BIGINT NOT NULL,
+          version   TEXT NOT NULL,
+          -- The importable name: the segment after the last dot, since a
+          -- re-export (`Alias.name`) is referenced by the importer as `name`.
+          name      TEXT NOT NULL,
+          -- The entry verbatim, so a re-export's origin alias isn't lost.
+          declared  TEXT NOT NULL,
+          UNIQUE (module_id, version, name),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
 # The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
@@ -205,6 +246,13 @@ metadata:
 model: embeddinggemma-300m
 apiKey: unused
 baseUrl: !cel "variables.embedderBaseUrl"
+# embeddinggemma is prompt-tuned: it expects these exact wrappers, and without
+# them the similarity spread collapses (every kind lands in a narrow band and
+# the ranking degenerates into orthographic noise — "Schema" outranking a real
+# scheduling match for the query "schedule"). Changing either wrapper is a
+# re-embed of the whole index, exactly like changing the model.
+queryPrompt: "task: search result | query: {text}"
+passagePrompt: "title: none | text: {text}"
 ---
 kind: Embedding.Passage
 metadata:
@@ -242,6 +290,23 @@ metadata:
   name: VectorRemove
 store: !ref VectorIndex
 ---
+# ── Rate limiting (open /register verb) ──────────────────────────────────────
+# Counters live in an in-process memory store: the hub is a single instance, and
+# a limiter that resets on restart is the right trade here (a Cache.Redis store
+# is a drop-in swap if the hub is ever replicated). The guard is non-throwing —
+# it returns a verdict and the caller maps it to a 429.
+
+kind: CacheMemory.Store
+metadata:
+  name: RateLimitCounters
+---
+kind: RateLimit.Guard
+metadata:
+  name: RegisterRateLimit
+store: !ref RateLimitCounters
+limit: !cel "variables.registerRateLimit"
+window: !cel "variables.registerRateWindow"
+---
 # ── Local shell (tracker → telo CLI) ─────────────────────────────────────────
 # Every transport-specific read goes through the generic `telo module …` CLI
 # verbs — the tracker never speaks OCI or the registry protocol directly.
@@ -269,6 +334,17 @@ metadata:
 ---
 # Concrete versions (drops the `latest` alias), newest-first. The single home of
 # the "exclude latest" rule, reused across the tracker's version steps.
+kind: Run.Value
+metadata:
+  name: VersionedRef
+inputs:
+  ref: { type: string }
+  version: { type: string }
+# How a ref pins to one version, in one place. A direct `https://` ref addresses
+# a single file at a fixed location and takes NO `@version` suffix — appending
+# one produces a 404. Registry and OCI refs pin with `@<version>`.
+value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' + inputs.version"
+---
 kind: Run.Value
 metadata:
   name: ConcreteVersions
@@ -302,7 +378,196 @@ steps:
         ON CONFLICT (ref) DO NOTHING
       bindings:
         - !cel "inputs.ref"
-        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'registry'"
+        # Transport is part of the record's identity — an explicit scheme can't
+        # be inferred from host/path alone. `url` is a single manifest at a fixed
+        # https location (no version list of its own; see the README).
+        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : (inputs.ref.startsWith('https://') ? 'url' : 'registry')"
+---
+# ── Public registration (POST /register) ─────────────────────────────────────
+# Validate a submitted module ref resolves to a real Telo module, insert it, and
+# index it inline (one immediate TrackModule pass) so a successful response means
+# the module is actually searchable — no waiting for the periodic loop, which
+# stays on as the reconciler (re-pushed digests, new versions, retry of a failed
+# first track). Open + unauthenticated — ref validation plus the transport-egress
+# guard is the anti-abuse / anti-SSRF boundary; the hub never vouches for content.
+# The row is inserted *before* the inline track, so even if that track throws the
+# module is registered and the next reconcile pass retries it. A validation
+# failure resolves with { ok: false, error } → 400; a track failure throws → the
+# route's catch surfaces the real code/message.
+kind: Run.Sequence
+metadata:
+  name: RegisterAndValidate
+inputs:
+  ref: { type: string }
+  clientIp: { type: string }
+steps:
+  # Per-IP budget, checked before anything else — this endpoint is open and does
+  # real work, so it must not be free to hammer. Non-throwing: the verdict maps
+  # to a 429. An empty key fails closed (denied) rather than sharing one bucket.
+  - name: limit
+    invoke: !ref RegisterRateLimit
+    inputs:
+      key: !cel "inputs.clientIp"
+  # Shape gate — the FIRST thing that touches the submitted ref, before any
+  # subprocess. Only a remote module ref is accepted: an optional `oci://` or
+  # `https://` scheme, then host/path segments of safe characters, with at least
+  # one `/`. Plaintext `http://` is deliberately absent — the hub serves cached
+  # third-party manifests onward, so it never ingests over an unauthenticated
+  # channel. The character classes exclude `@` inside segments, so a userinfo
+  # authority (`https://evil.com@internal/…`) cannot match either.
+  #
+  # This is a security boundary, not a convenience check. The CLI's ref
+  # resolution treats a path-like or cwd-resolvable ref as a LOCAL manifest and
+  # reads it straight off disk — short-circuiting before any egress guard — so
+  # an ungated `/etc/passwd` would turn this open endpoint into a filesystem
+  # existence oracle. The pattern also rejects a leading `-`, so a submitted
+  # `--help` can't be read as a CLI flag (argument injection) instead of a
+  # positional. The transport-egress guard only covers refs that actually reach
+  # the network; this gate is what keeps local refs from getting that far.
+  - name: accepted
+    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)?[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
+    then:
+      # `versions` proves the transport resolves the ref to a module repo — a
+      # bare registry ref is enumerated with a placeholder version internally,
+      # so the submitter supplies no version.
+      - name: versionsCmd
+        invoke: !ref TeloCli
+        inputs:
+          args:
+            - !cel "variables.teloBin"
+            - module
+            - versions
+            - !cel "inputs.ref"
+            - --json
+          timeoutMs: 120000
+      - name: resolved
+        if: !cel "steps.versionsCmd.result.exitCode == 0"
+        then:
+          - name: versions
+            invoke: !ref ParseYaml
+            inputs:
+              text: !cel "steps.versionsCmd.result.stdout"
+          - name: concrete
+            invoke: !ref ConcreteVersions
+            inputs:
+              versions: !cel "steps.versions.result.docs[0]"
+          # Reading the latest version's telo.yaml confirms the ref actually
+          # serves a Telo manifest (a non-module OCI artifact fails here).
+          - name: hasVersions
+            if: !cel "size(steps.concrete.result) > 0"
+            then:
+              - name: pinned
+                invoke: !ref VersionedRef
+                inputs:
+                  ref: !cel "inputs.ref"
+                  version: !cel "steps.concrete.result[0]"
+              - name: manifestCmd
+                invoke: !ref TeloCli
+                inputs:
+                  args:
+                    - !cel "variables.teloBin"
+                    - module
+                    - manifest
+                    - !cel "steps.pinned.result"
+                    - --json
+                  timeoutMs: 120000
+          # Only a Telo.Library is registerable. An Application is a runnable
+          # root that cannot be imported at all, so it defines no importable
+          # kinds — registering one would create a module row that indexes zero
+          # resource kinds and never surfaces in search. Reject it up front with
+          # a reason instead of silently storing an empty record.
+          - name: inspected
+            if: !cel "'manifestCmd' in steps && steps.manifestCmd.result.exitCode == 0"
+            then:
+              - name: manifestJson
+                invoke: !ref ParseYaml
+                inputs:
+                  text: !cel "steps.manifestCmd.result.stdout"
+              - name: docs
+                invoke: !ref ParseYaml
+                inputs:
+                  text: !cel "steps.manifestJson.result.docs[0].manifest"
+          # Valid library → insert the row, then index it inline.
+          - name: register
+            if: !cel "'docs' in steps && steps.docs.result.docs[0].kind == 'Telo.Library'"
+            then:
+              - name: insert
+                invoke: !ref RegisterModule
+                inputs:
+                  ref: !cel "inputs.ref"
+              # Resolve the row id (just-inserted or pre-existing on
+              # re-registration) to drive the track — the join key is that id.
+              - name: lookup
+                invoke: !ref Query
+                inputs:
+                  sql: SELECT id FROM modules WHERE ref = $1
+                  bindings:
+                    - !cel "inputs.ref"
+              # Index the LATEST version only, inline — bounded, constant work
+              # (one digest + one manifest read + one embed) no matter how many
+              # versions the module has. Tracking every version here would make
+              # an anonymous request cost ~2N subprocess spawns and N remote
+              # reads; the periodic loop backfills the older versions on its
+              # next pass, and only the latest is embedded/searched anyway, so
+              # "200 ⇒ searchable" still holds. `concrete` is reused from
+              # validation, so the ref's versions are enumerated once per call.
+              - name: guarded
+                try:
+                  - name: track
+                    invoke: !ref SyncVersion
+                    inputs:
+                      moduleId: !cel "steps.lookup.result.rows[0].id"
+                      ref: !cel "inputs.ref"
+                      version: !cel "steps.concrete.result[0]"
+                      latestVersion: !cel "steps.concrete.result[0]"
+                  - name: markLatest
+                    invoke: !ref Exec
+                    inputs:
+                      sql: >-
+                        UPDATE modules
+                        SET latest_version = $2, last_tracked_at = NOW(), last_error = NULL
+                        WHERE id = $1
+                      bindings:
+                        - !cel "steps.lookup.result.rows[0].id"
+                        - !cel "steps.concrete.result[0]"
+                catch:
+                  # Logged here (with the real cause) and re-thrown — the client
+                  # only ever sees the error code, never the message. Never
+                  # swallowed: the row is already inserted, so the periodic loop
+                  # retries and records `last_error` on it.
+                  - name: log
+                    invoke: !ref LogLine
+                    inputs:
+                      output: !cel "'{red /register inline index failed} ' + inputs.ref + ' — ' + error.code + ': ' + error.message"
+                  - name: rethrow
+                    throw:
+                      code: !cel "error.code"
+                      message: !cel "error.message"
+outputs:
+  ref: !cel "inputs.ref"
+  # Reaching here means validation passed AND the inline index succeeded (a
+  # failure throws before outputs render). So `track` present ≡ actually indexed.
+  ok: !cel "'track' in steps"
+  rateLimited: !cel "!steps.limit.result.allowed"
+  retryAfter: !cel "steps.limit.result.retryAfter"
+  # Each branch is reachable only once the step it reads has run — CEL ternaries
+  # short-circuit, so an absent step is never dereferenced. `versionsCmd` absent
+  # means the rate limit or the shape gate stopped the call before any
+  # subprocess ran.
+  error: !cel >-
+    !steps.limit.result.allowed
+      ? 'too many registrations from this address — retry in ' + string(steps.limit.result.retryAfter) + 's'
+      : (!('versionsCmd' in steps)
+          ? 'invalid module ref — expected <namespace>/<name>, oci://<host>/<path>, or https://<host>/<path>'
+          : (steps.versionsCmd.result.exitCode != 0
+              ? 'cannot resolve module ref: ' + steps.versionsCmd.result.stderr
+              : (!('manifestCmd' in steps)
+                  ? 'no published versions for ' + inputs.ref
+                  : (steps.manifestCmd.result.exitCode != 0
+                      ? 'not a readable Telo module: ' + steps.manifestCmd.result.stderr
+                      : (steps.docs.result.docs[0].kind != 'Telo.Library'
+                          ? 'only a Telo.Library can be registered — ' + inputs.ref + ' is a ' + steps.docs.result.docs[0].kind + ', which cannot be imported'
+                          : '')))))
 ---
 # ── Ingest tracker ────────────────────────────────────────────────────────────
 # One pass: enumerate every registered module's versions, digest-reconcile each
@@ -462,6 +727,11 @@ inputs:
   version: { type: string }
   latestVersion: { type: string }
 steps:
+  - name: pinned
+    invoke: !ref VersionedRef
+    inputs:
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
   - name: digestCmd
     invoke: !ref TeloCli
     inputs:
@@ -469,7 +739,7 @@ steps:
         - !cel "variables.teloBin"
         - module
         - digest
-        - !cel "inputs.ref + '@' + inputs.version"
+        - !cel "steps.pinned.result"
         - --json
       timeoutMs: 60000
   - name: digestGate
@@ -500,7 +770,7 @@ steps:
             - !cel "variables.teloBin"
             - module
             - manifest
-            - !cel "inputs.ref + '@' + inputs.version"
+            - !cel "steps.pinned.result"
             - --json
           timeoutMs: 120000
       - name: manifestGate
@@ -553,6 +823,19 @@ steps:
             - !cel "inputs.version"
       - name: insertKinds
         invoke: !ref InsertKinds
+        inputs:
+          moduleId: !cel "inputs.moduleId"
+          version: !cel "inputs.version"
+          docs: !cel "steps.docs.result.docs"
+      - name: clearResources
+        invoke: !ref Exec
+        inputs:
+          sql: DELETE FROM module_resources WHERE module_id = $1 AND version = $2
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "inputs.version"
+      - name: insertResources
+        invoke: !ref InsertResources
         inputs:
           moduleId: !cel "inputs.moduleId"
           version: !cel "inputs.version"
@@ -646,6 +929,38 @@ steps:
         - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports && inputs.docs[0].exports.kinds.size() > 0 ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
         - !cel "item.metadata.?description.orValue('')"
 ---
+# A library's exported singleton INSTANCES (`exports.resources`) — the other
+# half of its public surface. An importer references one as
+# `!ref <Alias>.<name>`, so what matters is the name, not a kind: a library can
+# export an instance of a kind it deliberately does NOT export (singleton
+# enforcement), and std/console exports only instances, no kinds at all.
+kind: Run.Iteration
+metadata:
+  name: InsertResources
+inputs:
+  moduleId: { type: integer }
+  version: { type: string }
+  docs: { type: array }
+collection: !cel >-
+  'exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
+    ? inputs.docs[0].exports.resources : []
+steps:
+  - name: insert
+    invoke: !ref Exec
+    inputs:
+      sql: >-
+        INSERT INTO module_resources (module_id, version, name, declared)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (module_id, version, name) DO UPDATE SET
+          declared = EXCLUDED.declared
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        # A re-export is declared `Alias.name` but imported as `name`, so the
+        # importable identity is the segment after the last dot.
+        - !cel "string(item).split('.')[size(string(item).split('.')) - 1]"
+        - !cel "string(item)"
+---
 # ── Search (hybrid: lexical + semantic RRF) ──────────────────────────────────
 # Two arms fused by Reciprocal Rank Fusion. The vector arm embeds the query and
 # asks VectorStore.Match for the nearest resource-kind ids — the ANN stays
@@ -701,7 +1016,8 @@ steps:
           CROSS JOIN LATERAL (
             SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
           ) v
-          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%'
+          WHERE rk.exported
+            AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
           ORDER BY rank
           LIMIT 100
         ),
@@ -714,7 +1030,7 @@ steps:
                m.ref, rk.version, COALESCE(mv.description, '') AS module_description,
                f.score::float8 AS score
         FROM fused f
-        JOIN resource_kinds rk ON rk.id = f.id
+        JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
         JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
         LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
         ORDER BY f.score DESC, rk.name
@@ -771,7 +1087,8 @@ steps:
           CROSS JOIN LATERAL (
             SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
           ) v
-          WHERE (q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%'
+          WHERE rk.exported
+            AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
           ORDER BY rank
           LIMIT 100
         ),
@@ -784,7 +1101,7 @@ steps:
           SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
                  m.ref, COALESCE(mv.description, '') AS module_description, f.score
           FROM fused f
-          JOIN resource_kinds rk ON rk.id = f.id
+          JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
           JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
           LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
         )
@@ -796,7 +1113,13 @@ steps:
                (SELECT COALESCE(json_agg(rk2.name ORDER BY rk2.name), '[]'::json)
                 FROM resource_kinds rk2
                 WHERE rk2.module_id = h.module_id AND rk2.version = h.version
-                  AND rk2.exported) AS exported_kinds
+                  AND rk2.exported) AS exported_kinds,
+               -- The other half of the public surface: ready-made singleton
+               -- instances an importer references as `!ref <Alias>.<name>`.
+               (SELECT COALESCE(json_agg(mr.name ORDER BY mr.name), '[]'::json)
+                FROM module_resources mr
+                WHERE mr.module_id = h.module_id AND mr.version = h.version)
+                 AS exported_resources
         FROM hits h
         GROUP BY h.module_id, h.ref, h.version, h.module_description
         ORDER BY MAX(h.score) DESC
@@ -805,7 +1128,7 @@ steps:
         - !cel "inputs.q"
         - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
 outputs:
-  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds})"
+  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
 ---
 # ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
 # Re-keyed off the location ref (an OCI module has no namespace/name). Reads
@@ -854,7 +1177,7 @@ port: !cel "ports.http"
 logger: true
 cors:
   origin: "*"
-  methods: "GET,OPTIONS"
+  methods: "GET,POST,OPTIONS"
 openapi:
   info:
     title: Telo Hub
@@ -962,12 +1285,18 @@ routes:
       kind: Sql.Query
       connection: !ref Db
     inputs:
+      # Newest-first, matching the `telo module versions` CLI verb this HTTP path
+      # mirrors (one contract, three front-ends): valid dotted-numeric versions
+      # sort by numeric precedence descending, then any non-numeric tags
+      # (digests, `latest`) fall to the end in lexical order — the same shape as
+      # the CLI's sortVersionsDesc. Consumers (IDE version completion) rely on
+      # index 0 being the latest version.
       sql: >-
         SELECT mv.version FROM module_versions mv
         JOIN modules m ON m.id = mv.module_id
         WHERE m.ref = $1
         ORDER BY (CASE WHEN mv.version ~ '^[0-9]+(\.[0-9]+)*$'
-                       THEN string_to_array(mv.version, '.')::int[] END) ASC NULLS LAST,
+                       THEN string_to_array(mv.version, '.')::int[] END) DESC NULLS LAST,
                  mv.version ASC
       bindings:
         - !cel "request.query.ref"
@@ -984,6 +1313,69 @@ routes:
           application/json:
             body:
               error: Module not tracked
+
+  # Open, unauthenticated self-service registration (the apps/hub-web SPA on
+  # hub.telo.run POSTs here cross-origin). Validates the ref resolves to a real
+  # Telo module and, on success, inserts it for the tracker to ingest; a bad ref
+  # returns 400 with the inline reason. No moderation queue.
+  - request:
+      path: /register
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          properties:
+            ref:
+              type: string
+              minLength: 1
+              description: "Module ref to register (e.g. oci://ghcr.io/acme/telo-s3 or std/console)."
+          required: [ref]
+    handler: !ref RegisterAndValidate
+    inputs:
+      ref: !cel "request.body.ref"
+      clientIp: !cel "request.ip"
+    returns:
+      - status: 429
+        when: !cel "result.rateLimited"
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
+        content:
+          application/json:
+            body:
+              error: !cel "result.error"
+              retryAfter: !cel "result.retryAfter"
+      - status: 200
+        when: !cel "result.ok"
+        content:
+          application/json:
+            body:
+              registered: true
+              ref: !cel "result.ref"
+      - status: 400
+        content:
+          application/json:
+            body:
+              error: !cel "result.error"
+    catches:
+      # The CLI emits JSON on a clean exit, but a malformed payload would surface
+      # as ERR_PARSE_FAILED — treat that as an unreadable module (400). Any other
+      # throw is a server-side fault: return only the error CODE, never the
+      # message, since this endpoint is anonymous and a raw message can carry
+      # host paths or upstream detail. The full cause is logged server-side by
+      # the handler's catch, and the periodic loop records it on the module row.
+      - status: 400
+        when: !cel "error.code == 'ERR_PARSE_FAILED'"
+        content:
+          application/json:
+            body:
+              error: could not read module metadata
+      - status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: registration failed while indexing the module
 
   - request:
       path: /health

@@ -1,4 +1,5 @@
 import {
+  isHttpsModuleRef,
   isOciRef,
   isRegistryRef,
   manifestCacheKey,
@@ -6,6 +7,7 @@ import {
   parseModuleRef,
   sha256Base64Url,
   splitIntegrity,
+  urlManifestCacheCoords,
 } from "@telorun/analyzer";
 import { defaultTransportRegistry, type TransportRegistry } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
@@ -195,12 +197,22 @@ function parseDocs(text: string): Document[] {
 }
 
 /** The hub manifest-cache key for a versioned remote ref, or `null` when the
- *  ref has no deterministic cache location (local path, direct URL, digest
- *  ref). Uses the same analyzer helper as the editor's read path, so the
- *  tracker's write key and the editor's fetch key never drift. */
-function cacheKeyForRef(ref: string, registryUrl: string): string | null {
+ *  ref has no deterministic cache location (local path, digest ref). Uses the
+ *  same analyzer helpers as the editor's read path, so the tracker's write key
+ *  and the editor's fetch key never drift.
+ *
+ *  `text` is the resolved manifest: a direct `https://` ref carries no version
+ *  in the ref itself (it addresses one file whose version lives inside it), so
+ *  its key is built from the `metadata.version` the file declares. */
+function cacheKeyForRef(ref: string, registryUrl: string, text: string): string | null {
   if (isOciRef(ref)) {
     const coords = ociManifestCacheCoords(ref);
+    return coords ? manifestCacheKey(coords) : null;
+  }
+  if (isHttpsModuleRef(ref)) {
+    const version = declaredVersion(text);
+    if (!version) return null;
+    const coords = urlManifestCacheCoords(ref, version);
     return coords ? manifestCacheKey(coords) : null;
   }
   if (!isRegistryRef(ref)) return null;
@@ -224,7 +236,7 @@ async function runManifest(argv: {
   if (argv.json) {
     const cacheKey = localManifestPath(argv.ref)
       ? null
-      : cacheKeyForRef(argv.ref, resolveRegistryUrl(argv.registryUrl));
+      : cacheKeyForRef(argv.ref, resolveRegistryUrl(argv.registryUrl), text);
     console.log(JSON.stringify({ ref: argv.ref, cacheKey, manifest: text }));
     return;
   }

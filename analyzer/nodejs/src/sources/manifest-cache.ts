@@ -57,6 +57,48 @@ export function ociManifestCacheCoords(ref: string): ManifestCacheCoords | null 
 
 type ParsedOciRefShape = ReturnType<typeof parseOciRef>;
 
+/** True for a direct `https://` module manifest ref. Plaintext `http://` is
+ *  deliberately excluded — the hub serves cached third-party manifests onward,
+ *  so it never ingests over an unauthenticated channel. */
+export function isHttpsModuleRef(ref: string): boolean {
+  return splitIntegrity(ref).base.startsWith("https://");
+}
+
+/** Cache coordinates for a direct `https://host/path/telo.yaml` ref.
+ *
+ *  Unlike OCI, a URL carries no version — a URL addresses one file whose
+ *  version lives *inside* it (`metadata.version`) — so the caller passes the
+ *  version it read from the manifest. Returns `null` for a non-https ref, a
+ *  URL that carries a query or userinfo (both would let two distinct URLs
+ *  collide onto one key, or smuggle a host), or an unparseable URL.
+ *
+ *  A trailing `telo.yaml` segment is dropped: the key appends the manifest
+ *  filename itself, so carrying it in `path` would duplicate it. */
+export function urlManifestCacheCoords(ref: string, version: string): ManifestCacheCoords | null {
+  const { base } = splitIntegrity(ref);
+  if (!isHttpsModuleRef(base)) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(base);
+  } catch {
+    return null;
+  }
+  // `username`/`password` would mean the authority is not what it looks like
+  // (`https://evil.com@internal/…`); a query would make the key ambiguous.
+  if (parsed.search !== "" || parsed.username !== "" || parsed.password !== "") return null;
+
+  const segments = parsed.pathname.split("/").filter((s) => s !== "");
+  if (segments[segments.length - 1] === DEFAULT_MANIFEST_FILENAME) segments.pop();
+  if (segments.length === 0 || parsed.hostname === "") return null;
+
+  return {
+    transport: "url",
+    host: parsed.host,
+    path: segments.map((s) => decodeURIComponent(s)).join("/"),
+    version,
+  };
+}
+
 /** Full cache URL for a ref or coordinates, or `null` when not addressable. */
 export function manifestCacheUrl(
   refOrCoords: string | ManifestCacheCoords,

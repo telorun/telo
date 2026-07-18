@@ -8,7 +8,7 @@ WORKDIR /app
 
 RUN corepack enable
 
-CMD ["pnpm", "run", "telo", "./apps/hub/telo.yaml"]
+CMD ["pnpm", "run", "telo", "./apps/hub/telo.yaml", "--watch"]
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as build
 

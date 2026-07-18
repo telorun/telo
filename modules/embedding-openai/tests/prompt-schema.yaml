@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: EmbeddingOpenaiPromptSchemaTest
+  version: 1.0.0
+  description: |
+    Covers the inherited-field path: queryPrompt / passagePrompt are declared on
+    the Embedding.Model ABSTRACT, not on EmbeddingOpenai.Model, so setting them
+    here only validates if the kernel resolves an `extends` child's author
+    schema to merge(parent, own). Before that fix the analyzer accepted this
+    manifest while the kernel rejected it at create() with
+    ERR_RESOURCE_SCHEMA_VALIDATION_FAILED — so this is the regression guard for
+    analyzer/runtime schema agreement, not just for the embedding module.
+    Offline: the model is config only, no /embeddings call is ever made.
+imports:
+  EmbeddingOpenai: ../
+  Embedding: ../../embedding
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: EmbeddingOpenai.Model
+metadata: { name: Model }
+model: embeddinggemma-300m
+apiKey: dummy-key
+queryPrompt: "task: search result | query: {text}"
+passagePrompt: "title: none | text: {text}"
+---
+# A dependent consumer — its ref must resolve, proving the model initialized
+# past schema validation rather than deferring forever.
+kind: Embedding.Query
+metadata: { name: QueryVector }
+model: !ref Model
+---
+kind: Run.Sequence
+metadata:
+  name: Test
+steps:
+  - name: Inspect
+    inputs:
+      probe: !cel resources.Model
+    invoke:
+      kind: Run.Value
+      inputs:
+        probe: {}
+      value:
+        queryPrompt: !cel "'queryPrompt' in inputs.probe ? inputs.probe.queryPrompt : null"
+        passagePrompt: !cel "'passagePrompt' in inputs.probe ? inputs.probe.passagePrompt : null"
+  - name: Assert
+    inputs:
+      queryPrompt: !cel steps.Inspect.result.queryPrompt
+      passagePrompt: !cel steps.Inspect.result.passagePrompt
+    invoke:
+      kind: Assert.Schema
+      schema:
+        type: object
+        properties:
+          queryPrompt: { const: "task: search result | query: {text}" }
+          passagePrompt: { const: "title: none | text: {text}" }
+        required: [queryPrompt, passagePrompt]
