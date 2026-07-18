@@ -1,0 +1,3 @@
+project: hub
+kind: Added
+body: Register a library from a direct https:// manifest URL — a third transport (`url`) alongside registry and OCI, cached at `url/<host>/<path…>/<version>/telo.yaml`. Plaintext http and URLs carrying userinfo or a query are refused. Registration now also requires the manifest's root doc to be a Telo.Library — a Telo.Application cannot be imported, so registering one used to store a record that indexed zero kinds.

@@ -1,0 +1,50 @@
+name: Deploy Hub Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pnpm-lock.yaml'
+      - 'apps/hub-web/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build hub-web
+        run: pnpm --filter "@telorun/hub-web" build
+
+      - name: SPA deep-link fallback
+        run: cp apps/hub-web/dist/index.html apps/hub-web/dist/404.html
+
+      - name: Deploy to telorun/hub
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.HUB_PAGES_TOKEN }}
+          external_repository: telorun/hub
+          publish_branch: gh-pages
+          publish_dir: apps/hub-web/dist
+          cname: hub.telo.run

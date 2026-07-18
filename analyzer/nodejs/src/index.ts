@@ -80,9 +80,11 @@ export type { ParsedOciRef } from "./sources/oci-ref.js";
 export {
   MANIFEST_CACHE_BASE_URL,
   ManifestCacheSource,
+  isHttpsModuleRef,
   manifestCacheKey,
   manifestCacheUrl,
   ociManifestCacheCoords,
+  urlManifestCacheCoords,
 } from "./sources/manifest-cache.js";
 export type { ManifestCacheCoords } from "./sources/manifest-cache.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";

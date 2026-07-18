@@ -8,6 +8,7 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import {
   controllerBearingAncestor,
+  effectiveAuthorSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   type DefResolver,
@@ -55,6 +56,28 @@ class ResourceDefinition implements ResourceInstance {
       }
       return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
     };
+
+    // Stamp the inheritance-resolved author schema, mirroring the capability
+    // stamping below: without `base:`, an `extends` child is authored against
+    // merge(parent, own), so a field the parent declares is legal on the child.
+    // Every consumer validating a resource against `definition.schema` must see
+    // that merged view — otherwise the analyzer accepts an inherited field and
+    // the kernel rejects it at create(). Shares `effectiveAuthorSchema` with the
+    // analyzer so `telo check` and the runtime cannot drift.
+    if (this.resource.extends) {
+      if (!resolveDef(this.resource.extends)) {
+        // Parent not loaded yet — defer rather than silently merging nothing,
+        // which would cache a schema missing every inherited field.
+        throw new RuntimeError(
+          "ERR_LOCAL_REF_PENDING",
+          `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
+        );
+      }
+      this.resource.schema = effectiveAuthorSchema(
+        this.resource as ResourceDefinitionManifest,
+        resolveDef,
+      );
+    }
 
     // Inherited-controller delegation: a definition that `extends` a concrete
     // kind, declares no own `controllers:` / template body, inherits the parent

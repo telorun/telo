@@ -153,7 +153,13 @@ steps:
                     exportedKinds:
                       type: array
                       contains: { const: WriteLine }
-                  required: [module, matchedKinds, exportedKinds]
+                    # A library's public surface is two lists — std/console
+                    # exports NO kinds, only these ready-made instances, so a
+                    # kinds-only index would show none of its entry points.
+                    exportedResources:
+                      type: array
+                      contains: { const: writeLine }
+                  required: [module, matchedKinds, exportedKinds, exportedResources]
             required: [hits]
         required: [status, body]
 ---

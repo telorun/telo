@@ -1,12 +1,19 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import type { EmbedRequest, EmbedResult, EmbeddingModel } from "@telorun/embedding";
+import type { EmbedRequest, EmbedResult, EmbeddingModel, EmbeddingPrompts } from "@telorun/embedding";
+import { applyEmbeddingPrompt, resolveEmbeddingPrompts } from "@telorun/embedding";
 
 /**
  * OpenAI-compatible provider for the Embedding.Model abstract. Speaks the
  * OpenAI `/embeddings` HTTP API directly (no vendor SDK), so the same
  * controller serves OpenAI plus every OpenAI-compatible endpoint (Azure OpenAI,
- * vLLM, …) via `baseUrl`. OpenAI embeddings are symmetric — the query/passage
- * intent has no wire parameter, so it is accepted and ignored.
+ * vLLM, text-embeddings-inference, …) via `baseUrl`.
+ *
+ * The OpenAI models themselves are symmetric — no wire parameter carries the
+ * query/passage intent. Self-hosted checkpoints served over the same API are
+ * often not: embeddinggemma, E5 and BGE encode the intent as a text prefix.
+ * `queryPrompt` / `passagePrompt` (inherited from Embedding.Model) express that
+ * declaratively, so the intent reaches an asymmetric model without this
+ * controller knowing which checkpoint is behind the endpoint.
  *
  * Options merging: this manifest's `options` → caller-supplied `options`.
  * Shallow merge, caller wins.
@@ -14,7 +21,7 @@ import type { EmbedRequest, EmbedResult, EmbeddingModel } from "@telorun/embeddi
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
-interface OpenaiEmbeddingResource {
+interface OpenaiEmbeddingResource extends EmbeddingPrompts {
   metadata: { name: string; module?: string };
   model: string;
   apiKey: string;
@@ -30,15 +37,21 @@ interface OpenAiEmbeddingResponse {
 
 class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
   private readonly baseUrl: string;
+  private readonly prompts: EmbeddingPrompts;
 
   constructor(private readonly resource: OpenaiEmbeddingResource) {
     this.baseUrl = (resource.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+    this.prompts = resolveEmbeddingPrompts(
+      resource,
+      `EmbeddingOpenai.Model "${resource.metadata.name}"`,
+    );
   }
 
   async embed(request: EmbedRequest): Promise<EmbedResult> {
+    const texts = applyEmbeddingPrompt(request.texts, request.intent, this.prompts);
     const body: Record<string, unknown> = {
       model: this.resource.model,
-      input: request.texts,
+      input: texts,
       ...(this.resource.dimensions !== undefined ? { dimensions: this.resource.dimensions } : {}),
       ...(this.resource.options ?? {}),
       ...(request.options ?? {}),
@@ -79,6 +92,12 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
       model: this.resource.model,
       ...(this.resource.baseUrl ? { baseUrl: this.resource.baseUrl } : {}),
       ...(this.resource.dimensions !== undefined ? { dimensions: this.resource.dimensions } : {}),
+      ...(this.prompts.queryPrompt !== undefined
+        ? { queryPrompt: this.prompts.queryPrompt }
+        : {}),
+      ...(this.prompts.passagePrompt !== undefined
+        ? { passagePrompt: this.prompts.passagePrompt }
+        : {}),
       apiKey: this.resource.apiKey ? "[redacted]" : this.resource.apiKey,
     };
   }

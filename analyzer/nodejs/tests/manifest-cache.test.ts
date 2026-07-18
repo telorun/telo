@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MANIFEST_CACHE_BASE_URL,
   ManifestCacheSource,
+  isHttpsModuleRef,
   manifestCacheKey,
   manifestCacheUrl,
   ociManifestCacheCoords,
+  urlManifestCacheCoords,
 } from "../src/sources/manifest-cache.js";
 import { IntegrityError, sha256Base64Url } from "../src/sources/integrity.js";
 
@@ -157,5 +159,71 @@ describe("ManifestCacheSource", () => {
     expect(source.resolveRelative("oci://ghcr.io/aws/my-app@1.0.0", "std/console@0.9.0")).toBe(
       "std/console@0.9.0",
     );
+  });
+});
+
+describe("isHttpsModuleRef", () => {
+  it("accepts https, rejects plaintext http and other transports", () => {
+    expect(isHttpsModuleRef("https://example.com/lib/telo.yaml")).toBe(true);
+    expect(isHttpsModuleRef("https://example.com/lib/telo.yaml#sha256-abc")).toBe(true);
+    expect(isHttpsModuleRef("http://example.com/lib/telo.yaml")).toBe(false);
+    expect(isHttpsModuleRef("oci://ghcr.io/aws/telo-s3@1.2.0")).toBe(false);
+    expect(isHttpsModuleRef("std/console@0.9.0")).toBe(false);
+  });
+});
+
+describe("urlManifestCacheCoords", () => {
+  it("keys off the URL path, with the version supplied by the caller", () => {
+    expect(
+      urlManifestCacheCoords(
+        "https://raw.githubusercontent.com/telorun/telo/main/modules/console/telo.yaml",
+        "0.10.0",
+      ),
+    ).toEqual({
+      transport: "url",
+      host: "raw.githubusercontent.com",
+      path: "telorun/telo/main/modules/console",
+      version: "0.10.0",
+    });
+  });
+
+  it("drops a trailing telo.yaml so the key does not duplicate the filename", () => {
+    const coords = urlManifestCacheCoords("https://example.com/lib/telo.yaml", "1.0.0");
+    expect(manifestCacheKey(coords!)).toBe("url/example.com/lib/1.0.0/telo.yaml");
+  });
+
+  it("tolerates the inline integrity fragment", () => {
+    expect(
+      urlManifestCacheCoords("https://example.com/lib/telo.yaml#sha256-abc123", "1.0.0")?.path,
+    ).toBe("lib");
+  });
+
+  it("keeps a non-default trailing filename as a path segment", () => {
+    expect(urlManifestCacheCoords("https://example.com/lib/module.yaml", "1.0.0")?.path).toBe(
+      "lib/module.yaml",
+    );
+  });
+
+  it("rejects plaintext http", () => {
+    expect(urlManifestCacheCoords("http://example.com/lib/telo.yaml", "1.0.0")).toBeNull();
+  });
+
+  it("rejects a query — two distinct URLs would collide onto one key", () => {
+    expect(urlManifestCacheCoords("https://example.com/lib/telo.yaml?ref=main", "1.0.0")).toBeNull();
+  });
+
+  it("rejects userinfo — the authority is not what it appears to be", () => {
+    expect(urlManifestCacheCoords("https://evil.com@internal/lib/telo.yaml", "1.0.0")).toBeNull();
+  });
+
+  it("rejects a URL with no path to key on", () => {
+    expect(urlManifestCacheCoords("https://example.com/", "1.0.0")).toBeNull();
+    expect(urlManifestCacheCoords("https://example.com/telo.yaml", "1.0.0")).toBeNull();
+  });
+
+  it("normalizes traversal away via URL parsing, so it cannot escape the key space", () => {
+    expect(
+      manifestCacheKey(urlManifestCacheCoords("https://example.com/a/../b/telo.yaml", "1.0.0")!),
+    ).toBe("url/example.com/b/1.0.0/telo.yaml");
   });
 });

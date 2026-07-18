@@ -17,6 +17,7 @@ services:
     networks:
       default:
         aliases:
+          - telo.localhost
           - registry.telo.localhost
           - hub.telo.localhost
           - editor.telo.localhost
@@ -88,6 +89,10 @@ services:
       # Self-hosted embeddinggemma-300m sidecar, OpenAI-compatible /embeddings.
       # The controller appends `/embeddings`, so point at the `/v1` base.
       EMBEDDER_BASE_URL: http://embedder/v1
+      # /register is rate-limited per client IP (production default 5 per 10m).
+      # Dev and the e2e suite re-register repeatedly from one address, so lift
+      # the ceiling here — otherwise a second test run inside the window 429s.
+      REGISTER_RATE_LIMIT: "1000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8040/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
@@ -135,6 +140,24 @@ services:
       VITE_TELO_RUNNER_URL: http://runner.telo.localhost:8060
     depends_on:
       runner:
+        condition: service_healthy
+
+  hub-web:
+    image: node:24
+    command: 'sh -c "corepack enable && exec pnpm run --filter @telorun/hub-web dev"'
+    init: true
+    volumes:
+      - .:/telo
+    working_dir: /telo
+    environment:
+      # Embedded into the Vite client bundle served to the USER'S browser, which
+      # cannot resolve compose service names. The Caddy proxy routes
+      # `telo.localhost:8060` to the hub API service (see Caddyfile), so the
+      # registration form POSTs there cross-origin — mirroring prod (hub.telo.run
+      # SPA → telo.sh API).
+      VITE_HUB_API: http://telo.localhost:8060
+    depends_on:
+      hub:
         condition: service_healthy
 
   pages:
