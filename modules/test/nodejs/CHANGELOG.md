@@ -1,5 +1,12 @@
 # @telorun/test
 
+## 0.4.45
+
+### Patch Changes
+
+- Updated dependencies [ec524cd]
+  - @telorun/kernel@0.47.0
+
 ## 0.4.44
 
 ### Patch Changes

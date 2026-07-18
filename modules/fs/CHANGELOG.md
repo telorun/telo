@@ -1,5 +1,7 @@
 # Changelog
-## 0.2.1 - 2026-07-06
+## 0.3.0 - 2026-07-18
+### Added
+* Declare `exports.kinds` explicitly, listing every kind the module already exported implicitly, and add a `metadata.description` to every exported kind (and exported resource) so the discovery hub can index them for semantic search. No change to what importers can reference — the module previously relied on the loader treating an absent `exports.kinds` as "export everything", and now states its public kind surface outright.## 0.2.1 - 2026-07-06
 ### Fixed
 * Quote description strings containing a colon-space inside backticks (e.g. `encoding: base64`) so the registry's strict YAML parser accepts the manifest on publish.## 0.2.0 - 2026-07-06
 ### Added

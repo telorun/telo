@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: shell
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   description: >-
     Run shell commands behind a transport-neutral host abstraction. The
     Shell.Host abstract plus the Command / CommandStream operations; the bundled
