@@ -125,8 +125,6 @@ export function createInheritedController(
   }
 
   return {
-    schema: authorSchema,
-
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance | null> => {
       const self: Record<string, unknown> = { ...resource, name: resource.metadata.name };
       for (const path of refFieldPaths) {

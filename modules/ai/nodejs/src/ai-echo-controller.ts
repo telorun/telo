@@ -110,7 +110,3 @@ export async function create(resource: EchoResource, _ctx: ResourceContext): Pro
   return new AiEchoModel(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

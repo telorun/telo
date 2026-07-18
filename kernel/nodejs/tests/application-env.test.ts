@@ -1,3 +1,4 @@
+import { effectiveAuthorSchema } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as os from "os";
@@ -54,6 +55,115 @@ describe("precompileDefinitionSchemas", () => {
     runtime.compile(defSchema).validate({ url: "x" });
     const afterRuntime = (await fs.readdir(cacheDir)).sort();
     expect(afterRuntime).toEqual(afterWarm);
+  });
+
+  // An `extends` child without `base:` is validated at runtime against
+  // merge(parent, own) — a different object, so a different cache key than its
+  // raw `schema:`. The warm must bake that merged form or every inheriting kind
+  // misses on every boot and, on a read-only image, can never persist.
+  describe("extends-resolved schemas", () => {
+    const parent = {
+      kind: "Telo.Definition",
+      metadata: { name: "Model", module: "embedding" },
+      schema: {
+        type: "object",
+        properties: { queryPrompt: { type: "string" } },
+      },
+    };
+    const child = {
+      kind: "Telo.Definition",
+      metadata: { name: "Model", module: "embedding-openai" },
+      extends: "embedding.Model",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: { model: { type: "string" } },
+      },
+    };
+    const resolve = (kind: string) =>
+      kind === "embedding.Model" ? (parent as never) : undefined;
+
+    it("bakes the merged schema so the runtime hits the cache", async () => {
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas([parent, child], warm, () => resolve);
+      const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+      // What the runtime stamps and validates against.
+      const merged = effectiveAuthorSchema(child as never, resolve);
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      runtime.compile(merged).validate({ model: "m", queryPrompt: "q: {text}" });
+
+      expect((await fs.readdir(cacheDir)).sort()).toEqual(afterWarm);
+    });
+
+    it("bakes the merged form in addition to the raw one, not instead of it", async () => {
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas([parent, child], warm, () => resolve);
+      const baked = (await fs.readdir(cacheDir)).filter((f) => f.endsWith(".cjs"));
+      // parent schema + child raw schema + child merged schema
+      expect(baked.length).toBe(3);
+    });
+
+    it("without a resolver, bakes only the raw schema (the merged form then misses)", async () => {
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas([parent, child], warm);
+      const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      runtime.compile(effectiveAuthorSchema(child as never, resolve));
+
+      // Documents the pre-fix behaviour this opt-in exists to close.
+      expect((await fs.readdir(cacheDir)).length).toBeGreaterThan(afterWarm.length);
+    });
+
+    // The resolver is a FACTORY because `extends` aliases are lexically scoped
+    // to the declaring module — `Cache.Store` reads against that library's
+    // imports, `Self.Host` against its own name. Resolving them through one
+    // global scope silently yields the un-merged schema, which is the exact
+    // miss this whole mechanism exists to prevent (it put `CacheMemory.Store`
+    // and `Shell.LocalHost` back on the runtime-write path).
+    it("resolves each definition's extends in that definition's own module scope", async () => {
+      const selfChild = {
+        kind: "Telo.Definition",
+        metadata: { name: "LocalHost", module: "shell" },
+        extends: "Self.Host",
+        schema: { type: "object", properties: { cwd: { type: "string" } } },
+      };
+      const selfParent = {
+        kind: "Telo.Definition",
+        metadata: { name: "Host", module: "shell" },
+        schema: { type: "object", properties: { shell: { type: "string" } } },
+      };
+      // Only a shell-scoped resolver knows `Self` — a global one returns nothing.
+      const scoped = (def: Record<string, any>) => (kind: string) =>
+        def.metadata?.module === "shell" && kind === "Self.Host"
+          ? (selfParent as never)
+          : undefined;
+
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas([selfParent, selfChild], warm, scoped);
+      const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      runtime.compile(effectiveAuthorSchema(selfChild as never, scoped(selfChild)));
+
+      expect((await fs.readdir(cacheDir)).sort()).toEqual(afterWarm);
+    });
+
+    it("an unresolvable parent is skipped, not thrown", () => {
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      expect(() =>
+        precompileDefinitionSchemas([child], warm, () => () => undefined),
+      ).not.toThrow();
+    });
   });
 
   it("converges a parse-time tagged sentinel with the runtime compiled value of the same source", () => {

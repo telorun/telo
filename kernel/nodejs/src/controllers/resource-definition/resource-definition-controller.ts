@@ -213,7 +213,3 @@ export async function create(resource: any, ctx: ResourceContext): Promise<Resou
   return new ResourceDefinition(definition);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

@@ -62,14 +62,13 @@ services:
   hub:
     image: telorun/hub:${DOCKER_TAG:-latest}
     build:
-      context: .
-      dockerfile: ./apps/hub/Dockerfile
+      context: ./apps/hub
       target: ${DOCKER_TARGET:-development}
     volumes:
-      - .:/app
+      - ./apps/hub:/app
       # Anonymous volume overlay: telo writes its install cache here at boot
       # (same rationale as the registry service).
-      - /app/apps/hub/.telo
+      - /app/.telo
     working_dir: /app
     ports:
       - "${HUB_PORT:-8040}:8040"
@@ -83,9 +82,6 @@ services:
       # Curated seed; the tracker enumerates these refs' versions on boot and
       # every TRACK_INTERVAL thereafter.
       SEED_REFS: '["std/console","std/timer"]'
-      # The dev image runs from the mounted repo, so the tracker shells out to
-      # the workspace CLI build (`pnpm --filter @telorun/cli build` first).
-      TELO_BIN: /app/cli/nodejs/bin/telo.mjs
       # Self-hosted embeddinggemma-300m sidecar, OpenAI-compatible /embeddings.
       # The controller appends `/embeddings`, so point at the `/v1` base.
       EMBEDDER_BASE_URL: http://embedder/v1

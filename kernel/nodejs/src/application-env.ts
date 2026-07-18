@@ -1,4 +1,5 @@
-import { residualEntrySchema } from "@telorun/analyzer";
+import { type DefResolver, effectiveAuthorSchema, residualEntrySchema } from "@telorun/analyzer";
+import type { ResourceDefinition } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { SchemaValidator } from "./schema-validator.js";
 
@@ -145,24 +146,39 @@ export function precompileApplicationEnvSchemas(
 
 /**
  * Build-time cache warm for resource-config validators. The runtime
- * `_createInstance` compiles `controller.schema` — which falls back to the
- * declaring `Telo.Definition`'s own `schema` — to validate every resource's
- * config, then validates inputs/outputs against `inputType` / `outputType`.
- * The analyze-only warm pass stops before instantiation, so without this those
- * validators are absent from the `__validators` cache and the runtime
- * recompiles (and, on a read-only image, fails to persist) them on every boot.
+ * `_createInstance` compiles the declaring `Telo.Definition`'s `schema` to
+ * validate every resource's config, then validates inputs/outputs against
+ * `inputType` / `outputType`. The analyze-only warm pass stops before
+ * instantiation, so without this those validators are absent from the
+ * `__validators` cache and the runtime recompiles (and, on a read-only image,
+ * fails to persist) them on every boot.
  *
  * Compiling each definition's `schema` (plus any inline `inputType` /
  * `outputType` object schemas) here writes them into the same content-addressed
  * cache the runtime reads, keyed identically because the same schema object is
- * fed to the same `validator.compile`. Definitions whose controller exports its
- * own `schema` (rare) still recompile at runtime — that needs the controller
- * loaded, which the warm pass does not do. Compile failures are swallowed; a
- * genuinely broken schema surfaces through analysis / runtime, not here.
+ * fed to the same `validator.compile`. Every kind is bakeable now that the
+ * manifest is the sole config contract — a controller can no longer supply a
+ * schema the warm cannot see. Compile failures are swallowed; a genuinely
+ * broken schema surfaces through analysis / runtime, not here.
+ *
+ * `resolverFor` bakes the INHERITANCE-RESOLVED schema too. A `base:`-less
+ * `extends` child is validated at runtime against `merge(parent, own)` — a
+ * different object than its raw `schema:`, so a different cache key. Without
+ * this the warm bakes a schema the runtime never asks for and every inheriting
+ * kind misses on every boot, recompiling (and, on a read-only image, failing to
+ * persist) forever. Both forms are compiled — the raw one still backs
+ * definitions that don't inherit.
+ *
+ * It is a factory, not a single resolver, because `extends` aliases are scoped
+ * to the DECLARING module — `Cache.Store` reads against that library's import
+ * map, `Self.Host` against its own name. A global resolver silently fails to
+ * resolve those, yielding the un-merged schema and reintroducing the very miss
+ * this exists to prevent.
  */
 export function precompileDefinitionSchemas(
   manifests: Array<Record<string, any>>,
   validator: SchemaValidator,
+  resolverFor?: (def: Record<string, any>) => DefResolver,
 ): void {
   const compile = (schema: unknown): void => {
     if (!schema || typeof schema !== "object") return;
@@ -177,6 +193,15 @@ export function precompileDefinitionSchemas(
     compile(m.schema);
     compile(m.inputType);
     compile(m.outputType);
+    if (resolverFor && m.extends) {
+      // Mirrors the runtime stamp in `resource-definition-controller`; sharing
+      // `effectiveAuthorSchema` is what keeps the two keys identical.
+      try {
+        compile(effectiveAuthorSchema(m as unknown as ResourceDefinition, resolverFor(m)));
+      } catch {
+        // An unresolvable parent is a diagnostic elsewhere; the warm just skips.
+      }
+    }
   }
 }
 

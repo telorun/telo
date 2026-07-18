@@ -87,7 +87,3 @@ export async function create(
   return new GzipEncoder(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

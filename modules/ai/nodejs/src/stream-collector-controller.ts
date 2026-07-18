@@ -117,7 +117,3 @@ export async function create(
   return new StreamCollector(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

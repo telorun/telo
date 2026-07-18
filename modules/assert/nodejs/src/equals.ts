@@ -3,7 +3,7 @@ import { Static, Type } from "@sinclair/typebox";
 import { createColors } from "./colors.js";
 import { deepEquals } from "./deep-equals.js";
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
   }),

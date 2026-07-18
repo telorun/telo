@@ -6,7 +6,7 @@ const ImportEntry = Type.Object({
   secrets: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
     module: Type.Optional(Type.String()),

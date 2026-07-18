@@ -56,7 +56,3 @@ export async function create(): Promise<StubMcpClient> {
   return new StubMcpClient();
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

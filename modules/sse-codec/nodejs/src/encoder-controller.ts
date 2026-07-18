@@ -106,7 +106,3 @@ export async function create(
   return new SseEncoder(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

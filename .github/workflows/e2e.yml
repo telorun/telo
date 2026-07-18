@@ -131,9 +131,9 @@ jobs:
       - name: Check hub manifest
         run: pnpm run check apps/hub/telo.yaml
 
-      # The hub's tracker shells out to the built CLI (`TELO_BIN` →
-      # cli/nodejs/bin/telo.mjs → dist/cli.js), so the workspace must be built
-      # before the container boots.
+      # The container no longer reaches into the workspace — the tracker uses the
+      # `telo` the base image ships. This build is kept as a compile check for
+      # the host-side e2e suite below.
       - name: Build workspace packages
         run: pnpm -r run build
 

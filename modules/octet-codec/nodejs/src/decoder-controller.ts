@@ -61,7 +61,3 @@ export async function create(
   return new OctetDecoder(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

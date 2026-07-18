@@ -10,7 +10,7 @@ const ExpectEntry = Type.Object({
   payload: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
   }),

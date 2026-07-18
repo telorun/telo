@@ -8,7 +8,7 @@ import { Static, Type } from "@sinclair/typebox";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { isS3NotFound, s3ErrorName } from "./s3-bucket-ref.js";
 
-export const schema = Type.Object({
+const schema = Type.Object({
   bucketName: Type.String(),
   endpoint: Type.String(),
   accessKeyId: Type.String(),

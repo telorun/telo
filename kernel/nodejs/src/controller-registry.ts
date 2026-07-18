@@ -111,18 +111,17 @@ export class ControllerRegistry {
   }
 
   /**
-   * Distinct controller `schema` objects across all registered kinds (one per
-   * kind, default fingerprint preferred). Used by the build-time validator warm
-   * to pre-compile the framework/builtin controller schemas (`Telo.Import`,
-   * `Telo.Definition`, the module controller, …) the runtime validates
-   * resources against — module-defined kinds aren't registered here until
-   * instantiation, so those are warmed from the static manifests instead.
+   * Distinct resource-config schemas across all registered kinds, taken from
+   * each kind's DEFINITION. Used by the build-time validator warm to pre-compile
+   * the framework/builtin schemas (`Telo.Import`, `Telo.Definition`, the module
+   * controller, …) the runtime validates resources against — module-defined
+   * kinds aren't registered here until instantiation, so those are warmed from
+   * the static manifests instead.
    */
   getControllerSchemas(): object[] {
     const schemas: object[] = [];
-    for (const byFp of this.controllersByKind.values()) {
-      const controller = byFp.get(DEFAULT_FINGERPRINT) ?? byFp.values().next().value;
-      const schema = controller?.schema;
+    for (const kind of this.controllersByKind.keys()) {
+      const schema = this.definitionsByKind.get(kind)?.schema;
       if (schema && typeof schema === "object") schemas.push(schema);
     }
     return schemas;
@@ -142,9 +141,14 @@ export class ControllerRegistry {
       throw new Error(`Cannot register controller for kind ${kind} without definition`);
     }
     const definition = this.definitionsByKind.get(kind);
+    // The DEFINITION's schema is the resource-config contract, always. A
+    // controller module's exports become the controller instance verbatim, so a
+    // stray `export const schema` used to silently override the manifest — the
+    // analyzer never loads controllers, so those overrides were invisible to
+    // `telo check`, unbakeable by the validator warm, and free to drift from the
+    // manifest they shadowed.
     const wrappedController: ControllerInstance = {
       ...controller,
-      schema: controller.schema ?? definition?.schema,
       inputType: controller.inputType,
       outputType: controller.outputType,
     };

@@ -67,7 +67,3 @@ export async function create(
   return new PlainTextDecoder(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};
