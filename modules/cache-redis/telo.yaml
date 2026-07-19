@@ -3,6 +3,8 @@ metadata:
   name: cache-redis
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     CacheRedis.Store — a Redis-backed implementation of the Cache abstract, for
     shared caching and rate-limit counters across instances. Accepts an optional

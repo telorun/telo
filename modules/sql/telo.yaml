@@ -3,6 +3,8 @@ metadata:
   name: sql
   namespace: std
   version: 0.12.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Driver-agnostic SQL database access — the Sql.Connection abstract plus the
     Query / Command / Selection / Transaction / Migrations operations. Concrete

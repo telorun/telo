@@ -3,6 +3,8 @@ metadata:
   name: tar
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Tar archive read/write. `Tar.Extract` pulls one named entry out of a tar
     byte stream; `Tar.Pack` builds an archive from an ordered list of

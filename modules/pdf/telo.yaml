@@ -3,6 +3,8 @@ metadata:
   name: pdf
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     PDF primitives — rasterize pages to PNG images and author editable
     AcroForm fields at measured coordinates. Both kinds share one coordinate

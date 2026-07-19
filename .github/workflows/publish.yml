@@ -77,12 +77,13 @@ jobs:
           # Unset skips the OCI pass entirely — set the repo variable to
           # `oci://ghcr.io/telorun` to enable dual-publish.
           #
-          # BEFORE setting it, run `scripts/publish-oci-backfill.mjs` once
-          # against the destination. The release path only pushes manifests
-          # whose version moved, but `telo publish` hard-fails when a relative
-          # sibling does not already resolve at the destination — so on an empty
-          # registry the 22 modules with sibling imports fail, and the version
-          # gate means they are not retried until their own version moves again.
+          # A mirror cannot be built up incrementally from empty: `telo publish`
+          # hard-fails when a relative sibling does not already resolve at the
+          # destination, and the version gate means a failed module is not
+          # retried until its own version moves again. Enable this on a release
+          # that bumps EVERY module (the provenance release did), so the changed
+          # set is the whole tree and dependency order covers every sibling.
+          # `scripts/publish-oci-backfill.mjs` repairs a partially-pushed mirror.
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
 
   # Fallback for releases that touch zero npm packages (manifest-only / Rust-only modules):

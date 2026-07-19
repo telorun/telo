@@ -3,6 +3,8 @@ metadata:
   name: sql-postgres
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     SqlPostgres.Connection — a PostgreSQL backend for the Sql.Connection
     abstract. Speaks the standard `postgres://` URL with libpq `sslmode`,

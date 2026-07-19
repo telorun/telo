@@ -3,6 +3,8 @@ metadata:
   name: gzip
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Gzip codec — Uint8Array stream ↔ Uint8Array stream. Encoder wraps Node
     `zlib.createGzip()` (compress); Decoder wraps `zlib.createGunzip()`

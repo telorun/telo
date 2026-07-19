@@ -3,6 +3,8 @@ metadata:
   name: http-dispatch
   namespace: std
   version: 0.7.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Internal shared value-shapes for HTTP transports — the canonical request
     matcher and response (`returns` / `catches`) schemas that `http-server` and

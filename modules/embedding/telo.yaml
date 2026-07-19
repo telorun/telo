@@ -3,6 +3,8 @@ metadata:
   name: embedding
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     The Embedding.Model abstract — a backend-pluggable text embedding model —
     plus the Query / Passage invocables that turn text into vectors. Asymmetric

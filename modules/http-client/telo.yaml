@@ -3,6 +3,8 @@ metadata:
   name: http-client
   namespace: std
   version: 0.9.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: HTTP request client for testing and orchestration
 exports:
   kinds:

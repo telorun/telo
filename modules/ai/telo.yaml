@@ -3,6 +3,8 @@ metadata:
   name: ai
   namespace: std
   version: 0.9.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: LLM completion primitives with pluggable provider models, plus a tool-use agent
 exports:
   kinds:

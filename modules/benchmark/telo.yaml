@@ -3,6 +3,8 @@ metadata:
   name: benchmark
   namespace: std
   version: 0.5.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Load benchmarking for any invocable Telo resource
 exports:
   kinds:

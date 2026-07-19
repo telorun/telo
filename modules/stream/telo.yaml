@@ -3,6 +3,8 @@ metadata:
   name: stream
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Generic stream substrate — value-agnostic stream construction and
     operators. `Stream.Of` emits a list of items as a stream, in order —

@@ -3,6 +3,8 @@ metadata:
   namespace: aws
   name: lambda
   version: 0.7.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     AWS Lambda functions driven by multiple event sources from one artifact.
     `Lambda.Function` is the AWS-facing transport; `Lambda.HttpApi`,

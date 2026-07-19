@@ -3,6 +3,8 @@ metadata:
   name: sql-repository
   namespace: std
   version: 0.6.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Named CRUD handlers that generate SQL from domain operations
 exports:
   kinds:

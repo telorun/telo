@@ -3,6 +3,8 @@ metadata:
   name: assert
   namespace: std
   version: 0.9.5
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Assertion and value verification for testing
 exports:
   kinds:

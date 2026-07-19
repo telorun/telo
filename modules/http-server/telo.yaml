@@ -3,6 +3,8 @@ metadata:
   name: "http-server"
   namespace: std
   version: "0.17.1"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     HTTP server and routing. `Http.Server` is the listener (port, host, CORS,
     OpenAPI, mounts); `Http.Api` is a mountable router whose routes declare a

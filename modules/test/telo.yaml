@@ -3,6 +3,8 @@ metadata:
   name: test
   namespace: std
   version: 0.5.5
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Test discovery and execution
 exports:
   kinds:

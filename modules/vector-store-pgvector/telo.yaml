@@ -3,6 +3,8 @@ metadata:
   name: vector-store-pgvector
   namespace: std
   version: 0.2.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     VectorStorePgvector.Store — a Postgres/pgvector index for the VectorStore
     abstract. Cosine / dot / euclidean similarity via pgvector distance

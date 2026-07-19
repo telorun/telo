@@ -3,6 +3,8 @@ metadata:
   name: console
   namespace: std
   version: 0.11.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Console I/O over stdin and stdout. `Console.WriteLine` and `Console.ReadLine`
     handle line text with `{style}` markup; `Console.WriteStream` and

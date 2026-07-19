@@ -3,6 +3,8 @@ metadata:
   name: type
   namespace: std
   version: "0.7.0"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Reusable JSON Schema type definitions. `Type.JsonSchema` declares a named
     data shape — usable as an `inputType` / `outputType` on any invocable — and

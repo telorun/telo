@@ -3,6 +3,8 @@ metadata:
   name: image
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Image primitives — draw labelled rectangles onto an image
     (`Image.Overlay`), the visualization half of vision-grounding loops:

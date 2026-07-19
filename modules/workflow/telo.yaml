@@ -3,6 +3,8 @@ metadata:
   name: workflow
   namespace: std
   version: 0.2.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Workflow orchestration with pluggable backend providers
 exports:
   kinds:

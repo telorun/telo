@@ -3,6 +3,8 @@ metadata:
   name: lease
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Lease.Critical — a declarative critical section over a Cache.Store. Wraps a
     body and owns the whole acquire → run → release lifecycle around it, so a
