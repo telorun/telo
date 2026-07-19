@@ -186,6 +186,8 @@ migrations:
           digest       TEXT NOT NULL,
           module_name  TEXT NOT NULL DEFAULT '',
           description  TEXT NOT NULL DEFAULT '',
+          repository   TEXT NOT NULL DEFAULT '',
+          license      TEXT NOT NULL DEFAULT '',
           manifest_key TEXT NOT NULL,
           tracked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           PRIMARY KEY (module_id, version)
@@ -792,12 +794,14 @@ steps:
         inputs:
           sql: >-
             INSERT INTO module_versions
-              (module_id, version, digest, module_name, description, manifest_key)
-            VALUES ($1, $2, $3, $4, $5, $6)
+              (module_id, version, digest, module_name, description, repository, license, manifest_key)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (module_id, version) DO UPDATE SET
               digest = EXCLUDED.digest,
               module_name = EXCLUDED.module_name,
               description = EXCLUDED.description,
+              repository = EXCLUDED.repository,
+              license = EXCLUDED.license,
               manifest_key = EXCLUDED.manifest_key,
               tracked_at = NOW()
           bindings:
@@ -806,6 +810,8 @@ steps:
             - !cel "steps.digest.result.docs[0].digest"
             - !cel "steps.docs.result.docs[0].metadata.name"
             - !cel "steps.docs.result.docs[0].metadata.?description.orValue('')"
+            - !cel "steps.docs.result.docs[0].metadata.?repository.orValue('')"
+            - !cel "steps.docs.result.docs[0].metadata.?license.orValue('')"
             - !cel "steps.manifestJson.result.docs[0].cacheKey"
       - name: clearKinds
         invoke: !ref Exec
@@ -1021,6 +1027,8 @@ steps:
         )
         SELECT rk.name AS kind, rk.capability, rk.description,
                m.ref, rk.version, COALESCE(mv.description, '') AS module_description,
+               COALESCE(mv.repository, '') AS module_repository,
+               COALESCE(mv.license, '') AS module_license,
                f.score::float8 AS score
         FROM fused f
         JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
@@ -1032,7 +1040,7 @@ steps:
         - !cel "inputs.q"
         - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
 outputs:
-  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score})"
+  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license}, 'score': r.score})"
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.
@@ -1092,13 +1100,16 @@ steps:
         ),
         hits AS (
           SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
-                 m.ref, COALESCE(mv.description, '') AS module_description, f.score
+                 m.ref, COALESCE(mv.description, '') AS module_description,
+                 COALESCE(mv.repository, '') AS module_repository,
+                 COALESCE(mv.license, '') AS module_license, f.score
           FROM fused f
           JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
           JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
           LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
         )
         SELECT h.ref, h.version, h.module_description,
+               h.module_repository, h.module_license,
                MAX(h.score)::float8 AS score,
                json_agg(json_build_object('kind', h.name, 'capability', h.capability,
                                           'description', h.description, 'score', h.score)
@@ -1114,14 +1125,15 @@ steps:
                 WHERE mr.module_id = h.module_id AND mr.version = h.version)
                  AS exported_resources
         FROM hits h
-        GROUP BY h.module_id, h.ref, h.version, h.module_description
+        GROUP BY h.module_id, h.ref, h.version, h.module_description,
+                 h.module_repository, h.module_license
         ORDER BY MAX(h.score) DESC
         LIMIT 20
       bindings:
         - !cel "inputs.q"
         - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
 outputs:
-  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
+  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
 ---
 # ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
 # Re-keyed off the location ref (an OCI module has no namespace/name). Reads
@@ -1272,7 +1284,9 @@ routes:
       sql: >-
         SELECT m.ref,
                COALESCE(m.latest_version, '') AS "latestVersion",
-               COALESCE(mv.description, '') AS description
+               COALESCE(mv.description, '') AS description,
+               COALESCE(mv.repository, '') AS repository,
+               COALESCE(mv.license, '') AS license
         FROM modules m
         LEFT JOIN module_versions mv
           ON mv.module_id = m.id AND mv.version = m.latest_version

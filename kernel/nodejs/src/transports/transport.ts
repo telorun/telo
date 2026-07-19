@@ -99,6 +99,26 @@ export interface Transport {
    *  digest per version and re-checks it on every track. */
   digest(ref: string): Promise<string | null>;
 
+  /** Telo's inline integrity hash (`sha256-<base64url>`) for the `telo.yaml`
+   *  `ref` resolves to — the value written as a `#sha256-…` pin by `telo
+   *  publish` and re-pinned by `telo upgrade`. Throws when the ref does not
+   *  resolve; callers decide whether that is fatal (`--frozen`) or best-effort.
+   *
+   *  This is on the interface, not computed by the caller, because *what gets
+   *  hashed* is transport-specific and must match exactly what that transport's
+   *  own `source.read()` verifies — otherwise a pin written at publish fails
+   *  verification at import. HTTP/registry hash the raw response bytes;
+   *  OCI hashes the UTF-8 encoding of the `telo.yaml` extracted from the tar
+   *  layer. A caller cannot know which, so a caller-side scheme branch silently
+   *  degrades the moment a transport is added — which is exactly how `oci://`
+   *  refs came to be published unpinned.
+   *
+   *  Distinct from `digest()`: that is an opaque transport-native content id for
+   *  change detection, never written into a manifest or compared across
+   *  transports. This is the portable, cross-transport hash Telo itself
+   *  verifies. */
+  manifestHash(ref: string): Promise<string>;
+
   /** Push `bundle` to `destination` (a base ref / repo whose scheme this
    *  transport owns), pinning the payload and writing the transport-native
    *  artifact shape. Throws on failure. Used by `telo publish`. */

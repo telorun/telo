@@ -27,6 +27,12 @@ export interface OwnerManifest {
   filesIntegrity?: string;
   /** True when the owner doc declares a non-empty `files:` list. */
   declaresFiles: boolean;
+  /** Descriptive provenance a transport projects into its backend's metadata
+   *  (OCI annotations). Never used to address the artifact. */
+  description?: string;
+  repository?: string;
+  license?: string;
+  documentation?: string;
 }
 
 /** Read the owner doc's identity + payload fields from a manifest, parsing once
@@ -45,5 +51,9 @@ export function readOwnerManifest(text: string): OwnerManifest {
     version: str(md.version),
     filesIntegrity: str(parsed?.filesIntegrity),
     declaresFiles: Array.isArray(parsed?.files) && parsed.files.length > 0,
+    description: str(md.description),
+    repository: str(md.repository),
+    license: str(md.license),
+    documentation: str(md.documentation),
   };
 }

@@ -32,6 +32,11 @@ export interface OciManifest {
   artifactType?: string;
   config: OciDescriptor;
   layers: OciDescriptor[];
+  /** Descriptive key/value metadata on the manifest. Telo projects the module's
+   *  declared provenance into the standard `org.opencontainers.image.*` keys —
+   *  the only metadata channel GHCR exposes, since it does not serve the
+   *  referrers API. */
+  annotations?: Record<string, string>;
 }
 
 function sha256Hex(bytes: Uint8Array): string {

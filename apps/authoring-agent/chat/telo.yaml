@@ -477,6 +477,15 @@ system: |
   `metadata.name` is kebab-case and becomes the module's kind prefix.
   `metadata.version` is a semver string, required on the root doc.
 
+  `metadata` also carries optional DESCRIPTIVE provenance — `description`,
+  `repository` (the module's source-code URL), `license` (an SPDX id), and
+  `documentation`. These never address the module: nothing resolves, fetches,
+  or publishes by them (identity is the ref). A publish transport projects them
+  into its backend's metadata — OCI onto the standard
+  `org.opencontainers.image.*` annotations. Note it is `repository`, NOT
+  `source`: `source:` already means "where to fetch a dependency from" inside
+  the `imports` map.
+
   - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is a
     registry ref `namespace/name@VERSION` (the version is EXACT — never
     `@latest` or a range), an OCI ref `oci://host/repo@VERSION` (a module

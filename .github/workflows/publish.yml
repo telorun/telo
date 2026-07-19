@@ -16,6 +16,7 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+      packages: write
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
@@ -49,6 +50,17 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/changie" --version
 
+      # Modules dual-publish to OCI. The transport reads the ambient Docker
+      # credential chain, so logging in here is what authorizes the second push
+      # pass; TELO_OCI_REGISTRY below is what enables it.
+      - name: Log in to GHCR
+        if: vars.TELO_OCI_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release PR or publish
         id: changesets
         uses: changesets/action@v1
@@ -62,6 +74,16 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_REGISTRY: ${{ vars.TELO_REGISTRY }}
           TELO_REGISTRY_TOKEN: ${{ secrets.TELO_REGISTRY_TOKEN }}
+          # Unset skips the OCI pass entirely — set the repo variable to
+          # `oci://ghcr.io/telorun` to enable dual-publish.
+          #
+          # BEFORE setting it, run `scripts/publish-oci-backfill.mjs` once
+          # against the destination. The release path only pushes manifests
+          # whose version moved, but `telo publish` hard-fails when a relative
+          # sibling does not already resolve at the destination — so on an empty
+          # registry the 22 modules with sibling imports fail, and the version
+          # gate means they are not retried until their own version moves again.
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
 
   # Fallback for releases that touch zero npm packages (manifest-only / Rust-only modules):
   # changesets/action never opens a Version PR for them, so module changie fragments have no

@@ -168,25 +168,47 @@ export class RegistryTransport implements Transport {
     return Array.isArray(body.versions) ? body.versions : [];
   }
 
-  async digest(ref: string): Promise<string | null> {
-    // Mirrors the sources' fetch-URL derivation: a direct URL points at (or
-    // contains) the YAML file; a bare registry ref folds into the registry
-    // layout. The digest is Telo's canonical hash over the `telo.yaml` bytes.
+  /** Mirrors the sources' fetch-URL derivation: a direct URL points at (or
+   *  contains) the YAML file; a bare registry ref folds into the registry
+   *  layout. `null` when this transport does not own the ref's shape. */
+  private manifestUrl(ref: string): string | null {
     const { base } = splitIntegrity(ref);
-    let fetchUrl: string;
     if (base.startsWith("http://") || base.startsWith("https://")) {
-      fetchUrl = base.includes(".yaml") ? base : `${base}/${DEFAULT_MANIFEST_FILENAME}`;
-    } else if (isRegistryRef(ref)) {
-      const { modulePath, version } = parseModuleRef(ref);
-      fetchUrl = `${this.registryUrl.replace(/\/+$/, "")}/${modulePath}/${version}/${DEFAULT_MANIFEST_FILENAME}`;
-    } else {
-      return null;
+      return base.includes(".yaml") ? base : `${base}/${DEFAULT_MANIFEST_FILENAME}`;
     }
+    if (isRegistryRef(ref)) {
+      const { modulePath, version } = parseModuleRef(ref);
+      return `${this.registryUrl.replace(/\/+$/, "")}/${modulePath}/${version}/${DEFAULT_MANIFEST_FILENAME}`;
+    }
+    return null;
+  }
+
+  async digest(ref: string): Promise<string | null> {
+    // The digest is Telo's canonical hash over the `telo.yaml` bytes — the same
+    // value `manifestHash` returns, but absent-is-null rather than a throw.
+    const fetchUrl = this.manifestUrl(ref);
+    if (!fetchUrl) return null;
     await assertPublicEgress(fetchUrl);
     const res = await fetch(fetchUrl);
     if (res.status === 404) return null;
     if (!res.ok) {
       throw new Error(`Registry returned ${res.status} ${res.statusText} for ${fetchUrl}`);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return `sha256-${await sha256Base64Url(bytes)}`;
+  }
+
+  /** Hashes the **raw response bytes**, which is exactly what `verifiedFetch`
+   *  checks an inline `#sha256-…` pin against on the read path. */
+  async manifestHash(ref: string): Promise<string> {
+    const fetchUrl = this.manifestUrl(ref);
+    if (!fetchUrl) {
+      throw new Error(`cannot hash non-remote import '${ref}'`);
+    }
+    await assertPublicEgress(fetchUrl);
+    const res = await fetch(fetchUrl);
+    if (!res.ok) {
+      throw new Error(`fetch ${fetchUrl}: ${res.status} ${res.statusText}`);
     }
     const bytes = new Uint8Array(await res.arrayBuffer());
     return `sha256-${await sha256Base64Url(bytes)}`;
