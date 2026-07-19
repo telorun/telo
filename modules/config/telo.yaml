@@ -3,6 +3,8 @@ metadata:
   name: "config"
   namespace: std
   version: "0.5.0"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Environment and configuration providers. Deprecated in favour of
     application-level `variables:` / `secrets:` with `env:` bindings; retained

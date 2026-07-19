@@ -3,6 +3,8 @@ metadata:
   name: fs
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Local filesystem access. Read, write, edit, list, create, and remove files
     and directories on the host the kernel runs on, via Node `fs/promises`.

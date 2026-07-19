@@ -3,6 +3,8 @@ metadata:
   name: ai-openai
   namespace: std
   version: 0.10.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: OpenAI-compatible provider for Ai.Model (direct /chat/completions HTTP API, no vendor SDK).
 imports:
   Ai: ../ai

@@ -3,6 +3,8 @@ metadata:
   name: crud
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Crud.Resource — a single declarative resource that exposes a full REST CRUD
     API (list / read / create / update / delete) over a SQL table. It is a

@@ -3,6 +3,8 @@ metadata:
   name: rate-limit
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     RateLimit.Guard — a transport-neutral sliding-window rate limiter. Counters
     live in any Cache.Store (cache-memory, cache-redis), so the limiter composes

@@ -3,6 +3,8 @@ metadata:
   name: shell
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: >-
     Run shell commands behind a transport-neutral host abstraction. The
     Shell.Host abstract plus the Command / CommandStream operations; the bundled

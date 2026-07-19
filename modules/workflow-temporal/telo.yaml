@@ -3,6 +3,8 @@ metadata:
   name: workflow-temporal
   namespace: std
   version: 0.3.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: Temporal backend provider for Workflow.Graph
 imports:
   # Import the workflow module so `Workflow.Backend` resolves from `extends` below.

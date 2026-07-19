@@ -3,6 +3,8 @@ metadata:
   name: record-stream
   namespace: std
   version: 0.8.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Stream operations on structured records. Generic, format-neutral
     transformers / sources / sinks that operate on `Stream<record>`.

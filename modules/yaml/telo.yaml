@@ -3,6 +3,8 @@ metadata:
   name: yaml
   namespace: std
   version: 0.5.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     YAML parsing for Telo manifests. Currently exposes `Yaml.Parse` — a batch
     parser that accepts a UTF-8 string and returns the parsed documents as plain

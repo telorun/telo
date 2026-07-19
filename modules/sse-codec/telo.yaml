@@ -3,6 +3,8 @@ metadata:
   name: sse-codec
   namespace: std
   version: 0.6.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Server-Sent Events codec — event-record stream ↔ byte iterables. Encoder
     produces one SSE frame per item: `event: <type>\ndata: <json>\n\n`. Decoder

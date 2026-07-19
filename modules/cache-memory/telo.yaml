@@ -3,6 +3,8 @@ metadata:
   name: cache-memory
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     CacheMemory.Store — an in-process, freshness-aware backend for the Cache
     abstract. Zero external dependencies; ideal for single-instance deployments,

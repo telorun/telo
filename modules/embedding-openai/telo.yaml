@@ -3,6 +3,8 @@ metadata:
   name: embedding-openai
   namespace: std
   version: 0.4.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     EmbeddingOpenai.Model — OpenAI-compatible backend for the Embedding.Model
     abstract. Speaks the OpenAI /embeddings HTTP API directly (no vendor SDK),

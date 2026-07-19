@@ -1,6 +1,8 @@
 kind: Telo.Library
 metadata:
   version: 0.7.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   name: starlark
   namespace: std
   description: Execute Starlark code within workflows

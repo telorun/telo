@@ -3,6 +3,8 @@ metadata:
   name: octet-codec
   namespace: std
   version: 0.5.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     Raw-bytes codec — Uint8Array stream ↔ Uint8Array. Encoder passes byte
     chunks through unchanged. Decoder collects every chunk into a single

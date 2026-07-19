@@ -3,6 +3,8 @@ metadata:
   name: codec
   namespace: std
   version: 0.4.1
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
   description: |
     The Encoder and Decoder abstracts — Invocable contracts every concrete
     stream codec implements. Format-specific codec packages (plain-text-codec,
