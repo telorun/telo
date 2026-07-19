@@ -142,7 +142,3 @@ export async function create(
   return new PdfFormFields(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

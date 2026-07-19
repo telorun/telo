@@ -423,7 +423,3 @@ export async function create(
   return new OpenaiModelInstance(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

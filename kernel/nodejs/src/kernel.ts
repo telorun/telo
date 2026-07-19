@@ -483,13 +483,17 @@ export class Kernel implements IKernel {
         );
       }
       // Bake the per-kind resource-config validators too. `_createInstance`
-      // compiles `controller.schema` (which falls back to the definition's own
-      // `schema`) for every resource at runtime — work this analyze-only pass
-      // otherwise skips because it stops before instantiation, leaving the
-      // runtime to recompile and fail to persist them on a read-only image.
+      // compiles the definition's `schema` for every resource at runtime — work
+      // this analyze-only pass otherwise skips because it stops before
+      // instantiation, leaving the runtime to recompile and fail to persist
+      // them on a read-only image.
       // Pre-compiling every `Telo.Definition` schema here writes them into the
-      // same content-addressed `__validators/` cache the runtime reads.
-      precompileDefinitionSchemas(staticManifests, this.sharedSchemaValidator);
+      // same content-addressed `__validators/` cache the runtime reads. The
+      // resolver lets it also bake each `extends` child's inheritance-resolved
+      // schema — the form the runtime actually validates against.
+      precompileDefinitionSchemas(staticManifests, this.sharedSchemaValidator, (def) =>
+        this.registry.resolverForDefinition(def),
+      );
       // Framework/builtin controller schemas (`Telo.Import`, `Telo.Definition`,
       // the module controller, …) aren't in the static manifests but are
       // validated per-resource at runtime just the same. They're registered by
@@ -1040,12 +1044,17 @@ export class Kernel implements IKernel {
         `Controller for ${kind} does not implement create method`,
       );
     }
-    if (!controller.schema?.type) {
-      throw new Error(`No schema defined for ${kind} controller`);
+    // The DEFINITION is the sole resource-config contract — a controller module
+    // cannot supply or override one. Keeping the schema on the manifest is what
+    // lets `telo check` see it, the validator warm bake it, and the editor render
+    // it; a code-side schema was invisible to all three and free to drift.
+    const definition = this.controllers.getDefinition(resolvedKind);
+    const configSchema = definition?.schema as Record<string, unknown> | undefined;
+    if (!configSchema?.type) {
+      throw new Error(`No schema defined for kind ${kind}`);
     }
 
     // Resolve eval paths from x-telo-eval annotations in the parent and own schema
-    const definition = this.controllers.getDefinition(resolvedKind);
     const parentDef = definition?.capability
       ? this.controllers.getDefinition(definition.capability)
       : undefined;
@@ -1063,8 +1072,8 @@ export class Kernel implements IKernel {
     // restoring the pre-CEL string view that the schema expects.
     try {
       this.sharedSchemaValidator
-        .compile(controller.schema)
-        .validate(stripCompiledValues(resource, controller.schema as Record<string, unknown>));
+        .compile(configSchema)
+        .validate(stripCompiledValues(resource, configSchema));
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",

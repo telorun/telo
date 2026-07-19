@@ -103,6 +103,108 @@ describe("withInstallLock", () => {
   );
 });
 
+// Package installs dedupe per alias, so N controllers are N withInstallLock
+// calls on ONE root. They must queue in memory rather than each polling the
+// filesystem lock and printing the cross-process wait notice — `telo install`
+// with 52 controllers printed 51 of them.
+describe("same-process queuing", () => {
+  /** Capture stderr for the duration of `fn`. */
+  async function captureStderr(fn: () => Promise<unknown>): Promise<string> {
+    const original = process.stderr.write;
+    let out = "";
+    (process.stderr as NodeJS.WriteStream).write = ((chunk: unknown) => {
+      out += String(chunk);
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      await fn();
+    } finally {
+      process.stderr.write = original;
+    }
+    return out;
+  }
+
+  it("does not print a wait notice when the holder is this process", async () => {
+    // The holder runs longer than LOCK_WAIT_NOTICE_MS (2s): pre-fix each waiter
+    // crossed that threshold on the fs lock and announced itself.
+    const out = await captureStderr(async () => {
+      const calls = Array.from({ length: 8 }, (_, i) =>
+        withInstallLock(root, async () => {
+          if (i === 0) await new Promise((r) => setTimeout(r, 2_500));
+        }),
+      );
+      await Promise.all(calls);
+    });
+    expect(out).not.toContain("waiting for controller install lock");
+  }, 20_000);
+
+  it("leaves no lock file behind and runs every queued caller exactly once", async () => {
+    let runs = 0;
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        withInstallLock(root, async () => {
+          runs++;
+        }),
+      ),
+    );
+    expect(runs).toBe(8);
+    expect(await exists(lockPath())).toBe(false);
+  });
+
+  it("never overlaps two queued callers' critical sections", async () => {
+    let active = 0;
+    let maxActive = 0;
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        withInstallLock(root, async () => {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((r) => setTimeout(r, 5));
+          active--;
+        }),
+      ),
+    );
+    expect(maxActive).toBe(1);
+  });
+
+  it("a failing caller does not wedge the queue behind it", async () => {
+    const results = await Promise.allSettled([
+      withInstallLock(root, async () => {
+        throw new Error("boom");
+      }),
+      withInstallLock(root, async () => "second"),
+      withInstallLock(root, async () => "third"),
+    ]);
+    expect(results[0].status).toBe("rejected");
+    expect(results[1]).toMatchObject({ status: "fulfilled", value: "second" });
+    expect(results[2]).toMatchObject({ status: "fulfilled", value: "third" });
+  });
+
+  it("still prints the notice when another PROCESS holds the lock", async () => {
+    // A foreign, heartbeat-fresh lock: the notice's actual purpose. Kept fresh
+    // so `reclaimIfStale` can't repossess it mid-wait.
+    await fs.writeFile(
+      lockPath(),
+      JSON.stringify({ pid: process.pid + 1, host: "elsewhere", startedAt: Date.now() }),
+    );
+    const beat = setInterval(() => {
+      const now = new Date();
+      void fs.utimes(lockPath(), now, now).catch(() => {});
+    }, 1_000);
+    try {
+      const out = await captureStderr(async () => {
+        const attempt = withInstallLock(root, async () => "unreachable");
+        await new Promise((r) => setTimeout(r, 2_800));
+        await fs.rm(lockPath(), { force: true });
+        await attempt;
+      });
+      expect(out).toContain("waiting for controller install lock");
+    } finally {
+      clearInterval(beat);
+    }
+  }, 20_000);
+});
+
 describe("reclaimIfStale", () => {
   it("returns false and leaves a fresh lock untouched", async () => {
     await fs.writeFile(lockPath(), "{}");

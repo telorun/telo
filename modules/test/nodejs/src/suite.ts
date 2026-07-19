@@ -26,7 +26,7 @@ export const args = {
   filter: { type: "string" as const, alias: "f", description: "Filter tests by name substring" },
 };
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
   }),

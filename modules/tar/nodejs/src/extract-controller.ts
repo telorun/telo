@@ -144,7 +144,3 @@ export async function create(
   return new TarExtract(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

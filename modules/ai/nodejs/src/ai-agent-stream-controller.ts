@@ -196,7 +196,3 @@ export async function create(resource: AiAgentStreamResource): Promise<AiAgentSt
   return new AiAgentStream(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

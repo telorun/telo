@@ -110,7 +110,3 @@ export async function create(resource: McpToolProviderResource): Promise<McpTool
   return new McpToolProvider(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

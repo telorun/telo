@@ -332,30 +332,3 @@ function validateRequiredInputs(
   }
 }
 
-export const schema = {
-  type: "object",
-  properties: {
-    kind: { type: "string" },
-    metadata: {
-      type: "object",
-      properties: {
-        name: { type: "string" },
-        module: { type: "string" },
-      },
-      required: ["name"],
-      additionalProperties: true,
-    },
-    source: { type: "string" },
-    integrity: { type: "string" },
-    variables: { type: "object" },
-    secrets: { type: "object" },
-    runtime: {
-      oneOf: [
-        { type: "string" },
-        { type: "array", items: { type: "string" } },
-      ],
-    },
-  },
-  required: ["metadata", "source"],
-  additionalProperties: false,
-};

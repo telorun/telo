@@ -39,6 +39,30 @@ schema:
           type: string
       required:
         - name
+    resources:
+      title: Resources
+      description: Per-import expectations, keyed by the import alias.
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          variables:
+            type: object
+            additionalProperties: true
+          secrets:
+            type: object
+            additionalProperties: true
+        additionalProperties: false
+    variables:
+      title: Variables
+      description: Expected variable values in the named module's evaluation context.
+      type: object
+      additionalProperties: true
+    secrets:
+      title: Secrets
+      description: Expected secret values in the named module's evaluation context.
+      type: object
+      additionalProperties: true
   required:
     - metadata
 ---

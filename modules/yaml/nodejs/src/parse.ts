@@ -73,7 +73,3 @@ export async function create(
   return new YamlParse(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

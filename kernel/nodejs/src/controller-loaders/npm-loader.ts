@@ -548,6 +548,52 @@ async function resolveKernelPackageRoot(name: string): Promise<string | null> {
 }
 
 /**
+ * Serialize same-process callers for one install root, in memory, ahead of the
+ * filesystem lock.
+ *
+ * Package installs dedupe per alias, so N distinct controllers are N distinct
+ * `withInstallLock` calls against the SAME root. Without this queue they all
+ * contend through the filesystem: one wins and the rest poll `fs.open` every
+ * {@link LOCK_RETRY_MS} for the whole install, each crossing
+ * {@link LOCK_WAIT_NOTICE_MS} and printing the wait notice — a notice whose
+ * whole point is "another Telo *process* holds this", which is misleading when
+ * the holder is us. (`telo install` fanning 52 controllers out through one
+ * `Promise.allSettled` printed 51 of them.)
+ *
+ * Queuing here means exactly one caller per process reaches the fs lock, so the
+ * notice regains its cross-process meaning and the losers do no I/O at all. The
+ * fs lock is untouched and still provides the cross-process guarantee.
+ */
+const localInstallQueues = new Map<string, Promise<unknown>>();
+
+function withLocalInstallQueue<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
+  const prev = localInstallQueues.get(installRoot) ?? Promise.resolve();
+  // Run on both settle paths: one failed install must not wedge the queue.
+  const run = prev.then(fn, fn);
+  // The stored tail never rejects — a failure neither poisons followers nor
+  // surfaces as an unhandled rejection on the chain copy.
+  const tail = run.then(
+    () => {},
+    () => {},
+  );
+  localInstallQueues.set(installRoot, tail);
+  // Drop the entry once nothing further is queued, so a long-lived process that
+  // touches many entry dirs doesn't retain a promise per root forever.
+  void tail.then(() => {
+    if (localInstallQueues.get(installRoot) === tail) localInstallQueues.delete(installRoot);
+  });
+  return run;
+}
+
+/**
+ * Acquire the install lock for `installRoot` and run `fn` under it: first the
+ * in-process queue above, then the cross-process filesystem lock.
+ */
+async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
+  return withLocalInstallQueue(installRoot, () => withFileInstallLock(installRoot, fn));
+}
+
+/**
  * Acquire a process-portable lock on `<root>/.lock` and execute fn while
  * holding it. `fs.open(path, 'wx')` is atomic on POSIX and Windows, so
  * concurrent processes serialize naturally.
@@ -565,7 +611,7 @@ async function resolveKernelPackageRoot(name: string): Promise<string | null> {
  * invocation, and any state-file writes. It does NOT serialize *reads* of
  * already-installed controllers — those run lock-free against a stable tree.
  */
-async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
+async function withFileInstallLock<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
   const lockPath = path.join(installRoot, ".lock");
 
   await fs.mkdir(installRoot, { recursive: true });

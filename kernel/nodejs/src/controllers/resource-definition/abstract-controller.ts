@@ -50,7 +50,3 @@ export async function create(resource: any, _ctx: ResourceContext): Promise<Reso
   return new ResourceAbstract(resource as unknown as ResourceAbstractResource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

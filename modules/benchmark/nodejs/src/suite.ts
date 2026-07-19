@@ -20,7 +20,7 @@ const ScenarioEntry = Type.Object(
   { additionalProperties: true },
 );
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({ name: Type.String() }),
   duration: Type.Optional(Type.String()),
   requests: Type.Optional(Type.Integer()),

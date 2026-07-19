@@ -2,7 +2,7 @@ import { InvokeError, ResourceContext } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import { createColors } from "./colors.js";
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
   }),

@@ -12,8 +12,8 @@
 // Env: TELO_REGISTRY (default: https://registry.telo.run)
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +45,47 @@ function manifestVersionAt(ref, yamlPath) {
   if (!metaMatch) return null;
   const versionMatch = metaMatch[1].match(/^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+)["']?[ \t]*$/m);
   return versionMatch ? versionMatch[1] : null;
+}
+
+// Sibling module names an `imports:` entry of the first YAML document points at with a
+// relative source (`../<name>`, bare or object `source:` form). `telo publish` canonicalizes
+// those to registry refs and verifies each resolves at its published location, so a sibling
+// bumped in the same release must be pushed first.
+function relativeImportDeps(yamlPath) {
+  const content = readFileSync(yamlPath, "utf8");
+  const docEnd = content.search(/^---\s*$/m);
+  const firstDoc = docEnd === -1 ? content : content.slice(0, docEnd);
+  const block = firstDoc.match(/^imports:\s*\n((?:(?:[ \t]+.*)?\n)+)/m);
+  if (!block) return [];
+  const deps = new Set();
+  for (const line of block[1].split("\n")) {
+    const source = line.match(/:[ \t]*["']?(\.\.?\/[^"'#\s]+)/);
+    if (source) deps.add(basename(source[1].replace(/\/telo\.yaml$/, "").replace(/\/+$/, "")));
+  }
+  return [...deps];
+}
+
+// Depth-first topological order over the batch's relative imports, so a dependency is pushed
+// before its dependents. Ties and cycle members keep their incoming (alphabetical) order.
+function orderByDependencies(paths) {
+  const byName = new Map(paths.map((p) => [basename(dirname(p)), p]));
+  const ordered = [];
+  const state = new Map();
+  const visit = (name) => {
+    if (state.get(name) === "done") return;
+    if (state.get(name) === "visiting") {
+      console.warn(`  warning: import cycle through module '${name}' — publish order may be wrong`);
+      return;
+    }
+    state.set(name, "visiting");
+    for (const dep of relativeImportDeps(byName.get(name))) {
+      if (byName.has(dep)) visit(dep);
+    }
+    state.set(name, "done");
+    ordered.push(byName.get(name));
+  };
+  for (const name of byName.keys()) visit(name);
+  return ordered;
 }
 
 runLive("pnpm changeset publish");
@@ -86,12 +127,14 @@ if (manifests.length === 0) {
   process.exit(0);
 }
 
-console.log(`\nPushing ${manifests.length} module manifest(s) to ${registry}:`);
-for (const m of manifests) console.log(`  ${m.replace(ROOT + "/", "")}`);
+const publishOrder = orderByDependencies(manifests);
+
+console.log(`\nPushing ${publishOrder.length} module manifest(s) to ${registry}:`);
+for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
 console.log("");
 
 const failures = [];
-for (const m of manifests) {
+for (const m of publishOrder) {
   const rel = m.replace(ROOT + "/", "");
   try {
     runLive(

@@ -218,6 +218,26 @@ export class AnalysisRegistry {
     return ctx.definitions?.resolve(kind) ?? (resolved ? ctx.definitions?.resolve(resolved) : undefined);
   }
 
+  /** A resolver scoped to `def`'s OWN module, for resolving that definition's
+   *  `extends` target.
+   *
+   *  `extends` aliases are lexically scoped to the declaring library — a library
+   *  writes `extends: Cache.Store` against its own import map, and `Self.Host`
+   *  against its own module name. The global alias table knows neither, so
+   *  {@link resolveDefinition} silently returns undefined for them and callers
+   *  fall back to an un-inherited view. Mirrors the module-scope selection in
+   *  `expandedFieldMapForResource`. */
+  resolverForDefinition(def: {
+    metadata?: { module?: string };
+  }): (kind: string) => ResourceDefinition | undefined {
+    const ownModule = def?.metadata?.module;
+    const scope = (ownModule ? this.aliasesByModule.get(ownModule) : undefined) ?? this.aliases;
+    return (kind) => {
+      const canonical = scope.resolveKind(kind);
+      return this.defs.resolve(kind) ?? (canonical ? this.defs.resolve(canonical) : undefined);
+    };
+  }
+
   /** Canonical kinds (`module.Name`) of every definition that extends the given
    *  abstract kind — the concrete implementations a caller may instantiate in
    *  its place. Empty when `kind` is not an abstract or has no implementations. */

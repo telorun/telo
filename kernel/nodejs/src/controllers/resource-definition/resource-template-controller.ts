@@ -61,8 +61,6 @@ export function createTemplateController(definition: {
   result?: Record<string, any>;
 }, definingContext: EvaluationContext): ControllerInstance {
   return {
-    schema: definition.schema ?? { type: "object", additionalProperties: true },
-
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before

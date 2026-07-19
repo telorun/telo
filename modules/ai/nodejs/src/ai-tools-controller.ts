@@ -101,7 +101,3 @@ export async function create(resource: AiToolsResource, ctx: ResourceContext): P
   return new AiTools(resource, ctx);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

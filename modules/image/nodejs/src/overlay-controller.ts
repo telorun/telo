@@ -134,7 +134,3 @@ export async function create(
   return new ImageOverlay(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

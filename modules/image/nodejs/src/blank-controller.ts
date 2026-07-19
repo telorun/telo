@@ -89,7 +89,3 @@ export async function create(
   return new ImageBlank(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};

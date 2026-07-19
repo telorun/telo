@@ -1,7 +1,7 @@
 import { ResourceContext } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 
-export const schema = Type.Object({
+const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
   }),

@@ -55,7 +55,3 @@ export async function create(
   return new StreamOf(resource);
 }
 
-export const schema = {
-  type: "object",
-  additionalProperties: true,
-};
