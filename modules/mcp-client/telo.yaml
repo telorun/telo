@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: mcp-client
   namespace: std
-  version: 0.6.0
+  version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -99,7 +99,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#http-client
+  - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#http-client
 schema:
   type: object
   additionalProperties: false
@@ -157,7 +157,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#stdio-client
+  - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#stdio-client
 schema:
   type: object
   additionalProperties: false
@@ -211,7 +211,7 @@ metadata:
   description: Invokes a named MCP tool via tools/call on a referenced Mcp.Client and returns its content blocks.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-call
+  - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#tools-call
 schema:
   type: object
   additionalProperties: false
@@ -310,7 +310,7 @@ metadata:
   description: Lists the tools advertised by an MCP server via tools/list on a referenced Mcp.Client.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.4.1?local_path=./nodejs#tools-list
+  - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#tools-list
 schema:
   type: object
   additionalProperties: false

@@ -1,5 +1,7 @@
 # Changelog
-## 0.11.0 - 2026-07-19
+## 0.12.0 - 2026-07-19
+### Added
+* Update controller @telorun/ai-openai to 0.9.0.## 0.11.0 - 2026-07-19
 ### Added
 * Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.
 ### Fixed

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: embedding-openai
   namespace: std
-  version: 0.5.0
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -24,7 +24,7 @@ metadata:
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:
-  - pkg:npm/@telorun/embedding-openai@0.3.0?local_path=./nodejs#model
+  - pkg:npm/@telorun/embedding-openai@0.4.0?local_path=./nodejs#model
 schema:
   type: object
   required: [model, apiKey]
