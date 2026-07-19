@@ -1,6 +1,6 @@
 {
   "name": "@telorun/yaml",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Telo YAML module — batch YAML parsing for Telo manifests.",
   "keywords": [
     "telo",

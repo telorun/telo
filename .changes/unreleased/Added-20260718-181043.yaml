@@ -1,6 +1,0 @@
-project: hub
-kind: Added
-body: Index and serve each module's declared repository and license alongside its
-  description, on /search/modules, /search/resources, /refs, and the search_resources
-  MCP tool.
-time: 2026-07-18T18:10:43.26053612Z

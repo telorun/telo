@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-openai
   namespace: std
-  version: 0.10.0
+  version: 0.11.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: OpenAI-compatible provider for Ai.Model (direct /chat/completions HTTP API, no vendor SDK).
@@ -19,7 +19,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai-openai@0.8.0?local_path=./nodejs#openai-model
+  - pkg:npm/@telorun/ai-openai@0.8.1?local_path=./nodejs#openai-model
 schema:
   type: object
   properties:

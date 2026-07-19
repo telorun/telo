@@ -1,5 +1,7 @@
 # Changelog
-## 0.17.1 - 2026-07-14
+## 0.18.0 - 2026-07-19
+### Added
+* Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.## 0.17.1 - 2026-07-14
 ### Fixed
 * Update controller @telorun/http-server to 0.15.2.## 0.17.0 - 2026-07-12
 ### Added

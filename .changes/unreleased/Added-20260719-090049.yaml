@@ -1,4 +1,0 @@
-project: workflow-temporal
-kind: Added
-body: Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.
-time: 2026-07-19T09:00:49.000000000Z

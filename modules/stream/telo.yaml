@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: stream
   namespace: std
-  version: 0.4.0
+  version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -37,7 +37,7 @@ metadata:
   description: Emits a list of items as a stream, in order — declared statically or supplied at invoke time.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.4.0?local_path=./nodejs#of
+  - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#of
 schema:
   type: object
   properties:
@@ -79,7 +79,7 @@ metadata:
   description: Drains an input stream to completion and returns every item as an array, in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.4.0?local_path=./nodejs#collect
+  - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#collect
 inputType:
   kind: Type.JsonSchema
   schema:

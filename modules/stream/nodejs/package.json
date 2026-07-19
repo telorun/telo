@@ -1,6 +1,6 @@
 {
   "name": "@telorun/stream",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Generic stream substrate — value-agnostic stream construction (Stream.Of).",
   "keywords": [
     "telo",

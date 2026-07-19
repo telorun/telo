@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store-pgvector
   namespace: std
-  version: 0.2.0
+  version: 0.3.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |

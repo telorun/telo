@@ -1,5 +1,9 @@
 # Changelog
-## 0.4.0 - 2026-07-12
+## 0.5.0 - 2026-07-19
+### Added
+* Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.
+### Fixed
+* Update controller @telorun/stream to 0.4.1.## 0.4.0 - 2026-07-12
 ### Added
 * Update controller @telorun/stream to 0.4.0.
 * Describe exported resource kinds via metadata.description for semantic discovery.## 0.3.0 - 2026-07-05

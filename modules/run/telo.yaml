@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: run
   namespace: std
-  version: 0.12.0
+  version: 0.13.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: Run sequence of invocable resources with if, while, switch, and try steps

@@ -1,5 +1,49 @@
 # @telorun/analyzer
 
+## 0.38.0
+
+### Minor Changes
+
+- 0368e6f: Declare module provenance in `metadata`, projected into OCI annotations.
+
+  `Telo.Application` and `Telo.Library` metadata now accept four optional
+  descriptive fields: `description`, `repository` (the module's source-code URL),
+  `license`, and `documentation`. An OCI publish maps them onto the standard
+  `org.opencontainers.image.*` annotations (`repository` → `source`, `license` →
+  `licenses`), which is the only metadata channel GHCR exposes — it does not serve
+  the referrers API. Fields a module does not declare are omitted rather than
+  written empty. An HTTP registry publish stores the manifest verbatim, so nothing
+  needs translating there.
+
+  These are descriptive, never addressing: nothing resolves, fetches, caches, or
+  publishes by them, so identity remains the ref. The field is `repository` rather
+  than `source` because `source:` already means "where to fetch a dependency from"
+  inside the `imports` map.
+
+### Patch Changes
+
+- 8af345f: Bake `extends`-resolved schemas in the build-time validator warm.
+
+  A `base:`-less `extends` child is validated at runtime against
+  `merge(parent, own)`, but the warm pass compiled only the raw `schema:`. The
+  validator cache is content-addressed, so those are different keys — every
+  inheriting kind missed the warm on every boot, recompiling its validator and,
+  on a read-only image, failing to persist it (`EACCES` writing
+  `.telo/manifests/__validators/`).
+
+  `precompileDefinitionSchemas` now also compiles the inheritance-resolved form,
+  sharing `effectiveAuthorSchema` with the runtime stamp so the two keys cannot
+  drift. The raw schema is still baked — it backs definitions that don't inherit
+  and the `controller.schema` fallback path.
+
+  The parent is resolved through the new `AnalysisRegistry.resolverForDefinition`,
+  scoped to the DECLARING module. `extends` aliases are lexically scoped — a
+  library writes `extends: Cache.Store` against its own import map and `Self.Host`
+  against its own name — so a global resolver silently fails on both and bakes the
+  un-merged schema, reintroducing the miss.
+
+  - @telorun/templating@0.10.1
+
 ## 0.37.0
 
 ### Minor Changes

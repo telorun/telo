@@ -1,4 +1,0 @@
-project: yaml
-kind: Added
-body: Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.
-time: 2026-07-19T09:00:50.000000000Z
