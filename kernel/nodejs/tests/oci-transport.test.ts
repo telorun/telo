@@ -100,7 +100,11 @@ function mockRegistry(opts: { requireAuth?: boolean } = {}) {
     return new Response("not found", { status: 404 });
   };
 
-  return { impl, tokenRequests: () => tokenRequests };
+  return {
+    impl,
+    tokenRequests: () => tokenRequests,
+    manifestJson: (repo: string, ref: string) => JSON.parse(manifests.get(`${repo}|${ref}`) ?? "{}"),
+  };
 }
 
 const MANIFEST =
@@ -174,6 +178,57 @@ describe("OciTransport round-trip against a mock registry", () => {
     expect(payload?.content.toString()).toBe("hi");
 
     expect(await t.listVersions("oci://reg.test/aws/telo-s3@1.2.0")).toEqual(["1.2.0"]);
+  });
+
+  it("projects declared provenance onto org.opencontainers.image.* annotations", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    const manifest =
+      "kind: Telo.Library\nmetadata:\n  name: s3\n  version: 1.2.0\n" +
+      "  description: Object storage\n  repository: https://github.com/aws/telo-s3\n" +
+      "  license: Apache-2.0\n  documentation: https://example.test/docs\n";
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest, files: [] });
+
+    expect(reg.manifestJson("aws/telo-s3", "1.2.0").annotations).toEqual({
+      "org.opencontainers.image.title": "s3",
+      "org.opencontainers.image.version": "1.2.0",
+      "org.opencontainers.image.description": "Object storage",
+      "org.opencontainers.image.source": "https://github.com/aws/telo-s3",
+      "org.opencontainers.image.licenses": "Apache-2.0",
+      "org.opencontainers.image.documentation": "https://example.test/docs",
+    });
+  });
+
+  it("omits annotations a module did not declare", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    // MANIFEST declares only name/namespace/version — no provenance fields.
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+
+    expect(reg.manifestJson("aws/telo-s3", "1.2.0").annotations).toEqual({
+      "org.opencontainers.image.title": "s3",
+      "org.opencontainers.image.version": "1.2.0",
+    });
+  });
+
+  it("rejects a host-only destination instead of deriving the repo from metadata", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    // MANIFEST declares namespace/name, which the old default would have turned
+    // into `reg.test/aws/s3` — a namespace the publisher may not own.
+    await expect(t.publish("oci://reg.test", { manifest: MANIFEST, files: [] })).rejects.toThrow(
+      /host-only/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("performs the WWW-Authenticate token handshake", async () => {

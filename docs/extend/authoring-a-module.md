@@ -34,6 +34,26 @@ exports:
 
 `metadata.name` becomes the kind prefix — definitions in this file are referenced as `Console.<Kind>` by importers. See [Module System](/reference/kernel/modules) for imports, aliases, and exports.
 
+### Provenance
+
+`metadata` also takes optional descriptive fields — `description`, `repository`, `license`, and `documentation`:
+
+```yaml
+metadata:
+  name: console
+  version: 0.9.0
+  description: Write lines to stdout and read them back from stdin.
+  repository: https://github.com/telorun/telo
+  license: Apache-2.0
+  documentation: https://telo.run/reference/std/console
+```
+
+These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.
+
+Publishing projects them into whatever the destination surfaces. An OCI publish maps them onto the standard `org.opencontainers.image.*` annotations (`repository` → `source`, `license` → `licenses`), which is what makes a published package show a description and link back to its source in registry UIs. An HTTP registry publish stores the manifest verbatim, so the fields are preserved as declared.
+
+Note the field is `repository`, not `source`: inside the `imports` map, `source:` already means "where to fetch a dependency from", and reusing the word for "where this module is developed" in the same file would be ambiguous.
+
 ## Step 1 — declare the kind
 
 Add a `Telo.Definition` document for the new kind:

@@ -88,7 +88,9 @@ steps:
                         ref: { type: string }
                         version: { type: string }
                         description: { type: string }
-                      required: [ref, version, description]
+                        repository: { type: string }
+                        license: { type: string }
+                      required: [ref, version, description, repository, license]
                     score: { type: number }
                   required: [kind, capability, module, score]
                 contains:
@@ -138,7 +140,9 @@ steps:
                       type: object
                       properties:
                         ref: { const: std/console }
-                      required: [ref]
+                        repository: { type: string }
+                        license: { type: string }
+                      required: [ref, repository, license]
                     matchedKinds:
                       type: array
                       minItems: 1
@@ -196,7 +200,9 @@ steps:
                     ref: { const: std/console }
                     latestVersion: { type: string, minLength: 1 }
                     description: { type: string }
-                  required: [ref, latestVersion, description]
+                    repository: { type: string }
+                    license: { type: string }
+                  required: [ref, latestVersion, description, repository, license]
             required: [refs]
         required: [status, body]
 ---

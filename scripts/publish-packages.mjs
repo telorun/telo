@@ -8,13 +8,19 @@
 //    metadata.version and nothing else — manifest-only modules (no controllers, no
 //    nodejs/package.json) publish on exactly the same footing as controller modules.
 //
+// 3. When TELO_OCI_REGISTRY is set, push the same manifests a second time to that OCI base,
+//    one repo per module directory name (`<base>/<dir>`). Unset skips the pass entirely.
+//
 // Usage: node scripts/publish-packages.mjs
 // Env: TELO_REGISTRY (default: https://registry.telo.run)
+//      TELO_OCI_REGISTRY (no default; e.g. oci://ghcr.io/telorun — unset skips the OCI pass)
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { orderByDependencies } from "./module-publish-order.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -47,46 +53,7 @@ function manifestVersionAt(ref, yamlPath) {
   return versionMatch ? versionMatch[1] : null;
 }
 
-// Sibling module names an `imports:` entry of the first YAML document points at with a
-// relative source (`../<name>`, bare or object `source:` form). `telo publish` canonicalizes
-// those to registry refs and verifies each resolves at its published location, so a sibling
-// bumped in the same release must be pushed first.
-function relativeImportDeps(yamlPath) {
-  const content = readFileSync(yamlPath, "utf8");
-  const docEnd = content.search(/^---\s*$/m);
-  const firstDoc = docEnd === -1 ? content : content.slice(0, docEnd);
-  const block = firstDoc.match(/^imports:\s*\n((?:(?:[ \t]+.*)?\n)+)/m);
-  if (!block) return [];
-  const deps = new Set();
-  for (const line of block[1].split("\n")) {
-    const source = line.match(/:[ \t]*["']?(\.\.?\/[^"'#\s]+)/);
-    if (source) deps.add(basename(source[1].replace(/\/telo\.yaml$/, "").replace(/\/+$/, "")));
-  }
-  return [...deps];
-}
-
-// Depth-first topological order over the batch's relative imports, so a dependency is pushed
-// before its dependents. Ties and cycle members keep their incoming (alphabetical) order.
-function orderByDependencies(paths) {
-  const byName = new Map(paths.map((p) => [basename(dirname(p)), p]));
-  const ordered = [];
-  const state = new Map();
-  const visit = (name) => {
-    if (state.get(name) === "done") return;
-    if (state.get(name) === "visiting") {
-      console.warn(`  warning: import cycle through module '${name}' — publish order may be wrong`);
-      return;
-    }
-    state.set(name, "visiting");
-    for (const dep of relativeImportDeps(byName.get(name))) {
-      if (byName.has(dep)) visit(dep);
-    }
-    state.set(name, "done");
-    ordered.push(byName.get(name));
-  };
-  for (const name of byName.keys()) visit(name);
-  return ordered;
-}
+// Ordering lives in module-publish-order.mjs, shared with the OCI backfill.
 
 runLive("pnpm changeset publish");
 
@@ -129,31 +96,52 @@ if (manifests.length === 0) {
 
 const publishOrder = orderByDependencies(manifests);
 
-console.log(`\nPushing ${publishOrder.length} module manifest(s) to ${registry}:`);
-for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
-console.log("");
+// One push pass over the ordered manifests. `destinationFor` maps a manifest to
+// the `telo publish` destination positional; returning null keeps the default
+// registry (the `--registry` flag). Failures are collected rather than thrown so
+// one module can't abort the rest of the release — the HEAD^..HEAD gate means a
+// manifest skipped here isn't retried until its version moves again, so every
+// manifest must get a shot before the script exits non-zero.
+function pushAll(label, destinationFor) {
+  console.log(`\nPushing ${publishOrder.length} module manifest(s) to ${label}:`);
+  for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
+  console.log("");
 
-const failures = [];
-for (const m of publishOrder) {
-  const rel = m.replace(ROOT + "/", "");
-  try {
-    runLive(
-      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ${m}`,
-    );
-  } catch (err) {
-    // Don't let one module's push abort the rest of the release. Pushes are
-    // idempotent PUTs, but the gate on HEAD^..HEAD means a manifest skipped
-    // here won't be retried until its npm version moves again — so the loop
-    // must give every changed manifest a shot before exiting non-zero.
-    failures.push({ path: rel, message: err instanceof Error ? err.message : String(err) });
-    console.error(`\n  push failed for ${rel} — continuing with remaining manifests.`);
+  const failed = [];
+  for (const m of publishOrder) {
+    const rel = m.replace(ROOT + "/", "");
+    const destination = destinationFor(m);
+    try {
+      runLive(
+        `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ` +
+          `${destination ? `${destination} ` : ""}${m}`,
+      );
+    } catch (err) {
+      failed.push({ path: rel, target: label, message: err instanceof Error ? err.message : String(err) });
+      console.error(`\n  push to ${label} failed for ${rel} — continuing with remaining manifests.`);
+    }
   }
+  return failed;
+}
+
+const failures = pushAll(registry, () => null);
+
+// Dual-publish to OCI. `TELO_OCI_REGISTRY` has no default: unset skips the pass
+// entirely, so its presence is the gate and a fork or local run never pushes to
+// someone else's registry off ambient Docker credentials. The repo is the
+// module's directory name under the base — never `metadata.namespace`/`name`,
+// since identity is the ref.
+const ociRegistry = process.env.TELO_OCI_REGISTRY?.replace(/\/+$/, "");
+if (ociRegistry) {
+  failures.push(...pushAll(ociRegistry, (m) => `${ociRegistry}/${basename(dirname(m))}`));
+} else {
+  console.log("\nTELO_OCI_REGISTRY unset — skipping the OCI publish pass.");
 }
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} manifest push(es) failed:`);
   for (const f of failures) {
-    console.error(`  ${f.path}`);
+    console.error(`  ${f.path} → ${f.target}`);
     if (f.message) console.error(`    ${f.message.split("\n")[0]}`);
   }
   process.exit(1);

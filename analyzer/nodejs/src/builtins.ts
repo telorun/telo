@@ -1,5 +1,27 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 
+/** Descriptive provenance a module declares about itself, shared by
+ *  `Telo.Application` and `Telo.Library`.
+ *
+ *  These are *descriptive*, never *addressing* — nothing resolves, fetches,
+ *  caches, or publishes based on them, so they do not conflict with
+ *  identity-is-the-ref (which bans metadata from determining an artifact's
+ *  location). `repository` is the location of the module's **source code**, in
+ *  the same spirit as npm's `repository` / `license` / `homepage`. It is named
+ *  `repository` rather than `source` because `source:` already means "where to
+ *  fetch a dependency from" in the `imports` map.
+ *
+ *  A publish transport projects these into whatever its backend surfaces —
+ *  OCI maps them onto the standard `org.opencontainers.image.*` annotations;
+ *  the HTTP registry stores the manifest verbatim, so they are preserved as
+ *  declared with nothing to translate. */
+const PROVENANCE_METADATA = {
+  description: { type: "string" },
+  repository: { type: "string" },
+  license: { type: "string" },
+  documentation: { type: "string" },
+};
+
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
   { kind: "Telo.Abstract", metadata: { name: "Runnable", module: "Telo" } },
@@ -271,6 +293,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             version: { type: "string" },
             source: { type: "string" },
             module: { type: "string" },
+            ...PROVENANCE_METADATA,
           },
           required: ["name"],
           additionalProperties: true,
@@ -497,6 +520,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             version: { type: "string" },
             source: { type: "string" },
             module: { type: "string" },
+            ...PROVENANCE_METADATA,
           },
           required: ["name"],
           additionalProperties: true,

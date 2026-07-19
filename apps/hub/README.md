@@ -65,6 +65,15 @@ Search returns a fixed top-20 — no pagination. The static manifest read
 (`GET manifests.telo.sh/<transport>/<host>/<path…>/<version>/telo.yaml`) never
 touches this app.
 
+Every module hit carries the provenance the module declares in its
+`metadata` — `description`, `repository` (source-code URL), and `license` —
+indexed per tracked version and served on `/search/modules`,
+`/search/resources`, `/refs`, and the `search_resources` MCP tool. A module
+that declares none reports them as empty strings, never null.
+`/module/versions` is deliberately excluded: it returns a bare newest-first
+array of version strings that IDE completion indexes into, so it stays a
+version list rather than a metadata endpoint.
+
 ## Configuration
 
 | Env | Purpose |

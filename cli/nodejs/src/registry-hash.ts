@@ -1,28 +1,23 @@
-import { isRegistryRef, parseModuleRef, sha256Base64Url } from "@telorun/analyzer";
+import { defaultTransportRegistry } from "@telorun/kernel";
 
 /**
  * Fetch a remote import's published `telo.yaml` and return its integrity hash
- * (`sha256-<base64url>`). Builds the URL exactly as `RegistrySource` does and
- * hashes the raw response bytes, so the value matches what the consumer's
- * `read()` verifies. Used by `telo publish` (import pinning) and `telo upgrade`
- * (re-pin on version change). Throws when the ref is not remote or the fetch
- * fails — callers decide whether that is fatal (`--frozen`) or best-effort.
+ * (`sha256-<base64url>`). Used by `telo publish` (import pinning) and `telo
+ * upgrade` (re-pin on version change). Throws when no transport owns the ref or
+ * the fetch fails — callers decide whether that is fatal (`--frozen`) or
+ * best-effort.
+ *
+ * Dispatch is the transport registry, never a scheme branch here: each
+ * transport hashes exactly what its own `read()` verifies (registry/HTTP the
+ * raw bytes, OCI the UTF-8 text extracted from the tar layer), so a pin written
+ * at publish always matches at import. A caller-side branch cannot know which,
+ * and silently degrades the moment a transport is added — that is precisely how
+ * `oci://` refs came to be published unpinned.
  */
 export async function fetchManifestHash(registryUrl: string, ref: string): Promise<string> {
-  const trimmed = registryUrl.replace(/\/+$/, "");
-  let url: string;
-  if (isRegistryRef(ref)) {
-    const { modulePath, version } = parseModuleRef(ref);
-    url = `${trimmed}/${modulePath}/${version}/telo.yaml`;
-  } else if (ref.startsWith("http://") || ref.startsWith("https://")) {
-    url = ref.includes(".yaml") ? ref : `${ref.replace(/\/+$/, "")}/telo.yaml`;
-  } else {
+  const transport = defaultTransportRegistry(registryUrl).forRef(ref);
+  if (!transport) {
     throw new Error(`cannot hash non-remote import '${ref}'`);
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`fetch ${url}: ${res.status} ${res.statusText}`);
-  }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  return `sha256-${await sha256Base64Url(bytes)}`;
+  return transport.manifestHash(ref);
 }

@@ -1,12 +1,13 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
+  sha256Base64Url,
   verifyIntegrity,
   type ManifestSource,
 } from "@telorun/analyzer";
 
 import { computeFilesIntegrity, injectFilesIntegrity } from "../../bundle/files-integrity.js";
-import { readOwnerManifest } from "../../bundle/module-manifest.js";
+import { readOwnerManifest, type OwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
 import type {
   FetchedArtifact,
@@ -134,6 +135,39 @@ export class OciTransport implements Transport {
     return pullVerified(ref);
   }
 
+  /** Hashes the **UTF-8 encoding of the extracted `telo.yaml`**, which is what
+   *  `pullVerified` checks an inline `#sha256-…` pin against on the read path.
+   *
+   *  Cost note: a module is one tar blob, so there is no way to read `telo.yaml`
+   *  without pulling the whole artifact — including any `files:` payload — and
+   *  this path is deliberately uncached (a pin must hash what is published
+   *  *now*, not a cached copy). Two consequences for callers: pinning N imports
+   *  costs N full artifact pulls, and `pullVerified` also re-checks the
+   *  dependency's `filesIntegrity`, so a corrupt *payload* upstream surfaces
+   *  here as a pinning failure rather than a payload error. Both are acceptable
+   *  for publish-time pinning, where correctness beats latency and refusing to
+   *  pin against a corrupt dependency is the right outcome. */
+  async manifestHash(ref: string): Promise<string> {
+    const { manifest } = await pullVerified(ref);
+    return `sha256-${await sha256Base64Url(new TextEncoder().encode(manifest))}`;
+  }
+
+  /** Project a module's declared provenance onto the standard
+   *  `org.opencontainers.image.*` annotation keys. Descriptive only — nothing
+   *  addresses the artifact by these. Absent fields are omitted rather than
+   *  written empty, so the manifest carries only what the module declared. */
+  private static annotationsFor(identity: OwnerManifest): Record<string, string> {
+    const mapped: Array<[string, string | undefined]> = [
+      ["org.opencontainers.image.title", identity.name],
+      ["org.opencontainers.image.version", identity.version],
+      ["org.opencontainers.image.description", identity.description],
+      ["org.opencontainers.image.source", identity.repository],
+      ["org.opencontainers.image.licenses", identity.license],
+      ["org.opencontainers.image.documentation", identity.documentation],
+    ];
+    return Object.fromEntries(mapped.filter((e): e is [string, string] => Boolean(e[1])));
+  }
+
   async publish(
     destination: string,
     bundle: PublishBundle,
@@ -144,19 +178,19 @@ export class OciTransport implements Transport {
       throw new Error("OCI publish requires metadata.version (used as the tag).");
     }
 
-    // Destination is a full repo (`oci://host/repo`) or host-only
-    // (`oci://host`), which defaults the repo to `<namespace>/<name>`.
+    // Destination must be a full repo (`oci://host/repo`). Identity is the ref,
+    // so the repo is never derived from `metadata.namespace`/`name` — a
+    // metadata-derived path is wrong whenever the repo differs from the name,
+    // and would silently push to a namespace the publisher may not own.
     const afterScheme = destination.replace(/^oci:\/\//, "").replace(/\/+$/, "");
     const slash = afterScheme.indexOf("/");
     const host = slash > 0 ? afterScheme.slice(0, slash) : afterScheme;
-    let repo = slash > 0 ? afterScheme.slice(slash + 1) : "";
+    const repo = slash > 0 ? afterScheme.slice(slash + 1) : "";
     if (!repo) {
-      if (!identity.namespace || !identity.name) {
-        throw new Error(
-          `OCI publish to host-only '${destination}' needs metadata.namespace and metadata.name to default the repo.`,
-        );
-      }
-      repo = `${identity.namespace}/${identity.name}`;
+      throw new Error(
+        `OCI publish destination '${destination}' is host-only — it must name a full repository, ` +
+          `e.g. 'oci://${host || "ghcr.io"}/<org>/<name>'.`,
+      );
     }
     const tag = identity.version;
 
@@ -173,12 +207,14 @@ export class OciTransport implements Transport {
     const client = new OciClient(host, repo);
     const layerDigest = await client.pushBlob(tar);
     const config = await client.pushEmptyConfig();
+    const annotations = OciTransport.annotationsFor(identity);
     const manifest: OciManifest = {
       schemaVersion: 2,
       mediaType: OCI_MANIFEST_MEDIA_TYPE,
       artifactType: TELO_LAYER_MEDIA_TYPE,
       config,
       layers: [{ mediaType: TELO_LAYER_MEDIA_TYPE, digest: layerDigest, size: tar.length }],
+      ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
     };
     await client.pushManifest(tag, manifest);
 
