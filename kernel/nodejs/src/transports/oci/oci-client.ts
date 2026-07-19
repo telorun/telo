@@ -1,3 +1,4 @@
+import { fetchOrThrow } from "@telorun/sdk";
 import { createHash } from "node:crypto";
 
 import { assertPublicEgress } from "../egress-guard.js";
@@ -109,7 +110,10 @@ export class OciClient {
     };
 
     const cached = this.tokenByScope.get(scope);
-    let res = await fetch(url, withToken(cached));
+    let res = await fetchOrThrow(url, withToken(cached), {
+      operation: "OCI registry request",
+      setting: "the oci:// ref host",
+    });
     if (res.status !== 401) return res;
 
     const challenge = res.headers.get("www-authenticate");
@@ -119,7 +123,10 @@ export class OciClient {
     this.tokenByScope.set(scope, token);
     // Drain the 401 body so the connection can be reused.
     await res.text().catch(() => {});
-    return fetch(url, withToken(token));
+    return fetchOrThrow(url, withToken(token), {
+      operation: "OCI registry request",
+      setting: "the oci:// ref host",
+    });
   }
 
   /** Exchange a bearer challenge for a token, authenticating to the token
@@ -141,7 +148,10 @@ export class OciClient {
       const basic = Buffer.from(`${cred.username}:${cred.password}`).toString("base64");
       headers.set("authorization", `Basic ${basic}`);
     }
-    const res = await fetch(tokenUrl.href, { headers });
+    const res = await fetchOrThrow(tokenUrl.href, { headers }, {
+      operation: "OCI registry auth",
+      setting: "the oci:// ref host",
+    });
     if (!res.ok) return null;
     const body = (await res.json()) as { token?: string; access_token?: string };
     return body.token ?? body.access_token ?? null;

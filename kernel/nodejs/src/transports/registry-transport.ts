@@ -9,6 +9,7 @@ import {
   splitIntegrity,
   type ManifestSource,
 } from "@telorun/analyzer";
+import { fetchOrThrow } from "@telorun/sdk";
 import { createHash } from "crypto";
 
 import { computeFilesIntegrity, injectFilesIntegrity } from "../bundle/files-integrity.js";
@@ -159,7 +160,11 @@ export class RegistryTransport implements Transport {
     const { modulePath } = parseModuleRef(ref);
     const url = `${this.registryUrl.replace(/\/+$/, "")}/${modulePath}`;
     await assertPublicEgress(url);
-    const res = await fetch(url, { headers: { accept: "application/json" } });
+    const res = await fetchOrThrow(
+      url,
+      { headers: { accept: "application/json" } },
+      { operation: "Registry version list", setting: "--registry / TELO_REGISTRY" },
+    );
     if (res.status === 404) return null;
     if (!res.ok) {
       throw new Error(`Registry returned ${res.status} ${res.statusText} for ${modulePath}`);
@@ -189,7 +194,10 @@ export class RegistryTransport implements Transport {
     const fetchUrl = this.manifestUrl(ref);
     if (!fetchUrl) return null;
     await assertPublicEgress(fetchUrl);
-    const res = await fetch(fetchUrl);
+    const res = await fetchOrThrow(fetchUrl, undefined, {
+      operation: "Registry manifest read",
+      setting: "--registry / TELO_REGISTRY",
+    });
     if (res.status === 404) return null;
     if (!res.ok) {
       throw new Error(`Registry returned ${res.status} ${res.statusText} for ${fetchUrl}`);
@@ -206,7 +214,10 @@ export class RegistryTransport implements Transport {
       throw new Error(`cannot hash non-remote import '${ref}'`);
     }
     await assertPublicEgress(fetchUrl);
-    const res = await fetch(fetchUrl);
+    const res = await fetchOrThrow(fetchUrl, undefined, {
+      operation: "Registry manifest hash",
+      setting: "--registry / TELO_REGISTRY",
+    });
     if (!res.ok) {
       throw new Error(`fetch ${fetchUrl}: ${res.status} ${res.statusText}`);
     }
@@ -223,7 +234,10 @@ export class RegistryTransport implements Transport {
     // The payload rides beside the manifest as `module.tar.gz`.
     const tarUrl = source.replace(/\/telo\.yaml$/, "/module.tar.gz");
     await assertPublicEgress(tarUrl);
-    const res = await fetch(tarUrl);
+    const res = await fetchOrThrow(tarUrl, undefined, {
+      operation: "Module payload download",
+      setting: "--registry / TELO_REGISTRY",
+    });
     if (!res.ok) {
       throw new Error(`could not fetch bundle ${tarUrl}: ${res.status} ${res.statusText}`);
     }
@@ -285,7 +299,11 @@ export class RegistryTransport implements Transport {
     for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
       networkErr = null;
       try {
-        res = await fetch(url, { method: "PUT", headers, body });
+        res = await fetchOrThrow(
+          url,
+          { method: "PUT", headers, body },
+          { operation: "Registry publish", setting: "--registry / TELO_REGISTRY" },
+        );
       } catch (err) {
         networkErr = err;
         res = null;

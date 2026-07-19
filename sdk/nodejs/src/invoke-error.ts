@@ -11,7 +11,7 @@ export class InvokeError extends Error {
   readonly code: string;
   readonly data?: unknown;
 
-  constructor(code: string, message: string, data?: unknown) {
+  constructor(code: string, message: string, data?: unknown, options?: { cause?: unknown }) {
     super(message);
     this.name = "InvokeError";
     this.code = code;
@@ -27,6 +27,19 @@ export class InvokeError extends Error {
       writable: false,
       configurable: false,
     });
+    // Preserve the error being wrapped. Defined rather than assigned so it is
+    // non-enumerable — matching how the Error constructor's own `cause` option
+    // behaves, and keeping it out of JSON serialisation / CEL property access
+    // for the same reason as the marker above. (`ErrorOptions` is not in this
+    // package's TS lib, hence the local option type.)
+    if (options && "cause" in options) {
+      Object.defineProperty(this, "cause", {
+        value: options.cause,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      });
+    }
   }
 }
 

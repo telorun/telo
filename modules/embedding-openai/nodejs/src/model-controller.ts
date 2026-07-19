@@ -1,3 +1,4 @@
+import { fetchOrThrow } from "@telorun/sdk";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { EmbedRequest, EmbedResult, EmbeddingModel, EmbeddingPrompts } from "@telorun/embedding";
 import { applyEmbeddingPrompt, resolveEmbeddingPrompts } from "@telorun/embedding";
@@ -59,11 +60,15 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (this.resource.apiKey) headers["authorization"] = `Bearer ${this.resource.apiKey}`;
 
-    const res = await fetch(`${this.baseUrl}/embeddings`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const res = await fetchOrThrow(
+      `${this.baseUrl}/embeddings`,
+      { method: "POST", headers, body: JSON.stringify(body) },
+      {
+        operation: "Embedding model request",
+        resource: this.resource.metadata.name,
+        setting: "baseUrl",
+      },
+    );
     if (!res.ok) throw new Error(await errorMessage(res, "OpenAI embeddings"));
 
     const data = (await res.json()) as OpenAiEmbeddingResponse;

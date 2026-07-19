@@ -2,6 +2,7 @@ import {
   ERR_INVOKE_CANCELLED,
   InvokeError,
   Stream,
+  networkCauseCode,
   type InvokeContext,
   type ResourceContext,
   type ResourceInstance,
@@ -42,22 +43,36 @@ function createNetworkError(
   return err;
 }
 
+// Classify on the cause chain's `code`, never on the message: `fetch` rejects
+// with the literal text "fetch failed" for DNS, refusal, and TLS alike, so
+// substring tests against the message never match and everything collapses into
+// the fallback branch. The code is also what the message reports, so a DNS
+// failure now says ENOTFOUND rather than "fetch failed".
 function mapNetworkError(err: unknown, url: string): never {
   const e = err as Error;
   if (e.name === "AbortError") {
     throw createNetworkError("TIMEOUT", `Request timed out`, url);
   }
-  const msg = e.message?.toLowerCase() ?? "";
-  if (msg.includes("econnrefused") || msg.includes("connection refused")) {
-    throw createNetworkError("CONNECTION_REFUSED", e.message, url);
+  const code = networkCauseCode(err);
+  const detail = code ? `${code} (${e.message})` : e.message;
+  switch (code) {
+    case "ECONNREFUSED":
+      throw createNetworkError("CONNECTION_REFUSED", detail, url);
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      throw createNetworkError("DNS_RESOLUTION_FAILED", detail, url);
+    case "ETIMEDOUT":
+    case "UND_ERR_CONNECT_TIMEOUT":
+      throw createNetworkError("TIMEOUT", detail, url);
+    case "CERT_HAS_EXPIRED":
+    case "DEPTH_ZERO_SELF_SIGNED_CERT":
+    case "SELF_SIGNED_CERT_IN_CHAIN":
+    case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
+    case "EPROTO":
+      throw createNetworkError("SSL_ERROR", detail, url);
+    default:
+      throw createNetworkError("CONNECTION_REFUSED", detail, url);
   }
-  if (msg.includes("enotfound") || msg.includes("getaddrinfo") || msg.includes("dns")) {
-    throw createNetworkError("DNS_RESOLUTION_FAILED", e.message, url);
-  }
-  if (msg.includes("ssl") || msg.includes("cert") || msg.includes("tls")) {
-    throw createNetworkError("SSL_ERROR", e.message, url);
-  }
-  throw createNetworkError("CONNECTION_REFUSED", e.message, url);
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {
