@@ -1,6 +1,6 @@
 {
   "name": "@telorun/image",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Image primitives — draw labelled rectangles onto an image for vision-grounding loops.",
   "keywords": [
     "telo",

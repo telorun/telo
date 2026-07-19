@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: tar
   namespace: std
-  version: 0.3.0
+  version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -25,7 +25,7 @@ metadata:
   description: Builds a tar archive byte stream from an ordered list of { path, contents } entries.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#pack
+  - pkg:npm/@telorun/tar@0.2.1?local_path=./nodejs#pack
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -73,7 +73,7 @@ metadata:
   description: Extracts one named entry from a tar byte stream as a byte stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/tar@0.2.0?local_path=./nodejs#extract
+  - pkg:npm/@telorun/tar@0.2.1?local_path=./nodejs#extract
 throws:
   codes:
     ERR_NOT_FOUND:

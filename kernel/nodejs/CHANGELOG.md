@@ -1,5 +1,124 @@
 # @telorun/kernel
 
+## 0.48.0
+
+### Minor Changes
+
+- 8af345f: The `Telo.Definition` schema is now the sole resource-config contract.
+
+  A controller module's exports become the controller instance verbatim, so an
+  `export const schema` silently won over the manifest's `schema:`. The analyzer
+  never loads controllers, so those overrides were invisible to `telo check` and
+  to the editor, could not be pre-compiled by the validator warm (recompiling on
+  every boot, and failing to persist on a read-only image), and were free to drift
+  from the manifest they shadowed.
+
+  `ControllerInstance.schema` is removed, and the kernel now validates every
+  resource against its definition's schema. All 35 controller-exported schemas are
+  gone: 26 were `additionalProperties: true` catch-alls that merely _disabled_ the
+  manifest's stricter validation, and 9 kept their TypeBox for `Static<typeof …>`
+  typing but no longer export it.
+
+  Two manifests had already drifted and are corrected:
+
+  - `S3.Bucket` was missing `accessKeyId` / `secretAccessKey` entirely, though its
+    controller required both. They are now declared (and required) in the manifest.
+  - `Assert.ModuleContext` was missing `resources` / `variables` / `secrets`.
+
+  Controller authors: declare config in `telo.yaml`, not in code. An
+  `export const schema` is now inert.
+
+- 0368e6f: Declare module provenance in `metadata`, projected into OCI annotations.
+
+  `Telo.Application` and `Telo.Library` metadata now accept four optional
+  descriptive fields: `description`, `repository` (the module's source-code URL),
+  `license`, and `documentation`. An OCI publish maps them onto the standard
+  `org.opencontainers.image.*` annotations (`repository` → `source`, `license` →
+  `licenses`), which is the only metadata channel GHCR exposes — it does not serve
+  the referrers API. Fields a module does not declare are omitted rather than
+  written empty. An HTTP registry publish stores the manifest verbatim, so nothing
+  needs translating there.
+
+  These are descriptive, never addressing: nothing resolves, fetches, caches, or
+  publishes by them, so identity remains the ref. The field is `repository` rather
+  than `source` because `source:` already means "where to fetch a dependency from"
+  inside the `imports` map.
+
+- 0368e6f: Require a full repository in an OCI publish destination.
+
+  `telo publish oci://<host>` used to default the repository to
+  `<metadata.namespace>/<metadata.name>`. That contradicts identity-is-the-ref:
+  the repo is a location and the manifest's namespace/name is a label, so the
+  default was wrong whenever the two differ — and it silently pushed to a
+  namespace derived from metadata rather than one the publisher owns. Publishing
+  `std/console` to `oci://ghcr.io` aimed at `ghcr.io/std/console`, under a `std`
+  org nobody controls.
+
+  A host-only destination is now a hard error naming the expected form, so the
+  repository is always stated explicitly.
+
+- 0368e6f: Pin `oci://` imports on publish, restoring the integrity chain for OCI modules.
+
+  `fetchManifestHash` recognised only bare registry refs and `http(s)` URLs, so an
+  `oci://` import fell through to "cannot hash non-remote import" and `telo
+publish` skipped it as best-effort-unresolved. Published OCI artifacts therefore
+  carried unpinned dependencies, and the Merkle chain that makes an importer's
+  hash transitively cover its dependencies stopped at the first OCI ref — leaving
+  integrity to rest on registry trust alone, contrary to the inline hash being
+  authoritative across transports.
+
+  Hashing moves onto the `Transport` interface as `manifestHash(ref)`, so each
+  transport hashes exactly what its own `read()` verifies — registry/HTTP the raw
+  response bytes, OCI the UTF-8 encoding of the `telo.yaml` extracted from the tar
+  layer — and a pin written at publish always matches at import. `fetchManifestHash`
+  is now transport dispatch rather than a scheme chain.
+
+  That placement is the actual fix. The bug was the failure mode of a caller-side
+  `isRegistryRef`/`http(s)`/else chain: a ref whose scheme nobody had added a branch
+  for degraded silently to best-effort-unresolved. A fourth transport would have
+  reproduced it identically. Since `manifestHash` is required on the interface, one
+  cannot now be added without deciding what it hashes.
+
+### Patch Changes
+
+- 8af345f: Stop `telo install` printing a wait notice per controller.
+
+  Package installs dedupe per alias, so N controllers are N `withInstallLock`
+  calls against the same install root. They all contended through the filesystem
+  lock: one won, and the rest polled `fs.open` for the duration of the install,
+  each crossing the notice threshold and printing "waiting for controller install
+  lock". A 52-controller `telo install` emitted 51 of them — while the holder was
+  the very same process, which is not what the notice means.
+
+  Same-process callers now queue in memory ahead of the filesystem lock, so
+  exactly one reaches it per process. The notice regains its cross-process
+  meaning, and the queued callers do no lock I/O at all.
+
+- 8af345f: Bake `extends`-resolved schemas in the build-time validator warm.
+
+  A `base:`-less `extends` child is validated at runtime against
+  `merge(parent, own)`, but the warm pass compiled only the raw `schema:`. The
+  validator cache is content-addressed, so those are different keys — every
+  inheriting kind missed the warm on every boot, recompiling its validator and,
+  on a read-only image, failing to persist it (`EACCES` writing
+  `.telo/manifests/__validators/`).
+
+  `precompileDefinitionSchemas` now also compiles the inheritance-resolved form,
+  sharing `effectiveAuthorSchema` with the runtime stamp so the two keys cannot
+  drift. The raw schema is still baked — it backs definitions that don't inherit
+  and the `controller.schema` fallback path.
+
+  The parent is resolved through the new `AnalysisRegistry.resolverForDefinition`,
+  scoped to the DECLARING module. `extends` aliases are lexically scoped — a
+  library writes `extends: Cache.Store` against its own import map and `Self.Host`
+  against its own name — so a global resolver silently fails on both and bakes the
+  un-merged schema, reintroducing the miss.
+
+- Updated dependencies [0368e6f]
+- Updated dependencies [8af345f]
+  - @telorun/analyzer@0.38.0
+  - @telorun/templating@0.10.1
+
 ## 0.47.0
 
 ### Minor Changes

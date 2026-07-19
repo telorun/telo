@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai-mcp
   namespace: std
-  version: 0.6.0
+  version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: MCP bridge for Ai.ToolProvider — exposes an MCP server's tools to an Ai.Agent.
@@ -27,7 +27,7 @@ metadata:
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:
-  - pkg:npm/@telorun/ai-mcp@0.5.1?local_path=./nodejs#tool-provider
+  - pkg:npm/@telorun/ai-mcp@0.5.2?local_path=./nodejs#tool-provider
 schema:
   type: object
   properties:

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: ai
   namespace: std
-  version: 0.9.0
+  version: 0.10.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: LLM completion primitives with pluggable provider models, plus a tool-use agent
@@ -44,7 +44,7 @@ metadata:
   description: Generate a buffered text completion from a prompt or messages using any Ai.Model.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text
+  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -143,7 +143,7 @@ metadata:
   description: Stream an LLM text completion token-by-token as StreamPart records from any Ai.Model.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#text-stream
+  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text-stream
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -240,7 +240,7 @@ metadata:
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
-  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#tools
+  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#tools
 schema:
   type: object
   properties:
@@ -331,7 +331,7 @@ metadata:
   description: "Run a tool-use loop: call the model, execute requested tools, and replay results until it finishes."
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent
+  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -483,7 +483,7 @@ metadata:
   description: Run a streaming tool-use loop, emitting text deltas, tool calls, and results as a Stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.0?local_path=./nodejs#agent-stream
+  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent-stream
 inputType:
   kind: Type.JsonSchema
   schema:

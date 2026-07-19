@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: image
   namespace: std
-  version: 0.3.0
+  version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -24,7 +24,7 @@ metadata:
   description: Produces a solid-color image canvas of the given size, encoded as PNG/JPEG/WebP bytes.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#blank
+  - pkg:npm/@telorun/image@0.2.1?local_path=./nodejs#blank
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -118,7 +118,7 @@ metadata:
   description: Draws labelled rectangles onto an image and returns the annotated image as encoded bytes.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/image@0.2.0?local_path=./nodejs#overlay
+  - pkg:npm/@telorun/image@0.2.1?local_path=./nodejs#overlay
 throws:
   codes:
     ERR_INVALID_INPUT:

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: pdf
   namespace: std
-  version: 0.3.0
+  version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -26,7 +26,7 @@ metadata:
   description: Renders one page of a PDF to an image at a configurable scale, reporting the pixel dimensions.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/pdf@0.2.0?local_path=./nodejs#rasterizer
+  - pkg:npm/@telorun/pdf@0.2.1?local_path=./nodejs#rasterizer
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -131,7 +131,7 @@ metadata:
   description: Adds editable AcroForm text/checkbox fields to a PDF at image-pixel coordinates, returning new PDF bytes.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/pdf@0.2.0?local_path=./nodejs#form-fields
+  - pkg:npm/@telorun/pdf@0.2.1?local_path=./nodejs#form-fields
 throws:
   codes:
     ERR_INVALID_INPUT:

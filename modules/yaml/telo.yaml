@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: yaml
   namespace: std
-  version: 0.5.0
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -22,7 +22,7 @@ metadata:
   description: Parses a UTF-8 YAML string into its documents, returning multi-document files as docs[].
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/yaml@0.4.1?local_path=./nodejs#parse
+  - pkg:npm/@telorun/yaml@0.4.2?local_path=./nodejs#parse
 throws:
   codes:
     ERR_PARSE_FAILED:

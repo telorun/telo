@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: shell
   namespace: std
-  version: 0.3.0
+  version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: >-
