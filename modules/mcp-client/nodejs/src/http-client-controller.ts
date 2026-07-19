@@ -1,4 +1,5 @@
 import {
+  fetchOrThrow,
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
@@ -281,10 +282,18 @@ export class McpHttpClient {
     this.handshakePromise = null;
     if (this.hasSessionProvider || !sessionId) return;
     try {
-      await fetch(this.manifest.url, {
-        method: "DELETE",
-        headers: { "Mcp-Session-Id": sessionId, ...(this.manifest.headers ?? {}) },
-      });
+      await fetchOrThrow(
+        this.manifest.url,
+        {
+          method: "DELETE",
+          headers: { "Mcp-Session-Id": sessionId, ...(this.manifest.headers ?? {}) },
+        },
+        {
+          operation: "MCP session terminate",
+          resource: this.manifest.metadata.name,
+          setting: "url",
+        },
+      );
     } catch (err) {
       await this.ctx.emitEvent(`${this.manifest.metadata.name}.SessionTerminateFailed`, {
         error: { message: (err as Error).message },

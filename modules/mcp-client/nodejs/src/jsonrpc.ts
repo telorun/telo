@@ -1,3 +1,5 @@
+import { networkCauseCode } from "@telorun/sdk";
+
 import {
   jsonRpcError,
   protocolError,
@@ -52,9 +54,12 @@ async function rawPost(
   try {
     resp = await fetch(url, { method: "POST", headers, body });
   } catch (err) {
+    // `(err as Error).message` is the literal "fetch failed" for DNS, refusal,
+    // and TLS alike — the actionable detail is the cause chain's code.
+    const code = networkCauseCode(err);
     throw transportError(
-      `MCP POST to ${url} failed at the network layer: ${(err as Error).message}`,
-      { url, cause: (err as Error).message },
+      `MCP POST to ${url} failed at the network layer: ${code ?? (err as Error).message}`,
+      { url, cause: code ?? (err as Error).message },
     );
   }
   const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();

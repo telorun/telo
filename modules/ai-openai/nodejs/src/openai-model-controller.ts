@@ -1,3 +1,4 @@
+import { fetchOrThrow } from "@telorun/sdk";
 import { redact } from "@telorun/ai/redact";
 import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai/content";
 import type {
@@ -266,7 +267,11 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
   }
 
   async invoke(input: ModelInvokeInput): Promise<CompletionResult> {
-    const res = await fetch(`${this.baseUrl}/chat/completions`, this.buildRequest(input, false));
+    const res = await fetchOrThrow(
+      `${this.baseUrl}/chat/completions`,
+      this.buildRequest(input, false),
+      { operation: "AI chat completion", resource: this.resource.metadata.name, setting: "baseUrl" },
+    );
     if (!res.ok) throw new Error(await errorMessage(res, "OpenAI chat completion"));
 
     const data = (await res.json()) as OpenAiChatResponse;
@@ -282,7 +287,11 @@ class OpenaiModelInstance implements ResourceInstance, AiModelInstance {
 
   async *stream(input: ModelInvokeInput): AsyncIterable<StreamPart> {
     try {
-      const res = await fetch(`${this.baseUrl}/chat/completions`, this.buildRequest(input, true));
+      const res = await fetchOrThrow(
+        `${this.baseUrl}/chat/completions`,
+        this.buildRequest(input, true),
+        { operation: "AI chat stream", resource: this.resource.metadata.name, setting: "baseUrl" },
+      );
       if (!res.ok || !res.body) {
         yield { type: "error", error: { message: await errorMessage(res, "OpenAI chat stream") } };
         return;

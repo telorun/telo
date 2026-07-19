@@ -11,6 +11,9 @@
  * the Function controller can run the poll loop in custom mode.
  */
 
+import { fetchOrThrow } from "@telorun/sdk";
+
+
 export interface RuntimeInvocation {
   event: unknown;
   context: LambdaContext;
@@ -39,9 +42,11 @@ export async function pollNext(
   runtimeApi: string,
   signal?: AbortSignal,
 ): Promise<RuntimeInvocation> {
-  const res = await fetch(`http://${runtimeApi}/2018-06-01/runtime/invocation/next`, {
-    signal,
-  });
+  const res = await fetchOrThrow(
+    `http://${runtimeApi}/2018-06-01/runtime/invocation/next`,
+    { signal },
+    { operation: "Lambda Runtime API /next", setting: "AWS_LAMBDA_RUNTIME_API" },
+  );
   if (!res.ok) {
     throw new Error(`Lambda Runtime API /next returned ${res.status}: ${await res.text()}`);
   }
@@ -82,13 +87,14 @@ export async function postResponse(
   requestId: string,
   response: unknown,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchOrThrow(
     `http://${runtimeApi}/2018-06-01/runtime/invocation/${requestId}/response`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(response ?? null),
     },
+    { operation: "Lambda Runtime API /response", setting: "AWS_LAMBDA_RUNTIME_API" },
   );
   if (!res.ok) {
     throw new Error(
@@ -113,14 +119,18 @@ export async function postError(
         }
       : { errorType: "Error", errorMessage: String(err), stackTrace: [] };
 
-  await fetch(`http://${runtimeApi}/2018-06-01/runtime/invocation/${requestId}/error`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "lambda-runtime-function-error-type": errorPayload.errorType,
+  await fetchOrThrow(
+    `http://${runtimeApi}/2018-06-01/runtime/invocation/${requestId}/error`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "lambda-runtime-function-error-type": errorPayload.errorType,
+      },
+      body: JSON.stringify(errorPayload),
     },
-    body: JSON.stringify(errorPayload),
-  });
+    { operation: "Lambda Runtime API /invocation-error", setting: "AWS_LAMBDA_RUNTIME_API" },
+  );
   // Errors posted during error reporting are unrecoverable — we already failed
   // the invocation. The Runtime API rules call for fall-through here so the
   // poll loop can pick up the next event rather than die on the meta-error.
@@ -138,12 +148,16 @@ export async function postInitError(runtimeApi: string, err: unknown): Promise<v
         }
       : { errorType: "Error", errorMessage: String(err), stackTrace: [] };
 
-  await fetch(`http://${runtimeApi}/2018-06-01/runtime/init/error`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "lambda-runtime-function-error-type": errorPayload.errorType,
+  await fetchOrThrow(
+    `http://${runtimeApi}/2018-06-01/runtime/init/error`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "lambda-runtime-function-error-type": errorPayload.errorType,
+      },
+      body: JSON.stringify(errorPayload),
     },
-    body: JSON.stringify(errorPayload),
-  });
+    { operation: "Lambda Runtime API /init-error", setting: "AWS_LAMBDA_RUNTIME_API" },
+  );
 }
