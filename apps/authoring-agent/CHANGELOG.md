@@ -1,5 +1,7 @@
 # Changelog
-## 0.2.0 - 2026-07-14
+## 0.3.0 - 2026-07-20
+### Added
+* Upgraded module dependencies## 0.2.0 - 2026-07-14
 ### Added
 * Primer covers general kind inheritance: extends any kind, the base: construction mapping, inherited-and-immutable capability, and when to use inheritance vs. templated composition.## 0.1.0 - 2026-07-09
 ### Added
