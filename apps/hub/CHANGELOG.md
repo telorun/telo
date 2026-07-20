@@ -1,5 +1,7 @@
 # Changelog
-## 0.3.0 - 2026-07-19
+## 0.4.0 - 2026-07-20
+### Added
+* Updated modules to latest version## 0.3.0 - 2026-07-19
 ### Added
 * Index and serve each module's declared repository and license alongside its description, on /search/modules, /search/resources, /refs, and the search_resources MCP tool.## 0.2.0 - 2026-07-18
 ### Added
