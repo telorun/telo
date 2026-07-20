@@ -1,5 +1,7 @@
 # Changelog
-## 0.10.0 - 2026-07-19
+## 0.10.1 - 2026-07-20
+### Fixed
+* Update controller @telorun/assert to 0.7.32.## 0.10.0 - 2026-07-19
 ### Added
 * Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.
 ### Fixed

@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: "http-server"
   namespace: std
-  version: "0.18.0"
+  version: "0.19.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: >-
@@ -27,7 +27,7 @@ metadata:
   description: Listens on a TCP port and serves mounted routers, with CORS, OpenAPI docs, and custom content-type parsers.
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/http-server@0.15.2?local_path=./nodejs#http-server
+  - pkg:npm/@telorun/http-server@0.16.0?local_path=./nodejs#http-server
 schema:
   type: "object"
   properties:
@@ -322,7 +322,7 @@ metadata:
 capability: Telo.Mount
 topology: Router
 controllers:
-  - pkg:npm/@telorun/http-server@0.15.2?local_path=./nodejs#http-server-api
+  - pkg:npm/@telorun/http-server@0.16.0?local_path=./nodejs#http-server-api
 schema:
   type: "object"
   properties:
@@ -679,7 +679,7 @@ metadata:
   description: Serves a directory of static files as a mountable router, with SPA fallback and Cache-Control options.
 capability: Telo.Mount
 controllers:
-  - pkg:npm/@telorun/http-server@0.15.2?local_path=./nodejs#http-static
+  - pkg:npm/@telorun/http-server@0.16.0?local_path=./nodejs#http-static
 schema:
   type: "object"
   description: >-
