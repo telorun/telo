@@ -40,3 +40,57 @@ export { ManifestRegistry as Registry } from "./registry.js";
 export { ResourceURI } from "./resource-uri.js";
 export type { RuntimeDiagnostic } from "@telorun/sdk";
 
+// Structured logging — the runtime half of kernel/specs/logging.md. The record
+// model, severity scale, and `Logger` surface live in `@telorun/sdk`; these are
+// the pipeline, the encodings, the sinks, and the policies that gate emission.
+export {
+  BOOTSTRAP_SINK_ID,
+  ConsoleSink,
+  DEBUG_WIRE_SINK_ID,
+  DebugWireSink,
+  DEFAULT_ATTRIBUTE_LIMITS,
+  DEFAULT_BUFFER_POLICY,
+  DEFAULT_CENSOR,
+  DropRegistry,
+  FileSink,
+  LoggingPipeline,
+  PIPELINE_SINK_ID,
+  RecordBuffer,
+  Sampler,
+  base64Bytes,
+  blockUnsupportedMessage,
+  compileRedactionPolicy,
+  createBootstrapWriter,
+  decideColor,
+  encodeJson,
+  encodeJsonLine,
+  encodePretty,
+  encodePrettyLine,
+  formatSpanCounter,
+  formatSpanId,
+  formatTraceParent,
+  normalizeAttributes,
+  normalizeSpanId,
+  normalizeTraceId,
+  parseTraceParent,
+  redactAttributes,
+  redactError,
+  saltSpanId,
+  toErrorValue,
+  toJsonProfile,
+} from "./logging/index.js";
+export type {
+  AttributeLimits,
+  ColorSetting,
+  DropCause,
+  DropReport,
+  LogSinkInstance,
+  OnFull,
+  RedactionPolicy,
+  SamplingConfig,
+  ScopeConfig,
+  SinkBufferPolicy,
+  TraceContext,
+} from "./logging/index.js";
+export { KernelLogging } from "./logging/kernel-logging.js";
+export type { LoggingHost } from "./logging/logging-host.js";

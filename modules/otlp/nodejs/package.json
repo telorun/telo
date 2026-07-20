@@ -1,0 +1,52 @@
+{
+  "name": "@telorun/otlp",
+  "version": "0.1.0",
+  "description": "Telo OTLP module - export structured log records to an OpenTelemetry collector.",
+  "keywords": [
+    "telo",
+    "otlp",
+    "opentelemetry",
+    "logging",
+    "observability"
+  ],
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/otlp/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "exports": {
+    "./sink": {
+      "bun": "./src/otlp-sink-controller.ts",
+      "import": "./dist/otlp-sink-controller.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@telorun/kernel": "workspace:*",
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/kernel": "*",
+    "@telorun/sdk": "*"
+  }
+}

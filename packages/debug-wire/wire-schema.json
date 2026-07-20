@@ -8,21 +8,40 @@
       "title": "Blob pointer",
       "description": "A binary value offloaded from the payload. `$blob` is a path relative to the producer origin; the consumer fetches it from `/blobs/<id>`. The object key the WireBlob sits under is preserved.",
       "type": "object",
-      "required": ["$blob", "mediaType", "byteLength"],
+      "required": [
+        "$blob",
+        "mediaType",
+        "byteLength"
+      ],
       "properties": {
-        "$blob": { "type": "string", "description": "Relative blob path, e.g. `blobs/95594b4044bf8d8d`." },
-        "mediaType": { "type": "string", "description": "Sniffed content type, or `application/octet-stream`." },
-        "byteLength": { "type": "integer", "minimum": 0, "description": "Original buffer size in bytes." }
+        "$blob": {
+          "type": "string",
+          "description": "Relative blob path, e.g. `blobs/95594b4044bf8d8d`."
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "Sniffed content type, or `application/octet-stream`."
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Original buffer size in bytes."
+        }
       }
     },
     "DebugEvent": {
       "title": "Event frame",
       "description": "A kernel event. `kind` is optional for back-compat with legacy event-only streams.",
       "type": "object",
-      "required": ["timestamp", "event"],
+      "required": [
+        "timestamp",
+        "event"
+      ],
       "additionalProperties": true,
       "properties": {
-        "kind": { "const": "event" },
+        "kind": {
+          "const": "event"
+        },
         "timestamp": {
           "type": "string",
           "format": "date-time",
@@ -47,17 +66,27 @@
       "title": "Log frame",
       "description": "One line of the runtime's standard output/error.",
       "type": "object",
-      "required": ["kind", "timestamp", "stream", "line"],
+      "required": [
+        "kind",
+        "timestamp",
+        "stream",
+        "line"
+      ],
       "additionalProperties": true,
       "properties": {
-        "kind": { "const": "log" },
+        "kind": {
+          "const": "log"
+        },
         "timestamp": {
           "type": "string",
           "format": "date-time",
           "description": "ISO-8601 time the producer wrote the line."
         },
         "stream": {
-          "enum": ["stdout", "stderr"],
+          "enum": [
+            "stdout",
+            "stderr"
+          ],
           "description": "Which standard stream the line came from."
         },
         "line": {
@@ -65,7 +94,39 @@
           "description": "The line text (no trailing newline). ANSI escapes are preserved."
         }
       }
+    },
+    "DebugRecord": {
+      "title": "Record frame",
+      "description": "A structured log record, per kernel/specs/logging.md §11.4. Distinct from DebugLog, which carries one unstructured line of stdout/stderr.",
+      "type": "object",
+      "required": [
+        "kind",
+        "timestamp",
+        "record"
+      ],
+      "properties": {
+        "kind": {
+          "const": "record"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "record": {
+          "$ref": "https://telo.run/schemas/log-record.json"
+        }
+      }
     }
   },
-  "oneOf": [{ "$ref": "#/$defs/DebugLog" }, { "$ref": "#/$defs/DebugEvent" }]
+  "oneOf": [
+    {
+      "$ref": "#/$defs/DebugLog"
+    },
+    {
+      "$ref": "#/$defs/DebugEvent"
+    },
+    {
+      "$ref": "#/$defs/DebugRecord"
+    }
+  ]
 }

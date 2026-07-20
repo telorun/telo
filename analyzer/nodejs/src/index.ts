@@ -33,6 +33,12 @@ export {
   resolveParent,
 } from "./extends-resolution.js";
 export type { DefResolver } from "./extends-resolution.js";
+export {
+  hasIntermediateWildcard,
+  parseRedactionPath,
+  RedactionPathError,
+} from "./redaction-path.js";
+export type { RedactionSegment } from "./redaction-path.js";
 export { buildReferenceFieldMap, isRefEntry, isScopeEntry } from "./reference-field-map.js";
 export type { ReferenceFieldMap, RefFieldEntry } from "./reference-field-map.js";
 export { visitManifest } from "./manifest-visitor.js";

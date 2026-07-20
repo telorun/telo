@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import { NOOP_LOGGER, type Logger } from "@telorun/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __testing__ } from "../src/controller-loaders/npm-loader.js";
 
@@ -192,13 +193,23 @@ describe("same-process queuing", () => {
       void fs.utimes(lockPath(), now, now).catch(() => {});
     }, 1_000);
     try {
-      const out = await captureStderr(async () => {
-        const attempt = withInstallLock(root, async () => "unreachable");
-        await new Promise((r) => setTimeout(r, 2_800));
-        await fs.rm(lockPath(), { force: true });
-        await attempt;
-      });
-      expect(out).toContain("waiting for controller install lock");
+      // The notice is a structured record now, not a raw stderr write: §13.1
+      // routes every kernel diagnostic through the logger, and this function
+      // runs outside the kernel's stdio scope so it takes one by injection.
+      const records: Array<{ message: string; attributes?: Record<string, unknown> }> = [];
+      const log: Logger = {
+        ...NOOP_LOGGER,
+        info: (message: string, attributes?: Record<string, unknown>) =>
+          void records.push({ message, attributes }),
+      };
+      const attempt = withInstallLock(root, async () => "unreachable", log);
+      await new Promise((r) => setTimeout(r, 2_800));
+      await fs.rm(lockPath(), { force: true });
+      await attempt;
+
+      const notice = records.find((r) => r.message === "waiting for controller install lock");
+      expect(notice).toBeDefined();
+      expect(notice!.attributes).toHaveProperty("telo.install.lock_path");
     } finally {
       clearInterval(beat);
     }

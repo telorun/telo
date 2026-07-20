@@ -1,3 +1,4 @@
+import { NOOP_LOGGER, type Logger } from "@telorun/sdk";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -140,6 +141,7 @@ async function loadEsbuild(): Promise<typeof import("esbuild") | null> {
 export async function tryBuildControllerBundle(
   installRoot: string,
   entryFile: string,
+  log: Logger = NOOP_LOGGER,
 ): Promise<string | null> {
   if (!bundlingEnabled()) return null;
 
@@ -174,7 +176,7 @@ export async function tryBuildControllerBundle(
   // would otherwise each launch an esbuild over the same output.
   const inFlight = buildsInFlight.get(bundleFile);
   if (inFlight) return inFlight;
-  const work = buildBundle(bundleFile, entryFile).finally(() =>
+  const work = buildBundle(bundleFile, entryFile, log).finally(() =>
     buildsInFlight.delete(bundleFile),
   );
   buildsInFlight.set(bundleFile, work);
@@ -216,7 +218,11 @@ function okMarker(bundleFile: string): string {
   return `${bundleFile}.ok`;
 }
 
-async function buildBundle(bundleFile: string, entryFile: string): Promise<string | null> {
+async function buildBundle(
+  bundleFile: string,
+  entryFile: string,
+  log: Logger,
+): Promise<string | null> {
   if (await usableCachedBundle(bundleFile)) return bundleFile;
 
   const esbuild = await loadEsbuild();
@@ -245,9 +251,10 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
     // location. esbuild rewrites `__dirname`/`__filename` to `import.meta.url`,
     // so its presence flags this — fall back to the loose import for those.
     if (DIR_RELATIVE.test(out.text)) {
-      if (hostEnv().TELO_BUNDLE_DEBUG) {
-        process.stderr.write(`[bundle] skipped ${entryFile}: directory-relative asset resolution\n`);
-      }
+      log.trace("controller bundling skipped", {
+        "telo.bundle.entry": entryFile,
+        "telo.bundle.reason": "directory-relative asset resolution",
+      });
       return null;
     }
     await fs.writeFile(tmpFile, REQUIRE_BANNER + out.text);
@@ -257,11 +264,12 @@ async function buildBundle(bundleFile: string, entryFile: string): Promise<strin
     await fs.writeFile(okMarker(bundleFile), "").catch(() => {});
     return bundleFile;
   } catch (err) {
-    if (hostEnv().TELO_BUNDLE_DEBUG) {
-      process.stderr.write(
-        `[bundle] skipped ${entryFile}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}\n`,
-      );
-    }
+    // Previously gated behind an ad-hoc TELO_BUNDLE_DEBUG env var — a second,
+    // undeclared configuration channel of exactly the kind D6 forbids. It is now
+    // an ordinary trace-level record, so raising `logging.level` reveals it.
+    log.trace("controller bundling skipped", {
+      "telo.bundle.entry": entryFile,
+    }, { error: err });
     await fs.rm(tmpFile, { force: true }).catch(() => {});
     return null; // unbundleable controller → loose import
   }

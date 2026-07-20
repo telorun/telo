@@ -1,4 +1,5 @@
 import { executeInvokeStep, getRefIdentity, RuntimeError } from "@telorun/sdk";
+import type { ScopeConfig } from "./logging/scope-config.js";
 import type {
   BootTarget,
   ControllerPolicy,
@@ -128,6 +129,20 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    */
   private _controllerPolicy: ControllerPolicy | undefined;
 
+  /**
+   * The effective logging configuration for this module context — threshold,
+   * redaction, sampling, and the dotted import-alias path that identifies it.
+   *
+   * Stamped by the parent `Telo.Import` controller, which merges the import's
+   * own `logging:` block over its parent's *once*, when the import graph is
+   * built. Resolution therefore happens at load and the result is a plain value:
+   * there is no per-record lookup and no walk up the import chain at emit time,
+   * and it is the same scalar a guest runtime caches across an FFI boundary, so
+   * scoping and the FFI threshold cache are one mechanism rather than two.
+   * See kernel/specs/logging.md §12.2 and §9.
+   */
+  private _loggingConfig: ScopeConfig | undefined;
+
   constructor(
     source: string,
     variables: Record<string, unknown> = {},
@@ -190,6 +205,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   getControllerPolicy(): ControllerPolicy | undefined {
     return this._controllerPolicy;
+  }
+
+  setLoggingConfig(config: ScopeConfig | undefined): void {
+    this._loggingConfig = config;
+  }
+
+  getLoggingConfig(): ScopeConfig | undefined {
+    return this._loggingConfig;
   }
 
   protected override onResourceSnapshotted(name: string, snap: Record<string, unknown>): void {

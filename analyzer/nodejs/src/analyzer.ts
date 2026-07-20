@@ -40,6 +40,7 @@ import {
 } from "./validate-cel-context.js";
 import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
 import { validateExtends } from "./validate-extends.js";
+import { validateLogging } from "./validate-logging.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -432,11 +433,17 @@ function buildStepContextSchema(
  * handler dispatched directly, e.g. `Lambda.Function`), so it can't be rejected
  * statically without false positives. This is the sound subset of the runtime rule.
  */
+/** The built-in namespace: globally resolvable, crossing no import boundary. */
+const TELO_BUILTIN_MODULE = "Telo";
+
 const NON_INVOKABLE_CAPABILITIES = new Set([
   "Telo.Provider",
   "Telo.Mount",
   "Telo.Type",
   "Telo.Template",
+  // A sink is written to through a direct contract on the controller instance,
+  // never dispatched — so invoking one is statically wrong.
+  "Telo.Sink",
 ]);
 
 /**
@@ -859,6 +866,12 @@ export class StaticAnalyzer {
     // so state builds up across successive calls (e.g. incremental editor validation).
     const ctx = registry?._context();
     const aliases = ctx?.aliases ?? new AliasResolver();
+    // `Telo` crosses no import boundary — the kernel built-ins are globally
+    // resolvable, which is what lets `kind: Telo.ConsoleSink` and
+    // `extends: Telo.LogSink` work with no `imports:` entry (§10.2). The kernel
+    // registers the same ungated alias at boot; registering it here keeps the
+    // static and runtime halves agreeing.
+    aliases.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
     const defs = ctx?.definitions ?? new DefinitionRegistry();
 
     // Register module identities and aliases.
@@ -908,6 +921,7 @@ export class StaticAnalyzer {
             let libResolver = aliasesByModule.get(moduleName);
             if (!libResolver) {
               libResolver = new AliasResolver();
+              libResolver.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
               aliasesByModule.set(moduleName, libResolver);
             }
             libResolver.registerUngatedAlias("Self", moduleName);
@@ -1002,6 +1016,7 @@ export class StaticAnalyzer {
       let libResolver = aliasesByModule.get(ownModule);
       if (!libResolver) {
         libResolver = new AliasResolver();
+        libResolver.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
         aliasesByModule.set(ownModule, libResolver);
       }
       if (!libResolver.hasAlias("Self")) {
@@ -1082,6 +1097,9 @@ export class StaticAnalyzer {
       diagnostics.push(
         ...validateSchemaTypeRefs(allManifests, defs, aliases, aliasesByModule, rootModules),
       );
+      // §14.1 / §10.3: redaction paths and `on_full: block` are statically
+      // detectable, so they fail `telo check` rather than only at boot.
+      diagnostics.push(...validateLogging(allManifests, defs, aliases, aliasesByModule));
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
 

@@ -2,6 +2,7 @@ import { AnalysisRegistry, DiagnosticSeverity, foldIntegrity, parseExportEntry, 
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
+import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 
@@ -170,6 +171,32 @@ export async function create(
       (child as ModuleContext).setControllerPolicy(policy);
     }
   }
+
+  // Resolve this import's effective logging configuration once, here, and stamp
+  // it as a plain value on the child context — the same shape as the controller
+  // policy above.
+  //
+  // The threshold attaches to the *import* rather than to a map keyed by module
+  // name because module names collide (`std/sql` and `acme/sql` share
+  // `metadata.name: sql`; the same module imported twice is two subsystems with
+  // one name), while an alias is already uniqueness-enforced as a hard
+  // DUPLICATE_IMPORT_ALIAS diagnostic. Resolving here means a leaf reads its
+  // threshold as an O(1) lookup with no walk up the import chain at emit time —
+  // and it is the same scalar a guest runtime caches across an FFI boundary, so
+  // scoping and the FFI threshold cache are one mechanism. See §9 and §12.2.
+  const parentScope =
+    (ctx.moduleContext as unknown as ModuleContext).getLoggingConfig?.() ??
+    ctx.kernelLoggingRootScope();
+  const scopePath = parentScope.scope ? `${parentScope.scope}.${alias}` : alias;
+  const importLogging = resource.logging
+    ? (ctx.expandValue(resource.logging, {}) as LoggingManifestBlock)
+    : undefined;
+  (child as ModuleContext).setLoggingConfig({
+    ...buildScopeConfig(importLogging, parentScope),
+    scope: scopePath,
+    module: targetModule,
+    secretValues: child.secretValues,
+  });
 
   for (const manifest of manifests) {
     child.registerManifest(manifest);

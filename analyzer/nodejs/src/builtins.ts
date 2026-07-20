@@ -22,6 +22,89 @@ const PROVENANCE_METADATA = {
   documentation: { type: "string" },
 };
 
+/** The six named levels of `kernel/specs/logging.md` §5.1. The full 1–24 OTel
+ *  range stays valid on the wire; only these are nameable in a manifest. */
+const LOG_LEVEL_ENUM = ["trace", "debug", "info", "warn", "error", "fatal"];
+
+const DURATION_PATTERN = "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$";
+
+/** Fields every sink kind inherits from `Telo.LogSink` (§12.1). A concrete sink
+ *  kind may narrow a default but must not remove a field — a buffering policy
+ *  that cannot be configured from the only permitted configuration source is
+ *  not a policy. */
+const LOG_SINK_COMMON_PROPERTIES = {
+  level: { type: "string", enum: LOG_LEVEL_ENUM },
+  buffer: { type: "integer", minimum: 1 },
+  on_full: { type: "string", enum: ["block", "drop_new", "drop_old"] },
+  flush_interval: { type: "string", pattern: DURATION_PATTERN },
+};
+
+/** Threshold / redaction / sampling — the fields an `imports:` entry may
+ *  override for its subtree (§12.2). Deliberately excludes `sinks`: sinks are
+ *  process-level I/O and belong to the root Application that owns the process,
+ *  so an imported library can never open a log file on its importer's behalf. */
+const LOGGING_SCOPE_PROPERTIES = {
+  level: { type: "string", enum: LOG_LEVEL_ENUM },
+  attributes: { type: "object" },
+  redact: {
+    type: "object",
+    properties: {
+      paths: { type: "array", items: { type: "string" } },
+      censor: { type: "string" },
+      // Deletion destroys schema stability and hides that a field was present
+      // at all, so §14 offers this but never as the default.
+      remove: { type: "boolean" },
+    },
+    additionalProperties: false,
+  },
+  sampling: {
+    type: "object",
+    properties: {
+      first: { type: "integer", minimum: 0 },
+      thereafter: { type: "integer", minimum: 0 },
+      tick: { type: "string", pattern: DURATION_PATTERN },
+      sampleErrors: { type: "boolean" },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** The per-import `logging:` override. */
+const IMPORT_LOGGING_SCHEMA = {
+  type: "object",
+  "x-telo-eval": "compile",
+  properties: LOGGING_SCOPE_PROPERTIES,
+  additionalProperties: false,
+};
+
+/** The root Application's `logging:` block — the scope fields plus `sinks`.
+ *
+ *  `x-telo-eval: compile` covers the whole block: every value resolves once at
+ *  load, which is what lets a level come from the host environment through a
+ *  `variables:` entry read with `!cel` rather than through a parallel
+ *  `TELO_LOG_*` path that would be invisible to the analyzer and the editor
+ *  (§12.3, D6). */
+const ROOT_LOGGING_SCHEMA = {
+  type: "object",
+  "x-telo-eval": "compile",
+  properties: {
+    ...LOGGING_SCOPE_PROPERTIES,
+    // A list rather than a keyed map because sinks are root-only and therefore
+    // never merged; with no merge to disambiguate, a list matches how Telo
+    // spells every other ref-or-inline collection. `x-telo-inline` opts this one
+    // slot into inline-resource extraction — see normalize-inline-resources.ts.
+    sinks: {
+      type: "array",
+      items: {
+        type: "object",
+        "x-telo-ref": "telo#LogSink",
+        "x-telo-inline": true,
+      },
+    },
+  },
+  additionalProperties: false,
+};
+
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
   { kind: "Telo.Abstract", metadata: { name: "Runnable", module: "Telo" } },
@@ -33,6 +116,59 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     kind: "Telo.Abstract",
     metadata: { name: "Provider", module: "Telo" },
     schema: { "x-telo-eval": "compile" },
+  },
+  // The sink lifecycle role: attach, write a record, flush, detach. Deliberately
+  // payload-opaque — it carries no filtering and no encoding — so a future
+  // `Telo.TraceSink` reuses the same capability with a different record type.
+  // Scoped to record-stream sinks; metrics aggregate rather than stream and are
+  // not covered. See kernel/specs/logging.md §10.
+  { kind: "Telo.Abstract", metadata: { name: "Sink", module: "Telo" } },
+  // The abstract every *log* sink kind extends, carrying the log-specific
+  // configuration. A kernel built-in resolvable without an import, so a sink
+  // author depends on the kernel contract rather than on a standard-library
+  // module version and kernel↔module skew never becomes a compatibility surface
+  // for "where do logs go".
+  {
+    kind: "Telo.Abstract",
+    metadata: { name: "LogSink", module: "Telo" },
+    capability: "Telo.Sink",
+    schema: {
+      type: "object",
+      properties: LOG_SINK_COMMON_PROPERTIES,
+      additionalProperties: true,
+    },
+  },
+  {
+    kind: "Telo.Definition",
+    metadata: { name: "ConsoleSink", module: "Telo" },
+    capability: "Telo.Sink",
+    extends: "Telo.LogSink",
+    schema: {
+      type: "object",
+      properties: {
+        ...LOG_SINK_COMMON_PROPERTIES,
+        destination: { type: "string", enum: ["stderr", "stdout"] },
+        encoding: { type: "string", enum: ["auto", "pretty", "json"] },
+        color: { type: "string", enum: ["auto", "always", "never"] },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    kind: "Telo.Definition",
+    metadata: { name: "FileSink", module: "Telo" },
+    capability: "Telo.Sink",
+    extends: "Telo.LogSink",
+    schema: {
+      type: "object",
+      properties: {
+        ...LOG_SINK_COMMON_PROPERTIES,
+        destination: { type: "string" },
+        encoding: { type: "string", enum: ["json", "pretty"] },
+      },
+      required: ["destination"],
+      additionalProperties: false,
+    },
   },
   {
     kind: "Telo.Definition",
@@ -273,6 +409,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             { type: "array", items: { type: "string" } },
           ],
         },
+        logging: IMPORT_LOGGING_SCHEMA,
       },
       required: ["metadata", "source"],
       additionalProperties: false,
@@ -431,6 +568,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                       { type: "array", items: { type: "string" } },
                     ],
                   },
+                  // Threshold / redaction / sampling override for this import's
+                  // subtree. Attached to the import rather than to a map keyed
+                  // by module name because an alias is already uniqueness-
+                  // enforced, while module names collide (§12.2, D9).
+                  logging: IMPORT_LOGGING_SCHEMA,
                 },
                 additionalProperties: false,
               },
@@ -500,6 +642,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             additionalProperties: false,
           },
         },
+        // Structured logging configuration. The manifest is the only
+        // configuration source — there is no TELO_LOG_* variable and no logging
+        // CLI flag — so a level derived from the host environment goes through a
+        // `variables:` entry read with `!cel`. See kernel/specs/logging.md §12.
+        logging: ROOT_LOGGING_SCHEMA,
       },
       required: ["metadata"],
       additionalProperties: false,
@@ -565,6 +712,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                       { type: "array", items: { type: "string" } },
                     ],
                   },
+                  // Threshold / redaction / sampling override for this import's
+                  // subtree. Attached to the import rather than to a map keyed
+                  // by module name because an alias is already uniqueness-
+                  // enforced, while module names collide (§12.2, D9).
+                  logging: IMPORT_LOGGING_SCHEMA,
                 },
                 additionalProperties: false,
               },

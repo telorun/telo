@@ -3,6 +3,12 @@ import { isCompiledValue } from "@telorun/sdk";
 /** Returns a schema-appropriate placeholder value for a CompiledValue field. */
 function placeholderForSchema(schema: Record<string, unknown>): unknown {
   if (schema.default !== undefined) return schema.default;
+  // An enum-constrained field needs a placeholder drawn from the enum: the
+  // type-based fallbacks below satisfy `type` but violate `enum`, so any CEL
+  // expression feeding an enum field would fail validation against a value the
+  // author never wrote. Mirrors `celPlaceholderForSchema` in the analyzer, which
+  // performs the same substitution for the static half.
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
   switch (schema.type) {
     case "integer":
     case "number":

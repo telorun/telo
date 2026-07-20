@@ -10,6 +10,21 @@ const SYSTEM_KINDS = new Set([
   "Telo.Import",
 ]);
 
+/**
+ * System kinds are excluded from inline extraction by default, but a single slot
+ * may opt back in with `x-telo-inline: true` — `Telo.Application.logging.sinks`
+ * is the case this exists for.
+ *
+ * The opt-in is per slot rather than per kind because this pass runs *upstream*
+ * of schema validation on both the analyzer and runtime paths. Admitting the
+ * whole Application document would rewrite an inline `{kind, ...}` in `targets`
+ * into a valid `{kind, name}` before AJV ever saw it, silently converting a
+ * deliberate rejection into a working feature.
+ */
+function acceptsInline(resourceKind: string, entry: { inline?: boolean }): boolean {
+  return !SYSTEM_KINDS.has(resourceKind) || entry.inline === true;
+}
+
 /** Replaces characters outside [a-zA-Z0-9_] with underscores. */
 function sanitizeName(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -65,9 +80,12 @@ export function normalizeInlineResources(
 
   // Queue: all non-system resources with a name. Extracted resources are appended.
   // Filter the CLONES (not the originals) so traversal mutates copies.
+  // System kinds join the queue too: their inline-accepting slots are filtered
+  // per entry below, so a system document is walked but only its opted-in slots
+  // are extracted from.
   const queue = result.filter(
     (r): r is ResourceManifest & { metadata: { name: string } } =>
-      typeof r.metadata?.name === "string" && !!r.kind && !SYSTEM_KINDS.has(r.kind),
+      typeof r.metadata?.name === "string" && !!r.kind,
   );
 
   let i = 0;
@@ -97,6 +115,7 @@ export function normalizeInlineResources(
 
     for (const [fieldPath, entry] of fieldMap) {
       if (!isRefEntry(entry)) continue;
+      if (!acceptsInline(resource.kind, entry)) continue;
 
       const inScope = scopePrefixes.some(
         (prefix) =>

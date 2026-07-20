@@ -30,7 +30,8 @@ describe("application trace span — the app is a trace participant", () => {
 
     // The application is the trace root.
     expect(app).toMatchObject({ capability: "run", phase: "end", outcome: "ok", ref: { kind: "Telo.Application", name: "AppTraceSpanApp" } });
-    expect(typeof app?.spanId).toBe("number");
+    // §7.1: span ids are 16 lowercase hex characters on the wire, zero-padded.
+    expect(app?.spanId).toMatch(/^[0-9a-f]{16}$/);
     expect(app?.parentSpanId).toBeUndefined();
 
     // A bare `!ref` runnable target is dispatched through the chokepoint

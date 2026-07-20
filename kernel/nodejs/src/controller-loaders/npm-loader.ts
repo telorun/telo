@@ -1,4 +1,4 @@
-import { ControllerInstance } from "@telorun/sdk";
+import { ControllerInstance, NOOP_LOGGER, type Logger } from "@telorun/sdk";
 import { execFile } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs/promises";
@@ -153,6 +153,16 @@ export interface NpmControllerLoaderOptions {
  * cross-process safety is provided by a filesystem lock on `<root>/.lock`.
  */
 export class NpmControllerLoader {
+  /** Where install-lock diagnostics go. Injected rather than written to
+   *  `process.stderr`: this loader runs outside the kernel's stdio scope, and
+   *  §13.1 routes every kernel diagnostic through the logger. */
+  private log: Logger = NOOP_LOGGER;
+
+  /** Route this loader's diagnostics through the kernel's logger. */
+  setLogger(log: Logger): void {
+    this.log = log;
+  }
+
   private readonly entryUrl?: string;
   /** Threaded install root (`<cache-root>/npm`); overrides `computeInstallRoot`. */
   private readonly installRootOverride?: string;
@@ -233,7 +243,7 @@ export class NpmControllerLoader {
     const subpath = parsed.subpath ?? null;
     return {
       source,
-      importInstance: () => loadFromInstall(installRoot, alias, subpath, purl),
+      importInstance: () => loadFromInstall(installRoot, alias, subpath, purl, this.log),
     };
   }
 
@@ -332,7 +342,7 @@ export class NpmControllerLoader {
         ...PEER_INSTALL_FLAGS,
       ]);
       await fs.writeFile(stateFile, JSON.stringify({ rootHash: newHash }, null, 2) + "\n");
-    });
+    }, this.log);
 
     await this.seedDepCaches(installRoot, dependencies);
     return installRoot;
@@ -480,7 +490,7 @@ export class NpmControllerLoader {
         const written = await readDepSpec(installRoot, alias);
         if (written !== undefined) this.rootDeps[alias] = written;
         else this.rootDeps[alias] = spec;
-      });
+      }, this.log);
     })();
 
     this.inFlight.set(cacheKey, work);
@@ -589,8 +599,12 @@ function withLocalInstallQueue<T>(installRoot: string, fn: () => Promise<T>): Pr
  * Acquire the install lock for `installRoot` and run `fn` under it: first the
  * in-process queue above, then the cross-process filesystem lock.
  */
-async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
-  return withLocalInstallQueue(installRoot, () => withFileInstallLock(installRoot, fn));
+async function withInstallLock<T>(
+  installRoot: string,
+  fn: () => Promise<T>,
+  log: Logger = NOOP_LOGGER,
+): Promise<T> {
+  return withLocalInstallQueue(installRoot, () => withFileInstallLock(installRoot, fn, log));
 }
 
 /**
@@ -611,7 +625,11 @@ async function withInstallLock<T>(installRoot: string, fn: () => Promise<T>): Pr
  * invocation, and any state-file writes. It does NOT serialize *reads* of
  * already-installed controllers — those run lock-free against a stable tree.
  */
-async function withFileInstallLock<T>(installRoot: string, fn: () => Promise<T>): Promise<T> {
+async function withFileInstallLock<T>(
+  installRoot: string,
+  fn: () => Promise<T>,
+  log: Logger = NOOP_LOGGER,
+): Promise<T> {
   const lockPath = path.join(installRoot, ".lock");
 
   await fs.mkdir(installRoot, { recursive: true });
@@ -639,7 +657,7 @@ async function withFileInstallLock<T>(installRoot: string, fn: () => Promise<T>)
       }
       if (!noticed && waited > LOCK_WAIT_NOTICE_MS) {
         noticed = true;
-        process.stderr.write(`[telo] waiting for controller install lock at ${lockPath}…\n`);
+        log.info("waiting for controller install lock", { "telo.install.lock_path": lockPath });
       }
       await sleep(LOCK_RETRY_MS);
     }
@@ -667,8 +685,10 @@ async function withFileInstallLock<T>(installRoot: string, fn: () => Promise<T>)
       await fs.rm(lockPath, { force: true });
     } catch (err: any) {
       if (err?.code !== "ENOENT") {
-        process.stderr.write(
-          `[telo] failed to release install lock at ${lockPath}: ${err?.message ?? err}\n`,
+        log.warn(
+          "failed to release install lock",
+          { "telo.install.lock_path": lockPath },
+          { error: err },
         );
       }
     }
@@ -950,6 +970,7 @@ async function loadFromInstall(
   alias: string,
   subpath: string | null,
   purl: string,
+  log: Logger = NOOP_LOGGER,
 ): Promise<ControllerInstance> {
   // The package lives under its version-scoped alias folder (see installAlias),
   // not its bare scoped name.
@@ -959,7 +980,7 @@ async function loadFromInstall(
   // Transparent bundling: import a single esbuild bundle of the entry (one file
   // vs a cold loose `node_modules` tree) when available; otherwise the loose
   // entry. Pure accelerator — `null` on any miss, so behavior is unchanged.
-  const target = (await tryBuildControllerBundle(installRoot, entryFile)) ?? entryFile;
+  const target = (await tryBuildControllerBundle(installRoot, entryFile, log)) ?? entryFile;
   // ESM dynamic `import()` accepts either a relative specifier or a `file://`
   // URL — but NOT a bare absolute filesystem path. On POSIX the `/abs/path`
   // form works by happy accident; on Windows `C:\path\to\file.js` is rejected

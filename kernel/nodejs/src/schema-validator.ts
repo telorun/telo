@@ -1,5 +1,5 @@
 import { evaluate } from "@marcbachmann/cel-js";
-import { DataValidator, isCompiledValue, RuntimeError, TypeRule } from "@telorun/sdk";
+import { DataValidator, isCompiledValue, NOOP_LOGGER, RuntimeError, TypeRule, type Logger } from "@telorun/sdk";
 import AjvModule, { type ValidateFunction } from "ajv";
 import standaloneCodeMod from "ajv/dist/standalone/index.js";
 import addFormats from "ajv-formats";
@@ -148,6 +148,16 @@ export class SchemaValidator {
    *  process — `compiledValidators` is keyed by object identity and would
    *  miss those cases. */
   private hashCache = new Map<string, DataValidator>();
+  /** Where cache-failure diagnostics go. Injected rather than reached for
+   *  globally: this class is constructed outside the kernel's stdio scope, and
+   *  §13.1 forbids the kernel writing to `process.stderr` directly. Defaults to
+   *  a no-op so a standalone construction (tests, tooling) stays silent. */
+  private log: Logger = NOOP_LOGGER;
+
+  /** Route cache diagnostics through the kernel's logger. */
+  setLogger(log: Logger): void {
+    this.log = log;
+  }
 
   constructor() {
     this.ajv = new Ajv({
@@ -172,6 +182,7 @@ export class SchemaValidator {
       "x-telo-step-context",
       "x-telo-widget",
       "x-telo-type",
+      "x-telo-inline",
     ]) {
       this.ajv.addKeyword(kw);
     }
@@ -342,8 +353,10 @@ export class SchemaValidator {
         // stale file with a fresh hash header.
       } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
-          process.stderr.write(
-            `[telo:kernel] validator cache load failed (${hash}): ${err instanceof Error ? err.message : String(err)}\n`,
+          this.log.warn(
+            "validator cache load failed",
+            { "telo.validator.hash": hash },
+            { error: err },
           );
         }
       }
@@ -358,8 +371,10 @@ export class SchemaValidator {
         fs.mkdirSync(cacheDir, { recursive: true });
         fs.writeFileSync(path.join(cacheDir, `${hash}.cjs`), payload, "utf-8");
       } catch (err) {
-        process.stderr.write(
-          `[telo:kernel] validator cache write failed (${hash}): ${err instanceof Error ? err.message : String(err)}\n`,
+        this.log.warn(
+          "validator cache write failed",
+          { "telo.validator.hash": hash },
+          { error: err },
         );
       }
     }

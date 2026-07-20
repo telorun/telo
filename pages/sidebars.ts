@@ -21,6 +21,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/build/editor", label: "Telo Editor" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
         { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },
+        { type: "doc", id: "docs/guides/logging", label: "Logging" },
       ],
     },
     {
@@ -524,6 +525,7 @@ const sidebars: SidebarsConfig = {
               items: [
                 { type: "doc", id: "modules/config/README", label: "Config" },
                 { type: "doc", id: "modules/console/README", label: "Console" },
+                { type: "doc", id: "modules/otlp/README", label: "OTLP" },
                 { type: "doc", id: "modules/benchmark/README", label: "Benchmark" },
               ],
             },

@@ -1,0 +1,88 @@
+kind: Telo.Library
+metadata:
+  name: otlp
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: >-
+    Export Telo's structured log records to an OpenTelemetry collector over
+    OTLP/JSON. `Otlp.Sink` is a log sink: declare it as a resource and point the
+    root Application's `logging.sinks` at it.
+exports:
+  kinds:
+    - Sink
+---
+kind: Telo.Definition
+metadata:
+  name: Sink
+  description: >-
+    A log sink that batches records and POSTs them to an OpenTelemetry collector
+    as OTLP/JSON. The encoding is fixed — a collector accepts exactly one wire
+    format — so `encoding:` is not offered. Delivery is a network round-trip, so
+    this sink is not synchronously flushable: a `fatal` record's flush is
+    initiated but not awaited, and records held only here may be lost if the
+    process dies immediately after.
+capability: Telo.Sink
+extends: Telo.LogSink
+controllers:
+  - pkg:npm/@telorun/otlp@0.1.0?local_path=./nodejs#sink
+schema:
+  type: object
+  properties:
+    endpoint:
+      title: Collector endpoint
+      description: Full URL of the collector's OTLP/JSON logs endpoint.
+      type: string
+      x-telo-eval: compile
+    headers:
+      title: Headers
+      description: >-
+        Extra request headers, typically carrying credentials. Read these from
+        `secrets:` so their values are redacted from Telo's own log records.
+      type: object
+      additionalProperties:
+        type: string
+      x-telo-eval: compile
+    resourceAttributes:
+      title: Resource attributes
+      description: >-
+        OTel resource-level attributes attached to every exported batch.
+        `service.name` is required by OTLP; when unset it falls back to
+        `unknown_service:<executable>`.
+      type: object
+      x-telo-eval: compile
+    timeout:
+      title: Request timeout
+      description: How long a single export request may take before it is aborted.
+      type: string
+      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      x-telo-eval: compile
+    level:
+      title: Level
+      description: Minimum severity this sink accepts, filtered at fan-out.
+      type: string
+      enum: [trace, debug, info, warn, error, fatal]
+      x-telo-eval: compile
+    buffer:
+      title: Buffer size
+      description: Maximum records held before the drop policy applies.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
+    on_full:
+      title: On full
+      description: >-
+        What to do when the buffer saturates. `block` is rejected at load on a
+        single-threaded runtime rather than silently degraded.
+      type: string
+      enum: [block, drop_new, drop_old]
+      x-telo-eval: compile
+    flush_interval:
+      title: Flush interval
+      description: Maximum time a record may sit buffered before an export.
+      type: string
+      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      x-telo-eval: compile
+  required: [endpoint]
+  additionalProperties: false

@@ -11,7 +11,25 @@ export type ResourceInstance<TInput = Record<string, any>, TOutput = any> = Part
     init?(ctx?: ResourceContext): Promise<void>;
     teardown?(): void | Promise<void>;
     snapshot?(): Record<string, any> | Promise<Record<string, any>>;
+    /**
+     * Teardown ordering hint. Instances tear down in ascending priority — a
+     * higher number means *later*. Default `0`; within one priority the base
+     * order (reverse init) is preserved.
+     *
+     * This exists because the base order is reverse *insertion* order, which the
+     * multi-pass init retry can perturb, so a resource that must reliably outlive
+     * the rest at shutdown cannot express that through the dependency graph. Log
+     * sinks set {@link TEARDOWN_LAST} so they flush after every resource that
+     * might log while shutting down — a generic mechanism, not a logging-specific
+     * carve-out in the teardown path.
+     */
+    teardownPriority?: number;
   };
+
+/** Teardown-last priority (see {@link ResourceInstance.teardownPriority}). Log
+ *  sinks use it so anything logging during its own teardown still reaches a live
+ *  destination. */
+export const TEARDOWN_LAST = 1000;
 
 /** The kind+name an instance was resolved from. */
 export interface RefIdentity {
