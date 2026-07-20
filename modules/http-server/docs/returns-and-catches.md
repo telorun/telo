@@ -152,7 +152,7 @@ If a `mode: stream` `returns:` entry matches, the response is committed (status 
 
 The format-codec encoders embed *in-band* error frames at their own level: `Ndjson.Encoder` emits `{"type":"error","error":{"message":"..."}}` and ends; `Sse.Encoder` emits `event: error\ndata: ...\n\n` and ends; `PlainText.Encoder` and `Octet.Encoder` propagate the error and abort the transport.
 
-Regardless of encoder, a mid-stream failure is logged server-side on the server's request logger (the one `Http.Server.logger` configures) at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling.
+Regardless of encoder, a mid-stream failure is logged server-side through the server's structured logger at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling.
 
 ## `notFoundHandler`
 

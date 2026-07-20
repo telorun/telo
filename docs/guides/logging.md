@@ -132,6 +132,20 @@ Imports may set `level`, `redact`, and `sampling`. They may **not** declare
 library opening a log file on its importer's behalf would be a side effect
 nobody authorized.
 
+This is also how you control a server's per-request access logs. `Http.Server`
+emits its "incoming request" lines at `info`, so they appear by default and are
+silenced by raising the module's import to `warn` — which keeps the server's own
+`error`/`warn` diagnostics while dropping the access noise, and skips the
+per-request work entirely rather than building a record and discarding it:
+
+```yaml
+imports:
+  Http:
+    source: std/http-server
+    logging:
+      level: warn   # server errors only, no per-request access logs
+```
+
 ## Redaction
 
 Values bound to `secrets:` are redacted automatically, with no configuration.

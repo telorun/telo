@@ -32,7 +32,9 @@ export interface FastifyLogger {
   debug(...args: unknown[]): void;
   trace(...args: unknown[]): void;
   silent(...args: unknown[]): void;
-  child(bindings: Record<string, unknown>): FastifyLogger;
+  // Fastify calls this as `child(bindings, options)` — the second Pino-options
+  // argument is accepted and ignored (the manifest is the only config source).
+  child(bindings: Record<string, unknown>, options?: unknown): FastifyLogger;
 }
 
 export function createFastifyTeloLogger(log: Logger): FastifyLogger {

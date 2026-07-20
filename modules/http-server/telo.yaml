@@ -72,16 +72,19 @@ schema:
         enable behind a trusted proxy — otherwise clients can spoof their IP.
       type: ["boolean", "integer"]
       x-telo-eval: compile
-    logger:
-      title: Request logging
-      description: >-
-        Enable request logging. Records are emitted through Telo's structured
-        logger, so their level, encoding, redaction, and destinations come from
-        the root Application's `logging:` block — this field only decides
-        whether request records are produced at all. It is no longer a raw
-        Fastify logger passthrough.
-      type: "boolean"
-      x-telo-eval: compile
+    # No `logger:` field. Request logging is not a per-server flag — it is
+    # governed by the structured logging pipeline like everything else. Fastify's
+    # per-request access lines are `info`-severity, so they appear whenever this
+    # server's scope is at `info` or below (the default), and are suppressed by
+    # raising the http-server import to `level: warn`:
+    #
+    #   imports:
+    #     Http:
+    #       source: std/http-server
+    #       logging:
+    #         level: warn   # server errors only, no per-request access logs
+    #
+    # See docs/guides/logging.md and kernel/specs/logging.md §13.3.
     openapi:
       title: OpenAPI
       description: OpenAPI document metadata for the server.

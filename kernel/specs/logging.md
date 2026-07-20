@@ -64,8 +64,9 @@ cheapest things to override — each is localized to the section named.
   `wire-schema.json` and is not attempted here.
 - **`NO_COLOR` (§11.2).** The existing CLI honours `FORCE_COLOR` /
   `CLICOLOR_FORCE` but not `NO_COLOR`. This spec requires it. Behaviour change.
-- **`Http.Server.logger` (§13.3).** The field becomes "enable request logging"
-  rather than a raw Fastify passthrough — a schema change to that module.
+- **`Http.Server.logger` (§13.3).** The field is removed, not reshaped: request
+  logging is derived from the resolved scope threshold rather than a per-server
+  boolean — a schema change to that module.
 - **Redaction token (§14).** This spec mandates `"[redacted]"`. Trace-context
   masking already uses `"[secret]"`. Aligning them is recommended but not
   required here.
@@ -1139,15 +1140,22 @@ is impossible.
 
 **`http-server` is a replacement case.** Fastify accepts an injected logger
 instance, so its Pino logger MUST be replaced with a Telo-backed adapter rather
-than bridged. This also removes the current duplication where a stream failure is
-both logged to Pino and separately re-emitted as an event for debug tooling — with
-the adapter in place, one record reaches every sink, including the debug wire.
+than bridged (Fastify 5 takes the instance via `loggerInstance`, not `logger`).
+This also removes the duplication where a stream failure was both logged to Pino
+and separately re-emitted as an event for debug tooling — with the adapter in
+place, one record reaches every sink, including the debug wire.
 
-> **Flagged for follow-up.** `Http.Server`'s `logger:` field is presently a raw
-> boolean forwarded into Fastify's own `logger` option. Under replacement it
-> becomes "enable request logging", with level, encoding, and redaction all
-> governed by the root `logging:` block. That is a schema change to
-> `modules/http-server/telo.yaml` and is out of scope for this document.
+**Whether to instrument requests at all is derived from the resolved scope
+threshold, not a per-server flag.** There is no `Http.Server.logger` field.
+Fastify's per-request access lines are `info`-severity, so the server instruments
+requests iff `info` is enabled for its scope: on by default, and suppressed by
+raising the module's import to `level: warn`, which skips the per-request work
+entirely (Fastify's null logger) rather than building a record and discarding it.
+A boolean toggle would only duplicate what the threshold already expresses —
+`warn` keeps server error logs while dropping access noise, because the two
+differ in severity. The instrument-or-not decision is fixed at construction; a
+runtime threshold change (§12.4) still gates output through the adapter but does
+not re-instrument a server booted with request logging off.
 
 ---
 
