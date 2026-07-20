@@ -1,6 +1,6 @@
 {
   "name": "@telorun/debug-ui",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Browser-safe debug event UI for Telo: wire types, filtering, SSE client, and React components for watching a running app's event stream.",
   "keywords": [
     "telo",

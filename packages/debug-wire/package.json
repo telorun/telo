@@ -1,6 +1,6 @@
 {
   "name": "@telorun/debug-wire",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The Telo debug wire format: language-neutral frame contract (kernel events + log lines) shared by the producer, runner, editor, and debug UI.",
   "keywords": [
     "telo",
