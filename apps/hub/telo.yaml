@@ -1179,7 +1179,6 @@ metadata:
   name: HubServer
 host: "0.0.0.0"
 port: !cel "ports.http"
-logger: true
 cors:
   origin: "*"
   methods: "GET,POST,OPTIONS"

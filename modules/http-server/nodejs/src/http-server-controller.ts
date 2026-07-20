@@ -10,6 +10,7 @@ import {
 } from "@telorun/http-dispatch";
 import {
   isInvokeError,
+  SEVERITY,
   type Invocable,
   type KindRef,
   type ResourceContext,
@@ -48,7 +49,6 @@ type HttpServerResource = RuntimeResource & {
   baseUrl?: string;
   trustForwardedHeaders?: boolean;
   trustProxy?: boolean | number;
-  logger?: boolean;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
   openapi?: {
@@ -112,13 +112,25 @@ class HttpServer implements ResourceInstance {
     // (request.ip). An explicit `trustProxy` (boolean / hop-count) wins; absent
     // it, the legacy `trustForwardedHeaders` boolean still applies.
     const trustProxy = resource.trustProxy ?? this.trustForwardedHeaders;
+    // §13.3: replacement, not bridging — Fastify's Pino instance is swapped for
+    // a Telo-backed adapter, so request records are Telo records at the source
+    // and inherit the root `logging:` block's level, encoding, redaction, and
+    // sinks.
+    //
+    // Whether to instrument requests at all is derived from the resolved scope
+    // threshold, not a manifest flag: Fastify's per-request access lines are
+    // `info`-severity, so we instrument iff `info` is enabled for this server's
+    // scope. Raise the http-server import to `level: warn` and the per-request
+    // work is skipped entirely (Fastify's null logger) rather than built and
+    // discarded per request. This is a construction-time decision — a *runtime*
+    // threshold change (§12.4) still gates output through the adapter, but does
+    // not re-instrument a server booted with logging off.
+    //
+    // A custom logger *instance* must be passed via Fastify 5's `loggerInstance`
+    // option; passing it to `logger:` throws FST_ERR_LOG_INVALID_LOGGER_CONFIG.
+    const requestLogging = this.ctx.log.enabled(SEVERITY.info);
     this.app = Fastify({
-      // §13.3: replacement, not bridging. Fastify's Pino instance is swapped for
-      // a Telo-backed adapter, so request records are Telo records at the source
-      // and inherit the root `logging:` block's level, encoding, redaction, and
-      // sinks. `logger:` now means "enable request logging" rather than being a
-      // raw Fastify passthrough.
-      logger: resource.logger ? createFastifyTeloLogger(this.ctx.log) : false,
+      ...(requestLogging ? { loggerInstance: createFastifyTeloLogger(this.ctx.log) } : {}),
       trustProxy,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });
