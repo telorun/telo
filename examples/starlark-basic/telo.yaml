@@ -4,9 +4,9 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a Starlark script run from flat `targets`.
 imports:
-  Type: std/type@0.6.0
-  Starlark: std/starlark@0.6.0
-  Console: std/console@0.10.0
+  Type: std/type@0.8.0#sha256-z56gxs4HbdWHlUWWvLRFFHPy5wX52SU5A1Fo61s20-g
+  Starlark: std/starlark@0.8.0#sha256-wzyRBWgGIZsLLCMkAlaBiKV8p_akXPkGoZhs6g9knAY
+  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
 targets:
   - name: Step1
     invoke: !ref ExampleStarlarkScript

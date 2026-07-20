@@ -17,19 +17,19 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: std/ai@0.8.0
-  AiOpenai: std/ai-openai@0.9.0
-  AiMcp: std/ai-mcp@0.5.1
-  Mcp: std/mcp-client@0.4.1
-  Fs: std/fs@0.2.1
-  Shell: std/shell@0.2.0
-  Sql: std/sql@0.11.0
-  SqlSqlite: std/sql-sqlite@0.2.1
-  RecordStream: std/record-stream@0.7.0
-  Run: std/run@0.11.1
-  Lease: std/lease@0.3.0
-  CacheMemory: std/cache-memory@0.3.0
-  RateLimit: std/rate-limit@0.3.0
+  Ai: std/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
+  AiOpenai: std/ai-openai@0.12.0#sha256-CZjanhurq4AOKTEQGC0H4shmOdLly7ad9o6-V6bERBs
+  AiMcp: std/ai-mcp@0.7.0#sha256-rCm2tkWbdZEfOfwOdHDzAYl_SP8hWBSl2VAHRkYqbkU
+  Mcp: std/mcp-client@0.7.0#sha256-TXtryrk_BpZ6Smdy8NIYfZhKqMpZhxBoDoXSbhdQf_s
+  Fs: std/fs@0.4.0#sha256-qJNOOd_plVEzqbmkNsT7SGhwszU5q_iHC_LWTkxa0dE
+  Shell: std/shell@0.4.0#sha256-Xwt_rwCRjZVVXWTNmI0wM5RmdcRNpu88Q1o8hhskTM4
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
+  RecordStream: std/record-stream@0.9.0#sha256-HBO4_mOMh4GTQ1ojjmuQvfvMfStSA7XCtXmyDGYQj8k
+  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Lease: std/lease@0.5.0#sha256-qsxfAY5ZLXI9j4vswQQbkGNrO1shkTbDvbcBLPHFzUI
+  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
+  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
 secrets:
   openaiApiKey:
     type: string

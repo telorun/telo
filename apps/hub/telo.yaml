@@ -17,35 +17,35 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Type: std/type@0.7.0#sha256-xGX7ctFBeRAB3aa1z5mfUieYXH3x5MRudLg5yRBfN9s
-  Http: std/http-server@0.17.1#sha256-BbK7mO7_pYq0_rqpvZ7AXBHwdWoq6xidxKVluFP-5pc
-  Sql: std/sql@0.11.0#sha256-OhANIkwsCaZcj1tvLpy0w4AFYyd8uBZzZFwYfgKPCDk
-  Postgres: std/sql-postgres@0.3.0#sha256-yuuAbypA0t8uw0XFvw983G5qqoAzKCd0KNq84nsx4xM
-  Run: std/run@0.12.0#sha256-xjiQMxMfMg5oFDgOR-lrYFwS5qt9_NZugcNXEJ86-Rs
-  Shell: std/shell@0.2.0#sha256--F0327IRm6L0AqRkmdzDOcpDLKrSDaKKkm2g9u_lT60
-  S3: std/s3@0.7.0#sha256-mqSd2QAj1R8-bhQpNc9Pyk4etFx_zbSmKIOAVFfc_V4
-  Yaml: std/yaml@0.5.0#sha256-LUXSSLP5MtF2843obH4fqWZCwUphVG1duY-1CsdKRQs
-  Mcp: std/mcp-server@0.8.0#sha256-x8FGd3kBbAa0gM4p0c1kZrYS05CjT_rWf0cBQKQzdg4
-  Timer: std/timer@0.3.0#sha256-UAwPBaRpZuc_KQ3vCriE3OB0QTO1Y-s9GdqKyLdGOtk
-  PlainText: std/plain-text-codec@0.5.0#sha256-EK_prnLDL9o1vFBrRdZ3tRaz3LvhZqqZYnPjrvYHDo0
-  Console: std/console@0.10.0#sha256-CsYNZz6f6rvh0sSsn0HiKOGuMk35mysQj4QNFLptCzs
+  Type: std/type@0.8.0#sha256-z56gxs4HbdWHlUWWvLRFFHPy5wX52SU5A1Fo61s20-g
+  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  Postgres: std/sql-postgres@0.4.0#sha256-l0R480mxguUeQ6ACoefbGfHbGpchcpuodAy5-7tQ5PA
+  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Shell: std/shell@0.4.0#sha256-Xwt_rwCRjZVVXWTNmI0wM5RmdcRNpu88Q1o8hhskTM4
+  S3: std/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Yaml: std/yaml@0.6.0#sha256-RUEuFaLE6dMJvqkSXB1b3RKyt0bFsVJJOUI_R8H9x2M
+  Mcp: std/mcp-server@0.9.0#sha256-n5wc3Ks9wJ5KNrhDJMFrJccvvV_n7B0Me6wZUkExzMk
+  Timer: std/timer@0.4.0#sha256-t5ZPVZadQK-UbODqoHZUHdeUNR9ItiDuxj3FtBBmBOM
+  PlainText: std/plain-text-codec@0.6.0#sha256-36gvBMcKnfdvQzcXk9wLMCVAUjlo4gg7IDvrC0oeIWc
+  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
   # Interim relative paths: the queryPrompt / passagePrompt contract on
   # Embedding.Model is unpublished. A registry pin resolves to the published
   # 0.2.0 (no prompt fields) and version-hoisting drags embedding-openai's own
   # `../embedding` onto that same copy, so both must be local or neither is.
   # Flip both back to `std/…@<version>` once released.
-  Embedding: std/embedding@0.4.0#sha256-tBxGzetE0gK47qgrAwGN2Upg9PFP5kQb6UCH57zz28A
-  EmbeddingOpenai: std/embedding-openai@0.4.0#sha256-592Fssi_AyP2SClkTBT3rBV0Faoe_1DUvNLEwB3wcbI
+  Embedding: std/embedding@0.5.0#sha256-CWrU6XQ5Dt475bfsuB9wHGvfrMMowJGRxLKIi6fHHmg
+  EmbeddingOpenai: std/embedding-openai@0.6.0#sha256-bzecl5iROojz35r014Z8ktNSzf0iITSJG__xuNXBtfQ
   # cache-memory's local source is ahead of the registry (0.4.0 unpublished);
   # pin the published 0.3.0 so the Docker `telo install` build resolves.
-  CacheMemory: std/cache-memory@0.3.0#sha256-kjfC-xNJpVHfjZdkoSCowqnDzo1fBbG4Cqxg10No2Y8
-  RateLimit: std/rate-limit@0.4.0#sha256--e73JbrMjywf2Ow75NPqQLRNaSZ8495PYZ99JUl1kTk
-  VectorStore: std/vector-store@0.3.0#sha256-1OArLbplEmCowSLjuCNK4EelXjfG80AEQVKi5RZXKEg
+  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
+  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
+  VectorStore: std/vector-store@0.4.0#sha256-drERpw8IiDehuKFGuov93UyKN3yuOv2TZHgiZ4AfArY
   # Interim relative path: vector-store-pgvector@0.1.0 is not yet published to
   # the registry. Flip to `std/vector-store-pgvector@0.1.0` once it ships (the
   # changeset/changie fragments drive that release); the registry-resolved
   # form is what the Docker `telo install` build expects.
-  VectorStorePgvector: std/vector-store-pgvector@0.2.0#sha256-7H895C_KNKpRBiwKqHjOSxRbZ1vbR5lTeh1bapSzBHY
+  VectorStorePgvector: std/vector-store-pgvector@0.3.0#sha256-QiwU58kD_EQuOQdg-qSgJig7I1G3wifDXW5a3DiaAPk
 ports:
   http:
     env: PORT
