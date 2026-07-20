@@ -33,7 +33,7 @@ describe("invocation tracing — spanId in event payload", () => {
     await kernel.teardown();
   });
 
-  it("rides a monotonic spanId on every dispatch event when tracing is on", async () => {
+  it("rides a unique, hex-rendered spanId on every dispatch event when tracing is on", async () => {
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const payloads: Payload[] = [];
@@ -44,12 +44,16 @@ describe("invocation tracing — spanId in event payload", () => {
     await kernel.invoke("JS.Script.Echo", { value: 1 });
     await kernel.invoke("JS.Script.Echo", { value: 2 });
 
-    expect(typeof payloads[0]?.spanId).toBe("number");
+    expect(payloads[0]?.spanId).toMatch(/^[0-9a-f]{16}$/);
     expect(payloads[0]).toMatchObject({ capability: "invoke", phase: "end", outcome: "ok" });
     // A root invoke has no parent.
     expect(payloads[0]?.parentSpanId).toBeUndefined();
-    // Monotonic across invocations.
-    expect(payloads[1]!.spanId as number).toBeGreaterThan(payloads[0]!.spanId as number);
+    // Distinct across invocations. Deliberately NOT monotonic on the wire: §7.1
+    // XORs the internal counter with a per-process salt so two services in one
+    // distributed trace cannot both mint span id `1`. The counter stays
+    // monotonic internally; the emitted id only has to be unique.
+    expect(payloads[1]!.spanId).not.toBe(payloads[0]!.spanId);
+    expect(payloads[1]?.spanId).toMatch(/^[0-9a-f]{16}$/);
 
     await kernel.teardown();
   });
@@ -83,7 +87,7 @@ describe("invocation tracing — spanId in event payload", () => {
 
     const outerPayload = byEvent.get("Outer.Invoked");
     const echoPayload = byEvent.get("Echo.Invoked");
-    expect(typeof outerPayload?.spanId).toBe("number");
+    expect(outerPayload?.spanId).toMatch(/^[0-9a-f]{16}$/);
     // Outer is the trace root; Echo's parent is Outer.
     expect(outerPayload?.parentSpanId).toBeUndefined();
     expect(echoPayload?.parentSpanId).toBe(outerPayload?.spanId);

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { formatSpanCounter } from "./logging/span-id.js";
 import {
   getRefIdentity,
   isCompiledValue,
@@ -163,6 +164,19 @@ export function buildResolvedProperties(
  * when a composing controller re-invokes without threading it by hand.
  */
 const cancellationStore = new AsyncLocalStorage<InvokeContext>();
+
+/**
+ * The ambient dispatch context, for §7.2's automatic trace correlation: a record
+ * emitted inside an active span carries that span's ids without the controller
+ * passing anything.
+ *
+ * `AsyncLocalStorage.run()` is used throughout rather than `enterWith()`, which
+ * transitions for the remainder of the entire synchronous execution and leaks
+ * context into subsequent event handlers on the same tick (§9.1).
+ */
+export function ambientInvokeContext(): InvokeContext | undefined {
+  return cancellationStore.getStore();
+}
 
 type Walker = (ctx: Record<string, unknown>) => unknown;
 
@@ -687,25 +701,83 @@ export class EvaluationContext implements IEvaluationContext {
    *   2. Tear down own resource instances in reverse registration order,
    *      emitting a Teardown event for each via the injected emit callback.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   async teardownResources(): Promise<void> {
     this.state = "Draining";
+    const failures: Array<{ resource: string; error: unknown }> = [];
+
     for (const child of [...this.children].reverse()) {
-      await child.teardownResources();
+      try {
+        await child.teardownResources();
+      } catch (err) {
+        failures.push({ resource: "(child context)", error: err });
+      }
     }
-    const entries = [...this.resourceInstances.entries()].reverse();
-    for (const [key, { resource, instance }] of entries) {
-      if (instance.teardown) await instance.teardown();
-      await this.emit(`${resource.kind}.${resource.metadata.name}.Teardown`, {
-        resource: {
-          kind: resource.kind,
-          name: resource.metadata.name,
-          id: this.resourceId(resource.kind, resource.metadata.name),
-        },
-        ...(this.owner ? { owner: this.owner } : {}),
-      });
+
+    for (const [key, { resource, instance }] of this.teardownOrder()) {
+      const label = `${resource.kind}.${resource.metadata.name}`;
+      try {
+        if (instance.teardown) await instance.teardown();
+      } catch (err) {
+        // Aggregate rather than abort. A single throwing resource used to
+        // abandon every resource after it in the cascade — including the log
+        // sinks, which are pinned last precisely so they outlive everything that
+        // might log while shutting down. Losing the shutdown flush to an
+        // unrelated failure is exactly the silent loss §10.5 forbids.
+        failures.push({ resource: label, error: err });
+      }
+      try {
+        await this.emit(`${label}.Teardown`, {
+          resource: {
+            kind: resource.kind,
+            name: resource.metadata.name,
+            id: this.resourceId(resource.kind, resource.metadata.name),
+          },
+          ...(this.owner ? { owner: this.owner } : {}),
+        });
+      } catch (err) {
+        failures.push({ resource: `${label} (Teardown event)`, error: err });
+      }
       this.resourceInstances.delete(key);
     }
+
     this.state = "Teardown";
+
+    if (failures.length > 0) {
+      throw new RuntimeError(
+        "ERR_TEARDOWN_FAILED",
+        `${failures.length} resource(s) failed during teardown`,
+        failures.map(({ resource, error }) => ({
+          severity: "error" as const,
+          message: error instanceof Error ? error.message : String(error),
+          resource,
+        })),
+      );
+    }
+  }
+
+  /**
+   * Resource instances in teardown order: ascending `teardownPriority`, with the
+   * base reverse-insertion order preserved within each priority tier.
+   *
+   * The base order is reverse *insertion*, which is reverse init order in the
+   * happy path — but the init loop is a multi-pass retry, so a resource that
+   * failed its first pass lands later in the map than its topological rank
+   * implies. That makes the dependency graph an unreliable way to say "last".
+   * A resource that must reliably outlive the rest declares it directly via
+   * `teardownPriority` (log sinks set `TEARDOWN_LAST`), so the generic teardown
+   * path orders by a declared number rather than sniffing any one subsystem's
+   * instance shape.
+   */
+  private teardownOrder(): Array<[string, { resource: any; instance: any }]> {
+    const entries = [...this.resourceInstances.entries()].reverse();
+    // Stable sort by priority (default 0); Array.prototype.sort is stable, so
+    // the reverse-insertion order survives within each tier.
+    return entries.sort(
+      ([, a], [, b]) =>
+        ((a.instance as { teardownPriority?: number })?.teardownPriority ?? 0) -
+        ((b.instance as { teardownPriority?: number })?.teardownPriority ?? 0),
+    );
   }
 
   transientChild(context: Record<string, any>): EvaluationContext {
@@ -785,7 +857,9 @@ export class EvaluationContext implements IEvaluationContext {
    * event *name* stays human-meaningful (`<name>.Invoked`) for bus subscribers;
    * everything a debug consumer needs to rebuild the call tree rides here, so the
    * consumer never parses the dotted name. `spanId`/`parentSpanId` are the
-   * tracer's `invocationId`/`parentInvocationId` (present only while tracing);
+   * tracer's `invocationId`/`parentInvocationId`, rendered as 16 lowercase hex
+   * characters at this boundary (present only while tracing) so a span joins its
+   * log records by string equality — see kernel/specs/logging.md §7.1;
    * `ref` carries the kind+name the name no longer encodes; `detail` is the
    * per-capability data (inputs/outputs, error fields, cancellation reason).
    */
@@ -813,8 +887,12 @@ export class EvaluationContext implements IEvaluationContext {
   ): Record<string, unknown> {
     return {
       traceId,
-      spanId,
-      parentSpanId,
+      // The counter stays a cheap integer internally; hex is a fixed-width
+      // render performed only here, at the encoding boundary, and only for
+      // spans actually being emitted (§7.1 forbids formatting eagerly at span
+      // creation). The salt keeps ids unique across processes in one trace.
+      spanId: spanId === undefined ? undefined : formatSpanCounter(spanId),
+      parentSpanId: parentSpanId === undefined ? undefined : formatSpanCounter(parentSpanId),
       capability,
       phase,
       ...(outcome !== undefined ? { outcome } : {}),

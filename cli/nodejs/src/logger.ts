@@ -1,17 +1,22 @@
 import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
 import { DiagnosticSeverity } from "@telorun/analyzer";
 import { findPositions } from "@telorun/ide-support";
-import type { RuntimeDiagnostic } from "@telorun/kernel";
+import { decideColor, type RuntimeDiagnostic } from "@telorun/kernel";
 import * as path from "path";
 
 export function createLogger(verbose: boolean) {
-  // Honor FORCE_COLOR / CLICOLOR_FORCE so callers piping stdout (the docker
-  // runner, CI, etc.) can still opt into ANSI. Without these, running under a
-  // non-TTY wrapper produces plain text even when the consumer can render it.
-  const useColor =
-    Boolean(process.stdout.isTTY) ||
-    Boolean(process.env.FORCE_COLOR) ||
-    Boolean(process.env.CLICOLOR_FORCE);
+  // The color decision follows `kernel/specs/logging.md` §11.2's precedence
+  // order exactly, shared with the `pretty` log encoding rather than
+  // reimplemented here. Notably this adds `NO_COLOR` support, which the CLI
+  // previously ignored, and stops treating a bare `FORCE_COLOR=0` as "on" —
+  // both behavior changes, both required by the spec.
+  //
+  // The decision is made against stdout, which is where this logger writes.
+  const useColor = decideColor({
+    setting: "auto",
+    env: process.env,
+    isTTY: Boolean(process.stdout.isTTY),
+  });
   const wrap = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
   return {
     info: (...args: any[]) => console.log(...args),

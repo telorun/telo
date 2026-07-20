@@ -52,11 +52,9 @@ targets:
 
 This declares:
 
-- A **`Telo.Application`** — the runnable root, with `Main` as its target.
-- Two **`imports:` entries** — pulling in the `Run` and `Console` modules
-  from the standard library.
-- A **`Run.Sequence`** named `Main` with a single step that invokes
-  the exported `Console.writeLine` singleton.
+- A **`Telo.Application`** — the runnable root, with `writeLine` as its target.
+- One **`imports:` entry** — pulling in the `Console` module from the standard library.
+- Inputs to the `Console.writeLine` target — a single string to print.
 
 ## Run it
 

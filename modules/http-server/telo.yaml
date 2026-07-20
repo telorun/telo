@@ -73,8 +73,13 @@ schema:
       type: ["boolean", "integer"]
       x-telo-eval: compile
     logger:
-      title: Logger
-      description: Enable or disable request logging.
+      title: Request logging
+      description: >-
+        Enable request logging. Records are emitted through Telo's structured
+        logger, so their level, encoding, redaction, and destinations come from
+        the root Application's `logging:` block — this field only decides
+        whether request records are produced at all. It is no longer a raw
+        Fastify logger passthrough.
       type: "boolean"
       x-telo-eval: compile
     openapi:
@@ -298,7 +303,6 @@ schema:
   examples:
     - host: 0.0.0.0
       port: !cel "ports.http"
-      baseUrl: http://localhost:${{ ports.http }}
       logger: true
       openapi:
         info:

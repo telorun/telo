@@ -33,6 +33,10 @@ import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
 import { hostEnv, lockControllerEnv } from "./host-env.js";
 import { KernelTracer } from "./tracing.js";
+import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
+import type { ScopeConfig } from "./logging/scope-config.js";
+import { formatSpanCounter } from "./logging/span-id.js";
+import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
@@ -148,12 +152,36 @@ export class Kernel implements IKernel {
   readonly env: Record<string, string | undefined>;
   readonly argv: string[];
   readonly registryUrl: string | undefined;
+  /** Structured logging for this kernel — the pipeline, its sinks, and the
+   *  scoped loggers handed to controllers as `ctx.log`. Live from construction
+   *  so loader and parse diagnostics have somewhere to go (§12.3); a nested
+   *  kernel inherits the parent's sink configuration through the injected
+   *  streams, so a test harness can capture child output (§13.1). */
+  readonly logging: KernelLogging;
 
   constructor(options: KernelOptions) {
     this.stdin = options.stdin ?? process.stdin;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
     this.env = options.env ?? hostEnv();
+    this.logging = new KernelLogging({
+      env: this.env,
+      stdout: this.stdout,
+      stderr: this.stderr,
+    });
+    // The validator is constructed outside the kernel's stdio scope, so it is
+    // handed the kernel logger explicitly rather than writing to process.stderr.
+    this.sharedSchemaValidator.setLogger(this.logging.kernelLogger());
+    // §7.2: a record emitted inside an active dispatch span carries that span's
+    // ids automatically — a controller never passes them. The ids come from the
+    // same counter the trace wire uses, rendered here at the encoding boundary.
+    this.logging.setTraceContextProvider(() => {
+      const ambient = ambientInvokeContext();
+      if (!ambient?.traceId || ambient.invocationId === undefined) return undefined;
+      const spanId = formatSpanCounter(ambient.invocationId);
+      if (!spanId) return undefined;
+      return { traceId: ambient.traceId, spanId };
+    });
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
     // Resolution sources come from the transport registry, so a scheme-owning
@@ -297,6 +325,18 @@ export class Kernel implements IKernel {
       "Telo.Import",
       await import("./controllers/module/import-controller.js"),
     );
+    // The mandatory sinks live in the kernel rather than in a standard-library
+    // module: §16 requires every conforming runtime to implement both, so
+    // shipping them as an installable module would make conformance depend on
+    // whether that module happened to be installed.
+    this.controllers.registerController(
+      "Telo.ConsoleSink",
+      await import("./controllers/logging/console-sink-controller.js"),
+    );
+    this.controllers.registerController(
+      "Telo.FileSink",
+      await import("./controllers/logging/file-sink-controller.js"),
+    );
   }
 
   /**
@@ -398,7 +438,9 @@ export class Kernel implements IKernel {
       );
     }
     for (const d of analysisGraph.versionDiagnostics) {
-      if (d.code === "MODULE_VERSION_HOISTED") console.warn(`warning: ${d.message}`);
+      if (d.code === "MODULE_VERSION_HOISTED") {
+        this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });
+      }
     }
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
@@ -461,9 +503,7 @@ export class Kernel implements IKernel {
       try {
         await writeAnalysisStamp("", analysisSignature, manifestsDir);
       } catch (err) {
-        this.stderr.write(
-          `[telo:kernel] analysis stamp write failed: ${err instanceof Error ? err.message : String(err)}\n`,
-        );
+        this.logging.kernelLogger().warn("analysis stamp write failed", undefined, { error: err });
       }
     }
 
@@ -601,7 +641,32 @@ export class Kernel implements IKernel {
         port,
         protocol: portDecls[name]?.protocol === "udp" ? "udp" : "tcp",
       }));
+
+      this.applyLoggingConfig(rootApplicationManifest as Record<string, any>);
     }
+  }
+
+  /**
+   * Adopt the manifest's `logging:` block — §12.3's handover from the bootstrap
+   * default to the declared configuration.
+   *
+   * Deliberately runs *after* `variables` / `secrets` resolve, because the only
+   * sanctioned way to derive a level from the host environment is a `variables:`
+   * entry read with `!cel`: there is no `TELO_LOG_LEVEL`, so the expression must
+   * have something to resolve against by the time it is evaluated.
+   *
+   * Manifest secrets are handed to the pipeline here so they redact with no
+   * configuration at all (§14) — the same set, cascading down the same import
+   * graph, that supplies the scope threshold.
+   */
+  private applyLoggingConfig(rootApplicationManifest: Record<string, any>): void {
+    const raw = rootApplicationManifest["logging"];
+    if (raw === undefined) {
+      this.logging.applyRootConfig(undefined, this.rootContext.secretValues);
+      return;
+    }
+    const expanded = this.rootContext.expandWith(raw, {}) as LoggingManifestBlock;
+    this.logging.applyRootConfig(expanded, this.rootContext.secretValues);
   }
 
   /**
@@ -642,10 +707,14 @@ export class Kernel implements IKernel {
     // return earlier — so analysis/editor are unaffected. The denied set is
     // process-global and additive across in-process kernels.
     lockControllerEnv(this._declaredEnvKeys, (key) => {
-      this.stderr.write(
-        `[telo] controller read process.env.${key} directly — ${key} is a declared ` +
-          `binding; read it through ctx.env or its variable/secret, not raw process.env.\n`,
-      );
+      this.logging
+        .kernelLogger()
+        .warn(
+          `controller read process.env.${key} directly — ${key} is a declared binding; ` +
+            `read it through ctx.env or its variable/secret, not raw process.env.`,
+          { "telo.env.key": key },
+          { eventName: "telo.env.declared_binding_bypassed" },
+        );
     });
 
     // Call register hooks for controllers actually loaded at this point (built-ins).
@@ -689,9 +758,24 @@ export class Kernel implements IKernel {
     }
 
     await this.rootContext.initializeResources();
+
+    // Every declared sink has now attached, so the bootstrap buffer has done its
+    // job. A consumer connecting later — the debug wire — wants the live stream,
+    // not the whole process history, so replay stops here rather than persisting
+    // for the process lifetime. The sink-counting and the tree walk are logging
+    // logic, so they live on KernelLogging; the kernel just hands it the graph.
+    this.logging.sealBootstrap(this.staticManifests);
+
     await this.eventBus.emit("Kernel.Initialized", {});
 
     this._isBooted = true;
+  }
+
+  /** Every module context's resolved logging configuration, keyed by its dotted
+   *  import-alias path. Delegates to {@link KernelLogging.scopesFrom}; see there
+   *  for what §12.2 uses it for. */
+  loggingScopes(): Map<string, ScopeConfig> {
+    return this.logging.scopesFrom(this.rootContext);
   }
 
   /**
@@ -749,6 +833,12 @@ export class Kernel implements IKernel {
     if (this.rootContext) {
       await this.rootContext.teardownResources();
     }
+    // Sinks tear down last (they are pinned in the teardown order), so by this
+    // point their own teardown has already flushed and closed them. This drains
+    // anything emitted during teardown itself and reports outstanding drop
+    // accounting, so a run that ends while still dropping does not lose its
+    // final count (§10.4, §10.5).
+    await this.logging.shutdown();
     // Drop the load-time graph so a teardown'd kernel doesn't pin every
     // manifest file's text in memory (LoadedFile retains the parsed
     // documents + the original YAML bytes). Reusing the kernel after

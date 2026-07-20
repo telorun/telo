@@ -502,6 +502,23 @@ system: |
     `ports.X`.
   - `targets:` (Application only) — a flat boot list of `!ref`s to the
     Runnables / Services to start after resources init.
+  - `logging:` (Application only, at the root) — structured logging config.
+    `level:` is one of `trace|debug|info|warn|error|fatal` (default `info`).
+    `sinks:` is a LIST of ref-or-inline entries; `Telo.ConsoleSink` and
+    `Telo.FileSink` are kernel built-ins needing NO import. Omitting `sinks:`
+    yields one console sink (pretty on a TTY, JSON when piped), so most apps
+    need no `logging:` block at all. `redact.paths:` names paths to censor
+    (dot / bracket / `*` / `[*]`, multiple wildcards allowed); values bound to
+    `secrets:` are redacted automatically with no configuration. `sampling:`
+    (`first` / `thereafter` / `tick`) is off by default. There is NO
+    `TELO_LOG_LEVEL` and no logging CLI flag — to read a level from the host
+    environment, declare a `variables:` entry with an `env:` key and write
+    `level: !cel "variables.logLevel"`. An `imports:` entry MAY carry its own
+    `logging:` block with `level` / `redact` / `sampling` to raise verbosity for
+    that dependency's subtree only (config cascades and may be narrowed at each
+    hop); an import MUST NOT declare `sinks:`. `on_full: block` is rejected at
+    load on the Node.js runtime. In a controller, emit through `ctx.log`
+    (`ctx.log.info(msg, attrs)`), never `console.*` or `process.stderr`.
   - `include:` — array of partial-file globs merged into this module's scope.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
     `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts

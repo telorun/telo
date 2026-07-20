@@ -142,6 +142,7 @@ class ResourceDefinition implements ResourceInstance {
     const loader = new ControllerLoader({
       entryUrl: ctx.getEntryUrl(),
       installRoot: ctx.getInstallRoot(),
+      log: ctx.log,
     });
     // Eager resolve — verify the controller is hostable now (so a broken
     // `controllers:` candidate fails fast at boot), but defer the expensive

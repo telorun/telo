@@ -308,6 +308,13 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
 /** Return a literal placeholder value of the correct schema type for AJV. */
 export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
   if (schema.default !== undefined) return schema.default;
+  // An enum-constrained field needs a placeholder drawn from the enum: the
+  // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`
+  // but violate `enum`, so a CEL expression feeding any enum field would report
+  // a spurious SCHEMA_VIOLATION against a value the author never wrote. The
+  // member chosen is irrelevant — only its acceptability to AJV matters, since
+  // the real value is checked at runtime once the expression resolves.
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
   switch (schema.type) {
     case "integer":
     case "number":

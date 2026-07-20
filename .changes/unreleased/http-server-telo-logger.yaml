@@ -1,0 +1,10 @@
+project: http-server
+kind: Added
+body: >-
+  Request logging now goes through Telo's structured logger. Fastify's Pino
+  instance is replaced with a Telo-backed adapter, so request records are Telo
+  records at the source and inherit the root Application's `logging:` block —
+  level, encoding, redaction, and sinks. The `logger:` field now means "enable
+  request logging" rather than being a raw Fastify passthrough. Headers are not
+  captured by default.
+time: 2026-07-19T00:00:01.000000000+02:00

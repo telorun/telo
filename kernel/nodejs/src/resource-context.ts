@@ -12,6 +12,7 @@ import {
   type InvokeContext,
   type LoadOptions,
   type ModuleContext,
+  type Logger,
   type OpenSpan,
   type OpenSpanOptions,
   type ParsedArgs,
@@ -19,6 +20,14 @@ import {
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { hostEnv } from "./host-env.js";
+import type { LoggingHost } from "./logging/logging-host.js";
+import type { ScopeConfig } from "./logging/scope-config.js";
+
+/** The kernel's `ModuleContext` as far as logging is concerned. Declared
+ *  structurally rather than imported to avoid a module cycle. */
+interface KernelModuleContext {
+  getLoggingConfig?(): ScopeConfig | undefined;
+}
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
@@ -43,6 +52,45 @@ export class ResourceContextImpl implements ResourceContext {
    *  spawns sub-resources composes their ids as `ownerPrefix + kind + "." + name`
    *  and stamps the owner on the child context it registers them into. */
   readonly ownerPrefix: string;
+
+  /** Built lazily: most resources never log, and constructing the scoped logger
+   *  eagerly for every context would allocate per resource for nothing. */
+  #log: Logger | undefined;
+
+  /**
+   * The resource's structured logger, stamped with its identity, module, and
+   * import-alias scope so a record identifies *which instance* emitted it — the
+   * distinction `module` alone cannot make when the same library is imported
+   * twice (§7.3).
+   */
+  get log(): Logger {
+    if (!this.#log) {
+      const kind = this.metadata?.kind as string | undefined;
+      const name = this.metadata?.metadata?.name as string | undefined;
+      const resource =
+        kind && name
+          ? { kind, name, id: `${this.ownerPrefix}${kind}.${name}` }
+          : undefined;
+      // The runtime value is always the kernel's `ModuleContext`, which carries
+      // the resolved per-scope config; the field is typed as the SDK's narrower
+      // interface, which deliberately does not expose kernel-internal state.
+      const scope = (
+        this.moduleContext as unknown as KernelModuleContext
+      ).getLoggingConfig?.();
+      this.#log = this.kernel.logging.createLogger(scope, resource);
+    }
+    return this.#log;
+  }
+
+  /** The sink-facing half of the pipeline. Only the built-in sink controllers
+   *  reach for it; every other controller uses {@link log}. */
+  get logging(): LoggingHost {
+    return this.kernel.logging.host;
+  }
+
+  kernelLoggingRootScope(): ScopeConfig {
+    return this.kernel.logging.rootScope;
+  }
 
   constructor(
     readonly kernel: Kernel,

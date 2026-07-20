@@ -45,7 +45,7 @@ Telo is a declarative runtime: YAML manifests describe desired state, the kernel
 - **Streaming & I/O**: async iterators, channels, backpressure, chunked transfer, framing, multiplexing, file/stdio/network pipes.
 - **Reliability**: retry / backoff, circuit breakers, timeouts, deadlines, idempotency, graceful shutdown, dead-letter queues.
 - **Performance**: caching (response, query, computation), connection pooling, batching, rate limiting, throttling, debouncing, deduplication.
-- **Observability**: structured logging (levels, sinks, correlation IDs), metrics (counters, gauges, histograms), distributed tracing (OpenTelemetry, spans, baggage), audit logs, profiling, health checks (liveness/readiness), alerting hooks.
+- **Observability**: structured logging — **implemented**, see `kernel/specs/logging.md` (normative) and `docs/guides/logging.md` (guide); metrics (counters, gauges, histograms), distributed tracing (OpenTelemetry, spans, baggage), audit logs, profiling, health checks (liveness/readiness), alerting hooks.
 - **Security**: authentication (OAuth, OIDC, API keys, JWT, mTLS, SAML), authorization (RBAC, ABAC, policy engines), secrets management (vault integrations, rotation), encryption at rest / in transit, signing/verification, CSRF/CORS.
 - **Time & scheduling**: cron, intervals, delayed jobs, leases, time-zone handling, deadlines, clock skew tolerance.
 - **Coordination**: distributed locking, leader election, queues (FIFO / priority), pub/sub, event sourcing, sagas / workflow orchestration, transactional outbox.
@@ -95,6 +95,7 @@ When designing a new module or capability, ask: which of the above does this res
 - `controllers/resource-definition/` — handles `kind: Telo.Definition` and parameterized templates
 - `capabilities/` — base interfaces: runnable, invokable, listener, provider, template, mount
 - `manifest-schemas.ts` — JSON Schema for YAML validation
+- `logging/` — structured logging, implementing `kernel/specs/logging.md`: `logging-pipeline.ts` (threshold → redaction → sampling → fan-out), the `json`/`pretty`/`otlp` encoders, `console-sink.ts` / `file-sink.ts` / `debug-wire-sink.ts`, `normalize-attributes.ts` (§6.3 limits, iterative and bounded), `span-id.ts` (salted counter, hex only at the encoding boundary), `kernel-logging.ts` (bootstrap writer → declared-config handover, replay, seal). The record model, severity scale, `Logger`, and the `Telo.Sink` contract live in `@telorun/sdk` (module authors implement them); the redaction **path parser** lives in the analyzer so `telo check` and the runtime share one grammar. Reached by controllers as `ctx.log`; sinks reach the pipeline via `ctx.logging`.
 - `host-env.ts` — `boot()` replaces global `process.env` with a **guardrail** Proxy that denies a **manifest-derived** set: the env-var names the root Application binds via `variables`/`secrets`/`ports` (`collectDeclaredEnvKeys` in `application-env.ts`). A declared key reads back `undefined` (hidden from `in`/enumeration) with a once-per-key warning, so **controllers can't bypass a declared binding** — they use `ctx.env` or the declared `variables`/`secrets`. Every other key passes through — **no vendor-env allowlist** (a bundled SDK's `NODE_ENV`/`AWS_*`/`BUN_*` reads are undeclared, so untouched). The denied set is process-global and additive across in-process kernels. Kernel `TELO_*`/cache reads and subprocess spawns use `hostEnv()` (real env captured pre-lock); `analyzeOnly` never boots. A guardrail, not isolation; `process.env` is left non-writable. Tested in `tests/host-env.test.ts`.
 
 ## Resource Kinds
@@ -159,6 +160,7 @@ Registers a new resource kind. Defined inline in a module's `telo.yaml`.
 - `Telo.Invocable` — `invoke(inputs)`; request handlers, scripts
 - `Telo.Provider` — `init()` + optional `provide(): Promise<T>`; config/secret/value-flow sources. All fields implicitly `x-telo-eval: compile`. `provide()` opts the definition into the typed value-flow contract checked against the abstract's `outputType`; template-form providers (declared with `provide:` on a `Telo.Definition`) get a synthesized `provide()` automatically.
 - `Telo.Mount` — mounted into a Service (e.g. HTTP APIs, middleware)
+- `Telo.Sink` — `write(record)` + `flush()` / `flushSync()` / `close()`; a record-stream destination the runtime writes to **directly**, never through `ctx.invoke` (per-record dispatch is too slow, and dispatch emits trace events, so logging through it would generate telemetry from inside the telemetry path). Payload-opaque by design, so a future `Telo.TraceSink` reuses it; the log-specific fields live on the `Telo.LogSink` abstract. Scoped to record streams — metrics aggregate rather than stream and are not covered.
 - `Telo.Type` — pure schema definition, no runtime instance
 
 Defined as `Telo.Abstract` entries in `builtins.ts`.

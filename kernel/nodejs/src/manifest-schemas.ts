@@ -82,6 +82,11 @@ const KNOWN_CAPABILITIES = [
   "Telo.Provider",
   "Telo.Type",
   "Telo.Mount",
+  // A record-stream destination the runtime writes to directly rather than
+  // through `ctx.invoke` — per-record dispatch is far too slow for a logging hot
+  // path, and dispatch emits trace events, so routing logs through it would
+  // generate telemetry from inside the telemetry path. See kernel/specs/logging.md §10.
+  "Telo.Sink",
 ] as const;
 
 /** Rule 8: `throws:` is only meaningful on Telo.Invocable or Telo.Runnable.
@@ -113,6 +118,13 @@ export const ResourceDefinitionSchema = {
     {
       required: ["capability"],
       properties: { capability: { const: "Telo.Mount" } },
+      ...forbidThrows,
+    },
+    {
+      // A sink is written to directly, never dispatched, so a thrown error is a
+      // boot-time failure rather than a structured runtime error for a caller.
+      required: ["capability"],
+      properties: { capability: { const: "Telo.Sink" } },
       ...forbidThrows,
     },
     // Unknown/absent capability: open schema for third-party extensibility

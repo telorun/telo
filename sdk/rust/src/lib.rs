@@ -33,9 +33,15 @@ pub mod backend;
 
 mod error;
 mod invoke_context;
+pub mod logging;
 mod traits;
 
 pub use error::ControllerError;
+pub use logging::{
+    format_span_counter, format_span_id, format_trace_id, salt_span_id, severity, severity_floor,
+    severity_text, ErrorValue, LogOptions, LogRecord, LogSink, Logger, ResourceRef, SeverityNumber,
+    ThresholdCache,
+};
 pub use invoke_context::{CancellationToken, InvokeContext};
 pub use traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 

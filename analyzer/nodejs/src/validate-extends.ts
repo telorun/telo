@@ -29,6 +29,9 @@ const EXTENDS_ALIAS_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
  *    (metadata.module !== "Telo"). Builtin lifecycle capabilities (Telo.Invocable, etc.)
  *    never trigger this — they're lifecycle roles by design.
  */
+/** The built-in namespace, resolvable without a `Telo.Import`. */
+const TELO_BUILTIN_ALIAS = "Telo";
+
 export function validateExtends(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
@@ -88,7 +91,11 @@ export function validateExtends(
         });
       } else {
         const prefix = extendsValue.slice(0, extendsValue.indexOf("."));
-        if (!aliases.hasAlias(prefix)) {
+        // `Telo` needs no import: the kernel built-ins are globally resolvable
+        // by design, which is what lets a sink author depend on the kernel
+        // contract (`extends: Telo.LogSink`) rather than on a standard-library
+        // module version — see kernel/specs/logging.md §10.2.
+        if (prefix !== TELO_BUILTIN_ALIAS && !aliases.hasAlias(prefix)) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "EXTENDS_MALFORMED",

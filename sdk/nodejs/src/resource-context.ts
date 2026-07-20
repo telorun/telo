@@ -1,5 +1,7 @@
 import type { CancellationSource, InvokeContext, OpenSpan, OpenSpanOptions } from "./cancellation.js";
 import { ControllerContext } from "./controller-context.js";
+import type { Logger } from "./logger.js";
+import type { LoggingHost } from "./log-sink.js";
 import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
@@ -131,6 +133,28 @@ export interface ResourceContext extends ControllerContext {
    *  manifests. Use this when you need the full kind surface area visible from
    *  the module. */
   loadManifests(url: string): Promise<ResourceManifest[]>;
+  /**
+   * The structured logger for this resource — `kernel/specs/logging.md` §13.2.
+   *
+   * Ambient rather than a resource (D3), because it must work before any
+   * resource initializes. Records are automatically stamped with this
+   * resource's identity, its module, its import-alias scope, and the active
+   * dispatch span's trace and span ids — a controller never passes those.
+   *
+   * A controller emits diagnostics **only** through this. Writing to
+   * stdout/stderr for diagnostic purposes is forbidden; writing to stdout as
+   * *data* (as the `Console` module does) is a separate, legitimate concern and
+   * is unaffected.
+   */
+  readonly log: Logger;
+  /**
+   * Sink attach/detach and drop accounting — the surface a `Telo.Sink`
+   * controller needs and nothing else. §10.2 keeps the sink set open to the
+   * ecosystem, so a third-party sink module reaches the pipeline through this
+   * rather than through a kernel-internal import. Ordinary controllers use
+   * {@link log}.
+   */
+  readonly logging: LoggingHost;
   readonly moduleContext: ModuleContext;
   readonly env: Record<string, string | undefined>;
   readonly stdin: NodeJS.ReadableStream;

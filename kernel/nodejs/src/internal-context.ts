@@ -1,4 +1,5 @@
 import type { ResourceContext } from "@telorun/sdk";
+import type { ScopeConfig } from "./logging/scope-config.js";
 
 /**
  * Context interface used by built-in kernel controllers (Telo.Application /
@@ -22,4 +23,7 @@ export interface BuiltinControllerContext extends ResourceContext {
    *  source-chain `resolveRelative`. Identical to what `loadGraph` used
    *  internally — so the produced URL agrees with the loader's caches. */
   resolveImportUrl(fromSource: string, importSource: string): string;
+  /** The root Application's resolved logging configuration — the base an
+   *  import's own `logging:` block cascades over (§12.2). */
+  kernelLoggingRootScope(): ScopeConfig;
 }

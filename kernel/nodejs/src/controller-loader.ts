@@ -1,4 +1,4 @@
-import { ControllerInstance, RuntimeError } from "@telorun/sdk";
+import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
 import { ControllerEnvMissingError, NapiControllerLoader } from "./controller-loaders/napi-loader.js";
 import { NpmControllerLoader } from "./controller-loaders/npm-loader.js";
@@ -72,6 +72,11 @@ export interface ControllerLoaderOptions {
    *  single `resolveCacheRoot`. Overrides the entry-anchored default so a
    *  relocated `TELO_CACHE_DIR` is honoured. */
   installRoot?: string;
+  /** Where the sub-loaders' diagnostics go — install-lock waits, bundle skips.
+   *  Threaded from `ctx.log` so §13.1 holds (no direct `process.stderr`), and so
+   *  the bundle-skip diagnostics that replaced `TELO_BUNDLE_DEBUG` actually reach
+   *  a sink at trace level instead of a no-op logger. */
+  log?: Logger;
 }
 
 /**
@@ -103,6 +108,7 @@ export class ControllerLoader {
       entryUrl: options.entryUrl,
       installRoot: options.installRoot,
     });
+    if (options.log) this.npmLoader.setLogger(options.log);
     this.napiLoader = new NapiControllerLoader();
     this.bundleLoader = new BundleControllerLoader();
   }

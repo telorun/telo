@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://telo.run/schemas/log-record.json",
+  "title": "Telo log record",
+  "description": "The `json` encoding of kernel/specs/logging.md §11.1. This schema — not the TypeScript types — is the artifact a non-TypeScript producer conforms to.",
+  "type": "object",
+  "required": ["time", "level", "severity", "msg"],
+  "additionalProperties": false,
+  "properties": {
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339, UTC, nanosecond precision, Z suffix."
+    },
+    "level": {
+      "type": "string",
+      "description": "Canonical short name, or the original spelling when bridged."
+    },
+    "severity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 24,
+      "description": "OTel SeverityNumber. 0 (UNSPECIFIED) must not be emitted."
+    },
+    "msg": { "type": "string" },
+    "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "trace_flags": { "type": "integer", "minimum": 0, "maximum": 255 },
+    "resource": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "type": "string" },
+        "name": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    },
+    "module": { "type": "string" },
+    "scope": {
+      "type": "string",
+      "description": "Dotted import-alias path of the emitting module context, e.g. `Api.Domain.Db`. Absent at the root."
+    },
+    "event_name": { "type": "string", "maxLength": 256 },
+    "attributes": { "type": "object" },
+    "err": { "$ref": "#/$defs/ErrorValue" },
+    "dropped_attributes_count": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "ErrorValue": {
+      "type": "object",
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "type": "string" },
+        "message": { "type": "string" },
+        "stack": { "type": "string" },
+        "cause": { "$ref": "#/$defs/ErrorValue" }
+      }
+    }
+  },
+  "dependentRequired": { "span_id": ["trace_id"] }
+}

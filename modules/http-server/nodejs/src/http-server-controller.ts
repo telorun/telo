@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import { createFastifyTeloLogger } from "./fastify-telo-logger.js";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
 import {
@@ -112,7 +113,12 @@ class HttpServer implements ResourceInstance {
     // it, the legacy `trustForwardedHeaders` boolean still applies.
     const trustProxy = resource.trustProxy ?? this.trustForwardedHeaders;
     this.app = Fastify({
-      logger: resource.logger,
+      // §13.3: replacement, not bridging. Fastify's Pino instance is swapped for
+      // a Telo-backed adapter, so request records are Telo records at the source
+      // and inherit the root `logging:` block's level, encoding, redaction, and
+      // sinks. `logger:` now means "enable request logging" rather than being a
+      // raw Fastify passthrough.
+      logger: resource.logger ? createFastifyTeloLogger(this.ctx.log) : false,
       trustProxy,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });

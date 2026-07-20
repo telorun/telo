@@ -2,13 +2,14 @@ import type { ManifestSource } from "@telorun/analyzer";
 import {
   Kernel,
   LocalFileSource,
+  DebugWireSink,
   LocalManifestCacheSource,
   resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
-import type { RuntimeEvent } from "@telorun/sdk";
+import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -217,7 +218,9 @@ type DebugSession = {
    *  inspection endpoint and opens the UI the first time (deferred to here so the
    *  browser's discovery handshake already sees the endpoints). */
   markReady: (kernel: Kernel) => void;
-  stop: () => void;
+  /** `kernel` detaches the debug-wire log sink, which recomputes the
+   *  minimum-level gate (§12.1). Omitted when no kernel is live yet. */
+  stop: (kernel?: Kernel) => void;
 };
 
 /**
@@ -290,6 +293,8 @@ async function startDebugSession(
     server?.push(wireLine);
   });
 
+  let attachedRecordSink: DebugWireSink | undefined;
+
   return {
     attach(kernel: Kernel): void {
       // A consumer is attached → turn on invocation tracing so events carry
@@ -302,6 +307,19 @@ async function startDebugSession(
         void fileSink?.write(line);
         server?.push(line);
       });
+      // The debug wire is one log sink among others, not the logging pipeline
+      // (D1): logging works with no consumer attached and with tracing off. It
+      // is attached here rather than declared in the manifest because it is
+      // tooling attachment, not application configuration (§12.1).
+      attachedRecordSink = new DebugWireSink({
+        level: SEVERITY.trace,
+        emit: (frame) => {
+          const line = `${JSON.stringify(frame)}\n`;
+          void fileSink?.write(line);
+          server?.push(line);
+        },
+      });
+      kernel.logging.pipeline.attach(attachedRecordSink);
     },
     markReady(kernel: Kernel): void {
       server?.setEndpoints(
@@ -309,7 +327,13 @@ async function startDebugSession(
       );
       openUi();
     },
-    stop(): void {
+    stop(kernel?: Kernel): void {
+      // Detaching changes the minimum-level gate, so the pipeline recomputes it
+      // and propagates the new threshold (§12.1).
+      if (attachedRecordSink && kernel) {
+        kernel.logging.pipeline.detach(attachedRecordSink);
+        attachedRecordSink = undefined;
+      }
       stopTee();
       server?.stop();
     },
@@ -462,7 +486,7 @@ export async function run(argv: RunArgv): Promise<void> {
     // start() resolves once the app is idle/torn down (incl. via the SIGINT
     // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
     // don't keep the process alive past here.
-    debug?.stop();
+    debug?.stop(kernel);
     if (kernel.exitCode !== 0) {
       process.exit(kernel.exitCode);
     }
@@ -504,7 +528,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
     stopping = true;
     log.info("\n[watch] stopping...");
     watchers.cleanup();
-    debug?.stop();
+    debug?.stop(currentKernel ?? undefined);
     currentKernel?.cancel("interrupted");
     currentKernel?.forceIdle();
     signalChange?.();

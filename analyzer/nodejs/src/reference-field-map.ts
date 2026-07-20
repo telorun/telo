@@ -8,6 +8,18 @@ export interface RefFieldEntry {
   /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
    *  context available to resources placed in this slot. */
   context?: Record<string, any>;
+  /** `x-telo-inline: true` — this slot accepts an inline `{kind, ...config}`
+   *  definition, not only a `!ref`.
+   *
+   *  Only meaningful on the *system* kinds (`Telo.Application` and friends),
+   *  which are otherwise excluded from inline-resource normalization wholesale.
+   *  Ordinary resource kinds accept inline definitions at every ref slot and
+   *  need no annotation. The flag exists so `logging.sinks` can opt in without
+   *  also legalizing an inline definition in `targets`, where the Application
+   *  schema rejects one deliberately — normalization runs upstream of AJV, so
+   *  an unconditional opt-in would rewrite the value into a valid shape before
+   *  the schema ever saw it. */
+  inline?: boolean;
 }
 
 /** An entry for a field that declares an execution scope (x-telo-scope). */
@@ -148,6 +160,13 @@ export function buildReferenceFieldMap(schema: Record<string, any>): ReferenceFi
   return map;
 }
 
+/** `x-telo-inline` declared on any `anyOf` branch marks the whole slot as
+ *  inline-accepting, matching how {@link collectRefs} unions branch refs. */
+function collectInlineFlag(node: Record<string, any>): boolean {
+  if (!Array.isArray(node.anyOf)) return false;
+  return node.anyOf.some((branch: Record<string, any>) => branch?.["x-telo-inline"] === true);
+}
+
 export function collectRefs(node: Record<string, any>): string[] {
   const refs: string[] = [];
   if (typeof node["x-telo-ref"] === "string") {
@@ -212,6 +231,7 @@ function traverseNode(
   if (refs.length > 0) {
     const entry: RefFieldEntry = { refs, isArray: path.includes("[]") };
     if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
+    if (node["x-telo-inline"] === true || collectInlineFlag(node)) entry.inline = true;
     map.set(path, entry);
     // A node can mix item-level ref branches (a bare string / `{kind, name}`)
     // with object branches that carry their OWN nested refs — e.g. Application

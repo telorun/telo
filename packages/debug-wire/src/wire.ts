@@ -39,17 +39,43 @@ export interface DebugLog {
   line: string;
 }
 
-/** One frame on the unified debug stream — either a kernel event or a log line. */
-export type DebugFrame = DebugEvent | DebugLog;
+/**
+ * A structured log record, per `kernel/specs/logging.md` §11.4.
+ *
+ * Distinct from {@link DebugLog}, which carries one *unstructured* line of
+ * stdout/stderr. This frame carries a record in the §11.1 `json` profile —
+ * severity, message, trace correlation, resource identity, and attributes — so a
+ * consumer can filter and correlate rather than pattern-match text.
+ */
+export interface DebugRecord {
+  kind: "record";
+  /** ISO-8601 timestamp set by the producer when the frame was written. */
+  timestamp: string;
+  /** The record in the §11.1 `json` key profile. Producers in any language
+   *  conform to `log-record-schema.json`, not to this TypeScript type. */
+  record: Record<string, unknown>;
+}
+
+/** One frame on the unified debug stream — a kernel event, a raw output line, or
+ *  a structured log record. Consumers route on `kind`. */
+export type DebugFrame = DebugEvent | DebugLog | DebugRecord;
 
 /** Narrow a frame to a {@link DebugLog}. */
 export function isLogFrame(frame: DebugFrame): frame is DebugLog {
   return (frame as DebugLog).kind === "log";
 }
 
-/** Narrow a frame to a {@link DebugEvent} (anything not explicitly a log). */
+/** Narrow a frame to a {@link DebugRecord}. */
+export function isRecordFrame(frame: DebugFrame): frame is DebugRecord {
+  return (frame as DebugRecord).kind === "record";
+}
+
+/** Narrow a frame to a {@link DebugEvent} — anything that is neither a raw log
+ *  line nor a structured record. The default-to-event reading is deliberate:
+ *  `kind` is optional on legacy event frames. */
 export function isEventFrame(frame: DebugFrame): frame is DebugEvent {
-  return (frame as DebugLog).kind !== "log";
+  const kind = (frame as DebugLog | DebugRecord).kind;
+  return kind !== "log" && kind !== "record";
 }
 
 /**
@@ -134,8 +160,12 @@ export interface TracePayload {
   /** Groups all spans of one trace — minted at the root, inherited by descendants
    *  (OpenTelemetry `trace_id`). Present only while the producer is tracing. */
   traceId?: string;
-  spanId?: number;
-  parentSpanId?: number;
+  /** 16 lowercase hex characters, zero-padded (`kernel/specs/logging.md` §7.1).
+   *  Previously a bare counter; it is now rendered in the same form a log
+   *  record carries, so a consumer can join a span to its records by string
+   *  equality rather than reformatting one side. */
+  spanId?: string;
+  parentSpanId?: string;
   /** Which capability ran. `"request"` is an inbound-boundary span (an HTTP
    *  request) — maps to an OTel SERVER span; the others are INTERNAL. */
   capability: "invoke" | "run" | "provide" | "request";
