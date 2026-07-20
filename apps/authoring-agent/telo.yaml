@@ -19,8 +19,8 @@ imports:
       dbFile: ./tmp/authoring-agent.sqlite
       model: gpt-5.2
       budgetLimit: !cel "variables.budgetLimit"
-  Http: std/http-server@0.16.1
-  Sse: std/sse-codec@0.5.0
+  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
+  Sse: std/sse-codec@0.7.0#sha256-Bk0DLJ-fkKRiIAdsx1B7yJki53XLeAIW0NSlzXWP7ac
 ports:
   http:
     env: PORT

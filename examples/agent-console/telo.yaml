@@ -15,15 +15,15 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  AiOpenai: std/ai-openai@0.9.0
-  Ai: std/ai@0.8.0
-  AiMcp: std/ai-mcp@0.5.1
-  Mcp: std/mcp-client@0.4.1
-  Http: std/http-client@0.7.0
-  Console: std/console@0.10.0
-  Run: std/run@0.11.1
-  Sql: std/sql@0.11.0
-  SqlSqlite: std/sql-sqlite@0.2.1
+  AiOpenai: std/ai-openai@0.12.0#sha256-CZjanhurq4AOKTEQGC0H4shmOdLly7ad9o6-V6bERBs
+  Ai: std/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
+  AiMcp: std/ai-mcp@0.7.0#sha256-rCm2tkWbdZEfOfwOdHDzAYl_SP8hWBSl2VAHRkYqbkU
+  Mcp: std/mcp-client@0.7.0#sha256-TXtryrk_BpZ6Smdy8NIYfZhKqMpZhxBoDoXSbhdQf_s
+  Http: std/http-client@0.11.0#sha256-hvEr8my6HlvdeD1SZADM_XvItITEq04wzj9ZVb8bIf8
+  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
 targets:
   - !ref InitSchema
   - !ref ChatLoop

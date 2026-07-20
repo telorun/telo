@@ -11,14 +11,14 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: std/ai-openai@0.9.0
-  Ai: std/ai@0.8.0
-  RecordStream: std/record-stream@0.7.0
-  PlainText: std/plain-text-codec@0.4.1
-  Console: std/console@0.10.0
-  Run: std/run@0.11.1
-  Sql: std/sql@0.11.0
-  SqlSqlite: std/sql-sqlite@0.2.1
+  AiOpenai: std/ai-openai@0.12.0#sha256-CZjanhurq4AOKTEQGC0H4shmOdLly7ad9o6-V6bERBs
+  Ai: std/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
+  RecordStream: std/record-stream@0.9.0#sha256-HBO4_mOMh4GTQ1ojjmuQvfvMfStSA7XCtXmyDGYQj8k
+  PlainText: std/plain-text-codec@0.6.0#sha256-36gvBMcKnfdvQzcXk9wLMCVAUjlo4gg7IDvrC0oeIWc
+  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
 targets:
   - !ref InitSchema
   - !ref ChatLoop
