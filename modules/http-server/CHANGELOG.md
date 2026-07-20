@@ -1,5 +1,7 @@
 # Changelog
-## 0.19.0 - 2026-07-20
+## 0.19.1 - 2026-07-20
+### Fixed
+* Update controller @telorun/http-server to 0.16.1.## 0.19.0 - 2026-07-20
 ### Added
 * Update controller @telorun/http-server to 0.16.0.
 * Request logging now goes through Telo's structured logger. Fastify's Pino instance is replaced with a Telo-backed adapter, so request records are Telo records at the source and inherit the root Application's `logging:` block — level, encoding, redaction, and sinks. The `logger:` field now means "enable request logging" rather than being a raw Fastify passthrough. Headers are not captured by default.## 0.18.0 - 2026-07-19
