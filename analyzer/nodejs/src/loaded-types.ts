@@ -96,9 +96,20 @@ export interface LoadedGraph {
 }
 
 export interface GraphLoadError {
-  /** URL of the file that failed to load. */
+  /** URL of the file that failed to load (resolved — may be a `file://` URL for
+   *  a relative import). */
   url: string;
+  /** The import source string exactly as authored (`./lib`, `std/x@1.0.0`),
+   *  before relative-path resolution. Preferred over `url` for classification
+   *  and display, so a diagnostic quotes what the author wrote. */
+  source?: string;
   /** Source of the import that triggered the load, or null for the entry. */
   fromSource: string | null;
+  /** Import alias the failed source was bound to in `fromSource`'s `imports:`
+   *  map, when the failure is a transitive import (absent for an entry-load
+   *  failure). Lets a consumer anchor the diagnostic at `imports.<alias>`. */
+  alias?: string;
+  /** Line of the `Telo.Import` doc in `fromSource`, for position fallback. */
+  sourceLine?: number;
   error: Error;
 }

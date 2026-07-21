@@ -16,7 +16,7 @@ interface VersionsResponse {
 
 /** Reads `telo.registryUrl` once per call so config changes apply without
  *  restarting the language host. Trailing slashes are normalized off. */
-function getRegistryUrl(): string {
+export function getRegistryUrl(): string {
   const cfg = vscode.workspace.getConfiguration("telo");
   const raw = cfg.get<string>("registryUrl") ?? "https://registry.telo.run";
   return raw.replace(/\/+$/, "");

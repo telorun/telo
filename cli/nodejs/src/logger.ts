@@ -3,6 +3,18 @@ import { DiagnosticSeverity } from "@telorun/analyzer";
 import { findPositions } from "@telorun/ide-support";
 import { decideColor, type RuntimeDiagnostic } from "@telorun/kernel";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+/** Render a manifest source for display: a local `file://` URL (how the loader
+ *  canonicalizes on-disk manifests) becomes a CWD-relative path, a real remote
+ *  URL (`http(s)://`) is kept absolute, and a bare path is made relative. */
+function displaySourcePath(raw: string): string {
+  if (raw.startsWith("file://")) {
+    return path.relative(process.cwd(), fileURLToPath(raw));
+  }
+  if (raw.includes("://")) return raw;
+  return path.relative(process.cwd(), raw);
+}
 
 export function createLogger(verbose: boolean) {
   // The color decision follows `kernel/specs/logging.md` §11.2's precedence
@@ -78,7 +90,7 @@ export function formatAnalysisDiagnostics(
   for (const d of diagnostics) {
     const located = findPositions(graph, d.data);
     const raw = located?.file ?? entryPath;
-    const displaySource = raw.includes("://") ? raw : path.relative(process.cwd(), raw);
+    const displaySource = displaySourcePath(raw);
     const fieldPath = (d.data as any)?.path as string | undefined;
 
     const fieldRange =

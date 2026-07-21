@@ -1,6 +1,7 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
 export type { RefFieldInfo } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";
+export { importResolutionDiagnostics } from "./import-resolution-diagnostics.js";
 export type {
     GraphLoadError,
     ImportEdge,
@@ -84,6 +85,7 @@ export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
 export type { ParsedModuleRef } from "./sources/module-ref.js";
 export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";
+export { isLocalPathSource } from "./sources/local-path-ref.js";
 export {
   MANIFEST_CACHE_BASE_URL,
   ManifestCacheSource,

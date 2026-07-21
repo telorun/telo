@@ -173,6 +173,20 @@ export class RegistryTransport implements Transport {
     return Array.isArray(body.versions) ? body.versions : [];
   }
 
+  refVersion(ref: string): string | null {
+    // Only bare `namespace/name@version` refs carry an upgradeable version — a
+    // direct `https://` URL has no version segment to bump.
+    if (!isRegistryRef(ref)) return null;
+    const { base } = splitIntegrity(ref);
+    const at = base.lastIndexOf("@");
+    return at > 0 ? base.slice(at + 1) : null;
+  }
+
+  withVersion(ref: string, version: string): string {
+    const { modulePath } = parseModuleRef(ref);
+    return `${modulePath}@${version}`;
+  }
+
   /** Mirrors the sources' fetch-URL derivation: a direct URL points at (or
    *  contains) the YAML file; a bare registry ref folds into the registry
    *  layout. `null` when this transport does not own the ref's shape. */

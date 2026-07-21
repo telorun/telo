@@ -190,14 +190,15 @@ The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.te
 
 ### `telo upgrade <paths..>`
 
-Scans one or more manifests for `imports:` entries whose source is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version of each, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
+Scans one or more manifests for remote `imports:` entries — a registry ref (`<namespace>/<name>@<version>`) or an OCI ref (`oci://host/repo@tag`) — asks each ref's transport for the latest published version, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. Version enumeration, ref reconstruction, and integrity hashing are all delegated to the transport that owns the ref's scheme, so every backend Telo can resolve is also upgradeable — the command never special-cases a scheme. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
 
-Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. The command never follows imports recursively — only the imports declared in the files you pass on the command line are inspected.
+Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. By default only the imports declared in the files you pass are inspected; pass `--recursive` / `-r` to also follow relative (local) imports into their sibling manifests and upgrade those too.
 
 ```bash
 telo upgrade ./apps/my-app/telo.yaml
 telo upgrade ./apps/my-app                       # directory → ./apps/my-app/telo.yaml
 telo upgrade ./apps/a ./apps/b --dry-run
+telo upgrade ./apps/my-app --recursive           # follow ./relative imports too
 telo upgrade ./manifest.yaml --include-prerelease
 ```
 
@@ -206,6 +207,7 @@ telo upgrade ./manifest.yaml --include-prerelease
 - `--registry-url <url>` — Base URL for the Telo registry. Falls back to `TELO_REGISTRY_URL`, then `https://registry.telo.run`. Matches the `install` / `run` fallback chain.
 - `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
 - `--dry-run` — Show the proposed rewrites without touching any files.
+- `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (registry / OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
 
 **Behavior per import:**
 
@@ -215,7 +217,9 @@ telo upgrade ./manifest.yaml --include-prerelease
 | Lower than the latest, and itself in the registry | rewrite to latest | `↑  <old> → <new>` |
 | Not present in the registry's version list | rewrite to latest (repair) — flagged with `(pinned version not in registry)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
 | Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions in registry` |
-| `source` is not a `<namespace>/<name>@<version>` ref (relative path, HTTP URL, alias) | leave unchanged | `·  skipped (not a registry ref)` |
+| Remote ref with no comparable version — a bare `https://` URL, an OCI digest pin (`@sha256:…`), or a moving tag like `latest` | leave unchanged | `·  skipped (not version-pinned)` / `!  unparseable current version` |
+| `source` is a relative / absolute local path | leave unchanged (or follow under `--recursive`) | `·  skipped (local import — use --recursive to follow)` |
+| `source` is not a remote ref at all | leave unchanged | `·  skipped (not a remote ref)` |
 
 A non-existent pin is always treated as broken and repaired against the registry — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 registry errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
 
@@ -228,12 +232,13 @@ A non-existent pin is always treated as broken and repaired against the registry
 ```text
 Upgrading apps/my-app/telo.yaml
   ↑  std/run  0.2.4 → 0.2.7
+  ↑  oci://ghcr.io/telorun/http-server  0.19.1 → 0.20.0
   =  std/http-server  already at 2.0.0
   ↓  std/foo  9.9.9 → 0.4.1  (pinned version not in registry)
   !  std/does-not-exist  no published versions in registry
-  ·  ../sibling  skipped (not a registry ref)
+  ·  ../sibling  skipped (local import — use --recursive to follow)
 
-2 upgraded, 1 already current, 2 skipped
+3 upgraded, 1 already current, 2 skipped
 ```
 
 ---

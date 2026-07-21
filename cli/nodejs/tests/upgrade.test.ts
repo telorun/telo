@@ -2,71 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import nock from "nock";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  parseUpgradeRef,
-  pickLatest,
-  upgradeManifest,
-  upgradeOne,
-} from "../src/commands/upgrade.js";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { pickLatest, upgradeManifest, upgradeOne } from "../src/commands/upgrade.js";
 import { createLogger } from "../src/logger.js";
 
 const REGISTRY = "https://registry.example.test";
 const log = createLogger(false);
-
-// ---------------------------------------------------------------------------
-// parseUpgradeRef — pure
-// ---------------------------------------------------------------------------
-
-describe("parseUpgradeRef", () => {
-  it("parses a well-formed registry ref", () => {
-    expect(parseUpgradeRef("std/run@1.2.3")).toEqual({
-      namespace: "std",
-      name: "run",
-      version: "1.2.3",
-      rawVersion: "1.2.3",
-    });
-  });
-
-  it("normalizes a v-prefixed version via semver.valid", () => {
-    const parsed = parseUpgradeRef("std/run@v1.2.3");
-    expect(parsed?.version).toBe("1.2.3");
-    expect(parsed?.rawVersion).toBe("v1.2.3");
-  });
-
-  it("returns version: null when the version segment is not valid semver", () => {
-    const parsed = parseUpgradeRef("std/run@not-a-version");
-    expect(parsed).not.toBeNull();
-    expect(parsed?.version).toBeNull();
-    // rawVersion is preserved so the diagnostic can quote what the user wrote.
-    expect(parsed?.rawVersion).toBe("not-a-version");
-  });
-
-  it("rejects relative paths", () => {
-    expect(parseUpgradeRef("../sibling")).toBeNull();
-    expect(parseUpgradeRef("./sub")).toBeNull();
-  });
-
-  it("rejects HTTP(S) URLs", () => {
-    expect(parseUpgradeRef("https://example.com/x@1.0.0")).toBeNull();
-  });
-
-  it("rejects refs with no namespace separator", () => {
-    expect(parseUpgradeRef("standalone@1.0.0")).toBeNull();
-  });
-
-  it("rejects refs with a missing version segment", () => {
-    expect(parseUpgradeRef("std/run@")).toBeNull();
-    expect(parseUpgradeRef("std/run")).toBeNull();
-  });
-
-  it("rejects multi-slash names (registry refs have exactly one `/`)", () => {
-    // Without this guard the registry GET would land on `/std/foo/bar` and
-    // surface as "no published versions" instead of being skipped as
-    // non-registry.
-    expect(parseUpgradeRef("std/foo/bar@1.0.0")).toBeNull();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // pickLatest — pure
@@ -553,6 +494,74 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// upgradeManifest — OCI imports route through the OCI transport, not the
+// registry-only classifier that used to skip them.
+// ---------------------------------------------------------------------------
+
+describe("upgradeManifest — OCI interactions", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("bumps an oci:// import to the latest published tag", async () => {
+    // Stub the OCI distribution API: tag enumeration succeeds; the manifest
+    // pull used for pinning 404s, so the version is rewritten but left unpinned.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/tags/list")) {
+        return new Response(JSON.stringify({ tags: ["0.19.0", "0.19.1", "0.20.0"] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const input = buildManifest([
+      { name: "Http", source: "oci://ghcr.io/telorun/http-server@0.19.1" },
+    ]);
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      registryUrl: REGISTRY,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([
+      { packagePath: "oci://ghcr.io/telorun/http-server", from: "0.19.1", to: "0.20.0" },
+    ]);
+    expect(content).toContain("Http: oci://ghcr.io/telorun/http-server@0.20.0");
+    expect(result.skipped).toBe(0);
+  });
+
+  it("skips an oci:// import pinned to a digest (no version ordering to follow)", async () => {
+    // listVersions is still reached, but the current reference is a digest, so
+    // there is nothing to compare against.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ tags: ["0.20.0"] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const input = buildManifest([
+      { name: "Http", source: "oci://ghcr.io/telorun/http-server@sha256:deadbeef" },
+    ]);
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      registryUrl: REGISTRY,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([]);
+    expect(result.skipped).toBe(1);
+    expect(content).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // upgradeOne — disk-backed wrapper. Only the wrapper-specific behavior is
 // covered here; the parse / fetch / decision pipeline is exercised by the
 // upgradeManifest suite above.
@@ -596,5 +605,93 @@ describe("upgradeOne — filesystem wrapper", () => {
       { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
     ]);
     expect(fs.readFileSync(manifestPath, "utf-8")).toBe(input);
+  });
+
+  it("without --recursive, a relative import is skipped and never followed", async () => {
+    const rootPath = path.join(workdir, "telo.yaml");
+    const libPath = path.join(workdir, "lib", "telo.yaml");
+    fs.mkdirSync(path.join(workdir, "lib"));
+    fs.writeFileSync(
+      rootPath,
+      buildManifest([
+        { name: "Run", source: "std/run@0.2.4" },
+        { name: "Lib", source: "./lib" },
+      ]),
+      "utf-8",
+    );
+    const libInput = buildManifest([{ name: "Type", source: "std/type@1.0.0" }]);
+    fs.writeFileSync(libPath, libInput, "utf-8");
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    // std/type is NOT mocked — if the lib were followed, its fetch would 404/throw.
+
+    const result = await upgradeOne(rootPath, REGISTRY, false, false, log);
+
+    expect(result.upgrades).toHaveLength(1); // only std/run
+    expect(result.skipped).toBe(1); // the relative ./lib import
+    expect(fs.readFileSync(libPath, "utf-8")).toBe(libInput); // untouched
+  });
+
+  it("with --recursive, follows a relative import and upgrades the sibling too", async () => {
+    const rootPath = path.join(workdir, "telo.yaml");
+    const libDir = path.join(workdir, "lib");
+    const libPath = path.join(libDir, "telo.yaml");
+    fs.mkdirSync(libDir);
+    fs.writeFileSync(
+      rootPath,
+      buildManifest([
+        { name: "Run", source: "std/run@0.2.4" },
+        { name: "Lib", source: "./lib" },
+      ]),
+      "utf-8",
+    );
+    fs.writeFileSync(libPath, buildManifest([{ name: "Type", source: "std/type@1.0.0" }]), "utf-8");
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("std", "type", ["1.0.0", "1.0.5"]);
+
+    const result = await upgradeOne(rootPath, REGISTRY, false, false, log, true);
+
+    // Aggregated over both files, and the relative import is not counted skipped.
+    expect(result.upgrades).toEqual([
+      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+      { packagePath: "std/type", from: "1.0.0", to: "1.0.5" },
+    ]);
+    expect(result.skipped).toBe(0);
+    expect(fs.readFileSync(rootPath, "utf-8")).toContain("Run: std/run@0.2.7");
+    expect(fs.readFileSync(libPath, "utf-8")).toContain("Type: std/type@1.0.5");
+  });
+
+  it("with --recursive, an import cycle upgrades each file exactly once", async () => {
+    const aPath = path.join(workdir, "telo.yaml");
+    const bDir = path.join(workdir, "b");
+    const bPath = path.join(bDir, "telo.yaml");
+    fs.mkdirSync(bDir);
+    // a → ./b → ../  (back to a): a cycle.
+    fs.writeFileSync(
+      aPath,
+      buildManifest([
+        { name: "Run", source: "std/run@0.2.4" },
+        { name: "B", source: "./b" },
+      ]),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      bPath,
+      buildManifest([
+        { name: "Type", source: "std/type@1.0.0" },
+        { name: "A", source: "../" },
+      ]),
+      "utf-8",
+    );
+    // One interceptor each — a second visit would need a second GET and 404.
+    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("std", "type", ["1.0.0", "1.0.5"]);
+
+    const result = await upgradeOne(aPath, REGISTRY, false, false, log, true);
+
+    expect(result.upgrades).toEqual([
+      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+      { packagePath: "std/type", from: "1.0.0", to: "1.0.5" },
+    ]);
+    expect(result.errors).toBe(0);
   });
 });
