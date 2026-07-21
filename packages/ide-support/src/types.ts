@@ -31,17 +31,23 @@ export interface CompletionResult {
   replaceFromColumn?: number;
 }
 
-export interface RegistryModule {
-  namespace: string;
-  name: string;
-  version: string;
+/** A candidate module ref surfaced by the hub's `/refs` lexical autocomplete.
+ *  Identity is the location ref, never `namespace/name` — an OCI module has no
+ *  addressable `namespace/name`. `latestVersion` seeds a pinned `ref@version`
+ *  insert so a picked completion is directly usable. */
+export interface HubRef {
+  ref: string;
+  latestVersion: string;
   description?: string;
 }
 
 /** Host-supplied bridge that lets ide-support reach the filesystem and the
- *  module registry without depending on Node, Tauri, or vscode APIs. Each
+ *  federated telo hub without depending on Node, Tauri, or vscode APIs. Each
  *  host (VSCode extension, Telo editor) builds an adapter scoped to the
- *  currently-edited manifest before calling `buildCompletions`. */
+ *  currently-edited manifest before calling `buildCompletions`. Hub lookups are
+ *  ref-keyed: the hub aggregates modules across every transport (OCI, HTTP,
+ *  direct URL), so completion speaks its `/refs` + `/module/versions` verbs
+ *  rather than any single registry. */
 export interface IdeEnvironmentAdapter {
   /** Subdirectory names within `relPath` (resolved against the manifest's
    *  directory). Returns [] if the path doesn't exist or isn't a directory.
@@ -50,12 +56,15 @@ export interface IdeEnvironmentAdapter {
   /** True iff `<relPath>/telo.yaml` exists relative to the manifest dir.
    *  Used to mark directories that are valid import targets. */
   hasManifest(relPath: string): Promise<boolean>;
-  /** Free-text search against the configured module registry. Matches against
-   *  name, namespace, and description. Empty `query` should return the full
-   *  (capped) catalog. */
-  searchRegistry(query: string): Promise<RegistryModule[]>;
-  /** All published versions for a module, newest first. */
-  listRegistryVersions(namespace: string, name: string): Promise<string[]>;
+  /** Fuzzy lexical ref autocomplete against the configured telo hub
+   *  (`GET /refs?q=`). The query is matched as a substring over every
+   *  registered ref, so a bare token (`youtrack`) hits the same ref as its full
+   *  `oci://…` form. Best-effort — hosts swallow network errors and return []. */
+  searchRefs(query: string): Promise<HubRef[]>;
+  /** All tracked versions for a location ref, newest first
+   *  (`GET /module/versions?ref=`). The browser cannot call OCI `tags/list`;
+   *  the hub holds them from ingest. */
+  listVersionsForRef(ref: string): Promise<string[]>;
 }
 
 export interface NormalizedDiagnostic {

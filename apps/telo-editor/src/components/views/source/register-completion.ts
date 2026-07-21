@@ -25,7 +25,7 @@ export function setActiveRegistry(r: AnalysisRegistry | undefined): void {
 }
 
 /** Sources of side-channel data the import-source completer needs (filesystem
- *  reads + configured registry URLs). Pushed in from Editor.tsx the same way
+ *  reads + the configured hub URL). Pushed in from Editor.tsx the same way
  *  as the analyzer registry. */
 export function setActiveWorkspaceAdapter(a: WorkspaceAdapter | undefined): void {
   workspaceRef.current = a;
@@ -64,7 +64,7 @@ export function registerYamlCompletions(monaco: Monaco): void {
       const manifestDir = pathDirname(model.uri.path);
       const adapter =
         workspace && settings
-          ? new EditorIdeAdapter(manifestDir, workspace, settings.registryServers)
+          ? new EditorIdeAdapter(manifestDir, workspace, settings.hubUrl)
           : undefined;
 
       const results = await buildCompletions(

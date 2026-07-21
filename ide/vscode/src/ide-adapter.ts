@@ -1,30 +1,36 @@
-import type { IdeEnvironmentAdapter, RegistryModule } from "@telorun/ide-support";
+import type { HubRef, IdeEnvironmentAdapter } from "@telorun/ide-support";
 import * as vscode from "vscode";
 
-interface SearchResponse {
-  results?: Array<{
-    namespace?: string;
-    name?: string;
-    version?: string;
-    description?: string;
-  }>;
+interface RefsResponse {
+  refs?: Array<{ ref?: string; latestVersion?: string; description?: string }>;
 }
 
 interface VersionsResponse {
-  items?: Array<{ version?: string }>;
+  versions?: string[];
 }
 
 /** Reads `telo.registryUrl` once per call so config changes apply without
- *  restarting the language host. Trailing slashes are normalized off. */
+ *  restarting the language host. Trailing slashes are normalized off. Drives
+ *  the kernel transport registry that resolves imports during analysis — a
+ *  separate concern from federated import autocomplete (`getHubUrl`). */
 export function getRegistryUrl(): string {
   const cfg = vscode.workspace.getConfiguration("telo");
   const raw = cfg.get<string>("registryUrl") ?? "https://registry.telo.run";
   return raw.replace(/\/+$/, "");
 }
 
+/** Reads `telo.hubUrl` once per call. Mirrors the CLI's `TELO_HUB_URL`
+ *  default (`https://telo.sh`); a self-hosted setup overrides it. */
+export function getHubUrl(): string {
+  const cfg = vscode.workspace.getConfiguration("telo");
+  const raw = cfg.get<string>("hubUrl") ?? "https://telo.sh";
+  return raw.replace(/\/+$/, "");
+}
+
 /** Bridge between ide-support's host-agnostic completion code and the VSCode
  *  workspace API. Scoped to a single document — the manifest's directory is
- *  the base for all relative-path resolution. */
+ *  the base for all relative-path resolution. Federated ref / version lookups
+ *  go to the configured telo hub. */
 export class VsCodeIdeAdapter implements IdeEnvironmentAdapter {
   constructor(private readonly manifestDirUri: vscode.Uri) {}
 
@@ -50,36 +56,37 @@ export class VsCodeIdeAdapter implements IdeEnvironmentAdapter {
     }
   }
 
-  async searchRegistry(query: string): Promise<RegistryModule[]> {
-    // limit=100 (vs the server default of 20) gives client-side namespace
-    // filtering enough headroom to still produce a useful popover after
-    // narrowing by the typed `<namespace>/` prefix.
-    const url = `${getRegistryUrl()}/search?q=${encodeURIComponent(query)}&limit=100`;
+  async searchRefs(query: string): Promise<HubRef[]> {
+    const url = `${getHubUrl()}/refs?q=${encodeURIComponent(query)}`;
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: { accept: "application/json" } });
       if (!res.ok) return [];
-      const data = (await res.json()) as SearchResponse;
-      return (data.results ?? [])
-        .filter((r) => r.namespace && r.name && r.version)
+      const data = (await res.json()) as RefsResponse;
+      return (data.refs ?? [])
+        .filter((r) => r.ref)
         .map((r) => ({
-          namespace: r.namespace as string,
-          name: r.name as string,
-          version: r.version as string,
+          ref: r.ref as string,
+          latestVersion: r.latestVersion ?? "",
           description: r.description,
         }));
-    } catch {
+    } catch (err) {
+      // Best-effort: an unreachable/misconfigured hub must not throw into the
+      // completion provider. Leave a breadcrumb so a wrong `telo.hubUrl` is
+      // diagnosable rather than a silently empty popover.
+      console.warn(`telo: hub ref search failed (${url}): ${errText(err)}`);
       return [];
     }
   }
 
-  async listRegistryVersions(namespace: string, name: string): Promise<string[]> {
-    const url = `${getRegistryUrl()}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/versions`;
+  async listVersionsForRef(ref: string): Promise<string[]> {
+    const url = `${getHubUrl()}/module/versions?ref=${encodeURIComponent(ref)}`;
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: { accept: "application/json" } });
       if (!res.ok) return [];
       const data = (await res.json()) as VersionsResponse;
-      return (data.items ?? []).map((i) => i.version).filter((v): v is string => !!v);
-    } catch {
+      return (data.versions ?? []).filter((v): v is string => typeof v === "string");
+    } catch (err) {
+      console.warn(`telo: hub version lookup failed (${url}): ${errText(err)}`);
       return [];
     }
   }
@@ -87,4 +94,8 @@ export class VsCodeIdeAdapter implements IdeEnvironmentAdapter {
   private resolveRel(relPath: string): vscode.Uri {
     return vscode.Uri.joinPath(this.manifestDirUri, relPath);
   }
+}
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

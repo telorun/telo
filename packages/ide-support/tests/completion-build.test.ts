@@ -448,14 +448,18 @@ describe("buildCompletions — inline import sources", () => {
     return {
       listDirectories: async () => [],
       hasManifest: async () => false,
-      searchRegistry: async () => [
-        { namespace: "std", name: "console", version: "1.2.3", description: "Console module" },
+      searchRefs: async () => [
+        {
+          ref: "oci://ghcr.io/std/console",
+          latestVersion: "1.2.3",
+          description: "Console module",
+        },
       ],
-      listRegistryVersions: async () => ["1.2.3"],
+      listVersionsForRef: async () => ["1.2.3"],
     };
   }
 
-  it("completes the scalar shorthand value against the registry", async () => {
+  it("completes the scalar shorthand value against the hub", async () => {
     const text = [
       "kind: Telo.Application",
       "metadata:",
@@ -466,10 +470,13 @@ describe("buildCompletions — inline import sources", () => {
     const line = 4;
     const character = "  Console: con".length;
     const results = await buildCompletions(text, line, character, undefined, adapter());
+    // Label leads with the module name (not the transport boilerplate); the ref
+    // is what actually gets inserted.
     expect(results.map((r) => r.label)).toContain("std/console@1.2.3");
+    expect(results.map((r) => r.insertText)).toContain("oci://ghcr.io/std/console@1.2.3");
   });
 
-  it("completes the object-form `source:` value against the registry", async () => {
+  it("completes the object-form `source:` value against the hub", async () => {
     const text = [
       "kind: Telo.Library",
       "metadata:",
@@ -482,6 +489,22 @@ describe("buildCompletions — inline import sources", () => {
     const character = "    source: con".length;
     const results = await buildCompletions(text, line, character, undefined, adapter());
     expect(results.map((r) => r.label)).toContain("std/console@1.2.3");
+    expect(results.map((r) => r.insertText)).toContain("oci://ghcr.io/std/console@1.2.3");
+  });
+
+  it("completes versions for a known ref after `@` (label is just the version)", async () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "imports:",
+      "  Console: oci://ghcr.io/std/console@",
+    ].join("\n");
+    const line = 4;
+    const character = "  Console: oci://ghcr.io/std/console@".length;
+    const results = await buildCompletions(text, line, character, undefined, adapter());
+    expect(results.map((r) => r.label)).toContain("1.2.3");
+    expect(results.map((r) => r.insertText)).toContain("oci://ghcr.io/std/console@1.2.3");
   });
 
   it("seeds ./ and ../ for an empty import value", async () => {

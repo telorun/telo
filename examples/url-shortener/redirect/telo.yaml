@@ -12,13 +12,13 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: std/http-server@0.15.1
-  SqlRepository: std/sql-repository@0.5.0
-  Sql: std/sql@0.9.2
-  Run: std/run@0.11.0
-  Cache: std/cache@0.2.0
-  CacheMemory: std/cache-memory@0.2.0
-  RateLimit: std/rate-limit@0.2.0
+  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
+  SqlRepository: std/sql-repository@0.7.0#sha256-5jnAV6XJKdXanEluUa4C740UTsBedEi_e5rtQzuq6GA
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Cache: std/cache@0.5.0#sha256-ZNSVvqZiLRTHFy0iy6CRGddWO8jO23PC5drb256lSiA
+  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
+  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
   Database:
     source: ../database
     variables:

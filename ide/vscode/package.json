@@ -61,7 +61,12 @@
         "telo.registryUrl": {
           "type": "string",
           "default": "https://registry.telo.run",
-          "description": "Base URL of the Telo module registry used for autocomplete of `Telo.Import` source values."
+          "description": "Base URL of the Telo module registry used to resolve `registry://` imports during analysis."
+        },
+        "telo.hubUrl": {
+          "type": "string",
+          "default": "https://telo.sh",
+          "description": "Base URL of the Telo hub used for federated import-source autocomplete (ref search and version lists)."
         }
       }
     }

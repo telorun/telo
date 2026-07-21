@@ -12,7 +12,7 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  Sql: std/sql@0.9.2
+  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
 exports:
   resources:
     - connection

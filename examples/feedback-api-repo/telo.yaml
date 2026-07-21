@@ -5,11 +5,11 @@ metadata:
   description: |
     Feedback REST API using SqlRepository — no SQL beyond the schema migration.
 imports:
-  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
-  SqlRepository: std/sql-repository@0.7.0#sha256-5jnAV6XJKdXanEluUa4C740UTsBedEi_e5rtQzuq6GA
-  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
+  Sql: oci://ghcr.io/telorun/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.4.0#sha256-Tx6iWpzDfFNKkmAmlzK74dsP1w4CR9e_jkU_EITvjb4
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.7.0#sha256-y4BcHm_rVxb-dE6esEYlFsksHmH3d7f2DfCCz7opjzs
+  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
 targets:
   - !ref SetupDb
   - !ref Server

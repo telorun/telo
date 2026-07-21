@@ -1,8 +1,9 @@
 import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
 
-/** Maximum registry hits to surface in a single completion request.
- *  Keeps the popover scannable when a broad `q=` query matches the catalog. */
-const REGISTRY_LIMIT = 50;
+/** Maximum ref hits to surface in a single completion request. Keeps the
+ *  popover scannable when a broad `q=` query matches many registered refs
+ *  (the hub already caps `/refs` server-side; this is a client backstop). */
+const REF_LIMIT = 50;
 
 /** Caps the number of directory entries we probe with `hasManifest` per
  *  request. Each probe is a host-side filesystem stat; the popover would not
@@ -17,9 +18,13 @@ const PATH_PROBE_LIMIT = 50;
  * Branches by prefix shape:
  *   ""                         → relative dirs under the manifest dir, plus `./` / `../` seeds.
  *   "./..", "../", "/..."      → subdirs of the typed path (any subdir; existing manifest gets a hint).
- *   "<word>"                   → registry search by free-text.
- *   "<ns>/<name>@<partial>"    → version list for that module.
- *   "http(s)://", "file://"    → no suggestions (opaque URLs).
+ *   "<word>", "oci://…"        → hub ref autocomplete (fuzzy substring over registered refs).
+ *   "<ref>@<partial>"          → version list for that ref.
+ *   "http(s)://", "file://"    → no suggestions (opaque URLs the author types verbatim).
+ *
+ * `oci://` is deliberately NOT opaque: without an `@` it routes to the ref
+ * search below, whose query is the whole typed prefix — so the hub fuzzy-matches
+ * `oci://ghcr.io/aws/telo-s3` as readily as a bare `s3`.
  *
  * `valueStartColumn` is forwarded onto every result so the host can replace
  * the whole typed value, not just the trailing word (Monaco / VSCode word
@@ -46,12 +51,14 @@ export async function importSourceCompletions(
     return relativePathCompletions(prefix, valueStartColumn, adapter);
   }
 
-  const atIdx = prefix.indexOf("@");
+  // The version (or `@sha256:` digest) is the trailing `@`-segment, so split on
+  // the LAST `@` — a digest-pinned ref keeps everything before it as the ref.
+  const atIdx = prefix.lastIndexOf("@");
   if (atIdx > 0) {
     return versionCompletions(prefix, atIdx, valueStartColumn, adapter);
   }
 
-  return registrySearchCompletions(prefix, valueStartColumn, adapter);
+  return refSearchCompletions(prefix, valueStartColumn, adapter);
 }
 
 async function relativePathCompletions(
@@ -120,37 +127,47 @@ async function relativePathCompletions(
   );
 }
 
-async function registrySearchCompletions(
+async function refSearchCompletions(
   prefix: string,
   valueStartColumn: number,
   adapter: IdeEnvironmentAdapter,
 ): Promise<CompletionResult[]> {
-  // The registry's `q` filter ILIKEs against name / namespace / description —
-  // it doesn't know about the `<namespace>/<name>` shape. Once the user has
-  // typed a `/`, sending the literal `std/htt` as `q` matches nothing because
-  // the slash is not in any of those columns. Split here so `q` carries just
-  // the bit that looks like a name, and apply the namespace constraint
-  // client-side.
-  const slashIdx = prefix.indexOf("/");
-  const namespacePart = slashIdx >= 0 ? prefix.slice(0, slashIdx) : "";
-  const namePart = slashIdx >= 0 ? prefix.slice(slashIdx + 1) : prefix;
+  // The whole typed prefix is the fuzzy query — the hub matches it as a
+  // substring over each registered ref, so no client-side splitting is needed
+  // (and `oci://ghcr.io/aws/telo-s3` matches without mangling the `//`).
+  const hits = await adapter.searchRefs(prefix);
 
-  const hits = await adapter.searchRegistry(namePart);
-  const filtered = namespacePart
-    ? hits.filter((h) => h.namespace.startsWith(namespacePart))
-    : hits;
-
-  return filtered.slice(0, REGISTRY_LIMIT).map((m) => {
-    const id = `${m.namespace}/${m.name}@${m.version}`;
+  return hits.slice(0, REF_LIMIT).map((m) => {
+    // Seed the pinned `ref@latestVersion` so the completion is directly usable;
+    // the author can still narrow the version afterwards (the `@` re-triggers
+    // version completion).
+    const id = m.latestVersion ? `${m.ref}@${m.latestVersion}` : m.ref;
+    const name = refDisplayName(m.ref);
+    // Lead the label with the module name so the interesting part isn't cut off
+    // behind the transport/host boilerplate (`oci://ghcr.io/telorun/…`). The
+    // full ref moves to `detail`, and `insertText`/`filterText` stay the ref so
+    // acceptance still inserts it and a fully-typed ref still filters.
     return {
-      label: id,
+      label: m.latestVersion ? `${name}@${m.latestVersion}` : name,
       kind: "module",
-      detail: m.description ?? "registry module",
+      detail: m.description ?? m.ref,
+      documentation: m.description ? m.ref : undefined,
       insertText: id,
       filterText: id,
       replaceFromColumn: valueStartColumn,
     };
   });
+}
+
+/** The `org/name` tail of a location ref: its last two path segments, with the
+ *  transport scheme (`oci://`, `https://`, …) and registry host dropped.
+ *  `oci://ghcr.io/telorun/telo-console` → `telorun/telo-console`; `std/console`
+ *  → `std/console`. Falls back to fewer segments (or the whole ref) when there
+ *  aren't two. */
+function refDisplayName(ref: string): string {
+  const withoutScheme = ref.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  const segments = withoutScheme.split("/").filter(Boolean);
+  return segments.slice(-2).join("/") || ref;
 }
 
 async function versionCompletions(
@@ -159,26 +176,27 @@ async function versionCompletions(
   valueStartColumn: number,
   adapter: IdeEnvironmentAdapter,
 ): Promise<CompletionResult[]> {
-  const beforeAt = prefix.slice(0, atIdx);
+  const ref = prefix.slice(0, atIdx);
   const partialVersion = prefix.slice(atIdx + 1);
-  const slashIdx = beforeAt.indexOf("/");
-  if (slashIdx <= 0 || slashIdx === beforeAt.length - 1) return [];
+  if (ref === "") return [];
 
-  const namespace = beforeAt.slice(0, slashIdx);
-  const name = beforeAt.slice(slashIdx + 1);
-  const versions = await adapter.listRegistryVersions(namespace, name);
+  const versions = await adapter.listVersionsForRef(ref);
 
   const matches = versions.filter((v) => v.startsWith(partialVersion));
   return matches.map((version, idx) => {
-    const id = `${namespace}/${name}@${version}`;
+    const id = `${ref}@${version}`;
+    // The ref is already typed and visible on the line, so the label is just the
+    // version — no point repeating the full ref on every row. `insertText` /
+    // `filterText` stay the full id so acceptance replaces the whole value and
+    // the already-typed ref prefix keeps the item in the filtered set.
     return {
-      label: id,
+      label: version,
       kind: "value",
-      detail: idx === 0 ? "latest" : `v${version}`,
+      detail: idx === 0 ? "latest" : undefined,
       insertText: id,
       filterText: id,
       replaceFromColumn: valueStartColumn,
-      // Preserve registry's ordering (newest first) so the latest version is
+      // Preserve the hub's ordering (newest first) so the latest version is
       // suggested at the top regardless of lexical comparison.
       sortText: String(idx).padStart(4, "0"),
     };
