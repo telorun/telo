@@ -1,5 +1,5 @@
-import { splitIntegrity } from "@telorun/analyzer";
-import { defaultTransportRegistry } from "@telorun/kernel";
+import { isLocalPathSource, splitIntegrity } from "@telorun/analyzer";
+import { defaultTransportRegistry, type Transport } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
 import * as path from "path";
@@ -7,60 +7,17 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
-import { fetchManifestHash } from "../registry-hash.js";
 import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
-interface ParsedRef {
-  namespace: string;
-  name: string;
-  /** Normalized SemVer string (no `v` prefix), or `null` if the pin is not valid SemVer. */
-  version: string | null;
-  /** Raw version segment as written in the YAML — preserved for diagnostic output. */
-  rawVersion: string;
-}
-
-/** Parse `<namespace>/<name>@<version>`. A trailing `#sha256-...` integrity
- *  fragment is stripped first (a pinned import still parses). Exported for tests. */
-export function parseUpgradeRef(rawSource: string): ParsedRef | null {
-  const source = splitIntegrity(rawSource).base;
-  const atIdx = source.lastIndexOf("@");
-  if (atIdx <= 0 || atIdx === source.length - 1) return null;
-  const modulePath = source.slice(0, atIdx);
-  const slashIdx = modulePath.indexOf("/");
-  if (slashIdx <= 0 || slashIdx === modulePath.length - 1) return null;
-  const namespace = modulePath.slice(0, slashIdx);
-  const name = modulePath.slice(slashIdx + 1);
-  const rawVersion = source.slice(atIdx + 1);
-  if (!namespace || !name || !rawVersion) return null;
-  // Registry refs are strictly `<namespace>/<name>@<version>` — exactly one
-  // slash. A second slash means we're looking at a relative path or a URL
-  // disguised as a ref; either way it would resolve to a bogus `/ns/a/b` URL
-  // and surface as "no published versions" instead of being treated as
-  // non-registry.
-  if (name.includes("/")) return null;
-  // Reject anything that doesn't look like a module ref so we don't try to
-  // upgrade HTTP URLs, relative paths, etc.
-  if (namespace.includes("://") || namespace.includes(":") || namespace.startsWith(".")) {
-    return null;
-  }
-  // semver.valid() tolerates a `v` prefix and returns the cleaned form.
-  return { namespace, name, version: semver.valid(rawVersion), rawVersion };
-}
-
-async function fetchPublishedVersions(
-  registryUrl: string,
-  namespace: string,
-  name: string,
-): Promise<string[] | null> {
-  // Dispatch through the transport that owns the ref (the version segment is
-  // irrelevant to enumeration — only the `<ns>/<name>` path is used).
-  const raw = await defaultTransportRegistry(registryUrl).listVersions(`${namespace}/${name}@0.0.0`);
-  if (raw === null) return null;
-  // Normalize via semver.valid so downstream string-equality matches on the
-  // pin compare the same canonical form (handles `v` prefix, whitespace, etc).
-  return raw.map((v) => semver.valid(v)).filter((v): v is string => v !== null);
+/** The version-independent label for a versioned `source`, for diagnostics —
+ *  the ref with its exact `@<rawVersion>` suffix and any integrity fragment
+ *  stripped (`std/run`, `oci://ghcr.io/telorun/http-server`). */
+function refLabel(source: string, rawVersion: string): string {
+  const base = splitIntegrity(source).base;
+  const suffix = `@${rawVersion}`;
+  return base.endsWith(suffix) ? base.slice(0, -suffix.length) : base;
 }
 
 /** Exported for tests. */
@@ -120,8 +77,11 @@ export async function upgradeManifest(args: {
   log: Logger;
   /** Optional label printed in the "Upgrading <name>" header. */
   displayName?: string;
-}): Promise<{ content: string; result: UpgradeResult }> {
-  const { content, registryUrl, includePrerelease, log, displayName } = args;
+  /** When set, local sibling imports are followed by the caller — so they are
+   *  neither counted nor reported as skipped here. */
+  recursive?: boolean;
+}): Promise<{ content: string; result: UpgradeResult; relativeImports: string[] }> {
+  const { content, registryUrl, includePrerelease, log, displayName, recursive } = args;
 
   const result: UpgradeResult = {
     changed: false,
@@ -132,6 +92,7 @@ export async function upgradeManifest(args: {
     errors: 0,
   };
 
+  const registry = defaultTransportRegistry(registryUrl);
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
 
   if (displayName !== undefined) {
@@ -156,6 +117,7 @@ export async function upgradeManifest(args: {
 
   const moduleDoc = findModuleDoc(docs);
   const importRefs = moduleDoc ? importSourceRefs(moduleDoc) : [];
+  const relativeImports = importRefs.map((r) => r.source).filter(isLocalPathSource);
 
   // An import already at the latest version isn't upgraded — but if it carries
   // no integrity hash yet (neither a `#sha256-...` fragment nor an object-form
@@ -164,30 +126,30 @@ export async function upgradeManifest(args: {
   // module whose version never moves.
   const ensurePinned = async (
     importRef: ImportSourceRef,
-    namespace: string,
-    name: string,
+    transport: Transport,
+    label: string,
     version: string,
   ): Promise<void> => {
     if (splitIntegrity(importRef.source).integrity || importRef.integrity) {
-      console.log(`  ${log.ok("=")}  ${namespace}/${name}  ${log.dim(`already at ${version}, pinned`)}`);
+      console.log(`  ${log.ok("=")}  ${label}  ${log.dim(`already at ${version}, pinned`)}`);
       result.unchanged++;
       return;
     }
-    const pin = `${namespace}/${name}@${version}`;
+    const pinBase = transport.withVersion(importRef.source, version);
     let hash: string;
     try {
-      hash = await fetchManifestHash(registryUrl, pin);
+      hash = await transport.manifestHash(pinBase);
     } catch (err) {
       console.log(
-        `  ${log.warn("!")}  ${namespace}/${name}  ${log.dim(`already at ${version}, left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim(`already at ${version}, left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
       );
       result.unchanged++;
       return;
     }
-    const edit = buildSourceEdit(importRef.node, content, `${pin}#${hash}`);
+    const edit = buildSourceEdit(importRef.node, content, `${pinBase}#${hash}`);
     if (!edit) {
       console.error(
-        `  ${log.error("✗")}  ${namespace}/${name}  source scalar has no range — skipping`,
+        `  ${log.error("✗")}  ${label}  source scalar has no range — skipping`,
       );
       result.errors++;
       return;
@@ -195,26 +157,50 @@ export async function upgradeManifest(args: {
     edits.push(edit);
     result.changed = true;
     result.pinned++;
-    console.log(`  ${log.ok("+")}  ${namespace}/${name}  ${log.dim(`already at ${version},`)} ${log.ok("pinned")}`);
+    console.log(`  ${log.ok("+")}  ${label}  ${log.dim(`already at ${version},`)} ${log.ok("pinned")}`);
   };
 
   for (const importRef of importRefs) {
     const source = importRef.source;
 
-    const ref = parseUpgradeRef(source);
-    if (!ref) {
-      console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not a registry ref)")}`);
+    // A local sibling import (relative/absolute path) carries no version to bump
+    // here. Under `--recursive` the caller descends into it, so stay silent;
+    // otherwise report it skipped and point at the flag.
+    if (isLocalPathSource(source)) {
+      if (!recursive) {
+        console.log(
+          `  ${log.dim("·")}  ${source}  ${log.dim("skipped (local import — use --recursive to follow)")}`,
+        );
+        result.skipped++;
+      }
+      continue;
+    }
+
+    // The transport that owns the ref's scheme handles version enumeration,
+    // reconstruction, and hashing — `upgrade` never branches on ref shape.
+    const transport = registry.forRef(source);
+    if (!transport) {
+      console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not a remote ref)")}`);
       result.skipped++;
       continue;
     }
 
+    const rawVersion = transport.refVersion(source);
+    if (rawVersion === null) {
+      // Remote but not version-pinned — a bare `https://` URL, or an OCI ref
+      // with no explicit reference. Nothing to compare against.
+      console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not version-pinned)")}`);
+      result.skipped++;
+      continue;
+    }
+    const label = refLabel(source, rawVersion);
+
     let published: string[] | null;
     try {
-      published = await fetchPublishedVersions(registryUrl, ref.namespace, ref.name);
+      published = await transport.listVersions(source);
     } catch (err) {
       console.error(
-        `  ${log.error("✗")}  ${ref.namespace}/${ref.name}  ` +
-          (err instanceof Error ? err.message : String(err)),
+        `  ${log.error("✗")}  ${label}  ` + (err instanceof Error ? err.message : String(err)),
       );
       result.errors++;
       continue;
@@ -222,49 +208,59 @@ export async function upgradeManifest(args: {
 
     if (published === null || published.length === 0) {
       console.log(
-        `  ${log.warn("!")}  ${ref.namespace}/${ref.name}  ${log.dim("no published versions in registry")}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim("no published versions in registry")}`,
       );
       result.skipped++;
       continue;
     }
 
-    const best = pickLatest(published, includePrerelease);
+    // Normalize published tags to canonical SemVer so the compare and the
+    // string-equality membership test use one form (handles a `v` prefix).
+    const normalized = published
+      .map((v) => semver.valid(v))
+      .filter((v): v is string => v !== null);
+
+    const best = pickLatest(normalized, includePrerelease);
     if (!best) {
       // Versions exist but none pass the prerelease filter / semver parser.
       console.log(
-        `  ${log.warn("!")}  ${ref.namespace}/${ref.name}  ${log.dim("no eligible versions in registry")}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim("no eligible versions in registry")}`,
       );
       result.skipped++;
       continue;
     }
 
-    if (!ref.version) {
+    const currentVersion = semver.valid(rawVersion);
+    if (!currentVersion) {
+      // A non-SemVer pin — an OCI `sha256:` digest, a moving tag like `latest`.
+      // There is no ordering to upgrade along, so leave it untouched.
       console.log(
-        `  ${log.warn("!")}  ${ref.namespace}/${ref.name}  ${log.dim(`unparseable current version (${ref.rawVersion})`)}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim(`unparseable current version (${rawVersion})`)}`,
       );
       result.skipped++;
       continue;
     }
 
-    const currentPublished = published.some((v) => semver.eq(v, ref.version!));
-    const cmp = semver.compare(best, ref.version);
+    const currentPublished = normalized.some((v) => semver.eq(v, currentVersion));
+    const cmp = semver.compare(best, currentVersion);
 
     // Already at the latest published version (`cmp < 0` is defensive — `best`
     // is the max of `published` and `currentPublished` means the pin is in that
     // list). Nothing to upgrade; ensure it carries an integrity hash.
     if (currentPublished && cmp <= 0) {
-      await ensurePinned(importRef, ref.namespace, ref.name, ref.version);
+      await ensurePinned(importRef, transport, label, currentVersion);
       continue;
     }
 
     // Re-pin to the new version's integrity hash. Best-effort: if the hash
     // fetch fails, still rewrite the version but leave it unpinned (warn).
-    let newPin = `${ref.namespace}/${ref.name}@${best}`;
+    const newBase = transport.withVersion(source, best);
+    let newPin = newBase;
     try {
-      newPin = `${newPin}#${await fetchManifestHash(registryUrl, newPin)}`;
+      newPin = `${newBase}#${await transport.manifestHash(newBase)}`;
     } catch (err) {
       console.log(
-        `  ${log.warn("!")}  ${ref.namespace}/${ref.name}  ${log.dim(`left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim(`left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
       );
     }
 
@@ -273,7 +269,7 @@ export async function upgradeManifest(args: {
       // No range info — extremely unlikely for a freshly parsed doc, but bail
       // out loudly rather than silently dropping the rewrite.
       console.error(
-        `  ${log.error("✗")}  ${ref.namespace}/${ref.name}  source scalar has no range — skipping`,
+        `  ${log.error("✗")}  ${label}  source scalar has no range — skipping`,
       );
       result.errors++;
       continue;
@@ -281,28 +277,22 @@ export async function upgradeManifest(args: {
 
     edits.push(edit);
     result.changed = true;
-    result.upgrades.push({
-      packagePath: `${ref.namespace}/${ref.name}`,
-      from: ref.version,
-      to: best,
-    });
+    result.upgrades.push({ packagePath: label, from: currentVersion, to: best });
 
     if (currentPublished) {
       // Pinned version exists in the registry, just older — straight upgrade.
-      console.log(
-        `  ${log.ok("↑")}  ${ref.namespace}/${ref.name}  ${ref.version} → ${log.ok(best)}`,
-      );
+      console.log(`  ${log.ok("↑")}  ${label}  ${currentVersion} → ${log.ok(best)}`);
     } else {
       // Pinned version NOT in the registry — broken pin, repair to latest
       // regardless of direction.
       const arrow = cmp >= 0 ? log.ok("↑") : log.warn("↓");
       console.log(
-        `  ${arrow}  ${ref.namespace}/${ref.name}  ${ref.version} → ${log.ok(best)}  ${log.warn("(pinned version not in registry)")}`,
+        `  ${arrow}  ${label}  ${currentVersion} → ${log.ok(best)}  ${log.warn("(pinned version not in registry)")}`,
       );
     }
   }
 
-  return { content: applyEdits(content, edits), result };
+  return { content: applyEdits(content, edits), result, relativeImports };
 }
 
 /**
@@ -359,20 +349,41 @@ function applyEdits(
   return out;
 }
 
+function emptyResult(errors = 0): UpgradeResult {
+  return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors };
+}
+
+/** Fold `child` counters into `into` (recursion aggregation). */
+function mergeResults(into: UpgradeResult, child: UpgradeResult): void {
+  into.upgrades.push(...child.upgrades);
+  into.pinned += child.pinned;
+  into.unchanged += child.unchanged;
+  into.skipped += child.skipped;
+  into.errors += child.errors;
+  into.changed ||= child.changed;
+}
+
 export async function upgradeOne(
   inputPath: string,
   registryUrl: string,
   includePrerelease: boolean,
   dryRun: boolean,
   log: Logger,
+  recursive = false,
+  visited: Set<string> = new Set(),
 ): Promise<UpgradeResult> {
   const { filePath, error: resolveError } = resolveManifestPath(inputPath);
   const displayPath = path.relative(process.cwd(), filePath);
 
   if (resolveError) {
     console.error(`${displayPath}  ${log.error("error")}  ${resolveError}`);
-    return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors: 1 };
+    return emptyResult(1);
   }
+
+  // A shared visited set makes recursion cycle-safe and de-dupes a sibling
+  // reached from more than one manifest — each file is upgraded at most once.
+  if (visited.has(filePath)) return emptyResult();
+  visited.add(filePath);
 
   let content: string;
   try {
@@ -382,15 +393,16 @@ export async function upgradeOne(
       `${displayPath}  ${log.error("error")}  cannot read file: ` +
         (err instanceof Error ? err.message : String(err)),
     );
-    return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors: 1 };
+    return emptyResult(1);
   }
 
-  const { content: nextContent, result } = await upgradeManifest({
+  const { content: nextContent, result, relativeImports } = await upgradeManifest({
     content,
     registryUrl,
     includePrerelease,
     log,
     displayName: displayPath,
+    recursive,
   });
 
   if (result.changed && !dryRun) {
@@ -402,6 +414,24 @@ export async function upgradeOne(
     console.log(`  ${log.dim(`dry-run: ${count} import(s) would be updated`)}`);
   }
 
+  // Descend into local sibling manifests, resolving each relative source against
+  // this manifest's directory. Remote imports were already bumped in place above.
+  if (recursive) {
+    const dir = path.dirname(filePath);
+    for (const rel of relativeImports) {
+      const child = await upgradeOne(
+        path.resolve(dir, rel),
+        registryUrl,
+        includePrerelease,
+        dryRun,
+        log,
+        recursive,
+        visited,
+      );
+      mergeResults(result, child);
+    }
+  }
+
   return result;
 }
 
@@ -410,6 +440,7 @@ export async function upgrade(argv: {
   registryUrl?: string;
   includePrerelease: boolean;
   dryRun: boolean;
+  recursive?: boolean;
 }): Promise<void> {
   const log = createLogger(false);
 
@@ -422,8 +453,20 @@ export async function upgrade(argv: {
   let totalSkipped = 0;
   let totalErrors = 0;
 
+  // One visited set across all input paths — a sibling shared by two roots is
+  // upgraded once.
+  const visited = new Set<string>();
+
   for (const p of argv.paths) {
-    const r = await upgradeOne(p, registryUrl, argv.includePrerelease, argv.dryRun, log);
+    const r = await upgradeOne(
+      p,
+      registryUrl,
+      argv.includePrerelease,
+      argv.dryRun,
+      log,
+      argv.recursive ?? false,
+      visited,
+    );
     totalUpgrades += r.upgrades.length;
     totalPinned += r.pinned;
     totalUnchanged += r.unchanged;
@@ -469,6 +512,12 @@ export function upgradeCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe: "Show what would change without writing to disk",
+        })
+        .option("recursive", {
+          alias: "r",
+          type: "boolean",
+          default: false,
+          describe: "Follow relative (local) imports and upgrade their manifests too",
         }),
     async (argv) => {
       await upgrade(argv as any);

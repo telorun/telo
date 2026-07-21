@@ -38,6 +38,20 @@
       "bun": "./src/manifest-sources/memory-source.ts",
       "import": "./dist/manifest-sources/memory-source.js",
       "default": "./dist/manifest-sources/memory-source.js"
+    },
+    "./manifest-sources/local-file-source": {
+      "types": "./dist/manifest-sources/local-file-source.d.ts",
+      "source": "./src/manifest-sources/local-file-source.ts",
+      "bun": "./src/manifest-sources/local-file-source.ts",
+      "import": "./dist/manifest-sources/local-file-source.js",
+      "default": "./dist/manifest-sources/local-file-source.js"
+    },
+    "./transports": {
+      "types": "./dist/transports/transport-registry.d.ts",
+      "source": "./src/transports/transport-registry.ts",
+      "bun": "./src/transports/transport-registry.ts",
+      "import": "./dist/transports/transport-registry.js",
+      "default": "./dist/transports/transport-registry.js"
     }
   },
   "files": [

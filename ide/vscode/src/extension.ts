@@ -1,11 +1,19 @@
 import type { LoadedGraph } from "@telorun/analyzer";
-import { AnalysisRegistry, Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
 import {
+  AnalysisRegistry,
+  Loader,
+  StaticAnalyzer,
+  flattenForAnalyzer,
+} from "@telorun/analyzer";
+import { defaultTransportRegistry } from "@telorun/kernel/transports";
+import {
+  assembleGraphDiagnostics,
   findPositions,
   normalizeDiagnostic,
   type NormalizedDiagnostic,
   DiagnosticSeverity,
 } from "@telorun/ide-support";
+import { getRegistryUrl } from "./ide-adapter.js";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -104,7 +112,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     const filePath = document.uri.fsPath;
-    const loader = new Loader([new NodeAdapter(path.dirname(filePath)), ...defaultSources()]);
+    // Resolve imports origin-direct through the kernel's transport sources —
+    // `oci://` included — exactly like `telo check`. The VS Code host is Node,
+    // so it speaks OCI directly and never routes through the hub cache.
+    const loader = new Loader([
+      new NodeAdapter(path.dirname(filePath)),
+      ...defaultTransportRegistry(getRegistryUrl()).sources(),
+    ]);
 
     let result: Awaited<ReturnType<typeof loader.loadGraphForFile>>;
     try {
@@ -200,27 +214,18 @@ export function activate(context: vscode.ExtensionContext): void {
     const manifests = flattenForAnalyzer(graph);
 
     const registry = new AnalysisRegistry();
-    // A file that fails to parse yields a mangled `toJSON()` tree; its
-    // analyze-derived diagnostics are spurious and would bury the real parse
-    // error. Drop only those (routed to a parse-failed file) — unlike the
-    // one-shot CLI, an editor closure spans many files, most still valid, so
-    // the rest keep full analysis and the registry stays populated.
-    const parseFailedFiles = new Set(
-      graph.parseDiagnostics
-        .map((d) => (d.data as { filePath?: string } | undefined)?.filePath)
-        .filter((f): f is string => Boolean(f)),
-    );
-    const analysisDiagnostics = analyzer
-      .analyze(manifests, undefined, registry)
-      .filter((d) => !parseFailedFiles.has(findPositions(graph, d.data)?.file ?? entryFilePath));
-    // Loader-produced version-reconciliation diagnostics (hoist / major
-    // mismatch) carry `data.filePath` + `data.path: imports.<alias>`, so the
-    // shared `findPositions` resolver lands them on the importer's import line.
-    const rawDiagnostics = [
-      ...graph.parseDiagnostics,
-      ...graph.versionDiagnostics,
-      ...analysisDiagnostics,
-    ];
+    // The shared assembler (ide-support) folds every diagnostic channel — parse,
+    // version-reconciliation, import-resolution, and static analysis — into one
+    // list, holding back the cascade for files that failed to parse or whose
+    // imports failed to resolve. Sourcing all channels here through the same
+    // policy is what keeps the extension showing *exactly* what telo-editor
+    // shows (and the CLI): a broken `imports:` source can no longer be silently
+    // dropped, and the same compromised-file cascade is suppressed in both. Each
+    // diagnostic carries `data.filePath` (+ `path: imports.<alias>` for
+    // import/version ones), so the shared `findPositions` resolver below lands it
+    // on the right line. `suppressed` is available to render dimmed later.
+    const analysisDiagnostics = analyzer.analyze(manifests, undefined, registry);
+    const { diagnostics: rawDiagnostics } = assembleGraphDiagnostics(graph, analysisDiagnostics);
 
     const diagnosticsByFile = new Map<string, vscode.Diagnostic[]>();
 

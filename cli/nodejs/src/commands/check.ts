@@ -1,44 +1,46 @@
-import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer } from "@telorun/analyzer";
-import { LocalFileSource } from "@telorun/kernel";
+import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import { assembleGraphDiagnostics } from "@telorun/ide-support";
+import { LocalFileSource } from "@telorun/kernel/manifest-sources/local-file-source";
+import { defaultTransportRegistry } from "@telorun/kernel/transports";
 import * as path from "path";
 import type { Argv } from "yargs";
 import { createLogger, formatAnalysisDiagnostics, formatDiagnostics, type Logger } from "../logger.js";
 
+const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
+
 async function checkOne(
   inputPath: string,
+  registryUrl: string,
   log: Logger,
 ): Promise<{ errorCount: number; warnCount: number }> {
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
   const entryPath = isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
 
-  const loader = new Loader([new LocalFileSource(), ...defaultSources()]);
+  // The kernel's transport sources — the same set `install` / `run` use — so
+  // `check` resolves every scheme they do, `oci://` included, direct-to-origin.
+  // The browser-only `manifests.telo.sh` cache path stays the editor's; a CLI
+  // resolves origin-direct so it never depends on the hub (federated-discovery
+  // plan: resolution never routes through the hub).
+  const loader = new Loader([
+    new LocalFileSource(),
+    ...defaultTransportRegistry(registryUrl).sources(),
+  ]);
 
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic
     // Telo.Import manifests before analysis — `telo check` is a static
     // resolution consumer and must see inline imports exactly as the kernel does.
     const graph = await loader.loadGraph(entryPath, { desugarImports: true });
-    if (graph.errors.length > 0) {
-      const first = graph.errors[0];
-      throw first.error;
-    }
-    // A file that fails to parse yields a mangled `toJSON()` tree; running
-    // `analyze()` over it emits a cascade of spurious secondary diagnostics that
-    // bury the real parse error. Report the parse (and version) diagnostics and
-    // stop before analysis — mirrors the kernel, which throws on parse failure.
-    if (graph.parseDiagnostics.length > 0) {
-      return formatAnalysisDiagnostics(
-        [...graph.parseDiagnostics, ...graph.versionDiagnostics],
-        graph,
-        log,
-        entryPath,
-      );
-    }
     const manifests = flattenForAnalyzer(graph);
-    // Version-reconciliation diagnostics (hoist warnings / major-mismatch
-    // errors) are produced by the loader, not `analyze()`; merge them in so a
-    // skewed import surfaces here exactly as it does in the editor.
-    const diagnostics = [...graph.versionDiagnostics, ...new StaticAnalyzer().analyze(manifests)];
+    // `assembleGraphDiagnostics` is the shared assembler every host uses: it
+    // folds parse, version-reconciliation, import-resolution, and static
+    // analysis diagnostics into one list, holding back the cascade for files
+    // that failed to parse or whose imports failed to resolve. A broken
+    // `imports:` source thus surfaces here as a coded diagnostic — identical to
+    // the editor — instead of a bare re-thrown load error. The CLI drops the
+    // suppressed cascade; the editor / VS Code keep it available to render.
+    const analysis = new StaticAnalyzer().analyze(manifests);
+    const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
     return formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
   } catch (err) {
     const sourceLine = (err as any).sourceLine as number | undefined;
@@ -53,14 +55,18 @@ async function checkOne(
   }
 }
 
-export async function check(argv: { paths: string[] }): Promise<void> {
+export async function check(argv: { paths: string[]; registryUrl?: string }): Promise<void> {
   const log = createLogger(false);
+
+  // Same fallback chain as `run` / `install` / `upgrade`.
+  const registryUrl =
+    argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 
   let totalErrors = 0;
   let totalWarns = 0;
 
   for (const p of argv.paths) {
-    const { errorCount, warnCount } = await checkOne(p, log);
+    const { errorCount, warnCount } = await checkOne(p, registryUrl, log);
     totalErrors += errorCount;
     totalWarns += warnCount;
   }
@@ -83,12 +89,17 @@ export function checkCommand(yargs: Argv): Argv {
     "check <paths..>",
     "Check one or more Telo manifests for errors without running them",
     (y) =>
-      y.positional("paths", {
-        describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
-        type: "string",
-        array: true,
-        demandOption: true,
-      }),
+      y
+        .positional("paths", {
+          describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
+          type: "string",
+          array: true,
+          demandOption: true,
+        })
+        .option("registry-url", {
+          type: "string",
+          describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+        }),
     async (argv) => {
       await check(argv as any);
     },

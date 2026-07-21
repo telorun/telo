@@ -2,6 +2,7 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
   sha256Base64Url,
+  splitIntegrity,
   verifyIntegrity,
   type ManifestSource,
 } from "@telorun/analyzer";
@@ -124,6 +125,21 @@ export class OciTransport implements Transport {
     const { host, repo } = parseOciRef(ref);
     const tags = await new OciClient(host, repo).listTags();
     return tags;
+  }
+
+  refVersion(ref: string): string | null {
+    // The reference (tag or `sha256:` digest) is what `@` separates. An implicit
+    // `latest` (no `@`) is not an upgradeable pin, so return null there; a digest
+    // reference flows through raw and the caller's SemVer check skips it.
+    const { base } = splitIntegrity(ref);
+    if (!base.startsWith(OCI_SCHEME)) return null;
+    const at = base.lastIndexOf("@");
+    return at > 0 ? base.slice(at + 1) : null;
+  }
+
+  withVersion(ref: string, version: string): string {
+    const { host, repo } = parseOciRef(ref);
+    return `${OCI_SCHEME}${host}/${repo}@${version}`;
   }
 
   async digest(ref: string): Promise<string | null> {

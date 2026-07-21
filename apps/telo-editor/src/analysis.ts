@@ -2,11 +2,12 @@ import {
   AnalysisRegistry,
   StaticAnalyzer,
   flattenForAnalyzer,
+  importResolutionDiagnostics,
   type DocumentPosition,
   type LoadedGraph,
   type ManifestSource,
 } from "@telorun/analyzer";
-import { normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
+import { compromisedFiles, normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { isWorkspaceModule } from "./loader";
 import { createEditorLoader } from "./loader/subgraph";
 import { createWorkspaceDocumentSource } from "./loader/workspace-source";
@@ -119,16 +120,15 @@ function analyzeClosure(
   const registry = new AnalysisRegistry();
   const diagnostics = analyzer.analyze(manifests, undefined, registry);
 
-  // A file that fails to parse yields a mangled `toJSON()` tree; its
-  // analyze-derived diagnostics are spurious and would bury the real parse
-  // error (routed separately below). Drop only those — unlike the one-shot
-  // CLI, a closure spans many files, most still valid, so the rest keep full
-  // analysis and the registry stays populated.
-  const parseFailedFiles = new Set(
-    graph.parseDiagnostics
-      .map((d) => (d.data as { filePath?: string } | undefined)?.filePath)
-      .filter((f): f is string => Boolean(f)),
-  );
+  // A file that fails to parse (mangled tree) or whose import failed to resolve
+  // (broken kind resolution) yields a spurious analyze cascade that would bury
+  // the real parse / import error (both routed separately below). Drop only
+  // those files' analysis diagnostics — via the SAME `compromisedFiles` policy
+  // VS Code applies through `assembleGraphDiagnostics`, so the editor and the
+  // extension suppress exactly the same set. Unlike the one-shot CLI, a closure
+  // spans many files, most still valid, so the rest keep full analysis and the
+  // registry stays populated.
+  const compromised = compromisedFiles(graph);
 
   // Files local to this closure's root: the entry module's owner + its
   // `include:` partials, keyed by the same `metadata.source` values
@@ -187,7 +187,7 @@ function analyzeClosure(
     const filePath =
       kind && name ? (stampedFilePath ?? sourceByManifest.get(`${kind}/${name}`)) : undefined;
     const routedFile = filePath ?? stampedFilePath;
-    if (routedFile && parseFailedFiles.has(routedFile)) continue;
+    if (routedFile && compromised.has(routedFile)) continue;
     const ownerPosition =
       filePath && kind && name ? positions.get(`${filePath}::${kind}::${name}`) : undefined;
     const normalized = normalizeDiagnostic(diag, {
@@ -242,6 +242,29 @@ function analyzeClosure(
     appendByFile(
       filePath,
       normalizeDiagnostic(vd, {
+        registry,
+        positionIndex: moduleDocPos?.positionIndex,
+        sourceLine: moduleDocPos?.sourceLine,
+      }),
+    );
+  }
+
+  // Import-resolution failures (`graph.errors`) are graph-level like version
+  // diagnostics — a broken import is only visible from the importer that
+  // declares it. Converted through the shared `importResolutionDiagnostics` (the
+  // same one the CLI/VS Code hosts use), routed to `data.filePath`, deduped
+  // across closures, and anchored at `imports.<alias>` via the module doc's
+  // position index.
+  for (const id of importResolutionDiagnostics(graph)) {
+    const filePath = (id.data as { filePath?: string } | undefined)?.filePath;
+    if (!filePath) continue;
+    const dedupKey = `import::${filePath}::${id.code}::${id.message}`;
+    if (acc.unknownSeen.has(dedupKey)) continue;
+    acc.unknownSeen.add(dedupKey);
+    const moduleDocPos = graph.modules.get(filePath)?.owner.positions[0];
+    appendByFile(
+      filePath,
+      normalizeDiagnostic(id, {
         registry,
         positionIndex: moduleDocPos?.positionIndex,
         sourceLine: moduleDocPos?.sourceLine,

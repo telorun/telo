@@ -153,6 +153,26 @@ describe("OciTransport pure methods", () => {
       "std/console@1.0.0",
     );
   });
+
+  it("reads the tag / digest reference via refVersion", () => {
+    expect(t.refVersion("oci://ghcr.io/telorun/http-server@0.19.1")).toBe("0.19.1");
+    expect(t.refVersion("oci://ghcr.io/telorun/http-server@0.19.1#sha256-abc")).toBe("0.19.1");
+    // A digest reference flows through raw — the caller's SemVer check skips it.
+    expect(t.refVersion("oci://ghcr.io/aws/telo-s3@sha256:deadbeef")).toBe("sha256:deadbeef");
+    // No explicit reference → not an upgradeable pin.
+    expect(t.refVersion("oci://ghcr.io/aws/telo-s3")).toBeNull();
+    expect(t.refVersion("std/console@0.9.0")).toBeNull();
+  });
+
+  it("rebuilds the ref at a new version via withVersion", () => {
+    expect(t.withVersion("oci://ghcr.io/telorun/http-server@0.19.1", "0.20.0")).toBe(
+      "oci://ghcr.io/telorun/http-server@0.20.0",
+    );
+    // Multi-segment repos and integrity fragments are preserved / dropped.
+    expect(t.withVersion("oci://ghcr.io/aws/telo-s3@1.2.0#sha256-abc", "1.3.0")).toBe(
+      "oci://ghcr.io/aws/telo-s3@1.3.0",
+    );
+  });
 });
 
 describe("OciTransport round-trip against a mock registry", () => {

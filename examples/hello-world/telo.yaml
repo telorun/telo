@@ -9,7 +9,7 @@ metadata:
     Reach for `Run.Sequence` when a boot entry needs control flow, scopes, or
     a return value.
 imports:
-  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Console: oci://ghcr.io/telorun/console@0.12.0
 targets:
   - invoke: !ref Console.writeLine
     inputs:

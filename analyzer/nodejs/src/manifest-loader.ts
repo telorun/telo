@@ -258,7 +258,10 @@ export class Loader {
           } catch (err) {
             errors.push({
               url: importSource,
+              source: importSource,
               fromSource: file.source,
+              alias,
+              sourceLine,
               error: err instanceof Error ? err : new Error(String(err)),
             });
             continue;
@@ -284,7 +287,14 @@ export class Loader {
             } catch (err) {
               const e = err instanceof Error ? err : new Error(String(err));
               (e as { sourceLine?: number }).sourceLine = sourceLine;
-              errors.push({ url: resolvedTarget, fromSource: file.source, error: e });
+              errors.push({
+                url: resolvedTarget,
+                source: importSource,
+                fromSource: file.source,
+                alias,
+                sourceLine,
+                error: e,
+              });
               continue;
             }
           }

@@ -83,6 +83,23 @@ export interface Transport {
    *  by `telo upgrade`. */
   listVersions(ref: string): Promise<string[] | null>;
 
+  /** The version segment currently named in `ref` — a registry `@version`, an
+   *  OCI tag, or an OCI digest reference (`sha256:…`), returned raw (the caller
+   *  applies its own SemVer validation). Returns `null` when the ref carries no
+   *  upgradeable version at all — a bare `https://` URL, or an OCI ref with no
+   *  explicit reference. The integrity fragment is ignored. Used by `telo
+   *  upgrade` to read the current pin. Paired with {@link withVersion}, which
+   *  owns the scheme-specific reconstruction, so `upgrade` never branches on
+   *  ref shape. */
+  refVersion(ref: string): string | null;
+
+  /** `ref` rewritten to name `version`, dropping any integrity fragment (the
+   *  caller re-pins the result). Scheme-specific reconstruction — registry
+   *  `<ns>/<name>@version`, OCI `oci://host/repo@version`. Only called for refs
+   *  {@link refVersion} classified as versioned, so it may assume a parseable
+   *  ref. Used by `telo upgrade`. */
+  withVersion(ref: string, version: string): string;
+
   /** Retrieve the full artifact for `ref` — the `telo.yaml` and its `files:`
    *  payload — verifying the manifest against the inline hash and the payload
    *  against the manifest's `filesIntegrity`. Used by `telo install`; subsumes

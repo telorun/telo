@@ -454,6 +454,9 @@ importers:
       '@telorun/ide-support':
         specifier: workspace:*
         version: link:../../packages/ide-support
+      '@telorun/kernel':
+        specifier: workspace:*
+        version: link:../../kernel/nodejs
       minimatch:
         specifier: ^10.0.1
         version: 10.2.5

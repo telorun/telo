@@ -67,12 +67,13 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @telorun/analyzer --filter @telorun/ide-support build && node esbuild.mjs",
+    "build": "pnpm --filter @telorun/analyzer --filter @telorun/ide-support --filter @telorun/kernel build && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch"
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
     "@telorun/ide-support": "workspace:*",
+    "@telorun/kernel": "workspace:*",
     "minimatch": "^10.0.1"
   },
   "devDependencies": {
