@@ -1,5 +1,58 @@
 # @telorun/kernel
 
+## 0.51.0
+
+### Minor Changes
+
+- 6418e2a: `telo check` now resolves every import scheme the runtime does — `oci://`
+  included — and reports locations as CWD-relative paths.
+
+  `check` built its loader from the analyzer's browser-safe `defaultSources()`
+  (HTTP + registry only), so an `oci://` import failed with "No source found for".
+  It now uses the kernel's `defaultTransportRegistry(registryUrl).sources()` — the
+  same origin-direct chain `install` / `run` use — so OCI resolves straight from
+  the origin registry, never through the hub cache (the discovery plan's invariant:
+  CLI resolution never routes through the hub; the `manifests.telo.sh` cache is the
+  browser editor's read path only). A `--registry-url` option is added, matching
+  the `--registry-url → TELO_REGISTRY_URL → https://registry.telo.run` fallback of
+  `run` / `install` / `upgrade`.
+
+  Diagnostic locations for on-disk manifests are now printed relative to the
+  working directory (e.g. `examples/hello-world/telo.yaml:12:12`) instead of an
+  absolute `file://` URL; genuine `http(s)://` sources stay absolute.
+
+  `@telorun/kernel` gains a `./transports` subpath export (re-exporting
+  `defaultTransportRegistry` and the transport registry) and a
+  `./manifest-sources/local-file-source` subpath so a Node consumer can pull just
+  the transport-resolution sources and the local-file source without the
+  controller/bundler machinery the package root drags in. `telo check` and the VS
+  Code host both import through these subpaths.
+
+- 6418e2a: `telo upgrade` now upgrades OCI imports and can follow relative imports
+  recursively.
+
+  Version enumeration, ref reconstruction, and integrity hashing during an
+  upgrade are delegated to the transport that owns each ref's scheme, so every
+  backend the kernel can resolve is also upgradeable. Previously the command used
+  a registry-only ref classifier that skipped `oci://host/repo@tag` imports as
+  "not a registry ref"; they are now bumped in place like registry refs. The
+  `Transport` interface gains two methods for this — `refVersion(ref)` (the
+  version segment currently named) and `withVersion(ref, version)` (the ref
+  rewritten at a new version) — implemented by `RegistryTransport` and
+  `OciTransport`.
+
+  A new `--recursive` / `-r` flag follows relative (local) imports into their
+  sibling manifests and upgrades those too. It is cycle-safe and upgrades each
+  file at most once even when a sibling is reached from several manifests. Remote
+  refs are always upgraded in place; recursion only descends into on-disk
+  siblings. Without the flag, a relative import is reported skipped with a hint to
+  use `--recursive`.
+
+### Patch Changes
+
+- Updated dependencies [6418e2a]
+  - @telorun/analyzer@0.40.0
+
 ## 0.50.0
 
 ### Minor Changes
