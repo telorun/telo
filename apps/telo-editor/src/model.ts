@@ -33,6 +33,10 @@ export interface AppSettings {
    *  the public default (`manifests.telo.sh`); a self-hosted hub points this
    *  at its own bucket endpoint. */
   manifestCacheUrl?: string;
+  /** Base URL of the telo hub used for import-source autocomplete (ref search
+   *  + version lists). Empty/undefined uses the public default (`telo.sh`);
+   *  a self-hosted hub points this at its own endpoint. */
+  hubUrl?: string;
   /** The user's runners. The Run button uses the one whose id is
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];

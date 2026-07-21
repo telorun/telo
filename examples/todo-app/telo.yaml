@@ -8,11 +8,11 @@ metadata:
     surface is one declarative Crud.Resource — list / read / create / update /
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
-  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
-  Crud: std/crud@0.5.0#sha256-B1EbNgs28SYUW0IUagvMqB85H2EcALL2L3NR3mED9Pg
-  Type: std/type@0.8.0#sha256-z56gxs4HbdWHlUWWvLRFFHPy5wX52SU5A1Fo61s20-g
+  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
+  Sql: oci://ghcr.io/telorun/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.4.0#sha256-Tx6iWpzDfFNKkmAmlzK74dsP1w4CR9e_jkU_EITvjb4
+  Crud: oci://ghcr.io/telorun/crud@0.5.0#sha256-cmIbE-1L7YhLijExyDzIte14Um7Nzh0lHl5pJ32LGvs
+  Type: oci://ghcr.io/telorun/type@0.8.0#sha256-z56gxs4HbdWHlUWWvLRFFHPy5wX52SU5A1Fo61s20-g
 targets:
   - !ref Migrate
   - !ref Server
