@@ -1,5 +1,12 @@
 # telo-kernel
 
+## 0.0.64
+
+### Patch Changes
+
+- Updated dependencies [bdc21e9]
+  - @telorun/ide-support@0.6.0
+
 ## 0.0.63
 
 ### Patch Changes

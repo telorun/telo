@@ -1,5 +1,12 @@
 # telo-editor
 
+## 0.11.12
+
+### Patch Changes
+
+- Updated dependencies [bdc21e9]
+  - @telorun/ide-support@0.6.0
+
 ## 0.11.11
 
 ### Patch Changes

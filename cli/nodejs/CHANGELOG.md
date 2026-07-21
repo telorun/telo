@@ -1,5 +1,12 @@
 # @telorun/cli
 
+## 0.51.1
+
+### Patch Changes
+
+- Updated dependencies [bdc21e9]
+  - @telorun/ide-support@0.6.0
+
 ## 0.51.0
 
 ### Minor Changes
