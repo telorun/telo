@@ -1,6 +1,6 @@
 import type { OnMount } from "@monaco-editor/react";
 import type { editor, Position } from "monaco-editor";
-import type { AnalysisRegistry } from "@telorun/analyzer";
+import type { AnalysisRegistry, AstDocument } from "@telorun/analyzer";
 import { buildCompletions } from "@telorun/ide-support";
 import type { AppSettings, WorkspaceAdapter } from "../../../model";
 import { pathDirname } from "../../../loader/paths";
@@ -16,12 +16,27 @@ const registered = new WeakSet<Monaco>();
 const registryRef: { current: AnalysisRegistry | undefined } = { current: undefined };
 const workspaceRef: { current: WorkspaceAdapter | undefined } = { current: undefined };
 const settingsRef: { current: AppSettings | undefined } = { current: undefined };
+/** The active file's already-parsed AST plus the exact text it was parsed
+ *  from. Completion reuses it only when the live buffer still matches that
+ *  text, so a keystroke ahead of the next analysis pass falls back to a local
+ *  parse rather than resolving against a stale tree. */
+const docsRef: { current: { text: string; docs: AstDocument[] } | undefined } = {
+  current: undefined,
+};
 
 /** Updates the active registry the provider consults. Called from Editor.tsx
  *  after each analysis pass. The provider reads through this ref so completion
  *  never goes stale even though registration happened once at mount. */
 export function setActiveRegistry(r: AnalysisRegistry | undefined): void {
   registryRef.current = r;
+}
+
+/** Updates the active file's parsed AST (from the same analysis pass) so
+ *  completion can skip re-parsing when the buffer is unchanged. */
+export function setActiveDocs(
+  entry: { text: string; docs: AstDocument[] } | undefined,
+): void {
+  docsRef.current = entry;
 }
 
 /** Sources of side-channel data the import-source completer needs (filesystem
@@ -67,24 +82,29 @@ export function registerYamlCompletions(monaco: Monaco): void {
           ? new EditorIdeAdapter(manifestDir, workspace, settings.hubUrl)
           : undefined;
 
+      const text = model.getValue();
+      const threaded =
+        docsRef.current && docsRef.current.text === text ? docsRef.current.docs : undefined;
       const results = await buildCompletions(
-        model.getValue(),
+        text,
         position.lineNumber - 1,
         position.column - 1,
         registryRef.current,
         adapter,
+        threaded,
       );
       return {
         suggestions: results.map((r) => {
-          const range =
-            r.replaceFromColumn !== undefined
-              ? {
-                  startLineNumber: position.lineNumber,
-                  endLineNumber: position.lineNumber,
-                  startColumn: r.replaceFromColumn + 1,
-                  endColumn: position.column,
-                }
-              : defaultRange;
+          // Monaco is 1-based; `replaceRange` is the 0-based full span of the
+          // existing node, so a pick overwrites any suffix after the cursor too.
+          const range = r.replaceRange
+            ? {
+                startLineNumber: r.replaceRange.start.line + 1,
+                startColumn: r.replaceRange.start.character + 1,
+                endLineNumber: r.replaceRange.end.line + 1,
+                endColumn: r.replaceRange.end.character + 1,
+              }
+            : defaultRange;
           return {
             label: r.label,
             kind: kindMap[r.kind],

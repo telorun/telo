@@ -1,4 +1,4 @@
-import type { LoadedGraph } from "@telorun/analyzer";
+import type { LoadedFile, LoadedGraph } from "@telorun/analyzer";
 import {
   AnalysisRegistry,
   Loader,
@@ -270,8 +270,26 @@ export function activate(context: vscode.ExtensionContext): void {
       collection.set(vscode.Uri.file(ownerFilePath), []);
     }
 
-    // Make the populated registry available for completions.
-    completionProvider.updateRegistry(entryFilePath, registry);
+    // Make the populated registry available for completions, plus the entry
+    // file's already-parsed AST so completion can skip re-parsing when the
+    // buffer is unchanged (guarded by text identity in the provider).
+    let entryLoaded: LoadedFile | undefined;
+    for (const mod of graph.modules.values()) {
+      if (mod.owner.source === entryFilePath) {
+        entryLoaded = mod.owner;
+        break;
+      }
+      const partial = mod.partials.find((p) => p.source === entryFilePath);
+      if (partial) {
+        entryLoaded = partial;
+        break;
+      }
+    }
+    completionProvider.updateRegistry(
+      entryFilePath,
+      registry,
+      entryLoaded ? { text: entryLoaded.text, docs: entryLoaded.astDocuments } : undefined,
+    );
   }
 
   async function reanalyzeEntries(changedPath: string): Promise<void> {

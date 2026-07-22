@@ -1,10 +1,10 @@
-import { isMap, isPair, isScalar, isSeq, type Document } from "yaml";
 import type { Position, PositionIndex } from "./types.js";
+import type { AstDocument, AstNode } from "./yaml-ast.js";
 
 /** Single source of truth for "given the source text of a multi-document YAML
  *  file, where does each document start, and what is the byte→(line,char)
  *  table for the file." Both the analyzer's `Loader` and editor frontends
- *  feed the same parsed `yaml.Document[]` through this so diagnostics
+ *  feed the same adapted `AstDocument[]` through this so diagnostics
  *  resolved against `positionIndex` / `sourceLine` line up identically
  *  across hosts. */
 
@@ -17,7 +17,7 @@ export interface DocumentPosition {
 /** Builds DocumentPosition entries aligned to `parsedDocs[i]`. */
 export function buildDocumentPositions(
   text: string,
-  parsedDocs: Document[],
+  parsedDocs: AstDocument[],
 ): DocumentPosition[] {
   const docOffsets = documentLineOffsets(text);
   const lineOffsets = buildLineOffsets(text);
@@ -70,40 +70,36 @@ function offsetToPosition(offset: number, lineOffsets: number[]): Position {
   return { line: lo, character: offset - lineOffsets[lo] };
 }
 
-/** Walks the YAML AST and records source ranges for every field value, keyed
+/** Walks the AST and records source ranges for every field value, keyed
  *  by dotted path (e.g. "kind", "config.handler", "config.routes[0].path").
  *  Map keys are also recorded under the `@key:<path>` namespace so diagnostic
  *  resolvers can squiggle just the key identifier instead of the full value
  *  block — used when a diagnostic targets a missing child property and the
  *  resolver has to fall back to the parent. */
-export function buildPositionIndex(doc: Document, lineOffsets: number[]): PositionIndex {
+export function buildPositionIndex(doc: AstDocument, lineOffsets: number[]): PositionIndex {
   const index: PositionIndex = new Map();
 
-  function recordNode(node: any, path: string): void {
-    if (!node || !node.range) return;
-    const [start, , end] = node.range as [number, number, number];
+  function recordNode(node: AstNode, path: string): void {
+    const [start, end] = node.range;
     index.set(path, {
       start: offsetToPosition(start, lineOffsets),
       end: offsetToPosition(end, lineOffsets),
     });
   }
 
-  function walk(node: any, path: string): void {
-    if (isMap(node)) {
-      for (const pair of node.items) {
-        if (!isPair(pair)) continue;
-        const key = isScalar(pair.key) ? String(pair.key.value) : null;
+  function walk(node: AstNode, path: string): void {
+    if (node.kind === "map") {
+      for (const pair of node.entries) {
+        const key = pair.key.kind === "scalar" ? String(pair.key.value) : null;
         if (key == null) continue;
         const childPath = path ? `${path}.${key}` : key;
-        if (pair.key && (pair.key as any).range) {
-          recordNode(pair.key, `@key:${childPath}`);
-        }
-        if (pair.value != null) {
+        recordNode(pair.key, `@key:${childPath}`);
+        if (pair.value) {
           recordNode(pair.value, childPath);
           walk(pair.value, childPath);
         }
       }
-    } else if (isSeq(node)) {
+    } else if (node.kind === "seq") {
       for (let i = 0; i < node.items.length; i++) {
         const item = node.items[i];
         const childPath = `${path}[${i}]`;
@@ -113,8 +109,8 @@ export function buildPositionIndex(doc: Document, lineOffsets: number[]): Positi
     }
   }
 
-  if (doc.contents) {
-    walk(doc.contents, "");
+  if (doc.root) {
+    walk(doc.root, "");
   }
 
   return index;

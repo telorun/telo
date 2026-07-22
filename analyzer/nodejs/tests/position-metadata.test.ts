@@ -1,5 +1,3 @@
-import { defaultCustomTags } from "@telorun/templating";
-import { parseAllDocuments } from "yaml";
 import { describe, expect, it } from "vitest";
 import {
   buildDocumentPositions,
@@ -7,9 +5,10 @@ import {
   buildPositionIndex,
   documentLineOffsets,
 } from "../src/position-metadata.js";
+import { parseToAst } from "../src/yaml-ast.js";
 
 function parse(text: string) {
-  return parseAllDocuments(text, { customTags: defaultCustomTags() });
+  return parseToAst(text);
 }
 
 /** Slice the original source for a recorded range and return the substring,

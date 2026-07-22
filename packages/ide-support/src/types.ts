@@ -10,9 +10,21 @@ export type {
   PositionIndex,
 } from "@telorun/analyzer";
 
-import type { AnalysisRegistry, DiagnosticSeverity, PositionIndex, Range } from "@telorun/analyzer";
+import type {
+  AnalysisRegistry,
+  DiagnosticSeverity,
+  Position,
+  PositionIndex,
+  Range,
+} from "@telorun/analyzer";
 
 export type CompletionKind = "class" | "enumMember" | "property" | "folder" | "module" | "value";
+
+/** A source span the host replaces wholesale when a completion is accepted. */
+export interface ReplaceRange {
+  start: Position;
+  end: Position;
+}
 
 export interface CompletionResult {
   label: string;
@@ -24,11 +36,13 @@ export interface CompletionResult {
   preselect?: boolean;
   sortText?: string;
   filterText?: string;
-  /** When set, the host should replace text from this 0-based column on the
-   *  cursor's line up to the cursor. Required when the completion value
-   *  contains non-word characters (`/`, `@`, `.`) that the host's default
-   *  word boundary would not include in the replaced range. */
-  replaceFromColumn?: number;
+  /** When set, the host replaces this whole source range with the accepted
+   *  value — the full span of the existing node, not just the prefix up to the
+   *  cursor. This overwrites any suffix after the cursor (`Sql.Co|nnection` +
+   *  `Sql.Connection` → no leftover `nnection`) and cleanly replaces values
+   *  containing non-word characters (`/`, `@`, `.`). A zero-width range is a
+   *  pure insert. */
+  replaceRange?: ReplaceRange;
 }
 
 /** A candidate module ref surfaced by the hub's `/refs` lexical autocomplete.

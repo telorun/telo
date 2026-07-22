@@ -317,6 +317,14 @@ describe("buildCompletions — ref-name value completion", () => {
     expect(results).toEqual([]);
   });
 
+  it("does not crash on the cursor in a bare scalar sequence item", async () => {
+    // Regression: `targets:` holding bare `!ref` scalars — cursor on a list item
+    // must resolve without throwing (a seq is not a map of keyed siblings).
+    const text = ["kind: Telo.Application", "targets:", "  - One"].join("\n");
+    const results = await buildCompletions(text, 2, "  - O".length, registry);
+    expect(Array.isArray(results)).toBe(true);
+  });
+
   it("anchors the replace range at the value start so dotted/dashed names overwrite cleanly", async () => {
     const text = [
       "kind: Sql.Connection",
@@ -335,27 +343,26 @@ describe("buildCompletions — ref-name value completion", () => {
     const results = await buildCompletions(text, line, character, registry);
     const item = results.find((r) => r.label === "my-primary-db");
     expect(item).toBeDefined();
-    expect(item!.replaceFromColumn).toBe("  name: ".length);
+    expect(item!.replaceRange!.start).toEqual({ line, character: "  name: ".length });
   });
 });
 
-describe("buildCompletions — kind value replaceFromColumn", () => {
+describe("buildCompletions — kind value replaceRange", () => {
   const registry = new AnalysisRegistry();
 
-  it("threads valueStartColumn onto kind value completion items so dotted kinds replace cleanly", async () => {
+  it("anchors the replace range at the value start so dotted kinds replace cleanly", async () => {
     const text = "kind: \n";
     const character = "kind: ".length;
     const results = await buildCompletions(text, 0, character, registry);
     const item = results.find((r) => r.label === "Telo.Application");
     expect(item).toBeDefined();
-    expect(item!.replaceFromColumn).toBe("kind: ".length);
+    expect(item!.replaceRange!.start).toEqual({ line: 0, character: "kind: ".length });
   });
 
-  it("threads valueStartColumn even for indented kind: lines", async () => {
+  it("anchors the replace range even for indented kind: lines", async () => {
     // Indented case mirrors the flow inside an inline-resource block like
-    // `routes[].handler: { kind: |, name: … }`. valueStartColumn must
-    // include the indent so the replace range starts inside the value, not
-    // at the start of the line.
+    // `routes[].handler: { kind: |, name: … }`. The range start must include
+    // the indent so the replacement begins inside the value, not at column 0.
     const text = ["kind: Telo.Application", "metadata:", "  name: foo", "field:", "  kind: "].join(
       "\n",
     );
@@ -364,7 +371,19 @@ describe("buildCompletions — kind value replaceFromColumn", () => {
     const results = await buildCompletions(text, line, character, registry);
     const item = results.find((r) => r.label.startsWith("Telo."));
     expect(item).toBeDefined();
-    expect(item!.replaceFromColumn).toBe("  kind: ".length);
+    expect(item!.replaceRange!.start).toEqual({ line, character: "  kind: ".length });
+  });
+
+  it("spans the whole existing scalar so an accepted kind overwrites the suffix", async () => {
+    // Regression: `kind: Sql.Co|nnection` + accept must replace all of
+    // `Sql.Connection`, not just the prefix, so no `nnection` is left behind.
+    const text = "kind: Sql.Connection\n";
+    const character = "kind: Sql.Co".length;
+    const results = await buildCompletions(text, 0, character, registry);
+    const item = results.find((r) => r.replaceRange);
+    expect(item).toBeDefined();
+    expect(item!.replaceRange!.start).toEqual({ line: 0, character: "kind: ".length });
+    expect(item!.replaceRange!.end).toEqual({ line: 0, character: "kind: Sql.Connection".length });
   });
 });
 
@@ -440,6 +459,69 @@ describe("buildCompletions — deeply nested list-item paths", () => {
     // and stays filtered as `existingKeys`.
     expect(labels).toContain("handler");
     expect(labels).not.toContain("method"); // method is INSIDE request, not a sibling here
+  });
+});
+
+describe("buildCompletions — inline resource prop keys", () => {
+  function buildInlineRegistry(): AnalysisRegistry {
+    const registry = new AnalysisRegistry();
+    registry.registerModuleIdentity("std", "test-module");
+    registry.registerImport("Test", "test-module", ["Api", "Resource"]);
+    registry.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "Resource", module: "test-module" },
+      capability: "Telo.Mount",
+      schema: {
+        type: "object",
+        properties: {
+          connection: { type: "object" },
+          plural: { type: "string" },
+          singular: { type: "string" },
+          model: { type: "object" },
+        },
+      },
+    } as any);
+    registry.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "Api", module: "test-module" },
+      capability: "Telo.Service",
+      schema: {
+        type: "object",
+        properties: {
+          mounts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: { type: "string" },
+                mount: { "x-telo-ref": "telo#Mount" },
+              },
+            },
+          },
+        },
+      },
+    } as any);
+    return registry;
+  }
+
+  it("offers the inline resource's own fields, not the outer ref slot's", async () => {
+    const registry = buildInlineRegistry();
+    const text = [
+      "kind: Test.Api",
+      "mounts:",
+      "  - path: /api/todos",
+      "    mount:",
+      "      kind: Test.Resource",
+      "      plural: todos",
+      "      ",
+    ].join("\n");
+    const line = 6;
+    const character = text.split("\n")[line].length;
+    const results = await buildCompletions(text, line, character, registry);
+    const labels = results.map((r) => r.label);
+    // Crud.Resource's own schema keys surface (minus the ones already present).
+    expect(labels).toEqual(expect.arrayContaining(["connection", "singular", "model"]));
+    expect(labels).not.toContain("plural"); // already on the page
   });
 });
 
