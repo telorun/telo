@@ -1,5 +1,72 @@
 # @telorun/ide-support
 
+## 0.7.0
+
+### Minor Changes
+
+- 0c1c8fd: IDE completion is now driven by a read-only AST instead of line/regex/indent
+  heuristics, and accepting a completion replaces the whole existing node.
+
+  **Analyzer — read-only AST substrate.** The analyzer owns its own `yaml`-free
+  node model (`AstNode` / `AstMap` / `AstSeq` / `AstScalar` / `AstPair` /
+  `AstDocument`, via `parseToAst` / `documentToAst`) and a matching read-only CEL
+  tree (`CelNode`, `CelSegment`, `wrapCelAst`, `buildCelSegments`), so no
+  third-party AST type leaks through the public surface. `buildPositionIndex` /
+  `buildDocumentPositions` now take `AstDocument` (was `yaml.Document`), and
+  `LoadedFile` gains `astDocuments` — the read-only view built from the same
+  parse — while `documents` stays `yaml.Document[]` for the editor's mutable
+  model. `celSegments()` locates `${{ }}` / `!cel` regions in document offsets and
+  parses CEL lazily; open (unclosed `${{`) regions are recovered too.
+
+  **ide-support — AST-driven context + whole-node replacement.** `detectContext`
+  resolves the cursor against the AST (`resolveNodeAtPosition`): structure comes
+  from the parsed tree, and the cursor column only places empty-space key
+  positions. `CompletionResult.replaceFromColumn` is replaced by `replaceRange`
+  (the full source span of the value), so `kind: Sql.Co|nnection` + accept
+  overwrites the whole `Sql.Connection` scalar instead of leaving a `nnection`
+  suffix. Prop-key completion now works inside inline resources: a key position inside
+  `mount: { kind: Crud.Resource, … }` is completed against `Crud.Resource`'s own
+  schema (nearest enclosing `kind:`, path made relative to it) instead of the
+  outer ref slot's `{kind, name}` shape.
+
+  `buildCompletions` / `detectContext` accept an optional pre-parsed
+  `AstDocument[]`; hosts thread the analyzer's parse in (guarded by text
+  identity), falling back to a local parse otherwise.
+
+- 2e1bb5c: Add `buildHover`, `buildSemanticTokens`, and `buildDefinition` to the
+  host-agnostic IDE surface, mirroring `buildCompletions`.
+
+  **Hover.** `buildHover(text, line, character, registry, docs?)` resolves the
+  cursor with the same `resolveNodeAtPosition` machinery as completion and returns
+  a `HoverResult` (markdown + source range): a `kind:` value renders the
+  definition's module, capability, schema title/description, and input/output
+  types; a prop key or field value renders that field's schema `description`,
+  `type`, `enum`, `default`, and `x-telo-ref` constraint; a structural root key
+  (`imports`, `targets`, `variables`, …) falls back to built-in docs.
+
+  **Semantic tokens.** `buildSemanticTokens(text, registry, docs?)` returns
+  registry-aware `SemanticToken`s — a `kind:` value that resolves to a known
+  definition is a `type`, a `capability:` value is an `interface`, and a `!ref`
+  target is a `variable` (colored from the AST because a `!ref` after a `key:` is
+  claimed by the bundled YAML grammar before a TextMate pattern can reach it); an
+  unresolved kind gets no token, pairing with the analyzer's `UNDEFINED_KIND`
+  diagnostic. `SEMANTIC_TOKEN_LEGEND` is exported for hosts to register against a
+  stock legend.
+
+  **Go to definition.** `buildDefinition(text, line, character, graph, currentFilePath, docs?)`
+  resolves the `!ref` under the cursor to its target resource's definition,
+  returning a `DefinitionResult` (`{ uri, range }` at the target's `metadata.name`).
+  It mirrors the `resolveRefSentinels` grammar — a bare name or `Self.name` is a
+  local resource in the current module; `Alias.name` is an exported instance of the
+  module the import points at, resolved through the graph's `importEdges`. The VS
+  Code extension registers a `DefinitionProvider` (ctrl/cmd-click) backed by it,
+  caching the `LoadedGraph` per file for the cross-module lookup.
+
+### Patch Changes
+
+- Updated dependencies [0c1c8fd]
+  - @telorun/analyzer@0.41.0
+
 ## 0.6.0
 
 ### Minor Changes

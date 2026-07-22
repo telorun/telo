@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: test
   namespace: std
-  version: 0.6.3
+  version: 0.6.4
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: Test discovery and execution
@@ -16,7 +16,7 @@ metadata:
   description: Discovers test manifests by glob and runs them with optional filtering and bounded concurrency.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.4.49?local_path=./nodejs#suite
+  - pkg:npm/@telorun/test@0.4.50?local_path=./nodejs#suite
 schema:
   type: object
   properties:

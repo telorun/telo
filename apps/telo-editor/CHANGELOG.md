@@ -1,5 +1,14 @@
 # telo-editor
 
+## 0.11.13
+
+### Patch Changes
+
+- Updated dependencies [0c1c8fd]
+- Updated dependencies [2e1bb5c]
+  - @telorun/analyzer@0.41.0
+  - @telorun/ide-support@0.7.0
+
 ## 0.11.12
 
 ### Patch Changes
