@@ -1,5 +1,26 @@
 # @telorun/cli
 
+## 0.51.2
+
+### Patch Changes
+
+- 2e1bb5c: Fix `telo publish` for OCI imports and directory arguments.
+
+  - The pre-flight analysis loader now uses the kernel's transport sources (same
+    chain as `telo check`), so a manifest whose `imports:` reference an `oci://`
+    dependency — pinned (`#sha256-…`) or not — resolves for analysis instead of
+    failing with `No source found for: oci://…`. Previously it used the analyzer's
+    `defaultSources()` (HTTP + registry only), which owns no `oci://` scheme.
+  - A directory argument now resolves to its `telo.yaml` (standard Telo path
+    resolution, matching `run` / `check`), instead of failing with
+    `Cannot read file: <dir>`.
+
+- Updated dependencies [0c1c8fd]
+- Updated dependencies [2e1bb5c]
+  - @telorun/analyzer@0.41.0
+  - @telorun/ide-support@0.7.0
+  - @telorun/kernel@0.51.2
+
 ## 0.51.1
 
 ### Patch Changes
