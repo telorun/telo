@@ -30,6 +30,10 @@ export interface ViewProps {
   graphContext: { kind: string; name: string } | null;
   onSelectResource: (kind: string, name: string) => void;
   onNavigateResource: (kind: string, name: string) => void;
+  /** Opens a module by its workspace key / resolved import path as the active
+   *  module tab — e.g. clicking an import to view the imported library. A remote
+   *  (non-workspace) module opens read-only. */
+  onOpenModule: (filePath: string) => void;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
   /** Removes a resource from the active module (overview-canvas Delete key). */
   onDeleteResource: (kind: string, name: string) => void;

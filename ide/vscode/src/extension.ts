@@ -17,7 +17,11 @@ import { getRegistryUrl } from "./ide-adapter.js";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
 import * as vscode from "vscode";
+import { TeloAnalysisCache } from "./analysis-cache.js";
 import { TeloCompletionProvider } from "./completion.js";
+import { TeloDefinitionProvider } from "./definition.js";
+import { TeloHoverProvider } from "./hover.js";
+import { TeloSemanticTokensProvider, TELO_SEMANTIC_LEGEND } from "./semantic-tokens.js";
 
 const TELO_KIND_RE = /^kind:\s+Telo\./m;
 // Broader signature for the language-promote check: any line declaring a
@@ -71,14 +75,27 @@ export function activate(context: vscode.ExtensionContext): void {
   const publishedSources = new Map<string, Set<string>>();
 
   const analyzer = new StaticAnalyzer();
-  const completionProvider = new TeloCompletionProvider();
+  const cache = new TeloAnalysisCache();
+  const completionProvider = new TeloCompletionProvider(cache);
+  const hoverProvider = new TeloHoverProvider(cache);
+  const semanticTokensProvider = new TeloSemanticTokensProvider(cache);
+  const definitionProvider = new TeloDefinitionProvider(cache);
+
+  const teloSelector: vscode.DocumentSelector = [{ language: "telo" }, { language: "yaml" }];
 
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
-      [{ language: "telo" }, { language: "yaml" }],
+      teloSelector,
       completionProvider,
       " ", ":", "/", "@",
     ),
+    vscode.languages.registerHoverProvider(teloSelector, hoverProvider),
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      teloSelector,
+      semanticTokensProvider,
+      TELO_SEMANTIC_LEGEND,
+    ),
+    vscode.languages.registerDefinitionProvider(teloSelector, definitionProvider),
   );
 
   // Promote a yaml document to the `telo` language id when its content looks
@@ -285,11 +302,15 @@ export function activate(context: vscode.ExtensionContext): void {
         break;
       }
     }
-    completionProvider.updateRegistry(
+    cache.set(
       entryFilePath,
       registry,
+      graph,
       entryLoaded ? { text: entryLoaded.text, docs: entryLoaded.astDocuments } : undefined,
     );
+    // Recolor: a kind that only just resolved (e.g. an import finished loading)
+    // should light up without waiting for the next keystroke.
+    semanticTokensProvider.refresh();
   }
 
   async function reanalyzeEntries(changedPath: string): Promise<void> {
@@ -322,7 +343,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeTextDocument(onChangedDebounced),
     vscode.workspace.onDidCloseTextDocument((doc) => {
       collection.delete(doc.uri);
-      completionProvider.deleteRegistry(doc.uri.fsPath);
+      cache.delete(doc.uri.fsPath);
     }),
   );
 

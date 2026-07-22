@@ -1,6 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
-import { File as FileIcon } from "lucide-react";
+import { File as FileIcon, Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isModuleRootKind, moduleRootResource } from "../application-adapter";
 import { analyzeWorkspace } from "../analysis";
@@ -19,6 +19,7 @@ import {
   loadWorkspace,
   noopAdapter,
   normalizePath,
+  isWorkspaceModule,
   persistWorkspaceModule,
   rebuildManifestFromDocuments,
   reconcileImports,
@@ -86,7 +87,13 @@ import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
-import { setActiveDocs, setActiveRegistry } from "./views/source/register-completion";
+import {
+  setActiveCurrentPath,
+  setActiveDocs,
+  setActiveGraph,
+  setActiveNavigator,
+  setActiveRegistry,
+} from "./views/source/provider-state";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -375,11 +382,16 @@ export function Editor() {
   useEffect(() => {
     const path = state.activeModulePath;
     setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
+    // The loaded graph + active path back go-to-definition (`!ref` → target
+    // resource across the module's files).
+    setActiveGraph(path ? state.diagnostics.graphByFile.get(path) : undefined);
+    setActiveCurrentPath(path ?? undefined);
     // Thread the active file's already-parsed AST so source completion can
     // reuse it instead of re-parsing (the provider guards on text identity).
     const loaded = path ? state.workspace?.documents.get(path)?.loaded : undefined;
     setActiveDocs(loaded ? { text: loaded.text, docs: loaded.astDocuments } : undefined);
   }, [state.diagnostics, state.activeModulePath, state.workspace]);
+
 
   // Persist deployment config on every mutation. Workspace-scoped, stored
   // under its own localStorage key (not via saveState).
@@ -950,33 +962,42 @@ export function Editor() {
   }
 
   const revealNonceRef = useRef(0);
-  function navigateToDiagnostic(filePath: string, range?: Range) {
-    // UNKNOWN_FILE_KEY is not a real path — surfaced only in the future
-    // Problems panel and never in resource-anchored UI. Guard here in case
-    // a call site slips through.
-    if (filePath === "__unknown__") return;
-    const workspace = state.workspace;
-    if (!workspace) return;
-    const normalized = normalizePath(filePath);
-    let ownerPath: string | null = null;
-    for (const [modulePath, manifest] of workspace.modules) {
-      if (getModuleFiles(manifest).includes(normalized)) {
-        ownerPath = modulePath;
-        break;
+  const navigateToDiagnostic = useCallback(
+    (filePath: string, range?: Range) => {
+      // UNKNOWN_FILE_KEY is not a real path — surfaced only in the future
+      // Problems panel and never in resource-anchored UI. Guard here in case
+      // a call site slips through.
+      if (filePath === "__unknown__") return;
+      const workspace = state.workspace;
+      if (!workspace) return;
+      const normalized = normalizePath(filePath);
+      let ownerPath: string | null = null;
+      for (const [modulePath, manifest] of workspace.modules) {
+        if (getModuleFiles(manifest).includes(normalized)) {
+          ownerPath = modulePath;
+          break;
+        }
       }
-    }
-    if (!ownerPath) ownerPath = state.activeModulePath;
-    revealNonceRef.current += 1;
-    const owner = ownerPath;
-    setState((s) => {
-      const base = owner ? activateModuleState(s, owner) : s;
-      return {
-        ...base,
-        activeView: "source" as ViewId,
-        sourceRevealRequest: { filePath: normalized, range, nonce: revealNonceRef.current },
-      };
-    });
-  }
+      if (!ownerPath) ownerPath = state.activeModulePath;
+      revealNonceRef.current += 1;
+      const owner = ownerPath;
+      setState((s) => {
+        const base = owner ? activateModuleState(s, owner) : s;
+        return {
+          ...base,
+          activeView: "source" as ViewId,
+          sourceRevealRequest: { filePath: normalized, range, nonce: revealNonceRef.current },
+        };
+      });
+    },
+    [state.workspace, state.activeModulePath],
+  );
+
+  // Bridge cross-file go-to-definition into the app's navigation. Depends on the
+  // memoized callback, so it re-registers only when the closed-over state changes.
+  useEffect(() => {
+    setActiveNavigator(navigateToDiagnostic);
+  }, [navigateToDiagnostic]);
 
   // ---------------------------------------------------------------------------
   // Resource creation
@@ -988,6 +1009,13 @@ export function Editor() {
       : null;
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
+
+  // A remote/imported (non-workspace) module has no editable on-disk file, so
+  // it opens read-only across every view.
+  const activeIsRemote =
+    !!state.workspace &&
+    !!state.activeModulePath &&
+    !isWorkspaceModule(state.workspace, state.activeModulePath);
 
   async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
@@ -1446,6 +1474,15 @@ export function Editor() {
         ) : (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <EditorTabs items={tabItems} onActivate={handleActivateTab} onClose={handleCloseTab} />
+            {activeIsRemote && (
+              <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1 text-xs text-amber-700 dark:text-amber-300">
+                <Lock className="size-3 shrink-0" />
+                <span className="font-medium">Remote module · read-only</span>
+                <span className="truncate text-amber-600/70 dark:text-amber-400/70">
+                  {state.activeModulePath}
+                </span>
+              </div>
+            )}
             <div className="flex min-h-0 flex-1 overflow-hidden">
               {activeTab?.type === "file" ? (
                 <FileEditor
@@ -1460,7 +1497,7 @@ export function Editor() {
                   activeView={state.activeView}
                   onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
                   viewProps={{
-                      readOnly: agentLocked,
+                      readOnly: agentLocked || activeIsRemote,
                       viewData,
                       registry:
                         (state.activeModulePath
@@ -1471,6 +1508,7 @@ export function Editor() {
                       graphContext: state.graphContext,
                       onSelectResource: handleSelectResource,
                       onNavigateResource: handleNavigateResource,
+                      onOpenModule: handleOpenModule,
                       onUpdateResource: handleUpdateResource,
                       onDeleteResource: handleDeleteResource,
                       onWriteRef: handleWriteRef,

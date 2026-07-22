@@ -42,3 +42,5 @@ Make sure there is no major version bump in any of the packages or modules.
 Ignore any file changes that are not coherent with the overall feature or fix being implemented and seem out of scope.
 
 Do not comment about what is sound about the implementation, only point out potential issues and areas for improvement.
+
+Provide concrete fix recommendations for each issue you find, and explain why the fix is necessary.

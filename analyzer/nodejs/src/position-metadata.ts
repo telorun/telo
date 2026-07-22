@@ -59,7 +59,7 @@ export function buildLineOffsets(text: string): number[] {
   return offsets;
 }
 
-function offsetToPosition(offset: number, lineOffsets: number[]): Position {
+export function offsetToPosition(offset: number, lineOffsets: number[]): Position {
   let lo = 0;
   let hi = lineOffsets.length - 1;
   while (lo < hi) {

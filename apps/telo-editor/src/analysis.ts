@@ -60,6 +60,11 @@ export interface WorkspaceDiagnostics {
    *  never share — and thus never overwrite — each other's definitions. The
    *  Monaco completion provider selects the registry for the active module. */
   registryByFile: Map<string, AnalysisRegistry>;
+  /** filePath → the LoadedGraph of the owning closure. Retained (alongside the
+   *  registry) so cross-file features — go-to-definition — can resolve a `!ref`
+   *  target's source location across the graph's modules. Same first-closure-wins
+   *  routing as `registryByFile`. */
+  graphByFile: Map<string, LoadedGraph>;
 }
 
 /** The set of modules that anchor an independent analysis context: every
@@ -81,6 +86,7 @@ interface MergeAccumulators {
   byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
   byFile: Map<string, NormalizedDiagnostic[]>;
   registryByFile: Map<string, AnalysisRegistry>;
+  graphByFile: Map<string, LoadedGraph>;
   /** Dedup key set for diagnostics that route to no file at all. */
   unknownSeen: Set<string>;
   /** External (registry/remote) files already claimed by an earlier closure.
@@ -289,12 +295,16 @@ function analyzeClosure(
   // so it wins regardless of closure order. Other closure files (forwarded
   // foreign deps, including read-only external modules that never anchor a
   // closure) take the first registry that references them as a fallback.
-  for (const f of rootLocalFiles) acc.registryByFile.set(f, registry);
+  for (const f of rootLocalFiles) {
+    acc.registryByFile.set(f, registry);
+    acc.graphByFile.set(f, graph);
+  }
   for (const f of closureFiles) {
     // External files surfaced here are now owned by this closure; later
     // closures importing the same dependency defer to it (first-closure-wins).
     if (!rootLocalFiles.has(f) && !isWorkspaceModule(app, f)) acc.externalFilesClaimed.add(f);
     if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
+    if (!acc.graphByFile.has(f)) acc.graphByFile.set(f, graph);
   }
 }
 
@@ -322,6 +332,7 @@ export async function analyzeWorkspace(
     byResource: new Map(),
     byFile: new Map(),
     registryByFile: new Map(),
+    graphByFile: new Map(),
     unknownSeen: new Set(),
     externalFilesClaimed: new Set(),
   };
@@ -347,5 +358,6 @@ export async function analyzeWorkspace(
     byResource: acc.byResource,
     byFile: acc.byFile,
     registryByFile: acc.registryByFile,
+    graphByFile: acc.graphByFile,
   };
 }

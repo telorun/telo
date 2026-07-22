@@ -30,6 +30,7 @@ export function ImportsView({
   onRemoveImport,
   onUpgradeImport,
   onUpgradeAllImports,
+  onOpenModule,
 }: ViewProps) {
   const [adding, setAdding] = useState(false);
   const [upgradingAll, setUpgradingAll] = useState(false);
@@ -124,6 +125,7 @@ export function ImportsView({
                   upgrade={upgrade}
                   latestVersions={latestVersions}
                   onRemove={onRemoveImport}
+                  onOpenModule={onOpenModule}
                 />
               ))}
             </tbody>
@@ -140,9 +142,17 @@ interface ImportTableRowProps {
   upgrade: ImportUpgradeState;
   latestVersions: Map<string, string>;
   onRemove: (name: string) => void;
+  onOpenModule: (filePath: string) => void;
 }
 
-function ImportTableRow({ imp, filePaths, upgrade, latestVersions, onRemove }: ImportTableRowProps) {
+function ImportTableRow({
+  imp,
+  filePaths,
+  upgrade,
+  latestVersions,
+  onRemove,
+  onOpenModule,
+}: ImportTableRowProps) {
   const ref = imp.importKind === "registry" ? parseRegistryRef(imp.source) : null;
   const latest = ref ? latestVersions.get(ref.moduleId) : undefined;
   const outdated = ref != null && latest != null && latest !== ref.version;
@@ -197,8 +207,19 @@ function ImportTableRow({ imp, filePaths, upgrade, latestVersions, onRemove }: I
         </div>
       </td>
       <td className="py-1.5 pr-3 text-xs">{imp.importKind}</td>
-      <td className="max-w-64 truncate py-1.5 pr-3 text-xs text-zinc-400 dark:text-zinc-500">
-        {imp.resolvedPath ?? "—"}
+      <td className="max-w-64 py-1.5 pr-3 text-xs">
+        {imp.resolvedPath ? (
+          <button
+            type="button"
+            onClick={() => onOpenModule(imp.resolvedPath!)}
+            className="block max-w-full truncate text-left text-blue-600 hover:underline dark:text-blue-400"
+            title={`Open ${imp.resolvedPath}`}
+          >
+            {imp.resolvedPath}
+          </button>
+        ) : (
+          <span className="text-zinc-400 dark:text-zinc-500">—</span>
+        )}
       </td>
       <td className="py-1.5">
         <div className="flex items-center justify-end gap-1">

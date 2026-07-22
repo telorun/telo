@@ -32,7 +32,7 @@ import { INITIAL_STATE, defaultGraphContext, pickInitialActiveModule } from "../
 import {
   setActiveSettings,
   setActiveWorkspaceAdapter,
-} from "../components/views/source/register-completion";
+} from "../components/views/source/provider-state";
 import type { PersistedEditorState } from "./useEditorPersistence";
 
 /** A resolved remote-open plan (root + same-origin relative cascade), held
