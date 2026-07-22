@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { Document } from "yaml";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { AnalysisDiagnostic, Range } from "./types.js";
+import type { AstDocument } from "./yaml-ast.js";
 
 /** One physical file's parsed result. Returned for the owner manifest, for
  *  each `include:` partial, and for each external import target.
@@ -17,8 +18,13 @@ export interface LoadedFile {
   requestedUrl: string;
   /** Raw text exactly as `read()` returned it. */
   text: string;
-  /** Per-document parsed AST, in source order. */
+  /** Per-document parsed `yaml` AST, in source order. The editor's mutable
+   *  round-trip model reads this handle; structure-only consumers use the
+   *  read-only `astDocuments` instead so `yaml` stays an internal detail. */
   documents: Document[];
+  /** Per-document read-only `AstNode` view (`yaml`-free), aligned to
+   *  `documents`. The shared structural source of truth for IDE features. */
+  astDocuments: AstDocument[];
   /** Per-document JSON projection (`doc.toJSON()`). Aligned to `documents`. */
   manifests: Array<ResourceManifest | null>;
   /** Per-document `{sourceLine, positionIndex}`. Aligned to `documents`. */

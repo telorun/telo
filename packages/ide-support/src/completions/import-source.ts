@@ -1,4 +1,4 @@
-import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
+import type { CompletionResult, IdeEnvironmentAdapter, ReplaceRange } from "../types.js";
 
 /** Maximum ref hits to surface in a single completion request. Keeps the
  *  popover scannable when a broad `q=` query matches many registered refs
@@ -26,13 +26,13 @@ const PATH_PROBE_LIMIT = 50;
  * search below, whose query is the whole typed prefix — so the hub fuzzy-matches
  * `oci://ghcr.io/aws/telo-s3` as readily as a bare `s3`.
  *
- * `valueStartColumn` is forwarded onto every result so the host can replace
- * the whole typed value, not just the trailing word (Monaco / VSCode word
- * boundaries don't cross `/` or `@`).
+ * `replaceRange` is forwarded onto every result so the host replaces the whole
+ * value, not just the trailing word (Monaco / VSCode word boundaries don't
+ * cross `/` or `@`).
  */
 export async function importSourceCompletions(
   prefix: string,
-  valueStartColumn: number,
+  replaceRange: ReplaceRange,
   adapter: IdeEnvironmentAdapter | undefined,
 ): Promise<CompletionResult[]> {
   if (!adapter) return [];
@@ -48,22 +48,22 @@ export async function importSourceCompletions(
   const isRelativeShape =
     prefix === "" || prefix.startsWith(".") || prefix.startsWith("/");
   if (isRelativeShape) {
-    return relativePathCompletions(prefix, valueStartColumn, adapter);
+    return relativePathCompletions(prefix, replaceRange, adapter);
   }
 
   // The version (or `@sha256:` digest) is the trailing `@`-segment, so split on
   // the LAST `@` — a digest-pinned ref keeps everything before it as the ref.
   const atIdx = prefix.lastIndexOf("@");
   if (atIdx > 0) {
-    return versionCompletions(prefix, atIdx, valueStartColumn, adapter);
+    return versionCompletions(prefix, atIdx, replaceRange, adapter);
   }
 
-  return refSearchCompletions(prefix, valueStartColumn, adapter);
+  return refSearchCompletions(prefix, replaceRange, adapter);
 }
 
 async function relativePathCompletions(
   prefix: string,
-  valueStartColumn: number,
+  replaceRange: ReplaceRange,
   adapter: IdeEnvironmentAdapter,
 ): Promise<CompletionResult[]> {
   // Empty prefix → seed `./` and `../` so the user gets traction; otherwise
@@ -76,14 +76,14 @@ async function relativePathCompletions(
         kind: "folder",
         insertText: "./",
         sortText: "0_./",
-        replaceFromColumn: valueStartColumn,
+        replaceRange,
       },
       {
         label: "../",
         kind: "folder",
         insertText: "../",
         sortText: "0_../",
-        replaceFromColumn: valueStartColumn,
+        replaceRange,
       },
     ];
   }
@@ -118,7 +118,7 @@ async function relativePathCompletions(
         detail: isModule ? "telo module" : "folder",
         insertText: fullPath,
         filterText: fullPath,
-        replaceFromColumn: valueStartColumn,
+        replaceRange,
         // Modules sort above plain folders so they surface first when the user
         // is browsing a `modules/` tree mixed with non-Telo siblings.
         sortText: isModule ? `0_${name}` : `1_${name}`,
@@ -129,7 +129,7 @@ async function relativePathCompletions(
 
 async function refSearchCompletions(
   prefix: string,
-  valueStartColumn: number,
+  replaceRange: ReplaceRange,
   adapter: IdeEnvironmentAdapter,
 ): Promise<CompletionResult[]> {
   // The whole typed prefix is the fuzzy query — the hub matches it as a
@@ -154,7 +154,7 @@ async function refSearchCompletions(
       documentation: m.description ? m.ref : undefined,
       insertText: id,
       filterText: id,
-      replaceFromColumn: valueStartColumn,
+      replaceRange,
     };
   });
 }
@@ -173,7 +173,7 @@ function refDisplayName(ref: string): string {
 async function versionCompletions(
   prefix: string,
   atIdx: number,
-  valueStartColumn: number,
+  replaceRange: ReplaceRange,
   adapter: IdeEnvironmentAdapter,
 ): Promise<CompletionResult[]> {
   const ref = prefix.slice(0, atIdx);
@@ -195,7 +195,7 @@ async function versionCompletions(
       detail: idx === 0 ? "latest" : undefined,
       insertText: id,
       filterText: id,
-      replaceFromColumn: valueStartColumn,
+      replaceRange,
       // Preserve the hub's ordering (newest first) so the latest version is
       // suggested at the top regardless of lexical comparison.
       sortText: String(idx).padStart(4, "0"),

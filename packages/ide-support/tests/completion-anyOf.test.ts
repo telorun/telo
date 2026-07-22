@@ -139,6 +139,12 @@ describe("detectContext — indented kind", () => {
 
   it("returns plain kind ctx (no docKind) for top-level kind lines", () => {
     const ctx = detectContext("kind: ", 0, 6);
-    expect(ctx).toEqual({ type: "kind", valueStartColumn: "kind: ".length });
+    expect(ctx).toEqual({
+      type: "kind",
+      replaceRange: {
+        start: { line: 0, character: 6 },
+        end: { line: 0, character: 6 },
+      },
+    });
   });
 });

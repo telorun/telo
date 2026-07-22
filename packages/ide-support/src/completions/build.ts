@@ -1,5 +1,6 @@
-import type { AnalysisRegistry } from "@telorun/analyzer";
+import { parseToAst, type AnalysisRegistry, type AstDocument, type AstMap } from "@telorun/analyzer";
 import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
+import type { ReplaceRange } from "./detect-context.js";
 import { detectContext, lookupRefConstraint } from "./detect-context.js";
 import { importSourceCompletions } from "./import-source.js";
 import { propKeyCompletions } from "./prop-keys.js";
@@ -10,56 +11,29 @@ interface ResourceRecord {
   name: string;
 }
 
-/** Roughly extract `(kind, metadata.name)` pairs from a multi-doc YAML text.
- *  This is intentionally lightweight: it scans for top-level `kind:` and the
- *  first `name:` under a `metadata:` block per `---`-separated section, with
- *  no full YAML parse. The output is consumed only for completion ranking,
- *  so misses on edge-case manifests are acceptable; the analyzer remains
- *  the source of truth for validation. */
-function extractInFileResources(text: string): ResourceRecord[] {
+/** Read the top-level `kind` and `metadata.name` scalar of each document from
+ *  the AST. Consumed only for ref-name completion ranking, so a doc missing
+ *  either is simply skipped; the analyzer remains the source of truth. */
+function extractInFileResources(docs: AstDocument[]): ResourceRecord[] {
   const out: ResourceRecord[] = [];
-  const lines = text.split("\n");
-  let currentKind: string | undefined;
-  let currentName: string | undefined;
-  let inMetadata = false;
+  const scalar = (node: { kind: string; value?: unknown } | undefined): string | undefined =>
+    node?.kind === "scalar" && typeof node.value === "string" ? node.value : undefined;
 
-  const flush = () => {
-    if (currentKind && currentName) {
-      out.push({ kind: currentKind, name: currentName });
-    }
-    currentKind = undefined;
-    currentName = undefined;
-    inMetadata = false;
-  };
-
-  for (const line of lines) {
-    if (line.trimEnd() === "---") {
-      flush();
-      continue;
-    }
-    const kindMatch = line.match(/^kind:\s*(\S+)/);
-    if (kindMatch) {
-      currentKind = kindMatch[1];
-      continue;
-    }
-    if (/^metadata:\s*$/.test(line)) {
-      inMetadata = true;
-      continue;
-    }
-    if (inMetadata) {
-      // Lines inside metadata are indented. Pick the first `name:` we see.
-      const nameMatch = line.match(/^\s+name:\s*(\S+)/);
-      if (nameMatch && !currentName) {
-        currentName = nameMatch[1];
-      }
-      // Leaving the metadata block — any line that is not indented marks
-      // the end of the block.
-      if (line.length > 0 && !/^\s/.test(line)) {
-        inMetadata = false;
+  for (const doc of docs) {
+    if (doc.root?.kind !== "map") continue;
+    let kind: string | undefined;
+    let name: string | undefined;
+    for (const pair of doc.root.entries) {
+      const key = scalar(pair.key);
+      if (key === "kind") kind = scalar(pair.value);
+      else if (key === "metadata" && pair.value?.kind === "map") {
+        const meta = pair.value as AstMap;
+        const nameEntry = meta.entries.find((e) => scalar(e.key) === "name");
+        name = scalar(nameEntry?.value);
       }
     }
+    if (kind && name) out.push({ kind, name });
   }
-  flush();
   return out;
 }
 
@@ -71,13 +45,13 @@ function extractInFileResources(text: string): ResourceRecord[] {
  *  user still sees something rather than nothing when the registry
  *  doesn't recognize the kind yet. */
 function refNameCompletions(
-  text: string,
+  docs: AstDocument[],
   refKind: string | undefined,
   refConstraint: string | undefined,
   registry: AnalysisRegistry | undefined,
-  valueStartColumn: number,
+  replaceRange: ReplaceRange,
 ): CompletionResult[] {
-  const resources = extractInFileResources(text);
+  const resources = extractInFileResources(docs);
   let acceptable: Set<string> | undefined;
 
   if (refKind) {
@@ -97,10 +71,9 @@ function refNameCompletions(
       label: r.name,
       kind: "value",
       detail: r.kind,
-      // Anchor the replace range to the value's start column so names with
-      // `.`, `-`, or `/` (legal in resource names) replace the whole typed
-      // prefix instead of the trailing word VS Code would pick by default.
-      replaceFromColumn: valueStartColumn,
+      // Replace the whole existing value so names with `.`, `-`, or `/` (legal
+      // in resource names) overwrite cleanly instead of the trailing word.
+      replaceRange,
     });
   }
   return out;
@@ -129,7 +102,7 @@ function kindCompletions(
   registry: AnalysisRegistry | undefined,
   docKind: string | undefined,
   yamlPath: string[] | undefined,
-  valueStartColumn: number | undefined,
+  replaceRange: ReplaceRange,
 ): CompletionResult[] {
   let kinds: Iterable<string>;
   if (registry && docKind && yamlPath && yamlPath.length > 0) {
@@ -145,14 +118,10 @@ function kindCompletions(
   for (const kind of kinds) {
     if (seen.has(kind)) continue;
     seen.add(kind);
-    const item: CompletionResult = { label: kind, kind: "class", detail: "Telo resource kind" };
-    // Anchor the replace range to the value's start column so kinds with `.`
-    // (e.g. `Sql.Connection`) cleanly overwrite the existing prefix. Without
-    // this, VS Code's default word boundary stops at the last `.` and a pick
-    // of `Sql.Connection` while the buffer reads `Sql.Co|` becomes
-    // `Sql.Sql.Connection`.
-    if (valueStartColumn !== undefined) item.replaceFromColumn = valueStartColumn;
-    results.push(item);
+    // Replace the whole existing kind scalar so a pick of `Sql.Connection`
+    // over `Sql.Co|nnection` leaves no `nnection` suffix and no `Sql.` prefix
+    // duplication (VS Code's default word range stops at the last `.`).
+    results.push({ label: kind, kind: "class", detail: "Telo resource kind", replaceRange });
   }
   return results;
 }
@@ -171,11 +140,16 @@ export async function buildCompletions(
   character: number,
   registry: AnalysisRegistry | undefined,
   adapter?: IdeEnvironmentAdapter,
+  docs?: AstDocument[],
 ): Promise<CompletionResult[]> {
-  const ctx = detectContext(text, line, character);
+  // Reuse the host's already-parsed AST when it matches the current buffer;
+  // otherwise parse once here (Part 1 stands alone). Both `detectContext` and
+  // ref-name in-file resource extraction share this single parse.
+  const astDocs = docs ?? parseToAst(text);
+  const ctx = detectContext(text, line, character, astDocs);
   if (!ctx) return [];
   if (ctx.type === "kind") {
-    return kindCompletions(registry, ctx.docKind, ctx.yamlPath, ctx.valueStartColumn);
+    return kindCompletions(registry, ctx.docKind, ctx.yamlPath, ctx.replaceRange);
   }
   if (ctx.type === "capability") return capabilityCompletions();
   if (ctx.type === "ref-name") {
@@ -183,17 +157,11 @@ export async function buildCompletions(
     const refConstraint = definition?.schema
       ? lookupRefConstraint(definition.schema as Record<string, any>, ctx.yamlPath)
       : undefined;
-    return refNameCompletions(
-      text,
-      ctx.refKind,
-      refConstraint,
-      registry,
-      ctx.valueStartColumn,
-    );
+    return refNameCompletions(astDocs, ctx.refKind, refConstraint, registry, ctx.replaceRange);
   }
   if (ctx.type === "field-value") {
     if (ctx.field === "import-source") {
-      return importSourceCompletions(ctx.prefix, ctx.valueStartColumn, adapter);
+      return importSourceCompletions(ctx.prefix, ctx.replaceRange, adapter);
     }
     return [];
   }

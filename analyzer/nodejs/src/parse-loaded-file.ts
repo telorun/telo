@@ -6,6 +6,7 @@ import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
 import { buildDocumentPositions } from "./position-metadata.js";
 import { precompileDoc } from "./precompile.js";
+import { documentToAst } from "./yaml-ast.js";
 
 export interface ParseOptions {
   /** When true, runs `precompileDoc` per document and stamps compiled CEL
@@ -49,7 +50,8 @@ export function parseLoadedFile(
   options?: ParseOptions,
 ): LoadedFile {
   const documents = parseAllDocuments(text, { customTags: defaultCustomTags() });
-  const positions = buildDocumentPositions(text, documents);
+  const astDocuments = documents.map((doc) => documentToAst(doc, text));
+  const positions = buildDocumentPositions(text, astDocuments);
 
   const parseErrors: ParseError[] = [];
   documents.forEach((doc, documentIndex) => {
@@ -90,6 +92,7 @@ export function parseLoadedFile(
     requestedUrl,
     text,
     documents,
+    astDocuments,
     manifests,
     positions,
     parseErrors,

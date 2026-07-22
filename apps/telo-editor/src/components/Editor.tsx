@@ -86,7 +86,7 @@ import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
-import { setActiveRegistry } from "./views/source/register-completion";
+import { setActiveDocs, setActiveRegistry } from "./views/source/register-completion";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -375,7 +375,11 @@ export function Editor() {
   useEffect(() => {
     const path = state.activeModulePath;
     setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
-  }, [state.diagnostics, state.activeModulePath]);
+    // Thread the active file's already-parsed AST so source completion can
+    // reuse it instead of re-parsing (the provider guards on text identity).
+    const loaded = path ? state.workspace?.documents.get(path)?.loaded : undefined;
+    setActiveDocs(loaded ? { text: loaded.text, docs: loaded.astDocuments } : undefined);
+  }, [state.diagnostics, state.activeModulePath, state.workspace]);
 
   // Persist deployment config on every mutation. Workspace-scoped, stored
   // under its own localStorage key (not via saveState).
