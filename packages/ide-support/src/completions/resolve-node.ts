@@ -1,5 +1,6 @@
 import {
   buildLineOffsets,
+  offsetToPosition,
   type AstDocument,
   type AstMap,
   type AstNode,
@@ -51,18 +52,7 @@ function within(range: [number, number], offset: number): boolean {
   return offset >= range[0] && offset <= range[1];
 }
 
-function offsetToPosition(offset: number, lineOffsets: number[]): Position {
-  let lo = 0;
-  let hi = lineOffsets.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (lineOffsets[mid] <= offset) lo = mid;
-    else hi = mid - 1;
-  }
-  return { line: lo, character: offset - lineOffsets[lo] };
-}
-
-function scalarString(node: AstNode | undefined): string | undefined {
+export function scalarString(node: AstNode | undefined): string | undefined {
   if (node?.kind === "scalar" && typeof node.value === "string") return node.value;
   return undefined;
 }
@@ -346,6 +336,7 @@ export function resolveNodeAtPosition(
       slot: "key",
       path: found.path,
       node: found.keyNode,
+      replaceRange: { start: toPos(found.keyNode.range[0]), end: toPos(found.keyNode.range[1]) },
       container: found.container,
       existingKeys,
       resourceKind: found.scope.kind,

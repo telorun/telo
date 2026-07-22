@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry } from "@telorun/kernel";
 import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
@@ -324,6 +324,17 @@ async function publishOne(
   frozen: boolean,
   log: Logger,
 ): Promise<boolean> {
+  // A directory argument resolves to its telo.yaml — standard Telo path
+  // resolution, matching `run` / `check` (LocalFileSource stats a dir → telo.yaml).
+  try {
+    if (fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(filePath, DEFAULT_MANIFEST_FILENAME);
+    }
+  } catch {
+    console.error(log.error("error") + `  Cannot read file: ${filePath}`);
+    return false;
+  }
+
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf-8");
@@ -445,7 +456,11 @@ async function publishOne(
   // This catches schema errors, bad references, CEL issues, and system-kind violations
   // in partial files — all before the artifact reaches the registry.
   const localFileSource = new LocalFileSource();
-  const analysisLoader = new Loader([localFileSource, ...defaultSources()]);
+  // Same source chain as `telo check`: the kernel's transport sources resolve
+  // every scheme install/run do — `oci://` included — direct-to-origin. The
+  // analyzer's `defaultSources()` (HTTP + registry only) cannot resolve an OCI
+  // import, so an `oci://` dependency (pinned or not) fails to load for analysis.
+  const analysisLoader = new Loader([localFileSource, ...defaultTransportRegistry(registry).sources()]);
   let analysisGraph;
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic

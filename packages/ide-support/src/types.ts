@@ -45,6 +45,43 @@ export interface CompletionResult {
   replaceRange?: ReplaceRange;
 }
 
+/** Rendered hover for the symbol under the cursor. `contents` is GitHub-flavored
+ *  markdown; `range` (when present) is the source span the host underlines. */
+export interface HoverResult {
+  contents: string;
+  range?: ReplaceRange;
+}
+
+/** Semantic token type names emitted by `buildSemanticTokens`. Kept to the
+ *  standard VS Code / LSP set so hosts register them against a stock legend and
+ *  every theme colors them without extra configuration. `type` marks a resolved
+ *  resource kind; `interface` marks a capability value; `variable` marks a
+ *  `!ref` target. */
+export type SemanticTokenType = "type" | "interface" | "variable";
+
+/** The legend a host registers before mapping `buildSemanticTokens` output. The
+ *  numeric token-type of each `SemanticToken` is its index in this array. */
+export const SEMANTIC_TOKEN_LEGEND: readonly SemanticTokenType[] = ["type", "interface", "variable"];
+
+/** One absolute-positioned semantic token. Every Telo semantic token is
+ *  single-line (kinds and capabilities never wrap), so a `{line, char, length}`
+ *  triple is sufficient; the host encodes it into its own builder. */
+export interface SemanticToken {
+  line: number;
+  character: number;
+  length: number;
+  type: SemanticTokenType;
+}
+
+/** Where a `!ref` target is defined — for go-to-definition. `uri` is the
+ *  target file's canonical source (absolute path for local files, an http/oci
+ *  URL for a registry import); `range` spans the target resource's
+ *  `metadata.name` (falling back to its first line). */
+export interface DefinitionResult {
+  uri: string;
+  range: Range;
+}
+
 /** A candidate module ref surfaced by the hub's `/refs` lexical autocomplete.
  *  Identity is the location ref, never `namespace/name` — an OCI module has no
  *  addressable `namespace/name`. `latestVersion` seeds a pinned `ref@version`

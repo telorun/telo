@@ -68,6 +68,7 @@ export {
     buildLineOffsets,
     buildPositionIndex,
     documentLineOffsets,
+    offsetToPosition,
 } from "./position-metadata.js";
 export type { DocumentPosition } from "./position-metadata.js";
 export { HttpSource } from "./sources/http-source.js";

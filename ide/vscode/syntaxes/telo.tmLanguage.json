@@ -3,6 +3,69 @@
   "name": "Telo",
   "scopeName": "source.telo",
   "patterns": [
+    { "include": "#cel-tag" },
+    { "include": "#ref-tag" },
+    { "include": "#other-tags" },
+    { "include": "#cel-interpolation" },
     { "include": "source.yaml" }
-  ]
+  ],
+  "repository": {
+    "cel-tag": {
+      "comment": "A `!cel \"...\"` / `!cel '...'` scalar: color the tag and treat the quoted body as an embedded CEL expression.",
+      "begin": "(!cel)\\s+(['\"])",
+      "beginCaptures": {
+        "1": { "name": "entity.name.tag.cel.telo" },
+        "2": { "name": "string.quoted.telo punctuation.definition.string.begin.telo" }
+      },
+      "end": "\\2",
+      "endCaptures": {
+        "0": { "name": "string.quoted.telo punctuation.definition.string.end.telo" }
+      },
+      "contentName": "meta.embedded.expression.telo string.quoted.telo",
+      "patterns": [
+        { "include": "#cel-interpolation" },
+        { "include": "#cel" }
+      ]
+    },
+    "ref-tag": {
+      "comment": "A `!ref Alias.name` reference: tag plus the target it points at.",
+      "match": "(!ref)\\s+([\\w./-]+)",
+      "captures": {
+        "1": { "name": "entity.name.tag.ref.telo" },
+        "2": { "name": "variable.other.reference.telo" }
+      }
+    },
+    "other-tags": {
+      "comment": "Remaining Telo custom scalar tags.",
+      "match": "(?<!\\S)(!(?:literal|secret|env))\\b",
+      "name": "entity.name.tag.telo"
+    },
+    "cel-interpolation": {
+      "comment": "`${{ ... }}` interpolation anywhere, including inside a !cel body.",
+      "begin": "\\$\\{\\{",
+      "end": "\\}\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.telo" } },
+      "endCaptures": { "0": { "name": "punctuation.section.embedded.end.telo" } },
+      "name": "meta.embedded.expression.telo",
+      "patterns": [{ "include": "#cel" }]
+    },
+    "cel": {
+      "patterns": [
+        {
+          "comment": "Kernel-injected CEL roots only. Module-injected context vars (request → http-server, steps → run, error → x-telo-error-context) are deliberately excluded — coloring those is the registry-aware semantic-tokens layer's job.",
+          "name": "variable.language.telo",
+          "match": "\\b(variables|secrets|resources|ports|self|inputs|result)\\b"
+        },
+        { "name": "constant.language.telo", "match": "\\b(true|false|null)\\b" },
+        { "name": "constant.numeric.telo", "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b" },
+        { "name": "string.quoted.single.cel.telo", "begin": "'", "end": "'" },
+        { "name": "entity.name.function.telo", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()" },
+        {
+          "name": "keyword.operator.telo",
+          "match": "==|!=|<=|>=|&&|\\|\\||[-+*/%<>!?:]"
+        },
+        { "name": "variable.other.property.telo", "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*" }
+      ]
+    }
+  }
 }

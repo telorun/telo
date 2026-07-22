@@ -15,6 +15,7 @@ export const INITIAL_STATE: EditorState = {
     byResource: new Map(),
     byFile: new Map(),
     registryByFile: new Map(),
+    graphByFile: new Map(),
   },
   sourceRevealRequest: null,
   deploymentsByApp: {},

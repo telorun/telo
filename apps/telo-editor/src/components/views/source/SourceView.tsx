@@ -6,7 +6,8 @@ import type { ViewProps } from "../types";
 import { useMonacoTheme } from "../../../theme/color-mode";
 import { moduleParseError, parseModuleDocument } from "../../../yaml-document";
 import { toMonacoMarker } from "./markers";
-import { registerYamlCompletions } from "./register-completion";
+import { teloThemeName } from "./monaco-theme";
+import { registerTeloLanguageFeatures } from "./register-language-features";
 
 const DEBOUNCE_MS = 500;
 
@@ -77,7 +78,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
   // clear error markers per tab.
   const editorsRef = useRef<Record<string, MonacoEditor>>({});
   const monacoRef = useRef<Monaco | null>(null);
-  const monacoTheme = useMonacoTheme();
+  const monacoTheme = teloThemeName(useMonacoTheme());
 
   // Keep tabStates in sync with external (form-edit) ModuleDocument.text
   // changes. Rule: a non-dirty tab tracks the AST; a dirty tab owns its
@@ -230,12 +231,18 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
   // initial pass).
   const [mountTick, setMountTick] = useState(0);
 
+  // Register themes + language providers before the editor is created so the
+  // custom theme name resolves on first paint. WeakSet-guarded to run once per
+  // Monaco runtime.
+  const handleBeforeMount = useCallback((monaco: Monaco) => {
+    registerTeloLanguageFeatures(monaco);
+  }, []);
+
   const handleMount = useCallback(
     (filePath: string): OnMount =>
       (editor, monaco) => {
         editorsRef.current[filePath] = editor;
         monacoRef.current = monaco;
-        registerYamlCompletions(monaco);
         setMountTick((t) => t + 1);
       },
     [],
@@ -369,6 +376,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
             theme={monacoTheme}
             language="yaml"
             defaultValue={displayText}
+            beforeMount={handleBeforeMount}
             onChange={(value) => handleChange(file.filePath, value)}
             onMount={handleMount(file.filePath)}
             options={{
@@ -380,6 +388,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
               tabSize: 2,
               readOnly,
               readOnlyMessage: READ_ONLY_MESSAGE,
+              "semanticHighlighting.enabled": true,
               // Re-parent hover/suggest/context widgets to document.body.
               // Without this, popovers anchored near the top of the buffer
               // open upward and get clipped by the editor's ancestor
@@ -441,6 +450,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
                 theme={monacoTheme}
                 language="yaml"
                 defaultValue={displayText}
+                beforeMount={handleBeforeMount}
                 onChange={(value) => handleChange(file.filePath, value)}
                 onMount={handleMount(file.filePath)}
                 options={{
@@ -452,6 +462,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
                   tabSize: 2,
                   readOnly,
                   readOnlyMessage: READ_ONLY_MESSAGE,
+                  "semanticHighlighting.enabled": true,
                 }}
               />
             </TabsContent>
