@@ -1,7 +1,3 @@
-http://registry.telo.localhost:8060 {
-	reverse_proxy registry:3000
-}
-
 # The hub API — the local analog of telo.sh (dynamic reads + the open /register
 # write). Served on the bare host, mirroring prod's telo.sh / hub.telo.run split.
 http://telo.localhost:8060 {

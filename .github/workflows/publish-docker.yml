@@ -3,9 +3,9 @@ name: Publish Docker Images
 # Two triggers:
 #  * push:main        → dev images. The kernel image publishes sha-tagged
 #                       slim variants only (amd64-only) and does NOT mutate
-#                       `:latest`. Application artifacts (registry,
-#                       docker-runner) are not npm-gated, so they publish
-#                       both `:latest` and `:sha-<short>` on every push.
+#                       `:latest`. Application artifacts (docker-runner) are
+#                       not npm-gated, so they publish both `:latest` and
+#                       `:sha-<short>` on every push.
 #                       authoring-agent publishes an immutable `:<version>-slim`
 #                       per agent release (changie-owned metadata.version) plus
 #                       a mutable `:latest-slim`. No sha tags; the embedded telo
@@ -22,7 +22,6 @@ on:
       - "apps/docker-runner/**"
       - "apps/k8s-runner/**"
       - "packages/runner-core/**"
-      - "apps/registry/**"
       - "apps/hub/**"
       - "apps/authoring-agent/**"
       - "modules/**"
@@ -278,95 +277,9 @@ jobs:
           cache-from: type=gha,scope=lambda-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=lambda-${{ matrix.variant }}
 
-  registry:
-    name: Build telorun/registry
-    # Build on every push (latest + sha) and on a CLI release.
-    # On push: FROM telorun/node:sha-<short>-slim — pins to the kernel image
-    # built from the same commit, so the registry sha-tagged image is
-    # reproducible and exercises kernel changes in the same PR.
-    # On release: FROM telorun/node:<cli-version>-slim — pins to the
-    # just-published exact release.
-    # The "chore(release): version packages" commit is skipped on the push path:
-    # its sha kernel base is not built there (kernel-dev skips it for the publish
-    # race), so registry rides the post-publish release path (workflow_call) and
-    # pins to the just-published cli-version instead.
-    # `always()` lets registry run even when an upstream kernel job was
-    # skipped (kernel-dev on workflow_call, kernel-release on push).
-    if: |
-      always() &&
-      ((github.event_name == 'push' &&
-        !contains(github.event.head_commit.message, 'chore(release): version packages'))
-        || needs.context.outputs.release-cli == 'true') &&
-      needs.context.result == 'success' &&
-      (needs.kernel-dev.result == 'success' || needs.kernel-dev.result == 'skipped') &&
-      (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
-    needs: [context, kernel-dev, kernel-release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2 # HEAD^ needed to detect a metadata.version bump
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Resolve TELO_NODE_VERSION
-        id: telo
-        env:
-          CLI_VERSION: ${{ needs.context.outputs.cli-version }}
-          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
-        run: |
-          # On a CLI release commit, pin to the just-published version.
-          # On a plain push, pin to the same-commit dev kernel tag so the
-          # sha-scoped registry image is reproducible and exercises kernel
-          # changes from the current commit.
-          if [ -n "$CLI_VERSION" ]; then
-            echo "version=$CLI_VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Compute registry image tags
-        id: imgtags
-        env:
-          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
-        run: |
-          # Always publish :latest and the per-commit :sha-*. Add an immutable
-          # :<version> tag only when apps/registry's changie-owned metadata.version
-          # actually moved in this commit (the release commit), mirroring how
-          # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
-          ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
-          NOW=$(ver < apps/registry/telo.yaml)
-          PREV=$(git show HEAD^:apps/registry/telo.yaml 2>/dev/null | ver || true)
-          {
-            echo 'tags<<EOF'
-            echo "telorun/registry:latest"
-            echo "telorun/registry:sha-${SHORT_SHA}"
-            if [ -n "$NOW" ] && [ "$NOW" != "$PREV" ]; then
-              echo "telorun/registry:${NOW}"
-            fi
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build & push registry
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/registry/Dockerfile
-          target: production
-          push: true
-          build-args: |
-            TELO_NODE_VERSION=${{ steps.telo.outputs.version }}
-          tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=registry
-          cache-to: type=gha,mode=max,scope=registry
-
   hub:
     name: Build telorun/hub
-    # Identical gating and kernel-base pinning to the registry job: build on
-    # every push (latest + sha) and on a CLI release. On push, FROM
+    # Build on every push (latest + sha) and on a CLI release. On push, FROM
     # telorun/node:sha-<short>-slim pins to the same-commit kernel image; on
     # release, FROM telorun/node:<cli-version>-slim pins the just-published CLI.
     # The "chore(release): version packages" commit is skipped on the push path
@@ -416,8 +329,8 @@ jobs:
         run: |
           # Always publish :latest and the per-commit :sha-*. Add an immutable
           # :<version> tag only when apps/hub's changie-owned metadata.version
-          # actually moved in this commit (the release commit), mirroring the
-          # registry job.
+          # actually moved in this commit (the release commit), mirroring how
+          # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
           ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
           NOW=$(ver < apps/hub/telo.yaml)
           PREV=$(git show HEAD^:apps/hub/telo.yaml 2>/dev/null | ver || true)
@@ -479,8 +392,8 @@ jobs:
         run: |
           # Always publish :latest and the per-commit :sha-*. Add an immutable
           # :<version> tag only when apps/docker-runner's package.json version
-          # actually moved in this commit (the release commit), mirroring how the
-          # registry job gates its version tag on HEAD^..HEAD.
+          # actually moved in this commit (the release commit), mirroring how
+          # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
           NOW=$(jq -r .version apps/docker-runner/package.json)
           PREV=$(git show HEAD^:apps/docker-runner/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
           {

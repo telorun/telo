@@ -50,7 +50,7 @@ metadata:
 
 These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.
 
-Publishing projects them into whatever the destination surfaces. An OCI publish maps them onto the standard `org.opencontainers.image.*` annotations (`repository` → `source`, `license` → `licenses`), which is what makes a published package show a description and link back to its source in registry UIs. An HTTP registry publish stores the manifest verbatim, so the fields are preserved as declared.
+Publishing projects them into the destination's own metadata surface. An OCI publish maps them onto the standard `org.opencontainers.image.*` annotations (`repository` → `source`, `license` → `licenses`), which is what makes a published package show a description and link back to its source in registry UIs.
 
 Note the field is `repository`, not `source`: inside the `imports` map, `source:` already means "where to fetch a dependency from", and reusing the word for "where this module is developed" in the same file would be ambiguous.
 
@@ -178,7 +178,7 @@ Throw an `InvokeError` for domain failures that are part of your kind's contract
 
 ## Publish
 
-`telo publish ./modules/<name>/telo.yaml --bump=minor` builds and publishes the controller packages, rewrites the PURL versions to exact pins, and pushes the manifest to the registry. See the [CLI reference](/learn/installation-and-cli).
+`telo publish ./modules/<name>/telo.yaml oci://<host>/<repo> --bump=minor` builds and publishes the controller packages, rewrites the PURL versions to exact pins, and pushes the manifest as an OCI artifact to the target registry (e.g. `oci://ghcr.io/acme/telo-console`). Importers then reference it as `oci://<host>/<repo>@<version>`. To make the module discoverable, register its ref with the [hub](https://telo.sh). See the [CLI reference](/learn/installation-and-cli).
 
 ## See also
 

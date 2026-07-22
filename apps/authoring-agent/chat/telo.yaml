@@ -9,8 +9,8 @@ metadata:
     tool — `telo check` runs automatically after every write/edit, and telo_check
     reuses the same fixed argv (path appended, execed without a shell) as a
     keyless subprocess (OPENAI_API_KEY unset), so the agent always validates and
-    can never run arbitrary commands or reach the operator's key. Plus live Telo-registry discovery tools (an
-    AiMcp.ToolProvider over the registry's MCP endpoint — search_modules /
+    can never run arbitrary commands or reach the operator's key. Plus live Telo hub discovery tools (an
+    AiMcp.ToolProvider over the hub's MCP endpoint — search_resources /
     get_module_manifest), SQLite conversation history, and the ChatHandler that
     ties them together (persist user turn, replay history, stream the agent's
     output, persist the assistant turn at end-of-stream). Exported so the app and
@@ -104,15 +104,15 @@ model: !cel "variables.model"
 apiKey: !cel "secrets.openaiApiKey"
 ---
 kind: Mcp.HttpClient
-metadata: { name: registryMcp }
-url: https://registry.telo.run/mcp
+metadata: { name: hubMcp }
+url: https://telo.sh/mcp
 clientInfo:
   name: authoring-agent
   version: 0.0.0
 ---
 kind: AiMcp.ToolProvider
-metadata: { name: registryTools }
-client: !ref registryMcp
+metadata: { name: hubTools }
+client: !ref hubMcp
 ---
 kind: Fs.FileWrite
 metadata: { name: writeFile }
@@ -397,7 +397,7 @@ system: |
   You are the Telo manifest-authoring agent. You work inside a sandboxed
   workspace directory and edit real files on behalf of a user who is building a
   Telo application. Your job: turn the user's intent into correct, type-safe,
-  registry-composed, `telo check`-clean manifests.
+  manifests composed from published Telo modules, `telo check`-clean.
 
   ## What Telo is
 
@@ -612,31 +612,33 @@ system: |
         bindings:
           - request.body.title
 
-  ## Discover modules with the registry tools — DO NOT GUESS FIELDS
+  ## Discover modules with the hub tools — DO NOT GUESS FIELDS
 
-  You have two tools onto the LIVE Telo module registry. Use them before writing
-  any resource from a module you did not author yourself:
+  You have two tools onto the LIVE Telo hub (the federated discovery index). Use
+  them before writing any resource from a module you did not author yourself:
 
-    - `search_modules` — find modules by description (e.g. "http server",
-      "postgres", "cron scheduler", "s3", "redis cache", "openai"). Returns
-      candidate modules with their namespace/name.
-    - `get_module_manifest` — fetch a module's `telo.yaml`. Its `Telo.Definition`
-      docs ARE JSON Schemas: the EXACT field names, types, and required fields
-      you must produce for each `kind`. Read the `schema`, `inputType`, and
-      `outputType` — never invent a field from a kind name alone.
+    - `search_resources` — find resource KINDS by what they do (e.g. "http
+      server", "postgres", "cron scheduler", "s3", "redis cache", "openai").
+      Each hit carries the bare kind suffix plus the owning module's location
+      ref and version.
+    - `get_module_manifest` — fetch a module's `telo.yaml` by its location ref
+      (as returned by `search_resources`; version defaults to latest). Its
+      `Telo.Definition` docs ARE JSON Schemas: the EXACT field names, types, and
+      required fields you must produce for each `kind`. Read the `schema`,
+      `inputType`, and `outputType` — never invent a field from a kind name alone.
 
   Standard-library capabilities live under the `std` namespace (http-server,
   http-client, sql + sql-postgres/sql-sqlite, run, config, console, assert,
   test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3, timer,
-  workflow, and many more) — but always confirm the exact `namespace/name`,
+  workflow, and many more) — but always confirm the exact module ref,
   `version`, and field schema via the tools rather than assuming.
 
   Workflow for any capability you need:
-    1. `search_modules` for the capability.
-    2. `get_module_manifest` on the best candidate; record its EXACT
-       `namespace/name` and `metadata.version`, and read every `Telo.Definition`
+    1. `search_resources` for the capability.
+    2. `get_module_manifest` on the best hit's `module.ref`; record its EXACT
+       ref and `metadata.version`, and read every `Telo.Definition`
        schema you will use.
-    3. Add an `imports:` entry `Alias: namespace/name@<that exact version>`.
+    3. Add an `imports:` entry `Alias: <ref>@<that exact version>`.
     4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
        fields; wire refs/values with `!ref` and `!cel` per the rules above.
     5. List the runnables/services to start in the Application's `targets:`.
@@ -680,13 +682,13 @@ system: |
 
   ## Style
 
-  Prefer composing existing registry modules over inventing new kinds. Keep
+  Prefer composing existing published modules over inventing new kinds. Keep
   manifests type-safe and visually clean. Keep replies brief — describe what you
   changed and why.
 maxSteps: 16
 toolProviders:
   - provider: !ref workspaceTools
-  - provider: !ref registryTools
+  - provider: !ref hubTools
 ---
 kind: RecordStream.OnComplete
 metadata: { name: persist }

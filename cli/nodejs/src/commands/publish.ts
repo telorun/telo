@@ -564,7 +564,7 @@ async function publishOne(
     if (bundledFiles.length > 0) {
       stepDry(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml → module.tar.gz`);
     }
-    stepDry(log, "push", "Telo registry");
+    stepDry(log, "push", destination);
     return true;
   }
 
@@ -602,26 +602,23 @@ async function publishOne(
 }
 
 // ---------------------------------------------------------------------------
-// Destination-first positional — `telo publish <destination?> <paths…>`. The
-// destination's scheme selects the publish transport; when omitted, the default
-// registry is the destination. A leading positional is a destination only when
-// it carries a scheme or looks like a host, never when it is a real path.
+// Destination-first positional — `telo publish <destination> <paths…>`. The
+// destination is an OCI repo (`oci://host/repo`); publishing to the HTTP Telo
+// registry has been removed. A leading positional is classified so an old-style
+// registry destination gets a clear error rather than being read as a path.
 // ---------------------------------------------------------------------------
 
-function looksLikeDestination(arg: string): boolean {
-  if (arg.startsWith("oci://") || arg.startsWith("http://") || arg.startsWith("https://")) {
-    return true;
-  }
-  if (arg.startsWith(".") || arg.startsWith("/")) return false;
-  if (fs.existsSync(arg)) return false; // a real local file/dir wins
-  if (arg.endsWith(".yaml") || arg.endsWith(".yml")) return false;
-  // Host-like: the first path segment carries a dot (registry.telo.run, ghcr.io).
-  return arg.split("/")[0].includes(".");
-}
+type DestinationKind = "oci" | "http" | null;
 
-/** A bare-host destination (no scheme) is an HTTP registry base. */
-function normalizeDestination(dest: string): string {
-  return dest.includes("://") ? dest : `https://${dest}`;
+function classifyDestination(arg: string): DestinationKind {
+  if (arg.startsWith("oci://")) return "oci";
+  if (arg.startsWith("http://") || arg.startsWith("https://")) return "http";
+  if (arg.startsWith(".") || arg.startsWith("/")) return null;
+  if (fs.existsSync(arg)) return null; // a real local file/dir wins
+  if (arg.endsWith(".yaml") || arg.endsWith(".yml")) return null;
+  // Host-like bare destination (the old HTTP-registry form, e.g. ghcr.io is
+  // written `oci://…`). First path segment carries a dot.
+  return arg.split("/")[0].includes(".") ? "http" : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -641,13 +638,30 @@ export async function publish(argv: {
     process.exit(1);
   }
 
-  // The push destination is the default registry unless a leading positional
-  // names one. `registry` stays the default used to resolve/pin dependencies.
+  // The push destination is the leading positional, an OCI repo. `registry`
+  // stays the (read-only, still-deployed) origin used to resolve/pin deps.
   let paths = argv.paths;
-  let destination = argv.registry;
-  if (paths.length > 0 && looksLikeDestination(paths[0])) {
-    destination = normalizeDestination(paths[0]);
-    paths = paths.slice(1);
+  let destination: string | undefined;
+  if (paths.length > 0) {
+    const kind = classifyDestination(paths[0]);
+    if (kind === "http") {
+      console.error(
+        "error: publishing to the HTTP Telo registry has been removed. " +
+          "Publish to an OCI registry, e.g. `telo publish oci://ghcr.io/<org>/<name> ./telo.yaml`.",
+      );
+      process.exit(1);
+    }
+    if (kind === "oci") {
+      destination = paths[0];
+      paths = paths.slice(1);
+    }
+  }
+  if (!destination) {
+    console.error(
+      "error: no publish destination — pass an OCI repo as the first argument, " +
+        "e.g. `telo publish oci://ghcr.io/<org>/<name> ./telo.yaml`.",
+    );
+    process.exit(1);
   }
   if (paths.length === 0) {
     console.error("error: no manifest paths to publish");
@@ -679,12 +693,12 @@ export async function publish(argv: {
 export function publishCommand(yargs: Argv): Argv {
   return yargs.command(
     "publish <paths..>",
-    "Publish one or more module manifests to a registry (HTTP or OCI)",
+    "Publish one or more module manifests to an OCI registry",
     (y) =>
       y
         .positional("paths", {
           describe:
-            "Optional leading destination (oci://host/repo, https://…, or a bare host) followed by paths to telo.yaml files to publish",
+            "Leading OCI destination (oci://host/repo) followed by paths to telo.yaml files to publish",
           type: "string",
           array: true,
           demandOption: true,
@@ -692,7 +706,7 @@ export function publishCommand(yargs: Argv): Argv {
         .option("registry", {
           type: "string",
           default: "https://registry.telo.run",
-          describe: "Default registry base URL for resolving/pinning dependencies",
+          describe: "Registry origin used to resolve/pin dependencies (read-only)",
         })
         .option("bump", {
           type: "string",
@@ -708,7 +722,7 @@ export function publishCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe:
-            "Skip controller build/publish/PURL rewrite; only run static analysis and push the manifest to the Telo registry",
+            "Skip controller build/publish/PURL rewrite; only run static analysis and push the manifest to the OCI registry",
         })
         .option("frozen", {
           type: "boolean",

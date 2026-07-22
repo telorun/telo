@@ -236,14 +236,14 @@ The `source` field accepts three forms:
 
 Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that declares the `imports:` entry, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 
-### 6.2 Registry Namespaces
+### 6.2 Namespaces
 
-A registry reference has the shape `<namespace>/<module-name>@<version>`. The `<namespace>` segment is a **topic**, not a publisher identity. It describes the surface area the module covers — the protocol, vendor, or platform the module is *about* — and never asserts that any particular author owns it. Trust in a specific publisher is signalled out-of-band (verification badge in the registry UI), not by the namespace string. This keeps the registry shape stable when a topic gains additional publishers over time.
+A namespaced reference has the shape `<namespace>/<module-name>@<version>`. The `<namespace>` segment is a **topic**, not a publisher identity. It describes the surface area the module covers — the protocol, vendor, or platform the module is *about* — and never asserts that any particular author owns it. Trust in a specific publisher is signalled out-of-band (a verification badge on the module's [hub](https://telo.sh) listing), not by the namespace string. This keeps the shape stable when a topic gains additional publishers over time.
 
 Three tiers, distinguished by who publishes and how reserved the namespace is:
 
 - **`std/`** — the Telo-curated standard library. Reserved namespace. Reserved for portable, vendor-neutral primitives whose surface is defined by an open protocol or by Telo itself: HTTP transport, SQL, JavaScript execution, config, sequencing, assertions, testing, console I/O. A module is `std/` only if its semantics are not tied to any specific vendor implementation. Telo curates membership.
-- **Topic namespaces** — `aws/`, `gcp/`, `azure/`, `cloudflare/`, `anthropic/`, `openai/`, `postgres/`, and similar. Each names a vendor, platform, or product family whose surface a module adapts. Initially most modules in these namespaces will be Telo-authored adapters (e.g. `aws/lambda`, `gcp/cloud-functions`); the namespace stays open so that the named vendor — or a community maintainer — can publish into it later under a different verification badge without renaming. Conflicts on the same `<namespace>/<module-name>` slug are resolved by the registry (one canonical owner per slug at a time); alternative implementations live under different module names within the same namespace.
+- **Topic namespaces** — `aws/`, `gcp/`, `azure/`, `cloudflare/`, `anthropic/`, `openai/`, `postgres/`, and similar. Each names a vendor, platform, or product family whose surface a module adapts. Initially most modules in these namespaces will be Telo-authored adapters (e.g. `aws/lambda`, `gcp/cloud-functions`); the namespace stays open so that the named vendor — or a community maintainer — can publish into it later under a different verification badge without renaming. Alternative implementations live under different module names within the same namespace.
 - **Third-party / community scopes** — for experimental or community-maintained modules that have not been adopted as the canonical entry in a topic namespace. Convention TBD; will likely follow a scoped form (e.g. `@<publisher>/<module>`). Out of scope for v1.0.
 
 **Choosing a namespace for a new module:**
@@ -261,7 +261,9 @@ Examples:
 - `aws/lambda`, `aws/s3`, `aws/dynamodb` — vendor-defined APIs and event shapes. `aws/`.
 - `anthropic/sdk` — vendor-defined SDK surface. `anthropic/`.
 
-The library's own `metadata.namespace` field must match the namespace segment of the registry reference it is published under. Changing namespace is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
+The library's own `metadata.namespace` field must match the namespace segment of the reference it is published under. Changing namespace is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
+
+**Discovery.** Modules are discovered through the **hub** ([`telo.sh`](https://telo.sh)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
 
 ### Import Declaration
 
@@ -289,7 +291,7 @@ imports:
 
 ## 7. Manifest Cache
 
-`telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library`, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls to the module registry — the cache is the single trust boundary that pins which manifests the runtime will see.
+Resolution is separate from discovery: the [hub](#62-namespaces) indexes *what* modules exist, but the bytes of each `Telo.Library` are fetched from the module's own origin. A bare `<namespace>/<name>@<version>` ref resolves against the read-only registry origin (`registry.telo.run`), an `oci://…` ref against its OCI host, and an `https://…` ref directly. `telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library` from its origin, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls — the cache is the single trust boundary that pins which manifests the runtime will see.
 
 ### Layout
 

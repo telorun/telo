@@ -41,8 +41,8 @@ export default function AiFirst() {
         },
         {
           icon: "📦",
-          title: "A discoverable registry",
-          body: "Modules are published with their schemas and docs, and exposed over MCP. An agent can search for a capability, read its contract, and wire it in without leaving the loop.",
+          title: "A discoverable hub",
+          body: "The Telo hub is a federated index over every module and its schemas, exposed over MCP. An agent can search for a capability, read its contract, and wire it in without leaving the loop.",
         },
         {
           icon: "🎯",

@@ -12,9 +12,9 @@ import {
 import { fetchOrThrow } from "@telorun/sdk";
 import { createHash } from "crypto";
 
-import { computeFilesIntegrity, injectFilesIntegrity } from "../bundle/files-integrity.js";
+import { computeFilesIntegrity } from "../bundle/files-integrity.js";
 import { readOwnerManifest } from "../bundle/module-manifest.js";
-import { makeTarGz, readTarGz, toPayloadFiles } from "../bundle/tar.js";
+import { readTarGz, toPayloadFiles } from "../bundle/tar.js";
 import { assertPublicEgress } from "./egress-guard.js";
 import type {
   FetchedArtifact,
@@ -28,17 +28,6 @@ import type {
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 const HTTP_NAMESPACE = "__http";
 const QUERY_HASH_LENGTH = 12;
-const MAX_PUSH_ATTEMPTS = 4;
-const PUSH_BASE_DELAY_MS = 1000;
-
-/** Registry / object-storage backends treat 408/425/429/5xx as transient. */
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 425 || status === 429 || status >= 500;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** Mirror `HttpSource.read`'s `fetchUrl` derivation: when the URL does not
  *  already point at a YAML file, append `/telo.yaml`, so a raw import URL and
@@ -279,77 +268,14 @@ export class RegistryTransport implements Transport {
     bundle: PublishBundle,
     opts: PublishOptions = {},
   ): Promise<PublishResult> {
-    // Pin the payload in the manifest before it enters the tarball, then choose
-    // the artifact body: a `module.tar.gz` when there are files, else raw YAML.
-    let manifest = bundle.manifest;
-    let body: string | Uint8Array = manifest;
-    let contentType = "text/yaml";
-    let urlSuffix = "";
-    if (bundle.files.length > 0) {
-      manifest = injectFilesIntegrity(manifest, await computeFilesIntegrity(bundle.files));
-      const entries = [
-        { name: DEFAULT_MANIFEST_FILENAME, content: manifest },
-        ...bundle.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
-      ];
-      body = await makeTarGz(entries);
-      contentType = "application/gzip";
-      urlSuffix = "/module.tar.gz";
-    }
-
-    const { namespace, name, version } = readOwnerManifest(manifest);
-    if (!namespace || !name || !version) {
-      throw new Error("metadata must include namespace, name, and version.");
-    }
-    const identity = { namespace, name, version };
-    const base = `${destination.replace(/\/+$/, "")}/${identity.namespace}/${identity.name}/${identity.version}`;
-    const url = `${base}${urlSuffix}`;
-    const label = `${identity.namespace}/${identity.name}@${identity.version}`;
-
-    const headers: Record<string, string> = { "content-type": contentType };
-    if (opts.token) headers.authorization = `Bearer ${opts.token}`;
-
-    let res: Response | null = null;
-    let networkErr: unknown = null;
-    for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
-      networkErr = null;
-      try {
-        res = await fetchOrThrow(
-          url,
-          { method: "PUT", headers, body },
-          { operation: "Registry publish", setting: "--registry / TELO_REGISTRY" },
-        );
-      } catch (err) {
-        networkErr = err;
-        res = null;
-      }
-
-      const transient = networkErr != null || (res != null && isRetryableStatus(res.status));
-      if (!transient) break;
-      if (attempt === MAX_PUSH_ATTEMPTS) break;
-
-      const reason = networkErr
-        ? `network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`
-        : `HTTP ${res!.status}`;
-      // Drain the body so the underlying connection can be reused for the retry.
-      if (res) await res.text().catch(() => {});
-      const delayMs = PUSH_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
-      opts.onRetry?.({ reason, attempt, maxAttempts: MAX_PUSH_ATTEMPTS, delayMs });
-      await sleep(delayMs);
-    }
-
-    if (networkErr) {
-      throw new Error(
-        `Network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)} ` +
-          `(after ${MAX_PUSH_ATTEMPTS} attempts)`,
-      );
-    }
-    if (!res!.ok) {
-      const ct = res!.headers.get("content-type") ?? "";
-      const errBody = ct.includes("application/json") ? await res!.json() : await res!.text();
-      throw new Error(`Push failed (${res!.status}): ${JSON.stringify(errBody)}`);
-    }
-
-    return { label, url };
+    // Publishing to the HTTP Telo registry has been removed — the registry
+    // origin stays read-only, and new versions publish to OCI. `telo publish`
+    // rejects a non-OCI destination up front, so this is only a guard for a
+    // direct programmatic call.
+    throw new Error(
+      "Publishing to the HTTP Telo registry has been removed. Publish to an OCI " +
+        "registry (oci://host/repo) instead.",
+    );
   }
 
   canonicalizeSiblingRef(

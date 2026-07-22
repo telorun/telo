@@ -7,8 +7,6 @@ services:
       - "8060:8060"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-    depends_on:
-      - registry
     # Network aliases so containers on the compose network (e.g. runner-spawned
     # children) can resolve the same *.telo.localhost hostnames the browser
     # uses. Browser → OS `.localhost` rule → 127.0.0.1:8060 → proxy container.
@@ -18,47 +16,11 @@ services:
       default:
         aliases:
           - telo.localhost
-          - registry.telo.localhost
           - hub.telo.localhost
           - editor.telo.localhost
           - storage.telo.localhost
           - runner.telo.localhost
           - pages.telo.localhost
-  registry:
-    image: telorun/registry:${DOCKER_TAG:-latest}
-    build:
-      context: .
-      dockerfile: ./apps/registry/Dockerfile
-      target: ${DOCKER_TARGET:-development}
-    volumes:
-      - .:/app
-      # Anonymous volume overlay: telo writes its install cache here at boot.
-      # Without this, root-owned files leak into the host bind mount and break
-      # subsequent non-docker steps (e.g. CI's bun-direct `test:e2e`).
-      - /app/apps/registry/.telo
-    working_dir: /app
-    environment:
-      DB_CONNECTION: "postgres://postgres:postgres@db/registry"
-      S3_BUCKET_NAME: telo-registry
-      S3_ENDPOINT: http://storage:9000
-      S3_ACCESS_KEY_ID: telo-registry-access
-      S3_SECRET_ACCESS_KEY: telo-registry-secret
-      S3_FORCE_PATH_STYLE: "true"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health/readiness').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 5s
-      timeout: 2s
-      # Budget: start_period 5s + retries 18 × interval 5s = 95s before
-      # the container is declared unhealthy. Stays comfortably under the
-      # workflow's `--wait-timeout 120s` so compose and the healthcheck
-      # converge on the same failure point — no risk of compose timing
-      # out while the healthcheck would still have passed.
-      retries: 18
-      start_period: 5s
-    depends_on:
-      db:
-        condition: service_healthy
-
   hub:
     image: telorun/hub:${DOCKER_TAG:-latest}
     build:
@@ -66,8 +28,8 @@ services:
       target: ${DOCKER_TARGET:-development}
     volumes:
       - ./apps/hub:/app
-      # Anonymous volume overlay: telo writes its install cache here at boot
-      # (same rationale as the registry service).
+      # Anonymous volume overlay: telo writes its install cache here at boot.
+      # Without this, root-owned files leak into the host bind mount.
       - /app/.telo
     working_dir: /app
     ports:
@@ -186,9 +148,6 @@ services:
       # so the editor links to the reachable app, not the runner host. The proxy
       # routes these to telo-run-<sessionId> on the shared network (see Caddyfile).
       RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:8060
-      # Fallback registry URL injected into spawned containers when the
-      # editor/client does not pass one in config.registryUrl.
-      TELO_REGISTRY_URL: http://registry:3000
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:
@@ -199,20 +158,17 @@ services:
 
   db:
     # pgvector-enabled Postgres 18 (drop-in for `postgres:18`): the hub's vector
-    # index (std/vector-store-pgvector) needs `CREATE EXTENSION vector`. The
-    # registry's database on the same server is unaffected.
+    # index (std/vector-store-pgvector) needs `CREATE EXTENSION vector`.
     image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_DB: registry
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql
-      # First-init only: creates the hub's database beside the registry's (one
-      # server, two databases — both apps own a `modules` table). On an existing
-      # volume: docker compose exec db psql -U postgres -c 'CREATE DATABASE hub'
+      # First-init only: creates the hub's database. On an existing volume:
+      #   docker compose exec db psql -U postgres -c 'CREATE DATABASE hub'
       - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

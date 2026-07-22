@@ -30,8 +30,8 @@ function resolveRegistryUrl(explicit?: string): string {
 /** Normalize a ref for version enumeration. The version segment is irrelevant to
  *  `listVersions` (only the `<ns>/<name>` path or OCI repo is used), but the
  *  registry transport only owns refs that carry an `@version` — so a bare
- *  `std/console` gets a placeholder version, mirroring `telo upgrade`. Scheme
- *  refs (`oci://`) and already-versioned refs pass through. */
+ *  `std/console` gets a placeholder version. Scheme refs (`oci://`) and
+ *  already-versioned refs pass through. */
 function refForEnumeration(ref: string): string {
   const base = splitIntegrity(ref).base;
   if (base.includes("://") || base.includes("@")) return base;
