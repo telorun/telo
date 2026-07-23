@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: CollectionSortTest
+  version: 1.0.0
+  description: |
+    Sorts records — passed in as invocation inputs — by last name ascending then
+    age descending, and asserts the exact order. Self-contained: depends only on
+    Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestSort
+---
+kind: Collection.Sort
+metadata: { name: SortPeople }
+collection: !cel "inputs.people"
+order:
+  - by: !cel "item.lastName"
+  - by: !cel "item.age"
+    descending: true
+---
+kind: Run.Sequence
+metadata: { name: TestSort }
+steps:
+  - name: Sort
+    invoke: !ref SortPeople
+    inputs:
+      people:
+        - { firstName: A, lastName: Smith, age: 30 }
+        - { firstName: B, lastName: Jones, age: 25 }
+        - { firstName: C, lastName: Smith, age: 40 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Sort.result.items"
+      expected:
+        - { firstName: B, lastName: Jones, age: 25 }
+        - { firstName: C, lastName: Smith, age: 40 }
+        - { firstName: A, lastName: Smith, age: 30 }
+    invoke:
+      kind: Assert.Equals

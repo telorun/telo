@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: CollectionChunkTest
+  version: 1.0.0
+  description: |
+    Splits a collection — passed in as invocation inputs — into batches of at
+    most `size`, and asserts the batches (trailing batch shorter).
+    Self-contained: depends only on Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestChunk
+---
+kind: Collection.Chunk
+metadata: { name: ChunkNumbers }
+collection: !cel "inputs.numbers"
+size: !cel "inputs.size"
+---
+kind: Run.Sequence
+metadata: { name: TestChunk }
+steps:
+  - name: Chunk
+    invoke: !ref ChunkNumbers
+    inputs:
+      numbers: [1, 2, 3, 4, 5]
+      size: 2
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Chunk.result.chunks"
+      expected: [[1, 2], [3, 4], [5]]
+    invoke:
+      kind: Assert.Equals

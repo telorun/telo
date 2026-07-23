@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: CollectionDistinctTest
+  version: 1.0.0
+  description: |
+    Deduplicates records — passed in as invocation inputs — by a CEL key,
+    keeping the first per key in input order, and asserts the result.
+    Self-contained: depends only on Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestDistinct
+---
+kind: Collection.Distinct
+metadata: { name: DistinctEvents }
+collection: !cel "inputs.events"
+key:
+  user: !cel "item.userId"
+---
+kind: Run.Sequence
+metadata: { name: TestDistinct }
+steps:
+  - name: Distinct
+    invoke: !ref DistinctEvents
+    inputs:
+      events:
+        - { userId: u1, at: 1 }
+        - { userId: u2, at: 2 }
+        - { userId: u1, at: 3 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Distinct.result.items"
+      expected:
+        - { userId: u1, at: 1 }
+        - { userId: u2, at: 2 }
+    invoke:
+      kind: Assert.Equals

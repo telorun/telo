@@ -91,6 +91,13 @@ projects:
       - path: modules/codec/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: collection
+    key: collection
+    changelog: modules/collection/CHANGELOG.md
+    replacements:
+      - path: modules/collection/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: config
     key: config
     changelog: modules/config/CHANGELOG.md

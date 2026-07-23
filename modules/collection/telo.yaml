@@ -1,0 +1,483 @@
+kind: Telo.Library
+metadata:
+  name: collection
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    Pure, CEL-driven reshaping of a collection of records — grouping,
+    aggregation, ordering, joining. Data-shape primitives that take a list and
+    return a new list: no I/O, no control flow (that stays in std/run's
+    Projection / Iteration, which loop over invocable step bodies). Each kind
+    covers an operation native CEL cannot express. Inhabitants: GroupBy
+    (partition + reduce per key), Summarize (reduce the whole collection to one
+    row), Sort (multi-key object ordering), Distinct (dedupe by a computed key),
+    Chunk (split into batches), Join (match two collections on a key).
+exports:
+  kinds:
+    - GroupBy
+    - Summarize
+    - Sort
+    - Distinct
+    - Chunk
+    - Join
+---
+# Partition a collection by a CEL key tuple, reduce each group into a row, order
+# the rows. The one aggregation Telo can't express in pure CEL (folding N items
+# into M groups); the per-group reductions themselves stay CEL (sum/avg/size).
+kind: Telo.Definition
+metadata:
+  name: GroupBy
+  description: >-
+    Partitions a collection by a CEL key tuple and reduces each group into an
+    output row with CEL aggregate expressions, optionally ordered by CEL keys.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#group-by
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: >-
+      Values read inside collection / key / aggregate CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [rows]
+    properties:
+      rows:
+        type: array
+        description: >-
+          One row per distinct key tuple — each group's key fields merged with
+          its aggregate fields — in the declared order (input order otherwise).
+        items:
+          type: object
+          additionalProperties: true
+schema:
+  type: object
+  required: [collection, key]
+  additionalProperties: false
+  properties:
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array of records to group. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    key:
+      title: Key
+      description: >-
+        CEL map (field → expression) evaluated once per element; the tuple of
+        its values identifies the group, and the fields pass through into every
+        output row. Sees item, index, items, inputs.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+    aggregate:
+      title: Aggregate
+      description: >-
+        CEL map (field → expression) evaluated once per group and merged into the
+        output row. Sees key (the group's key object) and group (its elements);
+        reduce with sum / avg / min / max / size — e.g.
+        !cel "sum(group.map(w, w.duration.minutes))".
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          key: { type: object }
+          group: { type: array }
+          inputs: {}
+    orderBy:
+      title: Order By
+      description: >-
+        Ordering applied to the output rows. Each entry sorts by a CEL key over
+        row (an output row); entries apply in order as tie-breakers.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          row: { type: object }
+      items:
+        type: object
+        required: [by]
+        additionalProperties: false
+        properties:
+          by:
+            title: By
+            description: CEL sort key evaluated over row (the output row).
+          descending:
+            title: Descending
+            description: Sort this key descending (default ascending).
+            type: boolean
+            default: false
+  examples:
+    - collection: !cel "inputs.items"
+      key:
+        user: !cel "item.author.name"
+        project: !cel "item.issue.project.name"
+      aggregate:
+        minutes: !cel "sum(group.map(w, w.duration.minutes))"
+        hours: !cel "round(sum(group.map(w, w.duration.minutes)) / 60.0 * 100.0) / 100.0"
+      orderBy:
+        - by: !cel "row.user"
+        - by: !cel "row.project"
+---
+# Reduce a whole collection to a single summary row — GroupBy with one implicit
+# group. The aggregate CEL sees `group` (the full collection).
+kind: Telo.Definition
+metadata:
+  name: Summarize
+  description: Reduces a whole collection to a single summary object with CEL aggregate expressions over the full set.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#summarize
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside collection / aggregate CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [summary]
+    properties:
+      summary:
+        type: object
+        additionalProperties: true
+        description: The aggregate fields computed over the whole collection.
+schema:
+  type: object
+  required: [collection, aggregate]
+  additionalProperties: false
+  properties:
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array to summarize. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    aggregate:
+      title: Aggregate
+      description: >-
+        CEL map (field → expression) evaluated once over the whole collection.
+        Sees group (all elements); reduce with sum / avg / min / max / size.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          group: { type: array }
+          inputs: {}
+  examples:
+    - collection: !cel "inputs.orders"
+      aggregate:
+        # double() coerces the CEL int to a JSON number — a bare size() is a
+        # BigInt, which a plain JSON serializer downstream cannot encode.
+        count: !cel "double(size(group))"
+        total: !cel "sum(group.map(o, o.amount))"
+        average: !cel "avg(group.map(o, o.amount))"
+---
+# Order a collection by N CEL keys (each asc/desc), applied as tie-breakers.
+# Native CEL sort() only orders scalars — this sorts records by computed keys.
+kind: Telo.Definition
+metadata:
+  name: Sort
+  description: Orders a collection by a list of CEL sort keys, each ascending or descending, applied as tie-breakers.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#sort
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside collection / order CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items:
+        type: array
+        description: The input elements in sorted order (stable; a copy).
+schema:
+  type: object
+  required: [collection, order]
+  additionalProperties: false
+  properties:
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array to sort. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    order:
+      title: Order
+      description: >-
+        Sort keys applied in order as tie-breakers. Each entry's `by` is a CEL
+        key over item (sees item, index, items, inputs).
+      type: array
+      minItems: 1
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+      items:
+        type: object
+        required: [by]
+        additionalProperties: false
+        properties:
+          by:
+            title: By
+            description: CEL sort key evaluated over item.
+          descending:
+            title: Descending
+            description: Sort this key descending (default ascending).
+            type: boolean
+            default: false
+  examples:
+    - collection: !cel "inputs.people"
+      order:
+        - by: !cel "item.lastName"
+        - by: !cel "item.age"
+          descending: true
+---
+# Keep the first element per distinct CEL key tuple, preserving input order.
+# Native CEL distinct() is scalar identity only — this dedupes by a computed key.
+kind: Telo.Definition
+metadata:
+  name: Distinct
+  description: Keeps the first element for each distinct CEL key tuple, preserving input order.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#distinct
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside collection / key CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items:
+        type: array
+        description: The first element seen for each distinct key, in input order.
+schema:
+  type: object
+  required: [collection, key]
+  additionalProperties: false
+  properties:
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array to deduplicate. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    key:
+      title: Key
+      description: >-
+        CEL map (field → expression) evaluated per element; the tuple of values
+        is the uniqueness key. Sees item, index, items, inputs.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+  examples:
+    - collection: !cel "inputs.events"
+      key:
+        user: !cel "item.userId"
+---
+# Split a collection into consecutive batches of at most `size` elements.
+# The trailing batch may be shorter. No native CEL chunk.
+kind: Telo.Definition
+metadata:
+  name: Chunk
+  description: Splits a collection into consecutive batches of at most `size` elements (trailing batch may be shorter).
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#chunk
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside collection / size CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [chunks]
+    properties:
+      chunks:
+        type: array
+        description: The batches, in input order.
+        items:
+          type: array
+schema:
+  type: object
+  required: [collection, size]
+  additionalProperties: false
+  properties:
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array to split. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    size:
+      title: Size
+      description: Maximum elements per batch (a positive integer). Sees inputs.
+      type: integer
+      minimum: 1
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+  examples:
+    - collection: !cel "inputs.records"
+      size: 100
+---
+# Match two collections on a CEL key from each side. `inner` emits a row per
+# matched pair; `left` also emits unmatched left rows with right = null.
+kind: Telo.Definition
+metadata:
+  name: Join
+  description: Joins two collections on a CEL key from each side (inner or left), shaping each output row with a CEL select map.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#join
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside left / right / on / select CEL as `inputs.<name>`.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [rows]
+    properties:
+      rows:
+        type: array
+        description: One row per matched pair (plus unmatched left rows for a left join).
+        items:
+          type: object
+          additionalProperties: true
+schema:
+  type: object
+  required: [left, right, on]
+  additionalProperties: false
+  properties:
+    left:
+      title: Left
+      description: CEL expression resolving to the left (driving) array. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    right:
+      title: Right
+      description: CEL expression resolving to the right array, indexed by its key. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    type:
+      title: Type
+      description: inner emits only matched pairs; left also emits unmatched left rows (right = null).
+      enum: [inner, left]
+      default: inner
+    on:
+      title: On
+      description: The match keys — a left row matches a right row when their keys are equal.
+      type: object
+      required: [left, right]
+      additionalProperties: false
+      properties:
+        left:
+          title: Left Key
+          description: CEL key over a left row (sees left, index, items, inputs).
+          x-telo-context:
+            type: object
+            properties:
+              left: { x-telo-context-element-from: "left" }
+              index: { type: integer }
+              items: { type: array }
+              inputs: {}
+        right:
+          title: Right Key
+          description: CEL key over a right row (sees right, index, items, inputs).
+          x-telo-context:
+            type: object
+            properties:
+              right: { x-telo-context-element-from: "right" }
+              index: { type: integer }
+              items: { type: array }
+              inputs: {}
+    select:
+      title: Select
+      description: >-
+        CEL map shaping each output row. Sees left and right (right is null for
+        unmatched left-join rows). Omit to emit { left, right }.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          left: { x-telo-context-element-from: "left" }
+          right: { x-telo-context-element-from: "right" }
+          inputs: {}
+  examples:
+    - left: !cel "inputs.orders"
+      right: !cel "inputs.customers"
+      type: left
+      on:
+        left: !cel "left.customerId"
+        right: !cel "right.id"
+      select:
+        orderId: !cel "left.id"
+        customer: !cel "right != null ? right.name : 'unknown'"
