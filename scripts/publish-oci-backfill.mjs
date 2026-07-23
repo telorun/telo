@@ -19,8 +19,10 @@
 // Usage: TELO_OCI_REGISTRY=oci://ghcr.io/telorun node scripts/publish-oci-backfill.mjs
 //        (add --dry-run to list the push order without publishing)
 // Env:   TELO_OCI_REGISTRY (required) — OCI base; the repo is <base>/<module-dir>
-//        TELO_REGISTRY (default https://registry.telo.run) — resolves non-OCI imports
 // Auth:  the ambient Docker credential chain (`docker login ghcr.io`).
+//
+// Sibling imports are relative (`../x`) and canonicalize to the OCI destination,
+// resolving there — no HTTP registry read origin is involved.
 
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -30,7 +32,6 @@ import { fileURLToPath } from "node:url";
 import { orderByDependencies } from "./module-publish-order.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const registry = process.env.TELO_REGISTRY ?? "https://registry.telo.run";
 const ociRegistry = process.env.TELO_OCI_REGISTRY?.replace(/\/+$/, "");
 const dryRun = process.argv.includes("--dry-run");
 
@@ -72,7 +73,7 @@ for (const m of publishOrder) {
   const destination = `${ociRegistry}/${basename(dirname(m))}`;
   try {
     execSync(
-      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${registry} ${destination} ${m}`,
+      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers ${destination} ${m}`,
       { stdio: "inherit", cwd: ROOT },
     );
   } catch (err) {
