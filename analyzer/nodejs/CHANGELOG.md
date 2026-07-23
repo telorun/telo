@@ -1,5 +1,12 @@
 # @telorun/analyzer
 
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies [ab4a911]
+  - @telorun/templating@0.11.0
+
 ## 0.41.0
 
 ### Minor Changes
