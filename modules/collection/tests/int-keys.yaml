@@ -1,0 +1,68 @@
+kind: Telo.Application
+metadata:
+  name: CollectionIntKeysTest
+  version: 1.0.0
+  description: |
+    Regression: bucketing / deduping / joining by a computed CEL integer key.
+    CEL ints are BigInt, so the key-identity path must serialize them safely (no
+    JSON.stringify crash) and a size()-derived BigInt must match the same value
+    arriving as a plain JSON int. Self-contained: Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestIntKeys
+---
+kind: Collection.Distinct
+metadata: { name: DistinctByTagCount }
+collection: !cel "inputs.items"
+key:
+  n: !cel "size(item.tags)"
+---
+kind: Collection.Join
+metadata: { name: JoinByTagCount }
+left: !cel "inputs.left"
+right: !cel "inputs.right"
+on:
+  left: !cel "size(left.tags)"
+  right: !cel "right.count"
+select:
+  id: !cel "left.id"
+  label: !cel "right.label"
+---
+kind: Run.Sequence
+metadata: { name: TestIntKeys }
+steps:
+  - name: Distinct
+    invoke: !ref DistinctByTagCount
+    inputs:
+      items:
+        - { id: a, tags: [x] }
+        - { id: b, tags: [x, y] }
+        - { id: c, tags: [z] }
+  - name: AssertDistinct
+    inputs:
+      actual: !cel "steps.Distinct.result.items"
+      expected:
+        - { id: a, tags: [x] }
+        - { id: b, tags: [x, y] }
+    invoke:
+      kind: Assert.Equals
+  - name: Join
+    invoke: !ref JoinByTagCount
+    inputs:
+      left:
+        - { id: a, tags: [x] }
+        - { id: b, tags: [x, y] }
+      right:
+        - { count: 1, label: one }
+        - { count: 2, label: two }
+  - name: AssertJoin
+    inputs:
+      actual: !cel "steps.Join.result.rows"
+      expected:
+        - { id: a, label: one }
+        - { id: b, label: two }
+    invoke:
+      kind: Assert.Equals

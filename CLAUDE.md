@@ -4,6 +4,7 @@ Use `pnpm run telo ./manifest.yaml` for testing.
 Use `pnpm run test` to run the full test suite (runs `test-suite.yaml` which discovers all `tests/*.yaml` across the repo).
 Tests should live in the module they test: `modules/<name>/tests/*.yaml`.
 Test fixtures go in `__fixtures__/` subdirectories (excluded from test discovery).
+Prefer `Assert.Equals` (deep-equals `actual` against an `expected` literal) for asserting outputs in manifest tests — not `Assert.Schema`. It reads as a plain expected value, compares the whole result at once, and serializes BigInt safely.
 Implementation plans should live in the package they affect the most, eg. `apps/telo-editor/plans/some-plan.md`.
 
 Follow this strictly:

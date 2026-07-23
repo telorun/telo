@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: CollectionSummarizeTest
+  version: 1.0.0
+  description: |
+    Reduces a whole collection — passed in as invocation inputs — to a single
+    summary row (count / total / average) with the CEL sum / avg reducers, and
+    asserts it. Self-contained: depends only on Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestSummarize
+---
+kind: Collection.Summarize
+metadata: { name: SummarizeOrders }
+collection: !cel "inputs.orders"
+aggregate:
+  count: !cel "double(size(group))"
+  total: !cel "sum(group.map(o, o.amount))"
+  average: !cel "avg(group.map(o, o.amount))"
+---
+kind: Run.Sequence
+metadata: { name: TestSummarize }
+steps:
+  - name: Summarize
+    invoke: !ref SummarizeOrders
+    inputs:
+      orders:
+        - { amount: 10 }
+        - { amount: 20 }
+        - { amount: 30 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Summarize.result.summary"
+      expected: { count: 3, total: 60, average: 20 }
+    invoke:
+      kind: Assert.Equals

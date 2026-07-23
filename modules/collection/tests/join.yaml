@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: CollectionJoinTest
+  version: 1.0.0
+  description: |
+    Left-joins two collections — passed in as invocation inputs — on a CEL key
+    from each side, shaping rows with `select` (unmatched left rows get a null
+    right). Asserts the joined rows. Self-contained: depends only on
+    Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestJoin
+---
+kind: Collection.Join
+metadata: { name: JoinOrders }
+left: !cel "inputs.orders"
+right: !cel "inputs.customers"
+type: left
+on:
+  left: !cel "left.customerId"
+  right: !cel "right.id"
+select:
+  orderId: !cel "left.id"
+  customer: !cel "right != null ? right.name : 'unknown'"
+---
+kind: Run.Sequence
+metadata: { name: TestJoin }
+steps:
+  - name: Join
+    invoke: !ref JoinOrders
+    inputs:
+      orders:
+        - { id: o1, customerId: c1 }
+        - { id: o2, customerId: c2 }
+        - { id: o3, customerId: cX }
+      customers:
+        - { id: c1, name: Ann }
+        - { id: c2, name: Bob }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Join.result.rows"
+      expected:
+        - { orderId: o1, customer: Ann }
+        - { orderId: o2, customer: Bob }
+        - { orderId: o3, customer: unknown }
+    invoke:
+      kind: Assert.Equals

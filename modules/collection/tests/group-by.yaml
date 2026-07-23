@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: CollectionGroupByTest
+  version: 1.0.0
+  description: |
+    Groups work-item-like records — passed in as invocation inputs — by user +
+    project, sums the logged minutes with the CEL `sum` reducer, derives hours,
+    orders the rows, and asserts the exact grouped output. Self-contained:
+    depends only on Collection + Run + Assert.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestGroupBy
+---
+kind: Collection.GroupBy
+metadata: { name: Report }
+collection: !cel "inputs.items"
+key:
+  user: !cel "item.author.name"
+  project: !cel "item.issue.project.name"
+aggregate:
+  minutes: !cel "sum(group.map(w, w.duration.minutes))"
+  hours: !cel "round(sum(group.map(w, w.duration.minutes)) / 60.0 * 100.0) / 100.0"
+orderBy:
+  - by: !cel "row.user"
+  - by: !cel "row.project"
+---
+kind: Run.Sequence
+metadata: { name: TestGroupBy }
+steps:
+  - name: Report
+    invoke: !ref Report
+    inputs:
+      items:
+        - { author: { name: Ann }, issue: { project: { name: Apollo } }, duration: { minutes: 30 } }
+        - { author: { name: Ann }, issue: { project: { name: Apollo } }, duration: { minutes: 90 } }
+        - { author: { name: Bob }, issue: { project: { name: Apollo } }, duration: { minutes: 45 } }
+        - { author: { name: Ann }, issue: { project: { name: Zephyr } }, duration: { minutes: 60 } }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Report.result.rows"
+      expected:
+        - { user: Ann, project: Apollo, minutes: 120, hours: 2 }
+        - { user: Ann, project: Zephyr, minutes: 60, hours: 1 }
+        - { user: Bob, project: Apollo, minutes: 45, hours: 0.75 }
+    invoke:
+      kind: Assert.Equals

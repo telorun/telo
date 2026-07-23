@@ -428,6 +428,28 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     hostBacked: false,
     build: () => (list: unknown[]) => minMax(list, false),
   },
+  {
+    name: "sum",
+    signature: "sum(list): double",
+    category: "math",
+    summary: "Sum of a list's numeric elements; 0 for an empty list.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (list: unknown[]) =>
+      Array.isArray(list) ? list.reduce((acc: number, x) => acc + num(x), 0) : 0,
+  },
+  {
+    name: "avg",
+    signature: "avg(list): dyn",
+    category: "math",
+    summary: "Arithmetic mean of a list's numeric elements; null for an empty list.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (list: unknown[]) =>
+      Array.isArray(list) && list.length > 0
+        ? list.reduce((acc: number, x) => acc + num(x), 0) / list.length
+        : null,
+  },
   // JSON
   {
     name: "json",

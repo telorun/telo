@@ -1,0 +1,80 @@
+{
+  "name": "@telorun/collection",
+  "version": "0.1.0",
+  "description": "Collection — pure CEL-driven grouping / aggregation / ordering of records.",
+  "keywords": [
+    "telo",
+    "collection",
+    "group-by",
+    "aggregate"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/collection/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./group-by": {
+      "types": "./dist/group-by-controller.d.ts",
+      "bun": "./src/group-by-controller.ts",
+      "import": "./dist/group-by-controller.js"
+    },
+    "./summarize": {
+      "types": "./dist/summarize-controller.d.ts",
+      "bun": "./src/summarize-controller.ts",
+      "import": "./dist/summarize-controller.js"
+    },
+    "./sort": {
+      "types": "./dist/sort-controller.d.ts",
+      "bun": "./src/sort-controller.ts",
+      "import": "./dist/sort-controller.js"
+    },
+    "./distinct": {
+      "types": "./dist/distinct-controller.d.ts",
+      "bun": "./src/distinct-controller.ts",
+      "import": "./dist/distinct-controller.js"
+    },
+    "./chunk": {
+      "types": "./dist/chunk-controller.d.ts",
+      "bun": "./src/chunk-controller.ts",
+      "import": "./dist/chunk-controller.js"
+    },
+    "./join": {
+      "types": "./dist/join-controller.d.ts",
+      "bun": "./src/join-controller.ts",
+      "import": "./dist/join-controller.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}
