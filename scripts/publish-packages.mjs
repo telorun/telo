@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // Run by `changesets/action` as the `publish` script after the Version PR merges.
 // 1. `changeset publish` — publishes npm packages whose versions moved and pushes git tags.
-// 2. For each modules/<name>/telo.yaml whose own metadata.version moved vs HEAD^, push it to
-//    the Telo registry via `telo publish --skip-controllers` (controllers were already
-//    built/published and PURLs synced by version-packages.mjs; this step only runs static
-//    analysis and PUTs the manifest to the registry). The gate is the manifest's own
+// 2. When TELO_OCI_REGISTRY is set, for each modules/<name>/telo.yaml whose own
+//    metadata.version moved vs HEAD^, push the manifest to that OCI base via
+//    `telo publish --skip-controllers`, one repo per module directory name (`<base>/<dir>`).
+//    Controllers were already built/published and PURLs synced by version-packages.mjs; this
+//    step only runs static analysis and pushes the manifest. The gate is the manifest's own
 //    metadata.version and nothing else — manifest-only modules (no controllers, no
-//    nodejs/package.json) publish on exactly the same footing as controller modules.
-//
-// 3. When TELO_OCI_REGISTRY is set, push the same manifests a second time to that OCI base,
-//    one repo per module directory name (`<base>/<dir>`). Unset skips the pass entirely.
+//    nodejs/package.json) publish on exactly the same footing as controller modules. Unset
+//    skips the pass entirely. `registry.telo.run` stays the read origin (--registry) so
+//    relative sibling refs resolve during the push.
 //
 // Usage: node scripts/publish-packages.mjs
-// Env: TELO_REGISTRY (default: https://registry.telo.run)
+// Env: TELO_REGISTRY (default: https://registry.telo.run — read origin for sibling refs)
 //      TELO_OCI_REGISTRY (no default; e.g. oci://ghcr.io/telorun — unset skips the OCI pass)
 
 import { execSync } from "node:child_process";
@@ -58,14 +58,14 @@ function manifestVersionAt(ref, yamlPath) {
 runLive("pnpm changeset publish");
 
 // Only push manifests whose own metadata.version actually moved in HEAD^..HEAD. This gates
-// registry pushes to real release commits — a non-release main push that happens to touch a
+// OCI pushes to real release commits — a non-release main push that happens to touch a
 // telo.yaml (typo fix, schema edit) won't trigger a republish of an unchanged version. A
 // newly added module (absent at HEAD^) publishes on its first commit.
 let diff;
 try {
   diff = run("git diff --name-only HEAD^ HEAD");
 } catch {
-  console.log("No prior commit to diff against — skipping Telo registry push.");
+  console.log("No prior commit to diff against — skipping OCI push.");
   process.exit(0);
 }
 
@@ -97,11 +97,11 @@ if (manifests.length === 0) {
 const publishOrder = orderByDependencies(manifests);
 
 // One push pass over the ordered manifests. `destinationFor` maps a manifest to
-// the `telo publish` destination positional; returning null keeps the default
-// registry (the `--registry` flag). Failures are collected rather than thrown so
-// one module can't abort the rest of the release — the HEAD^..HEAD gate means a
-// manifest skipped here isn't retried until its version moves again, so every
-// manifest must get a shot before the script exits non-zero.
+// the `telo publish` destination positional; `--registry` stays the read origin
+// so relative sibling refs resolve during the push. Failures are collected rather
+// than thrown so one module can't abort the rest of the release — the HEAD^..HEAD
+// gate means a manifest skipped here isn't retried until its version moves again,
+// so every manifest must get a shot before the script exits non-zero.
 function pushAll(label, destinationFor) {
   console.log(`\nPushing ${publishOrder.length} module manifest(s) to ${label}:`);
   for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
@@ -124,9 +124,9 @@ function pushAll(label, destinationFor) {
   return failed;
 }
 
-const failures = pushAll(registry, () => null);
+const failures = [];
 
-// Dual-publish to OCI. `TELO_OCI_REGISTRY` has no default: unset skips the pass
+// Publish to OCI. `TELO_OCI_REGISTRY` has no default: unset skips the pass
 // entirely, so its presence is the gate and a fork or local run never pushes to
 // someone else's registry off ambient Docker credentials. The repo is the
 // module's directory name under the base — never `metadata.namespace`/`name`,

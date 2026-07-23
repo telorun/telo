@@ -259,13 +259,6 @@ projects:
       - path: modules/record-stream/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
-  - label: registry
-    key: registry
-    changelog: apps/registry/CHANGELOG.md
-    replacements:
-      - path: apps/registry/telo.yaml
-        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
-        replace: '  version: {{.VersionNoPrefix}}'
   - label: run
     key: run
     changelog: modules/run/CHANGELOG.md

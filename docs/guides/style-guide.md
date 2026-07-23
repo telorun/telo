@@ -47,7 +47,7 @@ Data inputs and outputs behave exactly like object properties in JSON/JavaScript
 
 ### 🟢 `kebab-case` for Module Packages (`metadata.module`, `source`)
 
-When naming a module that will be published to the registry, use standard URL-friendly formatting. This matches GitHub repositories and NPM packages.
+When naming a module that will be published, use standard URL-friendly formatting. This matches GitHub repositories and NPM packages.
 
 - **Do:** `secure-api-template`, `http-server`, `my-awesome-app`
 - **Don't:** `SecureApiTemplate`, `http_server`

@@ -51,24 +51,13 @@ const config: Config = {
       if (result.frontMatter.slug !== undefined) return result;
       const normalized = filePath.replace(/\\/g, "/");
 
-      // Pages promoted out of their module into the top-level Deploy
-      // group get an explicit `/deploy/` slug; everything else under
-      // modules/ falls through to the `/reference/std/` catch-all below.
+      // The one module page still wired into the site is the AWS Lambda
+      // deploying guide, promoted into the top-level Deploy group with an
+      // explicit `/deploy/` slug. Stdlib module reference now lives on the
+      // hub (hub.telo.run), so there is no `/reference/std/` catch-all.
       const lambdaDeployingMatch = normalized.match(/\/modules\/lambda\/docs\/deploying\.md$/);
       if (lambdaDeployingMatch) {
         result.frontMatter.slug = "/deploy/lambda";
-        return result;
-      }
-
-      const stdMatch = normalized.match(/\/modules\/(.+\.md)$/);
-      if (stdMatch) {
-        let rel = stdMatch[1].replace(/\.md$/, "");
-        if (rel === "README") {
-          rel = "";
-        } else {
-          rel = rel.replace(/\/README$/, "");
-        }
-        result.frontMatter.slug = rel ? `/reference/std/${rel}` : "/reference/std";
         return result;
       }
 

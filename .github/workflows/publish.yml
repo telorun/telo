@@ -72,8 +72,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          TELO_REGISTRY: ${{ vars.TELO_REGISTRY }}
-          TELO_REGISTRY_TOKEN: ${{ secrets.TELO_REGISTRY_TOKEN }}
           # Unset skips the OCI pass entirely — set the repo variable to
           # `oci://ghcr.io/telorun` to enable dual-publish.
           #
@@ -144,7 +142,7 @@ jobs:
           body: |
             Module manifest versions bumped from pending changie fragments
             (`metadata.version` + per-module CHANGELOG). Merging publishes the
-            changed manifests to the Telo registry.
+            changed manifests to the OCI registry.
 
   docker:
     name: Publish release Docker images

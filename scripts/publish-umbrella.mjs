@@ -10,9 +10,6 @@
 //   3. `pnpm changeset publish` — publishes any @telorun/* package whose
 //      umbrella version is missing from npm and creates local git tags.
 //   4. Push the freshly-created tags to GIT_REMOTE.
-//   5. Push every module's telo.yaml to the Telo registry — but only when the
-//      umbrella version is not already present there (GET /<ns>/<name>/<v>
-//      returns 404).
 //
 // USAGE:
 //   node scripts/publish-umbrella.mjs                    # dry-run
@@ -21,22 +18,18 @@
 //
 // ENV:
 //   GIT_REMOTE             remote for tag push (default: origin)
-//   TELO_REGISTRY          registry URL (default: https://registry.telo.run)
-//   TELO_REGISTRY_TOKEN    publish token for the Telo registry (required for
-//                          phase 5 in --yes mode; inherited by the CLI subprocess)
 //
 // PRECONDITIONS:
 //   - npm-unpublish-1x.mjs --yes has run cleanly; npm has no @telorun/* >=1.x
 //     for packages in UMBRELLA_TARGETS.
 //   - UMBRELLA_TARGETS in scripts/lib/umbrella-targets.mjs is correct.
-//   - TELO_REGISTRY_TOKEN is exported in the shell running this script.
 //
 // FAILURE: stops on the first failing phase, exits non-zero. Re-run picks up;
 // completed phases are no-ops because they re-derive from observable state.
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { UMBRELLA_TARGETS } from "./lib/umbrella-targets.mjs";
 
@@ -45,7 +38,6 @@ const ROOT = resolve(__dirname, "..");
 const DRY_RUN = !process.argv.includes("--yes");
 const SKIP_COMMIT = process.argv.includes("--no-commit");
 const REMOTE = process.env.GIT_REMOTE ?? "origin";
-const REGISTRY = (process.env.TELO_REGISTRY ?? "https://registry.telo.run").replace(/\/$/, "");
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -147,22 +139,9 @@ if (missingPackages.length) {
   process.exit(1);
 }
 
-const HAS_REGISTRY_TOKEN = Boolean(process.env.TELO_REGISTRY_TOKEN);
-
 console.log(`mode:       ${DRY_RUN ? "DRY RUN" : "LIVE"}`);
 console.log(`git remote: ${REMOTE}`);
-console.log(`registry:   ${REGISTRY}`);
-console.log(`reg token:  ${HAS_REGISTRY_TOKEN ? "present" : "(unset)"}`);
 console.log("");
-
-// Fail fast before any side effects if the token isn't set in live mode.
-// Without it, phase 5 would get into the loop and the CLI would 401 on every
-// push. Phases 1–4 don't need it, but stopping early avoids partial state
-// where commits and npm publishes succeed but the registry stays out of sync.
-if (!DRY_RUN && !HAS_REGISTRY_TOKEN) {
-  console.error("TELO_REGISTRY_TOKEN is required in --yes mode. Export it and re-run.");
-  process.exit(1);
-}
 
 // ─── Phase 1: sync workspace versions ────────────────────────────────────────
 
@@ -297,54 +276,5 @@ if (!newTags.length && !DRY_RUN) {
   }
 }
 
-// ─── Phase 5: push module manifests to Telo registry ────────────────────────
-
-console.log("Phase 5 — push module manifests to Telo registry");
-async function registryHas(name, version) {
-  const moduleName = name.replace(/^@telorun\//, "");
-  const url = `${REGISTRY}/std/${moduleName}/${version}`;
-  try {
-    const res = await fetch(url, { method: "GET" });
-    return res.status === 200;
-  } catch {
-    return false;
-  }
-}
-
-let pushed = 0;
-let skipped = 0;
-let failed = 0;
-for (const [name, target] of Object.entries(UMBRELLA_TARGETS).sort()) {
-  const moduleName = name.replace(/^@telorun\//, "");
-  const manifestPath = join(ROOT, "modules", moduleName, "telo.yaml");
-  if (!existsSync(manifestPath)) continue;
-
-  const already = await registryHas(name, target);
-  if (already) {
-    console.log(`  ${name}@${target}: already on registry, skip`);
-    skipped++;
-    continue;
-  }
-
-  if (DRY_RUN) {
-    console.log(`  ${name}@${target}: (dry-run) would push ${relative(ROOT, manifestPath)}`);
-    continue;
-  }
-
-  try {
-    runLive(
-      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers --registry=${REGISTRY} ${manifestPath}`,
-    );
-    pushed++;
-  } catch (err) {
-    failed++;
-    console.error(`  ${name}@${target}: push FAILED — ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
-  }
-}
-
-if (!DRY_RUN) {
-  console.log(`\n  registry result: ${pushed} pushed, ${skipped} skipped (already present), ${failed} failed`);
-}
-
 if (DRY_RUN) console.log("\nDry run. Re-run with --yes to execute.");
-process.exit(failed ? 1 : 0);
+process.exit(0);

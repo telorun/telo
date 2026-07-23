@@ -105,5 +105,5 @@ with a `Telo.Service` (the HTTP server) that stays alive after init.
   AI, Lambda, MCP, …).
 - [Style guide](/guides/style-guide) — Naming, structure, and CEL
   conventions.
-- [CLI reference](/cli/) — `telo check`, `telo install`, `telo publish`,
-  watch mode, registry config.
+- [CLI reference](/cli/) — `telo run`, `telo check`, `telo install`,
+  `telo search`, `telo publish` (to OCI), and watch mode.

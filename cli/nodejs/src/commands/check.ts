@@ -58,7 +58,7 @@ async function checkOne(
 export async function check(argv: { paths: string[]; registryUrl?: string }): Promise<void> {
   const log = createLogger(false);
 
-  // Same fallback chain as `run` / `install` / `upgrade`.
+  // Same fallback chain as `run` / `install`.
   const registryUrl =
     argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 

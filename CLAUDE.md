@@ -216,12 +216,10 @@ Available in `${{ }}`:
 
 **Every module change MUST include documentation updates.** This is not optional. Before finishing any task that adds or modifies a module, verify:
 
-1. Documentation exists in `modules/<name>/docs/`. If not, create it.
+1. Documentation exists in `modules/<name>/docs/` (and the module's `README.md`). If not, create it.
 2. Documentation matches the current code. If code changed, docs must be updated.
-3. New documentation files are wired into GitHub Pages (Docusaurus):
-   - Add the file path to `pages/docusaurus.config.ts` in the `include` array
-   - Add a sidebar entry in `pages/sidebars.ts`
-   - Add `sidebar_label` frontmatter to the markdown file
+
+Module docs live **with the module** and are surfaced through the Telo **hub** (`hub.telo.run`), which indexes each published module's manifest and docs — the standard library is discovered there, not embedded in the Docusaurus site. Do **not** wire per-module doc files into `pages/docusaurus.config.ts` / `pages/sidebars.ts`; the docs site links out to the hub for module discovery. The Docusaurus site is for the kernel/guides/extend/learn docs only.
 
 ## Versioning & releases — MANDATORY
 

@@ -41,9 +41,9 @@ function readModuleMeta(manifestPath) {
 // metadata.version — both directories are scanned identically, so onboarding a new module or
 // app needs no edit here, just the manifest. `versionLines` is how many 2-space semver
 // `version:` lines the release replacement intentionally rewrites; 1 except where a manifest
-// deliberately couples extra ones (apps/registry and apps/hub bump their MCP
-// serverInfo.version alongside metadata.version).
-const VERSION_LINES = { registry: 2, hub: 2 };
+// deliberately couples extra ones (apps/hub bumps its MCP serverInfo.version
+// alongside metadata.version).
+const VERSION_LINES = { hub: 2 };
 
 const scan = (baseDir, baseRel) =>
   readdirSync(baseDir, { withFileTypes: true })
@@ -63,7 +63,7 @@ const projectDefs = [...scan(MODULES_DIR, "modules"), ...scan(APPS_DIR, "apps")]
 
 // The changie replacement rewrites 2-space semver `version:` lines with a file-global regexp
 // ReplaceAll. A manifest must contain exactly as many such lines as the replacement intends to
-// touch (1 for modules; 2 for apps/registry's coupled metadata + serverInfo versions) — an
+// touch (1 for modules; 2 for apps/hub's coupled metadata + serverInfo versions) — an
 // unexpected extra one (e.g. a Telo.Definition field named version) would be silently
 // overwritten on release. Non-semver `version:` lines (e.g. a Sql.Migration id) don't match the
 // regex and are left untouched. Enforce it here (CI runs this generator as a drift check) so a

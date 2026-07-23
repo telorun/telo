@@ -2,10 +2,9 @@ import { defaultTransportRegistry } from "@telorun/kernel";
 
 /**
  * Fetch a remote import's published `telo.yaml` and return its integrity hash
- * (`sha256-<base64url>`). Used by `telo publish` (import pinning) and `telo
- * upgrade` (re-pin on version change). Throws when no transport owns the ref or
- * the fetch fails — callers decide whether that is fatal (`--frozen`) or
- * best-effort.
+ * (`sha256-<base64url>`). Used by `telo publish` for import pinning. Throws when
+ * no transport owns the ref or the fetch fails — callers decide whether that is
+ * fatal (`--frozen`) or best-effort.
  *
  * Dispatch is the transport registry, never a scheme branch here: each
  * transport hashes exactly what its own `read()` verifies (registry/HTTP the
