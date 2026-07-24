@@ -1253,6 +1253,29 @@ export class Kernel implements IKernel {
       (fieldPath) => {
         const val = (resource as Record<string, unknown>)[fieldPath];
         if (Array.isArray(val)) {
+          for (const entry of val) {
+            // A scope field holds inline resource definitions (a `kind:` with
+            // its config, named via `metadata.name`). A `!ref` resolves to a
+            // `{kind, name}` reference — registering that as a manifest would
+            // silently produce a config-less resource, so reject it with an
+            // actionable message instead.
+            if (
+              entry &&
+              typeof entry === "object" &&
+              typeof (entry as Record<string, unknown>).kind === "string" &&
+              typeof (entry as Record<string, unknown>).name === "string"
+            ) {
+              const refName = String((entry as Record<string, unknown>).name);
+              throw new RuntimeError(
+                "ERR_SCOPE_ENTRY_NOT_INLINE",
+                `Scope field '${fieldPath}' on resource '${String(resource.metadata?.name)}' ` +
+                  `contains a reference (\`!ref ${refName}\`), but scope entries must be inline ` +
+                  `resource definitions (a \`kind:\` with its config). Declare the resource inline ` +
+                  `under '${fieldPath}:', or reference an outer resource from a sibling field ` +
+                  `such as 'targets:'.`,
+              );
+            }
+          }
           (resource as Record<string, unknown>)[fieldPath] = this.rootContext.createScopeHandle(
             val as ResourceManifest[],
           );

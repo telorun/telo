@@ -63,6 +63,10 @@ export interface ScopeBoundaryEvent {
   /** Names of every resource declared inside this resource's scopes. Used by
    *  the dependency graph to drop boot edges to scoped (on-demand) targets. */
   enclosedNames: Set<string>;
+  /** Scope entries that are references (`!ref`) rather than inline resource
+   *  definitions — a category error, since a scope declares its own resources.
+   *  Each carries the concrete path (e.g. `with[0]`) for diagnostics. */
+  scopeRefEntries: { path: string; refName: string }[];
 }
 
 export interface RefSiteEvent {
@@ -235,11 +239,32 @@ export function visitManifest(
 
       if (refScopeMap && (wantsRefs || wantsScope)) {
         const manifestsByPointer = new Map<string, ResourceManifest[]>();
+        const scopeRefEntries: { path: string; refName: string }[] = [];
         for (const [fieldPath, entry] of refScopeMap) {
           if (!isScopeEntry(entry)) continue;
-          const raw = resolveFieldValues(r, fieldPath)
-            .flatMap((v) => (Array.isArray(v) ? v : [v]))
-            .filter((v): v is ResourceManifest => !!v && typeof v === "object");
+          const raw: ResourceManifest[] = [];
+          for (const fe of resolveFieldEntries(r, fieldPath)) {
+            const items = Array.isArray(fe.value) ? fe.value : [fe.value];
+            items.forEach((v, i) => {
+              if (!v || typeof v !== "object") return;
+              // A scope entry must be an inline resource definition; a `!ref`
+              // (tagged sentinel or resolved `{kind, name}`) is not — record it
+              // so a static diagnostic flags it instead of registering a
+              // config-less manifest.
+              const rec = v as Record<string, unknown>;
+              if (
+                isRefSentinel(v) ||
+                (typeof rec.kind === "string" && typeof rec.name === "string")
+              ) {
+                scopeRefEntries.push({
+                  path: Array.isArray(fe.value) ? `${fe.path}[${i}]` : fe.path,
+                  refName: isRefSentinel(v) ? v.source : String(rec.name),
+                });
+                return;
+              }
+              raw.push(v as ResourceManifest);
+            });
+          }
           const pointers = Array.isArray(entry.scope) ? entry.scope : [entry.scope];
           for (const pointer of pointers) manifestsByPointer.set(pointer, raw);
         }
@@ -253,7 +278,13 @@ export function visitManifest(
               if (typeof name === "string") enclosedNames.add(name);
             }
           }
-          visitor.onScope!({ source: r, scopePrefixes, manifestsByPointer, enclosedNames });
+          visitor.onScope!({
+            source: r,
+            scopePrefixes,
+            manifestsByPointer,
+            enclosedNames,
+            scopeRefEntries,
+          });
         }
 
         if (wantsRefs) {

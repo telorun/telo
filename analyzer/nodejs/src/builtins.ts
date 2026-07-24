@@ -440,7 +440,6 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           enum: ["shared", "isolated"],
           default: "shared",
         },
-        keepAlive: { type: "boolean", default: false },
         targets: {
           type: "array",
           items: {
