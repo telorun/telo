@@ -189,13 +189,6 @@ projects:
       - path: modules/javascript/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
-  - label: lambda
-    key: lambda
-    changelog: modules/lambda/CHANGELOG.md
-    replacements:
-      - path: modules/lambda/telo.yaml
-        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
-        replace: '  version: {{.VersionNoPrefix}}'
   - label: lease
     key: lease
     changelog: modules/lease/CHANGELOG.md
@@ -271,13 +264,6 @@ projects:
     changelog: modules/run/CHANGELOG.md
     replacements:
       - path: modules/run/telo.yaml
-        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
-        replace: '  version: {{.VersionNoPrefix}}'
-  - label: s3
-    key: s3
-    changelog: modules/s3/CHANGELOG.md
-    replacements:
-      - path: modules/s3/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
   - label: shell

@@ -31,7 +31,6 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "docs/deploy/overview", label: "Overview" },
         { type: "doc", id: "docs/deploy/docker", label: "Docker image" },
-        { type: "doc", id: "modules/lambda/docs/deploying", label: "AWS Lambda" },
       ],
     },
     {
