@@ -357,6 +357,22 @@ export function validateReferences(
           });
         }
       },
+      onScope: (e) => {
+        const r = e.source;
+        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+        const filePath = (r.metadata as { source?: string } | undefined)?.source;
+        for (const { path: concretePath, refName } of e.scopeRefEntries) {
+          const scopeField = concretePath.split(/[.[]/)[0];
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCOPE_ENTRY_NOT_INLINE",
+            source: SOURCE,
+            message: `${resourceLabel}: scope entry at '${concretePath}' is a reference (\`!ref ${refName}\`), but a scope declares inline resource definitions (a \`kind:\` with its config). Declare the resource inline under '${scopeField}:', or reference an outer resource from a sibling field such as 'targets:'.`,
+            data: { resource: resourceData, filePath, path: concretePath },
+          });
+        }
+      },
     },
     { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: true },
   );

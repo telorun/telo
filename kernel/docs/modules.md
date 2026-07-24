@@ -22,13 +22,13 @@ Every module file begins with exactly one `Telo.Application` or `Telo.Library` d
 **Application-only:**
 
 - **`targets`**: Optional. Resources to run once initialization completes. Applications whose work is carried entirely by auto-start Services (e.g. an HTTP server) may declare no targets.
-- **`lifecycle`** / **`keepAlive`**: Runtime lifecycle hints.
+- **`lifecycle`**: Runtime lifecycle hint (`"shared"` (default) | `"isolated"`).
 - Binds host environment variables (via `env:` keys on its `variables:`/`secrets:`/`ports:` entries) when loaded as the root manifest. Never valid as the target of an `imports:` entry.
 
 **Library-only:**
 
 - **`exports.kinds`**: Which resource kinds this library exposes to importers.
-- `targets`, `lifecycle`, and `keepAlive` are forbidden — libraries are not lifecycle participants.
+- `targets` and `lifecycle` are forbidden — libraries are not lifecycle participants.
 - Never runnable via `loadFromConfig`; loaded only through an importer's `imports:` entry.
 
 ---

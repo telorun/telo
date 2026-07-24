@@ -9,7 +9,6 @@ metadata:
     declared port and starts the conversation store. Each POST /chat streams the
     assistant response and tool calls back as Server-Sent Events. Requires
     OPENAI_API_KEY.
-keepAlive: true
 imports:
   Chat:
     source: ./chat
