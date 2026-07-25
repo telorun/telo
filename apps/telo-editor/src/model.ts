@@ -37,6 +37,10 @@ export interface AppSettings {
    *  + version lists). Empty/undefined uses the public default (`telo.sh`);
    *  a self-hosted hub points this at its own endpoint. */
   hubUrl?: string;
+  /** Base URL the starter-template gallery loads from. It must serve a
+   *  `templates.json` catalog and the referenced manifests over http(s) with
+   *  CORS. Empty/undefined uses `DEFAULT_TEMPLATES_BASE_URL`. */
+  templatesBaseUrl?: string;
   /** The user's runners. The Run button uses the one whose id is
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];

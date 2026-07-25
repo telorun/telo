@@ -1,0 +1,87 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --line: #e3e6ea;
+  --muted: #6b7280;
+  --accent: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d23;
+    --line: #2a2e36;
+    --muted: #9aa3af;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  background: var(--bg);
+  font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  padding: 3rem 1rem;
+}
+
+main {
+  width: 100%;
+  max-width: 30rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+h1 { margin: 0 0 0.25rem; }
+.sub { margin: 0 0 1.25rem; color: var(--muted); font-size: 0.85rem; }
+.sub code { font-size: 0.8em; }
+
+#new-todo { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+
+#text {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+}
+
+button {
+  padding: 0.6rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+ul { list-style: none; margin: 0; padding: 0; }
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+li:last-child { border-bottom: none; }
+
+.text { flex: 1; cursor: pointer; }
+li.done .text { text-decoration: line-through; color: var(--muted); }
+
+.del {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+}
+.del:hover { color: #dc2626; }
+
+.empty { color: var(--muted); text-align: center; padding: 1rem 0; }

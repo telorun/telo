@@ -18,7 +18,7 @@ interface SidebarProps {
   onDeletePath: (path: string) => Promise<void>;
   onMovePath: (from: string, toDir: string) => Promise<void>;
   onOpenModule: (filePath: string) => void;
-  onCreateModule: (kind: ModuleKind, relativePath: string, name: string) => Promise<void>;
+  onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
   onRunModule: (filePath: string) => void;
 }
@@ -37,7 +37,7 @@ export function Sidebar({
   onDeletePath,
   onMovePath,
   onOpenModule,
-  onCreateModule,
+  onNewModule,
   onDeleteModule,
   onRunModule,
 }: SidebarProps) {
@@ -62,7 +62,7 @@ export function Sidebar({
         workspace={workspace}
         activeModulePath={activeModulePath}
         onOpenModule={onOpenModule}
-        onCreateModule={onCreateModule}
+        onNewModule={onNewModule}
         onDeleteModule={onDeleteModule}
         onRunModule={onRunModule}
       />

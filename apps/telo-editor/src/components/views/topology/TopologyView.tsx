@@ -1,10 +1,10 @@
-import { TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import { MODULE_OVERVIEW_TOPOLOGY } from "../../../application-adapter";
 import { DetailPanel } from "../../DetailPanel";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
 import { PickCanvas } from "../pick-canvas";
 import type { ViewProps } from "../types";
+import { PreviewNotice } from "./PreviewNotice";
 import {
   buildApplicationCanvasModel,
   type AppCanvasModel,
@@ -103,13 +103,7 @@ export function TopologyView({
   return (
     <div className="flex h-full min-w-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
-          <TriangleAlert className="size-3.5 shrink-0" />
-          <span>
-            The Telo editor is an early preview — visual editing isn't fully supported yet and some
-            changes may not apply. Use the Source tab if something looks off.
-          </span>
-        </div>
+        <PreviewNotice />
         <div className="relative flex min-h-0 flex-1">{canvas}</div>
       </div>
       <DetailPanel

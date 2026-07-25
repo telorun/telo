@@ -5,7 +5,7 @@ import { getModuleFiles, summarizeResource } from "../../../diagnostics-aggregat
 import type { ParsedImport } from "../../../model";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
-import { AddImportForm } from "../../sidebar/AddImportForm";
+import { AddImportDialog } from "../../AddImportDialog";
 import type { ImportUpgradeState } from "../../sidebar/useImportUpgrade";
 import { useImportUpgrade } from "../../sidebar/useImportUpgrade";
 import { useLatestVersions } from "../../sidebar/useLatestVersions";
@@ -26,13 +26,16 @@ import type { ViewProps } from "../types";
 export function ImportsView({
   viewData,
   registryServers,
+  hubUrl,
   onAddImport,
+  importableLibraries,
   onRemoveImport,
   onUpgradeImport,
   onUpgradeAllImports,
   onOpenModule,
 }: ViewProps) {
-  const [adding, setAdding] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
   const upgrade = useImportUpgrade(registryServers, onUpgradeImport);
   const manifest = viewData.manifest;
@@ -48,9 +51,13 @@ export function ImportsView({
     return [{ name: imp.name, newSource: `${ref.moduleId}@${latest}` }];
   });
 
-  async function handleSubmit(source: string, alias: string) {
-    await onAddImport(source, alias);
-    setAdding(false);
+  async function handleImportLibrary(source: string, alias: string) {
+    setImportError(null);
+    try {
+      await onAddImport(source, alias);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function handleUpgradeAll() {
@@ -81,29 +88,65 @@ export function ImportsView({
               {upgradingAll ? "Upgrading…" : `Upgrade all (${outdated.length})`}
             </Button>
           )}
-          <Button size="xs" onClick={() => setAdding(true)} disabled={adding}>
-            Add import
-          </Button>
+          {importableLibraries.length > 0 ? (
+            <div className="flex items-stretch">
+              <Button size="xs" className="rounded-r-none" onClick={() => setAddOpen(true)}>
+                Add import
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon-xs"
+                    className="rounded-l-none border-l border-l-black/15 dark:border-l-white/15"
+                    aria-label="Import a workspace library"
+                    title="Import a workspace library"
+                  >
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-64 w-56 overflow-y-auto">
+                  <DropdownMenuLabel>Import library</DropdownMenuLabel>
+                  {importableLibraries.map((lib) => (
+                    <DropdownMenuItem
+                      key={lib.filePath}
+                      onSelect={() => void handleImportLibrary(lib.source, lib.alias)}
+                      className="flex-col items-start gap-0"
+                    >
+                      <span className="text-xs font-medium">{lib.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{lib.source}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : (
+            <Button size="xs" onClick={() => setAddOpen(true)}>
+              Add import
+            </Button>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-3 pb-2">
-        {adding && (
-          <div className="mb-3">
-            <AddImportForm
-              registryServers={registryServers}
-              onSubmit={handleSubmit}
-              onCancel={() => setAdding(false)}
-            />
-          </div>
-        )}
+      {importError && (
+        <div className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+          Couldn&apos;t add import: {importError}
+        </div>
+      )}
 
+      <AddImportDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        hubUrl={hubUrl}
+        libraries={importableLibraries}
+        existingAliases={imports.map((imp) => imp.name)}
+        onSubmit={onAddImport}
+      />
+
+      <div className="flex-1 overflow-y-auto px-4 pt-3 pb-2">
         {imports.length === 0 ? (
-          !adding && (
-            <div className="flex h-full items-center justify-center">
-              <span className="text-sm text-zinc-400 dark:text-zinc-600">No imports</span>
-            </div>
-          )
+          <div className="flex h-full items-center justify-center">
+            <span className="text-sm text-zinc-400 dark:text-zinc-600">No imports</span>
+          </div>
         ) : (
           <table className="w-full text-left text-sm">
             <thead>

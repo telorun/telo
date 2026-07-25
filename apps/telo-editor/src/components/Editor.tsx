@@ -11,10 +11,10 @@ import { useImportOps } from "../hooks/useImportOps";
 import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
 import { INITIAL_STATE, defaultGraphContext, pickInitialActiveModule } from "../editor-state";
 import {
-  createModule,
   createRegistryAdapters,
   createResourceViaAst,
   deleteModule,
+  getImportableLibraries,
   hasUnresolvedImports,
   loadWorkspace,
   noopAdapter,
@@ -24,6 +24,7 @@ import {
   rebuildManifestFromDocuments,
   reconcileImports,
   removeResourceViaAst,
+  resolveTemplatesBaseUrl,
   setResourceFields,
   VIRTUAL_WORKSPACE_ROOT,
 } from "../loader";
@@ -82,6 +83,7 @@ import {
   ToastViewport,
 } from "./ui/toast";
 import { AppLifecyclePanel } from "./AppLifecyclePanel";
+import { CreateModuleDialog } from "./CreateModuleDialog";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
@@ -160,6 +162,7 @@ export function Editor() {
   } | null>(null);
   const [missingEnv, setMissingEnv] = useState<DeclaredEnvEntry[] | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
+  const [createModuleKind, setCreateModuleKind] = useState<ModuleKind | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
 
   // Workspace bootstrap (open / restore / remote-import), the adapter refs every
@@ -173,6 +176,7 @@ export function Editor() {
     manifestAdapterRef,
     workspaceAdapterRef,
     handleOpen,
+    createNewModule,
     handleConfirmImport,
     onImportDialogOpenChange,
     refreshFileTree,
@@ -405,6 +409,16 @@ export function Editor() {
       ? (state.workspace.modules.get(state.activeModulePath) ?? null)
       : null;
 
+  // Workspace-local libraries the active module can import directly — feeds the
+  // Imports view's "Add import" side dropdown.
+  const importableLibraries = useMemo(
+    () =>
+      state.workspace && state.activeModulePath
+        ? getImportableLibraries(state.workspace, state.activeModulePath)
+        : [],
+    [state.workspace, state.activeModulePath],
+  );
+
   // Run history + status for the active Application — drives the TopBar Run
   // button's status dot and its chevron dropdown of recent runs.
   const activeAppPath =
@@ -417,25 +431,6 @@ export function Editor() {
   // ---------------------------------------------------------------------------
   // Module creation + deletion
   // ---------------------------------------------------------------------------
-
-  async function handleCreateModule(kind: ModuleKind, relativePath: string, name: string) {
-    const workspace = state.workspace;
-    const adapter = workspaceAdapterRef.current;
-    if (!workspace || !adapter) throw new Error("No workspace open");
-    const updated = await createModule(workspace, { kind, relativePath, name }, adapter);
-    const newFilePath = [...updated.modules.keys()].find((p) => !workspace.modules.has(p))!;
-    setState((s) => ({
-      ...s,
-      workspace: updated,
-      activeModulePath: newFilePath,
-      openTabs: upsertTab(s.openTabs, { type: "module", path: newFilePath }),
-      activeTabId: newFilePath,
-      graphContext: defaultGraphContext(updated, newFilePath),
-      selectedResource: null,
-      panelStack: [],
-    }));
-    void refreshFileTree(updated);
-  }
 
   async function handleDeleteModule(filePath: string) {
     const workspace = state.workspace;
@@ -1016,6 +1011,13 @@ export function Editor() {
     !!state.workspace &&
     !!state.activeModulePath &&
     !isWorkspaceModule(state.workspace, state.activeModulePath);
+  // Single source of truth for the read-only state; `readOnly` is derived from
+  // it so the two view props can never drift.
+  const readOnlyReason: "agent" | "remote" | null = agentLocked
+    ? "agent"
+    : activeIsRemote
+      ? "remote"
+      : null;
 
   async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
@@ -1463,14 +1465,18 @@ export function Editor() {
           onDeletePath={handleDeletePath}
           onMovePath={handleMovePath}
           onOpenModule={handleOpenModule}
-          onCreateModule={handleCreateModule}
+          onNewModule={setCreateModuleKind}
           onDeleteModule={handleDeleteModule}
           onRunModule={handleRunModule}
         />
         {runContext.isRunViewOpen ? (
           <RunView />
         ) : !state.workspace ? (
-          <AppLifecyclePanel onOpen={handleOpen} recentRootDir={persistedHint?.rootDir} />
+          <AppLifecyclePanel
+            onOpen={handleOpen}
+            onStartFromTemplate={() => setCreateModuleKind("Application")}
+            recentRootDir={persistedHint?.rootDir}
+          />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <EditorTabs items={tabItems} onActivate={handleActivateTab} onClose={handleCloseTab} />
@@ -1497,7 +1503,8 @@ export function Editor() {
                   activeView={state.activeView}
                   onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
                   viewProps={{
-                      readOnly: agentLocked || activeIsRemote,
+                      readOnly: readOnlyReason !== null,
+                      readOnlyReason,
                       viewData,
                       registry:
                         (state.activeModulePath
@@ -1514,7 +1521,9 @@ export function Editor() {
                       onWriteRef: handleWriteRef,
                       onCreateResource: () => setCreateResourceOpen(true),
                       registryServers: settings.registryServers,
+                      hubUrl: settings.hubUrl,
                       onAddImport: handleAddImport,
+                      importableLibraries,
                       onRemoveImport: handleRemoveImport,
                       onUpgradeImport: handleUpgradeImport,
                       onUpgradeAllImports: handleUpgradeAllImports,
@@ -1564,6 +1573,13 @@ export function Editor() {
         onOpenChange={setCreateResourceOpen}
         kinds={availableKinds}
         onCreate={handleCreateResource}
+      />
+      <CreateModuleDialog
+        open={createModuleKind !== null}
+        onOpenChange={(open) => !open && setCreateModuleKind(null)}
+        kind={createModuleKind ?? "Application"}
+        templatesBaseUrl={resolveTemplatesBaseUrl(settings)}
+        onCreate={createNewModule}
       />
       <TermsGateDialog
         terms={termsGate?.terms ?? null}

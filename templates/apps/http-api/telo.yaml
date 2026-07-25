@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: HttpApi
+  version: 1.0.0
+  description: |
+    A single typed `GET /v1/hello?name=…` route. Shows how `Http.Server` mounts
+    an `Http.Api`, how the request schema feeds a `!cel` expression on `inputs`,
+    and how the handler's output flows into the response body via `result.*`.
+
+    Run, then:
+        curl 'http://localhost:8845/v1/hello?name=World'
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
+  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+targets:
+  - !ref Server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8845
+---
+kind: Http.Server
+metadata:
+  name: Server
+port: !cel "ports.http"
+logger: true
+openapi:
+  info:
+    title: Hello server
+    version: 1.0.0
+mounts:
+  - path: /v1
+    mount: !ref HelloApi
+---
+kind: Http.Api
+metadata:
+  name: HelloApi
+routes:
+  - request:
+      path: /hello
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            name:
+              type: string
+          required: [ "name" ]
+    handler: !ref SayHello
+    inputs:
+      name: !cel "request.query.name"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                greeting: { type: string }
+              required: [ greeting ]
+              additionalProperties: false
+            body:
+              greeting: !cel "'Hello ' + result.message + '!'"
+---
+kind: Run.Value
+metadata:
+  name: SayHello
+inputs:
+  name: { type: string }
+value:
+  message: !cel "inputs.name"

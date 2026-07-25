@@ -413,6 +413,44 @@ export function addImportDocument(
   return [...docs.slice(0, insertAt), newDoc, ...docs.slice(insertAt)];
 }
 
+/** Adds an entry to the owner module doc's inline `imports:` map — the source of
+ *  truth for a module's dependencies. Uses the scalar shorthand (`Alias: source`)
+ *  when there are no `variables` / `secrets`, else the object form. Mutates the
+ *  module doc's AST in place. Returns the same array reference on no-op (no owner
+ *  module doc). Mirrors `removeInlineImport` / `setInlineImportSource`. */
+export function addInlineImport(
+  docs: Document[],
+  name: string,
+  source: string,
+  extras?: { variables?: Record<string, unknown>; secrets?: Record<string, unknown> },
+): Document[] {
+  const idx = findModuleDocIndex(docs);
+  if (idx === -1) return docs;
+  const doc = docs[idx];
+  // Never overwrite an existing alias: a silent `setIn` would repoint the
+  // existing import at a different module, and the manifest would never reach
+  // the state that raises DUPLICATE_IMPORT_ALIAS because the edit destroyed it.
+  const existing = doc.getIn(["imports", name]);
+  if (existing !== undefined) {
+    const current =
+      typeof existing === "string"
+        ? existing
+        : (doc.getIn(["imports", name, "source"]) as string | undefined) ?? "another module";
+    throw new Error(
+      `Import alias "${name}" already exists in this module (currently ${current}). Choose a different alias.`,
+    );
+  }
+  if (extras?.variables || extras?.secrets) {
+    const entry: Record<string, unknown> = { source };
+    if (extras.variables) entry.variables = extras.variables;
+    if (extras.secrets) entry.secrets = extras.secrets;
+    doc.setIn(["imports", name], entry);
+  } else {
+    doc.setIn(["imports", name], source);
+  }
+  return [...docs];
+}
+
 /** Removes the Telo.Import document with the given alias name. */
 export function removeImportDocument(docs: Document[], name: string): Document[] {
   const idx = findDocForResource(docs, "Telo.Import", name);

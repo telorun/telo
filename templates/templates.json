@@ -1,0 +1,46 @@
+{
+  "templates": [
+    {
+      "id": "console-io",
+      "title": "Console I/O",
+      "description": "Read a line from stdin and print a response. The smallest interactive app.",
+      "category": "app",
+      "path": "apps/console-io/telo.yaml"
+    },
+    {
+      "id": "http-api",
+      "title": "HTTP API",
+      "description": "A single typed GET route: Http.Server mounts an Http.Api backed by a handler.",
+      "category": "app",
+      "path": "apps/http-api/telo.yaml"
+    },
+    {
+      "id": "todo",
+      "title": "Todo app",
+      "description": "A full REST + SQLite app with a static frontend, served on one port.",
+      "category": "app",
+      "path": "apps/todo/telo.yaml"
+    },
+    {
+      "id": "ai-agent-console",
+      "title": "AI agent console",
+      "description": "An interactive REPL backed by an Ai.Agent with a tool and persisted history.",
+      "category": "app",
+      "path": "apps/ai-agent-console/telo.yaml"
+    },
+    {
+      "id": "http-api-library",
+      "title": "Reusable HTTP API library",
+      "description": "A Telo.Library that exports an Http.Api importers can mount anywhere.",
+      "category": "library",
+      "path": "libs/http-api/telo.yaml"
+    },
+    {
+      "id": "repository-library",
+      "title": "Domain repository library",
+      "description": "A Telo.Library that owns a table and exports typed SqlRepository resources.",
+      "category": "library",
+      "path": "libs/repository/telo.yaml"
+    }
+  ]
+}

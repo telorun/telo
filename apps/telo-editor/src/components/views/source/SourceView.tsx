@@ -36,11 +36,21 @@ interface TabState {
  *  if the tab isn't dirty and the canonical text differs from what the tab
  *  last showed, we update. */
 
-const READ_ONLY_MESSAGE = { value: "Editing is paused while the agent is working." };
+const READ_ONLY_MESSAGES = {
+  agent: { value: "Editing is paused while the agent is working." },
+  remote: { value: "This module is remote and read-only." },
+} as const;
 
-export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: ViewProps) {
+export function SourceView({
+  viewData,
+  onSourceEdit,
+  revealRequest,
+  readOnly,
+  readOnlyReason,
+}: ViewProps) {
   const sourceFiles = viewData.sourceFiles;
   const firstFilePath = sourceFiles[0]?.filePath;
+  const readOnlyMessage = readOnlyReason ? READ_ONLY_MESSAGES[readOnlyReason] : undefined;
   const lastConsumedNonceRef = useRef<number | null>(null);
 
   // Active tab is tracked explicitly so module-change resets to owner, and
@@ -387,7 +397,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
               automaticLayout: true,
               tabSize: 2,
               readOnly,
-              readOnlyMessage: READ_ONLY_MESSAGE,
+              readOnlyMessage,
               "semanticHighlighting.enabled": true,
               // Re-parent hover/suggest/context widgets to document.body.
               // Without this, popovers anchored near the top of the buffer
@@ -461,7 +471,7 @@ export function SourceView({ viewData, onSourceEdit, revealRequest, readOnly }: 
                   automaticLayout: true,
                   tabSize: 2,
                   readOnly,
-                  readOnlyMessage: READ_ONLY_MESSAGE,
+                  readOnlyMessage,
                   "semanticHighlighting.enabled": true,
                 }}
               />

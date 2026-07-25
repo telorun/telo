@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Telo Todo</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Todo</h1>
+      <p class="sub">Served by Telo — frontend (<code>Http.Static</code>) + API (<code>Http.Api</code>) on one port.</p>
+
+      <form id="new-todo">
+        <input id="text" type="text" placeholder="What needs doing?" autocomplete="off" required />
+        <button type="submit">Add</button>
+      </form>
+
+      <ul id="list"></ul>
+      <p id="empty" class="empty" hidden>Nothing yet. Add your first todo above.</p>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

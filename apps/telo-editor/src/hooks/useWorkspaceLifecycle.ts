@@ -8,20 +8,23 @@ import {
   createVirtualWorkspaceAdapter,
   loadWorkspace,
   loadWorkspaceDependencies,
+  materializeModule,
   mergeWorkspaceDependencies,
   normalizePath,
   openWorkspaceDirectory,
   readManifestUrlParam,
   reopenWorkspaceAt,
+  resolveTemplatesBaseUrl,
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
-import type { FileNode, RemoteImportPlan } from "../loader";
+import type { FileNode, NewModuleSelection, RemoteImportPlan } from "../loader";
 import { pathBasename } from "../loader/paths";
 import type {
   AppSettings,
   EditorState,
   EditorTab,
+  ModuleKind,
   ViewId,
   Workspace,
   WorkspaceAdapter,
@@ -119,6 +122,14 @@ export interface WorkspaceLifecycle {
   /** Source for workspace file I/O; shared with file ops, run, and persist. */
   workspaceAdapterRef: React.RefObject<WorkspaceAdapter | null>;
   handleOpen: () => Promise<void>;
+  /** Creates and opens a new module (blank or from a template); throws
+   *  `ModuleExistsError` when the target exists and `overwrite` is unset. */
+  createNewModule: (
+    kind: ModuleKind,
+    name: string,
+    selection: NewModuleSelection,
+    opts?: { overwrite?: boolean },
+  ) => Promise<void>;
   handleConfirmImport: () => Promise<void>;
   /** Drives the remote-import AlertDialog's open state: confirms ride the
    *  `confirming` latch; everything else cancels and falls back to restore. */
@@ -417,6 +428,84 @@ export function useWorkspaceLifecycle({
     }
   }
 
+  // Creates a new module — blank or from a starter template — and opens it.
+  // With a workspace open, it lands in that workspace (apps/ or libs/) and the
+  // reload preserves existing tabs; with none open (first-run), it lands in a
+  // fresh virtual workspace, mirroring the remote-open path. Throws
+  // `ModuleExistsError` when the target exists and `overwrite` is not set.
+  async function createNewModule(
+    kind: ModuleKind,
+    name: string,
+    selection: NewModuleSelection,
+    opts?: { overwrite?: boolean },
+  ) {
+    const workspaceOpen = !!state.workspace && !!workspaceAdapterRef.current;
+
+    const adapter: ManifestSource & WorkspaceAdapter = workspaceOpen
+      ? (workspaceAdapterRef.current as ManifestSource & WorkspaceAdapter)
+      : createVirtualWorkspaceAdapter();
+    const root = workspaceOpen ? state.workspace!.rootDir : VIRTUAL_WORKSPACE_ROOT;
+    const registryAdapters = createRegistryAdapters(settings);
+
+    // Domain logic — slug, existence, file materialization, write, overwrite —
+    // lives in `materializeModule`; the hook only picks the adapter/root and
+    // commits the resulting workspace to editor state.
+    const { rootPath } = await materializeModule(adapter, root, {
+      kind,
+      name,
+      selection,
+      templatesBaseUrl: resolveTemplatesBaseUrl(settings),
+      registryAdapters,
+      overwrite: opts?.overwrite,
+    });
+
+    if (workspaceOpen) {
+      const manifestAdapter = manifestAdapterRef.current!;
+      const workspace = await loadWorkspace(root, manifestAdapter, adapter, registryAdapters);
+      setState((s) => {
+        const reconciled = reconcileWorkspaceTabs(s, workspace);
+        const openTabs = reconciled.openTabs.some(
+          (t) => t.type === "module" && t.path === rootPath,
+        )
+          ? reconciled.openTabs
+          : [...reconciled.openTabs, { type: "module" as const, path: rootPath }];
+        return {
+          ...reconciled,
+          activeModulePath: rootPath,
+          openTabs,
+          activeTabId: rootPath,
+          graphContext: defaultGraphContext(workspace, rootPath),
+          selectedResource: null,
+          panelStack: [],
+        };
+      });
+      await refreshFileTree(workspace);
+    } else {
+      manifestAdapterRef.current = adapter;
+      workspaceAdapterRef.current = adapter;
+      const workspace = await loadWorkspace(
+        VIRTUAL_WORKSPACE_ROOT,
+        adapter,
+        adapter,
+        registryAdapters,
+      );
+      setState({
+        ...INITIAL_STATE,
+        workspace,
+        activeModulePath: rootPath,
+        openTabs: [{ type: "module", path: rootPath }],
+        activeTabId: rootPath,
+        graphContext: defaultGraphContext(workspace, rootPath),
+        deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
+      });
+    }
+
+    setToast({
+      title: selection.type === "template" ? "Template added" : "Module created",
+      description: `${name.trim()} is ready to edit.`,
+    });
+  }
+
   async function handleConfirmImport() {
     const pending = pendingImport;
     if (!pending) return;
@@ -508,6 +597,7 @@ export function useWorkspaceLifecycle({
     manifestAdapterRef,
     workspaceAdapterRef,
     handleOpen,
+    createNewModule,
     handleConfirmImport,
     onImportDialogOpenChange,
     refreshFileTree,
