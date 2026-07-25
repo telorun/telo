@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: HelloApiLibrary
+  version: 1.0.0
+  description: |
+    A reusable `Telo.Library` that defines a single `HelloApi` (`Http.Api`) plus
+    the `SayHello` handler it dispatches to. Importers receive `HelloApi` under
+    their chosen alias and can mount it on any `Http.Server` — define the route
+    once, mount it on as many paths/servers as you like.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
+  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+exports:
+  resources:
+    - HelloApi
+---
+kind: Http.Api
+metadata:
+  name: HelloApi
+routes:
+  - request:
+      path: /hello
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            name:
+              type: string
+          required: [ "name" ]
+    handler: !ref SayHello
+    inputs:
+      name: !cel "request.query.name"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                greeting: { type: string }
+              required: [ greeting ]
+              additionalProperties: false
+            body:
+              greeting: !cel "'Hello ' + result.message + '!'"
+---
+kind: Run.Value
+metadata:
+  name: SayHello
+inputs:
+  name: { type: string }
+value:
+  message: !cel "inputs.name"

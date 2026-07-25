@@ -81,7 +81,9 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         ))}
       </div>
 
-      {viewProps.readOnly && (
+      {/* Remote modules get their own banner above the view tabs (Editor), so
+       *  only the agent lock is announced here. */}
+      {viewProps.readOnlyReason === "agent" && (
         <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
           <Lock className="size-3 shrink-0" />
           Editing is paused while the agent is working.

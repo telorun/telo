@@ -18,7 +18,7 @@ interface WorkspaceTreeProps {
   workspace: Workspace;
   activeModulePath: string | null;
   onOpenModule: (filePath: string) => void;
-  onCreateModule: (kind: ModuleKind, relativePath: string, name: string) => Promise<void>;
+  onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
   onRunModule: (filePath: string) => void;
 }
@@ -49,47 +49,13 @@ export function WorkspaceTree({
   workspace,
   activeModulePath,
   onOpenModule,
-  onCreateModule,
+  onNewModule,
   onDeleteModule,
   onRunModule,
 }: WorkspaceTreeProps) {
   const { applications, libraries } = useMemo(() => buildNodes(workspace), [workspace]);
-  const [creatingKind, setCreatingKind] = useState<ModuleKind | null>(null);
-  const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParsedManifest | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  function startCreate(kind: ModuleKind) {
-    setCreatingKind(kind);
-    setNewName("");
-    setCreateError(null);
-  }
-
-  function cancelCreate() {
-    setCreatingKind(null);
-    setNewName("");
-    setCreateError(null);
-  }
-
-  async function submitCreate() {
-    if (!creatingKind) return;
-    const name = newName.trim();
-    if (!name) return;
-    const parentDir = creatingKind === "Application" ? "apps" : "libs";
-    const relativePath = `${parentDir}/${name}`;
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await onCreateModule(creatingKind, relativePath, name);
-      cancelCreate();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCreating(false);
-    }
-  }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -110,15 +76,7 @@ export function WorkspaceTree({
         label="Applications"
         addLabel="New application"
         emptyText="No applications yet"
-        parentDir="apps"
-        onAdd={() => startCreate("Application")}
-        adding={creatingKind === "Application"}
-        newName={newName}
-        onNewNameChange={setNewName}
-        onSubmitCreate={submitCreate}
-        onCancelCreate={cancelCreate}
-        createError={createError}
-        creating={creating}
+        onAdd={() => onNewModule("Application")}
       >
         {applications.map((node) => (
           <ModuleRow
@@ -139,15 +97,7 @@ export function WorkspaceTree({
         label="Libraries"
         addLabel="New library"
         emptyText="No libraries yet"
-        parentDir="libs"
-        onAdd={() => startCreate("Library")}
-        adding={creatingKind === "Library"}
-        newName={newName}
-        onNewNameChange={setNewName}
-        onSubmitCreate={submitCreate}
-        onCancelCreate={cancelCreate}
-        createError={createError}
-        creating={creating}
+        onAdd={() => onNewModule("Library")}
       >
         {libraries.map((node) => (
           <ModuleRow
@@ -203,36 +153,12 @@ interface TreeSectionProps {
   label: string;
   addLabel: string;
   emptyText: string;
-  parentDir: string;
   onAdd: () => void;
-  adding: boolean;
-  newName: string;
-  onNewNameChange: (v: string) => void;
-  onSubmitCreate: () => void;
-  onCancelCreate: () => void;
-  createError: string | null;
-  creating: boolean;
   children: React.ReactNode;
 }
 
-function TreeSection({
-  label,
-  addLabel,
-  emptyText,
-  parentDir,
-  onAdd,
-  adding,
-  newName,
-  onNewNameChange,
-  onSubmitCreate,
-  onCancelCreate,
-  createError,
-  creating,
-  children,
-}: TreeSectionProps) {
+function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectionProps) {
   const childCount = Array.isArray(children) ? children.length : children ? 1 : 0;
-  const inputCls =
-    "w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
 
   return (
     <div className="pb-1 pt-2">
@@ -244,43 +170,12 @@ function TreeSection({
           +
         </Button>
       </div>
-      {childCount === 0 && !adding && (
+      {childCount === 0 && (
         <div className="px-4 py-1 text-xs italic text-zinc-400 dark:text-zinc-600">
           {emptyText}
         </div>
       )}
       {children}
-      {adding && (
-        <div className="mx-3 mt-1 flex flex-col gap-1.5">
-          <input
-            autoFocus
-            value={newName}
-            onChange={(e) => onNewNameChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onSubmitCreate();
-              if (e.key === "Escape") onCancelCreate();
-            }}
-            placeholder="module-name"
-            className={inputCls}
-          />
-          <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
-            Will be created at <code>{parentDir}/{newName.trim() || "…"}</code>
-          </p>
-          {createError && <p className="text-xs text-red-500 dark:text-red-400">{createError}</p>}
-          <div className="flex gap-1">
-            <Button
-              size="xs"
-              onClick={onSubmitCreate}
-              disabled={!newName.trim() || creating}
-            >
-              {creating ? "Creating…" : "Create"}
-            </Button>
-            <Button variant="ghost" size="xs" onClick={onCancelCreate} disabled={creating}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

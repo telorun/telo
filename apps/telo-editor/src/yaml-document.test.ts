@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addImportDocument,
+  addInlineImport,
   addResourceDocument,
   applyEdit,
   diffFields,
@@ -403,6 +404,27 @@ describe("document-level helpers", () => {
     expect((next[3].toJSON() as Record<string, unknown>).kind).toBe("Http.Server");
   });
 
+  it("addInlineImport writes into the module doc's imports map, no new doc", () => {
+    const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = addInlineImport(docs, "Lib", "../lib");
+    expect(next).toHaveLength(1);
+    expect(next[0].toJSON()).toEqual({
+      kind: "Telo.Application",
+      metadata: { name: "app" },
+      imports: { Lib: "../lib" },
+    });
+  });
+
+  it("addInlineImport uses the object form when variables/secrets are given", () => {
+    const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = addInlineImport(docs, "Lib", "../lib", { variables: { port: 8080 } });
+    expect((next[0].toJSON() as Record<string, unknown>).imports).toEqual({
+      Lib: { source: "../lib", variables: { port: 8080 } },
+    });
+  });
+
   it("removeImportDocument removes the matching import", () => {
     const text = [
       "kind: Telo.Application",
@@ -453,5 +475,24 @@ describe("findDocForResource", () => {
     const text = "just: data\n---\nkind: Http.Server\nmetadata:\n  name: main\n";
     const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     expect(findDocForResource(docs, "Http.Server", "main")).toBe(1);
+  });
+});
+
+describe("addInlineImport duplicate-alias guard", () => {
+  const base = "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Console: std/console@0.9.0\n";
+
+  it("adds a new alias", () => {
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", base);
+    const out = addInlineImport(docs, "Http", "std/http-server@0.19.1");
+    const yaml = serializeModuleDocument(out);
+    expect(yaml).toContain("Http: std/http-server@0.19.1");
+    expect(yaml).toContain("Console: std/console@0.9.0");
+  });
+
+  it("throws instead of clobbering an existing alias", () => {
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", base);
+    expect(() => addInlineImport(docs, "Console", "std/other@1.0.0")).toThrow(
+      /alias "Console" already exists.*std\/console@0\.9\.0/,
+    );
   });
 });

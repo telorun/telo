@@ -1,4 +1,5 @@
 import type { AnalysisRegistry } from "@telorun/analyzer";
+import type { ImportableLibrary } from "../../loader";
 import type {
   CanvasViewport,
   DeploymentEnvironment,
@@ -12,10 +13,14 @@ import type { RefWrite } from "./topology/application-canvas-model";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
-  /** True while the authoring agent holds the workspace (a turn is in flight):
-   *  every edit surface renders read-only/blocked — writes are also rejected at
-   *  the persist chokepoint, but the views must make the lock visible. */
+  /** True while the module cannot be edited — see `readOnlyReason` for why.
+   *  Every edit surface renders read-only/blocked; agent writes are also
+   *  rejected at the persist chokepoint, but the views must make it visible. */
   readOnly: boolean;
+  /** Why editing is disabled: `"agent"` while the authoring agent holds the
+   *  workspace (a turn is in flight), `"remote"` for a module opened from a
+   *  registry/OCI source. Null when the module is editable. */
+  readOnlyReason: "agent" | "remote" | null;
   viewData: ModuleViewData;
   /** Analysis registry for the active module's closure — supplies the field
    *  maps / capability lookups the overview graph needs. Null before the first
@@ -43,11 +48,18 @@ export interface ViewProps {
   onWriteRef: (writes: RefWrite[]) => void;
   /** Opens the create-resource flow. Surfaced as a canvas action. */
   onCreateResource: () => void;
-  /** Registry servers — supplies the Imports view's add-import search and the
-   *  upgrade dropdown's version lookups. */
+  /** Registry servers — supplies the Imports view upgrade dropdown's version
+   *  lookups. */
   registryServers: RegistryServer[];
+  /** Telo hub base URL (from settings) — powers the Imports view's add-import
+   *  module search. Undefined resolves to the public default. */
+  hubUrl: string | undefined;
   /** Adds an import to the active module (Imports view). */
   onAddImport: (source: string, alias: string) => Promise<void>;
+  /** Workspace-local libraries the active module can import directly, offered
+   *  as a side dropdown on the Imports view's "Add import" button. Empty when
+   *  none are importable — the dropdown is then hidden. */
+  importableLibraries: ImportableLibrary[];
   /** Removes an import from the active module (Imports view). */
   onRemoveImport: (name: string) => void;
   /** Re-points an import at a new source/version (Imports view upgrade). */

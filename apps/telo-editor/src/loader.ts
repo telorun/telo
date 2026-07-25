@@ -55,12 +55,17 @@ export {
   upgradeImportViaAst,
 } from "./loader/subgraph";
 export {
-  createModule,
+  materializeModule,
+  ModuleExistsError,
   deleteModule,
   persistWorkspaceModule,
   saveModuleFromDocuments,
 } from "./loader/crud";
-export type { CreateModuleOptions } from "./loader/crud";
+export type {
+  MaterializedModule,
+  MaterializeModuleOptions,
+  NewModuleSelection,
+} from "./loader/crud";
 export {
   isInTauri,
   noopAdapter,
@@ -84,11 +89,26 @@ export {
 export type { RemoteImportPlan, PlanFile, RemoteManifest } from "./loader/remote";
 export {
   getAvailableKinds,
+  getImportableLibraries,
   hasApplicationImporter,
   isWorkspaceModule,
 } from "./loader/queries";
+export type { ImportableLibrary } from "./loader/queries";
 export { buildFileTree } from "./loader/file-tree";
 export type { FileNode } from "./loader/file-tree";
+export {
+  DEFAULT_TEMPLATES_BASE_URL,
+  fetchTemplateCatalog,
+  fetchTemplateFiles,
+  resolveTemplatesBaseUrl,
+  templateManifestUrl,
+} from "./loader/templates";
+export type {
+  TemplateCatalog,
+  TemplateCategory,
+  TemplateDescriptor,
+  TemplateFile,
+} from "./loader/templates";
 
 // ---------------------------------------------------------------------------
 // Workspace scan

@@ -14,7 +14,7 @@ import type {
   Workspace,
 } from "../model";
 import {
-  addImportDocument,
+  addInlineImport,
   moduleDocumentFromLoaded,
   removeImportDocument,
   removeInlineImport,
@@ -197,10 +197,11 @@ export async function reconcileImports(
 // Import-via-AST operations (mutate AST, then reload the affected subgraph)
 // ---------------------------------------------------------------------------
 
-/** Inserts a `Telo.Import` document into the owner module's AST, re-derives
- *  the ParsedManifest (which projects the new import with
- *  `resolvedPath: undefined`), then reconciles imports to resolve the new
- *  target's sub-graph and wire `importGraph` / `importedBy` edges.
+/** Adds an entry to the owner module doc's inline `imports:` map — the source of
+ *  truth for a module's dependencies — re-derives the ParsedManifest (which
+ *  projects the new import with `resolvedPath: undefined`), then reconciles
+ *  imports to resolve the new target's sub-graph and wire `importGraph` /
+ *  `importedBy` edges.
  *
  *  Routing through `reconcileImports` (not the legacy `addImport`) is
  *  deliberate: `rebuildManifestFromDocuments` already places the new
@@ -219,7 +220,7 @@ export async function addImportViaAst(
   const modDoc = workspace.documents.get(key);
   if (!modDoc) return workspace;
 
-  const docs = addImportDocument(modDoc.loaded.documents, imp.name, imp.source, {
+  const docs = addInlineImport(modDoc.loaded.documents, imp.name, imp.source, {
     variables: imp.variables,
     secrets: imp.secrets,
   });

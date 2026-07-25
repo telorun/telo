@@ -1,10 +1,6 @@
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
-import type {
-  ModuleKind,
-  ParsedManifest,
-  Workspace,
-  WorkspaceAdapter,
-} from "../model";
+import type { ManifestSource } from "@telorun/analyzer";
+import type { ModuleKind, Workspace, WorkspaceAdapter } from "../model";
 import {
   buildInitialModuleDocument,
   moduleParseError,
@@ -14,56 +10,105 @@ import {
 } from "../yaml-document";
 import { normalizePath, pathDirname, pathJoin } from "./paths";
 import { buildResourceDocIndex, withDocs } from "./ast-ops";
+import { slugifyModuleName } from "./remote";
+import { fetchTemplateFiles, templateManifestUrl } from "./templates";
+import type { TemplateDescriptor, TemplateFile } from "./templates";
 
-export interface CreateModuleOptions {
-  kind: ModuleKind;
-  relativePath: string;
-  name: string;
+/** What a new module is seeded from: an empty skeleton, or a starter template. */
+export type NewModuleSelection =
+  | { type: "blank" }
+  | { type: "template"; template: TemplateDescriptor };
+
+/** Thrown by `materializeModule` when the target directory already holds files
+ *  and the caller has not opted into overwriting them. Carries the workspace-
+ *  relative directory so the UI can name exactly what an overwrite destroys. */
+export class ModuleExistsError extends Error {
+  constructor(
+    readonly moduleName: string,
+    readonly relativeDir: string,
+  ) {
+    super(`A module already exists at "${relativeDir}".`);
+    this.name = "ModuleExistsError";
+  }
 }
 
-/** Creates a new module directory with a telo.yaml inside the workspace,
- *  persists it via the WorkspaceAdapter, and returns the updated Workspace. */
-export async function createModule(
-  workspace: Workspace,
-  options: CreateModuleOptions,
+export interface MaterializeModuleOptions {
+  kind: ModuleKind;
+  name: string;
+  selection: NewModuleSelection;
+  /** Resolved templates base URL (used only for template selections). */
+  templatesBaseUrl: string;
+  registryAdapters: ManifestSource[];
+  overwrite?: boolean;
+}
+
+export interface MaterializedModule {
+  moduleDir: string;
+  rootPath: string;
+}
+
+/** Writes a new module to disk under `apps/<slug>` / `libs/<slug>` in `root`,
+ *  seeded from a blank skeleton or a starter template. The full file set is
+ *  built BEFORE any existing directory is deleted, so a template fetch failure
+ *  (offline / CORS / 404 / self-containment escape) can never destroy the
+ *  target — the operation is atomic enough. Throws `ModuleExistsError` when the
+ *  target directory has content and `overwrite` is unset. Does not touch the
+ *  in-memory workspace; the caller reloads. */
+export async function materializeModule(
   adapter: WorkspaceAdapter,
-): Promise<Workspace> {
-  const { kind, relativePath, name } = options;
-  const cleanRelative = relativePath.replace(/^\/+|\/+$/g, "");
-  if (!cleanRelative) throw new Error(`Module path cannot be empty`);
+  root: string,
+  options: MaterializeModuleOptions,
+): Promise<MaterializedModule> {
+  const name = options.name.trim();
+  if (!name) throw new Error("Module name cannot be empty");
 
-  const moduleDir = pathJoin(workspace.rootDir, cleanRelative);
-  const filePath = pathJoin(moduleDir, DEFAULT_MANIFEST_FILENAME);
+  const slug = slugifyModuleName(name) || name;
+  const subdir = options.kind === "Application" ? "apps" : "libs";
+  const relativeDir = `${subdir}/${slug}`;
+  const moduleDir = pathJoin(root, subdir, slug);
+  const rootPath = pathJoin(moduleDir, DEFAULT_MANIFEST_FILENAME);
 
-  if (workspace.modules.has(filePath)) {
-    throw new Error(`Module already exists at ${filePath}`);
+  // Probe the directory, not the module map: a folder with assets but no
+  // telo.yaml still holds user content an overwrite would destroy.
+  const occupied = await directoryHasContent(adapter, moduleDir);
+  if (occupied && !options.overwrite) throw new ModuleExistsError(name, relativeDir);
+
+  const files = await buildModuleFiles(name, options);
+
+  if (occupied) await adapter.delete(moduleDir);
+  for (const file of files) {
+    const dest = pathJoin(moduleDir, file.relPath);
+    await adapter.createDir(pathDirname(dest));
+    await adapter.writeFile(dest, file.text);
   }
+  return { moduleDir, rootPath };
+}
 
-  await adapter.createDir(moduleDir);
+/** Builds the file set to write — the blank skeleton, or a template's full
+ *  fetched cascade with its `metadata.name` rewritten to `name`. */
+async function buildModuleFiles(
+  name: string,
+  options: MaterializeModuleOptions,
+): Promise<TemplateFile[]> {
+  if (options.selection.type === "blank") {
+    const doc = buildInitialModuleDocument(options.kind, name);
+    return [{ relPath: DEFAULT_MANIFEST_FILENAME, text: serializeModuleDocument([doc]), isRoot: true }];
+  }
+  return fetchTemplateFiles(
+    templateManifestUrl(options.templatesBaseUrl, options.selection.template),
+    name,
+    options.registryAdapters,
+  );
+}
 
-  const manifest: ParsedManifest = {
-    filePath,
-    kind,
-    metadata: { name, version: "1.0.0" },
-    targets: [],
-    imports: [],
-    resources: [],
-  };
-  const initialDoc = buildInitialModuleDocument(kind, name);
-  const yaml = serializeModuleDocument([initialDoc]);
-  await adapter.writeFile(filePath, yaml);
-
-  const modules = new Map(workspace.modules);
-  modules.set(filePath, manifest);
-  const importGraph = new Map(workspace.importGraph);
-  importGraph.set(filePath, new Set());
-  const importedBy = new Map(workspace.importedBy);
-
-  const documents = new Map(workspace.documents);
-  documents.set(normalizePath(filePath), parseModuleDocument(filePath, yaml));
-  const resourceDocIndex = buildResourceDocIndex(modules, documents);
-
-  return { rootDir: workspace.rootDir, modules, importGraph, importedBy, documents, resourceDocIndex };
+/** True when `dir` exists and is non-empty. A missing directory (listDir throws
+ *  or is empty) is treated as free — the caller may create it. */
+async function directoryHasContent(adapter: WorkspaceAdapter, dir: string): Promise<boolean> {
+  try {
+    return (await adapter.listDir(dir)).length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** Writes the module's YAML back to disk by serializing each tracked

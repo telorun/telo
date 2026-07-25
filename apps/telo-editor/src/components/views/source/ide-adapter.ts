@@ -1,10 +1,7 @@
 import type { HubRef, IdeEnvironmentAdapter } from "@telorun/ide-support";
 import type { WorkspaceAdapter } from "../../../model";
 import { pathJoin } from "../../../loader/paths";
-
-/** Public hub, mirroring the CLI's `TELO_HUB_URL` default. A self-hosted setup
- *  overrides it via the `hubUrl` setting. */
-const DEFAULT_HUB_URL = "https://telo.sh";
+import { resolveHubUrl } from "../../../hub-search";
 
 interface RefsResponse {
   refs?: Array<{ ref?: string; latestVersion?: string; description?: string }>;
@@ -26,7 +23,7 @@ export class EditorIdeAdapter implements IdeEnvironmentAdapter {
     private readonly workspace: WorkspaceAdapter,
     hubUrl: string | undefined,
   ) {
-    this.hubUrl = (hubUrl || DEFAULT_HUB_URL).replace(/\/+$/, "");
+    this.hubUrl = resolveHubUrl(hubUrl);
   }
 
   async listDirectories(relPath: string): Promise<string[]> {

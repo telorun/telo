@@ -190,6 +190,26 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
             className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
           />
         </div>
+
+        <div className="mt-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            Templates
+          </p>
+          <p className="mb-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Starter-template gallery source (must serve <code>templates.json</code> and the
+            referenced manifests over CORS). Leave empty for the built-in default.
+          </p>
+          <input
+            type="text"
+            placeholder="Custom templates base URL"
+            value={settings.templatesBaseUrl ?? ''}
+            onChange={e => {
+              const templatesBaseUrl = e.target.value
+              onChange(s => ({ ...s, templatesBaseUrl: templatesBaseUrl || undefined }))
+            }}
+            className="w-full rounded border border-zinc-300 bg-white px-3 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )

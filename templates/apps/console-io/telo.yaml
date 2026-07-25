@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleIo
+  version: 1.0.0
+  description: |
+    Reads a line from stdin and prints a response. The smallest interactive
+    app: a `Console.readLine` step whose `result.value` flows into a
+    `Console.writeLine` via a `!cel` expression. A good "does my setup work"
+    starting point.
+imports:
+  Console: oci://ghcr.io/telorun/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+targets:
+  - name: ReadName
+    invoke: !ref Console.readLine
+    inputs:
+      prompt: "What's your name? "
+  - name: Greet
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "'Hello, ' + steps.ReadName.result.value + '! Welcome to Telo.'"
