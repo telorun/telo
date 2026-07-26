@@ -30,6 +30,7 @@ Focus on:
 - check if implementation can't be ported to other languages (rust, go)
 - check if a fix is treating the cause of the problem instead of just the symptom, and is not a hacky workaround.
 - check if code was added to a file that suffers from a large number of responsibilities and should be split into smaller files.
+- check if new kind keeps the schema open with `additionalProperties: true` for no reason which allows arbitrary properties to be added to the manifest, making it impossible to validate statically.
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals. EXCEPTION: never ignore a gap in static analysis — see the Static analysis goal above. A missing/deferred static check is always a blocking finding even if the plan sanctioned it.
 

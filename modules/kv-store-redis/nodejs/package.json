@@ -1,0 +1,20 @@
+{
+  "name": "@telorun/kv-store-redis-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/kv-store-redis module's bundled controller. Never published \u2014 the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json && esbuild src/store.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --outdir=. --out-extension:.js=.mjs"
+  },
+  "dependencies": {
+    "ioredis": "^5.11.1"
+  },
+  "devDependencies": {
+    "@telorun/kv-store": "workspace:*",
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,44 @@
+kind: Telo.Library
+metadata:
+  name: kv-store-memory
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    KvStoreMemory.Store — an in-process KvStore.Store backend. Conditional writes
+    are atomic within the single-threaded event loop, so the guarantees hold for
+    ONE process. Records do not survive a
+    restart and are not shared across instances: this is a development and test
+    backend. Use kv-store-sql or kv-store-redis anywhere the guarantee
+    must outlive the process.
+files:
+  - nodejs/*.mjs
+imports:
+  KvStore: ../kv-store
+exports:
+  kinds:
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: In-process KvStore.Store backend for single-process development and tests; records do not survive a restart.
+capability: Telo.Provider
+extends: KvStore.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    maxEntries:
+      title: Max Entries
+      type: integer
+      minimum: 1
+      default: 100000
+      description: >-
+        Safety ceiling on retained records, so a runaway key space cannot
+        exhaust memory in a long-running dev process. Reaching it is an error,
+        NOT a silent eviction — dropping a record would break the non-eviction
+        guarantee this store exists to provide.

@@ -1,7 +1,7 @@
 {
   "name": "@telorun/lease",
   "version": "0.3.0",
-  "description": "Telo lease module — Lease.Critical, a declarative critical section over a Cache.Store.",
+  "description": "Telo lease module \u2014 Lease.Critical, a declarative critical section over a Cache.Store.",
   "keywords": [
     "telo",
     "lease",
@@ -9,7 +9,7 @@
     "mutex",
     "critical-section"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -45,9 +45,6 @@
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
-  "dependencies": {
-    "@telorun/cache": "workspace:*"
-  },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
@@ -55,5 +52,8 @@
   },
   "peerDependencies": {
     "@telorun/sdk": "*"
+  },
+  "dependencies": {
+    "@telorun/kv-store": "workspace:*"
   }
 }

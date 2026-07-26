@@ -1,0 +1,168 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencyOnceTest
+  version: 1.0.0
+  description: |
+    Covers the at-most-once contract against the in-process store: a first call
+    runs the body (`fresh`), a second call under the same key replays the stored
+    result WITHOUT re-running it, a different key runs the body again, and a body
+    that throws releases the key so the operation stays retryable.
+
+    The body is a counter, so "did it run again?" is observable rather than
+    inferred — a replay that silently re-ran would still return the right shape.
+imports:
+  Idempotency: ../
+  KvStoreMemory: ../../kv-store-memory
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestFreshThenReplay
+  - !ref TestDistinctKey
+  - !ref TestFailureIsRetryable
+---
+kind: KvStoreMemory.Store
+metadata: { name: Store }
+---
+# A counter standing in for an outbound side effect. Every body invocation
+# increments it, so the test can assert the body did NOT run on a replay.
+kind: CacheMemory.Store
+metadata: { name: Counters }
+---
+kind: Cache.Entry
+metadata: { name: PutCount }
+store: !ref Counters
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: GetCount }
+store: !ref Counters
+---
+kind: Run.Sequence
+metadata:
+  name: Charge
+inputs:
+  amount: { type: integer }
+steps:
+  - name: read
+    invoke: !ref GetCount
+    inputs: { key: "charges" }
+  - name: bump
+    invoke: !ref PutCount
+    inputs:
+      key: "charges"
+      value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
+outputs:
+  charged: !cel "inputs.amount"
+---
+kind: Idempotency.Once
+metadata:
+  name: ChargeOnce
+store: !ref Store
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref Charge
+---
+# A body that always fails, to prove a failure releases the key.
+kind: Run.Sequence
+metadata:
+  name: AlwaysFails
+steps:
+  - name: boom
+    throw:
+      code: ERR_PAYMENT_DECLINED
+      message: declined
+---
+kind: Idempotency.Once
+metadata:
+  name: FailingOnce
+store: !ref Store
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref AlwaysFails
+---
+kind: Run.Sequence
+metadata:
+  name: TestFreshThenReplay
+steps:
+  - name: first
+    invoke: !ref ChargeOnce
+    inputs:
+      key: "order-1"
+      inputs: { amount: 500 }
+  - name: verifyFirst
+    inputs:
+      actual: !cel "steps.first.result"
+      expected:
+        executed: true
+        state: fresh
+        result: { charged: 500 }
+    invoke: { kind: Assert.Equals }
+  - name: second
+    invoke: !ref ChargeOnce
+    inputs:
+      key: "order-1"
+      inputs: { amount: 500 }
+  - name: verifySecond
+    inputs:
+      actual: !cel "steps.second.result"
+      expected:
+        executed: false
+        state: replayed
+        result: { charged: 500 }
+    invoke: { kind: Assert.Equals }
+  # The decisive assertion: the body ran exactly once across both calls.
+  - name: count
+    invoke: !ref GetCount
+    inputs: { key: "charges" }
+  - name: verifyRanOnce
+    inputs:
+      # Stringified: CEL integers surface as BigInt, which the assert reporter
+      # cannot serialize. The comparison is what matters, not the numeric type.
+      actual: !cel "string(steps.count.result.value)"
+      expected: "1"
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata:
+  name: TestDistinctKey
+steps:
+  - name: other
+    invoke: !ref ChargeOnce
+    inputs:
+      key: "order-2"
+      inputs: { amount: 900 }
+  - name: verify
+    inputs:
+      actual: !cel "steps.other.result.state"
+      expected: fresh
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata:
+  name: TestFailureIsRetryable
+steps:
+  - name: firstAttempt
+    try:
+      - name: go
+        invoke: !ref FailingOnce
+        inputs: { key: "order-3" }
+    catch:
+      - name: verifyError
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_PAYMENT_DECLINED
+        invoke: { kind: Assert.Equals }
+  # The key must be free again — a failure is never settled as a completion.
+  - name: secondAttempt
+    try:
+      - name: go
+        invoke: !ref FailingOnce
+        inputs: { key: "order-3" }
+    catch:
+      - name: verifyRetryable
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_PAYMENT_DECLINED
+        invoke: { kind: Assert.Equals }

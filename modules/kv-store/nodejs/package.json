@@ -1,0 +1,46 @@
+{
+  "name": "@telorun/kv-store",
+  "version": "0.1.0",
+  "description": "The Telo KvStore.Store contract \u2014 a durable, non-evicting key/value store with atomic conditional writes \u2014 plus KeyedClaim, the claim/settle/release protocol implemented once over those primitives so no backend reimplements it.",
+  "keywords": [
+    "telo",
+    "kv-store",
+    "idempotency",
+    "lease"
+  ],
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "modules/kv-store/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
+    "postpack": "rm -f LICENSE && rm -f README.md"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

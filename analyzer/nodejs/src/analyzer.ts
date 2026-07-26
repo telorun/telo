@@ -29,6 +29,7 @@ import {
   validateAgainstSchema,
   type SchemaIssue,
 } from "./schema-compat.js";
+import { collectValueSchemaIssues } from "./validate-value-schema.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
   extractCelRegionScopes,
@@ -1351,7 +1352,16 @@ export class StaticAnalyzer {
         );
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
         const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
-        const issues = [...celIssues, ...ajvIssues];
+        // Phase 4: value slots that must satisfy a type declared elsewhere on
+        // the resource (`x-telo-value-schema-from`) — e.g. every row of a
+        // decision table against its declared `outputType`, so a mistyped branch
+        // is caught here rather than on the one input that selects it.
+        const valueSchemaIssues = collectValueSchemaIssues(
+          m as Record<string, any>,
+          schema,
+          allManifests as Record<string, any>[],
+        );
+        const issues = [...celIssues, ...ajvIssues, ...valueSchemaIssues];
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -1390,6 +1400,7 @@ export class StaticAnalyzer {
               const viaRoot = aliases.resolveKind(kind);
               return viaRoot ? defs.resolve(viaRoot) : undefined;
             },
+            allManifests as Record<string, any>[],
           ),
         );
       }

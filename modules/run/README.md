@@ -15,6 +15,7 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 | --- | --- |
 | `Run.Sequence` | Run an ordered list of invocable steps with control-flow blocks. |
 | `Run.Value` | A pure value/binding invocable — shape a CEL value (or a constant) with no `JS.Script`. See [Run.Value](docs/value.md). |
+| `Run.Choice` | A first-match decision table — pick one typed value from ordered `when → value` rows. See [Run.Choice](docs/choice.md). |
 
 ## Example
 

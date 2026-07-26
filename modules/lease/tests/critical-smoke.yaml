@@ -10,14 +10,13 @@ metadata:
     again.
 imports:
   Lease: ../
-  Cache: ../../cache
-  CacheMemory: ../../cache-memory
+  KvStoreMemory: ../../kv-store-memory
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref Test
 ---
-kind: CacheMemory.Store
+kind: KvStoreMemory.Store
 metadata: { name: Mem }
 ---
 kind: Lease.Critical

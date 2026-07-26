@@ -175,6 +175,13 @@ projects:
       - path: apps/hub/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: idempotency
+    key: idempotency
+    changelog: modules/idempotency/CHANGELOG.md
+    replacements:
+      - path: modules/idempotency/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: image
     key: image
     changelog: modules/image/CHANGELOG.md
@@ -189,6 +196,34 @@ projects:
       - path: modules/javascript/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
+  - label: kv-store
+    key: kv-store
+    changelog: modules/kv-store/CHANGELOG.md
+    replacements:
+      - path: modules/kv-store/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: kv-store-memory
+    key: kv-store-memory
+    changelog: modules/kv-store-memory/CHANGELOG.md
+    replacements:
+      - path: modules/kv-store-memory/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: kv-store-redis
+    key: kv-store-redis
+    changelog: modules/kv-store-redis/CHANGELOG.md
+    replacements:
+      - path: modules/kv-store-redis/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: kv-store-sql
+    key: kv-store-sql
+    changelog: modules/kv-store-sql/CHANGELOG.md
+    replacements:
+      - path: modules/kv-store-sql/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: lease
     key: lease
     changelog: modules/lease/CHANGELOG.md
@@ -264,6 +299,13 @@ projects:
     changelog: modules/run/CHANGELOG.md
     replacements:
       - path: modules/run/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
+  - label: scheduler
+    key: scheduler
+    changelog: modules/scheduler/CHANGELOG.md
+    replacements:
+      - path: modules/scheduler/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
   - label: shell

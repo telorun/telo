@@ -7,14 +7,26 @@ import {
   isCancellationError,
   parseDurationMs,
   resolveInvocableDispatcher,
+  resolveRefInstance,
 } from "@telorun/sdk";
-import { type CacheStore, resolveCacheStore } from "@telorun/cache";
+import type { KvStore } from "@telorun/kv-store";
 import { randomUUID } from "node:crypto";
 import { Mutex } from "./mutex.js";
 
+function isKvStore(value: unknown): value is KvStore {
+  const candidate = value as KvStore | undefined;
+  return (
+    !!candidate &&
+    typeof candidate.get === "function" &&
+    typeof candidate.putIfAbsent === "function" &&
+    typeof candidate.compareAndSet === "function" &&
+    typeof candidate.compareAndDelete === "function"
+  );
+}
+
 interface CriticalResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: unknown;
   ttl: string;
   detach?: boolean;
   invoke?: unknown;
@@ -74,7 +86,12 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     }
     if (inputs.op === "cancel") return this.cancelActive(inputs);
 
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = resolveRefInstance<KvStore>(
+      this.resource.store,
+      this.ctx,
+      isKvStore,
+      () => `Lease.Critical "${name}": 'store'`,
+    );
     const mutex = new Mutex(store, name, this.ttlMs);
     // The holder token is both the 409 payload and the release guard — unique
     // per acquisition so a stale holder can't free another owner's lease.
@@ -82,6 +99,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
 
     const acq = await mutex.acquire(inputs.key, holder);
     if (!acq.acquired) return { acquired: false, holder: acq.holder ?? null };
+    const version = acq.version!;
 
     const dispatch = resolveInvocableDispatcher(
       this.resource.invoke,
@@ -108,7 +126,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
         } finally {
           this.active.delete(inputs.key);
           source.dispose();
-          await mutex.release(inputs.key, holder);
+          await mutex.release(inputs.key, version);
         }
       });
       return { acquired: true, holder: null };
@@ -118,7 +136,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
       const result = await dispatch(bodyInputs);
       return { acquired: true, holder: null, result };
     } finally {
-      await mutex.release(inputs.key, holder);
+      await mutex.release(inputs.key, version);
     }
   }
 

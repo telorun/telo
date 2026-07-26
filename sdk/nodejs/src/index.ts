@@ -9,6 +9,8 @@ export * from "./capabilities/provider.js";
 export * from "./capabilities/runnable.js";
 export * from "./context-provider.js";
 export * from "./duration.js";
+export * from "./json-value.js";
+export * from "./resolve-ref-instance.js";
 export * from "./controller-context.js";
 export * from "./controller-policy.js";
 export * from "./evaluation-context.js";

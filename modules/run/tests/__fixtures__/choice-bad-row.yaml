@@ -1,0 +1,36 @@
+# Not a runnable test — a `telo check` fixture. Every row of a Run.Choice must
+# satisfy the declared `outputType`, including rows a given input would never
+# select. `choices[1]` here is structurally wrong (missing `cost`, and `costt`
+# is not a declared property), which analysis must reject even though
+# `choices[0]` is fine and would win for most inputs.
+kind: Telo.Application
+metadata:
+  name: ChoiceBadRowFixture
+  version: 1.0.0
+imports:
+  Run: ../../
+  Type: ../../../type
+---
+kind: Run.Choice
+metadata:
+  name: BadRow
+inputs:
+  order: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [tier, cost]
+    additionalProperties: false
+    properties:
+      tier: { type: string }
+      cost: { type: number }
+choices:
+  - when: !cel "inputs.order.total >= 100"
+    value:
+      tier: free
+      cost: 0
+  - when: !cel "inputs.order.weight > 20"
+    value:
+      tier: freight
+      costt: 60

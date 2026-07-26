@@ -28,6 +28,10 @@ node_modules/
 dist
 app-dist
 
+# Bundled controllers (pkg:telo/local/js) — build artifacts emitted by
+# `pnpm run build:bundles`, packed into the module artifact at publish time.
+modules/*/nodejs/*.mjs
+
 # Python
 python/__pycache__/
 python/*.py[cod]

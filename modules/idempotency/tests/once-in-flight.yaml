@@ -1,0 +1,134 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencyInFlightTest
+  version: 1.0.0
+  description: |
+    Covers `in-flight` — the subtlest state Idempotency.Once produces, and the
+    one where an inverted branch or a dropped holder would be invisible in the
+    happy-path tests.
+
+    A first call is dispatched DETACHED with a slow body, so its claim is still
+    held when a second call for the same key arrives. That second call must
+    report `in-flight`, carry the first caller's holder token, and — the decisive
+    part — must NOT have run the body.
+
+    Also covers the two input guards: an empty key is ERR_INVALID_KEY rather than
+    a fabricated `in-flight` that no caller could ever act on.
+imports:
+  Idempotency: ../
+  KvStoreMemory: ../../kv-store-memory
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestInFlight
+  - !ref TestEmptyKey
+---
+kind: KvStoreMemory.Store
+metadata: { name: Store }
+---
+kind: CacheMemory.Store
+metadata: { name: Counters }
+---
+kind: Cache.Entry
+metadata: { name: Put }
+store: !ref Counters
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: Get }
+store: !ref Counters
+---
+# A body slow enough that the second call lands while its claim is still held.
+kind: Run.Sequence
+metadata:
+  name: SlowBody
+steps:
+  - name: read
+    invoke: !ref Get
+    inputs: { key: runs }
+  - name: bump
+    invoke: !ref Put
+    inputs:
+      key: runs
+      value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
+  - name: linger
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "600ms"
+      value: {}
+---
+kind: Idempotency.Once
+metadata:
+  name: SlowOnce
+store: !ref Store
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref SlowBody
+---
+# Detaching the first call is what makes the collision observable: the claim is
+# taken and held while this sequence carries on to the second call.
+kind: Run.Detach
+metadata: { name: StartDetached }
+invoke: !ref SlowOnce
+---
+kind: Run.Sequence
+metadata:
+  name: TestInFlight
+steps:
+  - name: first
+    invoke: !ref StartDetached
+    inputs: { key: "collide" }
+  # Let the detached call claim the key before racing it.
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "150ms"
+      value: {}
+  - name: second
+    invoke: !ref SlowOnce
+    inputs: { key: "collide" }
+  - name: verifyState
+    inputs:
+      actual: !cel "steps.second.result.state"
+      expected: in-flight
+    invoke: { kind: Assert.Equals }
+  - name: verifyNotExecuted
+    inputs:
+      actual: !cel "steps.second.result.executed"
+      expected: false
+    invoke: { kind: Assert.Equals }
+  # An in-flight collision reports WHO holds the key, which is what a 409
+  # response needs; a null holder here would make the state undiagnosable.
+  - name: verifyHolder
+    inputs:
+      actual: !cel "steps.second.result.holder != null"
+      expected: true
+    invoke: { kind: Assert.Equals }
+  # The decisive assertion: the collision did not run the body a second time.
+  - name: count
+    invoke: !ref Get
+    inputs: { key: runs }
+  - name: verifyRanOnce
+    inputs:
+      actual: !cel "string(steps.count.result.value)"
+      expected: "1"
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata:
+  name: TestEmptyKey
+steps:
+  - name: attempt
+    try:
+      - name: go
+        invoke: !ref SlowOnce
+        inputs: { key: "" }
+    catch:
+      - name: verify
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_KEY
+        invoke: { kind: Assert.Equals }
