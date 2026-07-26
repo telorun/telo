@@ -31,6 +31,10 @@
       "bun": "./src/value.ts",
       "import": "./dist/value.js"
     },
+    "./choice": {
+      "bun": "./src/choice.ts",
+      "import": "./dist/choice.js"
+    },
     "./loop": {
       "bun": "./src/loop.ts",
       "import": "./dist/loop.js"

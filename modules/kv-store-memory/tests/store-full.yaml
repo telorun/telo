@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: KvStoreMemoryFullTest
+  version: 1.0.0
+  description: |
+    The memory store refuses to evict. Reaching `maxEntries` is an error, not a
+    silent drop — discarding a settled record would let an already-completed
+    operation run again, which is the one thing this store exists to prevent.
+
+    `maxEntries: 1` makes the boundary reachable: the first key claims, the
+    second must raise ERR_STORE_FULL rather than quietly displacing it. The
+    first key is then confirmed still settled, proving nothing was evicted.
+imports:
+  Idempotency: ../../idempotency
+  KvStoreMemory: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestOverflow
+---
+kind: KvStoreMemory.Store
+metadata: { name: TinyStore }
+maxEntries: 1
+---
+kind: Run.Value
+metadata: { name: Body }
+value:
+  ok: true
+---
+kind: Idempotency.Once
+metadata:
+  name: Once
+store: !ref TinyStore
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref Body
+---
+kind: Run.Sequence
+metadata:
+  name: TestOverflow
+steps:
+  - name: first
+    invoke: !ref Once
+    inputs: { key: "k1" }
+  - name: verifyFirst
+    inputs:
+      actual: !cel "steps.first.result.state"
+      expected: fresh
+    invoke: { kind: Assert.Equals }
+  - name: overflow
+    try:
+      - name: go
+        invoke: !ref Once
+        inputs: { key: "k2" }
+    catch:
+      - name: verifyRaised
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_STORE_FULL
+        invoke: { kind: Assert.Equals }
+  # The record that was already there must be untouched — an overflow may not
+  # cost a settled result.
+  - name: replay
+    invoke: !ref Once
+    inputs: { key: "k1" }
+  - name: verifyRetained
+    inputs:
+      actual: !cel "steps.replay.result.state"
+      expected: replayed
+    invoke: { kind: Assert.Equals }

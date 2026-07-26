@@ -1,0 +1,196 @@
+kind: Telo.Application
+metadata:
+  name: RunChoiceTest
+  version: 1.0.0
+  description: |
+    Covers Run.Choice's four behaviours: first-match wins (a later row that
+    would also match is never evaluated), a row's `value` may carry `!cel`
+    leaves, `default` supplies the no-match value, and a table with no
+    `default` and no match throws ERR_NO_MATCH rather than returning null.
+    Also covers the two contract errors: a row whose `value` violates the
+    declared `outputType`, and a `when` that isn't a boolean.
+imports:
+  Run: ../
+  Type: ../../type
+  Assert: ../../assert
+targets:
+  - !ref TestFirstMatch
+  - !ref TestSecondRow
+  - !ref TestDefault
+  - !ref TestNoMatch
+  - !ref TestOutputInvalid
+  - !ref TestInvalidPredicate
+---
+# A shipping tier: two predicates plus a default, with a declared outputType
+# every row must satisfy.
+kind: Run.Choice
+metadata:
+  name: ShippingTier
+inputs:
+  order: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [tier, cost]
+    additionalProperties: false
+    properties:
+      tier: { type: string }
+      cost: { type: number }
+choices:
+  - when: !cel "inputs.order.total >= 100"
+    value:
+      tier: free
+      cost: 0
+  - when: !cel "inputs.order.weight > 20"
+    value:
+      tier: freight
+      cost: !cel "inputs.order.weight * 2.0"
+default:
+  value:
+    tier: standard
+    cost: 10
+---
+# A row whose shape only a RUNTIME value can violate: `n` is declared untyped
+# (dyn), so `inputs.n` statically satisfies a string slot and the analyzer
+# cannot rule it out — but an integer arrives at invoke time and fails the
+# contract. A row that disagrees STRUCTURALLY is rejected by `telo check`
+# instead, which is why this case has to be built from a dyn input.
+kind: Run.Choice
+metadata:
+  name: BadShape
+inputs:
+  n: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [tier]
+    additionalProperties: false
+    properties:
+      tier: { type: string }
+choices:
+  - when: !cel "inputs.n != null"
+    value:
+      tier: !cel "inputs.n"
+---
+# A non-boolean predicate is an authoring mistake, not a truthy match. Built from
+# a dyn input for the same reason as BadShape above: `when` declares
+# `type: boolean`, so a statically-typed non-boolean is now a `telo check` error
+# and only a dyn expression can still reach the runtime guard.
+kind: Run.Choice
+metadata:
+  name: BadPredicate
+inputs:
+  n: {}
+choices:
+  - when: !cel "inputs.n"
+    value: nope
+---
+# No default — a non-exhaustive table must error, never return null.
+kind: Run.Choice
+metadata:
+  name: Exhaustive
+inputs:
+  n: { type: integer }
+choices:
+  - when: !cel "inputs.n > 0"
+    value: positive
+---
+kind: Run.Sequence
+metadata:
+  name: TestFirstMatch
+steps:
+  # Matches BOTH rows; row order decides, so `free` wins over `freight`.
+  - name: tier
+    invoke: !ref ShippingTier
+    inputs:
+      order: { total: 150.0, weight: 30.0 }
+  - name: verify
+    inputs:
+      actual: !cel "steps.tier.result"
+      expected: { tier: free, cost: 0.0 }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: TestSecondRow
+steps:
+  # Fails row 1, matches row 2 — and the row's `!cel` leaf is evaluated.
+  - name: tier
+    invoke: !ref ShippingTier
+    inputs:
+      order: { total: 20.0, weight: 30.0 }
+  - name: verify
+    inputs:
+      actual: !cel "steps.tier.result"
+      expected: { tier: freight, cost: 60.0 }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: TestDefault
+steps:
+  - name: tier
+    invoke: !ref ShippingTier
+    inputs:
+      order: { total: 20.0, weight: 1.0 }
+  - name: verify
+    inputs:
+      actual: !cel "steps.tier.result"
+      expected: { tier: standard, cost: 10.0 }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: TestNoMatch
+steps:
+  - name: attempt
+    try:
+      - name: choose
+        invoke: !ref Exhaustive
+        inputs: { n: -1 }
+    catch:
+      - name: verify
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_NO_MATCH
+        invoke:
+          kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: TestOutputInvalid
+steps:
+  - name: attempt
+    try:
+      - name: choose
+        invoke: !ref BadShape
+        inputs: { n: 1 }
+    catch:
+      - name: verify
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_OUTPUT_INVALID
+        invoke:
+          kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: TestInvalidPredicate
+steps:
+  - name: attempt
+    try:
+      - name: choose
+        invoke: !ref BadPredicate
+        inputs: { n: 1 }
+    catch:
+      - name: verify
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_PREDICATE
+        invoke:
+          kind: Assert.Equals

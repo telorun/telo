@@ -7,6 +7,7 @@ import {
   validateAgainstSchema,
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { collectValueSchemaIssues } from "./validate-value-schema.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -39,6 +40,8 @@ export function validateNestedInlineResources(
   manifest: ResourceManifest,
   rootSchema: Record<string, any>,
   lookupDefinition: InlineDefinitionLookup,
+  /** Needed to resolve a `telo#Type` field a value slot is validated against. */
+  allManifests: Record<string, any>[] = [],
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resource = { kind: manifest.kind, name: manifest.metadata?.name as string };
@@ -87,7 +90,16 @@ export function validateNestedInlineResources(
         : {};
     const data = { ...inline, metadata: { name: "__inline__", ...existingMeta } };
     const substituted = substituteCelFields(data, effectiveSchema, effectiveSchema);
-    for (const issue of validateAgainstSchema(substituted, effectiveSchema)) {
+    // The same two passes the top-level resource loop runs, so a kind's
+    // guarantees don't depend on whether the author wrote it standalone or
+    // inline (under a step's `invoke:`, or in a `with:` scope). `data` carries
+    // the synthesized metadata; `x-telo-value-schema-from` reads sibling fields
+    // off the resource, which are present either way.
+    const inlineIssues = [
+      ...validateAgainstSchema(substituted, effectiveSchema),
+      ...collectValueSchemaIssues(data, schema, allManifests),
+    ];
+    for (const issue of inlineIssues) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "SCHEMA_VIOLATION",

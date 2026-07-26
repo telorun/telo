@@ -10,15 +10,14 @@ metadata:
     idle key is a no-op (`cancelled: false`).
 imports:
   Lease: ../
-  Cache: ../../cache
-  CacheMemory: ../../cache-memory
+  KvStoreMemory: ../../kv-store-memory
   Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 targets:
   - !ref Test
 ---
-kind: CacheMemory.Store
+kind: KvStoreMemory.Store
 metadata: { name: Mem }
 ---
 kind: Lease.Critical

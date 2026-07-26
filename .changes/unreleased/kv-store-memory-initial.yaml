@@ -1,0 +1,9 @@
+project: kv-store-memory
+kind: Added
+body: >-
+  Initial release. In-process backend whose conditional writes are atomic within the
+  single-threaded event loop, so the guarantees hold for ONE process — development
+  and tests only. Overflowing `maxEntries` raises ERR_STORE_FULL as an InvokeError
+  (catchable from a manifest) rather than evicting, since dropping a record would
+  break the non-eviction guarantee.
+time: 2026-07-26T00:00:00.000000000+02:00

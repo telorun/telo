@@ -1,0 +1,126 @@
+kind: Telo.Library
+metadata:
+  name: idempotency
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    Idempotency.Once — durable at-most-once execution. Wraps a body that acts on
+    the outside world (charging a card, sending mail, firing a webhook) and runs
+    it AT MOST ONCE per key, across retries and process restarts. Backed by a
+    KvStore.Store, so the "has this already run?" check and the claim are a
+    single atomic operation — there is no window between them for a double
+    execution to slip through. A completed result is replayed; a failure releases
+    the key so a retry is possible; a holder that dies frees the key when its
+    claim lapses.
+files:
+  - nodejs/*.mjs
+imports:
+  KvStore: ../kv-store
+exports:
+  kinds:
+    - Once
+---
+# Idempotency.Once — the at-most-once decorator. Two durations, deliberately
+# distinct:
+#   claimTtl — how long ONE caller may hold the key while its body runs. Bounded
+#              so a process that dies mid-body frees the key instead of wedging
+#              it forever; renewed on a heartbeat while the body is in flight.
+#   ttl      — how long a COMPLETED result is remembered and replayed.
+# Branch on `state`: `fresh` (this call ran the body), `replayed` (a stored
+# result), `in-flight` (another caller owns the key right now — the body did NOT
+# run and there is no result yet).
+kind: Telo.Definition
+metadata:
+  name: Once
+  description: Runs a wrapped body at most once per key against a KvStore.Store, replaying the stored result on a repeat call.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/once.mjs#once
+throws:
+  codes:
+    ERR_INVALID_KEY:
+      description: '`key` was absent or empty — it identifies the operation, so it cannot be blank.'
+    ERR_CLAIM_LOST:
+      description: >-
+        The body ran but its claim had lapsed, so the result could not be
+        recorded and a later call may run it again. Raise `claimTtl`.
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    additionalProperties: false
+    properties:
+      key:
+        type: string
+        minLength: 1
+        description: >-
+          The idempotency key — a DETERMINISTIC id for the logical operation (a
+          request id, an order id), so a retry targets the same key. `minLength`
+          makes a literal empty key a `telo check` error and an empty value at
+          invoke time an inputType failure, rather than silently merging
+          unrelated calls onto one record.
+      inputs:
+        type: object
+        additionalProperties: true
+        description: Inputs forwarded to the wrapped body when this call claims the key.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    required: [executed, state]
+    additionalProperties: false
+    properties:
+      executed:
+        type: boolean
+        description: Whether THIS call ran the body. False for a replay and for an in-flight collision.
+      state:
+        type: string
+        enum: [fresh, replayed, in-flight]
+        description: >-
+          `fresh` — this call claimed the key and ran the body. `replayed` — the
+          key was already settled; `result` is the stored value. `in-flight` —
+          another caller holds the key; the body did not run and there is no
+          result. Distinguishing the last two is why `executed` alone is not
+          enough: both report `executed: false`.
+      result:
+        description: The body's result — freshly produced, or replayed from the store. Absent while `in-flight`.
+      holder:
+        type: [string, "null"]
+        description: On `in-flight`, the token of the caller currently running the body.
+schema:
+  type: object
+  required: [store, claimTtl, ttl, invoke]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: Reference to the KvStore.Store holding claims and settled results.
+      x-telo-ref: "std/kv-store#Store"
+    claimTtl:
+      title: Claim TTL
+      type: string
+      x-telo-eval: compile
+      description: >-
+        How long one caller may hold the key while its body runs (`2m`, `30s`).
+        Set it comfortably above the body's worst-case duration: the controller
+        renews it on a heartbeat, but if the process dies the key frees only
+        after this window. Too short and a slow body can be run twice; unbounded
+        and a crashed holder would wedge the key forever.
+    ttl:
+      title: TTL
+      type: string
+      x-telo-eval: compile
+      description: >-
+        How long a completed result is remembered and replayed (`24h`). After it
+        lapses the key is new again and the operation may run once more — set it
+        to at least the window in which a caller could retry.
+    invoke:
+      title: Invoke
+      description: The wrapped body run at most once per key.
+      type: object
+      anyOf:
+        - x-telo-ref: "telo#Invocable"
+        - x-telo-ref: "telo#Runnable"

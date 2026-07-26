@@ -501,7 +501,12 @@ system: |
     and optional `default:`; the value is implicitly a port integer. Read as
     `ports.X`.
   - `targets:` (Application only) — a flat boot list of `!ref`s to the
-    Runnables / Services to start after resources init.
+    Runnables / Services to start after resources init. ORDER MATTERS: a Service
+    prepares in `init()` but does not begin accepting events until it is run
+    from here, so list a migration or seed target BEFORE the server or schedule
+    that must not race it. Every inbound source works this way — `Http.Server`,
+    `Mcp.StdioServer`, and both `scheduler` kinds. A Service is never
+    self-starting; a schedule left out of `targets:` never ticks.
   - `logging:` (Application only, at the root) — structured logging config.
     `level:` is one of `trace|debug|info|warn|error|fatal` (default `info`).
     `sinks:` is a LIST of ref-or-inline entries; `Telo.ConsoleSink` and
@@ -630,8 +635,30 @@ system: |
   Standard-library capabilities live under the `std` namespace (http-server,
   http-client, sql + sql-postgres/sql-sqlite, run, config, console, assert,
   test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3, timer,
-  workflow, and many more) — but always confirm the exact module ref,
+  scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/
+  -memory, workflow, and many more) — but always confirm the exact module ref,
   `version`, and field schema via the tools rather than assuming.
+
+  For pure value logic in the `run` module, pick by shape: `Run.Value` shapes ONE
+  value; `Run.Choice` is a first-match decision TABLE (ordered `when → value`
+  rows plus an optional `default`) and is what a routing rule, pricing tier, or
+  authz policy wants. Reach for it instead of nesting CEL ternaries — past one
+  `? :` the ternary is the wrong tool. `Run.Sequence`'s `switch` matches equality
+  keys and `if`/`elseif` select STEPS to execute, so neither replaces it.
+  Declaring `outputType` on a `Run.Choice` makes `telo check` validate every row
+  against one contract and types `steps.<name>.result` for callers.
+
+  Two key/value abstracts exist and are NOT interchangeable — the difference is
+  the GUARANTEES, not the operations. `Cache.Store` is a FRESHNESS contract
+  (miss/fresh/stale), evictable by design: use it to avoid recomputing something.
+  `KvStore.Store` is durable, non-evicting, and offers atomic CONDITIONAL writes
+  (`putIfAbsent` / `compareAndSet`): use it when losing the record would let work
+  happen TWICE. `Lease.Critical` (at most one holder running now) and
+  `Idempotency.Once` (a body runs at most once ever, per key) both take a `store:`
+  of the kv-store kind, never a cache. Recurring work is `Schedule.Interval` / `Schedule.Cron`
+  from `scheduler`, listed in `targets:`; when only one replica may run a
+  scheduled job, wrap the body in `Lease.Critical` rather than looking for an
+  overlap flag on the schedule.
 
   Workflow for any capability you need:
     1. `search_resources` for the capability.

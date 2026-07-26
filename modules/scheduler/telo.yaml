@@ -1,0 +1,123 @@
+kind: Telo.Library
+metadata:
+  name: scheduler
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    Recurring time sources. Where `timer` ships the one-shot `Timer.Delay`,
+    scheduler ships the inbound *time* source Telo was missing:
+    `Schedule.Interval` fires a body every duration, `Schedule.Cron` fires it on
+    a cron expression. Both are Services — they prepare on init, start ticking
+    when the app runs them from `targets`, and stop on teardown — so a schedule
+    orders against migrations and other boot targets exactly like an
+    `Http.Server` does.
+files:
+  - nodejs/*.mjs
+exports:
+  kinds:
+    - Interval
+    - Cron
+---
+# Schedule.Interval — fire the body every `every`. The first tick lands one
+# interval after the schedule starts, not immediately.
+kind: Telo.Definition
+metadata:
+  name: Interval
+  description: Fires a body every fixed duration while the app runs; a failing tick is logged and the schedule continues.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/interval.mjs#interval
+schema:
+  type: object
+  required: [every, invoke]
+  additionalProperties: false
+  properties:
+    every:
+      title: Every
+      type: string
+      x-telo-eval: compile
+      description: Tick period as a duration (`30s`, `1m`, `1h`).
+    invoke:
+      title: Invoke
+      description: The body fired on each tick.
+      type: object
+      anyOf:
+        - x-telo-ref: "telo#Invocable"
+        - x-telo-ref: "telo#Runnable"
+    inputs:
+      title: Inputs
+      type: object
+      additionalProperties: true
+      description: Inputs forwarded to the body on each fire, re-evaluated per tick.
+      x-telo-context:
+        type: object
+        properties: {}
+    when:
+      title: When
+      type: boolean
+      description: >-
+        Optional CEL boolean evaluated before each fire. A false gate SKIPS the
+        tick entirely — no dispatch, no lease or idempotency claim, no trace
+        event — and the timer re-arms as normal. It is a skip, not an error.
+        Complements the schedule: the period says when to consider firing,
+        `when` says whether the current state warrants it.
+      x-telo-context:
+        type: object
+        properties: {}
+---
+# Schedule.Cron — fire the body on a cron expression, in `timezone` (UTC by
+# default). Standard 5-field cron, with optional leading seconds.
+kind: Telo.Definition
+metadata:
+  name: Cron
+  description: Fires a body on a cron schedule in a given timezone; a failing tick is logged and the schedule continues.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/cron.mjs#cron
+schema:
+  type: object
+  required: [cron, invoke]
+  additionalProperties: false
+  properties:
+    cron:
+      title: Cron
+      type: string
+      x-telo-eval: compile
+      description: >-
+        Cron expression — 5 fields (`m h dom mon dow`), or 6 with a leading
+        seconds field. `0 2 * * *` is daily at 02:00.
+    timezone:
+      title: Timezone
+      type: string
+      default: UTC
+      x-telo-eval: compile
+      description: >-
+        IANA timezone the expression is interpreted in (`Europe/Warsaw`).
+        Defaults to UTC so a schedule means the same thing on every host.
+    invoke:
+      title: Invoke
+      description: The body fired on each tick.
+      type: object
+      anyOf:
+        - x-telo-ref: "telo#Invocable"
+        - x-telo-ref: "telo#Runnable"
+    inputs:
+      title: Inputs
+      type: object
+      additionalProperties: true
+      description: Inputs forwarded to the body on each fire, re-evaluated per tick.
+      x-telo-context:
+        type: object
+        properties: {}
+    when:
+      title: When
+      type: boolean
+      description: >-
+        Optional CEL boolean evaluated before each fire. A false gate SKIPS the
+        tick entirely and the schedule re-arms. Cron expresses the calendar;
+        `when` gates on state the calendar cannot see.
+      x-telo-context:
+        type: object
+        properties: {}

@@ -10,6 +10,7 @@ exports:
   kinds:
     - Sequence
     - Value
+    - Choice
     - Loop
     - Iteration
     - Projection
@@ -376,6 +377,126 @@ schema:
     - value:
         - { type: text, text: page rendered }
         - { type: image, data: aGVsbG8=, mediaType: image/png }
+---
+# Run.Choice — a first-match decision table. Rows are evaluated in manifest
+# order; the first `when` that is true contributes its `value` as the invoke
+# result. Where Run.Value shapes ONE value (branching only via nested CEL
+# ternaries, unreadable past two arms) and Run.Sequence's `switch` matches
+# equality keys, Choice takes arbitrary predicates and stays a pure value — no
+# steps, no side effects. Declare `outputType` to give every row one shared
+# result contract and to type `steps.<name>.result` for callers.
+kind: Telo.Definition
+metadata:
+  name: Choice
+  description: First-match decision table — returns the value of the first choice whose predicate holds, or a declared default.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#choice
+throws:
+  codes:
+    ERR_NO_MATCH:
+      description: No choice matched and no `default` is declared.
+    ERR_INVALID_PREDICATE:
+      description: A choice's `when` evaluated to something other than a boolean.
+    ERR_OUTPUT_INVALID:
+      description: The winning row's `value` does not satisfy the declared `outputType`.
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - choices
+  properties:
+    inputs:
+      title: Inputs
+      description: >-
+        The decision's input contract: a JSON Schema property map (name →
+        schema), NOT values. Each key declares one input the resource accepts;
+        an empty schema `{}` declares an untyped (dyn) input. Callers supply
+        actual values at invoke time, and rows read them as `!cel "inputs.x"`.
+      type: object
+      additionalProperties: true
+    outputType:
+      title: Output Type
+      description: >-
+        Named type reference or inline type definition every row's `value` must
+        satisfy. Optional; declaring it is what gives the table one shared
+        result contract and lets a caller's `steps.<name>.result` type-check.
+      x-telo-ref: "telo#Type"
+    choices:
+      title: Choices
+      description: >-
+        Ordered decision rows. The FIRST row whose `when` is true wins —
+        manifest order is the priority — and no later row is evaluated.
+      type: array
+      minItems: 1
+      # Anchored on the array (not its items) so the annotation resolves
+      # `inputs` against the resource root rather than an individual row.
+      x-telo-context:
+        type: object
+        properties:
+          inputs:
+            type: object
+            x-telo-context-from: "inputs"
+      items:
+        title: Choice
+        type: object
+        additionalProperties: false
+        required:
+          - when
+          - value
+        properties:
+          when:
+            title: When
+            type: boolean
+            description: >-
+              CEL predicate over `inputs`. Must evaluate to a boolean — a
+              truthy string or number is an authoring mistake in a decision
+              table, not a match, and is reported as ERR_INVALID_PREDICATE.
+          value:
+            title: Value
+            description: >-
+              A CEL expression — or a structure (map / array) with `!cel`
+              leaves — evaluated over `inputs` when this row wins. Its result
+              becomes the resource's invoke result. Checked against `outputType`
+              at analysis time when one is declared, so a row that disagrees
+              with the table's contract is caught before it ever wins.
+            x-telo-value-schema-from: outputType
+    default:
+      title: Default
+      description: >-
+        Value produced when no row matches. Omit it to make a non-exhaustive
+        table an error (ERR_NO_MATCH) instead of a silent null.
+      type: object
+      additionalProperties: false
+      required:
+        - value
+      x-telo-context:
+        type: object
+        properties:
+          inputs:
+            type: object
+            x-telo-context-from: "inputs"
+      properties:
+        value:
+          title: Value
+          description: The fallback value, evaluated over `inputs` like a row's `value`.
+          x-telo-value-schema-from: outputType
+  examples:
+    - inputs:
+        order: {}
+      choices:
+        - when: !cel "inputs.order.total >= 100"
+          value:
+            tier: free
+            cost: 0
+        - when: !cel "inputs.order.weight > 20"
+          value:
+            tier: freight
+            cost: !cel "inputs.order.weight * 2"
+      default:
+        value:
+          tier: standard
+          cost: 10
 ---
 kind: Telo.Definition
 metadata:

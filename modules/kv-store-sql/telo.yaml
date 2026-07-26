@@ -1,0 +1,71 @@
+kind: Telo.Library
+metadata:
+  name: kv-store-sql
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    KvStoreSql.Store — a KvStore.Store backed by an Sql.Connection. Each
+    conditional write is ONE statement whose WHERE carries the condition, so the
+    database resolves the race: `putIfAbsent` is a unique-key
+    `INSERT … ON CONFLICT DO UPDATE … WHERE <expired>`, `compareAndSet` and
+    `compareAndDelete` guard on the stored revision. Correct across processes and
+    hosts, with no client-side read-then-write window.
+
+    SUPPORTED DIALECTS: PostgreSQL (sql-postgres) and SQLite (sql-sqlite). It
+    targets the Sql.Connection abstract for connection handling, but the
+    `putIfAbsent` statement is not dialect-free — `ON CONFLICT … DO UPDATE … WHERE`
+    is Postgres/SQLite syntax. A future MySQL or SQL Server driver needs a variant
+    of THIS store (MySQL's `INSERT … ON DUPLICATE KEY UPDATE` has no WHERE
+    clause), not merely a new connection driver.
+files:
+  - nodejs/*.mjs
+imports:
+  KvStore: ../kv-store
+  Sql: ../sql
+exports:
+  kinds:
+    - Store
+---
+# KvStoreSql.Store — one row per key: value, revision, expiry.
+#
+# Expiries are stored as epoch milliseconds supplied by the WRITING process, not
+# as database `now()`. That keeps the SQL dialect-neutral, at the cost of
+# depending on roughly-aligned clocks across instances: a host whose clock runs
+# far ahead can consider another writer's record expired early. Keep hosts on
+# NTP, and size TTLs well above both the work's duration and any expected skew.
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: KvStore.Store backed by an Sql.Connection, using a unique-key INSERT … ON CONFLICT plus revision-guarded UPDATE/DELETE for atomic conditional writes.
+capability: Telo.Provider
+extends: KvStore.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+schema:
+  type: object
+  required: [connection]
+  additionalProperties: false
+  properties:
+    connection:
+      title: Connection
+      description: Reference to the Sql.Connection this store reads and writes through.
+      x-telo-ref: "std/sql#Connection"
+    table:
+      title: Table
+      type: string
+      default: telo_kv_store
+      x-telo-eval: compile
+      description: >-
+        Table holding the key/value records. Use distinct tables to isolate
+        unrelated key spaces that share a database.
+    createTable:
+      title: Create Table
+      type: boolean
+      default: true
+      x-telo-eval: compile
+      description: >-
+        Whether to `CREATE TABLE IF NOT EXISTS` on init. Set false when the table
+        is owned by the app's own migrations, or when the runtime user holds no
+        DDL grant — where an unconditional CREATE would fail the boot.

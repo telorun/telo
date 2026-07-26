@@ -1,0 +1,154 @@
+kind: Telo.Application
+metadata:
+  name: KvStoreSqlTest
+  version: 1.0.0
+  description: |
+    Runs Idempotency.Once against KvStoreSql.Store on an in-memory SQLite
+    database, so the claim under test is the real `INSERT … ON CONFLICT`
+    statement rather than the in-process store's event-loop atomicity.
+
+    Asserts the whole cycle: a first call runs the body, a repeat replays the
+    settled result without re-running it, and a failed body releases the row so
+    the key stays retryable.
+imports:
+  Idempotency: ../../idempotency
+  KvStoreSql: ../
+  SqlSqlite: ../../sql-sqlite
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestReplay
+  - !ref TestFailureReleases
+---
+kind: SqlSqlite.Connection
+metadata: { name: Db }
+file: ":memory:"
+---
+kind: KvStoreSql.Store
+metadata: { name: Store }
+connection: !ref Db
+table: idempotency_keys
+---
+kind: CacheMemory.Store
+metadata: { name: Counters }
+---
+kind: Cache.Entry
+metadata: { name: Put }
+store: !ref Counters
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: Get }
+store: !ref Counters
+---
+kind: Run.Sequence
+metadata:
+  name: Body
+steps:
+  - name: read
+    invoke: !ref Get
+    inputs: { key: runs }
+  - name: bump
+    invoke: !ref Put
+    inputs:
+      key: runs
+      value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
+outputs:
+  ok: true
+  # CEL integers surface as BigInt, which plain JSON.stringify cannot serialize.
+  # Persisting one exercises the store's encoder; without it, settle() would
+  # throw and the operation would be re-runnable despite having succeeded.
+  attempt: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
+---
+kind: Idempotency.Once
+metadata:
+  name: OnceSql
+store: !ref Store
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref Body
+---
+kind: Run.Sequence
+metadata:
+  name: AlwaysFails
+steps:
+  - name: boom
+    throw:
+      code: ERR_UPSTREAM
+      message: upstream refused
+---
+kind: Idempotency.Once
+metadata:
+  name: FailingOnceSql
+store: !ref Store
+claimTtl: "30s"
+ttl: "60s"
+invoke: !ref AlwaysFails
+---
+kind: Run.Sequence
+metadata:
+  name: TestReplay
+steps:
+  - name: first
+    invoke: !ref OnceSql
+    inputs: { key: "sql-key-1" }
+  - name: verifyFirst
+    inputs:
+      actual: !cel "steps.first.result.state"
+      expected: fresh
+    invoke: { kind: Assert.Equals }
+  - name: second
+    invoke: !ref OnceSql
+    inputs: { key: "sql-key-1" }
+  - name: verifySecond
+    inputs:
+      actual: !cel "steps.second.result.state"
+      expected: replayed
+    invoke: { kind: Assert.Equals }
+  # The replayed integer must come back as the SAME value that went in — a lossy
+  # or stringified round-trip would silently change the answer on the second
+  # call. Compared via string() because Assert.Equals renders `actual` with
+  # JSON.stringify, which throws on a BigInt even when the values match.
+  - name: verifyIntRoundTrip
+    inputs:
+      actual: !cel "string(steps.second.result.result.attempt) + '/' + string(steps.second.result.result.ok)"
+      expected: "1/true"
+    invoke: { kind: Assert.Equals }
+  - name: count
+    invoke: !ref Get
+    inputs: { key: runs }
+  - name: verifyRanOnce
+    inputs:
+      actual: !cel "string(steps.count.result.value)"
+      expected: "1"
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata:
+  name: TestFailureReleases
+steps:
+  - name: attempt
+    try:
+      - name: go
+        invoke: !ref FailingOnceSql
+        inputs: { key: "sql-key-2" }
+    catch:
+      - name: verifyError
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UPSTREAM
+        invoke: { kind: Assert.Equals }
+  # The row must be gone, so the key reads as new and a retry can claim it.
+  - name: retry
+    try:
+      - name: go
+        invoke: !ref FailingOnceSql
+        inputs: { key: "sql-key-2" }
+    catch:
+      - name: verifyRetryable
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UPSTREAM
+        invoke: { kind: Assert.Equals }

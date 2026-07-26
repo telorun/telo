@@ -6,18 +6,20 @@ metadata:
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
-    Lease.Critical — a declarative critical section over a Cache.Store. Wraps a
-    body and owns the whole acquire → run → release lifecycle around it, so a
-    caller never issues imperative acquire/release calls (mirroring how
+    Lease.Critical — a declarative critical section over a KvStore.Store.
+    Wraps a body and owns the whole acquire → run → release lifecycle around it,
+    so a caller never issues imperative acquire/release calls (mirroring how
     Cache.View wraps caching and Sql.Transaction wraps begin/commit/rollback).
     At most one holder per `key`; a second attempt while one is active does NOT
     run the body and reports the current holder (branch on `acquired` — skip, or
     return 409). Leases are time-bounded (`ttl`): if a holder dies without
-    releasing, the lease self-heals on expiry. The atomic gate is Cache.Store's
-    `increment`, so the mutex is race-free across concurrent callers and shared
-    across instances when the store is (e.g. CacheRedis.Store).
+    releasing, the lease self-heals on expiry. The atomic gate is the store's
+    `claim`, so the mutex is race-free across concurrent callers and shared
+    across instances when the store is (kv-store-sql, kv-store-redis).
+    The store is durable and non-evicting by contract — resting mutual exclusion
+    on a cache would let an evicted record admit a second holder.
 imports:
-  Cache: ../cache
+  KvStore: ../kv-store
 exports:
   kinds:
     - Critical
@@ -103,8 +105,11 @@ schema:
   properties:
     store:
       title: Store
-      description: Reference to the Cache.Store backing the lease (memory, or Redis for cross-instance).
-      x-telo-ref: "std/cache#Store"
+      description: >-
+        Reference to the KvStore.Store backing the lease. Use
+        kv-store-sql or kv-store-redis for cross-instance exclusion;
+        kv-store-memory is single-process only.
+      x-telo-ref: "std/kv-store#Store"
     ttl:
       title: TTL
       type: string

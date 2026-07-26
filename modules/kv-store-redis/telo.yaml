@@ -1,0 +1,62 @@
+kind: Telo.Library
+metadata:
+  name: kv-store-redis
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    KvStoreRedis.Store — a KvStore.Store backed by Redis. `putIfAbsent` is
+    `SET key value NX PX ttl`, atomic at the server (Redis removes an expired key,
+    so absent and lapsed are one state and NX is the whole condition). The two
+    compare-and-* operations run as Lua so the comparison and the write are a
+    single atomic step rather than a read followed by a write.
+
+    Note there is NO fallback store, unlike CacheRedis.Store. Cache failover is
+    safe — a miss just recomputes — but a conditional write served from a second,
+    unsynchronised store would let two callers both believe they won, which is the
+    exact failure this abstract exists to prevent. When Redis is unreachable,
+    operations fail loudly.
+
+    Run the server with `maxmemory-policy noeviction`: under an `allkeys-*` policy
+    a record can vanish before its TTL, and non-eviction is the guarantee.
+files:
+  - nodejs/*.mjs
+imports:
+  KvStore: ../kv-store
+exports:
+  kinds:
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: Redis-backed KvStore.Store using SET NX for putIfAbsent and two generic Lua scripts for revision-guarded compare-and-set/delete.
+capability: Telo.Provider
+extends: KvStore.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+schema:
+  type: object
+  required: [url]
+  additionalProperties: false
+  properties:
+    url:
+      title: URL
+      type: string
+      x-telo-eval: compile
+      description: Redis connection URL, e.g. `redis://localhost:6379` or `rediss://…`.
+    keyPrefix:
+      title: Key Prefix
+      type: string
+      default: "telo:kv:"
+      x-telo-eval: compile
+      description: >-
+        Prefix applied to every key, so unrelated key spaces can share one Redis
+        instance without colliding.
+    connectTimeout:
+      title: Connect Timeout
+      type: string
+      default: "2s"
+      x-telo-eval: compile
+      description: How long to wait for a Redis connection before failing (duration).

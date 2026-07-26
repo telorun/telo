@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: kv-store
+  namespace: std
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    The KvStore.Store abstract — a durable, NON-EVICTING key/value store with
+    atomic conditional writes (`putIfAbsent`, `compareAndSet`), backed natively by
+    a SQL unique key or a Redis SET NX.
+
+    Cache.Store is also a key/value store; what separates this one is the
+    GUARANTEES, not the operations. A cache may discard any record under memory
+    pressure and offers no compare-and-set. Here a record survives its full TTL
+    and writes can be made conditional — which is exactly what at-most-once
+    execution and cross-instance mutual exclusion need, because a dropped record
+    silently permits work to happen twice.
+
+    Locks, leases and idempotency records are PROTOCOLS, not storage, so they are
+    not in the abstract: `KeyedClaim` (from `@telorun/kv-store`) implements
+    claim → renew → settle | release once, over any conforming backend. Backends
+    (kv-store-memory, kv-store-redis, kv-store-sql) live in their own modules and
+    extend Store, mirroring the cache / vector-store families.
+exports:
+  kinds:
+    - Store
+---
+# KvStore.Store — the abstract backing store every kv-store backend implements. A
+# Telo.Provider: a configured store, NOT an operation you invoke. Consumers
+# (Lease.Critical, Idempotency.Once) reference it via
+# `x-telo-ref: "std/kv-store#Store"`; a concrete implementation satisfies the ref.
+#
+# The contract a backend must implement (see docs/contract.md — normative):
+#
+#   get(key)                                          → { value, version } | null
+#   putIfAbsent(key, value, ttlMs)                    → { value, version } | null
+#   compareAndSet(key, expectedVersion, value, ttlMs) → { value, version } | null
+#   compareAndDelete(key, expectedVersion)            → boolean
+#
+# `version` is an opaque, store-generated token naming one revision; handing it
+# back to a conditional write means "only if nothing changed since". A null return
+# is CONTENTION, not failure — the caller lost the race and needs no try/catch.
+#
+# Four primitives, not a claim protocol: putting the protocol in the abstract
+# forced every backend to re-express the same ownership guard (JS, SQL WHERE, Lua),
+# tripling the surface for a bug that admits a second holder. A backend that cannot
+# make putIfAbsent and compareAndSet atomic, or that evicts before a TTL lapses,
+# must not implement this abstract.
+kind: Telo.Abstract
+metadata:
+  name: Store
+capability: Telo.Provider
