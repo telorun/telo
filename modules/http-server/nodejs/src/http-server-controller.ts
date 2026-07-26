@@ -399,7 +399,7 @@ export async function create(
     let kind = "";
     let name = "";
     if (typeof invoke === "object" && invoke !== null) {
-      const resolved = ctx.resolveChildren(invoke);
+      const resolved = ctx.ensureKindRef(invoke);
       kind = resolved.kind;
       name = resolved.name;
     } else if (typeof invoke === "string") {

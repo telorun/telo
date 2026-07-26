@@ -1,11 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { MetadataFilter, VectorStoreHandle } from "./store.js";
-import { resolveVectorStore } from "./store-ref.js";
+import { type MetadataFilter, type VectorStoreHandle, isVectorStore } from "./store.js";
 
 interface RemovalResource {
   metadata: { name: string; module?: string };
-  store?: VectorStoreHandle | { name: string; alias?: string };
+  store?: VectorStoreHandle | KindRef<VectorStoreHandle>;
 }
 
 interface RemovalInputs {
@@ -28,7 +27,12 @@ class VectorRemovalOp implements ResourceInstance<RemovalInputs, { removed: numb
         `VectorStore.Removal "${this.resource.metadata.name}": provide 'ids' and/or 'metadataFilter'.`,
       );
     }
-    const store = resolveVectorStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isVectorStore,
+      () => `VectorStore.Removal "${this.resource.metadata.name}": 'store'`,
+      "std/vector-store#Store",
+    );
     return store.delete({ ids: inputs.ids, metadataFilter: inputs.metadataFilter });
   }
 

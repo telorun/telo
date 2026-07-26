@@ -1,11 +1,15 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { EmbedResult, EmbeddingIntent, EmbeddingModel } from "./embedding-model.js";
-import { resolveEmbeddingModel } from "./embedding-model-ref.js";
+import {
+  type EmbedResult,
+  type EmbeddingIntent,
+  type EmbeddingModel,
+  isEmbeddingModel,
+} from "./embedding-model.js";
 
 export interface EmbedResource {
   metadata: { name: string; module?: string };
-  model?: EmbeddingModel | { name: string; alias?: string };
+  model?: EmbeddingModel | KindRef<EmbeddingModel>;
   options?: Record<string, unknown>;
 }
 
@@ -32,7 +36,12 @@ class EmbedInvocable implements ResourceInstance<EmbedInputs, EmbedResult> {
 
   async invoke(inputs: EmbedInputs): Promise<EmbedResult> {
     const texts = normalizeInput(inputs?.input, this.intent, this.resource.metadata.name);
-    const model = resolveEmbeddingModel(this.resource.model, this.ctx);
+    const model = this.ctx.resolveRef(
+      this.resource.model,
+      isEmbeddingModel,
+      () => `${KIND_LABEL[this.intent]} "${this.resource.metadata.name}": 'model'`,
+      "std/embedding#Model",
+    );
     return model.embed({ texts, intent: this.intent, options: this.resource.options });
   }
 

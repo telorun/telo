@@ -374,7 +374,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)
    *  for controllers that resolve step/handler invokes to refs rather than live instances
-   *  (e.g. Run.Sequence via `resolveChildren`). The alias is reattached by the caller. */
+   *  (e.g. Run.Sequence via `ensureKindRef`). The alias is reattached by the caller. */
   resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;

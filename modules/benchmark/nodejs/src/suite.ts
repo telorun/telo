@@ -100,7 +100,7 @@ class BenchmarkSuite {
     for (const scenario of this.resource.scenarios) {
       const uniqueName = `${this.resource.metadata.name}_${scenario.name}`;
       const invoke = scenario.invoke as unknown as Record<string, unknown>;
-      const ref = this.ctx.resolveChildren(invoke, uniqueName);
+      const ref = this.ctx.ensureKindRef(invoke, uniqueName);
       const inputs = (scenario.inputs as Record<string, unknown> | undefined) ?? {};
       this.resolved.push({
         scenarioName: scenario.name,

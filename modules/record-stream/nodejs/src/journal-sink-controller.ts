@@ -1,10 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import { JournalStore, resolveJournal } from "./journal-store.js";
+import { JournalStore, isJournalStore } from "./journal-store.js";
 
 interface JournalSinkResource {
   metadata: { name: string; module?: string };
-  journal?: JournalStore | { name: string; alias?: string };
+  journal?: JournalStore | KindRef<JournalStore>;
 }
 
 interface JournalSinkInputs {
@@ -41,7 +41,12 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
     if (!input || typeof (input as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
       throw new InvokeError("ERR_INVALID_INPUT", `RecordStream.JournalSink "${name}": 'input' must be an AsyncIterable.`);
     }
-    const journal = resolveJournal(this.resource.journal, this.ctx);
+    const journal = this.ctx.resolveRef(
+      this.resource.journal,
+      isJournalStore,
+      () => `RecordStream.JournalSink "${name}": 'journal'`,
+      "std/record-stream#Journal",
+    );
 
     let count = 0;
     try {

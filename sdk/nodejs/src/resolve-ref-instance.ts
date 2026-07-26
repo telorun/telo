@@ -1,41 +1,42 @@
 import type { ModuleContext } from "./module-context.js";
+import type { KindRef } from "./ref.js";
+import { RuntimeError } from "./types.js";
 
 /** The slice of `ResourceContext` needed to resolve a reference. */
 export interface RefResolveContext {
   readonly moduleContext: ModuleContext;
 }
 
-/** A reference the kernel left unresolved: the target's name, plus the import
- *  alias when it crosses a library boundary. */
-interface ResourceRef {
-  name: string;
-  alias?: string;
-}
-
 /**
- * Resolve a `!ref` config field to a live instance of `T`.
+ * Resolve a `!ref` config field to a live instance of `T`. Controllers reach
+ * this as `ctx.resolveRef(value, guard, describe, expects)`; the standalone form
+ * is for callers holding only a `{ moduleContext }` slice rather than a full
+ * `ResourceContext`.
  *
- * **Why every controller needs this.** A reference is normally replaced with the
- * live `ResourceInstance` during Phase 5 injection, so a controller can just use
- * the field. That does not happen for a ref that crosses an import boundary —
- * a store, connection, or model resolved through another library's exports
- * arrives as the raw `{ name, alias }` shape instead. So a controller must handle
- * BOTH forms, and the alias form must route through the import's exported scope
- * rather than a bare local lookup, which would miss it entirely.
+ * Phase 5 injection normally replaces the slot with the live `ResourceInstance`
+ * before `init()` — local and cross-module refs alike, since injection resolves
+ * an aliased ref through the import's export table (and defers, rather than
+ * leaving a raw ref, when the import hasn't published its exports yet). So the
+ * common path here is the guard short-circuit.
  *
- * Every controller with a provider-shaped dependency pays this cost, and each one
- * had reimplemented it. One implementation means one place to simplify when the
- * kernel closes that gap, and one error message shape for authors.
+ * A raw {@link KindRef} still reaches a controller where injection does not
+ * reach the slot: a kind whose definition yields no field map, or a ref the
+ * controller obtained itself via `ctx.ensureKindRef`. Both are gaps worth
+ * closing in the kernel — until they are, both shapes must be accepted here, and
+ * an aliased ref routes through the import's exported scope because a bare local
+ * lookup would miss it.
  *
  * `guard` decides what counts as the right kind of instance — a duck-type check
  * on the methods the caller will actually invoke, so a mis-wired ref fails with a
  * clear message here rather than as `undefined is not a function` later.
- * `describe` labels the owning resource in that message.
+ * `describe` labels the owning resource and slot; `expects` names the contract
+ * the slot wants — the slot's own `x-telo-ref` string (`std/cache#Store`) — so
+ * the message says what was missing, not just that something was.
  *
  * @example
- * const store = resolveRefInstance<KvStore>(
+ * const store = resolveRefInstance(
  *   this.resource.store, this.ctx, isKvStore,
- *   () => `Idempotency.Once "${name}": 'store'`,
+ *   () => `Idempotency.Once "${name}": 'store'`, "std/kv-store#Store",
  * );
  */
 export function resolveRefInstance<T>(
@@ -43,13 +44,22 @@ export function resolveRefInstance<T>(
   ctx: RefResolveContext,
   guard: (candidate: unknown) => candidate is T,
   describe: () => string,
+  expects?: string,
 ): T {
   // Phase-5-injected: already the instance.
   if (guard(value)) return value;
 
-  const ref = value as ResourceRef | undefined;
-  if (!ref || typeof ref.name !== "string") {
-    throw new Error(`${describe()} must reference a resource.`);
+  const target = expects ? `resource satisfying \`${expects}\`` : "resource";
+  if (value === undefined || value === null) {
+    throw new RuntimeError("ERR_REF_REQUIRED", `${describe()} is required — reference a ${target}.`);
+  }
+
+  const ref = value as Partial<KindRef<T>>;
+  if (typeof ref.name !== "string") {
+    throw new RuntimeError(
+      "ERR_REF_UNRESOLVED",
+      `${describe()} must be a \`!ref\` to a ${target}.`,
+    );
   }
 
   // `Self` names the declaring library's own scope, so it resolves locally —
@@ -61,8 +71,9 @@ export function resolveRefInstance<T>(
 
   if (!guard(instance)) {
     const label = ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
-    throw new Error(
-      `${describe()} reference '${label}' did not resolve to a usable instance` +
+    throw new RuntimeError(
+      "ERR_REF_UNRESOLVED",
+      `${describe()} reference '${label}' did not resolve to a ${target}` +
         `${instance === undefined ? " (nothing is registered under that name)" : ""}.`,
     );
   }

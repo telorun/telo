@@ -1,11 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { CacheLookupResult, CacheStore } from "./cache-store.js";
-import { resolveCacheStore } from "./cache-store-ref.js";
+import { type CacheLookupResult, type CacheStore, isCacheStore } from "./cache-store.js";
 
 interface LookupResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: CacheStore | KindRef<CacheStore>;
 }
 
 interface LookupInputs {
@@ -25,7 +24,12 @@ class CacheLookup implements ResourceInstance<LookupInputs, CacheLookupResult> {
         `Cache.Lookup "${this.resource.metadata.name}": 'key' must be a string.`,
       );
     }
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isCacheStore,
+      () => `Cache.Lookup "${this.resource.metadata.name}": 'store'`,
+      "std/cache#Store",
+    );
     return store.get(inputs.key);
   }
 

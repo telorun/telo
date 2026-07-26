@@ -6,6 +6,7 @@ import {
   RuntimeError,
   RuntimeResource,
   createCancellationSource,
+  resolveRefInstance,
   type CancellationSource,
   type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
@@ -286,6 +287,15 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.resolveImportedInstance(alias, name);
   }
 
+  resolveRef<T>(
+    value: unknown,
+    guard: (candidate: unknown) => candidate is T,
+    describe: () => string,
+    expects?: string,
+  ): T {
+    return resolveRefInstance(value, this, guard, describe, expects);
+  }
+
   async run(name: string) {
     await this.moduleContext.run(name);
   }
@@ -310,17 +320,26 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.resolveImportUrl(fromSource, importSource);
   }
 
+  /** @deprecated Renamed to {@link ensureKindRef}. */
+  resolveChildren(
+    resource: any,
+    resourceName?: string,
+  ): { kind: string; name: string; alias?: string } {
+    return this.ensureKindRef(resource, resourceName);
+  }
+
   /**
-   * Resolves a resource into a normalized {kind, name} reference.
-   * If the resource contains a definition (kind + properties), registers it as a manifest.
-   * Returns the normalized reference in all cases.
+   * Normalizes a nested slot value into a {kind, name, alias?} reference.
+   * An inline definition (kind + properties) is registered as a manifest first,
+   * under `resourceName` or a generated name; a value that is already a
+   * reference is normalized and returned as-is.
    *
-   * @param resource Resource definition or reference object with 'kind' property
-   * @param resourceName Optional name to assign if not present in resource
-   * @returns Normalized {kind, name} reference
+   * @param resource Inline definition, `{kind, name}` reference, or `!ref` sentinel
+   * @param resourceName Name to assign when the value is an unnamed inline definition
+   * @returns Normalized {kind, name, alias?} reference
    * @throws RuntimeError if 'kind' is missing
    */
-  resolveChildren(
+  ensureKindRef(
     resource: any,
     resourceName?: string,
   ): { kind: string; name: string; alias?: string } {

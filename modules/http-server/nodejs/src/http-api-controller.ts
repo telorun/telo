@@ -266,7 +266,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
     const h = route.handler;
     if (!h) continue;
     if (typeof h === "object") {
-      handlerRefs.set(route, ctx.resolveChildren(h));
+      handlerRefs.set(route, ctx.ensureKindRef(h));
     } else if (typeof h === "string") {
       // String form (schema oneOf: string | object) — only the resource name
       // is given, not the kind. Phase 5 injects the live instance either way;

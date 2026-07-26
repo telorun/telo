@@ -1,10 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
-import { type JournalEntry, JournalStore, resolveJournal } from "./journal-store.js";
+import { type JournalEntry, JournalStore, isJournalStore } from "./journal-store.js";
 
 interface JournalSourceResource {
   metadata: { name: string; module?: string };
-  journal?: JournalStore | { name: string; alias?: string };
+  journal?: JournalStore | KindRef<JournalStore>;
 }
 
 interface JournalSourceInputs {
@@ -42,7 +42,12 @@ class JournalSource implements ResourceInstance<JournalSourceInputs, JournalSour
     if (!Number.isInteger(fromId) || fromId < 0) {
       throw new InvokeError("ERR_INVALID_INPUT", `RecordStream.JournalSource "${name}": 'fromId' must be a non-negative integer.`);
     }
-    const journal = resolveJournal(this.resource.journal, this.ctx);
+    const journal = this.ctx.resolveRef(
+      this.resource.journal,
+      isJournalStore,
+      () => `RecordStream.JournalSource "${name}": 'journal'`,
+      "std/record-stream#Journal",
+    );
     return { output: new Stream(journal.read(key, fromId)) };
   }
 

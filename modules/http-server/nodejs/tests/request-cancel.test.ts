@@ -42,7 +42,7 @@ describe("http-server request cancellation", () => {
     // Minimal ResourceContext: just the surface the controller touches.
     const ctx = {
       validateSchema: () => {},
-      resolveChildren: () => ({ kind: "Test.Handler", name: "SlowWork" }),
+      ensureKindRef: () => ({ kind: "Test.Handler", name: "SlowWork" }),
       moduleContext: { expandWith: (value: unknown) => value },
       createCancellationSource: () => createCancellationSource(),
       invokeResolved: (_kind: string, _name: string, h: typeof handler, input: unknown, c: unknown) =>

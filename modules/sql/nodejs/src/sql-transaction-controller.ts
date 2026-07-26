@@ -18,8 +18,11 @@ export class SqlTransactionResource implements ResourceInstance {
 
   getConnection(): SqlConnectionResource {
     return (
-      resolveSqlConnection(this.manifest.connection, this.ctx) ??
-      failMissingConnection(this.manifest.metadata.name)
+      resolveSqlConnection(
+        this.manifest.connection,
+        this.ctx,
+        () => `Sql.Transaction "${this.manifest.metadata.name}": 'connection'`,
+      ) ?? failMissingConnection(this.manifest.metadata.name)
     );
   }
 

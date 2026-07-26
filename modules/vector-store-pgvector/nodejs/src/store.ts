@@ -203,6 +203,7 @@ export async function create(
   const connection = resolveSqlConnection(
     resource.connection as Parameters<typeof resolveSqlConnection>[0],
     ctx,
+    () => `VectorStorePgvector.Store "${resource.metadata.name}": 'connection'`,
   );
   if (!connection) {
     throw new Error(

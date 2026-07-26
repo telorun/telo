@@ -1,41 +1,22 @@
-import type { ResourceContext } from "@telorun/sdk";
+import type { KindRef, ResourceContext } from "@telorun/sdk";
 import type { SqlConnectionResource } from "./sql-connection-controller.js";
 
-interface ConnectionRef {
-  name: string;
-  alias?: string;
+/** True when a value already exposes the connection contract (Phase-5 injected). */
+export function isSqlConnection(value: unknown): value is SqlConnectionResource {
+  return typeof (value as SqlConnectionResource | undefined)?.execute === "function";
 }
 
+/**
+ * Resolve a `connection` `!ref` field to a live connection. The slot is optional
+ * — an unset one yields `undefined` so the caller can fall back to a `transaction`
+ * — but a slot that IS set must resolve. `describe` names the owning resource and
+ * slot, so the failure points at a concrete manifest location.
+ */
 export function resolveSqlConnection(
-  value: SqlConnectionResource | ConnectionRef | undefined,
+  value: SqlConnectionResource | KindRef<SqlConnectionResource> | undefined,
   ctx: ResourceContext,
+  describe: () => string,
 ): SqlConnectionResource | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  if (typeof (value as SqlConnectionResource).execute === "function") {
-    return value as SqlConnectionResource;
-  }
-
-  const ref = value as ConnectionRef;
-  if (typeof ref.name !== "string") {
-    throw new Error("Sql: invalid connection reference");
-  }
-
-  // Cross-module reference (`!ref Alias.Connection`): a connection resolved
-  // inside a nested library is not Phase-5-injected, so the controller receives
-  // the raw `{name, alias}` ref and must route through the import's exported
-  // scope rather than a bare local lookup.
-  if (ref.alias && ref.alias !== "Self") {
-    const instance = ctx.moduleContext.resolveImportedInstance(ref.alias, ref.name);
-    if (typeof (instance as SqlConnectionResource | undefined)?.execute !== "function") {
-      throw new Error(
-        `Sql: connection reference '${ref.alias}.${ref.name}' did not resolve to an exported connection instance.`,
-      );
-    }
-    return instance as unknown as SqlConnectionResource;
-  }
-
-  return ctx.moduleContext.getInstance(ref.name) as SqlConnectionResource;
+  if (!value) return undefined;
+  return ctx.resolveRef(value, isSqlConnection, describe, "std/sql#Connection");
 }

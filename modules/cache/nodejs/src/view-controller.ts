@@ -1,13 +1,16 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, parseDurationMs, resolveInvocableDispatcher } from "@telorun/sdk";
-import type { CacheLookupResult, CacheStore } from "./cache-store.js";
-import { resolveCacheStore } from "./cache-store-ref.js";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import {
+  InvokeError,
+  parseDurationMs,
+  resolveInvocableDispatcher,
+} from "@telorun/sdk";
+import { type CacheLookupResult, type CacheStore, isCacheStore } from "./cache-store.js";
 
 type RevalidateMode = "background" | "sync" | "off";
 
 interface ViewResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: CacheStore | KindRef<CacheStore>;
   invoke?: unknown;
   ttl?: string;
   staleTtl?: string;
@@ -51,7 +54,12 @@ class CacheView implements ResourceInstance<ViewInputs, CacheLookupResult> {
       );
     }
     const key = inputs.key;
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isCacheStore,
+      () => `Cache.View "${this.resource.metadata.name}": 'store'`,
+      "std/cache#Store",
+    );
     const cached = await store.get(key);
 
     if (cached.state === "fresh") return cached;

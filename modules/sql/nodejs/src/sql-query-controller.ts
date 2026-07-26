@@ -28,7 +28,12 @@ class SqlQueryResource implements ResourceInstance {
   async invoke(input: unknown): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
-    const connection = resolveConnection(m.connection, m.transaction, ctx);
+    const connection = resolveConnection(
+      m.connection,
+      m.transaction,
+      ctx,
+      () => `Sql.Query "${m.metadata.name}": 'connection'`,
+    );
     const result = await runSql(connection, m.transaction, input, ctx);
     return { rows: result.rows, rowCount: result.rows.length };
   }
@@ -38,9 +43,12 @@ function resolveConnection(
   connection: SqlConnectionResource | undefined,
   transaction: SqlTransactionResource | undefined,
   ctx: ResourceContext,
+  describe: () => string,
 ): SqlConnectionResource {
   return (
-    resolveSqlConnection(connection, ctx) ?? transaction?.getConnection() ?? failMissingConnection()
+    resolveSqlConnection(connection, ctx, describe) ??
+    transaction?.getConnection() ??
+    failMissingConnection()
   );
 }
 

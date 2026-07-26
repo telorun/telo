@@ -1,6 +1,8 @@
 import type { InvokeContext } from "./cancellation.js";
 import type { Invocable } from "./capabilities/invokable.js";
 import type { ModuleContext } from "./module-context.js";
+import type { KindRef } from "./ref.js";
+import { resolveRefInstance } from "./resolve-ref-instance.js";
 import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
 
 /** The context a decorator kind composes to dispatch its wrapped target. */
@@ -31,25 +33,23 @@ export function resolveInvocableDispatcher(
   ctx: DispatchContext,
   describe: () => string,
 ): (inputs: Record<string, unknown>, invokeCtx?: InvokeContext) => Promise<unknown> {
-  if (field && typeof (field as Invocable).invoke === "function") {
-    const instance = field as ResourceInstance & Invocable;
-    const id = getRefIdentity(field as object);
-    return (inputs, invokeCtx) =>
-      id
-        ? ctx.invokeResolved(id.kind, id.name, instance, inputs, invokeCtx)
-        : instance.invoke(inputs, invokeCtx);
+  const target = resolveRefInstance(
+    field,
+    ctx,
+    isInvocableInstance,
+    () => `${describe()}: 'invoke'`,
+    "telo#Invocable",
+  );
+  // Dispatch through the traced chokepoint needs the target's kind+name: from
+  // the `!ref` identity the kernel stamped at injection, else from the raw ref.
+  const id = getRefIdentity(target as object) ?? (field as Partial<KindRef> | undefined);
+  if (!id || typeof id.kind !== "string" || typeof id.name !== "string") {
+    return (inputs, invokeCtx) => target.invoke(inputs, invokeCtx);
   }
-  const ref = field as { kind: string; name: string; alias?: string } | undefined;
-  if (!ref || typeof ref.name !== "string") {
-    throw new Error(`${describe()}: 'invoke' must reference an invocable.`);
-  }
-  const resolved = (
-    ref.alias && ref.alias !== "Self"
-      ? ctx.moduleContext.resolveImportedInstance(ref.alias, ref.name)
-      : ctx.moduleContext.getInstance(ref.name)
-  ) as ResourceInstance | undefined;
-  if (!resolved || typeof resolved.invoke !== "function") {
-    throw new Error(`${describe()}: 'invoke' reference '${ref.name}' did not resolve to an invocable.`);
-  }
-  return (inputs, invokeCtx) => ctx.invokeResolved(ref.kind, ref.name, resolved, inputs, invokeCtx);
+  const { kind, name } = id;
+  return (inputs, invokeCtx) => ctx.invokeResolved(kind, name, target, inputs, invokeCtx);
+}
+
+function isInvocableInstance(value: unknown): value is ResourceInstance & Invocable {
+  return typeof (value as Invocable | undefined)?.invoke === "function";
 }

@@ -28,7 +28,7 @@ describe("http-server request span", () => {
 
     const ctx = {
       validateSchema: () => {},
-      resolveChildren: () => ({ kind: "JS.Script", name: "Echo" }),
+      ensureKindRef: () => ({ kind: "JS.Script", name: "Echo" }),
       moduleContext: { expandWith: (value: unknown) => value },
       createCancellationSource: () => createCancellationSource(),
       invokeResolved: (_kind: string, _name: string, h: typeof handler, input: unknown) =>

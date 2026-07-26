@@ -150,7 +150,7 @@ export async function create(
       );
     }
     if (typeof handler === "object") {
-      captured.set(entry, ctx.resolveChildren(handler));
+      captured.set(entry, ctx.ensureKindRef(handler));
     } else if (typeof handler === "string") {
       // Bare name reference (oneOf: string). Phase 5 injection only replaces
       // {kind, name} object refs — string refs survive as the resource name.

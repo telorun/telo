@@ -104,7 +104,7 @@ export class StepEngine {
       if (isInvokeStep(step)) {
         const raw = step.invoke as unknown;
         if (!raw || typeof (raw as Invocable).invoke !== "function") {
-          (step as InvokeStep).invoke = this.ctx.resolveChildren(
+          (step as InvokeStep).invoke = this.ctx.ensureKindRef(
             raw as any,
             this.inlineInvokeResourceName(step.name, stepPath),
           ) as KindRef<Invocable>;

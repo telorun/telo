@@ -41,14 +41,14 @@ const hasSnapshot = (v: unknown): v is Snapshotable =>
  *  referenced resource isn't initialized yet. A value that is already a live
  *  instance (has `snapshot()`) passes through. Post Phase-2.5 a slot holds a
  *  `{kind, name, alias?}` object; a raw `!ref` sentinel (only reachable behind a
- *  hidden `$ref` slot) is normalized through the sanctioned `ctx.resolveChildren`
+ *  hidden `$ref` slot) is normalized through the sanctioned `ctx.ensureKindRef`
  *  so the reference grammar (alias/Self splitting) stays in one place. */
 function resolveRefSlot(value: unknown, ctx: ResourceContext): ResourceInstance | undefined {
   if (hasSnapshot(value)) return value as unknown as ResourceInstance;
   let name: string | undefined;
   let alias: string | undefined;
   if (isRefSentinel(value)) {
-    const ref = ctx.resolveChildren(value) as { name: string; alias?: string };
+    const ref = ctx.ensureKindRef(value) as { name: string; alias?: string };
     name = ref.name;
     alias = ref.alias;
   } else if (value && typeof value === "object") {

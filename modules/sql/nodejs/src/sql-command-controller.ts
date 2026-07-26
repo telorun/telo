@@ -25,7 +25,9 @@ class SqlCommandResource implements ResourceInstance {
     const m = this.manifest;
     const ctx = this.ctx;
 
-    const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
+    const connection =
+      resolveSqlConnection(m.connection, ctx, () => `Sql.Command "${m.metadata.name}": 'connection'`) ??
+      m.transaction?.getConnection();
     if (!connection) {
       throw new Error("Sql: either 'connection' or 'transaction' must be set");
     }

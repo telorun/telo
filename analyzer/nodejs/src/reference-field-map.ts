@@ -210,7 +210,7 @@ function traverseNode(
   // the kernel's `runInvoke` emit-Invoked path. The walker fix and the
   // dispatcher fix need to land together — see the follow-up in
   // [kernel/nodejs/plans/reference-syntax-unification.md] and the
-  // stopgap in `resource-context.ts:resolveChildren`. `visitedRefs`
+  // stopgap in `resource-context.ts:ensureKindRef`. `visitedRefs`
   // stays as a parameter so the recursive calls below thread the right
   // signature; turning the descent back on is a single-branch change.
   if (typeof node?.$ref === "string") return;

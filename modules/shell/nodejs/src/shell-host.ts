@@ -54,6 +54,11 @@ export interface ShellHost {
   exec(spec: CommandSpec, options: RunOptions, ctx?: InvokeContext): ExecutionHandle;
 }
 
+/** True when a value already exposes the host contract (Phase-5 injected). */
+export function isShellHost(value: unknown): value is ShellHost {
+  return typeof (value as ShellHost | undefined)?.exec === "function";
+}
+
 interface CommandInputShape {
   command?: unknown;
   args?: unknown;

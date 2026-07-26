@@ -96,7 +96,9 @@ class SqlSelectionResource implements ResourceInstance {
     const limit = m.limit != null ? ctx.expandValue(m.limit, expandCtx) : undefined;
     const offset = m.offset != null ? ctx.expandValue(m.offset, expandCtx) : undefined;
 
-    const connection = resolveSqlConnection(m.connection, ctx) ?? m.transaction?.getConnection();
+    const connection =
+      resolveSqlConnection(m.connection, ctx, () => `Sql.Selection "${m.metadata.name}": 'connection'`) ??
+      m.transaction?.getConnection();
     if (!connection) {
       throw new Error("Sql.Selection: either 'connection' or 'transaction' must be set");
     }

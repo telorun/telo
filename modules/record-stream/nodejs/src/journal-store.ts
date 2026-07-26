@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ResourceInstance } from "@telorun/sdk";
 
 /** One journaled record: its monotonic id (1-based, gap-free per key) and data. */
 export interface JournalEntry {
@@ -112,37 +112,18 @@ export class JournalStore implements ResourceInstance {
   }
 }
 
-interface JournalRef {
-  name: string;
-  alias?: string;
-}
-
-function isJournalStore(value: unknown): value is JournalStore {
-  return value instanceof JournalStore;
-}
-
 /**
- * Resolve a `journal` field to a live JournalStore — the Phase-5-injected
- * instance, or a `{ name, alias }` ref reached through an import's exported
- * scope. Mirrors `resolveShellHost` / `resolveCacheStore`.
+ * True when a value already exposes the journal contract (Phase-5 injected).
+ * Duck-typed, not `instanceof`: two copies of this package can resolve in one
+ * process (a downstream module on another version, a bundled controller), and a
+ * journal implemented elsewhere is still a journal.
  */
-export function resolveJournal(
-  value: JournalStore | JournalRef | undefined,
-  ctx: ResourceContext,
-): JournalStore {
-  if (!value) throw new Error("RecordStream: 'journal' is required");
-  if (isJournalStore(value)) return value;
-
-  const ref = value as JournalRef;
-  if (typeof ref.name !== "string") throw new Error("RecordStream: invalid journal reference");
-
-  const instance =
-    ref.alias && ref.alias !== "Self"
-      ? ctx.moduleContext.resolveImportedInstance(ref.alias, ref.name)
-      : ctx.moduleContext.getInstance(ref.name);
-  if (!isJournalStore(instance)) {
-    const label = ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
-    throw new Error(`RecordStream: journal reference '${label}' did not resolve to a Journal instance.`);
-  }
-  return instance;
+export function isJournalStore(value: unknown): value is JournalStore {
+  const j = value as JournalStore | undefined;
+  return (
+    typeof j?.append === "function" &&
+    typeof j.read === "function" &&
+    typeof j.finish === "function" &&
+    typeof j.fail === "function"
+  );
 }

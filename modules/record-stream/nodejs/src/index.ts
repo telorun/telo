@@ -4,5 +4,5 @@
  * side effect), and the Journal family (JournalStore + Sink/Source) for
  * resumable, offset-addressable replay of a detached stream.
  */
-export { JournalStore, resolveJournal } from "./journal-store.js";
+export { JournalStore, isJournalStore } from "./journal-store.js";
 export type { JournalEntry } from "./journal-store.js";

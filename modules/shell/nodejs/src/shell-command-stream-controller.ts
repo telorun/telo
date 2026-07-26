@@ -1,16 +1,16 @@
-import { Stream, type InvokeContext, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
+import {
+  Stream,
+  type KindRef,
+  type InvokeContext,
+  type ResourceContext,
+  type ResourceInstance,
+} from "@telorun/sdk";
 import type { ShellHost, StreamPart } from "./shell-host.js";
-import { toCommandSpec } from "./shell-host.js";
-import { resolveShellHost } from "./shell-host-ref.js";
-
-interface HostRef {
-  name: string;
-  alias?: string;
-}
+import { isShellHost, toCommandSpec } from "./shell-host.js";
 
 interface ShellCommandStreamManifest {
   metadata: { name: string; module: string };
-  host?: ShellHost | HostRef;
+  host?: ShellHost | KindRef<ShellHost>;
 }
 
 interface CommandInput {
@@ -28,7 +28,12 @@ class ShellCommandStreamResource implements ResourceInstance {
   ) {}
 
   async invoke(input: CommandInput, ctx?: InvokeContext): Promise<{ output: Stream<StreamPart> }> {
-    const host = resolveShellHost(this.manifest.host, this.ctx);
+    const host = this.ctx.resolveRef(
+      this.manifest.host,
+      isShellHost,
+      () => `Shell.CommandStream "${this.manifest.metadata.name}": 'host'`,
+      "std/shell#Host",
+    );
     const spec = toCommandSpec(input, "Shell.CommandStream");
     const iterable = host
       .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs }, ctx)
