@@ -60,6 +60,14 @@ export { parseLoadedFile } from "./parse-loaded-file.js";
 export type { ParseOptions } from "./parse-loaded-file.js";
 export { desugarLoadedFile, inlineImportManifests } from "./inline-imports.js";
 export type { SyntheticImport } from "./inline-imports.js";
+export {
+  compareModuleVersions,
+  compareParsedModuleVersions,
+  isNewerModuleVersion,
+  isSameModuleVersion,
+  parseModuleVersion,
+} from "./module-version-order.js";
+export type { ParsedModuleVersion } from "./module-version-order.js";
 export { reconcileModuleVersions } from "./reconcile-module-versions.js";
 export type { VersionReconciliation } from "./reconcile-module-versions.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
@@ -86,6 +94,8 @@ export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
 export type { ParsedModuleRef } from "./sources/module-ref.js";
 export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";
+export { parseVersionedRef, withRefVersion } from "./sources/versioned-ref.js";
+export type { ParsedVersionedRef } from "./sources/versioned-ref.js";
 export { isLocalPathSource } from "./sources/local-path-ref.js";
 export {
   MANIFEST_CACHE_BASE_URL,

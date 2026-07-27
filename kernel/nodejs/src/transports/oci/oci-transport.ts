@@ -2,7 +2,6 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
   sha256Base64Url,
-  splitIntegrity,
   verifyIntegrity,
   type ManifestCacheCoords,
   type ManifestSource,
@@ -24,7 +23,13 @@ import {
   TELO_LAYER_MEDIA_TYPE,
   type OciManifest,
 } from "./oci-client.js";
-import { OCI_SCHEME, isOciRef, parseOciRef } from "./oci-ref.js";
+import {
+  OCI_SCHEME,
+  isOciRef,
+  parseOciRef,
+  parseVersionedRef,
+  withRefVersion,
+} from "./oci-ref.js";
 
 /** Pull the module blob, returning its extracted entries and the `telo.yaml`
  *  bytes, verified against the ref's inline hash and its own `filesIntegrity`. */
@@ -139,16 +144,14 @@ export class OciTransport implements Transport {
   refVersion(ref: string): string | null {
     // The reference (tag or `sha256:` digest) is what `@` separates. An implicit
     // `latest` (no `@`) is not an upgradeable pin, so return null there; a digest
-    // reference flows through raw and the caller's SemVer check skips it.
-    const { base } = splitIntegrity(ref);
-    if (!base.startsWith(OCI_SCHEME)) return null;
-    const at = base.lastIndexOf("@");
-    return at > 0 ? base.slice(at + 1) : null;
+    // reference flows through raw and the caller's SemVer check skips it. The
+    // split itself is the shared grammar — the editor reads the same pin from a
+    // browser, where no transport exists.
+    return isOciRef(ref) ? (parseVersionedRef(ref)?.version ?? null) : null;
   }
 
   withVersion(ref: string, version: string): string {
-    const { host, repo } = parseOciRef(ref);
-    return `${OCI_SCHEME}${host}/${repo}@${version}`;
+    return withRefVersion(ref, version);
   }
 
   async digest(ref: string): Promise<string | null> {

@@ -1,6 +1,6 @@
 import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME, ManifestCacheSource } from "@telorun/analyzer";
-import type { AppSettings, RegistryServer } from "../model";
+import type { AppSettings } from "../model";
 
 export function isRegistryImportSource(source: string): boolean {
   return (
@@ -13,75 +13,6 @@ export function isRegistryImportSource(source: string): boolean {
     source.includes("@") &&
     source.includes("/")
   );
-}
-
-export function parseRegistryRef(source: string): { moduleId: string; version: string } | null {
-  if (!isRegistryImportSource(source)) return null;
-  const atIdx = source.lastIndexOf("@");
-  if (atIdx <= 0 || atIdx === source.length - 1) return null;
-  const moduleId = source.slice(0, atIdx);
-  if (!moduleId.includes("/")) return null;
-  const rawVersion = source.slice(atIdx + 1);
-  const version = rawVersion.startsWith("v") ? rawVersion.substring(1) : rawVersion;
-  return { moduleId, version };
-}
-
-export interface RegistryVersion {
-  version: string;
-  publishedAt: string;
-}
-
-export async function fetchAvailableVersions(
-  moduleId: string,
-  registryServers: RegistryServer[],
-): Promise<RegistryVersion[]> {
-  const enabled = registryServers.filter((s) => s.enabled);
-  if (!enabled.length) return [];
-
-  const results = await Promise.allSettled(
-    enabled.map((server) =>
-      fetch(`${server.url.replace(/\/$/, "")}/${moduleId}/versions`)
-        .then((r) =>
-          r.ok ? (r.json() as Promise<{ items: RegistryVersion[] }>) : { items: [] },
-        )
-        .then((data) => data.items ?? []),
-    ),
-  );
-
-  const seen = new Set<string>();
-  const merged: RegistryVersion[] = [];
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      for (const item of r.value) {
-        if (!seen.has(item.version)) {
-          seen.add(item.version);
-          merged.push(item);
-        }
-      }
-    }
-  }
-  return merged;
-}
-
-// Resolves the registry-computed latest version for a module, querying enabled
-// servers in order and returning the first that answers. Returns null when no
-// server knows the module (e.g. local/remote imports, offline).
-export async function fetchLatestVersion(
-  moduleId: string,
-  registryServers: RegistryServer[],
-): Promise<string | null> {
-  const encodedModuleId = moduleId.split("/").map(encodeURIComponent).join("/");
-  for (const server of registryServers.filter((s) => s.enabled)) {
-    try {
-      const r = await fetch(`${server.url.replace(/\/+$/, "")}/${encodedModuleId}`);
-      if (!r.ok) continue;
-      const data = (await r.json()) as { version?: string };
-      if (data.version) return data.version;
-    } catch {
-      // try the next server
-    }
-  }
-  return null;
 }
 
 // Creates ManifestSources for all enabled registry servers in settings.

@@ -1520,7 +1520,6 @@ export function Editor() {
                       onDeleteResource: handleDeleteResource,
                       onWriteRef: handleWriteRef,
                       onCreateResource: () => setCreateResourceOpen(true),
-                      registryServers: settings.registryServers,
                       hubUrl: settings.hubUrl,
                       onAddImport: handleAddImport,
                       importableLibraries,

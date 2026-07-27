@@ -11,6 +11,7 @@ import {
   removeImportDocument,
   removeResourceDocument,
   serializeModuleDocument,
+  setInlineImportSource,
 } from "./yaml-document";
 
 describe("parseModuleDocument with templating tags", () => {
@@ -494,5 +495,27 @@ describe("addInlineImport duplicate-alias guard", () => {
     expect(() => addInlineImport(docs, "Console", "std/other@1.0.0")).toThrow(
       /alias "Console" already exists.*std\/console@0\.9\.0/,
     );
+  });
+});
+
+describe("setInlineImportSource", () => {
+  it("re-points a scalar OCI import in place", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer: oci://ghcr.io/telorun/timer@0.3.0#sha256-abc\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const out = setInlineImportSource(docs, "Timer", "oci://ghcr.io/telorun/timer@0.4.0");
+    expect(serializeModuleDocument(out)).toContain("Timer: oci://ghcr.io/telorun/timer@0.4.0");
+  });
+
+  it("drops a stale integrity sibling from the object form", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer:\n    source: oci://ghcr.io/telorun/timer@0.3.0\n    integrity: sha256-abc\n    variables:\n      tz: UTC\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const yaml = serializeModuleDocument(
+      setInlineImportSource(docs, "Timer", "oci://ghcr.io/telorun/timer@0.4.0"),
+    );
+    expect(yaml).toContain("source: oci://ghcr.io/telorun/timer@0.4.0");
+    expect(yaml).not.toContain("integrity");
+    expect(yaml).toContain("tz: UTC");
   });
 });

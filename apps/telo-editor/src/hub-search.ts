@@ -74,6 +74,45 @@ export async function searchHubModules(
   return (data.hits ?? []).filter((h) => h.module?.ref);
 }
 
+interface ModuleVersionsResponse {
+  versions?: string[];
+}
+
+/** Every version the hub tracks for `baseRef`, newest first — the hub's
+ *  ordering is authoritative, so index 0 is the latest.
+ *
+ *  `baseRef` must be the bare registered ref (`oci://ghcr.io/acme/telo-s3`,
+ *  `std/console`); the hub matches it exactly. This is the only version source
+ *  the editor has: a browser cannot speak the OCI protocol, so `tags/list` is
+ *  out of reach and the hub's ingest is what holds the version list.
+ *
+ *  Returns `[]` for a module the hub does not track (404). Any other failure
+ *  throws, so a caller can tell an outage or a misconfigured hub from a module
+ *  that genuinely has no versions. */
+export async function fetchHubVersions(
+  hubUrl: string | undefined,
+  baseRef: string,
+): Promise<string[]> {
+  const base = resolveHubUrl(hubUrl);
+  const url = `${base}/module/versions?ref=${encodeURIComponent(baseRef)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { accept: "application/json" } });
+  } catch (err) {
+    throw new Error(
+      `Could not reach the telo hub at ${base}: ${errText(err)}. Check the hub URL in settings (it must allow CORS).`,
+    );
+  }
+  if (res.status === 404) return [];
+  if (!res.ok) {
+    throw new Error(
+      `Hub version lookup for ${baseRef} failed at ${base}: HTTP ${res.status} ${res.statusText}.`,
+    );
+  }
+  const data = (await res.json()) as ModuleVersionsResponse;
+  return (data.versions ?? []).filter((v): v is string => typeof v === "string");
+}
+
 /** The pinned import source for a hit: `<ref>@<version>` (e.g.
  *  `oci://ghcr.io/acme/telo-s3@1.2.0`, `std/console@0.9.0`). */
 export function importSourceForHit(hit: HubModuleHit): string {

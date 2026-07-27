@@ -5,7 +5,9 @@ import {
   RegistrySource,
   isRegistryRef,
   parseModuleRef,
+  parseVersionedRef,
   sha256Base64Url,
+  withRefVersion,
   splitIntegrity,
   type ManifestCacheCoords,
   type ManifestSource,
@@ -211,15 +213,11 @@ export class RegistryTransport implements Transport {
   refVersion(ref: string): string | null {
     // Only bare `namespace/name@version` refs carry an upgradeable version — a
     // direct `https://` URL has no version segment to bump.
-    if (!isRegistryRef(ref)) return null;
-    const { base } = splitIntegrity(ref);
-    const at = base.lastIndexOf("@");
-    return at > 0 ? base.slice(at + 1) : null;
+    return isRegistryRef(ref) ? (parseVersionedRef(ref)?.version ?? null) : null;
   }
 
   withVersion(ref: string, version: string): string {
-    const { modulePath } = parseModuleRef(ref);
-    return `${modulePath}@${version}`;
+    return withRefVersion(ref, version);
   }
 
   /** Mirrors the sources' fetch-URL derivation: a direct URL points at (or
