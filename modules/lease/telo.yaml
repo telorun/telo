@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: lease
-  version: 0.6.1
+  version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Coordination, Reliability]
@@ -41,7 +41,7 @@ metadata:
     can be cancelled by key.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lease@0.4.0?local_path=./nodejs#critical
+  - pkg:npm/@telorun/lease@0.4.1?local_path=./nodejs#critical
 inputType:
   kind: Type.JsonSchema
   schema:

@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: codec
-  version: 0.5.1
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data]

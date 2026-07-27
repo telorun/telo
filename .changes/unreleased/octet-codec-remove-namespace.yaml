@@ -1,6 +1,0 @@
-project: octet-codec
-kind: Added
-body: >-
-  Drop `metadata.namespace`. A module's location is the ref it is published
-  under, never anything it declares about itself, and nothing reads the field
-  any more.
