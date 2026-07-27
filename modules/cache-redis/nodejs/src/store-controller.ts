@@ -1,16 +1,17 @@
 import {
+  type KindRef,
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
   parseDurationMs,
 } from "@telorun/sdk";
-import { type CacheLookupResult, type CacheStore, resolveCacheStore } from "@telorun/cache";
+import { type CacheLookupResult, type CacheStore, isCacheStore } from "@telorun/cache";
 import { Redis } from "ioredis";
 
 interface StoreResource {
   metadata: { name: string; module?: string };
   url: string;
-  fallback?: CacheStore | { name: string; alias?: string };
+  fallback?: CacheStore | KindRef<CacheStore>;
   connectTimeout?: string;
   keyPrefix?: string;
 }
@@ -153,7 +154,12 @@ class RedisStore implements ResourceInstance, CacheStore {
 
   private resolveFallback(): CacheStore | undefined {
     if (this.resource.fallback === undefined) return undefined;
-    return resolveCacheStore(this.resource.fallback, this.ctx);
+    return this.ctx.resolveRef(
+      this.resource.fallback,
+      isCacheStore,
+      () => `CacheRedis.Store "${this.resource.metadata.name}": 'fallback'`,
+      "std/cache#Store",
+    );
   }
 
   async provide(): Promise<RedisStore> {

@@ -1,7 +1,6 @@
 import {
   decodeJsonValue,
   encodeJsonValue,
-  resolveRefInstance,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -85,11 +84,11 @@ class SqlKvStore implements ResourceInstance, KvStore {
 
   private conn(): SqlConnection {
     if (!this.connection) {
-      this.connection = resolveRefInstance<SqlConnection>(
+      this.connection = this.ctx.resolveRef(
         this.resource.connection,
-        this.ctx,
         isSqlConnection,
         () => `${this.describe}: 'connection'`,
+        "std/sql#Connection",
       );
     }
     return this.connection;

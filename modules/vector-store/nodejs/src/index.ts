@@ -8,4 +8,3 @@ export type {
   FilterScalar,
 } from "./store.js";
 export { isVectorStore } from "./store.js";
-export { resolveVectorStore } from "./store-ref.js";

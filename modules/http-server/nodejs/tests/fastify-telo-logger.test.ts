@@ -81,7 +81,7 @@ describe("Http.Server boots with request logging enabled", () => {
     return {
       log,
       args: { _: [] },
-      resolveChildren: () => ({ kind: "Http.Api", name: "x" }),
+      ensureKindRef: () => ({ kind: "Http.Api", name: "x" }),
       moduleContext: { expandWith: (value: unknown) => value },
       validateSchema: () => {},
     } as never;

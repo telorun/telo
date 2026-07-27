@@ -5,6 +5,7 @@ import type { LoggingHost } from "./log-sink.js";
 import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
+import type { KindRef } from "./ref.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
@@ -86,7 +87,35 @@ export interface ResourceContext extends ControllerContext {
   spawnChildContext(): EvaluationContext;
   transientChild(context: Record<string, any>): EvaluationContext;
   withManifests<T>(manifests: any[], fn: () => T): T;
+  /**
+   * Normalize a nested slot value to a {@link KindRef}. The value is an inline
+   * definition (`{ kind, …config }`), an already-normalized `{ kind, name }`
+   * ref, or a `!ref` sentinel. An inline definition is *registered* into this
+   * module's scope first — minting `resourceName` (or a generated one) as its
+   * name — so the returned ref always points at a resource the kernel knows.
+   *
+   * The inverse of {@link resolveRef}: this goes slot value → ref, that goes
+   * ref → live instance. Controllers that dispatch through
+   * `invokeResolved(kind, name, …)` want the ref, so the invocation keeps its
+   * identity for tracing and error wrapping.
+   */
+  ensureKindRef(value: any, resourceName?: string): KindRef;
+  /** @deprecated Renamed to {@link ensureKindRef} — it produces a reference
+   *  (registering an inline definition on the way), it does not resolve one. */
   resolveChildren(resource: any, resourceName?: string): { kind: string; name: string };
+  /**
+   * Resolve a `!ref` config field to a live instance of `T`. See
+   * {@link resolveRefInstance} — this is the same resolution, reached through
+   * the context a controller already holds. `expects` names the contract the
+   * slot wants — its `x-telo-ref` string (`std/cache#Store`) — so a mis-wire
+   * says what was missing.
+   */
+  resolveRef<T>(
+    value: unknown,
+    guard: (candidate: unknown) => candidate is T,
+    describe: () => string,
+    expects?: string,
+  ): T;
   validateSchema(value: any, schema: any): void;
   createSchemaValidator(schema: any): DataValidator;
   registerSchema(name: string, schema: object): void;

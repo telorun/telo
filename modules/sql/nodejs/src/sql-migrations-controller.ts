@@ -56,7 +56,11 @@ class SqlMigrationsResource implements ResourceInstance {
 
   async run(): Promise<void> {
     const conn =
-      resolveSqlConnection(this.manifest.connection, this.ctx) ?? failMissingConnection();
+      resolveSqlConnection(
+        this.manifest.connection,
+        this.ctx,
+        () => `Sql.Migrations "${this.manifest.metadata.name}": 'connection'`,
+      ) ?? failMissingConnection();
 
     const migrations: Record<string, string[]> = {};
     // Legacy: standalone `Sql.Migration` resources in the same module scope.

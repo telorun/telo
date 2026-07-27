@@ -1,14 +1,15 @@
 import {
+  type KindRef,
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
   parseDurationMs,
 } from "@telorun/sdk";
-import { type CacheStore, resolveCacheStore } from "@telorun/cache";
+import { type CacheStore, isCacheStore } from "@telorun/cache";
 
 interface GuardResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: CacheStore | KindRef<CacheStore>;
   limit: number;
   window: string;
 }
@@ -45,7 +46,12 @@ class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
     if (!inputs || typeof inputs.key !== "string" || inputs.key.length === 0) {
       return { allowed: false, remaining: 0, retryAfter: Math.ceil(this.windowMs / 1000) };
     }
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isCacheStore,
+      () => `RateLimit.Guard "${this.resource.metadata.name}": 'store'`,
+      "std/cache#Store",
+    );
     const bucketKey = `ratelimit:${this.resource.metadata.name}:${inputs.key}`;
     const now = Date.now();
     const cutoff = now - this.windowMs;

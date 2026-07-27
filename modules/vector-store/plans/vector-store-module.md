@@ -28,8 +28,7 @@ modules/vector-store/
   telo.yaml                  # Library + Store abstract + Record/Match/Removal
   README.md
   docs/vector-store.md
-  nodejs/src/store.ts        # VectorStoreHandle interface — the provider contract
-  nodejs/src/store-ref.ts    # resolveVectorStore(value, ctx) — ref resolution helper
+  nodejs/src/store.ts        # VectorStoreHandle interface + isVectorStore guard
   nodejs/src/record.ts
   nodejs/src/match.ts
   nodejs/src/removal.ts
@@ -80,12 +79,12 @@ export interface VectorStoreHandle {
 }
 ```
 
-The core invocables resolve the `store` slot through a
-`resolveVectorStore(this.resource.store, this.ctx)` helper
-(`nodejs/src/store-ref.ts`) — the direct analogue of cache's
-`resolveCacheStore`: a local `!ref` arrives Phase-5-injected as the live
-instance; a cross-module `!ref Alias.Store` arrives as `{ name, alias }` and
-routes through `ctx.moduleContext.resolveImportedInstance(alias, name)`.
+The core invocables resolve the `store` slot through
+`ctx.resolveRef(value, isVectorStore, describe)` — the same call every module with
+a provider-shaped dependency uses. A `!ref` normally arrives
+Phase-5-injected as the live instance (local and cross-module alike), so the guard
+short-circuits; a raw `{ name, alias }` at a slot injection did not reach routes
+through the import's exported scope.
 
 ### Dimension validation lives in the backend
 
@@ -528,11 +527,11 @@ targets:
 
 ## Controller notes
 
-- `store.ts` / `store-ref.ts` — the `VectorStoreHandle` interface and
-  `resolveVectorStore` helper (see Provider contract above). Shared by all three
-  invocables; the only thing future backends must satisfy.
+- `store.ts` — the `VectorStoreHandle` interface and its `isVectorStore` guard
+  (see Provider contract above). Shared by all three invocables; the only thing
+  future backends must satisfy.
 - `record.ts` / `match.ts` / `removal.ts` — `Telo.Invocable`s; each resolves the
-  `store` via `resolveVectorStore` and delegates to `upsert` / `query` /
+  `store` via `ctx.resolveRef` and delegates to `upsert` / `query` /
   `delete`. No dimension logic here — the core is decoupled from backend config.
   Errors propagate.
 - `vector-store-memory/nodejs/src/store.ts` — `Telo.Provider`; `provide()`

@@ -644,8 +644,8 @@ This is an O(1) registry lookup. No schema traversal happens at interaction time
 
 The kernel maintains two parallel definition stores: `ControllerRegistry.definitionsByKind` and `DefinitionRegistry` (from the analyzer). Both are populated on every `registerResourceDefinition` call. `ControllerRegistry` should be refactored to use `DefinitionRegistry` internally so there is one authoritative store, and `getAnalysisContext()` returns the same instance without a separate sync step.
 
-### `resolveChildren` and `withManifests`
+### `ensureKindRef` and `withManifests`
 
-`ctx.resolveChildren()` handles inline resource registration at controller `init()` time — it inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference. `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down. Controllers like `Run.Sequence` call both manually.
+`ctx.ensureKindRef()` handles inline resource registration at controller `init()` time — it inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference. (It was called `resolveChildren`; that name is deprecated and now delegates here.) `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down. Controllers like `Run.Sequence` call both manually.
 
 Once Phase 2 normalization and `x-telo-scope` injection are in place, both are superseded by the kernel: inline resources are registered before `init()` is called, and scoped fields are injected as `ScopeHandle` objects. Both methods can be removed from the `ResourceContext` API.

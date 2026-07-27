@@ -1,11 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError, parseDurationMs } from "@telorun/sdk";
-import type { CacheStore } from "./cache-store.js";
-import { resolveCacheStore } from "./cache-store-ref.js";
+import { type CacheStore, isCacheStore } from "./cache-store.js";
 
 interface EntryResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: CacheStore | KindRef<CacheStore>;
   ttl?: string;
   staleTtl?: string;
 }
@@ -34,7 +33,12 @@ class CacheEntry implements ResourceInstance<EntryInputs, { key: string }> {
         `Cache.Entry "${this.resource.metadata.name}": 'key' must be a string.`,
       );
     }
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isCacheStore,
+      () => `Cache.Entry "${this.resource.metadata.name}": 'store'`,
+      "std/cache#Store",
+    );
     await store.set(inputs.key, inputs.value, this.ttlMs, this.staleTtlMs);
     return { key: inputs.key };
   }

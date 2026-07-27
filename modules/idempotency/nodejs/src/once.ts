@@ -2,7 +2,6 @@ import {
   InvokeError,
   parseDurationMs,
   resolveInvocableDispatcher,
-  resolveRefInstance,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -78,11 +77,11 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
       );
     }
 
-    const store = resolveRefInstance<KvStore>(
+    const store = this.ctx.resolveRef(
       this.resource.store,
-      this.ctx,
       isKvStore,
       () => `Idempotency.Once "${name}": 'store'`,
+      "std/kv-store#Store",
     );
     const claims = new KeyedClaim(store);
     const holder = newHolderToken();

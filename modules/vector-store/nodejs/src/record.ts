@@ -1,11 +1,10 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { VectorRecord, VectorStoreHandle } from "./store.js";
-import { resolveVectorStore } from "./store-ref.js";
+import { type VectorRecord, type VectorStoreHandle, isVectorStore } from "./store.js";
 
 interface RecordResource {
   metadata: { name: string; module?: string };
-  store?: VectorStoreHandle | { name: string; alias?: string };
+  store?: VectorStoreHandle | KindRef<VectorStoreHandle>;
 }
 
 interface RecordInputs {
@@ -25,7 +24,12 @@ class VectorRecordOp implements ResourceInstance<RecordInputs, { ids: string[] }
         `VectorStore.Record "${this.resource.metadata.name}": 'items' must be a non-empty array.`,
       );
     }
-    const store = resolveVectorStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isVectorStore,
+      () => `VectorStore.Record "${this.resource.metadata.name}": 'store'`,
+      "std/vector-store#Store",
+    );
     return store.upsert(inputs.items);
   }
 

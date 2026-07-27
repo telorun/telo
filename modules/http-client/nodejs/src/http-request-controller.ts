@@ -252,8 +252,8 @@ function hasSnapshot(value: unknown): value is ClientSnapshotInstance {
  *     reference, so it stays supported here.
  *
  * `{kind, name, alias?}` objects are read directly rather than routed through
- * `ctx.resolveChildren`: an `alias` key there registers a spurious inline manifest and
- * drops the alias. Sentinels still go through `resolveChildren`, which performs the
+ * `ctx.ensureKindRef`: an `alias` key there registers a spurious inline manifest and
+ * drops the alias. Sentinels still go through `ensureKindRef`, which performs the
  * Self./Alias. split and cross-module export resolution.
  */
 function normalizeClientRef(
@@ -266,7 +266,7 @@ function normalizeClientRef(
     if (typeof ref.name === "string") {
       return { name: ref.name, alias: typeof ref.alias === "string" ? ref.alias : undefined };
     }
-    const resolved = ctx.resolveChildren(client) as { name: string; alias?: string };
+    const resolved = ctx.ensureKindRef(client) as { name: string; alias?: string };
     return { name: resolved.name, alias: resolved.alias };
   }
   throw new Error(

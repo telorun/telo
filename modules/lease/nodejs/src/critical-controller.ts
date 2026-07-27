@@ -7,7 +7,6 @@ import {
   isCancellationError,
   parseDurationMs,
   resolveInvocableDispatcher,
-  resolveRefInstance,
 } from "@telorun/sdk";
 import type { KvStore } from "@telorun/kv-store";
 import { randomUUID } from "node:crypto";
@@ -86,11 +85,11 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     }
     if (inputs.op === "cancel") return this.cancelActive(inputs);
 
-    const store = resolveRefInstance<KvStore>(
+    const store = this.ctx.resolveRef(
       this.resource.store,
-      this.ctx,
       isKvStore,
       () => `Lease.Critical "${name}": 'store'`,
+      "std/kv-store#Store",
     );
     const mutex = new Mutex(store, name, this.ttlMs);
     // The holder token is both the 409 payload and the release guard — unique

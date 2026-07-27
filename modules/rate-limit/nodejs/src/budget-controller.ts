@@ -1,14 +1,15 @@
 import {
+  type KindRef,
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
   parseDurationMs,
 } from "@telorun/sdk";
-import { type CacheStore, resolveCacheStore } from "@telorun/cache";
+import { type CacheStore, isCacheStore } from "@telorun/cache";
 
 interface BudgetResource {
   metadata: { name: string; module?: string };
-  store?: CacheStore | { name: string; alias?: string };
+  store?: CacheStore | KindRef<CacheStore>;
   limit: number;
   window: string;
 }
@@ -59,7 +60,12 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
     if (!Number.isInteger(inputs.amount) || inputs.amount < 0) {
       throw new Error("RateLimit.Budget: 'amount' input is required and must be a non-negative integer");
     }
-    const store = resolveCacheStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isCacheStore,
+      () => `RateLimit.Budget "${this.resource.metadata.name}": 'store'`,
+      "std/cache#Store",
+    );
     const bucketKey = `budget:${this.resource.metadata.name}:${inputs.key}`;
 
     if (inputs.op === "settle") {

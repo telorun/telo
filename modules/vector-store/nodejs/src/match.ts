@@ -1,11 +1,15 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { MetadataFilter, VectorMatch, VectorStoreHandle } from "./store.js";
-import { resolveVectorStore } from "./store-ref.js";
+import {
+  type MetadataFilter,
+  type VectorMatch,
+  type VectorStoreHandle,
+  isVectorStore,
+} from "./store.js";
 
 interface MatchResource {
   metadata: { name: string; module?: string };
-  store?: VectorStoreHandle | { name: string; alias?: string };
+  store?: VectorStoreHandle | KindRef<VectorStoreHandle>;
   topK?: number;
   includeVectors?: boolean;
 }
@@ -34,7 +38,12 @@ class VectorMatchOp implements ResourceInstance<MatchInputs, { matches: VectorMa
         `VectorStore.Match "${this.resource.metadata.name}": 'vector' must be a non-empty array.`,
       );
     }
-    const store = resolveVectorStore(this.resource.store, this.ctx);
+    const store = this.ctx.resolveRef(
+      this.resource.store,
+      isVectorStore,
+      () => `VectorStore.Match "${this.resource.metadata.name}": 'store'`,
+      "std/vector-store#Store",
+    );
     return store.query(inputs.vector, {
       topK: this.topK,
       includeVectors: this.includeVectors,
