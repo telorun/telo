@@ -20,7 +20,7 @@ schema:
     greeter:
       title: Greeter
       description: Reference to any Greeter implementation.
-      x-telo-ref: "std/abstract-lib#Greeter"
+      x-telo-ref: AbstractLib.Greeter
   required: [ greeter ]
   additionalProperties: false
 ---

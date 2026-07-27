@@ -30,13 +30,13 @@ afterEach(async () => {
 const REGISTRY_URL = "https://registry.telo.run";
 
 describe("cachePathForCanonical", () => {
-  it("maps a registry-served URL into the namespace/name/version layout", () => {
+  it("maps a registry-served URL into the registry/host/path/version layout", () => {
     const result = cachePathForCanonical(
       "https://registry.telo.run/std/type/1.0.5/telo.yaml",
       "/srv/app",
       REGISTRY_URL,
     );
-    expect(result).toBe("/srv/app/.telo/manifests/std/type/1.0.5/telo.yaml");
+    expect(result).toBe("/srv/app/.telo/manifests/registry/registry.telo.run/std/type/1.0.5/telo.yaml");
   });
 
   it("strips a trailing slash from the configured registry URL", () => {
@@ -45,17 +45,17 @@ describe("cachePathForCanonical", () => {
       "/srv/app",
       `${REGISTRY_URL}/`,
     );
-    expect(result).toBe("/srv/app/.telo/manifests/std/run/0.2.4/telo.yaml");
+    expect(result).toBe("/srv/app/.telo/manifests/registry/registry.telo.run/std/run/0.2.4/telo.yaml");
   });
 
-  it("maps an arbitrary HTTP URL under the __http subtree", () => {
+  it("maps an arbitrary HTTP URL under the url subtree", () => {
     const result = cachePathForCanonical(
       "https://example.com/lib/v1/telo.yaml",
       "/srv/app",
       REGISTRY_URL,
     );
     expect(result).toBe(
-      "/srv/app/.telo/manifests/__http/example.com/lib/v1/telo.yaml",
+      "/srv/app/.telo/manifests/url/example.com/lib/v1/telo.yaml",
     );
   });
 
@@ -75,7 +75,7 @@ describe("cachePathForCanonical", () => {
 
 describe("LocalManifestCacheSource.supports", () => {
   it("matches a registry ref when the on-disk file exists", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/std/type/1.0.5");
+    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/type/1.0.5");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
@@ -89,7 +89,7 @@ describe("LocalManifestCacheSource.supports", () => {
   });
 
   it("matches an HTTP URL when the on-disk file exists", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/__http/example.com/lib");
+    const cacheRoot = path.join(workdir, ".telo/manifests/url/example.com/lib");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
@@ -115,12 +115,12 @@ describe("LocalManifestCacheSource.supports", () => {
   });
 
   it("treats a directory at the cache path as a miss (not a hit)", async () => {
-    // `mkdir -p .telo/manifests/std/foo/1.0.0/telo.yaml` — note the .yaml
+    // `mkdir -p .telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml` — note the .yaml
     // segment is itself a directory. existsSync would say true here; we need
     // a stricter regular-file check so reads don't blow up with EISDIR and
     // the chain still falls through to the registry.
     await fs.mkdir(
-      path.join(workdir, ".telo/manifests/std/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml"),
       { recursive: true },
     );
 
@@ -138,7 +138,7 @@ describe("LocalManifestCacheSource.supports", () => {
 
 describe("LocalManifestCacheSource.read", () => {
   it("returns the cached text and a file:// canonical source", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/std/run/0.2.4");
+    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/run/0.2.4");
     await fs.mkdir(cacheRoot, { recursive: true });
     const expected = "kind: Telo.Library\nmetadata:\n  name: run\n";
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), expected);
@@ -148,11 +148,11 @@ describe("LocalManifestCacheSource.read", () => {
 
     expect(text).toBe(expected);
     expect(canonical.startsWith("file://")).toBe(true);
-    expect(canonical.endsWith("/std/run/0.2.4/telo.yaml")).toBe(true);
+    expect(canonical.endsWith("/registry/registry.telo.run/std/run/0.2.4/telo.yaml")).toBe(true);
   });
 
   it("strips a leading v from the version", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/std/run/0.2.4");
+    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/run/0.2.4");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
@@ -202,11 +202,11 @@ describe("writeManifestCache", () => {
     expect(written.length).toBe(2);
     const registryFile = path.join(
       workdir,
-      ".telo/manifests/std/type/1.0.5/telo.yaml",
+      ".telo/manifests/registry/registry.telo.run/std/type/1.0.5/telo.yaml",
     );
     const httpFile = path.join(
       workdir,
-      ".telo/manifests/__http/example.com/lib/telo.yaml",
+      ".telo/manifests/url/example.com/lib/telo.yaml",
     );
     expect(await fs.readFile(registryFile, "utf-8")).toBe("registry-text");
     expect(await fs.readFile(httpFile, "utf-8")).toBe("http-text");
@@ -214,7 +214,7 @@ describe("writeManifestCache", () => {
     // The entry itself must not be cached — it already lives on disk.
     const entryCache = path.join(workdir, ".telo/manifests");
     const entries = await fs.readdir(entryCache);
-    expect(entries.sort()).toEqual(["__http", "std"]);
+    expect(entries.sort()).toEqual(["registry", "url"]);
   });
 
   it("dedupes when the same source is reachable through multiple paths", async () => {
@@ -249,7 +249,7 @@ describe("writeManifestCache", () => {
     // ones, not whatever was already there.
     const cacheFile = path.join(
       workdir,
-      ".telo/manifests/std/foo/1.0.0/telo.yaml",
+      ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml",
     );
     await fs.mkdir(path.dirname(cacheFile), { recursive: true });
     await fs.writeFile(cacheFile, "stale-bytes");
@@ -304,7 +304,7 @@ describe("writeManifestCache", () => {
 
     const partialPath = path.join(
       workdir,
-      ".telo/manifests/std/foo/1.0.0/sub.yaml",
+      ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/sub.yaml",
     );
     expect(await fs.readFile(partialPath, "utf-8")).toBe("partial-text");
   });
@@ -313,7 +313,7 @@ describe("writeManifestCache", () => {
 describe("Loader picks the cache source over RegistrySource on hit", () => {
   it("serves a registry ref from disk and never touches the network", async () => {
     // Seed the cache directly.
-    const libDir = path.join(workdir, ".telo/manifests/std/foo/1.0.0");
+    const libDir = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0");
     await fs.mkdir(libDir, { recursive: true });
     await fs.writeFile(
       path.join(libDir, "telo.yaml"),
@@ -401,14 +401,14 @@ describe("path traversal guard", () => {
   it("URL parser canonicalizes .. in HTTP pathnames so they cannot escape", () => {
     // `new URL()` collapses `..` segments, so a malformed import like this
     // is already neutered before our mapping sees it: pathname becomes
-    // `/escape/telo.yaml`, which lands inside the __http subtree.
+    // `/escape/telo.yaml`, which lands inside the url subtree.
     const result = cachePathForCanonical(
       "https://example.com/../../escape/telo.yaml",
       "/srv/app",
       REGISTRY_URL,
     );
     expect(result).toBe(
-      "/srv/app/.telo/manifests/__http/example.com/escape/telo.yaml",
+      "/srv/app/.telo/manifests/url/example.com/escape/telo.yaml",
     );
   });
 
@@ -478,7 +478,7 @@ describe("registry URL alignment between reader and writer", () => {
     const canonical = "https://registry.telo.run/std/foo/1.0.0/telo.yaml";
     const writePath = cachePathForCanonical(canonical, workdir, REGISTRY_URL);
     expect(writePath).toBe(
-      path.join(workdir, ".telo/manifests/std/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml"),
     );
     await fs.mkdir(path.dirname(writePath!), { recursive: true });
     await fs.writeFile(writePath!, "kind: Telo.Library\n");
@@ -493,7 +493,7 @@ describe("registry URL alignment between reader and writer", () => {
     expect(source.supports("https://registry.telo.run/std/foo/1.0.0")).toBe(true);
   });
 
-  it("falls back to __http layout for registry URLs when a non-default registry is configured", () => {
+  it("falls back to url layout for registry URLs when a non-default registry is configured", () => {
     // Writer with a custom registry URL.
     const customRegistry = "https://registry.example.internal";
     const writePath = cachePathForCanonical(
@@ -504,7 +504,7 @@ describe("registry URL alignment between reader and writer", () => {
     // The default registry URL is NOT the configured one, so this is
     // arbitrary HTTP from the perspective of the cache.
     expect(writePath).toBe(
-      "/srv/app/.telo/manifests/__http/registry.telo.run/std/foo/1.0.0/telo.yaml",
+      "/srv/app/.telo/manifests/url/registry.telo.run/std/foo/1.0.0/telo.yaml",
     );
   });
 
@@ -515,7 +515,7 @@ describe("registry URL alignment between reader and writer", () => {
       "https://reg.example.com/r",
     );
     expect(writePath).toBe(
-      "/srv/app/.telo/manifests/std/foo/1.0.0/telo.yaml",
+      "/srv/app/.telo/manifests/registry/reg.example.com/std/foo/1.0.0/telo.yaml",
     );
   });
 });

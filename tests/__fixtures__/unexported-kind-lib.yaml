@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: unexported-kind-lib
-  namespace: std
   version: 1.0.0
   description: >-
     Test fixture: declares two kinds but exports only one, so a consumer

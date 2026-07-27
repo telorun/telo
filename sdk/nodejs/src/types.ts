@@ -51,7 +51,7 @@ export interface ResourceDefinition {
    *  Resolved against the declaring file's `Telo.Import` declarations — same pattern as
    *  kind prefixes (`kind: Http.Api`). Orthogonal to `capability` (lifecycle role); the
    *  analyzer populates its `extendedBy` index from this field so references typed via
-   *  `x-telo-ref: "<ns>/<mod>#<Abstract>"` accept this definition. */
+   *  `x-telo-ref: <Alias>.<Abstract>` accept this definition. */
   extends?: string;
   /** Type reference (named, inline `Type.JsonSchema`, or raw schema) for the
    *  resource's `invoke()` inputs / outputs. Read by the analyzer's CEL typing

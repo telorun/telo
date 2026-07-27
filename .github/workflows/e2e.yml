@@ -70,18 +70,40 @@ jobs:
                  docker compose ps -a; docker compose logs --no-color; \
                  echo "::endgroup::"; exit 1; }
 
-      - name: Wait for first tracking pass to embed
+      - name: Wait for the first tracking pass to finish
         run: |
-          # The hub is healthy before its first tracking pass finishes; the
-          # semantic assertion needs the seeded kinds embedded into pgvector.
+          # The hub is healthy well before its first tracking pass finishes, and
+          # the pass walks SEED_REFS in order. Waiting only on "some vector rows
+          # exist" let the suite start after the first ref embedded, so
+          # assertions about a ref late in the seed (console is last) raced the
+          # tracker and saw an index holding only its earlier entries.
+          #
+          # Wait for every seeded ref instead: a row per ref, each with
+          # `last_tracked_at` set (the tracker stamps it when a ref's pass ends,
+          # success or failure), plus at least one embedding for the semantic
+          # assertion. Expected count comes from the hub's own environment, so
+          # editing SEED_REFS never leaves this gate behind.
+          expected=$(docker compose exec -T hub printenv SEED_REFS | jq 'length' 2>/dev/null || echo "")
+          if ! [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
+            echo "::error::could not read SEED_REFS from the hub container"
+            exit 1
+          fi
+          echo "seeded refs: $expected"
+          psql() { docker compose exec -T db psql -U postgres -d hub -tAc "$1" 2>/dev/null | tr -d '[:space:]'; }
           for i in $(seq 1 60); do
-            n=$(docker compose exec -T db psql -U postgres -d hub -tAc \
-                  "SELECT count(*) FROM resource_vectors" 2>/dev/null | tr -d '[:space:]' || echo 0)
-            echo "resource_vectors rows: ${n:-0}"
-            [ "${n:-0}" -gt 0 ] 2>/dev/null && exit 0
+            total=$(psql "SELECT count(*) FROM modules" || echo 0)
+            tracked=$(psql "SELECT count(*) FROM modules WHERE last_tracked_at IS NOT NULL" || echo 0)
+            vectors=$(psql "SELECT count(*) FROM resource_vectors" || echo 0)
+            echo "modules: ${tracked:-0}/${total:-0} tracked of $expected seeded; resource_vectors: ${vectors:-0}"
+            if [ "${total:-0}" -ge "$expected" ] && [ "${tracked:-0}" -ge "$expected" ] \
+               && [ "${vectors:-0}" -gt 0 ]; then
+              exit 0
+            fi
             sleep 5
           done
-          echo "::error::hub never populated resource_vectors (embedding pass did not complete)"
+          echo "::error::hub never finished its first tracking pass over all seeded refs"
+          docker compose exec -T db psql -U postgres -d hub \
+            -c "SELECT ref, last_tracked_at, last_error FROM modules ORDER BY ref" || true
           docker compose logs --no-color hub embedder
           exit 1
 

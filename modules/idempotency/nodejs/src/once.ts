@@ -81,7 +81,7 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
       this.resource.store,
       isKvStore,
       () => `Idempotency.Once "${name}": 'store'`,
-      "std/kv-store#Store",
+      "KvStore.Store",
     );
     const claims = new KeyedClaim(store);
     const holder = newHolderToken();

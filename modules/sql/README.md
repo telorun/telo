@@ -15,7 +15,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 
 | Kind | Purpose |
 | --- | --- |
-| `Sql.Connection` | **Abstract** database-connection contract; reference it from any consumer (`x-telo-ref: std/sql#Connection`). |
+| `Sql.Connection` | **Abstract** database-connection contract; reference it from any consumer (`x-telo-ref: Sql.Connection`). |
 | `SqlPostgres.Connection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
 | `SqlSqlite.Connection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
 | `Sql.Query` | SQL returning rows plus row count; inline `!sql` binding or `bindings` escape hatch. |

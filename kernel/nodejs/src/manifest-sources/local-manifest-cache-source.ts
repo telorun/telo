@@ -1,4 +1,10 @@
-import { splitIntegrity, verifyIntegrity, type LoadedGraph, type ManifestSource } from "@telorun/analyzer";
+import {
+  manifestCacheKey,
+  splitIntegrity,
+  verifyIntegrity,
+  type LoadedGraph,
+  type ManifestSource,
+} from "@telorun/analyzer";
 import { statSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -27,8 +33,9 @@ function joinUnder(root: string, ...segments: string[]): string | null {
 /** Single source of truth for URL → cache path. Used identically by the
  *  reader (cache lookup) and writer (install-time persistence). For any
  *  given import ref — registry ref, direct registry URL, arbitrary HTTP, or
- *  (once registered) `oci://` — both sides land on the same file, because the
- *  owning transport decides the layout via {@link Transport.cacheLocation}.
+ *  `oci://` — both sides land on the same file: the owning transport supplies
+ *  the coordinates and the analyzer's `manifestCacheKey` renders them, the same
+ *  grammar the hub's static manifest bucket and the editor's read path use.
  *
  *  Returns `null` for unsupported refs (file://, memory://, relative paths) or
  *  for path-traversal attempts that would escape `cacheRoot`. */
@@ -37,9 +44,11 @@ function cachePathForUrl(
   cacheRoot: string,
   transports: TransportRegistry,
 ): string | null {
-  const segments = transports.cacheLocation(rawUrl);
-  if (!segments) return null;
-  return joinUnder(cacheRoot, ...segments);
+  const coords = transports.cacheCoords(rawUrl);
+  if (!coords) return null;
+  const key = manifestCacheKey(coords);
+  if (!key) return null;
+  return joinUnder(cacheRoot, ...key.split("/"));
 }
 
 /**

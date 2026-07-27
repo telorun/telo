@@ -7,7 +7,7 @@ imports:
   Assert: ../modules/assert
 targets:
   # `!ref` works in `Telo.Application.targets` (which is itself an
-  # `x-telo-ref: telo#Runnable` slot) just as in any other ref slot.
+  # `x-telo-ref: Telo.Runnable` slot) just as in any other ref slot.
   - !ref TestRefTag
 ---
 # Run.Value declared at the top level under a stable name. The

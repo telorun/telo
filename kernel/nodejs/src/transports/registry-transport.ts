@@ -7,6 +7,7 @@ import {
   parseModuleRef,
   sha256Base64Url,
   splitIntegrity,
+  type ManifestCacheCoords,
   type ManifestSource,
 } from "@telorun/analyzer";
 import { fetchOrThrow } from "@telorun/sdk";
@@ -21,12 +22,23 @@ import type {
   PublishBundle,
   PublishOptions,
   PublishResult,
-  SiblingIdentity,
   Transport,
 } from "./transport.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
-const HTTP_NAMESPACE = "__http";
+/** Throwaway origin that lets a bare registry ref use URL path resolution. */
+const JOIN_ORIGIN = "https://ref.invalid";
+
+/** True for an HTTP(S) destination that names a registry root rather than a
+ *  module within it — no path segments to resolve a sibling beside. */
+function isRegistryBase(base: string): boolean {
+  if (!base.startsWith("http://") && !base.startsWith("https://")) return false;
+  try {
+    return new URL(base).pathname.replace(/\/+/g, "/").replace(/^\/|\/$/g, "") === "";
+  } catch {
+    return false;
+  }
+}
 const QUERY_HASH_LENGTH = 12;
 
 /** Mirror `HttpSource.read`'s `fetchUrl` derivation: when the URL does not
@@ -95,19 +107,28 @@ export class RegistryTransport implements Transport {
     return base.startsWith("http://") || base.startsWith("https://") || isRegistryRef(ref);
   }
 
-  cacheLocation(ref: string): string[] | null {
+  cacheCoords(ref: string): ManifestCacheCoords | null {
     const url = splitIntegrity(ref).base;
     const trimmedRegistry = this.registryUrl.replace(/\/+$/, "");
+    const registryHost = this.registryHost();
 
-    // 1. Registry ref form: namespace/name@version
+    // 1. Registry ref form: <path>@<version>. Keyed under the registry's host —
+    //    a ref says nothing about which registry serves it, so without the host
+    //    two registries' copies of the same path/version share one cache entry.
     if (isRegistryRef(url)) {
+      if (!registryHost) return null;
       let parsed: ReturnType<typeof parseModuleRef>;
       try {
         parsed = parseModuleRef(url);
       } catch {
         return null;
       }
-      return [parsed.modulePath, parsed.version, DEFAULT_MANIFEST_FILENAME];
+      return {
+        transport: "registry",
+        host: registryHost,
+        path: parsed.modulePath,
+        version: parsed.version,
+      };
     }
 
     // 2. HTTP(S) URL — a direct registry URL or arbitrary external.
@@ -124,22 +145,47 @@ export class RegistryTransport implements Transport {
       //     registry layout so a ref and a direct URL land on the same file.
       const normalizedUrl = `${parsed.protocol}//${parsed.host}${pathname}`;
       if (
+        registryHost &&
         !parsed.search &&
         !parsed.hash &&
-        (normalizedUrl === trimmedRegistry || normalizedUrl.startsWith(`${trimmedRegistry}/`))
+        normalizedUrl.startsWith(`${trimmedRegistry}/`)
       ) {
-        const rel = normalizedUrl.slice(trimmedRegistry.length + 1);
-        if (!rel) return null;
-        return rel.split("/");
+        // The registry serves `<path…>/<version>/<file>`, where `<file>` is the
+        // module manifest or one of its `include:` partials.
+        const segments = normalizedUrl.slice(trimmedRegistry.length + 1).split("/");
+        const file = segments.pop();
+        const version = segments.pop();
+        if (file && version && segments.length > 0) {
+          return {
+            transport: "registry",
+            host: registryHost,
+            path: segments.join("/"),
+            version,
+            file,
+          };
+        }
       }
 
-      // 2b. Arbitrary HTTP(S) → __http subtree, query-hash suffix on collision.
+      // 2b. Arbitrary HTTP(S) → `url` subtree, query-hash suffix on collision.
+      //     No version segment: a URL addresses exactly one file, and the
+      //     version it declares lives inside bytes the cache maps paths without.
       const cleanPath = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-      const disambiguated = disambiguatePath(cleanPath, parsed.search, parsed.hash);
-      return [HTTP_NAMESPACE, parsed.host, ...disambiguated.split("/")];
+      const segments = disambiguatePath(cleanPath, parsed.search, parsed.hash).split("/");
+      const file = segments.pop();
+      if (!file) return null;
+      return { transport: "url", host: parsed.host, path: segments.join("/"), file };
     }
 
     return null;
+  }
+
+  /** Host of the configured registry, or `null` when the URL is unparseable. */
+  private registryHost(): string | null {
+    try {
+      return new URL(this.registryUrl).host || null;
+    } catch {
+      return null;
+    }
   }
 
   async listVersions(ref: string): Promise<string[] | null> {
@@ -279,16 +325,31 @@ export class RegistryTransport implements Transport {
   }
 
   canonicalizeSiblingRef(
-    _destination: string,
-    _relativeSource: string,
-    sibling: SiblingIdentity,
+    destination: string,
+    relativeSource: string,
+    version: string,
   ): string {
-    // An HTTP registry path defaults to the sibling's own `<namespace>/<name>`.
-    if (!sibling.namespace || !sibling.name) {
+    // The sibling sits beside the destination module: resolve the relative path
+    // against the destination's own path, then pin the sibling's version. A bare
+    // registry ref (`std/foo`) is a path, not a URL, so it borrows a throwaway
+    // origin for the join and drops it again.
+    const base = splitIntegrity(destination).base.replace(/@[^/@]*$/, "");
+    // A registry *base* (`https://registry.telo.run`) is not a module location,
+    // so there is nothing for `../lib` to resolve beside — joining anyway would
+    // silently produce a ref one path segment short.
+    if (isRegistryBase(base)) {
       throw new Error(
-        "a relative import canonicalized to an HTTP registry needs the sibling's metadata.namespace and metadata.name.",
+        `cannot canonicalize the relative import '${relativeSource}': publish destination ` +
+          `'${destination}' is a registry base, not this module's own location. Pass the ` +
+          `module's full destination (e.g. '${base.replace(/\/+$/, "")}/<namespace>/<name>').`,
       );
     }
-    return `${sibling.namespace}/${sibling.name}@${sibling.version}`;
+    const isUrl = base.startsWith("http://") || base.startsWith("https://");
+    const origin = isUrl ? base : `${JOIN_ORIGIN}/${base.replace(/^\/+/, "")}`;
+    const resolved = new URL(relativeSource, `${origin.replace(/\/+$/, "")}/`);
+    const joined = isUrl
+      ? `${resolved.protocol}//${resolved.host}${resolved.pathname}`
+      : resolved.pathname.replace(/^\/+/, "");
+    return `${joined.replace(/\/+$/, "")}@${version}`;
   }
 }

@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: cache
-  namespace: std
   version: 0.6.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -21,7 +20,7 @@ exports:
 # Cache.Store — the abstract backing store every cache backend implements. A
 # Telo.Provider: a configured store, NOT an operation you invoke. Consumers
 # (Cache.Lookup / Cache.Entry / Cache.View) reference it via
-# `x-telo-ref: "std/cache#Store"`; a concrete implementation
+# `x-telo-ref: Self.Store`; a concrete implementation
 # (CacheMemory.Store / CacheRedis.Store) satisfies the ref. The store owns
 # freshness: an entry written with a fresh window (`ttl`) and an optional stale
 # grace window (`staleTtl`) reports `fresh` until `ttl` elapses, `stale` until
@@ -81,7 +80,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: "std/cache#Store"
+      x-telo-ref: Self.Store
 ---
 kind: Telo.Definition
 metadata:
@@ -120,7 +119,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: "std/cache#Store"
+      x-telo-ref: Self.Store
     ttl:
       title: TTL
       type: string
@@ -186,12 +185,12 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: "std/cache#Store"
+      x-telo-ref: Self.Store
     invoke:
       title: Invoke
       description: The wrapped source-of-truth invocable, called on miss / revalidation.
       type: object
-      x-telo-ref: "telo#Invocable"
+      x-telo-ref: Telo.Invocable
     ttl:
       title: TTL
       type: string

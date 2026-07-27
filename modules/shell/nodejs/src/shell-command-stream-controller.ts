@@ -32,7 +32,7 @@ class ShellCommandStreamResource implements ResourceInstance {
       this.manifest.host,
       isShellHost,
       () => `Shell.CommandStream "${this.manifest.metadata.name}": 'host'`,
-      "std/shell#Host",
+      "Self.Host",
     );
     const spec = toCommandSpec(input, "Shell.CommandStream");
     const iterable = host

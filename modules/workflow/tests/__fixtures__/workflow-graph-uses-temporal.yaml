@@ -21,7 +21,7 @@ metadata:
 address: localhost:7233
 namespace: default
 ---
-# Workflow.Graph.backend is typed `x-telo-ref: "std/workflow#Backend"` — the analyzer
+# Workflow.Graph.backend is typed `x-telo-ref: Workflow.Backend` — the analyzer
 # accepts TemporalProd here because Temporal.Backend declares `extends: Workflow.Backend`
 # (canonically workflow.Backend), wiring it into the abstract's extendedBy set.
 kind: Workflow.Graph

@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: vector-store-memory
-  namespace: std
   version: 0.4.2
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

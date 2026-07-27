@@ -24,7 +24,7 @@ extends: Workflow.Backend
 
 `extends` is distinct from `capability`. `capability` assigns a **lifecycle role** (`Telo.Invocable`, `Telo.Provider`, `Telo.Service`, `Telo.Runnable`, `Telo.Mount`, `Telo.Type`). `extends` declares **which abstract interface** this definition implements. The two are orthogonal and usually combined.
 
-`extends` takes an **alias-form** string `"<Alias>.<AbstractName>"` — the same shape as kind prefixes (`kind: Http.Api`, `kind: Workflow.Graph`). The alias is resolved against the declaring file's own `imports:` map, so the target's module version is pinned through the import source. Identity-form strings (`"std/workflow#Backend"`) are intentionally rejected: they don't carry version information and they duplicate resolution paths.
+`extends` takes an **alias-form** string `"<Alias>.<AbstractName>"` — the same shape as kind prefixes (`kind: Http.Api`, `kind: Workflow.Graph`). The alias is resolved against the declaring file's own `imports:` map, so the target's module version is pinned through the import source. Identity-form strings (`"std/workflow#Backend"`) are intentionally rejected: they don't carry version information and they duplicate resolution paths. `x-telo-ref` takes the same alias form, for the same reasons.
 
 ---
 
@@ -70,7 +70,7 @@ controllers:
   - pkg:npm/@telorun/workflow-temporal@>=0.1.0?local_path=./nodejs#backend
 ```
 
-**Analyzer behavior:** For every reference typed `x-telo-ref: "std/workflow#Backend"`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `workflow.Backend` (the canonical form after alias resolution). `extendedBy` is populated from both `extends` and `capability` so both the canonical and legacy patterns coexist.
+**Analyzer behavior:** For every reference typed `x-telo-ref: Workflow.Backend`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `workflow.Backend` (the canonical form after alias resolution). `extendedBy` is populated from both `extends` and `capability` so both the canonical and legacy patterns coexist.
 
 ---
 
@@ -99,7 +99,7 @@ Abstract kinds are referenced in other definitions' schemas using `x-telo-ref`, 
 # In Workflow.Graph's schema
 properties:
   backend:
-    x-telo-ref: "std/workflow#Backend"
+    x-telo-ref: Workflow.Backend
 ```
 
 The analyzer resolves this to the canonical `workflow.Backend` kind and accepts any resource whose definition has `extends: Workflow.Backend` (or any alias pointing at the same module).

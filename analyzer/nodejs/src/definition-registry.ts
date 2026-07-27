@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import {
@@ -21,18 +22,21 @@ export class DefinitionRegistry {
    *  across analyze() calls and no unbounded growth across the process lifetime. */
   private readonly ajv = createAjv();
   private readonly registeredSchemaIds = new Set<string>();
+  /** The subset of `registeredSchemaIds` claimed by a kind's schema. Kinds and
+   *  named `Telo.Type`s share one `telo://<module>/<Name>` id space, so this is
+   *  what lets a colliding type name be reported instead of silently dropped. */
+  private readonly definitionSchemaIds = new Set<string>();
 
   private readonly defs = new Map<string, ResourceDefinition>();
   private readonly fieldMaps = new Map<string, ReferenceFieldMap>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
   private readonly extendedBy = new Map<string, string[]>();
-  /** Module identity table: identity string → canonical module name.
-   *  "telo" → "Telo", "std/pipeline" → "pipeline", etc. */
+  /** DEPRECATED module identity table: identity string → canonical module name
+   *  ("std/pipeline" → "pipeline"). Serves only the legacy
+   *  `<namespace>/<module>#<Kind>` form of `x-telo-ref`, kept resolvable for
+   *  module versions published before constraints named their target by import
+   *  alias. Fed by `metadata.namespace`, which nothing else reads. */
   private readonly identityMap = new Map<string, string>();
-  /** Reverse identity table: canonical module name → full identity string.
-   *  "Telo" → "telo", "pipeline" → "std/pipeline", etc.
-   *  Used to compute definition $id values for the AJV schema store. */
-  private readonly reverseIdentityMap = new Map<string, string>();
 
   register(definition: ResourceDefinition): void {
     const { name, module: mod } = definition.metadata;
@@ -60,12 +64,11 @@ export class DefinitionRegistry {
     if (definition.extends) {
       this.addExtendedBy(definition.extends, key);
     }
-    // Auto-register the telo identity when any Telo built-in is registered.
+    // Auto-register the legacy telo identity when any Telo built-in is registered,
+    // so an already-published `x-telo-ref: "telo#Invocable"` still resolves.
     if (definition.kind === "Telo.Abstract" && mod === "Telo") {
       this.identityMap.set("telo", "Telo");
-      this.reverseIdentityMap.set("Telo", "telo");
     }
-    // If identity is already known, register the schema in AJV immediately.
     if (mod && definition.schema) {
       this.tryRegisterSchema(mod, name as string, definition.schema as Record<string, any>);
     }
@@ -80,64 +83,48 @@ export class DefinitionRegistry {
     }
   }
 
-  /** Register a module identity for x-telo-ref resolution.
-   *  Call once per module doc (Telo.Application or Telo.Library) when the manifest is loaded.
-   *  @param namespace  The module's metadata.namespace (e.g. "std"), or null for telo built-ins.
-   *  @param moduleName The module's metadata.name (e.g. "pipeline", "http-server"). */
+  /** DEPRECATED. Register a module identity so the legacy
+   *  `<namespace>/<module>#<Kind>` form of `x-telo-ref` still resolves for module
+   *  versions published before constraints named their target by import alias.
+   *  New manifests declare no namespace and need no identity — their constraints
+   *  are canonicalized to `<module>.<Kind>` before registration.
+   *
+   *  The "telo" identity is reserved for the built-in module and is populated
+   *  automatically when a `Telo.Abstract` registers. A namespace-less module must
+   *  not claim it: overwriting the entry would repoint every legacy `telo#…`
+   *  constraint at a module that declares no such kind, and the resulting
+   *  unresolvable ref reads as partial context rather than an error.
+   *
+   *  @param namespace  The module's `metadata.namespace`, or null when it declares none.
+   *  @param moduleName The module's `metadata.name` (e.g. "pipeline", "http-server"). */
   registerModuleIdentity(namespace: string | null, moduleName: string): void {
-    // The "telo" identity is reserved for the Telo built-in module and gets
-    // populated automatically when a Telo.Abstract definition registers (see
-    // `register` below). A user app / library without a namespace must NOT
-    // claim it — silently overwriting the built-in entry breaks every
-    // x-telo-ref that resolves through "telo#…". Concretely, the
-    // `Http.Api.routes[].handler` slot in the http-server schema carries
-    // `x-telo-ref: "telo#Invocable"`. If the entry application is, say,
-    // `Telo.Application/HelloApi` (no namespace), this method previously
-    // overwrote `"telo" → "Telo"` with `"telo" → "HelloApi"`. The handler's
-    // ref then resolved to a nonexistent `HelloApi.Invocable`, the
-    // kind-mismatch check inside `validate-references.ts` short-circuited
-    // on partial context, and the analyzer reported zero issues for a
-    // manifest that explodes at runtime. Skip non-Telo no-namespace modules;
-    // they have no x-telo-ref identity to declare anyway.
-    if (!namespace && moduleName !== "Telo") return;
-    const identity = namespace ? `${namespace}/${moduleName}` : "telo";
-    this.identityMap.set(identity, moduleName);
-    this.reverseIdentityMap.set(moduleName, identity);
-    // Retroactively register AJV schemas for definitions of this module already in the registry.
-    for (const def of this.defs.values()) {
-      if (def.metadata.module === moduleName && def.schema) {
-        this.tryRegisterSchema(
-          moduleName,
-          def.metadata.name as string,
-          def.schema as Record<string, any>,
-        );
-      }
-    }
+    if (!namespace || moduleName === "Telo") return;
+    this.identityMap.set(`${namespace}/${moduleName}`, moduleName);
   }
 
   /** Registers a named `Telo.Type` resource's schema under its canonical
    *  module-scoped URI `$id` (`telo://<module>/<name>`), so a sibling schema's
    *  `$ref: "telo://Self/<name>"` (rewritten to the canonical form by
    *  `resolveSchemaTypeRefs`) resolves during AJV compilation. Mirrors the
-   *  kernel type controller's `registerSchema(canonicalTypeSchemaId(...))`. */
-  registerNamedTypeSchema(id: string, schema: Record<string, any>): void {
-    if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return;
+   *  kernel type controller's `registerSchema(canonicalTypeSchemaId(...))`.
+   *
+   *  Returns `false` when a kind schema in the same module already owns the id —
+   *  a name collision between a kind and a named type. Definitions register
+   *  first, so the type is the one that would be dropped, and every
+   *  `$ref: "telo://<module>/<Name>"` would then silently validate against the
+   *  kind's schema instead. The caller reports it; nothing is overwritten. */
+  registerNamedTypeSchema(id: string, schema: Record<string, any>): boolean {
+    if (this.definitionSchemaIds.has(id)) return false;
+    if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return true;
     this.ajv.addSchema(schema, id);
     this.registeredSchemaIds.add(id);
+    return true;
   }
 
   /** True when a schema is registered under `id` (a canonical `telo://` type id
    *  or a definition `$id`). Used to flag schema `$ref`s that resolve to nothing. */
   hasSchemaId(id: string): boolean {
     return this.registeredSchemaIds.has(id) || this.ajv.getSchema(id) !== undefined;
-  }
-
-  /** Computes the $id for a definition schema: "<identity>/<TypeName>".
-   *  Returns undefined when the module identity is not yet registered. */
-  computeId(moduleName: string, typeName: string): string | undefined {
-    const identity = this.reverseIdentityMap.get(moduleName);
-    if (!identity) return undefined;
-    return `${identity}/${typeName}`;
   }
 
   /** Validates data against a schema using this registry's AJV instance, which has all
@@ -172,37 +159,51 @@ export class DefinitionRegistry {
     }
   }
 
+  /** Registers a definition schema under the same module-scoped `telo://` id a
+   *  named `Telo.Type` uses, so a kind schema and a type schema are addressable
+   *  the same way and a `$ref` between them resolves at AJV compile time. One id
+   *  space per module: a kind and a named type may not share a name, which
+   *  `registerNamedTypeSchema` reports rather than resolving silently. */
   private tryRegisterSchema(
     moduleName: string,
     typeName: string,
     schema: Record<string, any>,
   ): void {
-    const id = this.computeId(moduleName, typeName);
-    if (!id || this.registeredSchemaIds.has(id)) return;
+    const id = canonicalTypeSchemaId(moduleName, typeName);
+    if (this.registeredSchemaIds.has(id)) {
+      this.definitionSchemaIds.add(id);
+      return;
+    }
     if (this.ajv.getSchema(id)) {
       throw new Error(`Duplicate definition schema $id: "${id}" is already registered`);
     }
     this.ajv.addSchema(schema, id);
     this.registeredSchemaIds.add(id);
+    this.definitionSchemaIds.add(id);
   }
 
-  /** Resolves an x-telo-ref string to a canonical registry kind key.
-   *  Splits on "#", looks up the left side in the identity table, and returns
-   *  "<canonicalModule>.<TypeName>".
+  /** Resolves an `x-telo-ref` constraint to a canonical registry kind key.
    *
-   *  "telo#Invocable"         → "Telo.Invocable"
-   *  "std/pipeline#Job"       → "pipeline.Job"
-   *  "std/http-server#Server" → "http-server.Server"
+   *  The constraint is already canonical `<module>.<Kind>`: alias-form values
+   *  (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) are rewritten in the
+   *  declaring module's scope by `resolveSchemaRefKinds` before registration, so
+   *  no module context is needed here.
    *
-   *  Returns undefined when the string is malformed or the identity is not registered. */
+   *  The legacy `<namespace>/<module>#<Kind>` form still resolves through the
+   *  identity table for module versions published before the alias form existed:
+   *
+   *    "telo#Invocable"         → "Telo.Invocable"
+   *    "std/http-server#Server" → "http-server.Server"
+   *
+   *  Returns undefined when a legacy string is malformed or its identity was
+   *  never registered. */
   resolveRef(xTeloRef: string): string | undefined {
     const hash = xTeloRef.indexOf("#");
-    if (hash === -1 || hash === xTeloRef.length - 1) return undefined;
-    const identity = xTeloRef.slice(0, hash);
-    const typeName = xTeloRef.slice(hash + 1);
-    const moduleName = this.identityMap.get(identity);
+    if (hash === -1) return xTeloRef;
+    if (hash === xTeloRef.length - 1) return undefined;
+    const moduleName = this.identityMap.get(xTeloRef.slice(0, hash));
     if (!moduleName) return undefined;
-    return `${moduleName}.${typeName}`;
+    return `${moduleName}.${xTeloRef.slice(hash + 1)}`;
   }
 
   resolve(kind: string): ResourceDefinition | undefined {

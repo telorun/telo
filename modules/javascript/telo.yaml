@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: "javascript"
-  namespace: std
   version: "0.7.1"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -40,11 +39,11 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
   required: ["metadata", "code"]
   additionalProperties: false
   examples:

@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: mcp-client
-  namespace: std
   version: 0.7.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -137,7 +136,7 @@ schema:
         present, each invoke() calls provider.provide() and forwards the
         returned sessionId; the client never handshakes. Omit for self-managed
         handshake mode.
-      x-telo-ref: "std/mcp-client#SessionProvider"
+      x-telo-ref: Self.SessionProvider
     clientInfo:
       title: Client Info
       description: Identity advertised to MCP servers during initialize. Used in self-handshake mode only.
@@ -240,7 +239,7 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      x-telo-ref: "std/mcp-client#Client"
+      x-telo-ref: Self.Client
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -341,7 +340,7 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation.
-      x-telo-ref: "std/mcp-client#Client"
+      x-telo-ref: Self.Client
 inputType:
   kind: Type.JsonSchema
   schema:

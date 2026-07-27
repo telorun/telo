@@ -50,18 +50,25 @@ export interface LoadedModule {
 }
 
 /** Resolved Telo.Import edge: where the import points and what library
- *  identity it resolves to. Carrying name/namespace on the edge means
- *  `flattenForAnalyzer` can stamp `metadata.resolvedModuleName` /
- *  `resolvedNamespace` from this single source rather than re-deriving
- *  the target from manifest metadata, which would silently miss whenever
- *  a future projection forgets to stamp `metadata.source` consistently. */
+ *  identity it resolves to. Carrying the name on the edge means
+ *  `flattenForAnalyzer` can stamp `metadata.resolvedModuleName` from this
+ *  single source rather than re-deriving the target from manifest metadata,
+ *  which would silently miss whenever a future projection forgets to stamp
+ *  `metadata.source` consistently. */
 export interface ImportEdge {
   /** Canonical resolved URL of the target — a key into `modules`. */
   targetSource: string;
+  /** The import's `source` exactly as authored — a registry ref, an `oci://`
+   *  or `https://` ref, or a relative path. Version reconciliation keys on
+   *  this (minus its version), since it names the module's location
+   *  independently of what the module declares about itself. */
+  targetRef: string;
   /** Target library's `metadata.name`, or `null` when the target had no
    *  Telo.Library doc (an error case captured in `LoadedGraph.errors`). */
   targetModuleName: string | null;
-  /** Target library's `metadata.namespace` (or `null` when unset). */
+  /** DEPRECATED. Target library's `metadata.namespace`, or `null` when it
+   *  declares none. Feeds only the legacy `<namespace>/<module>#<Kind>` form
+   *  of `x-telo-ref`; nothing else reads it. */
   targetNamespace: string | null;
 }
 

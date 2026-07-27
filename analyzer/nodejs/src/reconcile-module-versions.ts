@@ -83,24 +83,55 @@ function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
   return 0;
 }
 
-/** Read a loaded module's `namespace/name` identity, version, and raw owner
- *  text. Returns `null` for modules without a namespace: only a registry
- *  identity (`<namespace>/<name>`) is a stable cross-import key. Two namespace-
- *  less local libraries that merely share a `metadata.name` are distinct modules
- *  reached via distinct source URLs — reconciling them would drop one and break
- *  its kinds; the same local file reached via two paths is already collapsed by
- *  canonical-source dedup, so there is nothing left to reconcile here. */
-function moduleIdentityOf(mod: LoadedModule): ModuleIdentity | null {
+/** The location identity of an import ref: the ref with its version stripped.
+ *  Two refs share an identity when they address the same module at different
+ *  versions, whatever transport owns them:
+ *
+ *    "std/kv-store@0.3.0"             → "std/kv-store"
+ *    "oci://ghcr.io/acme/s3@1.2.0"    → "oci://ghcr.io/acme/s3"
+ *    "https://x.com/lib/telo.yaml"    → itself (a URL carries no version)
+ *
+ *  Returns `null` for a relative path, which addresses one file on the
+ *  publisher's disk and is therefore not a cross-import key: two local libraries
+ *  that merely agree on `metadata.name` are distinct modules, and reconciling
+ *  them would drop one and break its kinds. The same local file reached via two
+ *  paths is already collapsed by canonical-source dedup.
+ *
+ *  **What this key cannot relate.** It compares ref *spellings*, so it groups by
+ *  origin exactly and nothing else. Two consequences, both accepted:
+ *
+ *  - A module imported once by a registry ref and once by a relative path is two
+ *    groups, so a version skew between them is not hoisted. Keying on what the
+ *    module declares about itself would catch that case, but only by trusting a
+ *    self-declared identity — which is what this change removes, and which
+ *    cannot tell two same-named modules from different origins apart.
+ *  - A bare `std/kv-store@0.4.0` and the equivalent direct
+ *    `https://<registry>/std/kv-store/0.4.0/telo.yaml` are two groups. Relating
+ *    them needs the configured registry base, which this pure, browser-safe
+ *    function does not have. */
+function refIdentity(ref: string): string | null {
+  const base = ref.split("#")[0];
+  if (!base || base.startsWith(".") || base.startsWith("/") || base.startsWith("file:")) {
+    return null;
+  }
+  const lastSlash = base.lastIndexOf("/");
+  const at = base.lastIndexOf("@");
+  return at > lastSlash && at > 0 ? base.slice(0, at) : base;
+}
+
+/** Read a loaded module's version and raw owner text under the location
+ *  identity the import edge reached it by. The identity comes from the ref, not
+ *  from anything the module declares about itself — a module's own metadata
+ *  cannot distinguish two same-named modules published to different origins. */
+function moduleIdentityOf(mod: LoadedModule, identity: string): ModuleIdentity | null {
   const doc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind));
   if (!doc) return null;
-  const meta = doc.metadata as { name?: string; namespace?: string | null; version?: string };
-  const name = meta?.name;
-  if (typeof name !== "string" || name.length === 0) return null;
-  if (typeof meta.namespace !== "string" || meta.namespace.length === 0) return null;
+  const meta = doc.metadata as { name?: string; version?: string };
+  if (typeof meta?.name !== "string" || meta.name.length === 0) return null;
   const version = typeof meta.version === "string" ? meta.version : "";
   return {
     source: mod.owner.source,
-    identity: `${meta.namespace}/${name}`,
+    identity,
     version,
     parsed: parseVersion(version),
     text: mod.owner.text,
@@ -184,8 +215,8 @@ function hoistDiagnostic(
 }
 
 /**
- * Reconcile a loaded import graph so each module identity (`namespace/name`)
- * resolves to a single version. Within a shared major the highest version wins
+ * Reconcile a loaded import graph so each module location (an import ref minus
+ * its version) resolves to a single version. Within a shared major the highest version wins
  * (a non-lossy hoist, given Telo's additive-only pre-1.0 policy); a major
  * mismatch is a hard conflict. Mutates `importEdges` in place — every edge that
  * pointed at a losing source is repointed at the winner — so `flattenForAnalyzer`
@@ -199,10 +230,31 @@ export function reconcileModuleVersions(
   const overrides = new Map<string, string>();
   const diagnostics: AnalysisDiagnostic[] = [];
 
+  // Location identity per resolved module, taken from the ref that reached it.
+  // Two refs at different versions resolve to different canonical sources, so a
+  // source normally maps to exactly one identity; the entry module has no
+  // inbound edge and needs none (it is never reconciled against itself).
+  //
+  // One source CAN be reached by two spellings of the same location (a bare
+  // registry ref and the direct URL it resolves to). Both name the same module
+  // at the same version, so either identity groups it correctly — but the choice
+  // must not depend on edge iteration order, or the same graph could reconcile
+  // differently across runs. First edge wins.
+  const identityBySource = new Map<string, string>();
+  for (const aliasMap of importEdges.values()) {
+    for (const edge of aliasMap.values()) {
+      if (identityBySource.has(edge.targetSource)) continue;
+      const identity = refIdentity(edge.targetRef);
+      if (identity) identityBySource.set(edge.targetSource, identity);
+    }
+  }
+
   const groups = new Map<string, ModuleIdentity[]>();
   const infoBySource = new Map<string, ModuleIdentity>();
-  for (const mod of modules.values()) {
-    const info = moduleIdentityOf(mod);
+  for (const [source, mod] of modules) {
+    const identity = identityBySource.get(source);
+    if (!identity) continue;
+    const info = moduleIdentityOf(mod, identity);
     if (!info) continue;
     infoBySource.set(info.source, info);
     const list = groups.get(info.identity);

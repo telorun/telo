@@ -445,9 +445,11 @@ export class Kernel implements IKernel {
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
 
-    // Register module identities for x-telo-ref resolution (Phase 3 prerequisite).
-    // Telo built-ins ("telo" → "Telo") are auto-registered when Telo.Abstract
-    // definitions are registered in loadBuiltinDefinitions() above.
+    // Register legacy module identities so an already-published module version
+    // whose `x-telo-ref` slots still name their target as
+    // `<namespace>/<module>#<Kind>` keeps resolving. Current manifests declare no
+    // namespace and need none — their constraints name an import alias, which
+    // the analyzer canonicalizes in the declaring module's scope.
     const rootModuleDoc = staticManifests.find((m) => isModuleKind(m.kind));
     if (rootModuleDoc?.kind === "Telo.Library") {
       throw new RuntimeError(

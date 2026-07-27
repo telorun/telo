@@ -7,7 +7,7 @@ sidebar_label: VectorStore
 
 > Examples assume this module is imported under alias `VectorStore` and a backend under `VectorStoreMemory`. Substitute if you import under different names.
 
-`VectorStore` is the backend-pluggable vector index for Telo. [`VectorStore.Store`](#vectorstorestore) is the abstract every backend implements — a `Telo.Provider` representing a configured index, **not** an operation you invoke. [`VectorStore.Record`](#vectorstorerecord), [`VectorStore.Match`](#vectorstorematch), and [`VectorStore.Removal`](#vectorstoreremoval) operate against any store via `x-telo-ref: "std/vector-store#Store"`. A concrete backend such as [`VectorStoreMemory.Store`](../../vector-store-memory/README.md) satisfies the ref by declaring `extends: VectorStore.Store`.
+`VectorStore` is the backend-pluggable vector index for Telo. [`VectorStore.Store`](#vectorstorestore) is the abstract every backend implements — a `Telo.Provider` representing a configured index, **not** an operation you invoke. [`VectorStore.Record`](#vectorstorerecord), [`VectorStore.Match`](#vectorstorematch), and [`VectorStore.Removal`](#vectorstoreremoval) operate against any store via `x-telo-ref: Self.Store`. A concrete backend such as [`VectorStoreMemory.Store`](../../vector-store-memory/README.md) satisfies the ref by declaring `extends: VectorStore.Store`.
 
 ## `VectorStore.Store`
 

@@ -373,7 +373,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       "std/outer@1.0.0": {
         "telo.yaml": [
           "kind: Telo.Library",
-          "metadata: { name: outer, namespace: std, version: 1.0.0 }",
+          "metadata: { name: outer, version: 1.0.0 }",
           "imports:",
           "  Inner: std/inner@1.0.0",
           "exports:",
@@ -399,7 +399,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       "std/inner@1.0.0": {
         "telo.yaml": [
           "kind: Telo.Library",
-          "metadata: { name: inner, namespace: std, version: 1.0.0 }",
+          "metadata: { name: inner, version: 1.0.0 }",
           "exports:",
           "  kinds: [ Request ]",
           "---",
@@ -514,14 +514,14 @@ describe("analyzeWorkspace — imported library kinds", () => {
     // `ai-mcp.ToolProvider` (in lib ai-mcp, which imports ai as `Ai`) declares
     // `extends: Ai.ToolProvider`. An app importing both ai and ai-mcp drives an
     // Ai.Agent whose `toolProviders[].provider` ref targets the abstract
-    // `std/ai#ToolProvider`. The analyzer must know `ai-mcp.ToolProvider`
+    // `Ai.ToolProvider`. The analyzer must know `ai-mcp.ToolProvider`
     // implements `ai.ToolProvider` — which requires resolving the forwarded
     // definition's `extends` in ai-mcp's OWN alias scope. The CLI does this;
     // the editor must too, else a spurious REFERENCE_KIND_MISMATCH fires.
     const files: Record<string, string> = {
       "/ws/ai/telo.yaml": [
         "kind: Telo.Library",
-        "metadata: { name: ai, namespace: std, version: 1.0.0 }",
+        "metadata: { name: ai, version: 1.0.0 }",
         "exports:",
         "  kinds: [ ToolProvider, Tools, Agent ]",
         "---",
@@ -550,12 +550,12 @@ describe("analyzeWorkspace — imported library kinds", () => {
         "        properties:",
         "          provider:",
         "            type: object",
-        '            x-telo-ref: "std/ai#ToolProvider"',
+        '            x-telo-ref: Self.ToolProvider',
         "",
       ].join("\n"),
       "/ws/ai-mcp/telo.yaml": [
         "kind: Telo.Library",
-        "metadata: { name: ai-mcp, namespace: std, version: 1.0.0 }",
+        "metadata: { name: ai-mcp, version: 1.0.0 }",
         "imports:",
         "  Ai: ../ai",
         "exports:",
@@ -644,7 +644,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       "std/mcp-client@0.3.1": {
         "telo.yaml": [
           "kind: Telo.Library",
-          "metadata: { name: mcp-client, namespace: std, version: 0.3.1 }",
+          "metadata: { name: mcp-client, version: 0.3.1 }",
           "exports:",
           "  kinds: [ Client, HttpClient ]",
           "---",
@@ -666,7 +666,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
       "std/ai@0.4.0": {
         "telo.yaml": [
           "kind: Telo.Library",
-          "metadata: { name: ai, namespace: std, version: 1.0.0 }",
+          "metadata: { name: ai, version: 1.0.0 }",
           "exports:",
           "  kinds: [ ToolProvider, Tools, Agent ]",
           "---",
@@ -695,7 +695,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
           "        properties:",
           "          provider:",
           "            type: object",
-          '            x-telo-ref: "std/ai#ToolProvider"',
+          '            x-telo-ref: Self.ToolProvider',
           "",
         ].join("\n"),
       },
@@ -705,7 +705,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
         // publish desugaring emits (empty docs between real ones).
         "telo.yaml": [
           "kind: Telo.Library",
-          "metadata: { name: ai-mcp, namespace: std, version: 0.4.0 }",
+          "metadata: { name: ai-mcp, version: 0.4.0 }",
           "exports:",
           "  kinds: [ ToolProvider ]",
           "---",
@@ -729,7 +729,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
           "  type: object",
           "  properties:",
           "    client:",
-          '      x-telo-ref: "std/mcp-client#Client"',
+          '      x-telo-ref: Mcp.Client',
           "  required: [ client ]",
           "  additionalProperties: false",
           "",
@@ -771,8 +771,7 @@ describe("analyzeWorkspace — imported library kinds", () => {
         "kind: Telo.Library",
         "metadata:",
         "  name: widget",
-        "  namespace: std",
-        "  version: 1.0.0",
+                "  version: 1.0.0",
         "exports:",
         "  kinds:",
         "    - Box",
@@ -1008,8 +1007,7 @@ describe("analyzeWorkspace — oci:// imports via the manifest cache", () => {
     "kind: Telo.Library",
     "metadata:",
     "  name: s3",
-    "  namespace: aws",
-    "  version: 1.2.0",
+        "  version: 1.2.0",
     "exports:",
     "  kinds:",
     "    - Bucket",

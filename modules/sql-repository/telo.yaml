@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: sql-repository
-  namespace: std
   version: 0.7.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -40,7 +39,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       title: Table
       description: Database table name.
@@ -78,7 +77,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       title: Table
       description: Database table name.
@@ -113,7 +112,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       title: Table
       description: Database table name.
@@ -149,7 +148,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       title: Table
       description: Database table name.

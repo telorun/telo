@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: idempotency
-  namespace: std
   version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -100,7 +99,7 @@ schema:
     store:
       title: Store
       description: Reference to the KvStore.Store holding claims and settled results.
-      x-telo-ref: "std/kv-store#Store"
+      x-telo-ref: KvStore.Store
     claimTtl:
       title: Claim TTL
       type: string
@@ -124,5 +123,5 @@ schema:
       description: The wrapped body run at most once per key.
       type: object
       anyOf:
-        - x-telo-ref: "telo#Invocable"
-        - x-telo-ref: "telo#Runnable"
+        - x-telo-ref: Telo.Invocable
+        - x-telo-ref: Telo.Runnable

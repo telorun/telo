@@ -135,16 +135,15 @@ describe("OCI ref parsing", () => {
 describe("OciTransport pure methods", () => {
   const t = new OciTransport();
 
-  it("claims oci:// refs and derives cache segments", () => {
+  it("claims oci:// refs and derives cache coordinates", () => {
     expect(t.supports("oci://ghcr.io/aws/telo-s3@1.2.0")).toBe(true);
     expect(t.supports("std/console@0.9.0")).toBe(false);
-    expect(t.cacheLocation("oci://ghcr.io/aws/telo-s3@1.2.0")).toEqual([
-      "__oci",
-      "ghcr.io",
-      "aws",
-      "telo-s3",
-      "1.2.0",
-    ]);
+    expect(t.cacheCoords("oci://ghcr.io/aws/telo-s3@1.2.0")).toEqual({
+      transport: "oci",
+      host: "ghcr.io",
+      path: "aws/telo-s3",
+      version: "1.2.0",
+    });
   });
 
   it("resolves ../lib against the repo directory base", () => {

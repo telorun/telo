@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: test
-  namespace: std
   version: 0.6.8
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

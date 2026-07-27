@@ -108,7 +108,20 @@ describe("buildDefinition", () => {
         [storeSrc, mod(storeFile)],
       ]),
       importEdges: new Map([
-        [appSrc, new Map([["Store", { targetSource: storeSrc, targetModuleName: "store", targetNamespace: null }]])],
+        [
+          appSrc,
+          new Map([
+            [
+              "Store",
+              {
+                targetSource: storeSrc,
+                targetRef: storeSrc,
+                targetModuleName: "store",
+                targetNamespace: null,
+              },
+            ],
+          ]),
+        ],
       ]),
     } as unknown as LoadedGraph;
 

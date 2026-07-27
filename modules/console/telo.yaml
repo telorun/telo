@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: console
-  namespace: std
   version: 0.12.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

@@ -177,8 +177,8 @@ export function readFilesPatterns(content: string): string[] {
 // self-contained. A relative path is only meaningful on the publisher's disk;
 // a published artifact (an OCI blob, or a registry version URL) cannot resolve
 // `..`. The sibling's **location** comes from the publish destination (identity
-// is the ref) — for OCI via the destination transport's `resolveRelative`, for
-// an HTTP registry the path defaults to the sibling's `<namespace>/<name>`. The
+// is the ref): the destination's last segment is this module's own directory, so
+// the relative path resolves against it exactly as it does on disk. The
 // **version** always comes from the sibling's own authoritative metadata.
 // ---------------------------------------------------------------------------
 
@@ -214,18 +214,14 @@ export async function canonicalizeRelativeImports(
         `import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
       );
     }
-    const { namespace, name, version } = (lib.metadata ?? {}) as {
-      namespace?: string;
-      name?: string;
-      version?: string;
-    };
+    const { version } = (lib.metadata ?? {}) as { version?: string };
     if (!version) {
       throw new Error(
         `import source '${source}' (resolved: '${targetUrl}') is missing metadata.version, required for canonicalization.`,
       );
     }
 
-    const ref = transport.canonicalizeSiblingRef(destination, source, { namespace, name, version });
+    const ref = transport.canonicalizeSiblingRef(destination, source, version);
     moduleDoc.setIn(importRef.path, ref);
     refs.push(ref);
   }

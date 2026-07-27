@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: scheduler
-  namespace: std
   version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -45,8 +44,8 @@ schema:
       description: The body fired on each tick.
       type: object
       anyOf:
-        - x-telo-ref: "telo#Invocable"
-        - x-telo-ref: "telo#Runnable"
+        - x-telo-ref: Telo.Invocable
+        - x-telo-ref: Telo.Runnable
     inputs:
       title: Inputs
       type: object
@@ -105,8 +104,8 @@ schema:
       description: The body fired on each tick.
       type: object
       anyOf:
-        - x-telo-ref: "telo#Invocable"
-        - x-telo-ref: "telo#Runnable"
+        - x-telo-ref: Telo.Invocable
+        - x-telo-ref: Telo.Runnable
     inputs:
       title: Inputs
       type: object

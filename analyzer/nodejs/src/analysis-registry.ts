@@ -17,7 +17,7 @@ export interface RefFieldInfo {
   path: string;
   /** True when the path traverses at least one array. */
   isArray: boolean;
-  /** Accepted `x-telo-ref` constraint strings (e.g. `telo#Runnable`). */
+  /** Accepted `x-telo-ref` constraint strings, canonicalized (e.g. `Telo.Runnable`). */
   refs: string[];
   /** Distinct capabilities the slot may target (`Telo.Runnable`,
    *  `Telo.Service`, `Telo.Provider`, …) — one per resolvable constraint. The
@@ -119,9 +119,9 @@ export class AnalysisRegistry {
 
   /** Base capability an `x-telo-ref` constraint targets. A definition's declared
    *  `capability` is always one of the base capabilities, so it wins — this
-   *  resolves user-defined abstracts (e.g. `std/ai#Model`, declared
+   *  resolves user-defined abstracts (e.g. `ai.Model`, declared
    *  `capability: Telo.Invocable`) to the capability instances satisfy, not the
-   *  abstract kind. Builtin abstracts (`telo#Runnable`) carry no `capability`
+   *  abstract kind. Builtin abstracts (`Telo.Runnable`) carry no `capability`
    *  field — there the kind itself *is* the capability. Undefined when
    *  unresolvable. */
   capabilityForRef(xTeloRef: string): string | undefined {
@@ -306,7 +306,7 @@ export class AnalysisRegistry {
   }
 
   /** Returns every user-facing (alias-form) kind that satisfies the given
-   *  `x-telo-ref` constraint string (e.g. `"telo#Invocable"`, `"std/sql#Connection"`).
+   *  `x-telo-ref` constraint string, canonicalized (e.g. `"Telo.Invocable"`, `"sql.Connection"`).
    *  Resolution mirrors `validateReferences.checkKind`: abstract targets expand to
    *  the set of definitions extending them; concrete targets yield just themselves.
    *  Returns `undefined` when the ref can't be resolved (e.g. unregistered identity),

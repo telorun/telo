@@ -7,7 +7,7 @@ sidebar_label: Embedding.Model
 
 > Examples assume this module is imported under alias `Embedding`. Substitute if you import under a different name.
 
-`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query) and [`Embedding.Passage`](./embedding-passage) reference it via `x-telo-ref: "std/embedding#Model"`; a concrete backend such as [`EmbeddingOpenai.Model`](../../embedding-openai/docs/embedding-openai-model) satisfies the ref by declaring `extends: Embedding.Model`.
+`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query) and [`Embedding.Passage`](./embedding-passage) reference it via `x-telo-ref: Self.Model`; a concrete backend such as [`EmbeddingOpenai.Model`](../../embedding-openai/docs/embedding-openai-model) satisfies the ref by declaring `extends: Embedding.Model`.
 
 ## Prompt templates
 

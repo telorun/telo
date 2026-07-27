@@ -126,7 +126,6 @@ describe("canonicalizeRelativeImports — tagged values", () => {
       [
         "kind: Telo.Library",
         "metadata:",
-        "  namespace: test",
         "  name: somelib",
         "  version: 2.5.1",
         "",
@@ -159,15 +158,17 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     const { content: out, refs } = await canonicalizeRelativeImports(
       owner,
       consumerManifestPath,
-      "https://registry.telo.run",
+      // The destination is this module's own published location, so a sibling
+      // lands beside it — `../lib` under `…/test/app` resolves to `…/test/lib`.
+      "https://registry.telo.run/test/app",
       loader,
       localFileSource,
     );
-    expect(refs).toEqual(["test/somelib@2.5.1"]);
+    expect(refs).toEqual(["https://registry.telo.run/test/lib@2.5.1"]);
 
     // Re-parse and verify:
     //   1. Tagged values in `Some.Resource` survived the setIn mutation.
-    //   2. The `imports:` source was canonicalized to `<namespace>/<name>@<version>`.
+    //   2. The `imports:` source was canonicalized to an absolute ref.
     const docs = parseAllDocuments(out, { customTags: defaultCustomTags() });
     const json = docs
       .map((d) => d.toJSON() as Record<string, unknown> | null)
@@ -176,7 +177,7 @@ describe("canonicalizeRelativeImports — tagged values", () => {
     const appDoc = json.find((d) => d.kind === "Telo.Application") as {
       imports?: Record<string, unknown>;
     };
-    expect(appDoc.imports?.SomeLib).toBe("test/somelib@2.5.1");
+    expect(appDoc.imports?.SomeLib).toBe("https://registry.telo.run/test/lib@2.5.1");
 
     const resource = json.find((d) => d.kind === "Some.Resource") as Record<string, unknown>;
     expect(resource.computed).toEqual({

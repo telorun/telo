@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: kv-store
-  namespace: std
   version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -19,7 +18,7 @@ exports:
 # KvStore.Store — the abstract backing store every kv-store backend implements. A
 # Telo.Provider: a configured store, NOT an operation you invoke. Consumers
 # (Lease.Critical, Idempotency.Once) reference it via
-# `x-telo-ref: "std/kv-store#Store"`; a concrete implementation satisfies the ref.
+# `x-telo-ref: Self.Store`; a concrete implementation satisfies the ref.
 #
 # The contract a backend must implement (see docs/contract.md — normative):
 #

@@ -4,6 +4,7 @@ import {
   sha256Base64Url,
   splitIntegrity,
   verifyIntegrity,
+  type ManifestCacheCoords,
   type ManifestSource,
 } from "@telorun/analyzer";
 
@@ -15,7 +16,6 @@ import type {
   PublishBundle,
   PublishOptions,
   PublishResult,
-  SiblingIdentity,
   Transport,
 } from "../transport.js";
 import {
@@ -97,14 +97,23 @@ export class OciTransport implements Transport {
     return isOciRef(ref);
   }
 
-  cacheLocation(ref: string): string[] | null {
+  /** Keyed by the ref's reference — a tag, or a `sha256:` digest, or the
+   *  implicit `latest` — so every resolvable ref stays cacheable. (The hub's
+   *  `ociManifestCacheCoords` refuses everything but an explicit tag; that is a
+   *  discovery-index rule, not a property of the key grammar.) */
+  cacheCoords(ref: string): ManifestCacheCoords | null {
     let parsed: ReturnType<typeof parseOciRef>;
     try {
       parsed = parseOciRef(ref);
     } catch {
       return null;
     }
-    return ["__oci", parsed.host, ...parsed.repo.split("/"), parsed.reference];
+    return {
+      transport: "oci",
+      host: parsed.host,
+      path: parsed.repo,
+      version: parsed.reference,
+    };
   }
 
   /** Resolve a relative import against an `oci://` base, normalizing the repo to
@@ -240,10 +249,10 @@ export class OciTransport implements Transport {
   canonicalizeSiblingRef(
     destination: string,
     relativeSource: string,
-    sibling: SiblingIdentity,
+    version: string,
   ): string {
     // The sibling's repo is the destination repo with the relative applied; the
     // version is its own (identity is the ref, not metadata).
-    return `${this.resolveRelative(destination, relativeSource)}@${sibling.version}`;
+    return `${this.resolveRelative(destination, relativeSource)}@${version}`;
   }
 }

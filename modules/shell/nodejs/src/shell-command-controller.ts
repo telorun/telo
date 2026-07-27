@@ -26,7 +26,7 @@ class ShellCommandResource implements ResourceInstance {
       this.manifest.host,
       isShellHost,
       () => `Shell.Command "${this.manifest.metadata.name}": 'host'`,
-      "std/shell#Host",
+      "Self.Host",
     );
     const spec = toCommandSpec(input, "Shell.Command");
     return host

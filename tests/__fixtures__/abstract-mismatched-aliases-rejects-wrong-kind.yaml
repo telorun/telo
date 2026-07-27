@@ -17,7 +17,7 @@ schema:
   type: object
   properties:
     greeter:
-      x-telo-ref: "std/abstract-lib#Greeter"
+      x-telo-ref: AL.Greeter
   required: [ greeter ]
   additionalProperties: false
 ---

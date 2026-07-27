@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: run
-  namespace: std
   version: 0.14.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -59,10 +58,10 @@ schema:
               anyOf:
                 - title: Invocable
                   description: Reference to an invocable resource.
-                  x-telo-ref: "telo#Invocable"
+                  x-telo-ref: Telo.Invocable
                 - title: Runnable
                   description: Reference to a runnable resource.
-                  x-telo-ref: "telo#Runnable"
+                  x-telo-ref: Telo.Runnable
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -277,9 +276,9 @@ schema:
         description: A with-resource to run before steps — write it as a `!ref`.
         anyOf:
           - type: string
-            x-telo-ref: "telo#Runnable"
+            x-telo-ref: Telo.Runnable
           - type: string
-            x-telo-ref: "telo#Service"
+            x-telo-ref: Telo.Service
           - $ref: "telo://manifest#/$defs/ResourceRef"
     inputs:
       title: Inputs
@@ -426,7 +425,7 @@ schema:
         Named type reference or inline type definition every row's `value` must
         satisfy. Optional; declaring it is what gives the table one shared
         result contract and lets a caller's `steps.<name>.result` type-check.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
     choices:
       title: Choices
       description: >-
@@ -536,10 +535,10 @@ schema:
               anyOf:
                 - title: Invocable
                   description: Reference to an invocable resource.
-                  x-telo-ref: "telo#Invocable"
+                  x-telo-ref: Telo.Invocable
                 - title: Runnable
                   description: Reference to a runnable resource.
-                  x-telo-ref: "telo#Runnable"
+                  x-telo-ref: Telo.Runnable
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -825,10 +824,10 @@ schema:
               anyOf:
                 - title: Invocable
                   description: Reference to an invocable resource.
-                  x-telo-ref: "telo#Invocable"
+                  x-telo-ref: Telo.Invocable
                 - title: Runnable
                   description: Reference to a runnable resource.
-                  x-telo-ref: "telo#Runnable"
+                  x-telo-ref: Telo.Runnable
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -1131,10 +1130,10 @@ schema:
               anyOf:
                 - title: Invocable
                   description: Reference to an invocable resource.
-                  x-telo-ref: "telo#Invocable"
+                  x-telo-ref: Telo.Invocable
                 - title: Runnable
                   description: Reference to a runnable resource.
-                  x-telo-ref: "telo#Runnable"
+                  x-telo-ref: Telo.Runnable
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -1434,4 +1433,4 @@ schema:
       title: Invoke
       description: The invocable dispatched in the background.
       type: object
-      x-telo-ref: "telo#Invocable"
+      x-telo-ref: Telo.Invocable

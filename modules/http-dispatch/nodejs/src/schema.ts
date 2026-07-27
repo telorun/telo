@@ -10,7 +10,7 @@ import { Invocable, KindRef, Ref } from "@telorun/sdk";
 export const ContentEntry = Type.Object({
   body: Type.Optional(Type.Any()),
   schema: Type.Optional(Type.Any()),
-  encoder: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("std/codec#Encoder"))),
+  encoder: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("Codec.Encoder"))),
   headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 export type ContentEntry = Static<typeof ContentEntry>;

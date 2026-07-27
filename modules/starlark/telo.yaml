@@ -5,7 +5,6 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Compute]
   name: starlark
-  namespace: std
   description: >-
     Runs embedded Starlark — the sandboxed, Python-like configuration language — as a
     callable resource with typed inputs and outputs. Deterministic, with no I/O and no
@@ -44,9 +43,9 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for script inputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for script outputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
   required: [metadata, code]

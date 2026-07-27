@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: ai-mcp
-  namespace: std
   version: 0.7.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -41,6 +40,6 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      x-telo-ref: "std/mcp-client#Client"
+      x-telo-ref: Mcp.Client
   required: [ client ]
   additionalProperties: false

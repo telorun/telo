@@ -107,7 +107,7 @@ export interface ResourceContext extends ControllerContext {
    * Resolve a `!ref` config field to a live instance of `T`. See
    * {@link resolveRefInstance} — this is the same resolution, reached through
    * the context a controller already holds. `expects` names the contract the
-   * slot wants — its `x-telo-ref` string (`std/cache#Store`) — so a mis-wire
+   * slot wants — its `x-telo-ref` string (`Cache.Store`) — so a mis-wire
    * says what was missing.
    */
   resolveRef<T>(

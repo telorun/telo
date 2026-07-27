@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: crud
-  namespace: std
   version: 0.5.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -46,7 +45,7 @@ schema:
     connection:
       title: Connection
       description: The SQL connection the CRUD routes run against.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     singular:
       title: Singular name
       description: >-
@@ -80,7 +79,7 @@ schema:
         primary key and the `{id}` path parameter). Validates create / update
         request bodies (POST against the full schema, PUT against a partial where
         nothing is required) and feeds the generated OpenAPI.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
 mount: api
 resources:
   # SQL handlers (crud-internal kinds below) — each builds parameterized SQL
@@ -258,7 +257,7 @@ schema:
   required: [connection, table, props]
   properties:
     connection:
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       type: string
     props:
@@ -288,7 +287,7 @@ schema:
   required: [connection, table]
   properties:
     connection:
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       type: string
 resources:
@@ -315,7 +314,7 @@ schema:
   required: [connection, table]
   properties:
     connection:
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       type: string
 resources:
@@ -342,7 +341,7 @@ schema:
   required: [connection, table]
   properties:
     connection:
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       type: string
 resources:

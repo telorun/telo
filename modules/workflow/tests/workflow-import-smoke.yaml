@@ -22,7 +22,7 @@ expect: {}
 ---
 # Exercises the full reference resolution path: an Application imports both std/workflow
 # and std/workflow-temporal, declares a Temporal.Backend, and wires it into a
-# Workflow.Graph.backend slot typed `x-telo-ref: "std/workflow#Backend"`. The analyzer
+# Workflow.Graph.backend slot typed `x-telo-ref: Workflow.Backend`. The analyzer
 # must accept Temporal.Backend via the extendedBy index populated from `extends`.
 kind: Assert.Manifest
 metadata:

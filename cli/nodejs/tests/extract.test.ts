@@ -77,7 +77,7 @@ describe("extractModuleBundles", () => {
     const fetched = fetchSpy.mock.calls.map((c) => String(c[0]));
     expect(fetched).toContain(SOURCE);
     expect(fetched).toContain(TAR_URL);
-    const moduleDir = path.join(manifestsDir, "std", "demo", "1.0.0");
+    const moduleDir = path.join(manifestsDir, "registry", "reg.example", "std", "demo", "1.0.0");
     expect(fs.readFileSync(path.join(moduleDir, "public", "index.html"), "utf-8")).toBe("<h1>hi</h1>");
   });
 

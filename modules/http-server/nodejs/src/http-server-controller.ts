@@ -22,7 +22,7 @@ import Fastify, { FastifyInstance } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
- *  live instance into a mount's `mount` slot (x-telo-ref "telo#Mount") — cross-module refs
+ *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
  *  resolve to an imported library's exported mount — and every mountable exposes register(). */
 interface Mountable {
   register(app: FastifyInstance, prefix: string): void | Promise<void>;
@@ -59,7 +59,7 @@ type HttpServerResource = RuntimeResource & {
   };
   mounts?: Array<{
     path?: string;
-    // x-telo-ref "telo#Mount": Phase 5 replaces this slot with the live mounted
+    // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
     // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
     mount?: Mountable;
   }>;
@@ -270,7 +270,7 @@ class HttpServer implements ResourceInstance {
     for (const mount of mounts) {
       const prefix = mount.path || "";
       // `mount.mount` is the live Telo.Mount instance injected by the kernel at Phase 5
-      // (x-telo-ref "telo#Mount") — a same-module or imported-library mount, uniformly.
+      // (x-telo-ref `Telo.Mount`) — a same-module or imported-library mount, uniformly.
       const api = mount.mount;
       if (!api || typeof api.register !== "function") {
         throw new Error(

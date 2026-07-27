@@ -12,12 +12,20 @@ export const MANIFEST_CACHE_BASE_URL = "https://manifests.telo.sh";
  *  stores per version — `{ transport, host, path, version }` — so the tracker's
  *  write key and the editor's read key come from the same function and never
  *  drift. `path` is the slash-separated repo/module path (multi-segment OCI
- *  repos nest as prefixes). */
+ *  repos nest as prefixes), empty for a module addressed at a host's root. */
 export interface ManifestCacheCoords {
   transport: string;
   host: string;
   path: string;
-  version: string;
+  /** Omit only when the ref carries no version to key by — a direct `https://`
+   *  URL addresses exactly one file, so its path alone is already unambiguous.
+   *  Every ref whose grammar has a version segment must supply it, or two
+   *  versions of one module would collide on a single key. */
+  version?: string;
+  /** File within the version directory. Defaults to the module manifest, which
+   *  is the only file the hub's bucket stores; the local install cache also
+   *  holds each `include:` partial, which is named here. */
+  file?: string;
 }
 
 /** True for a segment that would corrupt or escape the cache key space. */
@@ -26,15 +34,25 @@ function invalidSegment(segment: string): boolean {
 }
 
 /** Deterministic cache key for one module version:
- *  `<transport>/<host>/<path…>/<version>/telo.yaml`. Returns `null` when any
- *  coordinate is empty or would traverse out of the key space. */
+ *  `<transport>/<host>/<path…>/<version>/<file>`, where `version` is omitted
+ *  when the coordinates carry none and `file` defaults to the module manifest.
+ *  Returns `null` when any coordinate is empty or would traverse out of the key
+ *  space. */
 export function manifestCacheKey(coords: ManifestCacheCoords): string | null {
-  const { transport, host, path, version } = coords;
-  const segments = [transport, host, ...path.split("/"), version];
-  if (segments.some(invalidSegment) || transport.includes("/") || host.includes("/") || version.includes("/")) {
+  const { transport, host, path, version, file } = coords;
+  const segments = [transport, host, ...(path ? path.split("/") : [])];
+  if (version !== undefined) segments.push(version);
+  segments.push(file ?? DEFAULT_MANIFEST_FILENAME);
+  if (
+    segments.some(invalidSegment) ||
+    transport.includes("/") ||
+    host.includes("/") ||
+    (version !== undefined && version.includes("/")) ||
+    (file !== undefined && file.includes("/"))
+  ) {
     return null;
   }
-  return `${segments.join("/")}/${DEFAULT_MANIFEST_FILENAME}`;
+  return segments.join("/");
 }
 
 /** Cache coordinates for an `oci://host/repo@tag` ref. Returns `null` when the

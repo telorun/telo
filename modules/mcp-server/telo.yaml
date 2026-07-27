@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: "mcp-server"
-  namespace: std
   version: "0.10.1"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -66,8 +65,8 @@ schema:
             x-telo-topology-role: handler
             # Accept either capability so dual-mode kinds like Run.Sequence fit.
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
           inputs:
             title: Inputs
             description: CEL expressions mapping the MCP request scope onto the handler's input shape.
@@ -230,8 +229,8 @@ schema:
             description: Resource that produces contents on read — Invocable or Runnable.
             x-telo-topology-role: handler
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
           inputs:
             title: Inputs
             type: "object"
@@ -318,8 +317,8 @@ schema:
             description: Resource that produces the prompt message array on get — Invocable or Runnable.
             x-telo-topology-role: handler
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
           inputs:
             title: Inputs
             type: "object"
@@ -398,19 +397,19 @@ schema:
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Tools"
+        x-telo-ref: Self.Tools
     resources:
       title: Resources
       description: Mcp.Resources bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Resources"
+        x-telo-ref: Self.Resources
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Prompts"
+        x-telo-ref: Self.Prompts
   required: ["serverInfo"]
 ---
 # Mcp.HttpEndpoint — Telo.Mount. Mounts on Http.Server at a chosen path; owns
@@ -468,17 +467,17 @@ schema:
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Tools"
+        x-telo-ref: Self.Tools
     resources:
       title: Resources
       description: Mcp.Resources bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Resources"
+        x-telo-ref: Self.Resources
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: "std/mcp-server#Prompts"
+        x-telo-ref: Self.Prompts
   required: ["serverInfo"]

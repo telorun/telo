@@ -97,7 +97,7 @@ const ROOT_LOGGING_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        "x-telo-ref": "telo#LogSink",
+        "x-telo-ref": "Telo.LogSink",
         "x-telo-inline": true,
       },
     },
@@ -444,8 +444,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: {
             anyOf: [
-              { type: "string", "x-telo-ref": "telo#Runnable" },
-              { type: "string", "x-telo-ref": "telo#Service" },
+              { type: "string", "x-telo-ref": "Telo.Runnable" },
+              { type: "string", "x-telo-ref": "Telo.Service" },
               // Post-resolution shape that `resolveRefSentinels`
               // substitutes a `!ref <name>` sentinel into. The
               // adjacent `x-telo-ref` constraints govern the kind
@@ -469,8 +469,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 properties: {
                   ref: {
                     anyOf: [
-                      { type: "string", "x-telo-ref": "telo#Runnable" },
-                      { type: "string", "x-telo-ref": "telo#Service" },
+                      { type: "string", "x-telo-ref": "Telo.Runnable" },
+                      { type: "string", "x-telo-ref": "Telo.Service" },
                       {
                         type: "object",
                         required: ["kind", "name"],
@@ -510,8 +510,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                     },
                     additionalProperties: true,
                     anyOf: [
-                      { "x-telo-ref": "telo#Invocable" },
-                      { "x-telo-ref": "telo#Runnable" },
+                      { "x-telo-ref": "Telo.Invocable" },
+                      { "x-telo-ref": "Telo.Runnable" },
                     ],
                   },
                   inputs: { type: "object", additionalProperties: true },

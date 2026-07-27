@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: http-client
-  namespace: std
   version: 0.12.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -99,7 +98,7 @@ schema:
   properties:
     client:
       title: Client
-      x-telo-ref: "std/http-client#Client"
+      x-telo-ref: Self.Client
       description: "Reference to an Http.Client resource. Injected as a live instance at runtime; its baseUrl, headers, and timeout supply per-request defaults."
     timeout:
       title: Timeout

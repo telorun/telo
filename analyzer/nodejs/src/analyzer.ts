@@ -20,6 +20,7 @@ import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
+import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
@@ -1035,6 +1036,7 @@ export class StaticAnalyzer {
     // declaring scope's resolver, so `extendedBy` is keyed by canonical kind regardless
     // of alias choices. `capability` covers the legacy implements-this-abstract overload;
     // `extends` is the canonical first-class form.
+    const refConstraintIssues: RefConstraintIssue[] = [];
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
@@ -1043,6 +1045,15 @@ export class StaticAnalyzer {
         ownModule && !rootModules.has(ownModule)
           ? (aliasesByModule.get(ownModule) ?? new AliasResolver())
           : aliases;
+      // Canonicalize alias-form `x-telo-ref` constraints in the DECLARING module's
+      // scope, before the schema reaches `register()` and the lazily-built field
+      // maps. Same pre-resolution `capability` / `extends` get below.
+      const issues = resolveSchemaRefKinds(m, scopeResolver);
+      // Report only for definitions the author can edit. A published dependency
+      // still on the deprecated form — or with a constraint that no longer
+      // resolves — is not the consumer's to fix, and every import would
+      // otherwise flood `telo check` with unactionable noise.
+      if (!ownModule || rootModules.has(ownModule)) refConstraintIssues.push(...issues);
       const resolvedCapability = def.capability
         ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
         : def.capability;
@@ -1063,6 +1074,57 @@ export class StaticAnalyzer {
     // distinguishable from the resolver's own substitution (after Phase 2/2.5
     // they are the same object).
     if (!options?.skipValidation) {
+      for (const issue of refConstraintIssues) {
+        // An `unknown` prefix is also what an ALREADY-CANONICAL value looks like
+        // (`kv-store.Store` names a module, not an alias). Now that every kind is
+        // registered, the registry separates the two — anything it resolves was
+        // canonical, anything it doesn't names nothing at all.
+        if (issue.reason === "unknown" && defs.resolve(issue.ref)) continue;
+        const resource = {
+          kind: issue.manifest.kind,
+          name: issue.manifest.metadata?.name as string,
+        };
+        const filePath = (issue.manifest.metadata as { source?: string } | undefined)?.source;
+        const data = { resource, filePath, path: issue.path };
+        if (issue.reason === "legacy") {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Warning,
+            code: "X_TELO_REF_LEGACY_IDENTITY",
+            source: SOURCE,
+            message:
+              `x-telo-ref '${issue.ref}' at '${issue.path}' uses the deprecated ` +
+              `'<namespace>/<module>#<Kind>' form. Write the target as an alias-qualified kind ` +
+              `instead — '<Alias>.<Kind>' for a module declared in this file's 'imports:' map, ` +
+              `'Self.<Kind>' for a kind in this library, or 'Telo.<Kind>' for a built-in capability.`,
+            data,
+          });
+        } else if (issue.reason === "gated") {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "KIND_NOT_EXPORTED",
+            source: SOURCE,
+            message:
+              `x-telo-ref '${issue.ref}' at '${issue.path}' targets a kind module ` +
+              `'${issue.gate?.module}' does not export. Add ` +
+              `'${issue.ref.slice(issue.ref.indexOf(".") + 1)}' to that module's exports.kinds. ` +
+              `Exported kinds: ${issue.gate?.exported.join(", ") || "(none)"}.`,
+            data,
+          });
+        } else {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "X_TELO_REF_UNRESOLVED",
+            source: SOURCE,
+            message:
+              `x-telo-ref '${issue.ref}' at '${issue.path}' names no kind. The prefix must be an ` +
+              `import alias declared in this file's 'imports:' map, 'Self' for a kind in this ` +
+              `library, or 'Telo' for a built-in capability. An unresolvable constraint would ` +
+              `leave the slot accepting any resource. Known aliases: ` +
+              `${issue.knownAliases?.join(", ") || "(none)"}.`,
+            data,
+          });
+        }
+      }
       diagnostics.push(...validateReferenceForms(manifests, defs, aliases, aliasesByModule));
     }
 
@@ -1089,10 +1151,31 @@ export class StaticAnalyzer {
         rootModules.has(ownModule) ? aliases : (aliasesByModule.get(ownModule) ?? new AliasResolver());
       const canonicalKind = scopeResolver.resolveKind(m.kind as string) ?? (m.kind as string);
       if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") continue;
-      defs.registerNamedTypeSchema(
-        canonicalTypeSchemaId(ownModule, m.metadata.name as string),
+      const typeName = m.metadata.name as string;
+      const registered = defs.registerNamedTypeSchema(
+        canonicalTypeSchemaId(ownModule, typeName),
         m.schema as Record<string, any>,
       );
+      // Kinds and named types share one `telo://<module>/<Name>` id space. A
+      // collision would leave every `$ref` to that id resolving to the kind's
+      // schema — validating the wrong shape, silently — so it is an error, not
+      // a last-writer-wins.
+      if (!registered && !options?.skipValidation) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "DUPLICATE_SCHEMA_ID",
+          source: SOURCE,
+          message:
+            `Type '${typeName}' collides with the kind '${ownModule}.${typeName}': both claim the ` +
+            `schema id '${canonicalTypeSchemaId(ownModule, typeName)}'. A '$ref' to it would ` +
+            `resolve to the kind's schema. Rename one of them.`,
+          data: {
+            resource: { kind: m.kind, name: typeName },
+            filePath: (m.metadata as { source?: string } | undefined)?.source,
+            path: "metadata.name",
+          },
+        });
+      }
     }
     if (!options?.skipValidation) {
       diagnostics.push(

@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: rate-limit
-  namespace: std
   version: 0.6.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -65,7 +64,7 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the rate-limit counters.
-      x-telo-ref: "std/cache#Store"
+      x-telo-ref: Cache.Store
     limit:
       title: Limit
       type: integer
@@ -160,7 +159,7 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the budget counters.
-      x-telo-ref: "std/cache#Store"
+      x-telo-ref: Cache.Store
     limit:
       title: Limit
       type: integer

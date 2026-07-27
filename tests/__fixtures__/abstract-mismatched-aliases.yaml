@@ -13,9 +13,10 @@ imports:
   AL: ./abstract-lib.yaml
   AImpl: ./abstract-impl.yaml
 ---
-# x-telo-ref slot still uses identity form, so it resolves regardless of the
-# alias names chosen here. The analyzer must accept AImpl.Shouter through the
-# extendedBy edge populated from Shouter's pre-resolved canonical extends.
+# The x-telo-ref slot names its target through THIS file's own alias, which is
+# deliberately not the one abstract-impl.yaml uses for the same library. The
+# analyzer must accept AImpl.Shouter through the extendedBy edge populated from
+# Shouter's pre-resolved canonical extends.
 kind: Telo.Definition
 metadata:
   name: GreeterUser
@@ -25,7 +26,7 @@ schema:
   type: object
   properties:
     greeter:
-      x-telo-ref: "std/abstract-lib#Greeter"
+      x-telo-ref: AL.Greeter
   required: [ greeter ]
   additionalProperties: false
 ---
