@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: record-stream
-  version: 0.10.1
+  version: 0.11.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Streaming, Observability]
@@ -37,7 +37,7 @@ metadata:
     per record type whether to emit a field, drop it, or fail the stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#extract-text
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#extract-text
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -107,7 +107,7 @@ metadata:
   description: Fans one input stream out to two output branches, each receiving every item in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#tee
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#tee
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -151,7 +151,7 @@ metadata:
   description: Forwards a stream live and, once it completes normally, invokes a handler once with all observed records.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#on-complete
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#on-complete
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -206,7 +206,7 @@ metadata:
     missed. Held in memory for the life of the process.
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal
 schema:
   type: object
   additionalProperties: false
@@ -224,7 +224,7 @@ metadata:
     increasing id and marking the key finished when the stream ends.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-sink
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal-sink
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -272,7 +272,7 @@ metadata:
     exactly where it dropped.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-source
+  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal-source
 inputType:
   kind: Type.JsonSchema
   schema:
