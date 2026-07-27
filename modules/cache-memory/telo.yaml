@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: cache-memory
   namespace: std
-  version: 0.5.0
+  version: 0.5.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -22,7 +22,7 @@ metadata:
 capability: Telo.Provider
 extends: Cache.Store
 controllers:
-  - pkg:npm/@telorun/cache-memory@0.3.0?local_path=./nodejs#store
+  - pkg:npm/@telorun/cache-memory@0.3.1?local_path=./nodejs#store
 schema:
   type: object
   additionalProperties: false

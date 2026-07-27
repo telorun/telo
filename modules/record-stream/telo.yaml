@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: record-stream
   namespace: std
-  version: 0.9.0
+  version: 0.10.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -36,7 +36,7 @@ metadata:
   description: Projects a discriminated stream of records to a Stream<string> via a per-variant emit/drop/throw action map.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#extract-text
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#extract-text
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -106,7 +106,7 @@ metadata:
   description: Fans one input stream out to two output branches, each receiving every item in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#tee
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#tee
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -150,7 +150,7 @@ metadata:
   description: Forwards a stream live and, once it completes normally, invokes a handler once with all observed records.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#on-complete
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#on-complete
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -202,7 +202,7 @@ metadata:
   description: Provides an in-memory, keyed, offset-addressable replay buffer that makes a detached stream resumable.
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal
 schema:
   type: object
   additionalProperties: false
@@ -218,7 +218,7 @@ metadata:
   description: Drains a stream into a Journal under a key, appending each record with a monotonic id.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal-sink
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-sink
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -263,7 +263,7 @@ metadata:
   description: Reads a resumable stream from a Journal starting after fromId, then tails live until the key finishes.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.7.0?local_path=./nodejs#journal-source
+  - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-source
 inputType:
   kind: Type.JsonSchema
   schema:

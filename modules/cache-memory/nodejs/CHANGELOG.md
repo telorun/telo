@@ -1,5 +1,12 @@
 # @telorun/cache-memory
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [942c176]
+  - @telorun/cache@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

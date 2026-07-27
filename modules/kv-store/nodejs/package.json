@@ -1,14 +1,14 @@
 {
   "name": "@telorun/kv-store",
-  "version": "0.1.0",
-  "description": "The Telo KvStore.Store contract \u2014 a durable, non-evicting key/value store with atomic conditional writes \u2014 plus KeyedClaim, the claim/settle/release protocol implemented once over those primitives so no backend reimplements it.",
+  "version": "0.2.0",
+  "description": "The Telo KvStore.Store contract — a durable, non-evicting key/value store with atomic conditional writes — plus KeyedClaim, the claim/settle/release protocol implemented once over those primitives so no backend reimplements it.",
   "keywords": [
     "telo",
     "kv-store",
     "idempotency",
     "lease"
   ],
-  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

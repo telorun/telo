@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: vector-store
   namespace: std
-  version: 0.4.0
+  version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -74,7 +74,7 @@ metadata:
   description: Upserts a batch of vectors with ids and metadata into a vector store, returning the written ids.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#record
+  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#record
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -126,7 +126,7 @@ metadata:
   description: Runs a nearest-neighbour vector query against a store, returning the top-K matches with scores and metadata.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#match
+  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#match
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -187,7 +187,7 @@ metadata:
   description: Deletes vectors from a store by id list and/or metadata filter, returning the count removed.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.2.0?local_path=./nodejs#removal
+  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#removal
 inputType:
   kind: Type.JsonSchema
   schema:

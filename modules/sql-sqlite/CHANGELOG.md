@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-07-19
+## 0.4.1 - 2026-07-27
+### Fixed
+* Update controller @telorun/sql-sqlite to 0.2.2.## 0.4.0 - 2026-07-19
 ### Added
 * Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.## 0.3.0 - 2026-07-12
 ### Added

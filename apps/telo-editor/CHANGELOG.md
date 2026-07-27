@@ -1,5 +1,27 @@
 # telo-editor
 
+## 0.12.0
+
+### Minor Changes
+
+- 89bb36d: Add starter templates and hub-backed import search.
+
+  Starter templates: a curated set (fetched over http(s), not bundled) offered on
+  first run and when creating a module, via a shared dialog — pick a name, then a
+  template or blank. Add-import now searches the telo hub and guards against
+  silently clobbering an existing import alias.
+
+### Patch Changes
+
+- Updated dependencies [942c176]
+- Updated dependencies [adc8459]
+- Updated dependencies [adc8459]
+- Updated dependencies [adc8459]
+  - @telorun/sdk@0.54.0
+  - @telorun/analyzer@0.43.0
+  - @telorun/templating@0.11.0
+  - @telorun/ide-support@0.7.3
+
 ## 0.11.15
 
 ### Patch Changes

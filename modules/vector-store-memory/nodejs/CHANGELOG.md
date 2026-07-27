@@ -1,5 +1,12 @@
 # @telorun/vector-store-memory
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [942c176]
+  - @telorun/vector-store@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

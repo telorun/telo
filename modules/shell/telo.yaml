@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: shell
   namespace: std
-  version: 0.4.0
+  version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: >-
@@ -50,7 +50,7 @@ metadata:
     so callers branch on it in CEL.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.2.0?local_path=./nodejs#shell-command
+  - pkg:npm/@telorun/shell@0.3.0?local_path=./nodejs#shell-command
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -133,7 +133,7 @@ metadata:
     pass/fail control flow.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.2.0?local_path=./nodejs#shell-command-stream
+  - pkg:npm/@telorun/shell@0.3.0?local_path=./nodejs#shell-command-stream
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -214,7 +214,7 @@ metadata:
 capability: Telo.Provider
 extends: Self.Host
 controllers:
-  - pkg:npm/@telorun/shell@0.2.0?local_path=./nodejs#local-host
+  - pkg:npm/@telorun/shell@0.3.0?local_path=./nodejs#local-host
 schema:
   type: object
   additionalProperties: false

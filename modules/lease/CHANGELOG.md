@@ -1,5 +1,8 @@
 # Changelog
-## 0.5.0 - 2026-07-19
+## 0.6.0 - 2026-07-27
+### Added
+* Update controller @telorun/lease to 0.4.0.
+* Back the mutex with KvStore.Store instead of Cache.Store. A cache is evictable by design, so an evicted lease record admitted a second holder — the exact failure a lease prevents. The store's atomic `claim` also collapses the old counter-plus-holder-key emulation into one operation. `store:` now references `std/kv-store#Store`.## 0.5.0 - 2026-07-19
 ### Added
 * Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.## 0.4.0 - 2026-07-12
 ### Added

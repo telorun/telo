@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: sql
   namespace: std
-  version: 0.13.0
+  version: 0.14.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: >-
@@ -51,7 +51,7 @@ metadata:
     the query inside an open transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-query
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-query
 schema:
   type: object
   description: >-
@@ -126,7 +126,7 @@ metadata:
     transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-command
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-command
 schema:
   type: object
   description: >-
@@ -203,7 +203,7 @@ metadata:
     writes becomes all-or-nothing.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-transaction
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-transaction
 schema:
   type: object
   required:
@@ -235,7 +235,7 @@ metadata:
     `outputType` to type the call.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-selection
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-selection
 schema:
   type: object
   required: [from]
@@ -368,7 +368,7 @@ metadata:
     under the keyed `migrations` map instead.
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migration
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-migration
 schema:
   type: object
   required: [sql]
@@ -413,7 +413,7 @@ metadata:
     re-run it.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/sql@0.8.0?local_path=./nodejs#sql-migrations
+  - pkg:npm/@telorun/sql@0.9.0?local_path=./nodejs#sql-migrations
 schema:
   type: object
   required: [connection]

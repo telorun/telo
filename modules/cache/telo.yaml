@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: cache
   namespace: std
-  version: 0.5.0
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -37,7 +37,7 @@ metadata:
   description: Reads a key from a Cache.Store, reporting a miss, fresh, or stale hit with the value and its age.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#lookup
+  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#lookup
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -82,7 +82,7 @@ metadata:
   description: Writes a value into a Cache.Store under a key with fresh (ttl) and stale-grace (staleTtl) windows.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#entry
+  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#entry
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -136,7 +136,7 @@ metadata:
   description: Read-through cache over a Cache.Store serving a wrapped invocable's result, refreshing per revalidate.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.3.0?local_path=./nodejs#view
+  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#view
 inputType:
   kind: Type.JsonSchema
   schema:

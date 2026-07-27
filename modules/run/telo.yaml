@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: run
   namespace: std
-  version: 0.13.0
+  version: 0.14.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: Run sequence of invocable resources with if, while, switch, and try steps
@@ -23,7 +23,7 @@ metadata:
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#sequence
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#sequence
 throws:
   inherit: true
 schema:
@@ -338,7 +338,7 @@ metadata:
   description: Evaluates a CEL expression over typed inputs and returns the shaped value — a declarative value-only script.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#value
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#value
 schema:
   type: object
   properties:
@@ -391,7 +391,7 @@ metadata:
   description: First-match decision table — returns the value of the first choice whose predicate holds, or a declared default.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#choice
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#choice
 throws:
   codes:
     ERR_NO_MATCH:
@@ -504,7 +504,7 @@ metadata:
   description: Runs a step body once per collection element with configurable concurrency and whole-operation error catches.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#iteration
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#iteration
 throws:
   inherit: true
 schema:
@@ -793,7 +793,7 @@ metadata:
   description: Maps each collection element through a step body and CEL outputs into a result array, with configurable concurrency.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#projection
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#projection
 throws:
   inherit: true
 schema:
@@ -1099,7 +1099,7 @@ metadata:
   description: Repeats a step body while a CEL condition holds or up to maxIterations, seeing iteration count and previous result.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#loop
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#loop
 throws:
   inherit: true
 schema:
@@ -1404,7 +1404,7 @@ metadata:
   description: Dispatches a wrapped invocable in the background and returns immediately, off the caller's response path.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/run@0.9.1?local_path=./nodejs#detach
+  - pkg:npm/@telorun/run@0.10.0?local_path=./nodejs#detach
 inputType:
   kind: Type.JsonSchema
   schema:
