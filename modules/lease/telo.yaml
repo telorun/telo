@@ -2,7 +2,7 @@ kind: Telo.Library
 metadata:
   name: lease
   namespace: std
-  version: 0.5.0
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   description: |
@@ -44,7 +44,7 @@ metadata:
   description: Runs an invocable under a keyed, TTL-bounded lease so at most one holder per key runs the body.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lease@0.3.0?local_path=./nodejs#critical
+  - pkg:npm/@telorun/lease@0.4.0?local_path=./nodejs#critical
 inputType:
   kind: Type.JsonSchema
   schema:

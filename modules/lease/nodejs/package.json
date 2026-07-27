@@ -1,7 +1,7 @@
 {
   "name": "@telorun/lease",
-  "version": "0.3.0",
-  "description": "Telo lease module \u2014 Lease.Critical, a declarative critical section over a Cache.Store.",
+  "version": "0.4.0",
+  "description": "Telo lease module — Lease.Critical, a declarative critical section over a Cache.Store.",
   "keywords": [
     "telo",
     "lease",
@@ -9,7 +9,7 @@
     "mutex",
     "critical-section"
   ],
-  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

@@ -1,9 +1,0 @@
-project: lease
-kind: Added
-body: >-
-  Back the mutex with KvStore.Store instead of Cache.Store. A cache is
-  evictable by design, so an evicted lease record admitted a second holder — the
-  exact failure a lease prevents. The store's atomic `claim` also collapses the
-  old counter-plus-holder-key emulation into one operation. `store:` now
-  references `std/kv-store#Store`.
-time: 2026-07-25T00:00:00.000000000+02:00

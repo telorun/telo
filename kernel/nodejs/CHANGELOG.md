@@ -1,5 +1,48 @@
 # @telorun/kernel
 
+## 0.54.0
+
+### Minor Changes
+
+- 942c176: Rename `ctx.resolveChildren` to `ctx.ensureKindRef`. The old name stays as a
+  deprecated delegate.
+
+  The method never resolved anything: it takes a nested slot value — an inline
+  `{ kind, …config }` definition, a `{ kind, name }` ref, or a `!ref` sentinel —
+  and produces a `KindRef`, registering the inline case as a manifest (under a
+  supplied or generated name) on the way. `ensure` carries that create-if-needed
+  side effect; `KindRef` is what comes back.
+
+  It also reads correctly next to `ctx.resolveRef`, which runs the other direction
+  — ref to live instance. Two `resolve*` methods on one interface returning
+  opposite categories was the ambiguity; this fixes it at the source rather than
+  lengthening the name of the method that was right.
+
+- adc8459: Add `ctx.resolveRef<T>(value, guard, describe, expects?)` on `ResourceContext` —
+  resolve a `!ref` config field to a live instance. The standalone
+  `resolveRefInstance(value, ctx, guard, describe, expects?)` remains exported for
+  callers that hold only a `{ moduleContext }` slice; the method delegates to it,
+  and `resolveInvocableDispatcher` now resolves through it too, so alias semantics
+  live in exactly one place.
+
+  Failures are coded and name the contract: `ERR_REF_REQUIRED` for an unset slot,
+  `ERR_REF_UNRESOLVED` for one that is set but does not resolve — e.g.
+  `` Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
+resource satisfying `std/cache#Store`  ``.
+
+  Phase 5 injection normally replaces the slot with the live instance (local and
+  cross-module refs alike), so the common path is the guard short-circuit. A raw
+  `KindRef` still reaches a controller where injection does not reach the slot — a
+  kind whose definition yields no field map, or a ref obtained via
+  `ctx.resolveChildren`. Both are gaps worth closing in the kernel; until they are,
+  this helper is the single place that handles the fallback.
+
+### Patch Changes
+
+- Updated dependencies [adc8459]
+  - @telorun/analyzer@0.43.0
+  - @telorun/templating@0.11.0
+
 ## 0.53.0
 
 ### Minor Changes

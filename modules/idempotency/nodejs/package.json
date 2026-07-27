@@ -2,7 +2,7 @@
   "name": "@telorun/idempotency-build",
   "version": "0.0.0",
   "private": true,
-  "description": "Build-only package for the std/idempotency module's bundled controller. Never published \u2014 the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "Build-only package for the std/idempotency module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json && esbuild src/once.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --outdir=. --out-extension:.js=.mjs"

@@ -1,5 +1,7 @@
 # Changelog
-## 0.13.0 - 2026-07-19
+## 0.14.0 - 2026-07-27
+### Added
+* Update controller @telorun/sql to 0.9.0.## 0.13.0 - 2026-07-19
 ### Added
 * Declare repository and license in module metadata, published as org.opencontainers.image.* annotations on OCI.## 0.12.0 - 2026-07-18
 ### Added

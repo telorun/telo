@@ -1,5 +1,7 @@
 # Changelog
-## 0.6.0 - 2026-07-19
+## 0.6.1 - 2026-07-27
+### Fixed
+* Update controller @telorun/embedding-openai to 0.4.1.## 0.6.0 - 2026-07-19
 ### Added
 * Update controller @telorun/embedding-openai to 0.4.0.## 0.5.0 - 2026-07-19
 ### Added

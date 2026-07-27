@@ -1,6 +1,6 @@
 {
   "name": "@telorun/cache-memory",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Telo cache-memory module — in-process, freshness-aware CacheMemory.Store.",
   "keywords": [
     "telo",
