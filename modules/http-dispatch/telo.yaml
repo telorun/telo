@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: http-dispatch
-  namespace: std
   version: 0.8.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -11,6 +10,10 @@ metadata:
     request matcher — method, path, query, body, headers — and the rules that render a
     handler's result or error into a status, headers and body. Schema only; nothing
     here is instantiated.
+imports:
+  # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
+  # slot pins. Naming it by alias is what makes the coupling a declared edge.
+  Codec: ../codec
 exports:
   kinds:
     - Outcomes
@@ -153,8 +156,8 @@ schema:
                   type: object
                 encoder:
                   title: Encoder
-                  description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                  x-telo-ref: "std/codec#Encoder"
+                  description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
+                  x-telo-ref: Codec.Encoder
                 headers:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.

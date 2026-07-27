@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: kv-store-memory
-  namespace: std
   version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

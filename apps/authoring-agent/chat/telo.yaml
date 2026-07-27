@@ -442,6 +442,15 @@ system: |
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 
+  A field in a definition's `schema:` that must hold a reference to another
+  resource carries `x-telo-ref: <Alias>.<Kind>` — an ALIAS-QUALIFIED KIND, the
+  same grammar as `kind:` and `extends:`. The prefix is an alias declared in
+  THIS file's own `imports:` map, `Self` for a kind in this same library, or
+  `Telo` for a built-in capability (`Telo.Invocable`, `Telo.Runnable`, …). So a
+  kind whose slot takes a store must import the module that declares it. Never
+  write the old identity form `"std/kv-store#Store"` — it is deprecated and
+  warns.
+
   ## Building a library: composition vs. inheritance
 
   Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
@@ -480,7 +489,7 @@ system: |
         type: object
         required: [client, q]
         properties:
-          client: { x-telo-ref: "std/http-client#Client" }
+          client: { x-telo-ref: Http.Client }
           q: { type: string }
       base:
         client: !cel "self.client"

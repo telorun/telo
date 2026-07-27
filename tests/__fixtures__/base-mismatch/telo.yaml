@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: base-mismatch
-  namespace: test
   version: 0.1.0
 imports:
   Http: ../../../modules/http-client

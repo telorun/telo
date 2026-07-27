@@ -58,7 +58,7 @@ const throwsSchema = {
 /** Alias-form pattern for `extends` values: "<Alias>.<AbstractName>".
  *  Resolved against the declaring file's `Telo.Import` aliases — identical to how
  *  kind prefixes work (e.g. `kind: Http.Api` resolves `Http` via the importer's
- *  alias registration). Identity form (`std/mod#Name`) is intentionally not
+ *  alias registration). Identity form (`std/mod#Name`) is deprecated and intentionally not
  *  accepted: aliases carry the module version via their `Telo.Import` source,
  *  which canonical module names can't.
  *  - Alias: PascalCase (first letter uppercase)

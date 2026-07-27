@@ -21,7 +21,6 @@ export function findOwnerDoc(docs: Document[]): Document | undefined {
 /** The owner-doc fields the transports read: identity for the publish location,
  *  and payload markers for artifact fetch. */
 export interface OwnerManifest {
-  namespace?: string;
   name?: string;
   version?: string;
   filesIntegrity?: string;
@@ -36,8 +35,8 @@ export interface OwnerManifest {
 }
 
 /** Read the owner doc's identity + payload fields from a manifest, parsing once
- *  (never regex-scraping). The single source both transports call for
- *  `<namespace>/<name>/<version>`, `filesIntegrity`, and payload detection. */
+ *  (never regex-scraping). The single source both transports call for the
+ *  module's name and version, `filesIntegrity`, and payload detection. */
 export function readOwnerManifest(text: string): OwnerManifest {
   const owner = findOwnerDoc(parseManifestDocs(text));
   const parsed = owner?.toJSON() as
@@ -46,7 +45,6 @@ export function readOwnerManifest(text: string): OwnerManifest {
   const md = parsed?.metadata ?? {};
   const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
   return {
-    namespace: str(md.namespace),
     name: str(md.name),
     version: str(md.version),
     filesIntegrity: str(parsed?.filesIntegrity),

@@ -134,7 +134,7 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 
 **Options:**
 
-- `--registry-url <url>` — Base URL for the telo module registry. Overrides `TELO_REGISTRY_URL`. Affects both the network fetches and the on-disk cache layout (manifests served by this registry are stored under `<namespace>/<name>/<version>/...`).
+- `--registry-url <url>` — Base URL for the telo module registry. Overrides `TELO_REGISTRY_URL`. Affects both the network fetches and the on-disk cache layout (manifests served by this registry are stored under `registry/<host>/<path…>/<version>/...`).
 
 **Environment:**
 
@@ -144,8 +144,12 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
 
 - `.telo/npm/` — controller node_modules tree (one realm per manifest).
-- `.telo/manifests/<namespace>/<name>/<version>/telo.yaml` — registry-served manifests.
-- `.telo/manifests/__http/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+- `.telo/manifests/registry/<host>/<path…>/<version>/telo.yaml` — registry-served manifests.
+- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry.
+- `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+
+Every entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
+discovery hub uses for its cached manifests.
 
 Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` the manifest dir into your image and both caches travel with it; no environment variable is required.
 

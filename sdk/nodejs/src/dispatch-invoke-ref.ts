@@ -38,7 +38,7 @@ export function resolveInvocableDispatcher(
     ctx,
     isInvocableInstance,
     () => `${describe()}: 'invoke'`,
-    "telo#Invocable",
+    "Telo.Invocable",
   );
   // Dispatch through the traced chokepoint needs the target's kind+name: from
   // the `!ref` identity the kernel stamped at injection, else from the raw ref.

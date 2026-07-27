@@ -261,7 +261,7 @@ Examples:
 - `aws/lambda`, `aws/s3`, `aws/dynamodb` — vendor-defined APIs and event shapes. `aws/`.
 - `anthropic/sdk` — vendor-defined SDK surface. `anthropic/`.
 
-The library's own `metadata.namespace` field must match the namespace segment of the reference it is published under. Changing namespace is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
+A namespace is a property of the **ref**, not of the library: a module declares nothing about which namespace it is published under, and the same bytes can be published to a registry path, an OCI repo, or a URL without changing. Changing the namespace a module is published under is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
 
 **Discovery.** Modules are discovered through the **hub** ([`telo.sh`](https://telo.sh)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
 
@@ -297,13 +297,15 @@ Resolution is separate from discovery: the [hub](#62-namespaces) indexes *what* 
 
 ```text
 <entry-manifest-dir>/.telo/manifests/
-  <namespace>/<name>/<version>/telo.yaml   # registry refs (source: ns/name@x.y.z)
-  <namespace>/<name>/<version>/<partial>   # any include: target reachable from above
-  __http/<host>/<pathname>                 # arbitrary HTTP imports (source: https://…)
+  registry/<host>/<path…>/<version>/telo.yaml   # registry refs (source: ns/name@x.y.z)
+  registry/<host>/<path…>/<version>/<partial>   # any include: target reachable from above
+  oci/<host>/<repo…>/<tag>/telo.yaml            # OCI imports (source: oci://host/repo@tag)
+  url/<host>/<pathname>                         # direct URL imports (source: https://…)
 ```
 
-- Registry refs are stored under their namespaced path. The layout mirrors the URL the registry itself serves at `<registry>/<namespace>/<name>/<version>/telo.yaml`, so the cache is self-describing on disk.
-- Direct HTTP imports (`source: https://example.com/lib/telo.yaml`) land under `__http/`.
+- Every entry is keyed `<transport>/<host>/<path…>/<version>/<file>` — the same grammar the hub's static manifest bucket and the editor's browser-safe read path use, so no two of them can drift on where a module lands. The coordinates come from the transport that owns the ref; `manifestCacheKey` in `@telorun/analyzer` renders them.
+- Registry entries carry the **registry host**: a bare ref says nothing about which registry serves it, so without the host two registries' copies of the same path and version would share one cache entry.
+- Direct URL imports carry no version segment. A URL addresses exactly one file, and the version it declares lives inside bytes the cache maps paths without.
 - An HTTP URL whose host matches the configured registry URL is folded into the registry layout — `source: https://registry.telo.run/std/foo/1.0.0/telo.yaml` and `source: std/foo@1.0.0` hit the same cache file.
 - URLs with a query string or fragment get a short content-hash inserted before the file extension so two distinct manifests differing only in query never collide.
 - Partials reached through `include:` are written alongside their owning manifest using the same relative paths declared in the owner, so the loader's existing relative-resolution path keeps working unchanged once the owner is served from disk.

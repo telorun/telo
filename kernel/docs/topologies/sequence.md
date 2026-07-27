@@ -254,7 +254,7 @@ schema:
         - properties:
             invoke:
               x-telo-topology-role: invoke
-              x-telo-ref: "telo#Invocable"
+              x-telo-ref: Telo.Invocable
             inputs:
               x-telo-topology-role: inputs
               type: object

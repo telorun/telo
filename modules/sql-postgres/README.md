@@ -2,7 +2,7 @@
 
 `SqlPostgres.Connection` — a PostgreSQL backend for the [`sql`](../sql/README.md) module's `Sql.Connection` abstract. Backed by a `pg` connection pool and Kysely; the `sql` core itself depends on no driver.
 
-Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`, `Sql.Migrations`) references the connection driver-agnostically via `x-telo-ref: "std/sql#Connection"`; this module satisfies that ref.
+Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`, `Sql.Migrations`) references the connection driver-agnostically via `x-telo-ref: Sql.Connection`; this module satisfies that ref.
 
 ## Usage
 

@@ -13,7 +13,7 @@ sidebar_label: Embedding.Query
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `model` | ref → `std/embedding#Model` | yes | The embedding model to call. |
+| `model` | ref → `Self.Model` | yes | The embedding model to call. |
 | `options` | object | no | Provider-specific per-call options. |
 
 ## Input

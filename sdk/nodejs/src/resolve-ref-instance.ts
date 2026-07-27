@@ -30,13 +30,13 @@ export interface RefResolveContext {
  * on the methods the caller will actually invoke, so a mis-wired ref fails with a
  * clear message here rather than as `undefined is not a function` later.
  * `describe` labels the owning resource and slot; `expects` names the contract
- * the slot wants — the slot's own `x-telo-ref` string (`std/cache#Store`) — so
+ * the slot wants — the slot's own `x-telo-ref` string (`Cache.Store`) — so
  * the message says what was missing, not just that something was.
  *
  * @example
  * const store = resolveRefInstance(
  *   this.resource.store, this.ctx, isKvStore,
- *   () => `Idempotency.Once "${name}": 'store'`, "std/kv-store#Store",
+ *   () => `Idempotency.Once "${name}": 'store'`, "KvStore.Store",
  * );
  */
 export function resolveRefInstance<T>(

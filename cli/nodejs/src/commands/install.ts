@@ -242,8 +242,9 @@ export async function install(argv: {
 
   // Same fallback chain as `telo run`: --registry-url > TELO_REGISTRY_URL >
   // built-in default. The configured URL drives both the network fetches and
-  // the on-disk cache layout (registry-served manifests are stored under
-  // `<namespace>/<name>/<version>/...`, everything else under `__http/...`).
+  // the on-disk cache layout — registry-served manifests are keyed under
+  // `registry/<registry-host>/<path…>/<version>/...`, so pointing at a
+  // different registry never reuses this one's cached bytes.
   const registryUrl =
     argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 

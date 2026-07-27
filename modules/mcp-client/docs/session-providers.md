@@ -63,7 +63,7 @@ schema:
   required: [vaultPath, httpClient]
   properties:
     vaultPath: { type: string }
-    httpClient: { type: string, x-telo-ref: "std/http-client#Client" }
+    httpClient: { type: string, x-telo-ref: Http.Client }
 resources:
   - kind: HttpClient.Request
     metadata: { name: "${{ self.name }}-read" }

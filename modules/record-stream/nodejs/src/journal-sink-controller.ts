@@ -45,7 +45,7 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
       this.resource.journal,
       isJournalStore,
       () => `RecordStream.JournalSink "${name}": 'journal'`,
-      "std/record-stream#Journal",
+      "Self.Journal",
     );
 
     let count = 0;

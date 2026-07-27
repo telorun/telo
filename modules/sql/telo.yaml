@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: sql
-  namespace: std
   version: 0.14.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -24,7 +23,7 @@ exports:
 # Sql.Connection — the abstract database handle every driver implements. A
 # Telo.Provider: a configured connection to a backend, NOT an operation you
 # invoke. Consumers (Sql.Query / Sql.Command / Sql.Selection / Sql.Migrations /
-# Sql.Transaction) reference it via `x-telo-ref: "std/sql#Connection"` and a
+# Sql.Transaction) reference it via `x-telo-ref: Self.Connection` and a
 # concrete implementation (SqlPostgres.Connection / SqlSqlite.Connection)
 # satisfies the ref. Each implementation also fixes the driver-native bind
 # placeholder style, so inline `${{ }}` parameters in queries are dialect-neutral.
@@ -59,11 +58,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Self.Connection
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: "std/sql#Transaction"
+      x-telo-ref: Self.Transaction
     inputs:
       title: Inputs
       description: Query parameters supplied at invocation time.
@@ -133,11 +132,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Self.Connection
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: "std/sql#Transaction"
+      x-telo-ref: Self.Transaction
     inputs:
       title: Inputs
       description: Statement parameters supplied at invocation time.
@@ -206,11 +205,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Self.Connection
     steps:
       title: Steps
       description: Invocable resource executed inside the transaction.
-      x-telo-ref: "telo#Invocable"
+      x-telo-ref: Telo.Invocable
     bindings:
       title: Bindings
       type: object
@@ -243,11 +242,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Self.Connection
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: "std/sql#Transaction"
+      x-telo-ref: Self.Transaction
     from:
       title: From
       description: Table name to select from.
@@ -341,11 +340,11 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref: "telo#Type"
+      x-telo-ref: Telo.Type
 ---
 kind: Telo.Definition
 metadata:
@@ -415,7 +414,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Self.Connection
     migrations:
       title: Migrations
       description: >-

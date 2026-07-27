@@ -7,7 +7,7 @@ Named, reusable data types for Telo manifests, built on JSON Schema with optiona
 - **Reusable schemas** — define a shape once and reference it by name from every producer and consumer.
 - **Schema composition** — `extends` merges parent types property-by-property and accumulates required fields.
 - **Business invariants** — CEL `rules` augment structural validation with predicates that fire after the JSON Schema check.
-- **Analyzer-aware** — referenced types feed CEL type-checking and editor autocomplete for any field annotated `x-telo-ref: "telo#Type"`.
+- **Analyzer-aware** — referenced types feed CEL type-checking and editor autocomplete for any field annotated `x-telo-ref: Telo.Type`.
 
 ## Kinds
 
@@ -44,7 +44,7 @@ code: |
 
 The `schema` field is validated with the standard JSON Schema dialect the analyzer ships with (Draft-07 features plus common Draft-2020-12 keywords). Everything you would put in an inline schema works here.
 
-Any field annotated `x-telo-ref: "telo#Type"` accepts a type name as a string. The analyzer follows the reference, expands the schema, and validates the CEL expressions that feed the script against the declared input shape.
+Any field annotated `x-telo-ref: Telo.Type` accepts a type name as a string. The analyzer follows the reference, expands the schema, and validates the CEL expressions that feed the script against the declared input shape.
 
 ## `extends` — type composition
 

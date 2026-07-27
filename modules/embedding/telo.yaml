@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: embedding
-  namespace: std
   version: 0.6.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -21,7 +20,7 @@ exports:
 # Embedding.Model — the abstract model every embedding backend implements. A
 # Telo.Provider: a configured model, NOT an operation you invoke. Consumers
 # (Embedding.Query / Embedding.Passage) reference it via
-# `x-telo-ref: "std/embedding#Model"`; a concrete implementation
+# `x-telo-ref: Self.Model`; a concrete implementation
 # (EmbeddingOpenai.Model, …) satisfies the ref.
 #
 # The prompt templates live here, on the model, because they are a property of
@@ -119,7 +118,7 @@ schema:
     model:
       title: Model
       description: Reference to any Embedding.Model implementation.
-      x-telo-ref: "std/embedding#Model"
+      x-telo-ref: Self.Model
     options:
       title: Options
       description: Provider-specific per-call options.
@@ -184,7 +183,7 @@ schema:
     model:
       title: Model
       description: Reference to any Embedding.Model implementation.
-      x-telo-ref: "std/embedding#Model"
+      x-telo-ref: Self.Model
     options:
       title: Options
       description: Provider-specific per-call options.

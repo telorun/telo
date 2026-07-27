@@ -1,4 +1,4 @@
-import type { ManifestSource } from "@telorun/analyzer";
+import type { ManifestCacheCoords, ManifestSource } from "@telorun/analyzer";
 
 import type { PayloadFile } from "../bundle/files-integrity.js";
 
@@ -28,15 +28,6 @@ export interface PublishResult {
   url: string;
 }
 
-/** Identity of a sibling library, read from its own manifest, that a relative
- *  import canonicalizes to. `version` is always required; `namespace`/`name` are
- *  used only by transports whose location is metadata-derived (HTTP registry). */
-export interface SiblingIdentity {
-  namespace?: string;
-  name?: string;
-  version: string;
-}
-
 export interface PublishOptions {
   /** Bearer token for registries that require auth. */
   token?: string;
@@ -61,7 +52,7 @@ export interface PublishOptions {
  *  `ManifestSource` is the browser-safe resolution primitive (also implemented
  *  by the cache / local / memory sources, which have no versions and nothing to
  *  publish), so it stays in `analyzer`, while the Node-only management methods
- *  (`cacheLocation` and, in later phases, `listVersions` / `fetchArtifact` /
+ *  (`cacheCoords` and, in later phases, `listVersions` / `fetchArtifact` /
  *  `publish`) live on the Transport here in `kernel`. */
 export interface Transport {
   /** True when this transport owns the given ref (or publish destination). */
@@ -72,10 +63,21 @@ export interface Transport {
    *  live in `analyzer`; a Node-only transport has no browser-safe source. */
   readonly source: ManifestSource;
 
-  /** Deterministic cache-path segments for a ref, joined under the cache root by
-   *  the cache source. Returns `null` when the ref is not cacheable here
-   *  (unsupported scheme, malformed ref, or path-traversal in the ref). */
-  cacheLocation(ref: string): string[] | null;
+  /** Where a ref's `telo.yaml` is cached, as the transport-neutral
+   *  `{ transport, host, path, version, file }` coordinates the analyzer's
+   *  `manifestCacheKey` renders into a path. One grammar serves the local
+   *  install cache, the hub's static manifest bucket, and the editor's read
+   *  path, so the three cannot drift on the *shape* of a cache key.
+   *
+   *  They do differ on coordinates, deliberately, for a `url` ref: the hub reads
+   *  the version out of the fetched manifest and keys by it, while this cache
+   *  maps a ref to a path before any fetch and so has no version to supply —
+   *  it names the file instead, since it also stores each `include:` partial.
+   *  Same grammar, different coordinates; not a drift to reconcile.
+   *
+   *  Returns `null` when the ref is not cacheable here (unsupported scheme,
+   *  malformed ref, or path-traversal in the ref). */
+  cacheCoords(ref: string): ManifestCacheCoords | null;
 
   /** The versions published for the module `ref` names, newest-first order not
    *  guaranteed (the caller sorts). Returns `null` when the module is not
@@ -147,13 +149,18 @@ export interface Transport {
 
   /** Canonicalize a relative sibling import (`../lib`) declared in a module
    *  being published to `destination` into the absolute ref it will resolve to
-   *  once published. Owns the scheme-specific "where does a sibling land" rule —
-   *  OCI derives the repo from the destination, HTTP from the sibling's
-   *  `<namespace>/<name>` — so `telo publish` delegates instead of branching on
-   *  transport shape. */
+   *  once published.
+   *
+   *  The sibling lands beside the destination: the destination's last segment is
+   *  the module's own directory, so the relative path resolves against it
+   *  exactly as it does on the publisher's disk — publishing `…/telorun/foo`
+   *  with an import of `../bar` yields `…/telorun/bar`. Only the version comes
+   *  from the sibling's own manifest; nothing is read from its metadata to
+   *  decide where it lives. Each transport owns the join for its ref grammar, so
+   *  `telo publish` delegates instead of branching on transport shape. */
   canonicalizeSiblingRef(
     destination: string,
     relativeSource: string,
-    sibling: SiblingIdentity,
+    version: string,
   ): string;
 }

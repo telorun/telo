@@ -92,7 +92,6 @@ interface BaseParsedManifest {
     name: string;
     version?: string;
     description?: string;
-    namespace?: string;
     /** Declared discovery categories — display labels an author writes
      *  (`[AI, Storage]`), used to filter the kind picker. A kind may override
      *  its module's. The hub derives match slugs from these; nothing in the

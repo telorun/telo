@@ -46,7 +46,7 @@ class JournalSource implements ResourceInstance<JournalSourceInputs, JournalSour
       this.resource.journal,
       isJournalStore,
       () => `RecordStream.JournalSource "${name}": 'journal'`,
-      "std/record-stream#Journal",
+      "Self.Journal",
     );
     return { output: new Stream(journal.read(key, fromId)) };
   }

@@ -88,7 +88,7 @@ class SqlKvStore implements ResourceInstance, KvStore {
         this.resource.connection,
         isSqlConnection,
         () => `${this.describe}: 'connection'`,
-        "std/sql#Connection",
+        "Sql.Connection",
       );
     }
     return this.connection;

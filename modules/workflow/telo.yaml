@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: workflow
-  namespace: std
   version: 0.3.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -39,7 +38,7 @@ schema:
     backend:
       title: Backend
       description: Reference to the workflow backend provider.
-      x-telo-ref: "std/workflow#Backend"
+      x-telo-ref: Self.Backend
     nodes:
       title: Nodes
       description: Workflow nodes to execute.
@@ -54,7 +53,7 @@ schema:
           invoke:
             title: Invoke
             description: Resource invoked by this node.
-            x-telo-ref: "telo#Invocable"
+            x-telo-ref: Telo.Invocable
           options:
             title: Options
             description: Backend-specific execution options for this node.

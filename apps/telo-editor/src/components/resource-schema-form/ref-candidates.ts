@@ -2,18 +2,25 @@ import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun
 import { isRecord } from "../../lib/utils";
 import type { ResolvedResourceOption } from "./types";
 
-/** Parsed `x-telo-ref` target, e.g. "telo#Mount" → { scope: "telo", symbol: "Mount" }. */
+/** Parsed `x-telo-ref` target, e.g. "Telo.Mount" → { scope: "telo", symbol: "Mount" }. */
 interface ParsedRefTarget {
   scope: string;
   symbol: string;
 }
 
+/** Splits a constraint into its scope and kind name. Handles both the current
+ *  dotted form — an alias (`Http.Api`), `Self`, `Telo`, or the canonical
+ *  `<module>.<Kind>` the analyzer rewrites to — and the legacy
+ *  `<identity>#<Kind>` form still found in already-published manifests. The
+ *  first separator wins, since a module name carries no dot and an identity
+ *  carries no `#`. */
 function parseRefTarget(refTarget: string): ParsedRefTarget | null {
   const hashIndex = refTarget.indexOf("#");
-  if (hashIndex < 1 || hashIndex === refTarget.length - 1) return null;
+  const separator = hashIndex >= 0 ? hashIndex : refTarget.indexOf(".");
+  if (separator < 1 || separator === refTarget.length - 1) return null;
   return {
-    scope: refTarget.slice(0, hashIndex).toLowerCase(),
-    symbol: refTarget.slice(hashIndex + 1),
+    scope: refTarget.slice(0, separator).toLowerCase(),
+    symbol: refTarget.slice(separator + 1),
   };
 }
 
@@ -39,13 +46,13 @@ export interface RefResolver {
  *  `ReferenceSelectField` and the overview-canvas picker so both agree.
  *
  *  When a `registry` is supplied and resolves the ref, candidates are narrowed
- *  by **kind satisfaction** — an abstract ref (e.g. `std/mcp-client#SessionProvider`)
+ *  by **kind satisfaction** — an abstract ref (e.g. `Mcp.SessionProvider`)
  *  only matches resources whose kind implements that abstract, not every
  *  `Telo.Provider`. Without a registry (or for a ref it can't resolve) it falls
  *  back to the kind/capability heuristic:
  *
- *  - **`telo#X`** — matches any resource whose kind has `capability: Telo.<X>`.
- *  - **concrete kind ref** — matches any resource whose kind ends with `.<symbol>`. */
+ *  - **`Telo.X`** — matches any resource whose kind has `capability: Telo.<X>`.
+ *  - **any other kind ref** — matches any resource whose kind ends with `.<symbol>`. */
 export function resolveRefCandidates(
   refTargets: string[],
   resolvedResources: ResolvedResourceOption[],

@@ -21,31 +21,32 @@ name: ResourceName # name of the target resource (metadata.name)
 
 Both fields are required. The kind constraint is declared in the definition schema via `x-telo-ref`, not in the reference value itself — the constraint is kernel-enforced at startup, not structurally encoded in the YAML value.
 
-`metadata.module` and import aliases remain plain strings — they are namespace identifiers, not resource references, and are outside of this contract.
+`metadata.module` and import aliases remain plain strings — they are module identifiers, not resource references, and are outside of this contract.
 
 ---
 
 ## 2. The `x-telo-ref` Schema Keyword
 
-`x-telo-ref` is a custom JSON Schema keyword that marks a field as a resource reference slot and declares the kind constraint. Its value uses the format `"<module-identity>#<TypeName>"`:
+`x-telo-ref` is a custom JSON Schema keyword that marks a field as a resource reference slot and declares the kind constraint. Its value is an **alias-qualified kind** — the same grammar `kind:`, `extends:` and `capability:` use:
 
 ```yaml
-x-telo-ref: "std/http-server#Server"   # fully-qualified: namespace/module-name#TypeName
-x-telo-ref: "telo#Invocable"         # telo built-ins use "telo" as their identity
+x-telo-ref: KvStore.Store    # a module declared in this file's `imports:` map
+x-telo-ref: Self.Store       # a kind declared in this same library
+x-telo-ref: Telo.Invocable   # a built-in capability
 ```
 
-**Why not the dot format.** Definition schemas are authored by module authors and must be alias-independent — they cannot assume anything about how the user has imported modules. The dot format used in manifests (`Http.Server`, `Telo.Invocable`) is alias-prefixed and varies per manifest. Using the same format in `x-telo-ref` would be visually indistinguishable from an alias-dependent reference. The `#` separator makes it unambiguously a canonical, alias-free reference.
+**One grammar for every kind reference.** A definition schema is authored by a module author, and the alias it names is the author's own — declared in the same file's `imports:` map, resolved in the declaring module's scope, never the consumer's. So the constraint is pinned to a specific module *version* (the one the import source resolves to) and stays correct no matter what alias the consumer picks for the same library. The prefix is an ordinary import alias, so `Self` reaches the declaring library's own kinds and `Telo` reaches the built-ins.
 
-**Why `#` separates the module identity from the type name.** The module identity is a slash-separated path (`std/http-server`, `kernel`) that may contain multiple segments as namespaces are added. Using `/` for both the namespace separator and the module/type separator would make parsing ambiguous — the last segment could be either a type name or a module name segment depending on convention. `#` splits the string into exactly two parts with no ambiguity regardless of how deep the namespace path is. This mirrors the convention in JSON Schema `$ref` (`"other-schema.json#/definitions/Foo"`), where `#` separates the document identity from the location within it.
-
-**Module identity.** The left side of `#` is always the fully-qualified module identity: `namespace/module-name`. Both segments come from the module's own `Telo.Application` or `Telo.Library` declaration (`metadata.namespace` and `metadata.name`). Every module must declare a namespace — short-form references using only the module name are not permitted. The Telo built-ins use `"telo"` as their identity (no namespace segment). The kernel rejects any `x-telo-ref` value whose left side does not match a registered fully-qualified identity.
-
-**How the lookup works.** When a module is loaded, the kernel registers its fully-qualified identity (`namespace/module-name`) alongside its canonical module name (`metadata.module`). The field map builder (Phase 1) stores `x-telo-ref` strings as-is — no identity resolution occurs at that point, because modules are still being loaded concurrently. Resolution is deferred to Phase 3, when all imports are guaranteed to be registered. At Phase 3, each `x-telo-ref` string is split on `#`, the left side is looked up in the identity table to get the canonical module name, and the `DefinitionRegistry` key is constructed as `canonicalModule.TypeName`:
+**How the lookup works.** Before a definition is registered, the analyzer rewrites each `x-telo-ref` in its schema to the canonical `<module>.<Kind>` key, resolving the alias against the declaring module's import map — the same pre-resolution `extends:` receives. Downstream, the `DefinitionRegistry` answers a ref query with a plain lookup and needs no module context:
 
 ```text
-"std/http-server#Server"  →  module "std/http-server"  →  canonical "Http"   →  registry key "Http.Server"
-"telo#Invocable"          →  module "telo"              →  canonical "Telo"   →  registry key "Telo.Invocable"
+KvStore.Store   →  alias "KvStore" → module "kv-store"  →  registry key "kv-store.Store"
+Telo.Invocable  →  alias "Telo"    → module "Telo"      →  registry key "Telo.Invocable"
 ```
+
+A ref naming an alias the declaring file never imported does not resolve, and the constraint is skipped rather than enforced — the same lenient behaviour as any other partial-context lookup.
+
+**Legacy identity form.** Module versions published before the alias form wrote their constraints as `"<namespace>/<module>#<Kind>"` (`std/http-server#Server`, `telo#Invocable`), resolved through an identity table fed by `metadata.namespace`. Those still resolve, so an already-published dependency keeps working; using the form in a new manifest raises `X_TELO_REF_LEGACY_IDENTITY`. `metadata.namespace` exists for nothing else and is not written by current manifests.
 
 AJV ignores unknown keywords in `strict: false` mode (already the project default), so schemas containing `x-telo-ref` are passed to AJV as-is — no materialization or resolver plugin is needed. The field map builder detects reference slots by checking for the presence of `x-telo-ref` in a schema node.
 
@@ -69,11 +70,11 @@ schema:
       type: object
       properties:
         invoke:
-          x-telo-ref: "telo#Invocable" # any Telo.Invocable resource
+          x-telo-ref: Telo.Invocable # any Telo.Invocable resource
     middlewares:
       type: array
       items:
-        x-telo-ref: "std/http-server#Middleware" # specifically Http.Middleware
+        x-telo-ref: Http.Middleware # specifically Http.Middleware
     mounts:
       type: array
       items:
@@ -82,7 +83,7 @@ schema:
           path:
             type: string
           mount:
-            x-telo-ref: "telo#Service" # any Telo.Service resource
+            x-telo-ref: Telo.Service # any Telo.Service resource
 ```
 
 ```yaml
@@ -93,22 +94,22 @@ schema:
       items:
         properties:
           invoke:
-            x-telo-ref: "telo#Invocable"
+            x-telo-ref: Telo.Invocable
 ```
 
 ---
 
 ## 4. Kind-Level Narrowing
 
-Referencing a concrete kind (`x-telo-ref: "std/http-server#Middleware"`) constrains a slot to that resource kind **or any kind that transitively `extends` it** (general single inheritance — subtypes are substitutable). Referencing an abstract kind accepts every kind that transitively extends it. Both use the same transitive subtype index; the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind against the target kind and its descendants. All reference shapes are structurally identical.
+Referencing a concrete kind (`x-telo-ref: Http.Middleware`) constrains a slot to that resource kind **or any kind that transitively `extends` it** (general single inheritance — subtypes are substitutable). Referencing an abstract kind accepts every kind that transitively extends it. Both use the same transitive subtype index; the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind against the target kind and its descendants. All reference shapes are structurally identical.
 
 For slots that accept multiple specific kinds, use `anyOf`. Place `x-telo-ref` inside each branch:
 
 ```yaml
 handler:
   anyOf:
-    - x-telo-ref: "std/http-server#Middleware"
-    - x-telo-ref: "std/javascript#Script"
+    - x-telo-ref: Http.Middleware
+    - x-telo-ref: Js.Script
 ```
 
 Phase 3 validates that the reference's resolved kind satisfies at least one branch (`anyOf` semantics: one or more branches may match). Do not use `oneOf` (exactly one match) or `allOf` (all branches must match) in reference slot positions — both are semantically incorrect for multi-kind slots and the kernel does not support them there.
@@ -121,7 +122,7 @@ Two mechanisms handle schema references across definitions. Which to use depends
 
 ### Static cross-module references via `$ref` + `$id`
 
-Every `Telo.Definition` schema is automatically assigned an `$id` by the analyzer when the definition is loaded — derived from the module's canonical identity and the type name. Authors never declare `$id` manually. This makes all definition schemas addressable by standard JSON Schema `$ref`:
+Every `Telo.Definition` schema is automatically assigned an `$id` by the analyzer when the definition is loaded — derived from the module name and the type name — the same `telo://<module>/<Name>` scheme a named `Telo.Type` registers under. Authors never declare `$id` manually. This makes all definition schemas addressable by standard JSON Schema `$ref`:
 
 ```yaml
 kind: Telo.Definition
@@ -130,7 +131,7 @@ metadata:
   module: Temporal
 extends: Workflow.Backend
 schema:
-  # $id: "std/temporal/Backend" — assigned automatically by the analyzer
+  # $id: "telo://workflow-temporal/Backend" — assigned automatically by the analyzer
   properties:
     namespace: { type: string }
   $defs:
@@ -149,8 +150,8 @@ schema:
 Any definition schema can reference types from another module using a standard `$ref`:
 
 ```yaml
-$ref: "std/temporal/Backend#/$defs/NodeOptions"
-$ref: "std/http-server/Server#/properties/headers"
+$ref: "telo://workflow-temporal/Backend#/$defs/NodeOptions"
+$ref: "telo://http-server/Server#/properties/headers"
 ```
 
 The analyzer loads all definition schemas into AJV's schema store keyed by their implicit `$id`. Cross-module `$ref` resolution is handled by AJV directly.
@@ -169,7 +170,7 @@ metadata:
 schema:
   properties:
     backend:
-      x-telo-ref: "std/workflow#Backend"
+      x-telo-ref: Workflow.Backend
     nodes:
       type: array
       items:
@@ -192,7 +193,7 @@ nodes:
     type: object
     properties:
       backend:
-        x-telo-ref: "std/workflow#Backend"
+        x-telo-ref: Workflow.Backend
       options:
         x-telo-schema-from: "backend/$defs/NodeOptions" # relative: sibling backend
 ```
@@ -203,7 +204,7 @@ Absolute — `x-telo-ref` is at the resource root:
 schema:
   properties:
     backend:
-      x-telo-ref: "std/workflow#Backend"
+      x-telo-ref: Workflow.Backend
     nodes:
       type: array
       items:
@@ -302,7 +303,7 @@ schema:
         type: object
         properties:
           invoke:
-            x-telo-ref: "telo#Invocable"
+            x-telo-ref: Telo.Invocable
 ```
 
 ### Example
@@ -440,8 +441,8 @@ Raw TypeScript interface — author is responsible for keeping the exported `sch
 
 ```typescript
 interface MyConfig {
-  invoke: KindRef<Invocable>;    // x-telo-ref: "telo#Invocable"
-  server: KindRef<HttpServer>;   // x-telo-ref: "std/http-server#Server"
+  invoke: KindRef<Invocable>;    // x-telo-ref: Telo.Invocable
+  server: KindRef<HttpServer>;   // x-telo-ref: Http.Server
   with:   ScopeRef;              // x-telo-scope: /steps
   port:   number;
 }
@@ -473,8 +474,8 @@ import { Type, Static } from "@sinclair/typebox";
 import { Ref, Scope, KindRef, ScopeRef, Injected } from "@telorun/sdk";
 
 const MyConfig = Type.Object({
-  invoke: Ref<Invocable>("telo#Invocable"),
-  server: Ref<HttpServer>("std/http-server#Server"),
+  invoke: Ref<Invocable>(Telo.Invocable),
+  server: Ref<HttpServer>(Http.Server),
   with:   Scope("/steps"),
   port:   Type.Integer(),
 });
@@ -521,11 +522,11 @@ The field map is cached on the `DefinitionRegistry` entry:
 ```text
 fieldPath       → { refs,                                                              isArray }
 ───────────────────────────────────────────────────────────────────────────────────────────────
-invoke          → { refs: ["telo#Invocable"],                                        false   }
-middlewares[]   → { refs: ["std/http-server#Middleware"],                              true    }
-mounts[].mount  → { refs: ["telo#Service"],                                          true    }
-server          → { refs: ["std/http-server#Server"],                                  false   }
-handler         → { refs: ["std/http-server#Middleware", "std/javascript#Script"],     false   }
+invoke          → { refs: [Telo.Invocable],                                        false   }
+middlewares[]   → { refs: [Http.Middleware],                              true    }
+mounts[].mount  → { refs: ["Telo.Service"],                                          true    }
+server          → { refs: [Http.Server],                                  false   }
+handler         → { refs: [Http.Middleware, Js.Script],     false   }
 with            → { scope: "/steps" }
 ```
 
@@ -608,11 +609,11 @@ The visual editor builds a field index once when a definition schema is loaded, 
 ```text
 field path              → { refs }
 ──────────────────────────────────────────────────────────────────────────────────────
-notFoundHandler.invoke  → { refs: ["telo#Invocable"]                                        }
-mounts[].mount          → { refs: ["telo#Service"]                                          }
-middlewares[]           → { refs: ["std/http-server#Middleware"]                              }
-steps[].invoke          → { refs: ["telo#Invocable"]                                        }
-handler                 → { refs: ["std/http-server#Middleware", "std/javascript#Script"]     }
+notFoundHandler.invoke  → { refs: [Telo.Invocable]                                        }
+mounts[].mount          → { refs: ["Telo.Service"]                                          }
+middlewares[]           → { refs: [Http.Middleware]                              }
+steps[].invoke          → { refs: [Telo.Invocable]                                        }
+handler                 → { refs: [Http.Middleware, Js.Script]     }
 ```
 
 At interaction time, when a user focuses a reference field, the editor performs one lookup per ref and unions the results:

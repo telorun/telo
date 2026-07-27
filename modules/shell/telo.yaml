@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: shell
-  namespace: std
   version: 0.5.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -22,7 +21,7 @@ exports:
 # Shell.Host — the abstract execution target every driver implements. A
 # Telo.Provider whose instance exposes the spawn primitive the operations call.
 # Consumers (Shell.Command / Shell.CommandStream) reference it via
-# `x-telo-ref: "std/shell#Host"`; a concrete implementation (Shell.LocalHost,
+# `x-telo-ref: Self.Host`; a concrete implementation (Shell.LocalHost,
 # or a future ShellSsh.Host) satisfies the ref. The host owns command
 # composition — `<shell> -c <command>`, env merge, and cwd — so the operations
 # stay backend-agnostic.
@@ -109,7 +108,7 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref: "std/shell#Host"
+      x-telo-ref: Self.Host
   examples:
     - host: !ref Local
 ---
@@ -186,7 +185,7 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref: "std/shell#Host"
+      x-telo-ref: Self.Host
   examples:
     - host: !ref Local
 ---

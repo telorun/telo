@@ -178,7 +178,6 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
         "unknown",
       version: moduleDoc?.metadata.version as string | undefined,
       description: moduleDoc?.metadata.description as string | undefined,
-      namespace: (moduleDoc?.metadata as Record<string, unknown>)?.namespace as string | undefined,
       categories: (moduleDoc?.metadata as Record<string, unknown>)?.categories as
         | string[]
         | undefined,

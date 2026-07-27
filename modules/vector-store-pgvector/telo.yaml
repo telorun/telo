@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: vector-store-pgvector
-  namespace: std
   version: 0.4.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -37,7 +36,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the Postgres Sql.Connection the vectors table lives in.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     dimensions:
       title: Dimensions
       type: integer

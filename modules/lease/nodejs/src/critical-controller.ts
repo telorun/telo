@@ -89,7 +89,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
       this.resource.store,
       isKvStore,
       () => `Lease.Critical "${name}": 'store'`,
-      "std/kv-store#Store",
+      "KvStore.Store",
     );
     const mutex = new Mutex(store, name, this.ttlMs);
     // The holder token is both the 409 payload and the release guard — unique

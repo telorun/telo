@@ -51,7 +51,7 @@ schema:
   required: [connection, table]
   properties:
     connection:
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       type: string
 inputType:
@@ -127,7 +127,7 @@ schema:
   type: object
   required: [connection, table]
   properties:
-    connection: { x-telo-ref: "std/sql#Connection" }
+    connection: { x-telo-ref: Sql.Connection }
     table: { type: string }
 resources:
   - kind: Self.Reader          # internal handler kinds, also templated

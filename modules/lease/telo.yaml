@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: lease
-  namespace: std
   version: 0.6.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -107,7 +106,7 @@ schema:
         Reference to the KvStore.Store backing the lease. Use
         kv-store-sql or kv-store-redis for cross-instance exclusion;
         kv-store-memory is single-process only.
-      x-telo-ref: "std/kv-store#Store"
+      x-telo-ref: KvStore.Store
     ttl:
       title: TTL
       type: string
@@ -129,5 +128,5 @@ schema:
       description: The invocable or runnable run under the lease when acquired.
       type: object
       anyOf:
-        - x-telo-ref: "telo#Invocable"
-        - x-telo-ref: "telo#Runnable"
+        - x-telo-ref: Telo.Invocable
+        - x-telo-ref: Telo.Runnable

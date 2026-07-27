@@ -38,7 +38,7 @@ template body inherits, by delegation:
 
 A child is **Liskov-substitutable** for every ancestor at any `!ref` slot,
 transitively — a `GithubClient` satisfies any slot typed
-`x-telo-ref: "std/http-client#Client"`.
+`x-telo-ref: Http.Client`.
 
 ## `base:` — the super mapping
 
@@ -117,7 +117,7 @@ schema:
   type: object
   required: [client, q]
   properties:
-    client: { x-telo-ref: "std/http-client#Client" }  # re-declared to expose it; forwarded below
+    client: { x-telo-ref: Http.Client }  # re-declared to expose it; forwarded below
     q: { type: string }
 base:
   client: !cel "self.client"
@@ -151,7 +151,7 @@ token: !cel "secrets.ghToken"
 ---
 kind: Gh.SearchRepos                # a wrapped operation
 metadata: { name: TopRepos }
-client: !ref Api                    # GithubClient into the inherited std/http-client#Client slot
+client: !ref Api                    # GithubClient into the inherited Http.Client slot
 q: "stars:>10000"
 ---
 kind: Http.Request                  # the escape hatch: a raw request for an unwrapped endpoint

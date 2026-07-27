@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: "http-server"
-  namespace: std
   version: "0.20.1"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -16,6 +15,8 @@ imports:
   # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
   # shape, MIME negotiation rules, and buffer/stream oneOf live in exactly one place.
   HttpDispatch: ../http-dispatch
+  # The response-encoder contract this module's own encoder slots pin.
+  Codec: ../codec
 exports:
   kinds:
     - Server
@@ -130,7 +131,7 @@ schema:
               Mcp.HttpEndpoint, …). Use a `!ref` to the resource by name; an
               `!ref <Alias>.<name>` reaches a mount exported by an imported
               library.
-            x-telo-ref: "telo#Mount"
+            x-telo-ref: Telo.Mount
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -153,8 +154,8 @@ schema:
             # (typical) or `run()` (e.g. a Run.Sequence dispatching to a parser
             # pipeline). The kernel calls whichever method exists.
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
             oneOf:
               - title: Parser Reference
                 description: String reference to an invocable parser.
@@ -274,8 +275,8 @@ schema:
           description: Resource invoked (or run) to generate not-found response data.
           # Accept either capability so dual-mode kinds like Run.Sequence fit.
           anyOf:
-            - x-telo-ref: "telo#Invocable"
-            - x-telo-ref: "telo#Runnable"
+            - x-telo-ref: Telo.Invocable
+            - x-telo-ref: Telo.Runnable
         inputs:
           title: Inputs
           type: "object"
@@ -399,8 +400,8 @@ schema:
             # consumer here — its `run()` and `invoke()` both produce the
             # response body, the kernel calls whichever is appropriate.
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
             x-telo-context:
               type: object
               properties:
@@ -488,8 +489,8 @@ schema:
                         type: "object"
                       encoder:
                         title: Encoder
-                        description: Encoder ref (any kind extending std/codec#Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                        x-telo-ref: "std/codec#Encoder"
+                        description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
+                        x-telo-ref: Codec.Encoder
                       headers:
                         title: Headers
                         description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.

@@ -35,7 +35,7 @@ options:
 
 | Field     | Type   | Required | Purpose                                                                              |
 | --------- | ------ | -------- | ------------------------------------------------------------------------------------ |
-| `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: "std/ai#Model"`.      |
+| `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: Self.Model`.      |
 | `system`  | string | no       | Default system prompt. Runtime `inputs.system` wins when set.                        |
 | `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).   |
 

@@ -118,7 +118,7 @@ describe("buildApplicationCanvasModel", () => {
         key: "targets[]",
         label: "targets",
         flavor: "edge",
-        refs: ["telo#Runnable", "telo#Service"],
+        refs: ["Telo.Runnable", "Telo.Service"],
         capabilities: ["Telo.Runnable", "Telo.Service"],
         slots: [{ concretePath: "targets[0]", target: "w" }],
         addPath: "targets[1]",

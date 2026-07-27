@@ -317,6 +317,7 @@ export class Loader {
 
           aliases.set(alias, {
             targetSource: targetCanonical,
+            targetRef: importSource,
             targetModuleName,
             targetNamespace,
           });

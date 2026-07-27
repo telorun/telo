@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: kv-store-sql
-  namespace: std
   version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -46,7 +45,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the Sql.Connection this store reads and writes through.
-      x-telo-ref: "std/sql#Connection"
+      x-telo-ref: Sql.Connection
     table:
       title: Table
       type: string

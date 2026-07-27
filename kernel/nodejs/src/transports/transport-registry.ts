@@ -1,4 +1,4 @@
-import type { ManifestSource } from "@telorun/analyzer";
+import type { ManifestCacheCoords, ManifestSource } from "@telorun/analyzer";
 
 import { OciTransport } from "./oci/oci-transport.js";
 import { RegistryTransport } from "./registry-transport.js";
@@ -29,10 +29,10 @@ export class TransportRegistry {
     return this.transports.map((t) => t.source);
   }
 
-  /** Cache-path segments for `ref`, from its owning transport; `null` when no
-   *  transport owns it or the ref is not cacheable. */
-  cacheLocation(ref: string): string[] | null {
-    return this.forRef(ref)?.cacheLocation(ref) ?? null;
+  /** Manifest-cache coordinates for `ref`, from its owning transport; `null`
+   *  when no transport owns it or the ref is not cacheable. */
+  cacheCoords(ref: string): ManifestCacheCoords | null {
+    return this.forRef(ref)?.cacheCoords(ref) ?? null;
   }
 
   /** Published versions for `ref` via its owning transport; `null` when the

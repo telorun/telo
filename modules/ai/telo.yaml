@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: ai
-  namespace: std
   version: 0.10.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -121,7 +120,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation (Ai.OpenaiModel, Ai.AnthropicModel, Ai.OllamaModel, or a third-party provider).
-      x-telo-ref: "std/ai#Model"
+      x-telo-ref: Self.Model
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -214,7 +213,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: "std/ai#Model"
+      x-telo-ref: Self.Model
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -281,8 +280,8 @@ schema:
               A Run.Sequence (a Runnable with callable inputs/outputs) can wrap a
               multi-step pipeline as a single tool.
             anyOf:
-              - x-telo-ref: "telo#Invocable"
-              - x-telo-ref: "telo#Runnable"
+              - x-telo-ref: Telo.Invocable
+              - x-telo-ref: Telo.Runnable
           name:
             title: Name
             description: Tool name the model sees. Defaults to the referenced resource name.
@@ -426,7 +425,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: "std/ai#Model"
+      x-telo-ref: Self.Model
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -466,7 +465,7 @@ schema:
           provider:
             title: Provider
             description: Reference to any Ai.ToolProvider implementation.
-            x-telo-ref: "std/ai#ToolProvider"
+            x-telo-ref: Self.ToolProvider
           prefix:
             title: Prefix
             description: Namespaces this provider's tool names to avoid collisions.
@@ -571,7 +570,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: "std/ai#Model"
+      x-telo-ref: Self.Model
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -611,7 +610,7 @@ schema:
           provider:
             title: Provider
             description: Reference to any Ai.ToolProvider implementation.
-            x-telo-ref: "std/ai#ToolProvider"
+            x-telo-ref: Self.ToolProvider
           prefix:
             title: Prefix
             description: Namespaces this provider's tool names to avoid collisions.

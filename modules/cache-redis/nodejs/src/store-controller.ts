@@ -158,7 +158,7 @@ class RedisStore implements ResourceInstance, CacheStore {
       this.resource.fallback,
       isCacheStore,
       () => `CacheRedis.Store "${this.resource.metadata.name}": 'fallback'`,
-      "std/cache#Store",
+      "Cache.Store",
     );
   }
 
