@@ -1,5 +1,7 @@
 # Changelog
-## 0.7.0 - 2026-07-27
+## 0.7.1 - 2026-07-27
+### Fixed
+* Update controller @telorun/test to 0.4.56.## 0.7.0 - 2026-07-27
 ### Added
 * Drop `metadata.namespace`. A module's location is the ref it is published under, never anything it declares about itself, and nothing reads the field any more.
 ### Fixed
