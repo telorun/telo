@@ -272,6 +272,18 @@ export function AddImportDialog({
                       {hit.module.description}
                     </span>
                   )}
+                  {(hit.module.categories?.length ?? 0) > 0 && (
+                    <span className="flex flex-wrap gap-1">
+                      {hit.module.categories!.map((category) => (
+                        <span
+                          key={category.slug}
+                          className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                        >
+                          {category.label}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                   {hit.matchedKinds.length > 0 && (
                     <span className="flex flex-wrap gap-1">
                       {hit.matchedKinds.slice(0, 6).map((k) => (

@@ -5,12 +5,12 @@ metadata:
   version: 0.4.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage]
   description: |
-    SqlSqlite.Connection — a SQLite backend for the Sql.Connection abstract.
-    Opens a file-backed or in-memory database (better-sqlite3 on Node,
-    bun:sqlite on Bun) with transactional DDL. Operations
-    (Sql.Query / Sql.Command / Sql.Selection / Sql.Transaction / Sql.Migrations)
-    in the `sql` core run against it; the core itself depends on no driver.
+    Connects an application to a SQLite database — a file on disk, or an in-memory one
+    that lives only as long as the process — with transactional schema changes. The
+    database travels with the application, so it suits local development, tests,
+    single-node deployments and embedded storage.
 imports:
   Sql: ../sql
 exports:
@@ -20,7 +20,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Connection
-  description: Provides a file-backed or in-memory SQLite connection for Sql.Connection operations.
+  description: >-
+    A connection to a SQLite database held in a file or entirely in memory, opened on
+    start-up and shared by every operation that references it.
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:

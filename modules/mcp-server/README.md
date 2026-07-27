@@ -26,14 +26,14 @@ Model Context Protocol (MCP) server resource kinds for Telo: stdio and Streamabl
 kind: Telo.Application
 metadata: { name: my-stdio-mcp, version: 1.0.0 }
 imports:
-  Mcp: std/mcp-server@<version>
-  JS: std/javascript@<version>
+  Mcp: std/mcp-server@0.9.0
+  JS: std/javascript@0.7.0
 targets: [ !ref Server ]
 ---
 kind: Mcp.StdioServer
 metadata: { name: Server }
 serverInfo: { name: my-stdio-mcp, version: 1.0.0 }
-tools: [ WeatherTools ]
+tools: [ !ref WeatherTools ]
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }
@@ -45,15 +45,20 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler:
-      kind: JS.Script
-      name: GetWeatherImpl
+    handler: !ref GetWeatherImpl
     inputs:
-      city: "${{ request.arguments.city }}"
+      city: !cel "request.arguments.city"
     result:
       content:
         - type: text
-          text: "${{ result.summary }}"
+          text: !cel "result.summary"
+---
+kind: JS.Script
+metadata: { name: GetWeatherImpl }
+code: |
+  export function main(input) {
+    return { summary: `Sunny in ${input.city}` }
+  }
 ```
 
 ## Reference
@@ -64,7 +69,7 @@ entries:
 
 ## Composition Notes
 
-- **Multiple bundles into one transport.** `tools: [WeatherTools, DatabaseTools]` merges entries from both bundles. Duplicate names across bundles throw at init.
+- **Multiple bundles into one transport.** `tools: [ !ref WeatherTools, !ref DatabaseTools ]` merges entries from both bundles. Duplicate names across bundles throw at init.
 - **One bundle into multiple transports.** Reference the same `Mcp.Tools` from both `Mcp.StdioServer` and `Mcp.HttpEndpoint` — registrations are independent per-transport, no shared runtime state.
 - **`isError` vs. `catches:`.** `isError: true` on `result` signals a soft tool failure rendered as content. `catches:` is for actual `throw`s and produces a JSON-RPC error envelope.
 

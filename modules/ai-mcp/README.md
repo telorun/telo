@@ -33,7 +33,7 @@ imports:
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt4o }
 model: gpt-4o-mini
-apiKey: "${{ secrets.openaiApiKey }}"
+apiKey: !cel "secrets.openaiApiKey"
 ---
 kind: Mcp.StdioClient
 metadata: { name: FilesMcp }

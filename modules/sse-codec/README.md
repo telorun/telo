@@ -33,10 +33,36 @@ piped straight to the encoder for a **resumable** stream — the client checkpoi
 kind: Telo.Application
 metadata: { name: sse-stream, version: 1.0.0 }
 imports:
-  Sse: std/sse-codec@latest
+  Sse: std/sse-codec@0.7.0
+  Http: std/http-server@0.19.1
+  Stream: std/stream@0.5.0
+ports:
+  http: { env: PORT, default: 3000 }
+targets: [ !ref Server ]
+---
+kind: Stream.Of
+metadata: { name: Events }
+items: [ { type: tick, at: 1 }, { type: tick, at: 2 } ]
+---
+kind: Sse.Encoder
+metadata: { name: Out }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request: { path: /events, method: GET }
+    handler: !ref Events
+    returns:
+      - status: 200
+        mode: stream            # pipe the handler's stream through an encoder
+        content:
+          text/event-stream:
+            encoder: !ref Out
 ---
 kind: Http.Server
-metadata: { name: Stream }
-encoders:
-  text/event-stream: { kind: Sse.Encoder, name: Out }
+metadata: { name: Server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref Api
 ```

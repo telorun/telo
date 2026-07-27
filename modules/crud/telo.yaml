@@ -5,18 +5,12 @@ metadata:
   version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage, Data]
   description: |
-    Crud.Resource — a single declarative resource that exposes a full REST CRUD
-    API (list / read / create / update / delete) over a SQL table. It is a
-    Telo.Mount: drop it into an Http.Server's `mounts:` and point it at a table,
-    a Sql.Connection, and a model (a Type.JsonSchema). Purely templated — it
-    builds parameterized SQL and mounts it through an http-server Http.Api, no
-    controller code.
-
-    Request bodies are validated against the model (POST: full; PUT: partial).
-    Model properties are camelCase; columns are their snake_case form (writes
-    translate, reads alias back). The primary key is the column `id`, surfaced
-    as the configurable `{<singular>Id}` path parameter and excluded from the model.
+    Serves a full REST API over a database table from one declaration: list, read one,
+    create, update and delete, with parameterized SQL, request bodies validated
+    against a model schema, and OpenAPI operations named from the resource's singular
+    and plural nouns. Model properties are camelCase and map to snake_case columns.
 imports:
   Http: ../http-server
   Sql: ../sql
@@ -27,7 +21,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Resource
-  description: Mounts a REST CRUD API (list/read/create/update/delete) over a SQL table, validating bodies against a model.
+  description: >-
+    Mounts a REST API over one database table — list, read, create, update, delete —
+    generating the routes, the id path parameter and the OpenAPI operations from a
+    model schema that also validates create and update bodies.
 capability: Telo.Mount
 schema:
   type: object
@@ -251,6 +248,10 @@ resources:
 kind: Telo.Definition
 metadata:
   name: Reader
+  description: >-
+    Internal handler behind the list and read routes: runs a parameterized SELECT
+    filtered by the given columns and aliases each snake_case column back to its
+    model property name.
 capability: Telo.Invocable
 schema:
   type: object
@@ -278,6 +279,9 @@ inputs:
 kind: Telo.Definition
 metadata:
   name: Creator
+  description: >-
+    Internal handler behind the create route: runs a parameterized INSERT of the
+    columns present in the validated request body.
 capability: Telo.Invocable
 schema:
   type: object
@@ -302,6 +306,9 @@ inputs:
 kind: Telo.Definition
 metadata:
   name: Updater
+  description: >-
+    Internal handler behind the update route: runs a parameterized UPDATE that sets
+    only the columns present in the request body, filtered by the item's id.
 capability: Telo.Invocable
 schema:
   type: object
@@ -326,6 +333,9 @@ inputs:
 kind: Telo.Definition
 metadata:
   name: Deleter
+  description: >-
+    Internal handler behind the delete route: runs a parameterized DELETE filtered by
+    the item's id.
 capability: Telo.Invocable
 schema:
   type: object

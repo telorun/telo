@@ -24,7 +24,8 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 kind: Telo.Application
 metadata: { name: fetcher, version: 1.0.0 }
 imports:
-  Http: pkg:npm/@telorun/http-client@^1.0.0
+  Http: oci://ghcr.io/telorun/http-client@<version>
+targets: [ !ref GetUser ]
 ---
 kind: Http.Client
 metadata: { name: GitHub }

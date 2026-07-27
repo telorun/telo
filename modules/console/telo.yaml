@@ -5,10 +5,12 @@ metadata:
   version: 0.12.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Observability]
   description: >-
-    Console I/O over stdin and stdout. `Console.WriteLine` and `Console.ReadLine`
-    handle line text with `{style}` markup; `Console.WriteStream` and
-    `Console.StreamWait` drain and animate streaming output.
+    Terminal input and output: print lines with inline colour and style markup,
+    prompt the user and read a line back, drain a stream to standard output chunk by
+    chunk, and show a spinner while a slow stream produces its first item. Styling
+    renders as ANSI on a terminal and strips to plain text when piped.
 exports:
   kinds:
     - WriteLine
@@ -23,12 +25,9 @@ kind: Telo.Definition
 metadata:
   name: WriteLine
   description: >-
-    Print a line of text to standard output. Inline markup tags of the form
-    `{style content}` (e.g. `{green world}`) render as ANSI colour and style
-    escapes when stdout is a TTY and are stripped to plain text otherwise, so
-    the same manifest stays readable in piped or captured logs. Takes no
-    configuration — importers usually reference the shared `Console.writeLine`
-    instance instead of declaring their own.
+    Prints a line of text to standard output. Inline `{style content}` markup renders
+    as ANSI colour on a terminal and is stripped to plain text when the output is
+    piped or captured. Takes no configuration.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writeline
@@ -55,12 +54,9 @@ kind: Telo.Definition
 metadata:
   name: ReadLine
   description: >-
-    Prompt the user and read one line of interactive input from standard input,
-    returning the entered text. The prompt is written to stdout
-    character-for-character with no auto-appended `: ` suffix, and its
-    `{style content}` markup renders to ANSI on a TTY and is stripped to plain
-    text otherwise. Config-free — importers typically use the shared
-    `Console.readLine` instance.
+    Prompts the user and reads one line of interactive input, returning the text they
+    entered. The prompt is written exactly as given, with no suffix added, and its
+    `{style content}` markup renders as ANSI on a terminal. Takes no configuration.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#readline
@@ -92,11 +88,10 @@ kind: Telo.Definition
 metadata:
   name: WriteStream
   description: >-
-    Drain a `Stream<string | Uint8Array>` to standard output, writing each chunk
-    as it arrives instead of buffering the whole value — the sink for streaming
-    producers such as Shell.CommandStream or an AI model's token stream. Strings
-    go through Node's native UTF-8 path and byte chunks pass through unchanged;
-    there is no newline policy, so the producer controls framing.
+    Drains a stream of text or byte chunks to standard output, writing each chunk as
+    it arrives instead of buffering the whole value — the terminal end of a streaming
+    pipeline. Bytes pass through unchanged and no newlines are added, so the producer
+    controls framing.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writestream
@@ -122,13 +117,10 @@ kind: Telo.Definition
 metadata:
   name: StreamWait
   description: >-
-    Show a spinner / loading indicator while waiting for a slow stream to
-    produce its first item, then clear it and forward every item unchanged.
-    Sits between a streaming producer and a sink: the prefix text, reserved
-    animation cell, cycling single-character frames, and clear sequence are
-    embedded in the head of the forwarded output stream, so this resource never
-    writes to stdout itself — the downstream sink (typically
-    Console.WriteStream) does.
+    Shows a spinner or loading indicator while a slow stream works towards its first
+    item, then clears it and forwards every item unchanged. Sits between a producer
+    and a sink: the prefix, animation frames and clear sequence ride in the head of
+    the forwarded stream, so the sink does the writing.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#streamwait
@@ -196,17 +188,14 @@ kind: Self.WriteLine
 metadata:
   name: writeLine
   description: >-
-    Ready-made shared instance for printing lines to stdout, referenced by
-    importers as `!ref Console.writeLine` in boot targets, step `invoke:` slots,
-    and any Invocable ref slot. Exists because Console.WriteLine is config-free,
-    so one shared singleton per import is all anyone needs — no declaration
-    boilerplate in consumer manifests.
+    Ready-made shared instance for printing lines to standard output, referenced
+    directly instead of declaring one — printing takes no configuration, so a single
+    shared instance is all a consumer needs.
 ---
 kind: Self.ReadLine
 metadata:
   name: readLine
   description: >-
     Ready-made shared instance for prompting and reading a line of user input,
-    referenced by importers as `!ref Console.readLine`. Exists because
-    Console.ReadLine takes no configuration, so a single shared singleton per
-    import suffices and consumers skip declaring their own.
+    referenced directly instead of declaring one — prompting takes no configuration,
+    so a single shared instance suffices.

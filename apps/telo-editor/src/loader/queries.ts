@@ -16,10 +16,37 @@ export function getAvailableKinds(workspace: Workspace, manifest: ParsedManifest
         capability: r.fields.capability as string,
         topology: typeof r.fields.topology === "string" ? (r.fields.topology as string) : undefined,
         schema: (r.fields.schema ?? {}) as Record<string, unknown>,
+        categories: r.categories ?? mod.metadata.categories ?? [],
+        contract: resolveContract(workspace, mod, r.fields.extends),
       });
     }
   }
   return result;
+}
+
+/** `extends: <Alias>.<Kind>` → `<owning module name>.<Kind>`.
+ *
+ *  The alias belongs to `declaring`, not to whoever is reading the kind, so the
+ *  lookup has to run in the declaring library's own import table — `Self` being
+ *  the library itself. Returns undefined when the prefix resolves to nothing:
+ *  the `Telo.*` built-in abstracts have no owning module, and an unresolved
+ *  import would otherwise key a group on a name that means nothing. */
+export function resolveContract(
+  workspace: Workspace,
+  declaring: ParsedManifest,
+  extendsField: unknown,
+): string | undefined {
+  if (typeof extendsField !== "string") return undefined;
+  const dot = extendsField.indexOf(".");
+  if (dot === -1) return undefined;
+  const alias = extendsField.slice(0, dot);
+  const kindName = extendsField.slice(dot + 1);
+
+  if (alias === "Self") return `${declaring.metadata.name}.${kindName}`;
+
+  const target = declaring.imports.find((i) => i.name === alias)?.resolvedPath;
+  const targetModule = target ? workspace.modules.get(target) : undefined;
+  return targetModule ? `${targetModule.metadata.name}.${kindName}` : undefined;
 }
 
 /** Returns true if `libraryPath` is transitively imported by any Application

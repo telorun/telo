@@ -24,8 +24,8 @@ metadata:
   name: api-load
   version: 1.0.0
 imports:
-  Benchmark: std/benchmark@<version>
-  HttpClient: std/http-client@<version>
+  Benchmark: std/benchmark@0.6.0
+  HttpClient: std/http-client@0.11.0
 ---
 kind: HttpClient.Client
 metadata:
@@ -43,11 +43,11 @@ scenarios:
     weight: 4
     invoke:
       kind: HttpClient.Request
-      client: Api
-      inputs:
-        method: GET
-        url: /search?q=telo
-    validate: "result.status == 200"
+      client: !ref Api
+    inputs:
+      method: GET
+      url: /search?q=telo
+    validate: !cel "result.status == 200"
 report:
   format: table
   thresholds:
@@ -79,19 +79,19 @@ scenarios:
     weight: 4
     invoke:
       kind: HttpClient.Request
-      client: Api
-      inputs:
-        method: GET
-        url: /search?q=telo
-    validate: "result.status == 200"
+      client: !ref Api
+    inputs:
+      method: GET
+      url: /search?q=telo
+    validate: !cel "result.status == 200"
   - name: publish
     weight: 1
     invoke:
       kind: HttpClient.Request
-      client: Api
-      inputs:
-        method: POST
-        url: /publish
+      client: !ref Api
+    inputs:
+      method: POST
+      url: /publish
 ```
 
 `validate` is evaluated against `result` after each invocation; a `false` result counts as an error in the scenario's metrics without halting the suite.

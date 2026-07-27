@@ -29,10 +29,19 @@ export async function registerModule(ref: string): Promise<RegisterResult> {
   return { ok: false, error: errorMessage(data, res.status) };
 }
 
+/** One facet value. `label` is what the module's author wrote; `slug` is what
+ *  the hub derived from it and what filtering and URLs use. */
+export interface Category {
+  slug: string;
+  label: string;
+}
+
 export interface ModuleRef {
   ref: string;
   version: string;
   description: string;
+  /** Declared categories. Absent from a hub that predates the facet. */
+  categories?: Category[];
 }
 
 export interface MatchedKind {
@@ -56,15 +65,29 @@ export interface ModuleHit {
 }
 
 export type SearchResult =
-  | { ok: true; hits: ModuleHit[] }
+  | { ok: true; hits: ModuleHit[]; total: number }
   | { ok: false; error: string };
 
-/** Module-first search over the hub's federated index. An empty query is valid
- *  and returns a browse list, so the page has something to show on first load. */
-export async function searchModules(query: string, signal?: AbortSignal): Promise<SearchResult> {
+/** Page size for the module list. The hub caps `limit` at 100 and reports the
+ *  pre-limit `total`, so browsing a category shows how much is left rather than
+ *  stopping silently. */
+export const PAGE_SIZE = 30;
+
+/** Module-first search over the hub's federated index. Browsing is the same
+ *  call with an empty query and a category: the hub degrades to an unranked
+ *  listing, so the page has something to show on first load and the facet
+ *  narrows it without a separate endpoint. */
+export async function searchModules(
+  query: string,
+  category: string,
+  signal?: AbortSignal,
+): Promise<SearchResult> {
+  const params = new URLSearchParams({ q: query, limit: String(PAGE_SIZE) });
+  if (category) params.set("category", category);
+
   let res: Response;
   try {
-    res = await fetch(`${HUB_API}/search/modules?q=${encodeURIComponent(query)}`, {
+    res = await fetch(`${HUB_API}/search/modules?${params}`, {
       headers: { accept: "application/json" },
       signal,
     });
@@ -77,7 +100,35 @@ export async function searchModules(query: string, signal?: AbortSignal): Promis
   if (!res.ok) return { ok: false, error: errorMessage(data, res.status) };
   const hits = (data as { hits?: unknown }).hits;
   if (!Array.isArray(hits)) return { ok: false, error: "unexpected response from the hub" };
-  return { ok: true, hits: hits as ModuleHit[] };
+  const total = (data as { total?: unknown }).total;
+  return {
+    ok: true,
+    hits: hits as ModuleHit[],
+    total: typeof total === "number" ? total : hits.length,
+  };
+}
+
+/** One entry of the category facet: the slug to filter by, the label to print,
+ *  and how many modules are in it. Several authored labels can normalize to one
+ *  slug, in which case the hub picks the most-declared one. */
+export interface CategoryFacet {
+  category: string;
+  label: string;
+  modules: number;
+}
+
+/** The categories that exist, derived by the hub from what modules declare —
+ *  there is no fixed vocabulary to hardcode here. A failure yields an empty
+ *  list: the filter is an optional narrowing, so search still works without it. */
+export async function fetchCategories(signal?: AbortSignal): Promise<CategoryFacet[]> {
+  const res = await fetch(`${HUB_API}/categories`, {
+    headers: { accept: "application/json" },
+    signal,
+  });
+  if (!res.ok) return [];
+  const data: unknown = await res.json().catch(() => ({}));
+  const categories = (data as { categories?: unknown }).categories;
+  return Array.isArray(categories) ? (categories as CategoryFacet[]) : [];
 }
 
 /** Every version the hub has tracked for a ref, newest first. The detail pane

@@ -8,12 +8,12 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 
 ```yaml
 imports:
-  Sql: std/sql@<version>
+  Sql: std/sql@0.13.0
   SqlPostgres: std/sql-postgres@0.1.0
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Db }
-connectionString: "${{ secrets.DATABASE_URL }}"
+connectionString: !cel "secrets.DATABASE_URL"
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
 kind: Sql.Query

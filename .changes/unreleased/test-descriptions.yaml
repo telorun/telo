@@ -1,0 +1,14 @@
+project: test
+kind: Fixed
+body: >-
+  Rewrite the library and kind descriptions for the hub's semantic search:
+  each one now states what it does in a single paragraph, without kind names,
+  references to the modules that implement it, or wording that only made sense
+  against the module's history.
+  The README is corrected alongside: reference and CEL syntax the analyzer no
+  longer accepts, unpinned version tags, and examples that named fields or
+  kinds that do not exist.
+
+  Declare `metadata.categories` — the domain labels the hub groups its browse
+  view by and the editor filters its resource picker with.
+time: 2026-07-27T00:00:00.000000000+02:00

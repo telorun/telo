@@ -130,12 +130,13 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     .map((r) => {
       const { kind, metadata, ...rest } = r as Record<string, unknown> & {
         kind: string;
-        metadata: { name: string; module?: string; source?: string };
+        metadata: { name: string; module?: string; source?: string; categories?: string[] };
       };
       return {
         kind,
         name: metadata.name,
         module: metadata.module,
+        categories: metadata.categories,
         fields: rest as Record<string, unknown>,
         sourceFile: metadata.source,
       };
@@ -178,6 +179,9 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
       version: moduleDoc?.metadata.version as string | undefined,
       description: moduleDoc?.metadata.description as string | undefined,
       namespace: (moduleDoc?.metadata as Record<string, unknown>)?.namespace as string | undefined,
+      categories: (moduleDoc?.metadata as Record<string, unknown>)?.categories as
+        | string[]
+        | undefined,
     },
     imports,
     resources,

@@ -154,6 +154,7 @@ export function moduleRootKind(manifest: ParsedManifest): AvailableKind {
     capability: kindId,
     topology: MODULE_OVERVIEW_TOPOLOGY,
     schema: rootSchema(isApplication),
+    categories: [],
   };
 }
 

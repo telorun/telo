@@ -5,10 +5,12 @@ metadata:
   version: "0.7.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Compute]
   description: >-
-    Run JavaScript inside a manifest. `JavaScript.Script` executes a
-    `main(input)` function with optional typed inputs / outputs. A last
-    resort — prefer a declarative resource kind where one exists.
+    Runs inline JavaScript inside a manifest: a `main(input)` function whose return
+    value becomes the result, with optional typed inputs and outputs. An escape hatch
+    for one-off glue and for reaching runtime APIs nothing else exposes — prefer a
+    declarative resource wherever one exists.
 exports:
   kinds:
     - Script

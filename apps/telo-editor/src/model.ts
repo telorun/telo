@@ -57,6 +57,14 @@ export interface AvailableKind {
   capability: string;
   topology?: string;
   schema: Record<string, unknown>;
+  /** Effective category labels — the kind's own, else its module's. */
+  categories: string[];
+  /** The contract this kind implements, as `<owning module>.<Kind>`. Derived
+   *  from `extends` by resolving its alias prefix inside the DECLARING library
+   *  (whose aliases are private to it), so backends of one abstract share a key
+   *  no matter which module each lives in. Absent when the kind extends
+   *  nothing, or when the target can't be resolved (a `Telo.*` built-in). */
+  contract?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -85,6 +93,11 @@ interface BaseParsedManifest {
     version?: string;
     description?: string;
     namespace?: string;
+    /** Declared discovery categories — display labels an author writes
+     *  (`[AI, Storage]`), used to filter the kind picker. A kind may override
+     *  its module's. The hub derives match slugs from these; nothing in the
+     *  editor does, since it only ever compares labels within one workspace. */
+    categories?: string[];
   };
   imports: ParsedImport[];
   resources: ParsedResource[];
@@ -144,6 +157,10 @@ export interface ParsedResource {
   kind: string;
   name: string;
   module?: string;
+  /** Own discovery categories, when the doc declares them. On a kind doc these
+   *  replace (not extend) the module's — declaring them says where this kind
+   *  belongs, which is the point when it sits outside its module's domain. */
+  categories?: string[];
   fields: Record<string, unknown>;
   sourceFile?: string;
 }

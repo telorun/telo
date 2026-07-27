@@ -225,6 +225,41 @@ migrations:
           FOREIGN KEY (module_id, version)
             REFERENCES module_versions(module_id, version) ON DELETE CASCADE
         )
+  # The two grouping axes browse needs.
+  #
+  # `categories` is the declared facet. Authors write a DISPLAY LABEL
+  # (`metadata.categories: [AI, Storage]`) and this index derives the match key
+  # from it, so `AI` and `ai` collapse to one group and `Data Codecs` reaches a
+  # URL as `data-codecs` — an open vocabulary can't be validated into agreement,
+  # but spelling variance can be normalized out of it. (Only variance the rule
+  # sees: `A. I.` becomes `a-i`, a group of its own, and a synonym always is.)
+  # Both are stored, aligned by position: `categories` is what a filter
+  # matches and what a URL carries, `category_labels` is what a UI prints
+  # (`ai` → `AI` is not recoverable, so the authored text has to be kept).
+  #
+  # `extends_ref` / `extends_kind` is the derived axis: the contract a kind
+  # implements, resolved to the owning module's ref so backends of the same
+  # abstract group together across module boundaries.
+  "20260727090000_AddDiscoveryFacets":
+    statements:
+      # The slug rule lives here, once, so both ingest paths share it and a
+      # query can re-derive a slug without the writer's help.
+      - |
+        CREATE FUNCTION category_slug(label TEXT) RETURNS TEXT
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT trim(both '-' from lower(regexp_replace(label, '[^a-zA-Z0-9]+', '-', 'g')))
+        $$
+      - ALTER TABLE module_versions ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE module_versions ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN extends_kind TEXT NOT NULL DEFAULT ''
+      # Empty when the kind extends nothing, or when its prefix names a
+      # `Telo.*` built-in abstract — those belong to no published module.
+      - ALTER TABLE resource_kinds ADD COLUMN extends_ref TEXT NOT NULL DEFAULT ''
+      - CREATE INDEX module_versions_categories_idx ON module_versions USING GIN (categories)
+      - CREATE INDEX resource_kinds_categories_idx ON resource_kinds USING GIN (categories)
+      - CREATE INDEX resource_kinds_extends_idx ON resource_kinds (extends_ref, extends_kind)
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
 # The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
@@ -794,8 +829,10 @@ steps:
         inputs:
           sql: >-
             INSERT INTO module_versions
-              (module_id, version, digest, module_name, description, repository, license, manifest_key)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              (module_id, version, digest, module_name, description, repository, license, manifest_key,
+               categories, category_labels)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                    ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[])
             ON CONFLICT (module_id, version) DO UPDATE SET
               digest = EXCLUDED.digest,
               module_name = EXCLUDED.module_name,
@@ -803,6 +840,8 @@ steps:
               repository = EXCLUDED.repository,
               license = EXCLUDED.license,
               manifest_key = EXCLUDED.manifest_key,
+              categories = EXCLUDED.categories,
+              category_labels = EXCLUDED.category_labels,
               tracked_at = NOW()
           bindings:
             - !cel "inputs.moduleId"
@@ -813,6 +852,7 @@ steps:
             - !cel "steps.docs.result.docs[0].metadata.?repository.orValue('')"
             - !cel "steps.docs.result.docs[0].metadata.?license.orValue('')"
             - !cel "steps.manifestJson.result.docs[0].cacheKey"
+            - !cel "steps.docs.result.docs[0].metadata.?categories.orValue([])"
       - name: clearKinds
         invoke: !ref Exec
         inputs:
@@ -825,6 +865,7 @@ steps:
         inputs:
           moduleId: !cel "inputs.moduleId"
           version: !cel "inputs.version"
+          ref: !cel "inputs.ref"
           docs: !cel "steps.docs.result.docs"
       - name: clearResources
         invoke: !ref Exec
@@ -899,34 +940,74 @@ metadata:
 inputs:
   moduleId: { type: integer }
   version: { type: string }
+  ref: { type: string }
   docs: { type: array }
-collection: !cel "inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract')"
+# The row is shaped here rather than in the bindings below so each fact is
+# derived exactly once. Two of them are not plain reads:
+#
+#   categories — the authored display labels, passed through verbatim; the
+#     INSERT derives the match slugs from them. A kind's own list REPLACES its
+#     module's (declaring it on a kind states where that kind belongs), so the
+#     module's list is the fallback.
+#   exported   — mirrors the kernel's gate (module-context `registerImport`): a
+#     missing `exports.kinds` list means no restriction, a declared list gates to
+#     the listed names. Re-exported entries (`Alias.Kind`) name another module's
+#     kind, never a local definition, so they don't mark local rows (see README).
+#   extends    — `Cache.Store` names an alias private to this manifest, which
+#     means nothing to anyone else. Resolving the prefix through the module's
+#     own `imports:` map turns it into (owning module ref, kind suffix): the
+#     identity that makes every backend of one contract joinable. `Self` is the
+#     declaring module itself; a `Telo.*` built-in resolves to no import and so
+#     leaves the ref empty.
+collection: !cel >-
+  inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract').map(d, {
+    'name': d.metadata.name,
+    'capability': d.?capability.orValue(''),
+    'abstract': d.kind == 'Telo.Abstract',
+    'description': d.metadata.?description.orValue(''),
+    'categories': d.metadata.?categories.orValue(inputs.docs[0].metadata.?categories.orValue([])),
+    'exported': 'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
+      ? inputs.docs[0].exports.kinds.exists(k, k == d.metadata.name)
+      : true,
+    'extendsKind': d.?extends.orValue('') == '' ? '' : d.extends.split('.')[1],
+    'extendsRef': d.?extends.orValue('') == '' ? ''
+      : (d.extends.split('.')[0] == 'Self' ? inputs.ref
+        : ('imports' in inputs.docs[0] && d.extends.split('.')[0] in inputs.docs[0].imports
+          ? (type(inputs.docs[0].imports[d.extends.split('.')[0]]) == type('')
+              ? inputs.docs[0].imports[d.extends.split('.')[0]]
+              : inputs.docs[0].imports[d.extends.split('.')[0]].source).split('#')[0].split('@')[0]
+          : ''))
+  })
 steps:
   - name: insert
     invoke: !ref Exec
     inputs:
       sql: >-
         INSERT INTO resource_kinds
-          (module_id, version, name, capability, abstract, exported, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (module_id, version, name, capability, abstract, exported, description,
+           categories, category_labels, extends_kind, extends_ref)
+        VALUES ($1, $2, $3, $4, $5, $6, $7,
+                ARRAY(SELECT category_slug(l) FROM unnest($8::text[]) AS l), $8::text[], $9, $10)
         ON CONFLICT (module_id, version, name) DO UPDATE SET
           capability = EXCLUDED.capability,
           abstract = EXCLUDED.abstract,
           exported = EXCLUDED.exported,
-          description = EXCLUDED.description
+          description = EXCLUDED.description,
+          categories = EXCLUDED.categories,
+          category_labels = EXCLUDED.category_labels,
+          extends_kind = EXCLUDED.extends_kind,
+          extends_ref = EXCLUDED.extends_ref
       bindings:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"
-        - !cel "item.metadata.name"
-        - !cel "item.?capability.orValue('')"
-        - !cel "item.kind == 'Telo.Abstract'"
-        # Mirrors the kernel's gate (module-context `registerImport`): a
-        # missing `exports.kinds` list means no restriction — every kind is
-        # importable; a declared list gates to the listed names.
-        # Re-exported entries (`Alias.Kind`) name another module's kind, never
-        # a local definition, so they don't mark local rows (see README).
-        - !cel "'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports ? inputs.docs[0].exports.kinds.exists(k, k == item.metadata.name) : true"
-        - !cel "item.metadata.?description.orValue('')"
+        - !cel "item.name"
+        - !cel "item.capability"
+        - !cel "item.abstract"
+        - !cel "item.exported"
+        - !cel "item.description"
+        - !cel "item.categories"
+        - !cel "item.extendsKind"
+        - !cel "item.extendsRef"
 ---
 # A library's exported singleton INSTANCES (`exports.resources`) — the other
 # half of its public surface. An importer references one as
@@ -974,6 +1055,7 @@ metadata:
   name: SearchResources
 inputs:
   q: { type: string }
+  category: { type: string }
 steps:
   - name: vector
     if: !cel "inputs.q != ''"
@@ -990,7 +1072,17 @@ steps:
     invoke: !ref Query
     inputs:
       # $1 = query text, $2 = the vector arm's matches as JSON (ordered best-first,
-      # so ORDINALITY is the vector rank); '[]' when the arm was skipped.
+      # so ORDINALITY is the vector rank; '[]' when the arm was skipped),
+      # $3 = category slug or '' for no facet filter.
+      #
+      # The facet is a filter on the SAME query, not a second endpoint: an empty
+      # `q` already degrades to an unranked listing, so `?q=&category=storage` is
+      # a browse. It has to be applied INSIDE `lex` (before that arm's cap) as
+      # well as after fusion — filtering only at the end would let the cap drop
+      # rows that the facet was going to select.
+      #
+      # `$3` runs through `category_slug` too, so a caller may pass either the
+      # slug the API hands out (`storage`) or the label an author wrote (`AI`).
       sql: >-
         WITH q AS (
           SELECT plainto_tsquery('english', $1) AS andq,
@@ -1016,9 +1108,10 @@ steps:
             SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
           ) v
           WHERE rk.exported
+            AND ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
             AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
           ORDER BY rank
-          LIMIT 100
+          LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
         ),
         fused AS (
           SELECT id, SUM(1.0 / (60 + rank)) AS score
@@ -1026,21 +1119,31 @@ steps:
           GROUP BY id
         )
         SELECT rk.name AS kind, rk.capability, rk.description,
+               rk.extends_kind, rk.extends_ref,
+               -- Facets travel as {slug, label}: a chip prints the label, a
+               -- click filters by the slug. Sending one without the other
+               -- would force the caller to re-derive the missing half.
+               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+                FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories,
                m.ref, rk.version, COALESCE(mv.description, '') AS module_description,
                COALESCE(mv.repository, '') AS module_repository,
                COALESCE(mv.license, '') AS module_license,
+               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+                FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS module_categories,
                f.score::float8 AS score
         FROM fused f
         JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
         JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
         LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+        WHERE $3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[]
         ORDER BY f.score DESC, rk.name
         LIMIT 20
       bindings:
         - !cel "inputs.q"
         - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
+        - !cel "inputs.category"
 outputs:
-  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license}, 'score': r.score})"
+  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'categories': r.categories, 'extends': {'kind': r.extends_kind, 'ref': r.extends_ref}, 'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'categories': r.module_categories}, 'score': r.score})"
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.
@@ -1049,6 +1152,9 @@ metadata:
   name: SearchModules
 inputs:
   q: { type: string }
+  category: { type: string }
+  limit: { type: integer }
+  offset: { type: integer }
 steps:
   - name: vector
     if: !cel "inputs.q != ''"
@@ -1089,9 +1195,10 @@ steps:
             SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
           ) v
           WHERE rk.exported
+            AND ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
             AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
           ORDER BY rank
-          LIMIT 100
+          LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
         ),
         fused AS (
           SELECT id, SUM(1.0 / (60 + rank)) AS score
@@ -1100,19 +1207,32 @@ steps:
         ),
         hits AS (
           SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
+                 rk.extends_kind, rk.extends_ref,
                  m.ref, COALESCE(mv.description, '') AS module_description,
                  COALESCE(mv.repository, '') AS module_repository,
-                 COALESCE(mv.license, '') AS module_license, f.score
+                 COALESCE(mv.license, '') AS module_license,
+                 f.score
           FROM fused f
           JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
           JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
           LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+          WHERE $3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[]
         )
         SELECT h.ref, h.version, h.module_description,
                h.module_repository, h.module_license,
+               -- Projected here rather than in `hits` because json has no
+               -- equality operator and so cannot sit in the GROUP BY below.
+               -- Facets travel as {slug, label}: a chip prints the label, a
+               -- click filters by the slug.
+               (SELECT COALESCE(json_agg(json_build_object('slug', t.s, 'label', t.l) ORDER BY t.s), '[]'::json)
+                FROM module_versions mv2, unnest(mv2.categories, mv2.category_labels) AS t(s, l)
+                WHERE mv2.module_id = h.module_id AND mv2.version = h.version) AS module_categories,
+               COUNT(*) OVER ()::int AS total,
                MAX(h.score)::float8 AS score,
                json_agg(json_build_object('kind', h.name, 'capability', h.capability,
-                                          'description', h.description, 'score', h.score)
+                                          'description', h.description, 'score', h.score,
+                                          'extends', json_build_object('kind', h.extends_kind,
+                                                                       'ref', h.extends_ref))
                         ORDER BY h.score DESC) AS matched_kinds,
                (SELECT COALESCE(json_agg(rk2.name ORDER BY rk2.name), '[]'::json)
                 FROM resource_kinds rk2
@@ -1127,13 +1247,29 @@ steps:
         FROM hits h
         GROUP BY h.module_id, h.ref, h.version, h.module_description,
                  h.module_repository, h.module_license
-        ORDER BY MAX(h.score) DESC
-        LIMIT 20
+        /* `ref` breaks the tie so paging is stable: with an empty query every
+           module scores alike, and an unordered page boundary would repeat or
+           skip rows between requests. Block comment, not `--`: this block is a
+           folded YAML scalar, so a line comment at the base indentation joins
+           onto one line and swallows the SQL after it. */
+        ORDER BY MAX(h.score) DESC, h.ref
+        LIMIT $4 OFFSET $5
       bindings:
         - !cel "inputs.q"
         - !cel "'match' in steps ? json(steps.match.result.matches) : '[]'"
+        - !cel "inputs.category"
+        - !cel "inputs.limit"
+        - !cel "inputs.offset"
 outputs:
-  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
+  # `total` is the match count before LIMIT/OFFSET — a paging UI needs to know
+  # what it is not showing, and a browse that silently stopped at 20 would read
+  # as "that's all there is". An empty result carries no row to read it from,
+  # hence the fallback; both branches are doubles because a CEL integer is
+  # 64-bit and reaches the JSON encoder as a BigInt, which it cannot serialize.
+  # (The populated branch only looked fine because Postgres `::int` arrives as
+  # a plain number.) JSON has one number type, so the wire value is unchanged.
+  total: !cel "steps.query.result.rows.size() > 0 ? double(steps.query.result.rows[0].total) : 0.0"
+  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'categories': r.module_categories}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
 ---
 # ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
 # Re-keyed off the location ref (an OCI module has no namespace/name). Reads
@@ -1226,6 +1362,9 @@ kind: Http.Api
 metadata:
   name: PublicApi
 routes:
+  # Search and browse are ONE surface: `category` narrows the same query, and an
+  # empty `q` degrades to an unranked listing, so `?q=&category=storage` browses
+  # a category without a second endpoint that would drift from this one.
   - request:
       path: /search/resources
       method: GET
@@ -1234,15 +1373,21 @@ routes:
           type: object
           properties:
             q: { type: string, default: "", description: "Search query over resource kinds." }
+            category:
+              type: string
+              default: ""
+              description: "Narrow to kinds in this category. Empty means no facet filter."
     handler: !ref SearchResources
     inputs:
       q: !cel "request.query.q"
+      category: !cel "request.query.category"
     returns:
       - status: 200
         content:
           application/json:
             body:
               query: !cel "request.query.q"
+              category: !cel "request.query.category"
               hits: !cel "result.hits"
 
   - request:
@@ -1253,16 +1398,101 @@ routes:
           type: object
           properties:
             q: { type: string, default: "", description: "Search query, results grouped by module." }
+            category:
+              type: string
+              default: ""
+              description: "Narrow to modules in this category. Empty means no facet filter."
+            limit:
+              type: integer
+              default: 20
+              minimum: 1
+              maximum: 100
+              description: "Page size. Browsing a whole category needs more than a ranked top-N."
+            offset: { type: integer, default: 0, minimum: 0, description: "Rows to skip." }
     handler: !ref SearchModules
     inputs:
       q: !cel "request.query.q"
+      category: !cel "request.query.category"
+      limit: !cel "request.query.limit"
+      offset: !cel "request.query.offset"
     returns:
       - status: 200
         content:
           application/json:
             body:
               query: !cel "request.query.q"
+              category: !cel "request.query.category"
+              total: !cel "result.total"
               hits: !cel "result.hits"
+
+  # Browse, not search: the categories that actually exist, with how many
+  # modules sit in each. The vocabulary is open — whatever labels modules
+  # declare are the groups, so this is derived from the data, never a list the
+  # hub owns.
+  #
+  # One slug can carry several authored labels (`AI` and `ai` both index as
+  # `ai`), and a facet list can print only one. The winner is the label the
+  # most modules wrote, ties broken lexicographically — deterministic, so the
+  # dropdown doesn't reshuffle between requests.
+  - request:
+      path: /categories
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: !ref Db
+    inputs:
+      sql: >-
+        SELECT c.slug AS category,
+               (SELECT l FROM unnest(array_agg(c.label)) AS l
+                GROUP BY l ORDER BY COUNT(*) DESC, l LIMIT 1) AS label,
+               COUNT(*)::int AS modules
+        FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id AND m.latest_version = mv.version
+        CROSS JOIN LATERAL unnest(mv.categories, mv.category_labels) AS c(slug, label)
+        GROUP BY c.slug
+        ORDER BY c.slug
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              categories: !cel "result.rows"
+
+  # Every kind that implements a given contract, across module boundaries — the
+  # derived grouping axis. A backend is discoverable from the abstract it
+  # extends without the abstract's module knowing it exists.
+  - request:
+      path: /implementations
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Ref of the module owning the extended kind." }
+            kind: { type: string, description: "Extended kind's suffix, e.g. Store." }
+          required: [ref, kind]
+    handler:
+      kind: Sql.Query
+      connection: !ref Db
+    inputs:
+      sql: >-
+        SELECT m.ref, rk.version, rk.name AS kind, rk.capability, rk.description,
+               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+                FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        WHERE rk.extends_ref = $1 AND rk.extends_kind = $2 AND rk.exported
+        ORDER BY m.ref, rk.name
+      bindings:
+        - !cel "request.query.ref"
+        - !cel "request.query.kind"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              extends: !cel "{'ref': request.query.ref, 'kind': request.query.kind}"
+              implementations: !cel "result.rows"
 
   # Lexical ref typeahead (pg_trgm): completes a ref whose name the author
   # already knows — the memorable token at an OCI path's tail matches without
@@ -1442,11 +1672,19 @@ entries:
       type: object
       properties:
         query: { type: string, description: "What the resource should do (name or description)." }
+        category:
+          type: string
+          default: ""
+          description: >-
+            Optional domain slug to narrow the search (e.g. `storage`,
+            `transport`). Categories are declared by module authors and open-
+            ended; omit unless the caller named a domain.
       required: [query]
       additionalProperties: false
     handler: !ref SearchResources
     inputs:
       q: !cel "request.arguments.query"
+      category: !cel "request.arguments.?category.orValue('')"
     result:
       content:
         - type: text
@@ -1507,9 +1745,10 @@ instructions: !literal |
   - https://telo.run/cel.md — CEL function reference.
 
   ## Tools
-  - `search_resources(query)` — find resource KINDS by what they do. Each hit
-    carries the kind suffix (`Bucket`), its capability/description, and the
-    owning module's exact location ref + version.
+  - `search_resources(query, category?)` — find resource KINDS by what they do.
+    Each hit carries the kind suffix (`Bucket`), its capability/description, and
+    the owning module's exact location ref + version. `category` narrows to one
+    author-declared domain (`storage`, `transport`, …).
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.

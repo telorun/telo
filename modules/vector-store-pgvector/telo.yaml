@@ -5,14 +5,12 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage, AI]
   description: |
-    VectorStorePgvector.Store — a Postgres/pgvector index for the VectorStore
-    abstract. Cosine / dot / euclidean similarity via pgvector distance
-    operators over a dedicated table inside an existing Sql.Connection. The
-    backend owns its table (name configurable) and provisions the `vector`
-    extension, the table, and its ANN index on init, so it coexists with the
-    app's other tables in a single database. Mirrors the cache / cache-*
-    family — a concrete backend that extends the vector-store Store abstract.
+    A durable vector index kept in PostgreSQL with pgvector, ranked by cosine,
+    dot-product or euclidean distance. It lives in its own table inside a database the
+    application already uses and provisions the extension, table and approximate
+    nearest-neighbour index on start-up.
 imports:
   VectorStore: ../vector-store
   Sql: ../sql
@@ -23,7 +21,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: Provides a Postgres/pgvector-backed vector index (cosine/dot/euclidean) for the VectorStore abstract.
+  description: >-
+    Stores vectors in a PostgreSQL table it owns, ranked by a chosen similarity metric
+    and fixed to one vector length, with the extension, table and search index created
+    on start-up. Shares the database the rest of the application already uses.
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:

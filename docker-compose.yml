@@ -43,7 +43,11 @@ services:
       MANIFEST_BUCKET_FORCE_PATH_STYLE: "true"
       # Curated seed; the tracker enumerates these refs' versions on boot and
       # every TRACK_INTERVAL thereafter.
-      SEED_REFS: '["std/console","std/timer"]'
+      # `console` is seeded for the e2e: it is the only one of these that
+      # exports ready-made INSTANCES (`writeLine` / `readLine`) rather than
+      # only kinds, so it is what covers the `exportedResources` half of a
+      # module's public surface.
+      SEED_REFS: '["oci://ghcr.io/telorun/kv-store","oci://ghcr.io/telorun/kv-store-redis","oci://ghcr.io/telorun/kv-store-memory","oci://ghcr.io/telorun/timer","oci://ghcr.io/telorun/scheduler","oci://ghcr.io/telorun/run","oci://ghcr.io/telorun/console"]'
       # Self-hosted embeddinggemma-300m sidecar, OpenAI-compatible /embeddings.
       # The controller appends `/embeddings`, so point at the `/v1` base.
       EMBEDDER_BASE_URL: http://embedder/v1

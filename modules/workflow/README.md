@@ -24,18 +24,12 @@ Workflow orchestration primitives with pluggable backend providers. `Workflow.Gr
 kind: Workflow.Graph
 metadata:
   name: OnboardUser
-backend:
-  kind: Workflow.Temporal.Backend
-  name: Temporal
+backend: !ref Temporal
 nodes:
   - name: createRecord
-    invoke:
-      kind: Sql.Command
-      name: InsertUser
+    invoke: !ref InsertUser
   - name: sendWelcomeEmail
-    invoke:
-      kind: HttpClient.Request
-      client: Mailer
+    invoke: !ref SendMail
     options:
       retryPolicy:
         maxAttempts: 5

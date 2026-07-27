@@ -5,7 +5,13 @@ metadata:
   version: 0.10.6
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Assertion and value verification for testing
+  categories: [Testing]
+  description: >-
+    Assertions for manifest tests: deep equality, regular-expression match,
+    substring or membership, JSON Schema conformance, ordered event sequences,
+    a module's resolved variables and secrets, and the diagnostics a manifest is
+    expected to produce. A failed check aborts the run and reports actual against
+    expected.
 exports:
   kinds:
     - ModuleContext
@@ -298,11 +304,14 @@ schema:
 kind: Self.Equals
 metadata:
   name: equals
+  description: Ready-made deep-equality assertion; pass actual and expected at the call site.
 ---
 kind: Self.Matches
 metadata:
   name: matches
+  description: Ready-made regular-expression assertion; pass actual, pattern and optional flags at the call site.
 ---
 kind: Self.Contains
 metadata:
   name: contains
+  description: Ready-made containment assertion; pass actual and the value it must contain at the call site.

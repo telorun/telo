@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AvailableKind } from "../model";
+import { categoryLabels, filterByCategory, groupKinds } from "./kind-picker-groups";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -23,8 +24,15 @@ function capabilityLabel(capability: string): string {
 
 export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: CreateResourceModalProps) {
   const [selectedKind, setSelectedKind] = useState<AvailableKind | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
+
+  const categories = useMemo(() => categoryLabels(kinds), [kinds]);
+  const groups = useMemo(
+    () => groupKinds(filterByCategory(kinds, category)),
+    [kinds, category],
+  );
 
   function handleSelectKind(kind: AvailableKind) {
     setSelectedKind(kind);
@@ -50,6 +58,7 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
   function handleClose() {
     onOpenChange(false);
     setSelectedKind(null);
+    setCategory(null);
     setName("");
     setNameError(null);
   }
@@ -81,21 +90,65 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
                 No kinds available — add a module import first.
               </p>
             ) : (
-              <div className="flex flex-col gap-1">
-                {kinds.map((kind) => (
-                  <button
-                    key={kind.fullKind}
-                    onClick={() => handleSelectKind(kind)}
-                    className="flex items-center justify-between rounded border border-zinc-100 bg-zinc-50 px-3 py-2 text-left hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
-                  >
-                    <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                      {kind.fullKind}
-                    </span>
-                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
-                      {capabilityLabel(kind.capability)}
-                    </span>
-                  </button>
-                ))}
+              <div className="flex flex-col gap-3">
+                {categories.length > 1 && (
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      variant={category === null ? "secondary" : "ghost"}
+                      size="xs"
+                      onClick={() => setCategory(null)}
+                    >
+                      All
+                    </Button>
+                    {categories.map((slug) => (
+                      <Button
+                        key={slug}
+                        variant={category === slug ? "secondary" : "ghost"}
+                        size="xs"
+                        onClick={() => setCategory(slug)}
+                      >
+                        {slug}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+
+                {groups.length === 0 ? (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-600">
+                    No kinds in this category.
+                  </p>
+                ) : (
+                  <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
+                    {groups.map((group) => (
+                      <div key={group.key} className="flex flex-col gap-1">
+                        <div className="flex items-baseline gap-2 px-0.5">
+                          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                            {group.label}
+                          </span>
+                          {group.contract && (
+                            <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                              implementations
+                            </span>
+                          )}
+                        </div>
+                        {group.kinds.map((kind) => (
+                          <button
+                            key={kind.fullKind}
+                            onClick={() => handleSelectKind(kind)}
+                            className="flex items-center justify-between rounded border border-zinc-100 bg-zinc-50 px-3 py-2 text-left hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+                          >
+                            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                              {kind.fullKind}
+                            </span>
+                            <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                              {capabilityLabel(kind.capability)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           ) : (

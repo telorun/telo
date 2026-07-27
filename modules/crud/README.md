@@ -53,11 +53,11 @@ Exclude `id` from the model: it is the auto-increment primary key, surfaced as t
 kind: Telo.Application
 metadata: { name: todo-api, version: 1.0.0 }
 imports:
-  Http: std/http-server@<version>
-  Sql: std/sql@<version>
-  SqlSqlite: std/sql-sqlite@<version>
-  Type: std/type@<version>
-  Crud: std/crud@<version>
+  Http: std/http-server@0.19.1
+  Sql: std/sql@0.13.0
+  SqlSqlite: std/sql-sqlite@0.4.0
+  Type: std/type@0.8.0
+  Crud: std/crud@0.5.0
 targets:
   - !ref Server
 ports:

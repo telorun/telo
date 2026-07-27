@@ -5,11 +5,12 @@ metadata:
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data, Streaming]
   description: |
-    Server-Sent Events codec — event-record stream ↔ byte iterables. Encoder
-    produces one SSE frame per item: `event: <type>\ndata: <json>\n\n`. Decoder
-    (frame-buffered, stream-out) is planned but not in this initial release.
-    Pair with Content-Type `text/event-stream`.
+    Server-Sent Events on the wire: a stream of event records becomes the framed bytes
+    a browser's EventSource reads, one named event per record. The usual way to push
+    live updates — model tokens, progress, notifications — to a web client over plain
+    HTTP. Encoding only for now; decoding is not yet implemented.
 imports:
   Codec: ../codec
 exports:
@@ -22,7 +23,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
-  description: Encodes each event record as a Server-Sent Events frame (event/data) of bytes.
+  description: >-
+    Encodes each record of a stream as a Server-Sent Events frame, naming the event
+    from the record's type and carrying the rest as JSON data. A failure mid-stream is
+    delivered as a final error event.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:

@@ -8,19 +8,19 @@
 
 - **Durable execution** — Temporal owns workflow history; in-flight workflows survive process restarts.
 - **Per-node retry policies** — `scheduleToCloseTimeout`, `retryPolicy.maxAttempts`, and `retryPolicy.initialInterval` are typed via `$defs.NodeOptions` and validated by the analyzer.
-- **Worker pool per backend** — each `Workflow.Temporal.Backend` owns its worker pool and drains in-flight activities on shutdown.
+- **Worker pool per backend** — each `WorkflowTemporal.Backend` owns its worker pool and drains in-flight activities on shutdown.
 - **Eager connection** — misconfigured `address` fails at init, not on the first graph execution.
 
 ## Kinds
 
 | Kind | Purpose |
 | --- | --- |
-| `Workflow.Temporal.Backend` | Provider that implements `Workflow.Backend` against a Temporal cluster. |
+| `WorkflowTemporal.Backend` | Provider that implements `Workflow.Backend` against a Temporal cluster. |
 
 ## Example
 
 ```yaml
-kind: Workflow.Temporal.Backend
+kind: WorkflowTemporal.Backend
 metadata:
   name: Temporal
 namespace: production
@@ -29,14 +29,10 @@ address: temporal.internal:7233
 kind: Workflow.Graph
 metadata:
   name: OnboardUser
-backend:
-  kind: Workflow.Temporal.Backend
-  name: Temporal
+backend: !ref Temporal
 nodes:
   - name: sendWelcomeEmail
-    invoke:
-      kind: HttpClient.Request
-      client: Mailer
+    invoke: !ref SendMail
     options:
       scheduleToCloseTimeout: 10m
       retryPolicy:
@@ -64,7 +60,7 @@ Duration strings follow Temporal's conventions — `10s`, `5m`, `1h30m`, etc.
 ## Operational notes
 
 - The backend assumes the Temporal server is reachable at `address` at boot time. Connection is attempted eagerly — a misconfigured address is caught as an initialization error rather than surfacing during the first graph execution.
-- Each `Workflow.Temporal.Backend` resource owns its own worker pool. When the application shuts down, the backend drains in-flight activities before exiting.
+- Each `WorkflowTemporal.Backend` resource owns its own worker pool. When the application shuts down, the backend drains in-flight activities before exiting.
 - Namespaces are not auto-created. If the namespace does not exist, initialization fails.
 - The generated workflow's history is managed entirely by Temporal — Telo does not persist state itself. If you need to recover an in-flight workflow across restarts, you rely on Temporal's durability guarantees.
 

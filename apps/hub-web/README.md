@@ -10,6 +10,17 @@ Same UI idiom as [`apps/telo-editor`](../telo-editor): Radix primitives
 (`radix-ui`) in `src/components/ui/*`, `lucide-react` icons, Tailwind v4 tokens
 in `src/app/globals.css`. No Tauri — it's a browser app.
 
+Search and browse are one control pair, because the hub serves them from one
+endpoint: the text field is `q`, the category dropdown is `category`, and an
+empty query with a category selected lists that category. The dropdown's options
+come from `GET /categories` — modules declare their own categories, so the
+vocabulary is derived from the index and nothing is hardcoded here. Each option
+carries a `slug` and a `label`: the label is what the author wrote and what the
+dropdown and chips print, the slug is what the filter and the URL use. Both fields mirror into
+the URL, so a browse is shareable. The hub returns the pre-limit `total`
+alongside a page of hits; the list says how many it is withholding rather than
+stopping at the page size in silence.
+
 ## Develop
 
 ```sh

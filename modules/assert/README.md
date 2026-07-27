@@ -38,7 +38,7 @@ steps:
   - name: Total
     invoke: !ref Assert.equals
     inputs:
-      actual: ${{ steps.Add.result }}
+      actual: !cel "steps.Add.result.total"
       expected: 42
 ```
 
@@ -50,12 +50,28 @@ The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry
 kind: Telo.Application
 metadata: { name: assert-app, version: 1.0.0 }
 imports:
-  Assert: std/assert@latest
+  Assert: std/assert@0.10.5
+  Run: std/run@0.13.0
+  JS: std/javascript@0.7.0
+targets: [ !ref Check ]
 ---
-kind: Assert.Equals
-metadata: { name: CheckTotal }
-expected: 42
-actual: !cel "resources.AddNumbers.result"
+kind: JS.Script
+metadata: { name: AddNumbers }
+code: |
+  export function main() { return { total: 42 } }
+---
+# `actual` / `expected` are invoke inputs, not resource fields — the matchers
+# themselves are config-free.
+kind: Run.Sequence
+metadata: { name: Check }
+steps:
+  - name: Add
+    invoke: !ref AddNumbers
+  - name: Total
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.Add.result.total"
+      expected: 42
 ```
 
 ## Reference

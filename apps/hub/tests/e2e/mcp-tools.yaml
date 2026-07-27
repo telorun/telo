@@ -42,33 +42,21 @@ steps:
     invoke: !ref ParsePayload
     inputs:
       text: !cel "steps.call.result.content[0].text"
+  # The hit list itself is not assertable as a literal — scores and the rest of
+  # the corpus move — so the claim is stated directly: the query echoes back,
+  # and the seeded timer's Delay is somewhere in the results.
   - name: assert
     inputs:
-      payload: !cel "steps.parse.result.docs[0]"
+      actual:
+        query: !cel "steps.parse.result.docs[0].query"
+        foundTimerDelay: !cel >-
+          steps.parse.result.docs[0].hits.exists(h,
+            h.kind == 'Delay' && h.module.ref == 'oci://ghcr.io/telorun/timer')
+      expected:
+        query: delay a task
+        foundTimerDelay: true
     invoke:
-      kind: Assert.Schema
-      metadata: { name: AssertSearchPayload }
-      schema:
-        type: object
-        properties:
-          payload:
-            type: object
-            properties:
-              query: { const: delay a task }
-              hits:
-                type: array
-                contains:
-                  type: object
-                  properties:
-                    kind: { const: Delay }
-                    module:
-                      type: object
-                      properties:
-                        ref: { const: std/timer }
-                      required: [ref]
-                  required: [kind, module]
-            required: [query, hits]
-        required: [payload]
+      kind: Assert.Equals
 ---
 kind: Run.Sequence
 metadata: { name: GetModuleManifest_ReturnsCachedYaml }
@@ -78,28 +66,22 @@ steps:
     inputs:
       name: get_module_manifest
       arguments:
-        ref: std/timer
+        ref: oci://ghcr.io/telorun/timer
   - name: parse
     invoke: !ref ParsePayload
     inputs:
       text: !cel "steps.call.result.content[0].text"
+  # Projected to the two facts this route owes a caller — the whole owner doc
+  # carries a description, version and exports that move with every release.
+  # The keys are `docKind` / `moduleName`, not `kind` / `name`: a literal object
+  # carrying a `kind` key reads as an inline resource definition.
   - name: assert
     inputs:
-      ownerDoc: !cel "steps.parse.result.docs[0]"
+      actual:
+        docKind: !cel "steps.parse.result.docs[0].kind"
+        moduleName: !cel "steps.parse.result.docs[0].metadata.name"
+      expected:
+        docKind: Telo.Library
+        moduleName: timer
     invoke:
-      kind: Assert.Schema
-      metadata: { name: AssertManifestPayload }
-      schema:
-        type: object
-        properties:
-          ownerDoc:
-            type: object
-            properties:
-              kind: { const: Telo.Library }
-              metadata:
-                type: object
-                properties:
-                  name: { const: timer }
-                required: [name]
-            required: [kind, metadata]
-        required: [ownerDoc]
+      kind: Assert.Equals

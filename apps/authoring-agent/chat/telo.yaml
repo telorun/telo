@@ -419,6 +419,20 @@ system: |
     - `kind: Telo.Library` — an importable unit of kinds / definitions /
       instances (declares `exports`). Imported by others; never run directly.
 
+  A `Telo.Library` you publish should also carry `metadata.categories` — an
+  unordered list of domain DISPLAY LABELS (`[Performance, Storage]`) that the
+  hub groups browse by and the editor filters its resource picker with. Write
+  them as they should read; the hub derives the match key itself (`AI` → `ai`),
+  so casing never splits a group. The vocabulary is OPEN (any string; nothing
+  validates it), so reuse a label the standard library already uses when one
+  fits — `AI`, `Compute`, `Configuration`, `Coordination`, `Data`,
+  `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`,
+  `Streaming`, `Testing`, `Transport` — and coin one only when none does. A
+  `Telo.Definition` / `Telo.Abstract` may declare its own, REPLACING its
+  module's for that kind; do that only when the kind belongs to a different
+  domain than the module around it. Categories are a facet, never search text —
+  keep them out of `description`.
+
   Other built-in kinds you may author: `Telo.Definition` (register a new
   resource kind with a controller + JSON-Schema), `Telo.Abstract` (the
   NON-INSTANTIABLE base — a contract with no default implementation that others

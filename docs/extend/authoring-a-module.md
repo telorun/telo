@@ -54,6 +54,24 @@ Publishing projects them into the destination's own metadata surface. An OCI pub
 
 Note the field is `repository`, not `source`: inside the `imports` map, `source:` already means "where to fetch a dependency from", and reusing the word for "where this module is developed" in the same file would be ambiguous.
 
+### Categories
+
+`metadata.categories` says what your module is about. The hub groups its browse view by it, and the editor filters the "add resource" picker with it, so a reader who does not know your module exists can still land on it:
+
+```yaml
+metadata:
+  name: cache-redis
+  categories: [Performance, Storage]
+```
+
+Write them as you want them read — they are display labels, not identifiers. The hub derives the matching key itself (`AI` → `ai`), so casing and punctuation never split a group, and a filter URL stays clean (`?category=ai`) while the UI still prints `AI`.
+
+The list is unordered — entries carry equal weight, and the module appears under each. The vocabulary is **open**: a category is any string, and whatever labels modules declare are the groups that exist. Nothing validates them against a list, because no such list is anyone's to own. Reuse the labels the standard library already uses (`AI`, `Compute`, `Configuration`, `Coordination`, `Data`, `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`, `Streaming`, `Testing`, `Transport`) when one fits — a synonym still splits a group, which normalization cannot fix — and coin your own when none does.
+
+A `Telo.Definition` / `Telo.Abstract` may declare its own `categories`, which **replace** its module's for that kind. Use it when a kind belongs somewhere other than the module around it (a retry helper inside a compute module), not to repeat what the module already says.
+
+Categories are the *declared* grouping axis. The other one is derived and needs nothing from you: a kind's `extends` target identifies the contract it implements, so every backend of one abstract is discoverable together — see [Kind Inheritance](/extend/kind-inheritance).
+
 ## Step 1 — declare the kind
 
 Add a `Telo.Definition` document for the new kind:

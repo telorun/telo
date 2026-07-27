@@ -5,12 +5,12 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Tar archive read/write. `Tar.Extract` pulls one named entry out of a tar
-    byte stream; `Tar.Pack` builds an archive from an ordered list of
-    `{ path, contents }` entries. Pair with the gzip codec to read or write a
-    `.tar.gz`. Whole-archive enumeration is deliberately out of scope until
-    stream element-typing lands.
+    Reading and writing tar archives as byte streams: build one from a list of paths
+    and contents, or pull a single named file out of an existing archive. Combined
+    with gzip compression this reads and writes `.tar.gz` payloads — the packaging
+    format registries and container images ship in.
 exports:
   kinds:
     - Extract
@@ -22,7 +22,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Pack
-  description: Builds a tar archive byte stream from an ordered list of { path, contents } entries.
+  description: >-
+    Builds a tar archive from an ordered list of files, each a path inside the archive
+    and its text contents, and emits it as a byte stream ready to compress or write.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/tar@0.2.1?local_path=./nodejs#pack
@@ -70,7 +72,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Extract
-  description: Extracts one named entry from a tar byte stream as a byte stream.
+  description: >-
+    Pulls one named file out of a tar archive and emits its contents as a byte stream
+    that pipes into any decoder. A path the archive does not contain raises.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/tar@0.2.1?local_path=./nodejs#extract

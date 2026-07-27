@@ -23,17 +23,26 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 kind: Telo.Application
 metadata: { name: pipeline, version: 1.0.0 }
 imports:
-  Run: std/run@latest
+  Run: std/run@0.13.0
+  Http: std/http-client@0.11.0
+  Console: std/console@0.12.0
+targets:
+  - !ref Pipeline
+---
+kind: Http.Request
+metadata: { name: GetUser }
 ---
 kind: Run.Sequence
 metadata: { name: Pipeline }
 steps:
   - name: fetch
-    invoke: { kind: Http.Request, name: GetUser }
-  - name: greet
-    invoke: { kind: Console.Print }
+    invoke: !ref GetUser
     inputs:
-      message: !cel "'Hello, ' + steps.fetch.result.name"
+      url: https://example.com/users/1
+  - name: greet
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "'Hello, ' + string(steps.fetch.result.body)"
 ```
 
 ## Run.Sequence as an HTTP handler
@@ -48,27 +57,36 @@ A `Run.Sequence` is a `Telo.Runnable`, so it can be a route handler. The data fl
 kind: Http.Api
 metadata: { name: Api }
 routes:
-  - method: GET
-    path: /users/:id
+  - request:
+      method: GET
+      path: /users/{id}
+      schema:
+        params:
+          type: object
+          properties:
+            id: { type: string }
     inputs:
-      userId: !cel "request.params.id"   # request context → handler invoke()
-    handler: { kind: Run.Sequence, name: GetUser }
+      userId: !cel "request.params.id"     # request context → handler invoke()
+    handler: !ref GetUser
     returns:
-      status: 200
-      body: !cel "result"                 # sequence outputs → response
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"            # sequence outputs → response
 ---
 kind: Run.Sequence
 metadata: { name: GetUser }
 inputs:
-  userId: {}                              # input contract: untyped (dyn)
+  userId: {}                               # input contract: untyped (dyn)
 steps:
   - name: fetch
-    invoke: { kind: Sql.Query, name: SelectUser }
+    invoke: !ref SelectUser
     inputs:
+      sql: "SELECT * FROM users WHERE id = ?"
       bindings:
-        - !cel "inputs.userId"            # read the declared input
+        - !cel "inputs.userId"             # read the declared input
 outputs:
-  user: !cel "steps.fetch.result.rows[0]" # becomes `result` the route sees
+  user: !cel "steps.fetch.result.rows[0]"  # becomes `result` the route sees
 ```
 
 `inputs:` on the sequence (the contract) and `inputs:` on a step (the values passed to that step's `invoke()`) are different fields that share a name.
@@ -89,11 +107,14 @@ with:
     file: ":memory:"
   - kind: Sql.Migrations
     metadata: { name: Migrate }
-    connection: { kind: SqlSqlite.Connection, name: Db }
-targets: [ Migrate ]          # run() before the steps
+    connection: !ref Db
+    migrations:
+      "001-users":
+        statement: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+targets: [ !ref Migrate ]     # run() before the steps
 steps:
   - name: seed
-    invoke: { kind: Sql.Command, connection: { kind: SqlSqlite.Connection, name: Db } }
+    invoke: { kind: Sql.Command, connection: !ref Db }
     inputs: { sql: !sql "INSERT INTO users (name) VALUES (${{ 'Ada' }})" }
 ```
 

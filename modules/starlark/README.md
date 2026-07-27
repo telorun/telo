@@ -82,13 +82,13 @@ steps:
     invoke:
       kind: Starlark.Script
     inputs:
-      quantity: "${{ inputs.quantity }}"
-      unitPrice: "${{ inputs.unitPrice }}"
+      quantity: !cel "inputs.quantity"
+      unitPrice: !cel "inputs.unitPrice"
     code: |
       def run(input):
           return { "total": input["quantity"] * input["unitPrice"] }
 outputs:
-  total: "${{ steps.compute.result.total }}"
+  total: !cel "steps.compute.result.total"
 ```
 
 ## Notes

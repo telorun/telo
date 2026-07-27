@@ -24,28 +24,28 @@ Domain-shaped CRUD over a single table. Each kind takes a `table` and a `connect
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
-  Sql: std/sql@<version>
-  SqlRepository: std/sql-repository@<version>
+  Sql: std/sql@0.13.0
+  SqlRepository: std/sql-repository@0.7.0
 secrets:
-  DATABASE_URL: { type: string }
+  DATABASE_URL: { env: DATABASE_URL, type: string }
 ---
 kind: Sql.Connection
 metadata: { name: Db }
-connectionString: "${{ secrets.DATABASE_URL }}"
+connectionString: !cel "secrets.DATABASE_URL"
 ---
 kind: SqlRepository.Read
 metadata: { name: FindUsers }
-connection: { kind: Sql.Connection, name: Db }
+connection: !ref Db
 table: users
 ---
 kind: SqlRepository.Create
 metadata: { name: InsertUser }
-connection: { kind: Sql.Connection, name: Db }
+connection: !ref Db
 table: users
 ---
 kind: SqlRepository.Delete
 metadata: { name: RemoveUser }
-connection: { kind: Sql.Connection, name: Db }
+connection: !ref Db
 table: users
 ```
 
@@ -57,7 +57,7 @@ handler:
   name: FindUsers
 inputs:
   filters:
-    email: "${{ request.query.email }}"
+    email: !cel "request.query.email"
     status: active
 ```
 

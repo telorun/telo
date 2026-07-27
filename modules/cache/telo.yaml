@@ -5,12 +5,12 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Performance, Storage]
   description: |
-    The Cache.Store abstract — a backend-pluggable, freshness-aware key/value
-    cache — plus the Lookup / Entry invocables and the View read-through
-    decorator that operate against any store. Backend implementations
-    (cache-memory, cache-redis) live in their own modules and extend Store,
-    mirroring the codec / *-codec family.
+    Caching of computed or fetched values under a key, with freshness windows: an
+    entry is fresh for its TTL, then stale for a grace period, then gone. Read or
+    write entries directly, or wrap an expensive call in a read-through cache that
+    serves the cached value and refreshes in the background or on demand.
 exports:
   kinds:
     - Store
@@ -29,12 +29,19 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Store
+  description: >-
+    A configured cache backend that holds values under a key and owns their
+    freshness: an entry reports fresh until its TTL elapses, stale through an
+    optional grace window, then missing. Entries may be discarded early under memory
+    pressure.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
 metadata:
   name: Lookup
-  description: Reads a key from a Cache.Store, reporting a miss, fresh, or stale hit with the value and its age.
+  description: >-
+    Reads a cached key and reports the outcome as a miss, a fresh hit or a stale hit,
+    along with the stored value and how long ago it was written.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#lookup
@@ -79,7 +86,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Entry
-  description: Writes a value into a Cache.Store under a key with fresh (ttl) and stale-grace (staleTtl) windows.
+  description: >-
+    Writes a value into the cache under a key, setting how long it stays fresh and how
+    long it may still be served as stale afterwards.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#entry
@@ -133,7 +142,11 @@ schema:
 kind: Telo.Definition
 metadata:
   name: View
-  description: Read-through cache over a Cache.Store serving a wrapped invocable's result, refreshing per revalidate.
+  description: >-
+    Wraps an expensive call in a read-through cache: serves the stored value when it
+    is fresh, and on a stale hit either refreshes in the background, reloads before
+    returning, or treats it as a miss. Falls back to the stale value when the refresh
+    fails.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#view

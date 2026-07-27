@@ -80,15 +80,15 @@ steps:
     invoke:
       kind: JavaScript.Script
     inputs:
-      quantity: "${{ inputs.quantity }}"
-      unitPrice: "${{ inputs.unitPrice }}"
+      quantity: !cel "inputs.quantity"
+      unitPrice: !cel "inputs.unitPrice"
     code: |
       function main({ quantity, unitPrice }) {
         const net = quantity * unitPrice;
         return { net, gross: net * 1.23 };
       }
 outputs:
-  total: "${{ steps.compute.result.gross }}"
+  total: !cel "steps.compute.result.gross"
 ```
 
 ## Notes

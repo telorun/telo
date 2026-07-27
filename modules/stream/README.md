@@ -29,22 +29,32 @@ native way to seed a pipeline with fixed data (instead of a `JS.Script`).
 kind: Telo.Application
 metadata: { name: seed-pipeline, version: 1.0.0 }
 imports:
-  Stream: std/stream@latest
-  PlainText: std/plain-text-codec@latest
-  Gzip: std/gzip@latest
-  Run: std/run@latest
+  Stream: std/stream@0.5.0
+  PlainText: std/plain-text-codec@0.6.0
+  Gzip: std/gzip@0.4.0
+  Run: std/run@0.13.0
+targets: [ !ref Pipeline ]
 ---
 kind: Stream.Of
 metadata: { name: Source }
 items: ["hello telo"]
 ---
+kind: PlainText.Encoder
+metadata: { name: ToBytes }
+---
+kind: Gzip.Encoder
+metadata: { name: Compress }
+---
 # Stream.Of(strings) → PlainText.Encoder(bytes) → Gzip.Encoder(gzip bytes)
-- name: source
-  invoke: { kind: Stream.Of, name: Source }
-- name: bytes
-  inputs: { input: "${{ steps.source.result.output }}" }
-  invoke: { kind: PlainText.Encoder, name: ToBytes }
-- name: gzip
-  inputs: { input: "${{ steps.bytes.result.output }}" }
-  invoke: { kind: Gzip.Encoder, name: Compress }
+kind: Run.Sequence
+metadata: { name: Pipeline }
+steps:
+  - name: source
+    invoke: !ref Source
+  - name: bytes
+    inputs: { input: !cel "steps.source.result.output" }
+    invoke: !ref ToBytes
+  - name: gzip
+    inputs: { input: !cel "steps.bytes.result.output" }
+    invoke: !ref Compress
 ```

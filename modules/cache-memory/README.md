@@ -18,8 +18,8 @@
 
 ```yaml
 imports:
-  Cache: std/cache@latest
-  CacheMemory: std/cache-memory@latest
+  Cache: std/cache@0.5.0
+  CacheMemory: std/cache-memory@0.5.0
 ---
 kind: CacheMemory.Store
 metadata: { name: Store }

@@ -27,8 +27,8 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 kind: Telo.Application
 metadata: { name: hello-http, version: 1.0.0 }
 imports:
-  Http: std/http-server@<version>
-  JS: std/javascript@<version>
+  Http: std/http-server@0.19.1
+  JS: std/javascript@0.7.0
 targets: [ !ref Server ]
 ---
 kind: Http.Server
@@ -56,7 +56,7 @@ routes:
               description: Name to greet.
               examples: [ "Ada" ]
     inputs:
-      name: "${{ request.params.name }}"
+      name: !cel "request.params.name"
     handler: !ref Greet
     returns:
       - status: 200
@@ -69,7 +69,7 @@ routes:
                   type: string
                   description: The greeting.
                   examples: [ "Hello, Ada!" ]
-            body: { message: "${{ result.message }}" }
+            body: { message: !cel "result.message" }
 ---
 kind: JS.Script
 metadata: { name: Greet }

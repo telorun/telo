@@ -5,10 +5,12 @@ metadata:
   version: "0.10.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Transport, AI]
   description: >-
-    Serve the Model Context Protocol over stdio or HTTP. Bundle tools, resources,
-    and prompts as `Mcp.Tools` / `Mcp.Resources` / `Mcp.Prompts`, then expose them
-    via `Mcp.StdioServer` or an `Mcp.HttpEndpoint` mounted on an `Http.Server`.
+    Exposes an application to AI clients over the Model Context Protocol: bundle
+    existing resources as callable tools, readable resources and fetchable prompts,
+    then serve them either over standard input and output for a locally spawned
+    server, or over HTTP with optional per-session state.
 exports:
   kinds:
     - StdioServer
@@ -23,7 +25,10 @@ exports:
 kind: "Telo.Definition"
 metadata:
   name: "Tools"
-  description: Bundles MCP tool entries advertised via tools/list and dispatched via tools/call to handler resources.
+  description: >-
+    A bundle of tools an MCP server advertises to clients: each entry names a tool,
+    declares the arguments a model must supply, and points at the resource that runs
+    when the tool is called.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#tools
@@ -178,7 +183,9 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Resources"
-  description: Bundles MCP resource entries advertised via resources/list and read via resources/read.
+  description: >-
+    A bundle of readable resources an MCP server advertises: each entry names a URI a
+    client can list and read, and points at the resource that produces its contents.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#resources
@@ -264,7 +271,10 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Prompts"
-  description: Bundles MCP prompt entries advertised via prompts/list and fetched via prompts/get.
+  description: >-
+    A bundle of prompts an MCP server offers: each entry names a prompt a client can
+    list and fetch with arguments, and points at the resource that renders its
+    messages.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#prompts
@@ -351,7 +361,10 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "StdioServer"
-  description: Serves an MCP server over stdin/stdout, exposing referenced tool, resource, and prompt bundles.
+  description: >-
+    Serves the application's tools, resources and prompts to an MCP client over
+    standard input and output — the shape a desktop client or editor expects when it
+    launches a server as a child process.
 capability: Telo.Service
 controllers:
   - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#stdio-server
@@ -406,7 +419,10 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "HttpEndpoint"
-  description: Mounts an MCP server on an Http.Server, serving tool/resource/prompt bundles over HTTP with optional per-session state.
+  description: >-
+    Serves the application's tools, resources and prompts to MCP clients over HTTP,
+    mounted alongside the rest of an application's routes, with optional per-session
+    state for stateful clients.
 capability: Telo.Mount
 controllers:
   - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#http-endpoint

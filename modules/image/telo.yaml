@@ -5,11 +5,12 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Image primitives — draw labelled rectangles onto an image
-    (`Image.Overlay`), the visualization half of vision-grounding loops:
-    render, let a model propose boxes, draw them, look again. Coordinates are
-    pixels, top-left origin.
+    Image generation and annotation: make a solid-colour canvas at a given size, and
+    draw labelled rectangles onto an existing image, returning encoded PNG, JPEG or
+    WebP bytes. Built for vision-grounding loops — render, let a model propose boxes,
+    draw them, look again. Coordinates are pixels from the top-left.
 exports:
   kinds:
     - Blank

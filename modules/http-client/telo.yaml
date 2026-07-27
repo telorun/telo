@@ -5,7 +5,13 @@ metadata:
   version: 0.12.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: HTTP request client for testing and orchestration
+  categories: [Transport]
+  description: >-
+    Calls HTTP APIs: any method, with query parameters, headers and a JSON or string
+    body, returning the status, headers and a parsed body. Shared connection settings
+    — base URL, default headers, timeout, redirect handling — live in a reusable
+    client that individual requests inherit. Bodies can be streamed and network
+    failures retried.
 exports:
   kinds:
     - Client
@@ -57,13 +63,11 @@ kind: "Telo.Definition"
 metadata:
   name: "Request"
   description: >-
-    Performs an outbound HTTP call — GET, POST, PUT, PATCH, DELETE or any other
-    method — with a URL, query parameters, headers and a JSON or string body
-    supplied per invocation. Returns the status code, lowercase-keyed response
-    headers and a body parsed as JSON when the content type says so (raw string
-    otherwise), and can optionally stream the body, retry network failures, or
-    throw on 4xx/5xx. When a Client is referenced the URL may be a relative path
-    and the client's headers and timeout apply as defaults.
+    Performs an outbound HTTP call — GET, POST, PUT, PATCH, DELETE or any other method
+    — with the URL, query parameters, headers and body supplied per invocation.
+    Returns the status, lowercase-keyed headers and a body parsed as JSON when the
+    content type says so. Can stream the body instead of buffering it, retry network
+    failures, and raise on 4xx and 5xx.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@0.9.0?local_path=./nodejs#http-request

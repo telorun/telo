@@ -5,10 +5,12 @@ metadata:
   version: "0.8.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: >-
-    Reusable JSON Schema type definitions. `Type.JsonSchema` declares a named
-    data shape — usable as an `inputType` / `outputType` on any invocable — and
-    supports `extends` inheritance plus CEL `rules` for business invariants.
+    Reusable data shapes declared once and referenced anywhere a type is expected — a
+    call's inputs or results, a request body, a model's output. Shapes inherit from
+    one another, and CEL rules express invariants that JSON Schema alone cannot, each
+    failing with its own error code.
 exports:
   kinds:
     - JsonSchema
@@ -16,7 +18,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: JsonSchema
-  description: Declares a named JSON Schema data shape with extends inheritance and CEL validation rules.
+  description: >-
+    Declares a named data shape as JSON Schema, optionally inheriting from other named
+    shapes, with CEL rules for the invariants schema cannot state. Each rule carries
+    an error code reported when data violates it.
 capability: Telo.Type
 controllers:
   - pkg:npm/@telorun/type@0.5.0?local_path=./nodejs#type

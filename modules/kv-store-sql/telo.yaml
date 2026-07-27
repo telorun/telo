@@ -5,20 +5,12 @@ metadata:
   version: 0.2.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage]
   description: |
-    KvStoreSql.Store — a KvStore.Store backed by an Sql.Connection. Each
-    conditional write is ONE statement whose WHERE carries the condition, so the
-    database resolves the race: `putIfAbsent` is a unique-key
-    `INSERT … ON CONFLICT DO UPDATE … WHERE <expired>`, `compareAndSet` and
-    `compareAndDelete` guard on the stored revision. Correct across processes and
-    hosts, with no client-side read-then-write window.
-
-    SUPPORTED DIALECTS: PostgreSQL (sql-postgres) and SQLite (sql-sqlite). It
-    targets the Sql.Connection abstract for connection handling, but the
-    `putIfAbsent` statement is not dialect-free — `ON CONFLICT … DO UPDATE … WHERE`
-    is Postgres/SQLite syntax. A future MySQL or SQL Server driver needs a variant
-    of THIS store (MySQL's `INSERT … ON DUPLICATE KEY UPDATE` has no WHERE
-    clause), not merely a new connection driver.
+    Durable key/value storage with atomic conditional writes, kept in a table on a
+    database you already run. Every write is a single statement carrying its own
+    condition, so the database settles races between processes and hosts with no
+    read-then-write window on the client. Speaks PostgreSQL and SQLite.
 files:
   - nodejs/*.mjs
 imports:
@@ -38,7 +30,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: KvStore.Store backed by an Sql.Connection, using a unique-key INSERT … ON CONFLICT plus revision-guarded UPDATE/DELETE for atomic conditional writes.
+  description: >-
+    Keeps records in a table on an existing database connection, one row per key,
+    settling each conditional write in a single guarded statement. Creates its table
+    on start-up unless the application's own migrations own it.
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:

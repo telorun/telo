@@ -5,11 +5,11 @@ metadata:
   version: 0.4.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage, AI]
   description: |
-    VectorStoreMemory.Store — an in-process vector index for the VectorStore
-    abstract. Cosine / dot / euclidean similarity over a Map; zero external
-    dependencies. Ideal for development, tests, and small single-instance
-    indexes.
+    An in-process vector index ranked by cosine, dot-product or euclidean similarity,
+    held in the running process's memory with no external service to run. Suited to
+    development, tests and small single-instance indexes.
 imports:
   VectorStore: ../vector-store
 exports:
@@ -19,7 +19,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: Provides an in-process vector index with cosine/dot/euclidean similarity for the VectorStore abstract.
+  description: >-
+    Keeps a vector index in the process's own memory, ranked by a chosen similarity
+    metric and pinned to a fixed vector length, optionally bounded by an entry count
+    that evicts the oldest write. Nothing survives a restart.
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:

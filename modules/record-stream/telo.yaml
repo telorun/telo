@@ -5,12 +5,12 @@ metadata:
   version: 0.10.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Streaming, Observability]
   description: |
-    Stream operations on structured records. Generic, format-neutral
-    transformers / sources / sinks that operate on `Stream<record>`.
-    Inhabitants: `RecordStream.ExtractText` projects a discriminated stream
-    of records down to a `Stream<string>` using a per-variant action map;
-    `RecordStream.Tee` fans one input stream out to two consumers.
+    Operations on streams of structured records, whatever the format: project a mixed
+    record stream down to plain text, fan one stream out to two consumers, run a
+    handler once a stream completes, and record a stream into a keyed replay buffer
+    so a disconnected reader can resume from where it left off and then tail live.
 exports:
   kinds:
     - ExtractText
@@ -33,7 +33,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: ExtractText
-  description: Projects a discriminated stream of records to a Stream<string> via a per-variant emit/drop/throw action map.
+  description: >-
+    Projects a stream of mixed record types down to a stream of plain text, deciding
+    per record type whether to emit a field, drop it, or fail the stream.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#extract-text
@@ -199,7 +201,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Journal
-  description: Provides an in-memory, keyed, offset-addressable replay buffer that makes a detached stream resumable.
+  description: >-
+    A keyed replay buffer holding the records of in-flight streams, each addressable
+    by offset, so a reader that disconnects can resume rather than lose what it
+    missed. Held in memory for the life of the process.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal
@@ -215,7 +220,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: JournalSink
-  description: Drains a stream into a Journal under a key, appending each record with a monotonic id.
+  description: >-
+    Drains a stream into the replay buffer under a key, appending each record with an
+    increasing id and marking the key finished when the stream ends.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-sink
@@ -260,7 +267,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: JournalSource
-  description: Reads a resumable stream from a Journal starting after fromId, then tails live until the key finishes.
+  description: >-
+    Reads a recorded stream back from a given offset, replaying what was missed and
+    then following it live until it finishes — how a reconnecting client picks up
+    exactly where it dropped.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/record-stream@0.8.0?local_path=./nodejs#journal-source

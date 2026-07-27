@@ -5,14 +5,12 @@ metadata:
   version: 0.2.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Scheduling]
   description: |
-    Recurring time sources. Where `timer` ships the one-shot `Timer.Delay`,
-    scheduler ships the inbound *time* source Telo was missing:
-    `Schedule.Interval` fires a body every duration, `Schedule.Cron` fires it on
-    a cron expression. Both are Services — they prepare on init, start ticking
-    when the app runs them from `targets`, and stop on teardown — so a schedule
-    orders against migrations and other boot targets exactly like an
-    `Http.Server` does.
+    Runs work on a recurring schedule: every fixed duration, or on a cron expression
+    in a chosen timezone. Schedules start when the application runs and stop on
+    shutdown, so they order against migrations and other start-up work, and each tick
+    can be gated on current state rather than firing blindly.
 files:
   - nodejs/*.mjs
 exports:
@@ -25,7 +23,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Interval
-  description: Fires a body every fixed duration while the app runs; a failing tick is logged and the schedule continues.
+  description: >-
+    Runs work every fixed duration for as long as the application runs, with the first
+    run one interval in. A tick can be skipped by a condition, and a failing run is
+    logged without stopping the schedule.
 capability: Telo.Service
 controllers:
   - pkg:telo/local/js?path=./nodejs/interval.mjs#interval
@@ -72,7 +73,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Cron
-  description: Fires a body on a cron schedule in a given timezone; a failing tick is logged and the schedule continues.
+  description: >-
+    Runs work on a cron expression, interpreted in a chosen timezone so a schedule
+    means the same thing on every host. A tick can be skipped by a condition, and a
+    failing run is logged without stopping the schedule.
 capability: Telo.Service
 controllers:
   - pkg:telo/local/js?path=./nodejs/cron.mjs#cron

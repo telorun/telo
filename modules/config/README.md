@@ -49,7 +49,7 @@ storeRef:
   name: Env
 keys:
   stripeKey: STRIPE_KEY
-  dbUrl: "${{ DB_USERNAME + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + DB_PORT + '/' + DB_NAME }}"
+  dbUrl: !cel "DB_USERNAME + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + DB_PORT + '/' + DB_NAME"
 ```
 
 ## Reference
@@ -70,7 +70,7 @@ Use `${{ }}` in any map value to compose multiple store keys into one. All refer
 
 ```yaml
 keys:
-  dbUrl: "${{ DB_USERNAME + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + DB_PORT + '/' + DB_NAME }}"
+  dbUrl: !cel "DB_USERNAME + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + DB_PORT + '/' + DB_NAME"
 ```
 
 CEL expressions and direct lookups can be freely mixed. Snapshot exposes `resources.AppSecrets.stripeKey`, `resources.AppSecrets.dbUrl`, etc.
@@ -86,9 +86,9 @@ imports:
   Config:
     source: ./config
     variables:
-      logLevel: "${{ resources.AppConfig.logLevel }}"
-      dbUrl: "${{ resources.AppSecrets.dbUrl }}"
-      stripeKey: "${{ resources.AppSecrets.stripeKey }}"
+      logLevel: !cel "resources.AppConfig.logLevel"
+      dbUrl: !cel "resources.AppSecrets.dbUrl"
+      stripeKey: !cel "resources.AppSecrets.stripeKey"
 ```
 
 ## Config.Env shortcut
@@ -120,8 +120,8 @@ secrets:
 Downstream resources reference values the same way as with `Config.Variables` / `Config.Secrets`:
 
 ```yaml
-connectionString: "${{ resources.AppConfig.dbConnection }}"
-port: "${{ resources.AppConfig.port }}"
+connectionString: !cel "resources.AppConfig.dbConnection"
+port: !cel "resources.AppConfig.port"
 ```
 
 Types supported: `string`, `integer`, `number`, `boolean`. Missing variables without a `default` are a hard boot-time error — identical to the store/map split. Values declared under `secrets` are redacted in logs and error messages.

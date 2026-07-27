@@ -1,12 +1,12 @@
 # Lease
 
-`Lease.Critical` — a **declarative critical section** over a [`Cache.Store`](../cache/README.md). It wraps a body and owns the whole `acquire → run → release` lifecycle around it, so a manifest never issues imperative acquire/release calls — the same decorator shape as `Cache.View` (wraps caching) and `Sql.Transaction` (wraps begin/commit/rollback).
+`Lease.Critical` — a **declarative critical section** over a [`KvStore.Store`](../kv-store/README.md). It wraps a body and owns the whole `acquire → run → release` lifecycle around it, so a manifest never issues imperative acquire/release calls — the same decorator shape as `Cache.View` (wraps caching) and `Sql.Transaction` (wraps begin/commit/rollback).
 
 ## Why use this
 
 - **At most one holder per `key`** — a conversation, a job name, a tenant, a resource id. A second attempt while one is active does **not** run the body; it reports the current holder so the caller can branch (skip, or return 409).
 - **Self-healing** — leases are time-bounded (`ttl`). If a holder dies without releasing, the lease frees on expiry; no stuck locks.
-- **Race-free & shareable** — the atomic gate is `Cache.Store.increment`, so the mutex is correct across concurrent callers and shared across instances when the store is (`CacheRedis.Store`).
+- **Race-free & shareable** — the atomic gate is the store's conditional write (`putIfAbsent`, via `KeyedClaim`), so the mutex is correct across concurrent callers and shared across instances when the store is (`KvStoreSql.Store`, `KvStoreRedis.Store`; `KvStoreMemory.Store` is single-process). The store is durable and non-evicting by contract — resting mutual exclusion on a cache would let an evicted record admit a second holder.
 - **No imperative actions** — there is no `Acquire`/`Release` kind to misuse. The lifecycle is structural.
 
 ## Kinds
@@ -22,7 +22,7 @@
 ```yaml
 kind: Lease.Critical
 metadata: { name: nightlyReport }
-store: !ref Counters
+store: !ref Claims
 ttl: 10m
 invoke: !ref buildReport
 # invoked with { key: "report", inputs: {...} }
@@ -36,7 +36,7 @@ Use for cron-overlap prevention, migrations, singleflight, idempotent handlers.
 ```yaml
 kind: Lease.Critical
 metadata: { name: perConversation }
-store: !ref Counters
+store: !ref Claims
 ttl: 5m
 detach: true
 invoke: !ref turnRunner
@@ -58,7 +58,7 @@ A running detached body can be ended early by invoking the same `Lease.Critical`
 
 The body runs under a lease-owned cancellation scope, so the cancel trips its cancellation token: every honoring leaf (a model call, a `Timer.Delay`, a fetch) aborts, the body reaches its terminal, and the lease releases as usual. The `holder` guard makes the cancel safe against races — a stale caller naming an old turn id cannot kill a newer occupant of the key. A body ending because it was cancelled is an expected terminal, not a failure.
 
-Cancellation state is **process-local**: the cancel must reach the same instance that dispatched the body (a shared Redis store spans the *lease* across instances, not the cancel).
+Cancellation state is **process-local**: the cancel must reach the same instance that dispatched the body (a shared store spans the *lease* across instances, not the cancel).
 
 ## `holder`
 

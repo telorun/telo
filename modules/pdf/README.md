@@ -33,7 +33,9 @@ writing uses pdf-lib.
 kind: Telo.Application
 metadata: { name: form-stamper, version: 1.0.0 }
 imports:
-  Pdf: std/pdf@latest
+  Pdf: std/pdf@0.4.0
+  Run: std/run@0.13.0
+targets: [ !ref StampForm ]
 ---
 kind: Pdf.Rasterizer
 metadata: { name: Render }
@@ -44,14 +46,19 @@ metadata: { name: AddFields }
 ---
 # Render page 1, then place a text field using coordinates measured on the
 # image — the render's scale is wired through, so the two can't drift.
-- name: page
-  inputs: { data: "${{ steps.fetch.result.bytes }}", page: 1 }
-  invoke: !ref Render
-- name: fielded
-  inputs:
-    data: "${{ steps.fetch.result.bytes }}"
-    scale: "${{ steps.page.result.scale }}"
-    fields:
-      - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
-  invoke: !ref AddFields
+kind: Run.Sequence
+metadata: { name: StampForm }
+inputs:
+  document: {}                  # the PDF's bytes
+steps:
+  - name: page
+    inputs: { data: !cel "inputs.document", page: 1 }
+    invoke: !ref Render
+  - name: fielded
+    inputs:
+      data: !cel "inputs.document"
+      scale: !cel "steps.page.result.scale"
+      fields:
+        - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
+    invoke: !ref AddFields
 ```

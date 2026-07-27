@@ -21,10 +21,23 @@ Raw-bytes codec — `Uint8Array` stream ↔ `Uint8Array`. The encoder passes byt
 kind: Telo.Application
 metadata: { name: octet-uploads, version: 1.0.0 }
 imports:
-  Octet: std/octet-codec@latest
+  Octet: std/octet-codec@0.6.0
+  Stream: std/stream@0.5.0
+  Run: std/run@0.13.0
+targets: [ !ref Collect ]
 ---
-kind: Http.Server
-metadata: { name: Uploads }
-decoders:
-  application/octet-stream: { kind: Octet.Decoder, name: ReadBytes }
+kind: Stream.Of
+metadata: { name: Chunks }
+---
+kind: Octet.Decoder
+metadata: { name: ReadBytes }
+---
+kind: Run.Sequence
+metadata: { name: Collect }
+steps:
+  - name: source
+    invoke: !ref Chunks
+  - name: bytes                 # { bytes: Uint8Array } — every chunk concatenated
+    inputs: { input: !cel "steps.source.result.output" }
+    invoke: !ref ReadBytes
 ```

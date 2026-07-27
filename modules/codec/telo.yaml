@@ -5,11 +5,12 @@ metadata:
   version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    The Encoder and Decoder abstracts — Invocable contracts every concrete
-    stream codec implements. Format-specific codec packages (plain-text-codec,
-    ndjson-codec, sse-codec, octet-codec, third-party formats) extend these
-    abstracts.
+    The shared contract for stream codecs: encoding turns a stream of records into a
+    stream of bytes ready for transport, decoding turns bytes back into values or
+    records. Transport-neutral and format-agnostic — each wire format supplies its
+    own implementation, and consumers pipe streams through whichever one they hold.
 exports:
   kinds:
     - Encoder
@@ -24,6 +25,10 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Encoder
+  description: >-
+    Serializes a stream of records or bytes into a stream of byte chunks ready for
+    transport, one wire format per implementation. It declares no media type — the
+    consumer that sends the bytes decides how they are labelled.
 capability: Telo.Invocable
 inputType:
   kind: Type.JsonSchema
@@ -55,6 +60,10 @@ outputType:
 kind: Telo.Abstract
 metadata:
   name: Decoder
+  description: >-
+    Parses a stream of byte chunks back into usable values, one wire format per
+    implementation. The result shape is the implementation's own: a single collected
+    value for simple formats, another stream for framed ones.
 capability: Telo.Invocable
 inputType:
   kind: Type.JsonSchema

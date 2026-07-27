@@ -45,8 +45,8 @@ metadataFilter:
 
 ```yaml
 imports:
-  VectorStore: std/vector-store@latest
-  VectorStoreMemory: std/vector-store-memory@latest
+  VectorStore: std/vector-store@0.4.0
+  VectorStoreMemory: std/vector-store-memory@0.4.0
 ---
 kind: VectorStoreMemory.Store
 metadata: { name: Index }

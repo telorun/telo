@@ -5,7 +5,11 @@ metadata:
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: MCP bridge for Ai.ToolProvider — exposes an MCP server's tools to an Ai.Agent.
+  categories: [AI, Transport]
+  description: >-
+    Brings the tools a connected MCP server advertises into an AI agent, so a model
+    can call them like any other tool. The catalogue and its argument schemas are
+    discovered at run time over whichever MCP transport the connection uses.
 imports:
   # Import @telorun/ai for the Ai.ToolProvider abstract this definition implements.
   Ai: ../ai
@@ -23,7 +27,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: ToolProvider
-  description: Expose an MCP server's tools to an Ai.Agent by wrapping any Mcp.Client as an Ai.ToolProvider.
+  description: >-
+    Turns a connected MCP server into a tool source for an agent: lists the tools the
+    server advertises and dispatches a model-requested call over the same connection.
+    The tool set and its schemas are resolved at run time, not statically.
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:

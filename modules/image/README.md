@@ -30,21 +30,29 @@ bounding boxes, draw them, let it look again.
 kind: Telo.Application
 metadata: { name: box-preview, version: 1.0.0 }
 imports:
-  Image: std/image@latest
+  Image: std/image@0.4.0
+  Run: std/run@0.13.0
+targets: [ !ref MarkFields ]
 ---
 kind: Image.Overlay
 metadata: { name: DrawBoxes }
 stroke: { color: "#FF3B30", width: 3 }
 label: { color: "#FFFFFF", placement: top-left }
 ---
-# Draw the model's proposed fields onto the rendered page.
-- name: marked
-  inputs:
-    image: "${{ steps.page.result.image }}"
-    shapes: |-
-      ${{ inputs.fields.map(f, {
-        "x": f.x, "y": f.y, "width": f.width, "height": f.height,
-        "label": f.name + " (" + f.type + ")"
-      }) }}
-  invoke: !ref DrawBoxes
+# Draw the model's proposed fields onto a rendered page.
+kind: Run.Sequence
+metadata: { name: MarkFields }
+inputs:
+  page: {}                      # the rendered image's bytes
+  fields: {}                    # the boxes the model proposed
+steps:
+  - name: marked
+    inputs:
+      image: !cel "inputs.page"
+      shapes: !cel |
+        inputs.fields.map(f, {
+          "x": f.x, "y": f.y, "width": f.width, "height": f.height,
+          "label": f.name + " (" + f.type + ")"
+        })
+    invoke: !ref DrawBoxes
 ```

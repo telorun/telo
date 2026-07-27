@@ -5,13 +5,13 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage]
   description: >-
-    Local filesystem access. Read, write, edit, list, create, and remove files
-    and directories on the host the kernel runs on, via Node `fs/promises`.
-    Buffered (small files); UTF-8 text by default with a base64 escape hatch for
-    binary. Each operation carries an optional `cwd` that invoke paths resolve
-    against. Not a security boundary — isolation comes from where the kernel
-    runs, not these resources.
+    Local filesystem access: read, write, edit in place, list, create and remove
+    files and directories, plus content-hash snapshots and batch tree updates for
+    syncing. Text is UTF-8 by default with base64 for binary, whole files are
+    buffered in memory, and every operation resolves paths against an optional
+    working directory. Not a sandbox.
 exports:
   kinds:
     - File
@@ -93,8 +93,8 @@ metadata:
     Writes a file on the local filesystem, replacing it whole, and reports the
     number of bytes written. Content is utf8 text or a base64 string decoded to
     binary; `createParents` makes missing parent directories first. The path
-    resolves against the resource's `cwd` unless absolute — for surgical
-    in-place changes to an existing file use Fs.FileEdit instead.
+    resolves against the resource's `cwd` unless absolute — for surgical changes to
+    an existing file, edit it in place instead.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-write
@@ -359,12 +359,10 @@ kind: Telo.Definition
 metadata:
   name: TreeSnapshot
   description: >-
-    Walks a directory tree recursively and returns every regular file as a path
-    plus the sha256 hex digest of its bytes, sorted by path. Because it hashes
-    content rather than comparing sizes or timestamps, two snapshots diff into
-    an exact change set — useful for detecting edits, syncing, or caching.
-    `exclude` skips entries by base name at any depth (node_modules, .git,
-    dist); paths are relative to the resource's `cwd`.
+    Walks a directory tree and returns every file as a path plus the sha256 digest
+    of its bytes, sorted by path. Hashing content rather than comparing sizes or
+    timestamps means two snapshots diff into an exact change set — for detecting
+    edits, syncing or caching. Entries can be excluded by base name at any depth.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-snapshot
@@ -432,12 +430,10 @@ kind: Telo.Definition
 metadata:
   name: TreeSync
   description: >-
-    Applies an explicit batch change set to a directory tree in one call:
-    writes each listed file whole (creating parent directories) and removes each
-    listed path, writes first then deletes, returning the counts of each. Files
-    absent from the set are left untouched — it never implicitly deletes — so
-    the same operation serves both a full seed and a partial delta. Paths
-    resolve against the resource's `cwd`.
+    Applies a batch change set to a directory tree in one call: writes each listed
+    file whole, creating parent directories, then removes each listed path, and
+    reports both counts. Files absent from the set are left untouched — nothing is
+    ever deleted implicitly — so the same call serves a full seed or a partial delta.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-sync

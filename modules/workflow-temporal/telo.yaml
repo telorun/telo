@@ -5,7 +5,11 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Temporal backend provider for Workflow.Graph
+  categories: [Coordination]
+  description: >-
+    Runs workflows on a Temporal cluster, which owns their durable state, retries and
+    recovery so a run survives process crashes and restarts. Steps gain Temporal's own
+    execution controls — activity timeouts and retry policies.
 imports:
   # Import the workflow module so `Workflow.Backend` resolves from `extends` below.
   # Required regardless of whether a consuming application also imports workflow —
@@ -18,7 +22,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Backend
-  description: Provides a Temporal-backed workflow backend for Workflow.Graph execution.
+  description: >-
+    A connection to a Temporal cluster — server address and namespace — that executes
+    workflow graphs, with per-step activity timeouts and retry policies.
 capability: Telo.Provider
 extends: Workflow.Backend
 controllers:

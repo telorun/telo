@@ -40,6 +40,24 @@ search API, and the MCP endpoint are all resources in one manifest.
   kinds-only index showed none of its actual entry points. Surfaced as
   `exportedResources` on a module hit; not independently searchable yet
   (display-only).
+- **Groups modules two ways, so discovery works without a query.** The
+  *declared* axis is `metadata.categories` — an open vocabulary of domain
+  labels a module (or an individual kind, which overrides its module's) puts
+  itself under; whatever labels modules declare are the groups that exist, and
+  the hub owns no list. Authors write display text (`[AI, Storage]`) and the
+  index derives the match key from it (`category_slug()`, defined once in the
+  migration), so `AI` and `ai` collapse into one group and `Data Codecs`
+  reaches a URL as `data-codecs`: an open vocabulary cannot be validated into
+  agreement, but spelling variance can be normalized out of it. It normalizes
+  only what the rule sees — `A. I.` becomes `a-i`, its own group, and a synonym
+  always is. Both halves are stored, aligned by position — `categories` is what a
+  filter matches and a URL carries, `category_labels` is what a UI prints,
+  since `ai` → `AI` is not recoverable. The *derived* axis is `extends`: a
+  kind's contract, resolved at
+  ingest from the alias prefix through the declaring manifest's own `imports:`
+  map into `(owning ref, kind suffix)`. That resolution is what makes every
+  backend of one abstract joinable across module boundaries — the abstract's
+  module never learns who implements it. Both axes are per version.
 - **Serves discovery** over HTTP (the `telo.sh` verbs) and MCP. Ranking is
   **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
   trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest
@@ -53,15 +71,33 @@ search API, and the MCP endpoint are all resources in one manifest.
 
 | Verb | Path |
 | --- | --- |
-| `telo search "<query>"` | `GET /search/modules?q=…` (grouped by module) |
-| `telo search --kinds "<query>"` | `GET /search/resources?q=…` (flat kind hits) |
+| `telo search "<query>"` | `GET /search/modules?q=…&category=…&limit=…&offset=…` (grouped by module) |
+| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…` (flat kind hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
+| browse the category facet | `GET /categories` (slug + module count) |
+| backends of a contract | `GET /implementations?ref=…&kind=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | register a module | `POST /register` (`{ ref }` → validate + index; open, no auth) |
 | MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
 | liveness | `GET /health` |
 
-Search returns a fixed top-20 — no pagination. The static manifest read
+**Browsing is searching with a filter, not a separate surface.** Both
+`/search/*` verbs take an optional `category`, and an empty `q` degrades to an
+unranked listing — so `?q=&category=storage` lists a category, and a second
+endpoint that would drift from the ranked one never has to exist. `/categories`
+stays because it answers a different question (the facet with counts, not a
+module list). `search_resources` takes the same optional `category`. The
+parameter is slugified on the way in, so either the slug the API returns
+(`storage`) or the label an author wrote (`AI`) selects the same group.
+
+`/search/resources` returns a fixed top-20. `/search/modules` takes `limit`
+(default 20, max 100) and `offset`, and reports `total` — the pre-limit match
+count — because a browse that silently stopped at 20 would read as "that's all
+there is". The lexical arm's internal cap lifts when `q` is empty, so a
+category listing is not truncated by a ranking cutoff that means nothing
+without a query.
+
+The static manifest read
 (`GET manifests.telo.sh/<transport>/<host>/<path…>/<version>/telo.yaml`) never
 touches this app.
 
@@ -73,6 +109,15 @@ that declares none reports them as empty strings, never null.
 `/module/versions` is deliberately excluded: it returns a bare newest-first
 array of version strings that IDE completion indexes into, so it stays a
 version list rather than a metadata endpoint.
+
+Search hits carry both grouping axes: `categories` on the module and on each
+kind — each entry a `{ slug, label }` pair, so a chip prints the label and a
+click filters by the slug — and `extends: { ref, kind }` on a kind. An empty `extends.ref` with a
+non-empty `extends.kind` means the contract is a `Telo.*` built-in abstract,
+which belongs to no published module. A module that implements another's
+abstract stays a top-level result in its own right — the hub lists it both
+under its categories and under `/implementations` of the contract; nesting one
+inside the other is a client's presentation choice, not the index's.
 
 ## Configuration
 
