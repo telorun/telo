@@ -5,11 +5,12 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Scheduling]
   description: |
-    Time-based primitives. `Timer.Delay` waits for a duration, then completes —
-    composable as a `Run.Sequence` step, an HTTP handler, or any invoke target.
-    It honors invocation cancellation (client disconnect / deadline), so a
-    pending delay is abandoned instead of holding work open.
+    Waiting as a first-class step: pause for a duration before continuing, anywhere a
+    call fits — between pipeline steps, in a retry backoff, in a handler. A pending
+    wait is abandoned when the work around it is cancelled, so a disconnected client
+    or an elapsed deadline does not hold it open.
 exports:
   kinds:
     - Delay
@@ -21,7 +22,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Delay
-  description: Waits for a given duration then completes, optionally echoing a value; honors invocation cancellation.
+  description: >-
+    Waits for a given duration and then completes, optionally passing a value straight
+    through so it can sit mid-pipeline. Cancelling the surrounding work clears the
+    wait instead of leaving it pending.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/timer@0.1.1?local_path=./nodejs#delay

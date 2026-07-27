@@ -8,7 +8,7 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 
 ```yaml
 imports:
-  Sql: std/sql@<version>
+  Sql: std/sql@0.13.0
   SqlSqlite: std/sql-sqlite@0.1.0
 ---
 kind: SqlSqlite.Connection

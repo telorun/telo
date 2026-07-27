@@ -25,11 +25,38 @@ A consumer reads `Codec.Encoder` polymorphically:
 kind: Telo.Application
 metadata: { name: codec-stream, version: 1.0.0 }
 imports:
-  Codec: std/codec@latest
-  Ndjson: std/ndjson-codec@latest
+  Ndjson: std/ndjson-codec@0.6.0
+  Http: std/http-server@0.19.1
+  Stream: std/stream@0.5.0
+ports:
+  http: { env: PORT, default: 3000 }
+targets: [ !ref Server ]
+---
+kind: Stream.Of
+metadata: { name: Events }
+items: [ { id: 1 }, { id: 2 } ]
+---
+# Any kind extending Codec.Encoder fits the route's `encoder:` slot — swapping
+# the wire format is swapping this one resource.
+kind: Ndjson.Encoder
+metadata: { name: Out }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request: { path: /events, method: GET }
+    handler: !ref Events
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: !ref Out
 ---
 kind: Http.Server
-metadata: { name: Stream }
-encoders:
-  application/x-ndjson: { kind: Ndjson.Encoder, name: Out }
+metadata: { name: Server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref Api
 ```

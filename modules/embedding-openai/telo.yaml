@@ -5,12 +5,12 @@ metadata:
   version: 0.6.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [AI]
   description: |
-    EmbeddingOpenai.Model — OpenAI-compatible backend for the Embedding.Model
-    abstract. Speaks the OpenAI /embeddings HTTP API directly (no vendor SDK),
-    so the same controller serves OpenAI plus every OpenAI-compatible endpoint
-    via baseUrl. OpenAI embeddings are symmetric, so the query / passage intent
-    is accepted and ignored.
+    Text embeddings from OpenAI and any OpenAI-compatible endpoint — Azure OpenAI,
+    gateways, self-hosted servers — over the embeddings HTTP API with no vendor SDK.
+    Output dimensionality is configurable where the model supports truncation, and
+    the same vectors serve both search queries and indexed passages.
 imports:
   Embedding: ../embedding
 exports:
@@ -20,7 +20,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Model
-  description: Configure an OpenAI-compatible embeddings model via the direct /embeddings API for Embedding consumers.
+  description: >-
+    An embedding model served by OpenAI or an OpenAI-compatible endpoint: model id,
+    API key, an optional base URL for gateways or Azure, and an optional output
+    dimensionality.
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:

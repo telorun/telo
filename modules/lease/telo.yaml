@@ -5,19 +5,13 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Coordination, Reliability]
   description: |
-    Lease.Critical — a declarative critical section over a KvStore.Store.
-    Wraps a body and owns the whole acquire → run → release lifecycle around it,
-    so a caller never issues imperative acquire/release calls (mirroring how
-    Cache.View wraps caching and Sql.Transaction wraps begin/commit/rollback).
-    At most one holder per `key`; a second attempt while one is active does NOT
-    run the body and reports the current holder (branch on `acquired` — skip, or
-    return 409). Leases are time-bounded (`ttl`): if a holder dies without
-    releasing, the lease self-heals on expiry. The atomic gate is the store's
-    `claim`, so the mutex is race-free across concurrent callers and shared
-    across instances when the store is (kv-store-sql, kv-store-redis).
-    The store is durable and non-evicting by contract — resting mutual exclusion
-    on a cache would let an evicted record admit a second holder.
+    Mutual exclusion across processes and hosts: work wrapped in a lease runs for at
+    most one holder per key, and a caller that arrives while someone holds it is told
+    who has it instead of running anything. Leases are time-bounded, so a holder that
+    dies frees the key on expiry. Use it for cron overlap, migrations, single-flight
+    and one-background-job-per-key.
 imports:
   KvStore: ../kv-store
 exports:
@@ -41,7 +35,11 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Critical
-  description: Runs an invocable under a keyed, TTL-bounded lease so at most one holder per key runs the body.
+  description: >-
+    Runs wrapped work under a keyed, time-bounded lease so at most one holder per key
+    runs it; a caller that loses the race gets the current holder back instead. The
+    work can run inline or detached with the lease held across it, and a detached run
+    can be cancelled by key.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/lease@0.4.0?local_path=./nodejs#critical

@@ -21,7 +21,7 @@ Run Telo manifests as test suites. `Test.Suite` discovers `tests/*.yaml` cases, 
 kind: Telo.Application
 metadata: { name: tests, version: 1.0.0 }
 imports:
-  Test: std/test@latest
+  Test: std/test@0.6.6
 ---
 kind: Test.Suite
 metadata: { name: All }

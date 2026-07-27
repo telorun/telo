@@ -1,5 +1,5 @@
 import { moduleRootKind, moduleRootResource } from "./application-adapter";
-import { getAvailableKinds, normalizePath } from "./loader";
+import { getAvailableKinds, normalizePath, resolveContract } from "./loader";
 import type {
   AvailableKind,
   ModuleSourceFile,
@@ -37,6 +37,8 @@ export function buildModuleViewData(
       capability: typeof resource.fields.capability === "string" ? resource.fields.capability : "",
       topology: typeof resource.fields.topology === "string" ? resource.fields.topology : undefined,
       schema: (resource.fields.schema ?? {}) as Record<string, unknown>,
+      categories: resource.categories ?? manifest.metadata.categories ?? [],
+      contract: resolveContract(workspace, manifest, resource.fields.extends),
     });
   }
 

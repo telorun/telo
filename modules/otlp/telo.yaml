@@ -5,10 +5,12 @@ metadata:
   version: 0.1.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Observability]
   description: >-
-    Export Telo's structured log records to an OpenTelemetry collector over
-    OTLP/JSON. `Otlp.Sink` is a log sink: declare it as a resource and point the
-    root Application's `logging.sinks` at it.
+    Ships an application's structured log records to an OpenTelemetry collector over
+    OTLP, batched and flushed on an interval, with resource attributes such as the
+    service name attached to every batch. The route from local logging to any
+    OTel-compatible observability backend.
 exports:
   kinds:
     - Sink
@@ -17,12 +19,10 @@ kind: Telo.Definition
 metadata:
   name: Sink
   description: >-
-    A log sink that batches records and POSTs them to an OpenTelemetry collector
-    as OTLP/JSON. The encoding is fixed — a collector accepts exactly one wire
-    format — so `encoding:` is not offered. Delivery is a network round-trip, so
-    this sink is not synchronously flushable: a `fatal` record's flush is
-    initiated but not awaited, and records held only here may be lost if the
-    process dies immediately after.
+    A destination for log records that batches them and sends them to an
+    OpenTelemetry collector, filtered by minimum severity and bounded by a buffer with
+    a drop policy. Delivery is a network round-trip, so a flush cannot be awaited
+    synchronously and records held only here may be lost if the process dies at once.
 capability: Telo.Sink
 extends: Telo.LogSink
 controllers:

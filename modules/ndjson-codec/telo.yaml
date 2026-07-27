@@ -5,11 +5,12 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data, Streaming]
   description: |
-    NDJSON codec — JSON-record stream ↔ byte iterables. Encoder produces one
-    JSON-encoded record per line (`JSON.stringify(item) + "\n"`). Decoder
-    (line-buffered, stream-out) is planned but not in this initial release.
-    Pair with Content-Type `application/x-ndjson`.
+    Newline-delimited JSON on the wire: a stream of records becomes bytes carrying one
+    JSON document per line, the usual shape for line-oriented log and event feeds that
+    a consumer can read incrementally. Encoding only for now; decoding is not yet
+    implemented.
 imports:
   Codec: ../codec
 exports:
@@ -23,7 +24,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
-  description: Encodes each JSON-serializable record as one NDJSON line of bytes.
+  description: >-
+    Encodes each record of a stream as one line of JSON bytes. If the source fails
+    mid-stream it emits a final error record, so consumers always see a well-formed
+    line-delimited stream.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:

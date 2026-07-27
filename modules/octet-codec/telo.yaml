@@ -5,10 +5,11 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Raw-bytes codec — Uint8Array stream ↔ Uint8Array. Encoder passes byte
-    chunks through unchanged. Decoder collects every chunk into a single
-    `Uint8Array`. Pair with Content-Type `application/octet-stream`.
+    Raw binary on the wire: bytes pass through untouched on the way out, and on the
+    way in every chunk is collected into one contiguous buffer. The codec to use for
+    files, images and any payload that is already in its final byte form.
 imports:
   Codec: ../codec
 exports:
@@ -20,7 +21,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
-  description: Passes byte-stream chunks through unchanged (identity encoder for application/octet-stream).
+  description: >-
+    Passes a byte stream through unchanged, for payloads that are already in their
+    final form and need no serialization.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
@@ -33,7 +36,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Decoder
-  description: Collects a byte stream into a single Uint8Array.
+  description: >-
+    Collects every chunk of a byte stream into a single contiguous buffer, for when a
+    payload has to be held whole rather than consumed incrementally.
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:

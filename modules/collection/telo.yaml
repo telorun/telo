@@ -5,15 +5,13 @@ metadata:
   version: 0.1.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Pure, CEL-driven reshaping of a collection of records — grouping,
-    aggregation, ordering, joining. Data-shape primitives that take a list and
-    return a new list: no I/O, no control flow (that stays in std/run's
-    Projection / Iteration, which loop over invocable step bodies). Each kind
-    covers an operation native CEL cannot express. Inhabitants: GroupBy
-    (partition + reduce per key), Summarize (reduce the whole collection to one
-    row), Sort (multi-key object ordering), Distinct (dedupe by a computed key),
-    Chunk (split into batches), Join (match two collections on a key).
+    Reshaping a collection of records with CEL expressions: group and reduce by a key,
+    summarize a whole set into one row, order by several computed sort keys,
+    deduplicate by a computed key, split into batches, and join two collections on
+    matching keys. Pure data transforms — a list in, a list out, no I/O and no control
+    flow.
 exports:
   kinds:
     - GroupBy

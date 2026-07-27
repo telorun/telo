@@ -222,6 +222,30 @@ Available in `${{ }}`:
 
 Module docs live **with the module** and are surfaced through the Telo **hub** (`hub.telo.run`), which indexes each published module's manifest and docs — the standard library is discovered there, not embedded in the Docusaurus site. Do **not** wire per-module doc files into `pages/docusaurus.config.ts` / `pages/sidebars.ts`; the docs site links out to the hub for module discovery. The Docusaurus site is for the kernel/guides/extend/learn docs only.
 
+## Manifest descriptions — MANDATORY
+
+`metadata.description` on a `Telo.Library` and on every kind doc (`Telo.Definition` / `Telo.Abstract`) is **hub search text**: the hub embeds it for semantic search, so it is read by someone who does not yet know the module exists. Write it for that reader, not for a maintainer.
+
+- **Say what it does, in terms of the problem it solves.** Lead with the capability and the vocabulary a searcher would type (locks, leases, retries, pagination, idempotency, …).
+- **Keep it to one paragraph** — roughly 40–60 words. It is embedded as a single vector; a long multi-paragraph text dilutes it. Rationale, design history and trade-offs belong in `docs/` and in YAML comments above the doc, never in `description`.
+- **No kind names, no capability names, no "the X abstract".** The kind and capability are already structured metadata on the doc. `The KvStore.Store abstract — a durable store…` → `Durable key/value storage…`.
+- **No implementations, no backend names.** A generic module must not name the modules that extend it (`backed by Redis SET NX` / `kv-store-sql`); that coupling is backwards and pollutes search hits for the generic kind. Backends describe themselves.
+- **No contrast with sibling modules.** `Cache.Store is also a key/value store, but…` reads as noise to a searcher and drags the sibling's terms into this vector. State this module's own guarantee positively.
+- **No wording that only makes sense against history.** `NON-EVICTING`, `unlike before`, shouting caps for emphasis. Say `records live their full TTL and are never dropped early`.
+- **Kind descriptions state the operation and its contract** — inputs, outputs, and what a failure/edge return means — in two or three sentences. See `modules/collection/telo.yaml` and `modules/kv-store/telo.yaml` for the target shape.
+
+## Manifest categories
+
+`metadata.categories` is the **declared grouping facet**: an unordered list of domain **display labels** (`[AI, Storage]`) on a `Telo.Library` (and optionally on a kind doc, where it *replaces* the module's for that kind). It is a facet, not search text — it never belongs in `description`, which is embedded as a vector.
+
+**Authors write labels; the hub derives slugs.** `metadata.categories: [AI]` is indexed as slug `ai` + label `AI` (`category_slug()`, defined once in the hub migration). Filtering and URLs use the slug (`?category=ai`, accepted as either form since the parameter is slugified too); UIs print the label. That normalization is what makes `AI` and `ai` one group, and what keeps `Data Codecs` out of a URL as anything but `data-codecs` — an open vocabulary can't be validated into agreement, but spelling variance can be normalized out of it. It only sees variance the rule covers: `A. I.` slugifies to `a-i`, a group of its own. Because `ai` → `AI` isn't recoverable, both are stored, aligned by position (`categories` / `category_labels`); when several labels share a slug the facet shows the most-declared one, ties lexicographic.
+
+**The vocabulary is open and nothing validates it.** A category is a plain string; whatever labels modules declare are the groups that exist. There is deliberately no list in the kernel, the analyzer, or the hub — a closed enum would block a third-party module in a domain the standard library never anticipated, and would make the analyzer's release cadence the bottleneck on naming. Reuse an existing label when one fits (a near-synonym like `caching` vs `Cache` still splits a group — normalization only fixes spelling variance); the standard library uses `AI`, `Compute`, `Configuration`, `Coordination`, `Data`, `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`, `Streaming`, `Testing`, `Transport`.
+
+**Only the hub slugifies.** The editor compares labels directly (case-insensitively) because a category never crosses an authorship boundary there — it groups kinds already resolved in one workspace, and a workspace library may be unpublished or unsaved, so there is no hub row to consult. Keeping the rule in one place is deliberate: two implementations would have to agree forever.
+
+The **derived** grouping axis needs no declaration: a kind's `extends` target is the contract it implements. The hub resolves the alias prefix through the declaring manifest's own `imports:` map into `(owning module ref, kind suffix)` at ingest (`resource_kinds.extends_ref` / `extends_kind`); the editor does the same against the declaring library's imports (`resolveContract`). That is what groups every backend of one abstract together across module boundaries, and what nests `CacheRedis.Store` under `cache.Store` in the resource picker.
+
 ## Versioning & releases — MANDATORY
 
 **The whole repo is intentionally pre-1.0, and staying pre-1.0 is the goal.** Breaking changes are released as **minor** bumps on purpose — both `@telorun/*` npm packages and Telo modules. A documented breaking change shipped as a minor (or a module's `Added` fragment for a breaking change) is the convention working as designed, **never** a versioning defect. Do not flag "breaking change shipped as minor" in reviews. The CI guards (`check-no-major-module-bump`, the changeset major-bump guard) exist to *enforce* this — anything that would bump to 1.0.0 is the error, not the minor.

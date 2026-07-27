@@ -5,10 +5,12 @@ metadata:
   version: 0.8.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Transport]
   description: >-
-    Internal shared value-shapes for HTTP transports — the canonical request
-    matcher and response (`returns` / `catches`) schemas that `http-server` and
-    `aws/lambda` anchor against. Not instantiated directly.
+    The shared value shapes every HTTP transport anchors against: the canonical
+    request matcher — method, path, query, body, headers — and the rules that render a
+    handler's result or error into a status, headers and body. Schema only; nothing
+    here is instantiated.
 exports:
   kinds:
     - Outcomes

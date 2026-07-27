@@ -5,12 +5,12 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Performance, Storage]
   description: |
-    CacheRedis.Store — a Redis-backed implementation of the Cache abstract, for
-    shared caching and rate-limit counters across instances. Accepts an optional
-    `fallback` store: when Redis is unreachable it degrades to the fallback
-    (e.g. a CacheMemory.Store), emits an observable degraded-mode event on the
-    EventBus, and recovers automatically when Redis returns.
+    Redis-backed caching shared by every instance of an application — cached results
+    and counters that outlive one process, under an optional key prefix so several
+    apps can share a server. When Redis is unreachable it degrades to an optional
+    fallback cache, reports the degradation, and recovers on its own.
 imports:
   Cache: ../cache
 exports:
@@ -20,7 +20,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: Redis-backed Cache.Store for cross-instance caching, degrading to a fallback store when Redis is unreachable.
+  description: >-
+    Caches entries in Redis so every instance shares them, optionally namespaced by a
+    key prefix. When the server is unreachable it serves a fallback cache instead,
+    emits degraded and recovered events, and reconnects on its own.
 capability: Telo.Provider
 extends: Cache.Store
 controllers:

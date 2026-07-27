@@ -31,20 +31,20 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
-  Sql: std/sql@<version>
-  SqlPostgres: std/sql-postgres@<version>
+  Sql: std/sql@0.13.0
+  SqlPostgres: std/sql-postgres@0.4.0
 targets: [ !ref Migrate ]
 secrets:
-  DATABASE_URL: { type: string }
+  DATABASE_URL: { env: DATABASE_URL, type: string }
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Db }
-connectionString: "${{ secrets.DATABASE_URL }}"
+connectionString: !cel "secrets.DATABASE_URL"
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
 kind: Sql.Migrations
 metadata: { name: Migrate }
-connection: { kind: SqlPostgres.Connection, name: Db }
+connection: !ref Db
 migrations:
   20260401120000_CreateUsers:
     statement: |
@@ -60,7 +60,7 @@ migrations:
 ---
 kind: Sql.Selection
 metadata: { name: ActiveUsers }
-connection: { kind: SqlPostgres.Connection, name: Db }
+connection: !ref Db
 from: users
 columns: [ id, email ]
 where:
@@ -72,13 +72,13 @@ limit: 50
 
 ## Connections
 
-`Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: { kind: SqlPostgres.Connection, name: Db }`) and stays driver-agnostic.
+`Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: !ref Db`) and stays driver-agnostic.
 
 **`SqlPostgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
 
 **`SqlSqlite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
 
-The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `SqlPostgres.Connection` with `connectionString: "${{ secrets.DATABASE_URL }}"`.
+The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `SqlPostgres.Connection` with `connectionString: !cel "secrets.DATABASE_URL"`.
 
 `Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SqlSqlite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 
@@ -89,7 +89,7 @@ The engine family is fixed by the kind, not sniffed from a string at runtime. Ke
 ```yaml
 kind: Sql.Selection
 metadata: { name: ActiveUsers }      # declared once
-connection: { kind: SqlPostgres.Connection, name: Db }
+connection: !ref Db
 from: users
 columns: [ id, email ]
 ---
@@ -97,7 +97,7 @@ kind: Http.Api
 metadata: { name: Api }
 routes:
   - request: { path: /users, method: GET }
-    handler: { kind: Sql.Selection, name: ActiveUsers }   # referenced by name
+    handler: !ref ActiveUsers   # referenced by name
 ```
 
 ## Binding values
@@ -108,7 +108,7 @@ Never concatenate values into SQL. Two ways to bind, both injection-safe:
 
 ```yaml
 - name: GetUser
-  invoke: { kind: Sql.Query, connection: { kind: SqlPostgres.Connection, name: Db } }
+  invoke: { kind: Sql.Query, connection: !ref Db }
   inputs:
     sql: !sql "SELECT * FROM users WHERE id = ${{ request.params.id }}"
 ```

@@ -5,14 +5,12 @@ metadata:
   version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Streaming]
   description: |
-    Generic stream substrate — value-agnostic stream construction and
-    operators. `Stream.Of` emits a list of items as a stream, in order —
-    declared statically or supplied at invoke time. The element type flows at
-    runtime (items may be strings, objects, numbers); statically the output is
-    an opaque stream, like every Telo stream.
-    Element-type validation is a planned evolution (see the stream-element-typing
-    plan and the `x-telo-stream: { items }` form).
+    The ends of a stream pipeline: turn a list of values into a stream, in order, and
+    drain a stream back into a list once it finishes. Values may be anything the
+    downstream consumer expects — text, records, numbers — so the same pair serves any
+    streaming pipeline.
 exports:
   kinds:
     - Of
@@ -34,7 +32,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Of
-  description: Emits a list of items as a stream, in order — declared statically or supplied at invoke time.
+  description: >-
+    Emits a list of values as a stream, in order. The list can be fixed in the
+    declaration or supplied at the call site, which lets a stored or computed value be
+    replayed into a streaming consumer.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#of
@@ -76,7 +77,10 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: Collect
-  description: Drains an input stream to completion and returns every item as an array, in order.
+  description: >-
+    Drains a stream to completion and returns every value as a list, in order. Running
+    it drives whatever produces the stream, and the collected list can then be
+    inspected or aggregated. Buffered, so it needs a finite stream.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#collect

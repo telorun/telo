@@ -5,7 +5,12 @@ metadata:
   version: 0.3.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Workflow orchestration with pluggable backend providers
+  categories: [Coordination]
+  description: >-
+    Durable workflow orchestration: a named graph of steps, each calling a resource,
+    executed by a workflow engine that owns retries, state and recovery so a run
+    survives crashes and restarts. The engine is configurable, and each step can carry
+    engine-specific execution options.
 exports:
   kinds:
     - Backend
@@ -14,12 +19,19 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Backend
+  description: >-
+    A configured connection to the engine that executes workflows and owns their
+    durable state, retries and recovery. It also declares the per-step execution
+    options it accepts, so a graph's options are checked against the engine actually
+    running it.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
 metadata:
   name: Graph
-  description: Runs a graph of invocable nodes on a pluggable workflow backend.
+  description: >-
+    Runs a named graph of steps on a workflow engine, each step calling a resource and
+    carrying its own engine-specific execution options such as retries and timeouts.
 capability: Telo.Runnable
 schema:
   type: object

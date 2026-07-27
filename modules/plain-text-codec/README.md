@@ -21,10 +21,36 @@ Plain-text codec — UTF-8 string ↔ byte iterables. The encoder accepts `{delt
 kind: Telo.Application
 metadata: { name: plain-text-stream, version: 1.0.0 }
 imports:
-  PlainText: std/plain-text-codec@latest
+  PlainText: std/plain-text-codec@0.6.0
+  Http: std/http-server@0.19.1
+  Stream: std/stream@0.5.0
+ports:
+  http: { env: PORT, default: 3000 }
+targets: [ !ref Server ]
+---
+kind: Stream.Of
+metadata: { name: Lines }
+items: [ "hello ", "telo" ]
+---
+kind: PlainText.Encoder
+metadata: { name: Out }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  - request: { path: /text, method: GET }
+    handler: !ref Lines
+    returns:
+      - status: 200
+        mode: stream            # pipe the handler's stream through an encoder
+        content:
+          text/plain:
+            encoder: !ref Out
 ---
 kind: Http.Server
-metadata: { name: Stream }
-encoders:
-  text/plain: { kind: PlainText.Encoder, name: Out }
+metadata: { name: Server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref Api
 ```

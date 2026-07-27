@@ -31,7 +31,7 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 kind: Telo.Application
 metadata: { name: Hello, version: 1.0.0 }
 imports:
-  Console: std/console@<version>
+  Console: std/console@0.12.0
 targets:
   - invoke: !ref Console.writeLine
     inputs:
@@ -95,9 +95,9 @@ Inside a `Run.Sequence`, wire an upstream stream to the resource's `input`:
 
 ```yaml
 - name: Print
-  invoke: { kind: Console.WriteStream, name: Stdout }
+  invoke: !ref Stdout
   inputs:
-    input: "${{ steps.SomeProducer.result.output }}"
+    input: !cel "steps.SomeProducer.result.output"
 ```
 
 `WriteStream` pairs naturally with text producers like `RecordStream.ExtractText` (`Stream<string>`) and with byte-producing codecs like `Ndjson.Encoder` / `Sse.Encoder` / `Octet.Encoder` (`Stream<Uint8Array>`).
@@ -115,13 +115,13 @@ prefix: "{magenta.bold ai}  > "
 
 ```yaml
 - name: Spin
-  invoke: { kind: Console.StreamWait, name: ChatSpinner }
+  invoke: !ref ChatSpinner
   inputs:
-    input: "${{ steps.SomeProducer.result.output }}"
+    input: !cel "steps.SomeProducer.result.output"
 - name: Print
   invoke: { kind: Console.WriteStream }
   inputs:
-    input: "${{ steps.Spin.result.output }}"
+    input: !cel "steps.Spin.result.output"
 ```
 
 Every byte emitted by `StreamWait` flows through its output stream — the resource never writes to stdout directly. The downstream sink (typically `Console.WriteStream`) is the sole writer, so there's no two-writer race.

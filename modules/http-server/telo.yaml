@@ -5,11 +5,12 @@ metadata:
   version: "0.20.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Transport]
   description: >-
-    HTTP server and routing. `Http.Server` is the listener (port, host, CORS,
-    OpenAPI, mounts); `Http.Api` is a mountable router whose routes declare a
-    request schema, a CEL-mapped handler, and conditional typed responses
-    (buffered or streamed).
+    Serving HTTP: a listener bound to a port with CORS and generated OpenAPI docs,
+    routers whose routes validate the request against a schema, map it into a handler
+    with CEL, and render conditional typed responses buffered or streamed, and a
+    static file router with SPA fallback for shipping a frontend alongside the API.
 imports:
   # Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
   # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the

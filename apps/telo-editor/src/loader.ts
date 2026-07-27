@@ -92,6 +92,7 @@ export {
   getImportableLibraries,
   hasApplicationImporter,
   isWorkspaceModule,
+  resolveContract,
 } from "./loader/queries";
 export type { ImportableLibrary } from "./loader/queries";
 export { buildFileTree } from "./loader/file-tree";

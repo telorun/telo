@@ -5,7 +5,12 @@ metadata:
   version: 0.14.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Run sequence of invocable resources with if, while, switch, and try steps
+  categories: [Compute]
+  description: >-
+    Control flow for manifests: ordered sequences of steps with conditionals, loops,
+    switches and error handling; iteration and mapping over collections at a chosen
+    concurrency; first-match decision tables; pure value shaping with CEL; and
+    background dispatch that returns without waiting.
 exports:
   kinds:
     - Sequence

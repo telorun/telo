@@ -68,16 +68,16 @@ metadata: { name: TeeStream }
 
 ```yaml
 - name: Tee
-  invoke: { kind: RecordStream.Tee, name: TeeStream }
+  invoke: !ref TeeStream
   inputs:
-    input: "${{ steps.SomeProducer.result.output }}"
+    input: !cel "steps.SomeProducer.result.output"
 - name: Branch1
   inputs:
-    input: "${{ steps.Tee.result.outputA }}"
+    input: !cel "steps.Tee.result.outputA"
   invoke: { kind: ... }
 - name: Branch2
   inputs:
-    input: "${{ steps.Tee.result.outputB }}"
+    input: !cel "steps.Tee.result.outputB"
   invoke: { kind: ... }
 ```
 

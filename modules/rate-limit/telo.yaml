@@ -5,12 +5,13 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Performance, Reliability]
   description: |
-    RateLimit.Guard — a transport-neutral sliding-window rate limiter. Counters
-    live in any Cache.Store (cache-memory, cache-redis), so the limiter composes
-    with whichever backend is wired. The key is an explicit input (a client IP,
-    API key, user, tenant); the guard is non-throwing — it returns a verdict and
-    the caller maps the response.
+    Throttling and quota enforcement per client, tenant or API key: a sliding-window
+    limiter that counts requests, and a windowed budget that debits a weighted cost —
+    tokens, bytes, any metered spend — reserving up front and settling to the actual
+    amount. Both return a verdict with what remains and when to retry, rather than
+    raising.
 imports:
   Cache: ../cache
 exports:
@@ -21,7 +22,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Guard
-  description: Sliding-window rate limiter over a Cache.Store returning an allow/deny verdict with remaining and retry-after.
+  description: >-
+    Limits how many requests a key — a client IP, API key, user or tenant — may make
+    within a sliding window. Returns whether this one is allowed, how many remain and
+    how long until the window frees, instead of raising.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/rate-limit@0.4.0?local_path=./nodejs#guard
@@ -85,7 +89,11 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Budget
-  description: Windowed weighted-spend budget over a Cache.Store using two-phase reserve/settle to bound metered cost per key.
+  description: >-
+    Caps metered spend per key within a window — model tokens, bytes, credits. Work
+    reserves its worst-case cost up front and settles to the actual cost afterwards,
+    so concurrent callers can never overshoot the ceiling and abandoned work cannot
+    leak budget.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/rate-limit@0.4.0?local_path=./nodejs#budget

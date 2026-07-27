@@ -5,12 +5,11 @@ metadata:
   version: 0.4.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage]
   description: |
-    SqlPostgres.Connection — a PostgreSQL backend for the Sql.Connection
-    abstract. Speaks the standard `postgres://` URL with libpq `sslmode`,
-    backed by a `pg` connection pool. Operations
-    (Sql.Query / Sql.Command / Sql.Selection / Sql.Transaction / Sql.Migrations)
-    in the `sql` core run against it; the core itself depends on no driver.
+    Connects an application to a PostgreSQL database over a standard `postgres://`
+    URL, with TLS modes and a pooled set of connections shared by every query,
+    statement, transaction and migration the application runs.
 imports:
   Sql: ../sql
 exports:
@@ -20,7 +19,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Connection
-  description: Provides a pooled PostgreSQL connection for Sql.Connection operations, configured by a postgres:// URL.
+  description: >-
+    A pooled connection to a PostgreSQL database, configured by a `postgres://` URL
+    with the usual TLS modes and pool sizing, and shared by every operation that
+    references it.
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:

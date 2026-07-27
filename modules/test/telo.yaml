@@ -5,7 +5,11 @@ metadata:
   version: 0.6.7
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Test discovery and execution
+  categories: [Testing]
+  description: >-
+    Finds test manifests by glob pattern and runs each one in its own fresh runtime,
+    several at a time, reporting pass and failure per test. The entry point for a
+    project's test suite.
 exports:
   kinds:
     - Suite
@@ -13,7 +17,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Suite
-  description: Discovers test manifests by glob and runs them with optional filtering and bounded concurrency.
+  description: >-
+    Discovers test manifests by include and exclude globs, optionally narrowed by a
+    substring filter, and runs them with a bounded number in flight at once.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/test@0.4.53?local_path=./nodejs#suite

@@ -5,10 +5,12 @@ metadata:
   version: "0.6.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Configuration]
   description: >-
-    Environment and configuration providers. Deprecated in favour of
-    application-level `variables:` / `secrets:` with `env:` bindings; retained
-    for backwards compatibility.
+    Reads configuration values and secrets out of environment variables into typed,
+    schema-checked values a manifest can reference. Deprecated in favour of declaring
+    variables and secrets directly on the application with env bindings; kept for
+    backwards compatibility.
 exports:
   kinds:
     - EnvironmentVariableStore
@@ -98,12 +100,11 @@ schema:
 kind: "Telo.Definition"
 metadata:
   name: "Env"
-  description: |
-    [Deprecated] Prefer declaring `variables:` / `secrets:` directly on
-    Telo.Application with per-field `env:` mappings. The Application-level
-    contract lands the values in the root `variables.X` / `secrets.X` CEL
-    scope without an intermediate resource. Config.Env continues to work for
-    now.
+  description: >-
+    Reads typed variables and secrets from named environment variables, each with an
+    optional default. Deprecated: declare variables and secrets on the application
+    with env bindings instead, which lands the same values without an intermediate
+    resource.
 capability: Telo.Provider
 controllers:
   - pkg:npm/@telorun/config@0.3.2?local_path=./nodejs#env-controller

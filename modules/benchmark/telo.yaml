@@ -5,7 +5,12 @@ metadata:
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Load benchmarking for any invocable Telo resource
+  categories: [Testing, Performance]
+  description: >-
+    Load and performance benchmarking for any callable resource: drives weighted
+    scenarios at a chosen concurrency for a duration or a request count, discards a
+    warm-up window, and reports latency percentiles and error rate — optionally
+    failing the run when a threshold is exceeded.
 exports:
   kinds:
     - Suite
@@ -13,7 +18,11 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Suite
-  description: Runs weighted load scenarios against invocable resources and reports latency and error-rate metrics.
+  description: >-
+    Runs weighted load scenarios against callable resources at a set concurrency,
+    bounded by a duration or a total request count, and reports latency percentiles
+    and error rate. A CEL check marks a bad result as an error; thresholds turn the
+    report into a pass/fail gate.
 capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/benchmark@0.5.0?local_path=./nodejs#suite

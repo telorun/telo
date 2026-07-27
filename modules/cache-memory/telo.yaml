@@ -5,10 +5,12 @@ metadata:
   version: 0.5.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Performance, Storage]
   description: |
-    CacheMemory.Store — an in-process, freshness-aware backend for the Cache
-    abstract. Zero external dependencies; ideal for single-instance deployments,
-    tests, and as the `fallback` store behind CacheRedis.Store.
+    In-process cache storage: entries live in the running process's memory with the
+    usual fresh and stale windows, bounded by a maximum entry count. Needs no
+    external service, so it suits single-instance deployments, local development
+    and tests.
 imports:
   Cache: ../cache
 exports:
@@ -18,7 +20,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: In-process freshness-aware Cache.Store backend with FIFO eviction for single-instance use and tests.
+  description: >-
+    Caches entries in the process's own memory, bounded by a maximum entry count that
+    evicts the oldest write first. Nothing is shared between instances and nothing
+    survives a restart.
 capability: Telo.Provider
 extends: Cache.Store
 controllers:

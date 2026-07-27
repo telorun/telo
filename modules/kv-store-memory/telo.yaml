@@ -5,13 +5,12 @@ metadata:
   version: 0.2.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage]
   description: |
-    KvStoreMemory.Store — an in-process KvStore.Store backend. Conditional writes
-    are atomic within the single-threaded event loop, so the guarantees hold for
-    ONE process. Records do not survive a
-    restart and are not shared across instances: this is a development and test
-    backend. Use kv-store-sql or kv-store-redis anywhere the guarantee
-    must outlive the process.
+    In-process key/value storage with atomic conditional writes, held in the running
+    process's memory. The atomicity holds within one process only — records are not
+    shared between instances and do not survive a restart — so it fits development,
+    tests and single-process runs.
 files:
   - nodejs/*.mjs
 imports:
@@ -23,7 +22,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Store
-  description: In-process KvStore.Store backend for single-process development and tests; records do not survive a restart.
+  description: >-
+    Stores records in the process's own memory, where conditional writes are atomic
+    within that one process. Nothing is shared between instances or survives a
+    restart, and a ceiling on retained records fails loudly rather than dropping one.
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:

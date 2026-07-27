@@ -5,11 +5,12 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    YAML parsing for Telo manifests. Currently exposes `Yaml.Parse` — a batch
-    parser that accepts a UTF-8 string and returns the parsed documents as plain
-    JS values. Multi-document files are handled natively (`docs[]`); single-doc
-    callers read `docs[0]`.
+    Turns YAML text into ordinary data a manifest can read — configuration files,
+    front matter, API payloads. Multi-document files come back as a list of documents
+    in source order, and invalid input fails with the parser's line and column rather
+    than silently.
 exports:
   kinds:
     - Parse
@@ -19,7 +20,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Parse
-  description: Parses a UTF-8 YAML string into its documents, returning multi-document files as docs[].
+  description: >-
+    Parses YAML text into plain data, returning every document in the source in order,
+    so multi-document files need no special handling. Invalid input raises with the
+    parser's position.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/yaml@0.4.2?local_path=./nodejs#parse

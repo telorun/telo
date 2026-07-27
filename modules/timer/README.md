@@ -20,8 +20,10 @@ Time-based primitives for Telo manifests. `Timer.Delay` waits for a duration, th
 kind: Telo.Application
 metadata: { name: paced-pipeline, version: 1.0.0 }
 imports:
-  Timer: std/timer@latest
-  Run: std/run@latest
+  Timer: std/timer@0.4.0
+  Run: std/run@0.13.0
+  Console: std/console@0.12.0
+targets: [ !ref Paced ]
 ---
 kind: Run.Sequence
 metadata: { name: Paced }
@@ -29,6 +31,7 @@ steps:
   - name: Wait
     inputs: { duration: "2s" }
     invoke: { kind: Timer.Delay }
-  - name: Next
-    # ... runs after the 2s delay
+  - name: Next          # runs after the 2s delay
+    inputs: { output: "done" }
+    invoke: !ref Console.writeLine
 ```

@@ -45,10 +45,10 @@ An unsupported operator throws rather than silently matching, preserving parity 
 
 ```yaml
 imports:
-  Sql: std/sql@latest
-  Postgres: std/sql-postgres@latest
-  VectorStore: std/vector-store@latest
-  VectorStorePgvector: std/vector-store-pgvector@latest
+  Sql: std/sql@0.13.0
+  Postgres: std/sql-postgres@0.4.0
+  VectorStore: std/vector-store@0.4.0
+  VectorStorePgvector: std/vector-store-pgvector@0.3.0
 ---
 kind: Postgres.Connection
 metadata: { name: Db }

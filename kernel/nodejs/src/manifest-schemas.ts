@@ -18,6 +18,11 @@ const metadataSchema = {
   properties: {
     name: { type: "string" },
     module: { type: "string" },
+    // Discovery facet — an unordered set of domain labels (`[AI, Storage]`) the
+    // hub and the editor group by. Open vocabulary: any label is legal, and
+    // consumers group by whatever they find. The hub derives a match slug from
+    // each label at index time, so casing and punctuation don't fork a group.
+    categories: { type: "array", items: { type: "string" } },
   },
   additionalProperties: true,
 };

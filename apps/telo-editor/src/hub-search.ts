@@ -19,6 +19,13 @@ export interface HubMatchedKind {
 }
 
 /** A `/search/modules` hit — a module grouped with the kinds that matched. */
+/** One facet value: the label the module's author wrote, and the slug the hub
+ *  derived from it (what a filter matches). */
+export interface HubCategory {
+  slug: string;
+  label: string;
+}
+
 export interface HubModuleHit {
   module: {
     ref: string;
@@ -26,6 +33,8 @@ export interface HubModuleHit {
     description: string;
     repository: string;
     license: string;
+    /** Declared categories. Absent on a hub that predates the facet. */
+    categories?: HubCategory[];
   };
   score: number;
   matchedKinds: HubMatchedKind[];

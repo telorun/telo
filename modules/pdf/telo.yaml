@@ -5,11 +5,13 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    PDF primitives — rasterize pages to PNG images and author editable
-    AcroForm fields at measured coordinates. Both kinds share one coordinate
-    space: pixels of the rendered image, top-left origin, at the configured
-    render scale.
+    Working with PDF documents: render a page to an image at a chosen scale, and add
+    editable form fields — text boxes, checkboxes, signatures — at measured positions.
+    Both share one coordinate space, the pixels of the rendered image from the
+    top-left, so what a model or a human measures on the image is where the field
+    lands.
 exports:
   kinds:
     - Rasterizer
@@ -128,7 +130,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: FormFields
-  description: Adds editable AcroForm text/checkbox fields to a PDF at image-pixel coordinates, returning new PDF bytes.
+  description: >-
+    Adds editable form fields — text boxes and checkboxes — to an existing PDF at
+    positions measured in rendered-image pixels, and returns the new document's bytes.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/pdf@0.2.1?local_path=./nodejs#form-fields

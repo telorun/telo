@@ -5,15 +5,13 @@ metadata:
   version: 0.2.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Reliability, Coordination]
   description: |
-    Idempotency.Once — durable at-most-once execution. Wraps a body that acts on
-    the outside world (charging a card, sending mail, firing a webhook) and runs
-    it AT MOST ONCE per key, across retries and process restarts. Backed by a
-    KvStore.Store, so the "has this already run?" check and the claim are a
-    single atomic operation — there is no window between them for a double
-    execution to slip through. A completed result is replayed; a failure releases
-    the key so a retry is possible; a holder that dies frees the key when its
-    claim lapses.
+    At-most-once execution for work that touches the outside world — charging a card,
+    sending mail, firing a webhook. Wrapped work runs once per idempotency key across
+    retries, concurrent callers and process restarts; later calls replay the stored
+    result instead of repeating it, and a caller that dies frees the key rather than
+    wedging it.
 files:
   - nodejs/*.mjs
 imports:
@@ -34,7 +32,11 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Once
-  description: Runs a wrapped body at most once per key against a KvStore.Store, replaying the stored result on a repeat call.
+  description: >-
+    Runs wrapped work at most once per key, durably: the first caller claims the key
+    and runs it, later callers replay the stored result, and a caller that arrives
+    while the work is still in flight is told so rather than repeating it. Claims are
+    time-bounded and renewed, so a crash frees the key.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/once.mjs#once

@@ -50,9 +50,9 @@ window: "1h"
 
 ```yaml
 imports:
-  Cache: std/cache@latest
-  CacheMemory: std/cache-memory@latest
-  RateLimit: std/rate-limit@latest
+  Cache: std/cache@0.5.0
+  CacheMemory: std/cache-memory@0.5.0
+  RateLimit: std/rate-limit@0.5.0
 ---
 kind: CacheMemory.Store
 metadata: { name: Counters }

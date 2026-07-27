@@ -5,7 +5,12 @@ metadata:
   version: 0.12.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: OpenAI-compatible provider for Ai.Model (direct /chat/completions HTTP API, no vendor SDK).
+  categories: [AI]
+  description: >-
+    Language-model access for OpenAI and any OpenAI-compatible endpoint — Azure
+    OpenAI, gateways, self-hosted servers — over the chat completions HTTP API with no
+    vendor SDK. Supplies buffered completions, token streaming and tool calling to
+    whichever operation holds the model.
 imports:
   Ai: ../ai
 exports:
@@ -15,7 +20,10 @@ exports:
 kind: Telo.Definition
 metadata:
   name: OpenaiModel
-  description: Configure an OpenAI-compatible chat model via the direct /chat/completions API for Ai consumers.
+  description: >-
+    A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, API key,
+    an optional base URL for gateways or Azure, and default request options that
+    per-call overrides win over.
 capability: Telo.Provider
 extends: Ai.Model
 controllers:

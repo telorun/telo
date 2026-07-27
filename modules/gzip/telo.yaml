@@ -5,10 +5,12 @@ metadata:
   version: 0.4.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Gzip codec — Uint8Array stream ↔ Uint8Array stream. Encoder wraps Node
-    `zlib.createGzip()` (compress); Decoder wraps `zlib.createGunzip()`
-    (decompress). Pair with Content-Type `application/gzip`.
+    Gzip compression and decompression as a streaming codec: bytes in, compressed
+    bytes out, and back again. Both directions stay streaming, so a gzipped payload
+    can be piped straight into another decoder — an archive extractor, a text
+    decoder — without buffering the whole thing.
 imports:
   Codec: ../codec
 exports:
@@ -20,7 +22,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
-  description: Gzip-compresses a byte stream into a gzip-compressed byte stream.
+  description: >-
+    Compresses a byte stream with gzip as it flows, so a payload can be shrunk on its
+    way to the wire without being buffered whole.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
@@ -37,7 +41,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Decoder
-  description: Gunzips a gzip byte stream into a decompressed byte stream, kept streaming for downstream decoders.
+  description: >-
+    Decompresses a gzip byte stream. The output stays a stream so it pipes straight
+    into a downstream decoder instead of being buffered whole.
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:

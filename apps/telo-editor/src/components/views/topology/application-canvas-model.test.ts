@@ -42,7 +42,7 @@ function kind(
   schema: Record<string, unknown> = {},
 ): AvailableKind {
   const [alias, kindName] = fullKind.split(".");
-  return { fullKind, alias, kindName, capability, schema };
+  return { fullKind, alias, kindName, capability, schema, categories: [] };
 }
 
 function appManifest(): ApplicationManifest {

@@ -5,12 +5,12 @@ metadata:
   version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Storage, AI]
   description: |
-    The VectorStore.Store abstract — a backend-pluggable vector index — plus the
-    Record / Match / Removal invocables that upsert, query, and delete vectors
-    against any store. Backend implementations (vector-store-memory,
-    vector-store-pgvector, …) live in their own modules and extend Store,
-    mirroring the cache / cache-memory family.
+    Semantic search over an index of vectors: store embeddings with ids and metadata,
+    query for the nearest neighbours of a vector with scores, and delete by id or by a
+    metadata filter. The retrieval half of a RAG pipeline — the embedding itself
+    happens upstream.
 imports:
   Type: ../type
 exports:
@@ -28,6 +28,11 @@ exports:
 kind: Type.JsonSchema
 metadata:
   name: MetadataFilter
+  description: >-
+    The filter grammar for constraining candidates by their metadata: equality,
+    comparison, set membership, and and/or/not combinations. Shared by querying and
+    deletion, so an unsupported operator fails statically instead of drifting per
+    backend.
 schema:
   type: object
   minProperties: 1
@@ -64,6 +69,10 @@ schema:
 kind: Telo.Abstract
 metadata:
   name: Store
+  description: >-
+    A configured vector index that holds embeddings with their ids and metadata. It
+    owns the similarity metric and the vector dimension, and enforces that every
+    written vector matches, so writes and queries agree on one geometry.
 capability: Telo.Provider
 ---
 # VectorStore.Record — upsert vectors with ids + metadata. Batch-first; the
@@ -71,7 +80,9 @@ capability: Telo.Provider
 kind: Telo.Definition
 metadata:
   name: Record
-  description: Upserts a batch of vectors with ids and metadata into a vector store, returning the written ids.
+  description: >-
+    Writes a batch of vectors into the index, each with an id and optional metadata,
+    replacing any entry that already has that id. Returns the ids written, in order.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#record
@@ -123,7 +134,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Match
-  description: Runs a nearest-neighbour vector query against a store, returning the top-K matches with scores and metadata.
+  description: >-
+    Finds the entries nearest to a query vector and returns them with similarity
+    scores and metadata, limited to a chosen number and optionally narrowed by a
+    metadata filter first.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#match
@@ -184,7 +198,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Removal
-  description: Deletes vectors from a store by id list and/or metadata filter, returning the count removed.
+  description: >-
+    Deletes entries from the index by id, by a metadata filter, or both, and reports
+    how many were removed.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#removal

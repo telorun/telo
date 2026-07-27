@@ -5,11 +5,13 @@ metadata:
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Transport, AI]
   description: |
-    Model Context Protocol (MCP) client resource kinds. Transport-pluggable:
-    Mcp.HttpClient (Streamable HTTP) and Mcp.StdioClient (child-process stdio)
-    both implement the Mcp.Client abstract. Mcp.ToolsCall and Mcp.ToolsList
-    dispatch RPCs through any concrete client without transport knowledge.
+    Talks to Model Context Protocol (MCP) servers: list the tools a server advertises
+    and call one by name with arguments, getting back its content blocks. Connect over
+    Streamable HTTP with managed sessions, or by spawning the server as a child
+    process and speaking JSON-RPC over its stdio — the calls themselves are the same
+    either way.
 exports:
   kinds:
     - Client
@@ -27,6 +29,10 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Client
+  description: >-
+    A connection to an MCP server that carries JSON-RPC requests and returns the
+    result payload. Each transport handles its own framing, session lifecycle and
+    negotiation, so callers issue the same request whatever the connection is.
 capability: Telo.Invocable
 inputType:
   kind: Type.JsonSchema
@@ -71,6 +77,10 @@ outputType:
 kind: Telo.Abstract
 metadata:
   name: SessionProvider
+  description: >-
+    Supplies the MCP session id to send with each request, for endpoints where the
+    session is issued elsewhere — a stored secret, a per-caller lookup, a token
+    exchange. When one is supplied the connection never performs its own handshake.
 capability: Telo.Provider
 outputType:
   kind: Type.JsonSchema
@@ -95,7 +105,10 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: HttpClient
-  description: Connects to an MCP endpoint over Streamable HTTP, managing session handshake and dispatching JSON-RPC requests.
+  description: >-
+    Connects to a remote MCP endpoint over Streamable HTTP, performing the initial
+    handshake, caching the session and re-establishing it when the server rejects it.
+    Where sessions are issued elsewhere, it forwards a supplied one instead.
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
@@ -153,7 +166,11 @@ schema:
 kind: Telo.Definition
 metadata:
   name: StdioClient
-  description: Spawns and manages an MCP server child process, exchanging JSON-RPC over its stdin/stdout.
+  description: >-
+    Runs an MCP server as a long-lived child process and exchanges JSON-RPC over its
+    standard input and output. The process is the session: it starts with the
+    resource, gets a chosen command, arguments and environment, and is shut down
+    gracefully on teardown.
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
@@ -208,7 +225,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: ToolsCall
-  description: Invokes a named MCP tool via tools/call on a referenced Mcp.Client and returns its content blocks.
+  description: >-
+    Calls a named tool on a connected MCP server with an arguments object and returns
+    its content blocks — text, images, audio, or linked and embedded resources. A tool
+    that reports failure raises instead of returning.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#tools-call
@@ -307,7 +327,9 @@ outputType:
 kind: Telo.Definition
 metadata:
   name: ToolsList
-  description: Lists the tools advertised by an MCP server via tools/list on a referenced Mcp.Client.
+  description: >-
+    Lists the tools a connected MCP server advertises, each with its name, description
+    and the JSON Schema of the arguments it accepts.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/mcp-client@0.5.0?local_path=./nodejs#tools-list

@@ -5,13 +5,13 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [AI]
   description: |
-    The Embedding.Model abstract — a backend-pluggable text embedding model —
-    plus the Query / Passage invocables that turn text into vectors. Asymmetric
-    retrieval models embed a search query differently from a stored passage;
-    the two kinds make that intent structural. Backend implementations
-    (embedding-openai, …) live in their own modules and extend Model, mirroring
-    the cache / cache-memory family.
+    Turns text into vectors for semantic search over any embedding provider. Search
+    queries and stored passages are embedded through separate operations, because
+    retrieval models wrap each intent differently and indexing with one wrapper while
+    searching with another quietly ruins recall. Single texts or batches, in and out
+    in order.
 exports:
   kinds:
     - Model
@@ -33,6 +33,10 @@ exports:
 kind: Telo.Abstract
 metadata:
   name: Model
+  description: >-
+    A configured text-embedding model: credentials, checkpoint and the prompt
+    templates that wrap a text depending on whether it is being searched for or
+    indexed. Held by the embedding operations rather than invoked directly.
 capability: Telo.Provider
 schema:
   type: object
@@ -65,7 +69,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Query
-  description: Embed one or more search queries into vectors for retrieval using any Embedding.Model.
+  description: >-
+    Embeds one search query, or a batch of them, into vectors for retrieval, using the
+    model's query-side wrapping. Returns one vector per input in order, with the
+    vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/embedding@0.4.0?local_path=./nodejs#query
@@ -127,7 +134,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Passage
-  description: Embed one or more stored passages into vectors for indexing using any Embedding.Model.
+  description: >-
+    Embeds one passage, or a batch of them, into vectors for indexing, using the
+    model's document-side wrapping. Returns one vector per input in order, with the
+    vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/embedding@0.4.0?local_path=./nodejs#passage

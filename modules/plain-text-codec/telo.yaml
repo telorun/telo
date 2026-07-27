@@ -5,12 +5,11 @@ metadata:
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
+  categories: [Data]
   description: |
-    Plain-text codec — UTF-8 string ↔ byte iterables. Encoder accepts
-    `{delta: string}` (the AI streaming shape), bare strings, or `Uint8Array`
-    pass-through; emits UTF-8 bytes. Decoder collects a `Stream<Uint8Array>`
-    into a single UTF-8 string. Pair with Content-Type `text/plain;
-    charset=utf-8`.
+    Plain UTF-8 text on the wire: a stream of text pieces — including the delta
+    records a model emits while streaming — becomes bytes, and a byte stream is
+    collected back into one string. The simplest way to serve or read a text payload.
 imports:
   Codec: ../codec
 exports:
@@ -23,7 +22,9 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Encoder
-  description: Encodes {delta}/string/Uint8Array records into a UTF-8 byte stream.
+  description: >-
+    Encodes a stream of text into UTF-8 bytes, accepting plain strings, streaming
+    delta records, or bytes passed straight through.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
@@ -37,7 +38,9 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Decoder
-  description: Collects a byte stream into a single UTF-8 string.
+  description: >-
+    Collects a byte stream into a single UTF-8 string, for when a text payload has to
+    be held whole rather than consumed piece by piece.
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:

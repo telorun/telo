@@ -27,16 +27,38 @@ in, a `Stream<Uint8Array>` out.
 kind: Telo.Application
 metadata: { name: gunzip-upload, version: 1.0.0 }
 imports:
-  Gzip: std/gzip@latest
-  Tar: std/tar@latest
+  Gzip: std/gzip@0.4.0
+  Tar: std/tar@0.4.0
+  PlainText: std/plain-text-codec@0.6.0
+  Run: std/run@0.13.0
+targets: [ !ref ReadManifest ]
 ---
-# A `.tar.gz` upload: gunzip, then pull one entry out of the archive.
-- name: gunzip
-  inputs: { input: "${{ request.body }}" }
-  invoke: { kind: Gzip.Decoder, name: Decode }
-- name: manifest
-  inputs:
-    input: "${{ steps.gunzip.result.output }}"
-    path: telo.yaml
-  invoke: { kind: Tar.Extract, name: Pick }
+kind: Gzip.Decoder
+metadata: { name: Decode }
+---
+kind: Tar.Extract
+metadata: { name: Pick }
+---
+kind: PlainText.Decoder
+metadata: { name: ToText }
+---
+# A `.tar.gz` payload: gunzip, pull one entry out of the archive, read it as text.
+kind: Run.Sequence
+metadata: { name: ReadManifest }
+inputs:
+  archive: {}                   # a Stream<Uint8Array> — an upload, a file read, …
+steps:
+  - name: gunzip
+    inputs: { input: !cel "inputs.archive" }
+    invoke: !ref Decode
+  - name: manifest
+    inputs:
+      input: !cel "steps.gunzip.result.output"
+      path: telo.yaml
+    invoke: !ref Pick
+  - name: text
+    inputs: { input: !cel "steps.manifest.result.output" }
+    invoke: !ref ToText
+outputs:
+  manifest: !cel "steps.text.result.text"
 ```

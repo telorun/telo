@@ -5,7 +5,12 @@ metadata:
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  description: Named CRUD handlers that generate SQL from domain operations
+  categories: [Storage, Data]
+  description: >-
+    Table-level create, read, update and delete handlers that generate their SQL from
+    the shape of the call: filters become a WHERE clause, a data object becomes the
+    column list. Values always bind as parameters, so a domain operation maps to a
+    table without hand-written statements.
 exports:
   kinds:
     - Read
@@ -19,11 +24,9 @@ kind: Telo.Definition
 metadata:
   name: Read
   description: >-
-    Fetches rows from a database table by generating a `SELECT * FROM <table>`
-    query, appending a `WHERE col = ?` clause joined with AND for each entry in
-    the invocation's `filters` map (no filters means every row). Runs the query
-    over a referenced SQL connection with the filter values passed as positional
-    bindings, and returns the matching rows.
+    Fetches rows from a table, filtering on each column given at the call site and
+    returning every row when none are. Filter values bind as parameters rather than
+    being written into the statement.
 capability: Telo.Invocable
 schema:
   type: object
@@ -59,11 +62,9 @@ kind: Telo.Definition
 metadata:
   name: Create
   description: >-
-    Inserts a new row into a database table by generating an
-    `INSERT INTO <table> (cols) VALUES (?, ?, …)` statement from the keys of the
-    invocation's `data` object, so a domain object maps straight to a column
-    list. Executes the statement over a referenced SQL connection with the
-    object's values passed as positional bindings.
+    Inserts a row into a table, taking the columns from the keys of the object passed
+    at the call site so a domain object maps straight to a row. Values bind as
+    parameters.
 capability: Telo.Invocable
 schema:
   type: object
@@ -97,11 +98,8 @@ kind: Telo.Definition
 metadata:
   name: Delete
   description: >-
-    Removes rows from a database table by generating a
-    `DELETE FROM <table> WHERE col = ? AND …` statement from the invocation's
-    `filters` map, executed over a referenced SQL connection with the filter
-    values as positional bindings. A WHERE clause is always emitted, so at least
-    one filter is required to target the rows to delete.
+    Removes rows from a table matching the filters given at the call site. At least
+    one filter is required, so a call can never delete the whole table by omission.
 capability: Telo.Invocable
 schema:
   type: object
@@ -135,11 +133,9 @@ kind: Telo.Definition
 metadata:
   name: Update
   description: >-
-    Modifies existing rows in a database table by generating an
-    `UPDATE <table> SET col = ? … WHERE col = ? AND …` statement, taking the
-    assigned columns from the invocation's `data` object and the row selection
-    from its `filters` map. Executes over a referenced SQL connection with the
-    data values followed by the filter values as positional bindings.
+    Updates rows in a table, taking the columns to set from the data object given at
+    the call site and the rows to touch from its filters. All values bind as
+    parameters.
 capability: Telo.Invocable
 schema:
   type: object

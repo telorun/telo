@@ -5,7 +5,9 @@ metadata:
   description: |
     End-to-end tests for the hub's discovery HTTP surface, run against a live
     hub at http://localhost:8040 that has tracked the seeded refs
-    (std/console, std/timer). Covers /health, per-resource and per-module
+    (the `oci://ghcr.io/telorun/*` set in docker-compose `SEED_REFS`, which is
+    what a fresh database contains — assert only on those, never on a ref some
+    other test registers). Covers /health, per-resource and per-module
     search, /refs typeahead, and /module/versions including its 404 path.
 imports:
   HttpClient: std/http-client@0.8.0
@@ -19,6 +21,9 @@ targets:
   - !ref Refs_FuzzyMatchesSeededRef
   - !ref ModuleVersions_ListsSeededVersions
   - !ref ModuleVersions_UntrackedReturns404
+  - !ref Categories_ListsDeclaredFacet
+  - !ref SearchModules_FiltersByCategory
+  - !ref Implementations_ListsBackendsOfContract
 ---
 kind: Run.Sequence
 metadata: { name: Health }
@@ -47,7 +52,7 @@ steps:
             required: [status]
         required: [status, body]
 ---
-# The seeded std/timer module defines Timer.Delay; an intent-shaped lexical
+# The seeded timer module defines Timer.Delay; an intent-shaped lexical
 # query on "delay" must surface it as a kind hit carrying the exact location
 # ref + version (the shape search_resources / the editor build on).
 kind: Run.Sequence
@@ -100,7 +105,7 @@ steps:
                     module:
                       type: object
                       properties:
-                        ref: { const: std/timer }
+                        ref: { const: "oci://ghcr.io/telorun/timer" }
                       required: [ref]
                   required: [kind, module]
             required: [query, hits]
@@ -139,7 +144,7 @@ steps:
                     module:
                       type: object
                       properties:
-                        ref: { const: std/console }
+                        ref: { const: "oci://ghcr.io/telorun/console" }
                         repository: { type: string }
                         license: { type: string }
                       required: [ref, repository, license]
@@ -157,9 +162,10 @@ steps:
                     exportedKinds:
                       type: array
                       contains: { const: WriteLine }
-                    # A library's public surface is two lists — std/console
-                    # exports NO kinds, only these ready-made instances, so a
-                    # kinds-only index would show none of its entry points.
+                    # A library's public surface is two lists, and console is
+                    # the seeded module that has both: a kinds-only index would
+                    # miss `writeLine`, a ready-made instance an importer
+                    # references as `!ref <Alias>.writeLine`.
                     exportedResources:
                       type: array
                       contains: { const: writeLine }
@@ -197,7 +203,7 @@ steps:
                 contains:
                   type: object
                   properties:
-                    ref: { const: std/console }
+                    ref: { const: "oci://ghcr.io/telorun/console" }
                     latestVersion: { type: string, minLength: 1 }
                     description: { type: string }
                     repository: { type: string }
@@ -213,7 +219,7 @@ steps:
     invoke:
       kind: HttpClient.Request
       metadata: { name: HitModuleVersions }
-      url: http://localhost:8040/module/versions?ref=std/timer
+      url: http://localhost:8040/module/versions?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Ftimer
       method: GET
   - name: assert
     inputs:
@@ -229,11 +235,14 @@ steps:
           body:
             type: object
             properties:
-              ref: { const: std/timer }
+              ref: { const: "oci://ghcr.io/telorun/timer" }
+              # Not pinned to a version number: these are published modules
+              # whose newest release moves, and what this route owes a caller
+              # is a non-empty newest-first list for the ref it echoes back.
               versions:
                 type: array
                 minItems: 1
-                contains: { const: 0.1.0 }
+                items: { type: string, minLength: 1 }
             required: [ref, versions]
         required: [status, body]
 ---
@@ -301,8 +310,165 @@ steps:
                     module:
                       type: object
                       properties:
-                        ref: { const: std/timer }
+                        ref: { const: "oci://ghcr.io/telorun/timer" }
                       required: [ref]
                   required: [kind, module]
             required: [hits]
+        required: [status, body]
+---
+# The browse axes. Shape-only: which slugs exist depends on what the seeded
+# modules declare, and the seed set is deliberately small — what must hold is
+# that the facet query, the array-containment filter, and the contract join all
+# execute and project the documented shape.
+kind: Run.Sequence
+metadata: { name: Categories_ListsDeclaredFacet }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitCategories }
+      url: http://localhost:8040/categories
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertCategories }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              categories:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    # `category` is the derived slug (what a filter takes),
+                    # `label` the authored display text.
+                    category: { type: string }
+                    label: { type: string }
+                    modules: { type: integer }
+                  required: [category, label, modules]
+            required: [categories]
+        required: [status, body]
+---
+# Browse is the same endpoint with a facet filter and no query: the response
+# must carry the pagination contract (`total`) so a caller can tell a complete
+# listing from a truncated one.
+kind: Run.Sequence
+metadata: { name: SearchModules_FiltersByCategory }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitBrowseByCategory }
+      url: "http://localhost:8040/search/modules?q=&category=scheduling&limit=50"
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertBrowseByCategory }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              query: { const: "" }
+              category: { const: scheduling }
+              total: { type: integer }
+              hits:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    module:
+                      type: object
+                      properties:
+                        ref: { type: string }
+                        version: { type: string }
+                        # Slug matches the filter; label is whatever the author
+                        # wrote (`Scheduling`), which is what a chip prints.
+                        categories:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              slug: { type: string }
+                              label: { type: string }
+                            required: [slug, label]
+                          contains:
+                            type: object
+                            properties:
+                              slug: { const: scheduling }
+                            required: [slug]
+                      required: [ref, version, categories]
+                  required: [module]
+            required: [query, category, total, hits]
+        required: [status, body]
+---
+kind: Run.Sequence
+metadata: { name: Implementations_ListsBackendsOfContract }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitImplementations }
+      url: http://localhost:8040/implementations?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store&kind=Store
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertImplementations }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              extends:
+                type: object
+                properties:
+                  ref: { const: "oci://ghcr.io/telorun/kv-store" }
+                  kind: { const: Store }
+                required: [ref, kind]
+              # The seeded redis and memory backends both `extends` this
+              # abstract from their own modules, which is the whole point of
+              # the derived axis: the abstract's module never learns who
+              # implements it, the resolved (ref, kind) join does.
+              implementations:
+                type: array
+                minItems: 2
+                items:
+                  type: object
+                  properties:
+                    ref: { type: string }
+                    kind: { const: Store }
+                    capability: { type: string }
+                  required: [ref, kind, capability]
+                allOf:
+                  - contains:
+                      type: object
+                      properties:
+                        ref: { const: "oci://ghcr.io/telorun/kv-store-redis" }
+                      required: [ref]
+                  - contains:
+                      type: object
+                      properties:
+                        ref: { const: "oci://ghcr.io/telorun/kv-store-memory" }
+                      required: [ref]
+            required: [extends, implementations]
         required: [status, body]
