@@ -1,6 +1,11 @@
+import {
+  isNewerModuleVersion,
+  isSameModuleVersion,
+  parseVersionedRef,
+  withRefVersion,
+} from "@telorun/analyzer";
 import { ArrowUp, ChevronDown, X } from "lucide-react";
 import { useState } from "react";
-import { parseRegistryRef } from "../../../loader";
 import { getModuleFiles, summarizeResource } from "../../../diagnostics-aggregate";
 import type { ParsedImport } from "../../../model";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
@@ -25,7 +30,6 @@ import type { ViewProps } from "../types";
  *  path) with the add / remove / upgrade actions the sidebar used to host. */
 export function ImportsView({
   viewData,
-  registryServers,
   hubUrl,
   onAddImport,
   importableLibraries,
@@ -36,19 +40,24 @@ export function ImportsView({
 }: ViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const [upgradingAll, setUpgradingAll] = useState(false);
-  const upgrade = useImportUpgrade(registryServers, onUpgradeImport);
+  const upgrade = useImportUpgrade(hubUrl, onUpgradeImport, onUpgradeAllImports);
   const manifest = viewData.manifest;
   const imports = manifest.imports;
   const filePaths = getModuleFiles(manifest);
-  const latestVersions = useLatestVersions(imports, registryServers);
+  const latestVersions = useLatestVersions(imports, hubUrl);
 
   const outdated = imports.flatMap((imp) => {
-    const ref = imp.importKind === "registry" ? parseRegistryRef(imp.source) : null;
+    const ref = parseVersionedRef(imp.source);
     if (!ref) return [];
-    const latest = latestVersions.get(ref.moduleId);
-    if (!latest || latest === ref.version) return [];
-    return [{ name: imp.name, newSource: `${ref.moduleId}@${latest}` }];
+    const latest = latestVersions.get(ref.baseRef);
+    if (!latest || !isNewerModuleVersion(latest, ref.version)) return [];
+    return [
+      {
+        name: imp.name,
+        newSource: withRefVersion(imp.source, latest),
+        wasPinned: ref.integrity != null,
+      },
+    ];
   });
 
   async function handleImportLibrary(source: string, alias: string) {
@@ -60,14 +69,6 @@ export function ImportsView({
     }
   }
 
-  async function handleUpgradeAll() {
-    setUpgradingAll(true);
-    try {
-      await onUpgradeAllImports(outdated);
-    } finally {
-      setUpgradingAll(false);
-    }
-  }
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-900">
@@ -81,11 +82,11 @@ export function ImportsView({
               size="xs"
               variant="outline"
               className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
-              onClick={handleUpgradeAll}
-              disabled={upgradingAll}
+              onClick={() => upgrade.upgradeAll(outdated)}
+              disabled={upgrade.submitting}
             >
               <ArrowUp />
-              {upgradingAll ? "Upgrading…" : `Upgrade all (${outdated.length})`}
+              {upgrade.submitting ? "Upgrading…" : `Upgrade all (${outdated.length})`}
             </Button>
           )}
           {importableLibraries.length > 0 ? (
@@ -130,6 +131,24 @@ export function ImportsView({
       {importError && (
         <div className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
           Couldn&apos;t add import: {importError}
+        </div>
+      )}
+
+      {upgrade.submitError && (
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-red-300 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+          <span>Upgrade failed: {upgrade.submitError}</span>
+          <button type="button" onClick={upgrade.dismissNotices} aria-label="Dismiss">
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+
+      {upgrade.pinNotice && (
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+          <span>{upgrade.pinNotice}</span>
+          <button type="button" onClick={upgrade.dismissNotices} aria-label="Dismiss">
+            <X className="size-3.5" />
+          </button>
         </div>
       )}
 
@@ -196,9 +215,9 @@ function ImportTableRow({
   onRemove,
   onOpenModule,
 }: ImportTableRowProps) {
-  const ref = imp.importKind === "registry" ? parseRegistryRef(imp.source) : null;
-  const latest = ref ? latestVersions.get(ref.moduleId) : undefined;
-  const outdated = ref != null && latest != null && latest !== ref.version;
+  const ref = parseVersionedRef(imp.source);
+  const latest = ref ? latestVersions.get(ref.baseRef) : undefined;
+  const outdated = ref != null && latest != null && isNewerModuleVersion(latest, ref.version);
   const diagState = useDiagnosticsState();
   const summary = summarizeResource(diagState, filePaths, imp.name);
 
@@ -209,19 +228,21 @@ function ImportTableRow({
         <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
       )}
       {upgrade.activeName === imp.name && upgrade.error && (
-        <DropdownMenuItem disabled>{upgrade.error}</DropdownMenuItem>
+        <DropdownMenuItem disabled className="whitespace-normal text-[11px] leading-snug">
+          {upgrade.error}
+        </DropdownMenuItem>
       )}
       {upgrade.activeName === imp.name &&
         !upgrade.loading &&
-        upgrade.versions.map((v) => (
+        upgrade.versions.map((version) => (
           <DropdownMenuItem
-            key={v.version}
-            onSelect={() => upgrade.selectVersion(imp, v.version)}
+            key={version}
+            onSelect={() => upgrade.selectVersion(imp, version)}
             disabled={upgrade.submitting}
             className="justify-between gap-3"
           >
-            <span className="tabular-nums">{v.version}</span>
-            {v.version === ref.version && (
+            <span className="tabular-nums">{version}</span>
+            {isSameModuleVersion(version, ref.version) && (
               <span className="text-[10px] text-muted-foreground">current</span>
             )}
           </DropdownMenuItem>

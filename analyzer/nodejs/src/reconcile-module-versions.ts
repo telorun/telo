@@ -1,5 +1,10 @@
 import type { ImportEdge, LoadedModule } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
+import {
+  compareParsedModuleVersions,
+  parseModuleVersion,
+  type ParsedModuleVersion,
+} from "./module-version-order.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -17,70 +22,15 @@ export interface VersionReconciliation {
   diagnostics: AnalysisDiagnostic[];
 }
 
-interface ParsedVersion {
-  major: number;
-  minor: number;
-  patch: number;
-  /** Dot-separated prerelease identifiers, or `null` for a release version. */
-  pre: string[] | null;
-}
-
 interface ModuleIdentity {
   source: string;
   identity: string;
   version: string;
-  parsed: ParsedVersion | null;
+  /** `null` for an unparseable version, which forces the group onto the
+   *  conflict path — we never silently hoist across a version we can't reason
+   *  about. */
+  parsed: ParsedModuleVersion | null;
   text: string;
-}
-
-/** Parse `X.Y.Z`, `vX.Y.Z`, or `X.Y.Z-pre.1`. Returns `null` for anything that
- *  isn't a plain three-part numeric core — an unparseable version forces the
- *  group onto the conflict path (we never silently hoist across a version we
- *  can't reason about). Pure: no dependency on the `semver` package, so the
- *  analyzer stays browser-safe and dependency-free. */
-function parseVersion(raw: string | undefined): ParsedVersion | null {
-  if (typeof raw !== "string") return null;
-  const v = raw.startsWith("v") ? raw.slice(1) : raw;
-  const [core, ...preParts] = v.split("-");
-  const pre = preParts.length > 0 ? preParts.join("-") : null;
-  const segments = core.split(".");
-  if (segments.length !== 3) return null;
-  const [major, minor, patch] = segments.map((s) => {
-    if (!/^\d+$/.test(s)) return NaN;
-    return Number(s);
-  });
-  if ([major, minor, patch].some((n) => Number.isNaN(n))) return null;
-  return { major, minor, patch, pre: pre === null ? null : pre.split(".") };
-}
-
-/** SemVer precedence: numeric core, then a release outranks a prerelease, then
- *  prerelease identifiers compared field-by-field (numeric < non-numeric per
- *  spec, shorter set loses when all shared fields are equal). */
-function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
-  if (a.major !== b.major) return a.major - b.major;
-  if (a.minor !== b.minor) return a.minor - b.minor;
-  if (a.patch !== b.patch) return a.patch - b.patch;
-  if (a.pre === null && b.pre === null) return 0;
-  if (a.pre === null) return 1;
-  if (b.pre === null) return -1;
-  const len = Math.max(a.pre.length, b.pre.length);
-  for (let i = 0; i < len; i++) {
-    const ai = a.pre[i];
-    const bi = b.pre[i];
-    if (ai === undefined) return -1;
-    if (bi === undefined) return 1;
-    const an = /^\d+$/.test(ai);
-    const bn = /^\d+$/.test(bi);
-    if (an && bn) {
-      const d = Number(ai) - Number(bi);
-      if (d !== 0) return d;
-    } else if (an !== bn) {
-      return an ? -1 : 1;
-    } else if (ai !== bi) {
-      return ai < bi ? -1 : 1;
-    }
-  }
-  return 0;
 }
 
 /** The location identity of an import ref: the ref with its version stripped.
@@ -133,7 +83,7 @@ function moduleIdentityOf(mod: LoadedModule, identity: string): ModuleIdentity |
     source: mod.owner.source,
     identity,
     version,
-    parsed: parseVersion(version),
+    parsed: parseModuleVersion(version),
     text: mod.owner.text,
   };
 }
@@ -158,7 +108,7 @@ function resolveGroup(members: ModuleIdentity[]): GroupResolution {
   const winner = members.reduce((best, cur) => {
     if (!cur.parsed) return best;
     if (!best.parsed) return cur;
-    const cmp = compareVersions(cur.parsed, best.parsed);
+    const cmp = compareParsedModuleVersions(cur.parsed, best.parsed);
     if (cmp > 0) return cur;
     if (cmp === 0 && cur.source < best.source) return cur;
     return best;

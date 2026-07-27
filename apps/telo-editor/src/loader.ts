@@ -26,14 +26,7 @@ export {
   toPascalCase,
   toRelativeSource,
 } from "./loader/paths";
-export {
-  createRegistryAdapters,
-  fetchAvailableVersions,
-  fetchLatestVersion,
-  isRegistryImportSource,
-  parseRegistryRef,
-} from "./loader/registry";
-export type { RegistryVersion } from "./loader/registry";
+export { createRegistryAdapters, isRegistryImportSource } from "./loader/registry";
 export {
   buildFailureManifest,
   buildParsedManifest,

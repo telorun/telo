@@ -5,7 +5,6 @@ import type {
   DeploymentEnvironment,
   ModuleDocument,
   ModuleViewData,
-  RegistryServer,
   Selection,
   SourceRevealRequest,
 } from "../../model";
@@ -48,11 +47,10 @@ export interface ViewProps {
   onWriteRef: (writes: RefWrite[]) => void;
   /** Opens the create-resource flow. Surfaced as a canvas action. */
   onCreateResource: () => void;
-  /** Registry servers — supplies the Imports view upgrade dropdown's version
-   *  lookups. */
-  registryServers: RegistryServer[];
   /** Telo hub base URL (from settings) — powers the Imports view's add-import
-   *  module search. Undefined resolves to the public default. */
+   *  module search and its version lookups (`/module/versions`), the editor's
+   *  only version source: a browser cannot enumerate OCI tags itself. Undefined
+   *  resolves to the public default. */
   hubUrl: string | undefined;
   /** Adds an import to the active module (Imports view). */
   onAddImport: (source: string, alias: string) => Promise<void>;

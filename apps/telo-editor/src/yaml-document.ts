@@ -487,7 +487,13 @@ export function removeInlineImport(docs: Document[], name: string): Document[] {
 /** Rewrites the `source` of an inline `imports:` map entry in place, handling
  *  both the scalar shorthand (`Alias: source`) and the object form
  *  (`Alias: { source, ... }`) — the object form keeps its `variables` /
- *  `secrets` / `runtime`. Returns the same array reference on no-op. */
+ *  `secrets` / `runtime`. Returns the same array reference on no-op.
+ *
+ *  A stale `integrity:` sibling is dropped: it hashes the `telo.yaml` of the
+ *  version the entry used to name, so carrying it onto a different version
+ *  turns the next install into a tamper error. The kernel folds that sibling
+ *  into the source exactly like an inline `#sha256-…` fragment, which the new
+ *  source has already shed — `telo upgrade` re-pins either form. */
 export function setInlineImportSource(
   docs: Document[],
   name: string,
@@ -500,6 +506,7 @@ export function setInlineImportSource(
   const entry = doc.getIn(["imports", name], true);
   if (entry && isMap(entry)) {
     doc.setIn(["imports", name, "source"], newSource);
+    if (entry.has("integrity")) entry.delete("integrity");
   } else if (entry && isScalar(entry)) {
     // Preserve the scalar node (and any comment) — only swap its value.
     entry.value = newSource;
