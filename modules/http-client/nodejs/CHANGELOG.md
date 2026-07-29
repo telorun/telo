@@ -1,5 +1,56 @@
 # @telorun/http-client
 
+## 0.10.0
+
+### Minor Changes
+
+- 6376a66: Authenticate HTTP requests through the client, and resolve `!ref` inside a scope.
+
+  `http-client` gains an `Http.Credential` abstract and a `credential` slot on
+  `Http.Client`. A credential is consulted once per request and receives the request
+  about to be sent — method, URL, headers, query — so a scheme that signs the request
+  satisfies the same contract as one that adds a bearer token; what it returns is
+  merged into the outgoing request. A `401` re-invokes it with `forceRefresh: true`
+  and retries the call once, so every credential type inherits that behaviour rather
+  than re-expressing it.
+
+  The analyzer now types a route's `result` from the referenced handler's **kind**
+  when the handler instance declares no `outputType`, the same layering
+  `steps.<name>.result` already applies. A kind with one fixed output shape declares
+  it once on its `Telo.Definition` and every `returns[].when` reading it is
+  checked — previously such a handler fell back to an open schema and typos passed.
+
+  `ctx.resolveRef` and `resolveInvocableDispatcher` both resolve a `!ref` that
+  reaches a controller unrewritten inside an `x-telo-scope` array, and resolve a bare
+  name scope-local first with the enclosing module as the fallback — matching
+  `ScopeContext.getInstance` and the CEL `resources` layering, so a `with:`-scoped
+  resource can reference a scoped sibling. `RefResolveContext` gains an optional
+  `resolveLocalInstance` hook and `DispatchContext` an optional `ensureKindRef`, so
+  neither resolution path is rescued while the other is not.
+
+  The analyzer now applies that same precedence, in both the reference diagnostics
+  and the Phase 2.5 sentinel rewrite. Previously it resolved a scoped bare name
+  against the module-level resource while the runtime bound the scope-local one, so a
+  shadowed name could type-check against a resource that never runs (or be reported
+  as a kind mismatch naming one).
+
+### Patch Changes
+
+- 6376a66: Fix a credentialed request losing the content-type derived from its body.
+
+  The credential path rebuilt the header set from the client and request maps, but
+  the `content-type` inferred for an object body was mutated into the merged map
+  only — so every POST/PUT with a JSON body through a client carrying a credential
+  was sent with no content-type, and arrived unparsed. Derived headers are now kept
+  separately and filled in last, only where nothing else set the key.
+
+  The analyzer's sentinel pass reads `x-telo-scope` from the declaring kind's field
+  map instead of inferring a scope structurally from any array of named inline
+  resources. The heuristic happened to coincide with `Run.Sequence.with` today, but
+  this pass is shared with the kernel, so it would have baked a guess into the
+  runtime manifest tree the first time a kind carried such an array without being a
+  scope.
+
 ## 0.9.0
 
 ### Minor Changes
