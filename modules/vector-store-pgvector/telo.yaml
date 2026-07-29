@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: vector-store-pgvector
-  version: 0.5.0
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Storage, AI]
@@ -27,7 +27,7 @@ metadata:
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:
-  - pkg:npm/@telorun/vector-store-pgvector@0.3.0?local_path=./nodejs#store
+  - pkg:npm/@telorun/vector-store-pgvector@0.4.0?local_path=./nodejs#store
 schema:
   type: object
   required: [connection, dimensions]

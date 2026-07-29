@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-07-27
+## 0.6.0 - 2026-07-29
+### Added
+* Update controller @telorun/sql-postgres to 0.3.0.## 0.5.0 - 2026-07-27
 ### Added
 * Drop `metadata.namespace`. A module's location is the ref it is published under, never anything it declares about itself, and nothing reads the field any more.## 0.4.2 - 2026-07-27
 ### Fixed
