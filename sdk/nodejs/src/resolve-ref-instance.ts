@@ -1,10 +1,20 @@
 import type { ModuleContext } from "./module-context.js";
 import type { KindRef } from "./ref.js";
+import type { ResourceInstance } from "./resource-instance.js";
 import { RuntimeError } from "./types.js";
 
 /** The slice of `ResourceContext` needed to resolve a reference. */
 export interface RefResolveContext {
   readonly moduleContext: ModuleContext;
+  /**
+   * Resolve a bare name with the caller's own precedence — scope-local first,
+   * enclosing module as the fallback. Optional: a caller holding only a
+   * `{ moduleContext }` slice has no scope to prefer, and falls back to the
+   * module. Supplying it is what lets a `with:`-scoped resource reference a
+   * scoped sibling, and keeps `!ref` agreeing with the CEL `resources` layering
+   * about what a name means inside a scope.
+   */
+  resolveLocalInstance?(name: string): ResourceInstance | undefined;
 }
 
 /**
@@ -67,7 +77,7 @@ export function resolveRefInstance<T>(
   const instance =
     ref.alias && ref.alias !== "Self"
       ? ctx.moduleContext.resolveImportedInstance(ref.alias, ref.name)
-      : ctx.moduleContext.getInstance(ref.name);
+      : (ctx.resolveLocalInstance?.(ref.name) ?? ctx.moduleContext.getInstance(ref.name));
 
   if (!guard(instance)) {
     const label = ref.alias ? `${ref.alias}.${ref.name}` : ref.name;

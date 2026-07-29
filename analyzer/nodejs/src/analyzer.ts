@@ -1153,7 +1153,7 @@ export class StaticAnalyzer {
     // {kind, name} objects so downstream phases (validation, dependency graph,
     // kernel controllers) see a uniform shape. Runs after normalize so both
     // original and inline-extracted manifests have their sentinels resolved.
-    resolveRefSentinels(allManifests, aliases, aliasesByModule);
+    resolveRefSentinels(allManifests, aliases, aliasesByModule, [], defs);
 
     // Phase 2.6: register each named `Telo.Type` resource's schema under its
     // canonical module-scoped id (`telo://<module>/<name>`), validate
@@ -1957,7 +1957,13 @@ export class StaticAnalyzer {
     // Resolve !ref sentinels after normalize so both the original and
     // inline-extracted manifests get their refs canonicalized to
     // {kind, name} for the kernel that consumes this output.
-    resolveRefSentinels(normalized, ctx.aliases, ctx.aliasesByModule, crossModuleTargets ?? []);
+    resolveRefSentinels(
+      normalized,
+      ctx.aliases,
+      ctx.aliasesByModule,
+      crossModuleTargets ?? [],
+      ctx.definitions!,
+    );
     // Canonicalize import-scoped schema `$ref`s (`telo://Self|Alias/Type`) so the
     // kernel that executes this output compiles inputs/outputs against the same
     // ids the type controllers register their schemas under.

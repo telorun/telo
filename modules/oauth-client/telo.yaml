@@ -1,0 +1,999 @@
+kind: Telo.Library
+metadata:
+  name: OAuthClient
+  version: 0.0.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Security]
+  description: |
+    Obtains and keeps delegated access on a user's behalf: drives someone through a
+    consent screen, exchanges the resulting code for tokens, stores the grant, and
+    keeps a valid access token available afterwards — refreshing before expiry and
+    again if a call is rejected. Works with any compliant provider, configured from
+    its issuer URL alone, and covers browser, terminal, headless-device and
+    machine-to-machine sign-in.
+files:
+  - nodejs/*.mjs
+imports:
+  Http: ../http-client
+  KvStore: ../kv-store
+  Type: ../type
+exports:
+  kinds:
+    - AccessToken
+    - Authorization
+    - AuthorizationServer
+    - Callback
+    - Client
+    - ClientCredentials
+    - Credential
+    - DeviceAuthorization
+    - DeviceToken
+    - GrantClear
+    - GrantRead
+    - GrantWrite
+    - RedirectAwait
+    - RedirectListener
+    - TokenExchange
+    - TokenRefresh
+    - TokenSource
+---
+# TokenSet — what a token endpoint hands back, declared once and referenced via
+# `$ref: "telo://Self/TokenSet"`. It is the value that flows from an exchange or a
+# device grant into `GrantWrite.tokens`, so writing it twice would make that wiring
+# work only while two literals happened to agree.
+#
+# `expiresAt` is ABSOLUTE (epoch milliseconds), not the lifetime the server
+# reports: a duration stops being meaningful the moment the value is stored.
+kind: Type.JsonSchema
+metadata:
+  name: TokenSet
+  description: >-
+    A set of credentials as an authorization server issued them: the access token
+    and when it expires, the refresh token where one was granted, the scopes
+    actually approved, and the identity token for providers that return one.
+schema:
+  type: object
+  additionalProperties: false
+  required: [accessToken]
+  properties:
+    accessToken: { type: string }
+    tokenType: { type: string }
+    expiresAt:
+      type: [integer, "null"]
+      description: Absolute expiry in epoch milliseconds; null when the server reported no lifetime.
+    refreshToken: { type: [string, "null"] }
+    scope: { type: [string, "null"], description: The scopes actually granted. }
+    idToken:
+      type: [string, "null"]
+      description: >-
+        Stored verbatim and otherwise untouched — neither its signature nor any of
+        its claims are verified. Do not treat it as proof of identity without
+        validating it yourself.
+---
+# OAuthClient.AuthorizationServer — the remote party, described once.
+#
+# Separate from Client because the cardinality is one-to-many: a CLI registration
+# and a web registration against the same issuer share one server resource and one
+# discovery fetch. It also gives the endpoints only a server can own a home that
+# isn't a client field describing someone else's deployment.
+#
+# Discovery is LAZY and memoized — never at init(). An application that never
+# authenticates must never fetch, and an unreachable authorization server must not
+# stop an application from starting. A full explicit endpoint set skips discovery
+# altogether.
+kind: Telo.Definition
+metadata:
+  name: AuthorizationServer
+  description: >-
+    Describes the server that issues tokens, identified by its issuer URL. Endpoints
+    are discovered from that URL on first use — the standard metadata document, then
+    the RFC 8414 fallback — so any compliant provider is configured by naming it.
+    Endpoints given explicitly are used as-is and suppress discovery.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#authorizationServer
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [issuer, authorizationEndpoint, tokenEndpoint]
+    properties:
+      issuer: { type: string }
+      authorizationEndpoint: { type: string }
+      tokenEndpoint: { type: string }
+      deviceAuthorizationEndpoint: { type: [string, "null"] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [issuer]
+  properties:
+    issuer:
+      title: Issuer
+      type: string
+      description: >-
+        The server's identifier, exactly as it appears in the `iss` of its responses
+        and tokens. Discovery reads its metadata document from this URL; every `iss`
+        this module verifies is compared against it.
+    authorizationEndpoint:
+      title: Authorization Endpoint
+      type: string
+      description: Where the user is sent to consent. Discovered when omitted.
+    tokenEndpoint:
+      title: Token Endpoint
+      type: string
+      description: Where codes and refresh tokens are exchanged for tokens. Discovered when omitted.
+    deviceAuthorizationEndpoint:
+      title: Device Authorization Endpoint
+      type: string
+      description: Where a device grant is started. Discovered when omitted; required only for the device flow.
+    timeout:
+      title: Timeout
+      type: string
+      default: 30s
+      description: >-
+        How long to wait for any single request to this server — the metadata
+        document, a token exchange, a device poll — before giving up. Without one,
+        a server that accepts the connection and never answers hangs the operation
+        indefinitely.
+---
+# OAuthClient.Client — this application's registration at one server.
+#
+# Credentials live here, never on AuthorizationServer: one describes a remote
+# party, the other describes our standing with it.
+kind: Telo.Definition
+metadata:
+  name: Client
+  description: >-
+    Holds an application's own registration at an authorization server — its
+    identifier and secret, the scopes it asks for, and how it proves itself at the
+    token endpoint. Enables PKCE by default so an intercepted authorization code is
+    useless on its own.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#client
+schema:
+  type: object
+  additionalProperties: false
+  required: [authorizationServer, clientId]
+  properties:
+    authorizationServer:
+      title: Authorization Server
+      description: The server this application is registered at.
+      x-telo-ref: Self.AuthorizationServer
+    clientId:
+      title: Client ID
+      type: string
+      description: The identifier the server issued for this application.
+    clientSecret:
+      title: Client Secret
+      type: string
+      description: >-
+        The secret the server issued, where one exists. Bind it through `secrets:`
+        rather than writing it inline. Public clients (a CLI, a native app, a SPA)
+        have none and rely on PKCE instead.
+    scopes:
+      title: Scopes
+      type: array
+      items: { type: string }
+      description: Permissions requested at consent. Sent space-delimited, as the specification requires.
+    pkce:
+      title: PKCE
+      type: string
+      enum: [S256, plain, none]
+      default: S256
+      description: >-
+        Proof Key for Code Exchange, which binds an authorization code to the
+        program that requested it. `S256` unless the server genuinely cannot do it;
+        `none` disables the protection entirely.
+    tokenEndpointAuthMethod:
+      title: Token Endpoint Auth Method
+      type: string
+      enum: [client_secret_basic, client_secret_post, none]
+      default: client_secret_basic
+      description: >-
+        How this application proves itself at the token endpoint — HTTP Basic, form
+        parameters, or not at all for a public client.
+    authorizationParams:
+      title: Authorization Params
+      type: object
+      additionalProperties: { type: string }
+      description: >-
+        Extra parameters appended to the consent URL, for provider-specific
+        behaviour (Google's `access_type: offline` and `prompt: consent`, which are
+        what make a refresh token come back).
+---
+# OAuthClient.TokenSource — the stateful half. Nothing else in this module persists.
+#
+# `key` is a DEFAULT, not an identity: a browser-served flow serves many users
+# from one resource, and the account set is a runtime fact. Every operation takes
+# a per-call `key` that overrides it.
+kind: Telo.Definition
+metadata:
+  name: TokenSource
+  description: >-
+    Binds a registration to durable storage: which application is asking, where its
+    grants are kept, and which grant to use when a caller names none. Every stored
+    grant is addressed by a key, so one source serves many accounts or users.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#tokenSource
+schema:
+  type: object
+  additionalProperties: false
+  required: [client, store]
+  properties:
+    client:
+      title: Client
+      description: The registration whose grants this source holds.
+      x-telo-ref: Self.Client
+    store:
+      title: Store
+      description: >-
+        Durable storage for grants and for the short-lived records a pending
+        authorization and an in-flight refresh write. Refresh tokens are long-lived
+        credentials — use a store that outlives the process.
+      x-telo-ref: KvStore.Store
+    key:
+      title: Key
+      type: string
+      default: default
+      description: >-
+        The grant key used when a caller supplies none. A single-account
+        application never needs to think about keys; a multi-user one passes its
+        own per call.
+    grantTtl:
+      title: Grant TTL
+      type: string
+      default: 8760h
+      description: >-
+        How long a stored grant is retained without being touched. Every refresh
+        rewrites it and restarts the clock, so this bounds only how long an
+        abandoned account stays signed in — a year by default, which is roughly
+        where providers expire an unused refresh token anyway.
+    refreshSkew:
+      title: Refresh Skew
+      type: string
+      default: 60s
+      description: >-
+        How far before expiry an access token is treated as already expired. Covers
+        clock difference between this host and the server, plus the time the call
+        itself takes.
+    claimTtl:
+      title: Claim TTL
+      type: string
+      default: 30s
+      description: >-
+        How long one refresh may hold its key before another caller may take over.
+        Set it above the slowest expected token-endpoint response — a holder that
+        dies frees the key on expiry.
+---
+# OAuthClient.Authorization — builds the consent URL and records the pending flow.
+#
+# The pending record is ALWAYS written, never an optional behaviour switched by a
+# field: the console flow simply never reads it back (it carries the verifier
+# through `steps.*`) and the TTL expires it. One code path, no branch.
+kind: Telo.Definition
+metadata:
+  name: Authorization
+  description: >-
+    Builds the URL a user opens to grant access, generating the one-time `state` and
+    the PKCE verifier that bind the resulting code to this request. Records the
+    pending request so the matching callback can be recognized and completed exactly
+    once.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#authorization
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [redirectUri]
+    properties:
+      redirectUri:
+        type: string
+        description: >-
+          Where the server sends the user back. Must match what the application
+          registered. For a loopback sign-in this is the listener's reported
+          `redirectUri`.
+      key:
+        type: string
+        description: Grant key the completing callback should write to. Defaults to the source's.
+      scopes:
+        type: array
+        items: { type: string }
+        description: Overrides the client's scopes for this request only.
+      authorizationParams:
+        type: object
+        additionalProperties: { type: string }
+        description: Extra consent-URL parameters merged over the client's.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [url, state, codeVerifier, redirectUri, key]
+    properties:
+      url:
+        type: string
+        description: The URL to open. Show it to the user or redirect them to it.
+      state:
+        type: string
+        description: One-time value echoed back by the server; identifies this request among concurrent ones.
+      codeVerifier:
+        type: string
+        description: >-
+          The PKCE secret proving the code was requested by this program. Pass it to
+          the exchange; never send it to the browser. Empty when PKCE is disabled.
+      redirectUri:
+        type: string
+        description: Echoed back so the exchange sends exactly the value the consent used.
+      key:
+        type: string
+        description: The grant key this authorization will be stored under.
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose client asks for consent and whose store holds the pending record.
+      x-telo-ref: Self.TokenSource
+    pendingTtl:
+      title: Pending TTL
+      type: string
+      default: 10m
+      x-telo-eval: compile
+      description: >-
+        How long the user has to finish consenting before the pending request
+        expires and their callback is refused. Long enough to read a consent screen,
+        short enough that an abandoned attempt does not linger.
+---
+# OAuthClient.RedirectListener — a loopback socket for terminal sign-in.
+#
+# Binds in run(), never init(): init() builds configuration and nothing
+# observable. Listed in a Run.Sequence `targets:`, it is therefore bound BEFORE
+# the steps build the consent URL — so the URL can carry a port that did not
+# exist a moment earlier, and the socket is already accepting while the user
+# reads it.
+kind: Telo.Definition
+metadata:
+  name: RedirectListener
+  description: >-
+    Listens on the local machine for the browser redirect that ends a sign-in,
+    letting a terminal program receive a callback with no web server. Reports the
+    address it bound while running, so the redirect URL can be built from it. Closes
+    when the surrounding scope ends.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#redirectListener
+status:
+  type: object
+  properties:
+    port:
+      type: integer
+      description: The port actually bound — the one the operating system chose, unless a port was pinned.
+    redirectUri:
+      type: string
+      description: The full address to register as the redirect URI, built from the bound port.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    port:
+      title: Port
+      type: integer
+      minimum: 0
+      maximum: 65535
+      x-telo-eval: compile
+      description: >-
+        Pin a port, for a provider that demands an exactly-registered redirect URI.
+        Omit — the default — to let the operating system choose a free one, so a
+        sign-in never claims a port a real listener wants or fails because another
+        instance is running.
+    path:
+      title: Path
+      type: string
+      default: /callback
+      x-telo-eval: compile
+      description: Path component of the redirect URI.
+    responseBody:
+      title: Response Body
+      type: string
+      default: <p>Sign-in complete. You can close this tab.</p>
+      x-telo-eval: compile
+      description: What the browser shows after the redirect arrives.
+---
+# OAuthClient.RedirectAwait — the invocable half of the loopback pair.
+#
+# Two kinds, not one with an `op:` discriminator, and the split is FORCED: a
+# `targets:` slot accepts a Runnable/Service and a step's `invoke:` accepts an
+# Invocable, so no single declared capability satisfies both.
+kind: Telo.Definition
+metadata:
+  name: RedirectAwait
+  description: >-
+    Waits for the browser to arrive at the local listener and returns what it
+    carried — the authorization code, or the refusal if the user declined. Matches
+    the one-time value from the request it belongs to, so a stray or replayed
+    callback is ignored rather than accepted.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#redirectAwait
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [state]
+    properties:
+      state:
+        type: string
+        description: The value from the authorization this call is waiting for. A callback carrying anything else is ignored.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [code, state, error, iss]
+    properties:
+      code:
+        type: [string, "null"]
+        description: The authorization code to exchange; null when the user refused.
+      state:
+        type: string
+        description: The matched one-time value.
+      iss:
+        type: [string, "null"]
+        description: >-
+          The issuer the server identified itself as, when it sends one. Pass it
+          to the exchange, which verifies it — that is the defence against being
+          handed a code minted by a different server.
+      error:
+        type: [string, "null"]
+        description: >-
+          The server's refusal code when the user declined or the request was
+          rejected (`access_denied`, …); null on success. A refusal is a legitimate
+          end of the flow, so it is returned rather than thrown.
+schema:
+  type: object
+  additionalProperties: false
+  required: [listener]
+  properties:
+    listener:
+      title: Listener
+      description: The local listener to wait on.
+      x-telo-ref: Self.RedirectListener
+    timeout:
+      title: Timeout
+      type: string
+      default: 5m
+      x-telo-eval: compile
+      description: How long to wait for the user to finish before giving up.
+---
+# OAuthClient.Callback — the browser-served counterpart to the loopback pair.
+#
+# `authorization: !ref` is what joins the two halves of a browser flow: they run
+# in different requests, share no `steps.*` scope, and may not even be the same
+# instance, so a declared reference is the only thing that can pair them. Reading
+# the store, client and key space THROUGH it removes the failure mode where two
+# resources are pointed at different stores and every callback reports an unknown
+# request.
+kind: Telo.Definition
+metadata:
+  name: Callback
+  description: >-
+    Completes a sign-in from the redirect a browser followed: matches the one-time
+    value against the recorded request, exchanges the code, and stores the grant.
+    Returns whether it succeeded and why not — a refusal, an unrecognized or expired
+    request — so the page can be rendered accordingly.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#callback
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      code:
+        type: [string, "null"]
+        description: The authorization code, as the server sent it.
+      state:
+        type: [string, "null"]
+        description: The one-time value identifying which request this completes.
+      error:
+        type: [string, "null"]
+        description: The server's refusal code, when it sent one instead of a code.
+      iss:
+        type: [string, "null"]
+        description: >-
+          The issuer identifier, when the server sends one. Verified against the
+          declared issuer — the defence against being handed a code minted by a
+          different server.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ok, reason, key, scope]
+    properties:
+      ok:
+        type: boolean
+        description: Whether a grant was stored.
+      reason:
+        type: [string, "null"]
+        description: >-
+          Why not, when it was not: `denied` (the user refused), `unknown_state`
+          (no such pending request, or it was already used), `expired` (they took
+          too long), `issuer_mismatch` (the response came from a different server),
+          `issuer_missing` (the server states it identifies itself and did not).
+          Null on success.
+      key:
+        type: [string, "null"]
+        description: The grant key written, on success.
+      scope:
+        type: [string, "null"]
+        description: The scopes actually granted, which may be narrower than those asked for.
+schema:
+  type: object
+  additionalProperties: false
+  required: [authorization]
+  properties:
+    authorization:
+      title: Authorization
+      description: >-
+        The authorization this callback completes. Its store, client and key space
+        are read through this reference, so the two halves of the flow cannot be
+        pointed at different stores.
+      x-telo-ref: Self.Authorization
+---
+kind: Telo.Definition
+metadata:
+  name: TokenExchange
+  description: >-
+    Exchanges an authorization code for tokens, proving the code belongs to this
+    program with the PKCE secret from the request that produced it. Returns the
+    access token, its lifetime, and the refresh token when the server issued one.
+    Does not store anything.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#tokenExchange
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [code, redirectUri]
+    properties:
+      code: { type: string, description: The authorization code the server returned. }
+      redirectUri:
+        type: string
+        description: Must be exactly the value the consent request used, which the server checks.
+      codeVerifier:
+        type: string
+        description: The PKCE secret from the matching authorization. Omit only when PKCE is disabled.
+      iss:
+        type: string
+        description: >-
+          The issuer from the authorization response, verified against the declared
+          one. Required when the server advertises that it sends the parameter —
+          omitting it there is refused rather than silently skipped, since a
+          missing `iss` is exactly what a mix-up attack produces.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    $ref: "telo://Self/TokenSet"
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose client performs the exchange.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: TokenRefresh
+  description: >-
+    Trades a refresh token for a fresh access token and stores the result, replacing
+    the refresh token too when the server rotates it. Only one refresh per grant key
+    runs at a time, so a rotated token is never presented twice.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#tokenRefresh
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key: { type: string, description: Which stored grant to refresh. Defaults to the source's key. }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [refreshed, reason, accessToken, expiresAt, scope]
+    properties:
+      refreshed:
+        type: boolean
+        description: Whether a new token was obtained — false when there is no stored grant, or none with a refresh token.
+      reason:
+        type: [string, "null"]
+        description: "`no_grant` or `no_refresh_token` when nothing was refreshed; null otherwise."
+      accessToken: { type: [string, "null"] }
+      expiresAt: { type: [integer, "null"] }
+      scope: { type: [string, "null"] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source holding the grant to refresh.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: ClientCredentials
+  description: >-
+    Obtains a token for the application itself, with no user involved — the grant to
+    use for service-to-service calls. Stores the result like any other grant, so the
+    same access-token and credential resources serve it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#clientCredentials
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key: { type: string, description: Grant key to store the result under. Defaults to the source's. }
+      scopes:
+        type: array
+        items: { type: string }
+        description: Overrides the client's scopes for this request only.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [accessToken, tokenType, expiresAt, scope, key]
+    properties:
+      accessToken: { type: string }
+      tokenType: { type: string }
+      expiresAt: { type: [integer, "null"] }
+      scope: { type: [string, "null"] }
+      key: { type: string, description: The grant key the token was stored under. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose client authenticates and whose store holds the result.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: DeviceAuthorization
+  description: >-
+    Starts sign-in for a machine with no browser on it: returns a short code and the
+    address where the user types it on another device. Pair it with the polling
+    operation, which waits for them to finish.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#deviceAuthorization
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      scopes:
+        type: array
+        items: { type: string }
+        description: Overrides the client's scopes for this request only.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [deviceCode, userCode, verificationUri, verificationUriComplete, expiresAt, interval]
+    properties:
+      deviceCode:
+        type: string
+        description: The value the polling operation presents. Not shown to the user.
+      userCode:
+        type: string
+        description: The short code the user types.
+      verificationUri:
+        type: string
+        description: Where the user goes to type it.
+      verificationUriComplete:
+        type: [string, "null"]
+        description: The same address with the code already filled in, when the server offers one — usually rendered as a QR code.
+      expiresAt:
+        type: integer
+        description: When the code stops being accepted, in epoch milliseconds.
+      interval:
+        type: integer
+        description: Seconds the server asks the poller to wait between attempts.
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose client starts the device grant.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: DeviceToken
+  description: >-
+    Waits for a user to approve a device sign-in, polling at the rate the server
+    asks for and backing off when told to slow down. Stores the grant once they
+    approve. A refusal or an expired code is returned as an outcome, not raised.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#deviceToken
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [deviceCode]
+    properties:
+      deviceCode: { type: string, description: The value the start operation returned. }
+      interval: { type: integer, description: Seconds between attempts. Defaults to what the server asked for. }
+      expiresAt: { type: integer, description: Give up at this epoch-millisecond instant. Defaults to the server's deadline. }
+      key: { type: string, description: Grant key to store the result under. Defaults to the source's. }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ok, reason, key, scope, expiresAt]
+    properties:
+      ok: { type: boolean, description: Whether the user approved and a grant was stored. }
+      reason:
+        type: [string, "null"]
+        description: "`denied` or `expired` when they did not; null on success."
+      key: { type: [string, "null"] }
+      scope: { type: [string, "null"] }
+      expiresAt: { type: [integer, "null"] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose client polls and whose store holds the result.
+      x-telo-ref: Self.TokenSource
+---
+# OAuthClient.AccessToken — a currently-valid token, refreshed inside a skew window.
+#
+# Public for use outside HTTP entirely (a gRPC metadata header, a database
+# connection string). Inside HTTP, prefer Credential, which attaches to the client
+# so there is no unauthenticated request for anything to bypass auth with.
+kind: Telo.Definition
+metadata:
+  name: AccessToken
+  description: >-
+    Returns a token that is valid right now, refreshing it first if it is expired or
+    about to be. Use it where a token is needed outside HTTP — a message header, a
+    connection string — since HTTP calls are better served by attaching a credential
+    to the client.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#accessToken
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key: { type: string, description: Which stored grant to read. Defaults to the source's key. }
+      forceRefresh:
+        type: boolean
+        default: false
+        description: Refresh even when the stored token still looks valid, for a token the server has just rejected.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [accessToken, tokenType, expiresAt, scope]
+    properties:
+      accessToken: { type: string }
+      tokenType: { type: string }
+      expiresAt: { type: [integer, "null"] }
+      scope: { type: [string, "null"] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source to read and refresh through.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: GrantRead
+  description: >-
+    Reports what is stored for a key — whether access was ever granted, which scopes
+    it covers, and when it expires — without refreshing anything. Use it to decide
+    whether to prompt someone to sign in.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantRead
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key: { type: string, description: Which stored grant to read. Defaults to the source's key. }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [exists, scope, expiresAt, hasRefreshToken]
+    properties:
+      exists: { type: boolean, description: Whether anything is stored for the key. }
+      scope: { type: [string, "null"] }
+      expiresAt:
+        type: [integer, "null"]
+        description: When the stored access token expires, in epoch milliseconds. Past values are normal — a refresh token renews them.
+      hasRefreshToken:
+        type: boolean
+        description: >-
+          Whether access can be renewed without asking the user again. False here
+          means an expired token is the end of the road.
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose store is read.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: GrantWrite
+  description: >-
+    Stores a token set as the grant for a key, replacing whatever was there. Ends a
+    sign-in assembled step by step, where the exchange returned tokens that now need
+    keeping.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantWrite
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [tokens]
+    properties:
+      key: { type: string, description: Which grant to write. Defaults to the source's key. }
+      tokens:
+        # The same shape TokenExchange returns, so `tokens: !cel "steps.X.result"`
+        # is checked against one declaration rather than two that happen to agree.
+        $ref: "telo://Self/TokenSet"
+        description: The token set to store, as an exchange or refresh returned it.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key: { type: string, description: The grant key written. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose store is written.
+      x-telo-ref: Self.TokenSource
+---
+kind: Telo.Definition
+metadata:
+  name: GrantClear
+  description: >-
+    Removes what is stored for a key, so the next call finds nothing and the user is
+    asked to sign in again. Local only — it does not tell the server to revoke
+    anything.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantClear
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      key: { type: string, description: Which grant to remove. Defaults to the source's key. }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [cleared]
+    properties:
+      cleared: { type: boolean, description: Whether anything was there to remove. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source whose store is cleared.
+      x-telo-ref: Self.TokenSource
+---
+# OAuthClient.Credential — attach to an Http.Client and every request through it is
+# authenticated by construction. No request wrapper exists, so no unauthenticated
+# inner resource exists for anything in the manifest to invoke and bypass auth with.
+kind: Telo.Definition
+metadata:
+  name: Credential
+  description: >-
+    Authenticates every call made through an HTTP client, fetching a token when
+    needed and renewing it before it expires. A call the server rejects as
+    unauthenticated is retried once with a freshly obtained token, so an expiry
+    that lands mid-flight is invisible to the caller.
+capability: Telo.Invocable
+extends: Http.Credential
+controllers:
+  - pkg:telo/local/js?path=./nodejs/controllers.mjs#credential
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The token source to draw tokens from.
+      x-telo-ref: Self.TokenSource
+    key:
+      title: Key
+      type: string
+      x-telo-eval: compile
+      description: >-
+        Which stored grant to authenticate as. Defaults to the source's key. A
+        multi-user application declares one credential per client it builds, or
+        drives the calls through separate clients.
+    headerName:
+      title: Header Name
+      type: string
+      default: Authorization
+      x-telo-eval: compile
+      description: Header the token is written to. Rarely changed; a few providers use their own.
+    scheme:
+      title: Scheme
+      type: string
+      default: Bearer
+      x-telo-eval: compile
+      description: >-
+        Prefix written before the token. Set it to an empty string for a provider
+        that wants the bare token.

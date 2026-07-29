@@ -1015,6 +1015,24 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/oauth-client/nodejs:
+    devDependencies:
+      '@telorun/kv-store':
+        specifier: workspace:*
+        version: link:../../kv-store/nodejs
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/octet-codec/nodejs:
     devDependencies:
       '@telorun/sdk':

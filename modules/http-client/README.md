@@ -10,13 +10,53 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 - **JSON-aware** — `content-type: application/json` request bodies are serialized; JSON responses are parsed automatically.
 - **Buffer or stream** — pick `mode: stream` to receive a readable stream without buffering the response body.
 - **Built-in retries** — `retries: N` retries on network errors only, leaving HTTP responses to manifest logic.
+- **Authentication on the client** — attach an `Http.Credential` and every request through the client is authenticated, with one automatic retry when the server rejects it.
 
 ## Kinds
 
 | Kind | Purpose |
 | --- | --- |
-| `Http.Client` | Long-lived client carrying base URL, default headers, timeout, and redirect policy. |
+| `Http.Client` | Long-lived client carrying base URL, default headers, timeout, redirect policy, and an optional credential. |
+| `Http.Credential` | Abstract: given the request about to be sent, return the headers or query parameters to merge into it. |
 | `Http.Request` | Per-call HTTP request invocable; references an `Http.Client` for shared defaults. |
+
+## Authenticating requests
+
+`Http.Credential` is a contract, not an implementation — implement it for API
+keys, HMAC signing or SigV4, or use `OAuthClient.Credential` for OAuth 2.0. Attach
+one to a client and the calls through it need no header wiring:
+
+```yaml
+kind: Http.Client
+metadata: { name: Sheets }
+baseUrl: https://sheets.googleapis.com/v4
+credential: !ref GoogleAuth
+```
+
+The credential is consulted once per request and receives the request about to be
+sent — method, URL, headers, query — so a scheme that signs the request, rather
+than just adding a token, satisfies the same contract. What it returns overrides
+the client's default headers and query parameters, and is overridden in turn by
+the individual request's own: an explicit per-call `Authorization` is never
+silently replaced.
+
+A response of `401` re-invokes the credential with `forceRefresh: true` and
+retries the call **once**; a second rejection propagates. This lives here rather
+than in each credential kind, because a header is computed before the call and
+cannot react to a token the server has just rejected — so every credential type
+inherits the behaviour. What forcing means is the implementation's own: a token
+credential bypasses its cache and renews, a static API key returns the same header
+unchanged.
+
+Implementing one is a plain `Telo.Invocable` extending the abstract:
+
+```yaml
+kind: Telo.Definition
+metadata: { name: ApiKey }
+capability: Telo.Invocable
+extends: Http.Credential
+controllers: [ ... ]
+```
 
 ## Example
 

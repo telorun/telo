@@ -326,7 +326,27 @@ export class ResourceContextImpl implements ResourceContext {
     describe: () => string,
     expects?: string,
   ): T {
-    return resolveRefInstance(value, this, guard, describe, expects);
+    // Two things the raw resolver cannot do from a `{ moduleContext }` slice:
+    //
+    //  - A `!ref` can reach a controller as the raw SENTINEL. Phase-5 injection is
+    //    field-map-driven, and the field map does not descend into the inline
+    //    declarations inside an `x-telo-scope` array, so a ref slot on a scoped
+    //    resource is not an injection site. (Phase 2.5 does rewrite such a
+    //    sentinel to `{kind, name}` when it can name a target, so the shape that
+    //    arrives varies — both are accepted.) `ensureKindRef` is the same rescue
+    //    the sentinel path already performs for hidden slots.
+    //  - A scope-local name lives in the OWNING context, not the module, so a
+    //    `with:`-scoped resource referencing a scoped sibling has to resolve in
+    //    the same order `contextForName` and `ScopeContext.getInstance` use —
+    //    scope-local first, module as the fallback — or CEL and `!ref` disagree
+    //    about what a name means inside a scope.
+    const normalized = isRefSentinel(value) ? this.ensureKindRef(value) : value;
+    return resolveRefInstance(normalized, this, guard, describe, expects);
+  }
+
+  /** Name lookup with scope-local precedence, for {@link resolveRefInstance}. */
+  resolveLocalInstance(name: string): ResourceInstance | undefined {
+    return this.contextForName(name).resourceInstances.get(name)?.instance;
   }
 
   async run(name: string) {

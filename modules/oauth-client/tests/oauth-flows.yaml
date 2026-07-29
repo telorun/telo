@@ -1,0 +1,439 @@
+kind: Telo.Application
+metadata:
+  name: OAuthClientFlowsTest
+  version: 1.0.0
+  description: |
+    Every kind in oauth-client, end to end against an in-manifest stand-in
+    authorization server: the terminal loopback sign-in, the browser-served
+    callback, both device-grant outcomes, the machine-to-machine grant, the grant
+    store, and the credential's 401 refresh-and-retry through http-client.
+imports:
+  OAuth: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Store: ../../kv-store-memory
+  JS: ../../javascript
+  Type: ../../type
+  Run: ../../run
+  Assert: ../../assert
+include:
+  - __fixtures__/fake-authorization-server.yaml
+variables:
+  issuer:
+    env: OAUTH_TEST_ISSUER
+    type: string
+    default: http://127.0.0.1:8991
+targets:
+  - !ref Test
+---
+kind: Store.Store
+metadata: { name: TokenStore }
+---
+# Configured from the issuer alone — every endpoint below comes from the fake
+# server's discovery document, which is what keeps the module provider-neutral.
+kind: OAuth.AuthorizationServer
+metadata: { name: FakeServer }
+issuer: !cel "variables.issuer"
+---
+kind: OAuth.Client
+metadata: { name: TestClient }
+authorizationServer: !ref FakeServer
+clientId: test-client
+clientSecret: test-secret
+scopes: [read, write]
+tokenEndpointAuthMethod: client_secret_post
+---
+kind: OAuth.TokenSource
+metadata: { name: Tokens }
+client: !ref TestClient
+store: !ref TokenStore
+key: default
+---
+kind: OAuth.Authorization
+metadata: { name: Authorize }
+source: !ref Tokens
+---
+kind: OAuth.Callback
+metadata: { name: HandleCallback }
+authorization: !ref Authorize
+---
+kind: OAuth.TokenExchange
+metadata: { name: Exchange }
+source: !ref Tokens
+---
+kind: OAuth.TokenRefresh
+metadata: { name: Refresh }
+source: !ref Tokens
+---
+kind: OAuth.ClientCredentials
+metadata: { name: MachineGrant }
+source: !ref Tokens
+---
+kind: OAuth.DeviceAuthorization
+metadata: { name: StartDevice }
+source: !ref Tokens
+---
+kind: OAuth.DeviceToken
+metadata: { name: AwaitDevice }
+source: !ref Tokens
+---
+kind: OAuth.AccessToken
+metadata: { name: CurrentToken }
+source: !ref Tokens
+---
+kind: OAuth.GrantRead
+metadata: { name: ReadGrant }
+source: !ref Tokens
+---
+kind: OAuth.GrantWrite
+metadata: { name: WriteGrant }
+source: !ref Tokens
+---
+kind: OAuth.GrantClear
+metadata: { name: ClearGrant }
+source: !ref Tokens
+---
+kind: OAuth.Credential
+metadata: { name: TestCredential }
+source: !ref Tokens
+key: console
+---
+# The credential rides the client, so the request below is an ordinary one — no
+# header wiring at the call site, and no unauthenticated inner request exists.
+kind: HttpClient.Client
+metadata: { name: ApiClient }
+baseUrl: !cel "variables.issuer"
+credential: !ref TestCredential
+---
+kind: HttpClient.Request
+metadata: { name: CallProtected }
+client: !ref ApiClient
+---
+kind: HttpClient.Request
+metadata: { name: Browser }
+---
+# A module-level resource SHADOWED by the scope-local one of the same name below.
+# It is never started, so if either the `listener:` ref or the scope's `targets:`
+# entry bound THIS one, the console flow would wait for a redirect that never
+# arrives. Scope-local has to win — the order `ScopeContext.getInstance` and the
+# CEL `resources` layering already use.
+#
+# It also covers the Phase-5 interaction: because this name exists at module
+# level, the scope's `!ref Loopback` targets entry is injected as a live instance
+# rather than left as a sentinel, which is the shape `scopeTargetName` has to
+# recognize.
+kind: OAuth.RedirectListener
+metadata: { name: Loopback }
+port: 1
+path: /NEVER
+---
+# The terminal sign-in, exactly as a consumer composes it: the listener is a
+# scoped Service started from `targets:`, so it is bound BEFORE the steps build
+# the consent URL and torn down when the sequence ends.
+kind: Run.Sequence
+metadata: { name: ConsoleLogin }
+with:
+  - kind: OAuth.RedirectListener
+    metadata: { name: Loopback }
+  - kind: OAuth.RedirectAwait
+    metadata: { name: AwaitRedirect }
+    listener: !ref Loopback
+    timeout: 30s
+targets:
+  - !ref Loopback
+steps:
+  - name: auth
+    invoke: !ref Authorize
+    inputs:
+      redirectUri: !cel "resources.Loopback.status.redirectUri"
+      key: console
+  - name: assertConsentUrl
+    invoke: !ref AssertContains
+    inputs:
+      actual: !cel "steps.auth.result.url"
+      pattern: "code_challenge_method=S256"
+  # Stands in for the user's browser following the redirect. Carries `iss`, as a
+  # server advertising RFC 9207 support does.
+  - name: browserRedirect
+    invoke: !ref Browser
+    inputs:
+      method: GET
+      url: !cel "steps.auth.result.redirectUri + '?code=good-code&iss=' + variables.issuer + '&state=' + steps.auth.result.state"
+  - name: redirect
+    invoke: !ref AwaitRedirect
+    inputs:
+      state: !cel "steps.auth.result.state"
+  - name: assertCode
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.redirect.result.code"
+      expected: good-code
+  - name: tokens
+    invoke: !ref Exchange
+    inputs:
+      code: !cel "steps.redirect.result.code"
+      codeVerifier: !cel "steps.auth.result.codeVerifier"
+      redirectUri: !cel "steps.auth.result.redirectUri"
+      iss: !cel "steps.redirect.result.iss"
+  - name: stored
+    invoke: !ref WriteGrant
+    inputs:
+      key: console
+      tokens: !cel "steps.tokens.result"
+  - name: assertStoredKey
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.stored.result.key"
+      expected: console
+---
+kind: Assert.Equals
+metadata: { name: AssertEquals }
+---
+kind: Assert.Matches
+metadata: { name: AssertContains }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Http.Server
+    metadata: { name: FakeServer8991 }
+    host: 127.0.0.1
+    port: 8991
+    baseUrl: !cel "variables.issuer"
+    logger: false
+    contentTypeParsers:
+      - contentType: application/x-www-form-urlencoded
+    mounts:
+      - path: /
+        mount: !ref FakeServerApi
+targets:
+  - !ref FakeServer8991
+steps:
+  # ---- Terminal sign-in over the loopback listener --------------------------
+  - name: consoleLogin
+    invoke: !ref ConsoleLogin
+
+  - name: grantAfterLogin
+    invoke: !ref ReadGrant
+    inputs: { key: console }
+  - name: assertGrantExists
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.grantAfterLogin.result"
+      expected:
+        exists: true
+        scope: read write
+        expiresAt: !cel "steps.grantAfterLogin.result.expiresAt"
+        hasRefreshToken: true
+
+  # ---- Refresh rotates the stored refresh token ----------------------------
+  - name: refreshed
+    invoke: !ref Refresh
+    inputs: { key: console }
+  - name: assertRefreshed
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.refreshed.result.accessToken"
+      expected: at-fresh
+
+  # ---- The credential authenticates an ordinary request --------------------
+  - name: authorizedCall
+    invoke: !ref CallProtected
+    inputs:
+      method: GET
+      url: /resource
+  - name: assertAuthorized
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.authorizedCall.result.body"
+      expected: { ok: true }
+
+  # ---- A stale token: 401 → forceRefresh → retry once, all in http-client ---
+  - name: staleGrant
+    invoke: !ref WriteGrant
+    inputs:
+      key: console
+      tokens:
+        accessToken: at-stale
+        tokenType: Bearer
+        # Far in the future, so nothing refreshes proactively — the 401 is what
+        # has to trigger it.
+        expiresAt: 4102444800000
+        refreshToken: rt-1
+        scope: read write
+  - name: retriedCall
+    invoke: !ref CallProtected
+    inputs:
+      method: GET
+      url: /resource
+  - name: assertRetried
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.retriedCall.result.body"
+      expected: { ok: true }
+
+  # ---- A credentialed request with a body still carries its content-type -----
+  # The credential path rebuilds the header set, so a content-type derived from
+  # the body (rather than declared by anyone) is exactly what a naive rebuild
+  # drops — and the body then arrives unparsed.
+  - name: credentialedPost
+    invoke: !ref CallProtected
+    inputs:
+      method: POST
+      url: /echo
+      body:
+        hello: world
+  - name: assertContentTypeKept
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.credentialedPost.result.body"
+      expected:
+        contentType: application/json
+        parsedBody: { hello: world }
+
+  # ---- Browser-served callback ---------------------------------------------
+  - name: browserAuth
+    invoke: !ref Authorize
+    inputs:
+      redirectUri: http://127.0.0.1:8991/callback
+      key: web-user
+  # The server advertises that it sends `iss`, so a callback without one is refused
+  # rather than skipped — the case a mix-up attack produces.
+  - name: callbackNoIss
+    invoke: !ref HandleCallback
+    inputs:
+      code: good-code
+      state: !cel "steps.browserAuth.result.state"
+  - name: assertIssMissing
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.callbackNoIss.result.reason"
+      expected: issuer_missing
+  - name: browserAuth2
+    invoke: !ref Authorize
+    inputs:
+      redirectUri: http://127.0.0.1:8991/callback
+      key: web-user
+  - name: callbackWrongIss
+    invoke: !ref HandleCallback
+    inputs:
+      code: good-code
+      state: !cel "steps.browserAuth2.result.state"
+      iss: https://attacker.example
+  - name: assertIssMismatch
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.callbackWrongIss.result.reason"
+      expected: issuer_mismatch
+  - name: browserAuth3
+    invoke: !ref Authorize
+    inputs:
+      redirectUri: http://127.0.0.1:8991/callback
+      key: web-user
+  - name: callbackOk
+    invoke: !ref HandleCallback
+    inputs:
+      code: good-code
+      state: !cel "steps.browserAuth3.result.state"
+      iss: !cel "variables.issuer"
+  - name: assertCallbackOk
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.callbackOk.result"
+      expected: { ok: true, reason: null, key: web-user, scope: read write }
+  # The pending record is single-use, so replaying the same callback finds nothing.
+  - name: callbackReplay
+    invoke: !ref HandleCallback
+    inputs:
+      code: good-code
+      state: !cel "steps.browserAuth3.result.state"
+      iss: !cel "variables.issuer"
+  - name: assertReplayRefused
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.callbackReplay.result"
+      expected: { ok: false, reason: unknown_state, key: null, scope: null }
+  - name: callbackDenied
+    invoke: !ref HandleCallback
+    inputs:
+      error: access_denied
+  - name: assertDenied
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.callbackDenied.result.reason"
+      expected: denied
+
+  # ---- Device grant: polls through authorization_pending, then approves -----
+  - name: deviceStart
+    invoke: !ref StartDevice
+  - name: assertUserCode
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.deviceStart.result.userCode"
+      expected: WDJB-MJHT
+  - name: devicePoll
+    invoke: !ref AwaitDevice
+    inputs:
+      deviceCode: !cel "steps.deviceStart.result.deviceCode"
+      interval: 1
+      expiresAt: !cel "steps.deviceStart.result.expiresAt"
+      key: device-user
+  - name: assertDeviceApproved
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.devicePoll.result.ok"
+      expected: true
+
+  # ---- Device grant: refusal is a returned outcome, not a throw -------------
+  - name: deniedStart
+    invoke: !ref StartDevice
+    inputs: { scopes: [deny] }
+  - name: deniedPoll
+    invoke: !ref AwaitDevice
+    inputs:
+      deviceCode: !cel "steps.deniedStart.result.deviceCode"
+      interval: 1
+      expiresAt: !cel "steps.deniedStart.result.expiresAt"
+  - name: assertDeviceDenied
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.deniedPoll.result"
+      expected: { ok: false, reason: denied, key: null, scope: null, expiresAt: null }
+
+  # ---- Machine-to-machine --------------------------------------------------
+  - name: machine
+    invoke: !ref MachineGrant
+    inputs: { key: service }
+  - name: assertMachine
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.machine.result.accessToken"
+      expected: at-machine
+
+  # ---- A stored grant is returned without a refresh ------------------------
+  - name: current
+    invoke: !ref CurrentToken
+    inputs: { key: service }
+  - name: assertCurrent
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.current.result.accessToken"
+      expected: at-machine
+
+  # ---- Clearing ------------------------------------------------------------
+  - name: cleared
+    invoke: !ref ClearGrant
+    inputs: { key: service }
+  - name: assertCleared
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.cleared.result.cleared"
+      expected: true
+  - name: goneGrant
+    invoke: !ref ReadGrant
+    inputs: { key: service }
+  - name: assertGone
+    invoke: !ref AssertEquals
+    inputs:
+      actual: !cel "steps.goneGrant.result.exists"
+      expected: false

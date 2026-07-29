@@ -267,9 +267,15 @@ export function validateReferences(
 
           // Local reference (bare name or explicit `Self.`-qualified).
           const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
+          // Scope-local FIRST, enclosing module as the fallback — the order the
+          // runtime uses at every name-resolution site (`ScopeContext.getInstance`,
+          // `ResourceContext.resolveRef`, and the CEL `resources` layering). Module-first
+          // here would validate a shadowed name against the resource the kernel will
+          // never bind: a false pass when the outer kind fits and the scoped one does
+          // not, a false REFERENCE_KIND_MISMATCH when it is the other way round.
           const target =
-            byName.get(localName) ??
-            visibleScopeManifests.find((m) => m.metadata?.name === localName);
+            visibleScopeManifests.find((m) => m.metadata?.name === localName) ??
+            byName.get(localName);
           if (!target) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,

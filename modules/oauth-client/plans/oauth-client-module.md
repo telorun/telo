@@ -30,7 +30,7 @@ Seventeen kinds, split so each is one operation with a precise input and output 
 
 | Kind | Capability | Role |
 | --- | --- | --- |
-| `AuthorizationServer` | Provider | The server being talked to: its `issuer` identity, the endpoints reached on it, and the discovery that fills them in. Carries no credentials. |
+| `AuthorizationServer` | Provider | The server being talked to: its `issuer` identity, the endpoints reached on it, and the discovery that fills them in on first use. Carries no credentials. |
 | `Client` | Provider | This application's registration at a server: credentials, scopes, PKCE mode, extra authorization parameters, and a ref to the `AuthorizationServer`. |
 | `Authorization` | Invocable | Builds the consent URL; returns it with the generated `state` and PKCE verifier, and persists a single-use pending record keyed by `state` into its `source`'s store. |
 | `RedirectListener` | Service | Binds `127.0.0.1:0` when run and publishes the resulting `{ redirectUri, port }`; teardown closes the socket. |
@@ -90,6 +90,16 @@ errors: they are legitimate ends of the flow that the response has to render, an
 selects on them with `result` statically typed from `Callback`'s `outputType`. A real failure — a
 token endpoint 5xx, a malformed provider response — still throws and is never swallowed.
 
+That typing needs one analyzer fix, carried by this change. `x-telo-context-ref-from` — what
+`Http.Api`'s `returns:` uses to type `result` — resolves the referenced resource's `outputType` from
+that resource's own **manifest** and falls back to an open schema when it finds none, so a kind that
+declares its output once on its `Telo.Definition` (as `Callback` does, having one fixed output shape)
+types nothing and `result.<typo>` passes. The fix is to fall back to the referenced resource's **kind**
+before falling back to open — the same layering `buildStepContextSchema` already applies to
+`steps.<name>.result`, so instance-level narrowing keeps winning where a kind exposes `outputType` as
+an author field. It is generic, kind-agnostic, and every route handler in the standard library gains
+it.
+
 **Grant keys are per call, not per resource.** `TokenSource.key` is a default; `AccessToken` and the
 three grant kinds accept a `key` input that overrides it, `Credential` takes one as configuration,
 and `Authorization` records the key the callback should write. A browser-served flow is inherently multi-user, and even a CLI may
@@ -113,7 +123,8 @@ not a second method: the credential decides what a forced refresh means — `OAu
 bypasses its cached access token and refreshes, a static API key returns the same header unchanged.
 
 The module imports `http-client` (for the `Http.Credential` abstract that `Credential` extends) and
-`kv-store` (for the store ref on `TokenSource`), the same way `lease` imports `kv-store`. It does
+`kv-store` (for the store ref on `TokenSource`, and for the `KeyedClaim` protocol a refresh claims
+under), the same way `lease` imports `kv-store`. It does
 **not** import `http-server`: `Callback` is a plain Invocable that a consumer's route references,
 so the dependency runs the other way. PKCE needs random bytes and SHA-256; that stays private to
 the controller rather than growing a `crypto` module in this change.
@@ -156,11 +167,17 @@ Alongside the manifest: `modules/oauth-client/docs/` plus a README, tests under
 `modules/oauth-client/tests/` driving a fake authorization server built in-manifest from
 `http-server`, a changie fragment for the module version, and a re-run of
 `scripts/gen-changie-config.mjs`. The module itself takes no changeset — the build package is
-private, so nothing publishes to npm and `metadata.version` is its only version; the SDK/kernel and
-http-client changes it depends on carry their own. Both callback paths run unattended: an
-`Http.Request` stands in for the browser against the loopback listener, while `Callback` is
-exercised directly — invoked with `{ code, state }` and asserted on the grant it wrote — with one
-route test covering the wiring.
+private, so nothing publishes to npm and `metadata.version` is its only version; the analyzer and
+http-client changes it depends on carry their own.
+
+**Every kind ships tested**, all against the in-manifest fake server, so nothing reaches a real
+provider. Both callback paths run unattended: an `Http.Request` stands in for the browser against the
+loopback listener, while `Callback` is exercised directly — invoked with `{ code, state }` and
+asserted on the grant it wrote — with one route test covering the wiring. The device grant gets a
+fake device endpoint plus a token endpoint that returns `authorization_pending` before it returns a
+token, so `DeviceToken`'s polling and its terminal outcomes (denied, expired) are covered rather than
+assumed; `ClientCredentials` gets its own grant against the same server. Discovery is tested from the
+issuer alone, with the explicit-endpoints path asserted to issue no discovery request at all.
 
 ## Decisions
 
@@ -286,9 +303,26 @@ route test covering the wiring.
 - **Persistence is a `KvStore.Store` ref, not a bespoke token file** — refresh tokens are exactly
   what that abstract is for (durable, non-evicting, atomic conditional writes), and the store
   choice stays the author's. A refresh writes the new grant with a compare-and-set against the
-  version it read, so a provider that rotates refresh tokens cannot lose one to a concurrent
-  refresh. A file-backed store, if wanted, is a separate `kv-store-file` module; local use today
-  is `kv-store-sql` over sqlite.
+  version it read. A file-backed store, if wanted, is a separate `kv-store-file` module; local use
+  today is `kv-store-sql` over sqlite.
+- **Only one refresh per grant key is in flight, claimed on the grant store** — compare-and-set makes
+  the *write* safe but not the *call*: both refreshes still reach the provider, and a provider that
+  rotates refresh tokens treats the second presentation of a rotated token as replay, which RFC 6749
+  §10.4 answers by revoking the whole grant. So the CAS loser does not merely lose a write — it can
+  take the user's authorization down with it. `AccessToken` and `Credential` therefore claim
+  `refresh:<grantKey>` before refreshing and release after, using `KeyedClaim` from
+  `@telorun/kv-store` — the claim/settle/release protocol `Lease.Critical` and `Idempotency.Once` are
+  both built on, so the guarantee is the standard library's rather than this module's, and it holds
+  across processes as a browser-served deployment requires. Rejected: a `lease: !ref Lease.Critical`
+  slot on `TokenSource`. `Critical` is a decorator that dispatches a **declared** `invoke:` body,
+  and a refresh is controller-internal work with no resource to name there; wiring it anyway
+  (`TokenSource → lease → Critical → TokenRefresh → source`) closes a reference cycle the dependency
+  graph rejects outright, and breaking the cycle means hand-duplicating the client, store and key into
+  a second resource that nothing checks agrees — a lease guarding a different key than the one being
+  written is worse than no lease, because it looks wired. The declared `store:` edge is the real
+  coordination boundary: the claim must be atomic against the same store the grant lives in, so a
+  separately swappable backend could not be correct anyway. Rejected: an in-controller single-flight
+  map, which covers one kernel only.
 - **The loopback port is ephemeral, chosen by the OS at runtime** — a login flow is not a service,
   so it should not claim a port a real listener may want, fail when one instance is already
   running, or make the author configure a number that means nothing to them. Binding on scope entry
@@ -317,6 +351,21 @@ route test covering the wiring.
   openid-configuration`, falling back to RFC 8414's `oauth-authorization-server`; explicitly given
   endpoints win. This is what keeps the module provider-neutral instead of a Google shape with the
   URLs swapped.
+- **Discovery is lazy and memoized, never at `init()`** — `provide()` is already the declared lazy
+  contract, resolved when a consumer asks rather than when the resource is built (`Mcp.SessionProvider`
+  is called per invoke; `KvStore.Store` backends return a handle whose operations carry the I/O), so
+  this needs no exception to the rule that `init()` performs no I/O — the same rule that puts
+  `RedirectListener`'s bind in `run()`. A full explicit endpoint set skips discovery entirely, so a
+  pinned or air-gapped deployment fetches nothing. The in-flight fetch is single-flighted on the
+  instance, or a browser-served application taking concurrent callbacks after a restart fires one
+  identical `.well-known` request per callback; unlike token refresh this contention is process-local,
+  so an in-process promise is the whole mechanism. Rejected: fetching in `init()` — it buys fail-fast
+  on a wrong issuer, which is a health-check concern and arrives as the same error at first use, and
+  pays for it with a network round-trip on every boot of every consumer plus an outage mode strictly
+  worse than the one it prevents: an unreachable authorization server would stop the application from
+  *starting* rather than leaving it serving everything except login. Surviving a restart is a
+  `Cache.Store` ref on `AuthorizationServer` later — freshness with eviction, as against the durable
+  `KvStore.Store` holding grants — and is the extension point, not part of this change.
 - **`iss` is verified, not just carried** — `Callback` and `TokenExchange` check RFC 9207's `iss`
   authorization-response parameter and any ID token's `iss` claim against the declared issuer. It is
   the defence against mix-up attacks, and it only became expressible once the issuer was a declared
@@ -337,7 +386,7 @@ metadata:
   name: sheets-demo
 imports:
   OAuth: std/oauth-client@0.1.0
-  Http: std/http-client@0.13.0
+  Http: std/http-client@0.14.0
   KvStore: std/kv-store-sql@0.4.0
   Console: std/console@0.13.0
   Run: std/run@0.13.0

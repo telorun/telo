@@ -1,11 +1,21 @@
-import { type ResourceContext, type ScopeContext, type ScopeHandle } from "@telorun/sdk";
+import {
+  getRefIdentity,
+  type ResourceContext,
+  type ScopeContext,
+  type ScopeHandle,
+} from "@telorun/sdk";
 import { pascalCase, type Step, StepEngine } from "./engine.js";
 
 /** Read the referenced resource name from a `targets` entry. After `!ref`
  *  resolution the entry is a `{kind, name}` reference; an unresolved `!ref`
  *  sentinel (`{__tagged, engine: "ref", source}`) carries the name as `source`.
- *  Scope targets are always with-resources, so the name is resolved against the
- *  scope (never Phase-5-injected into a live instance). */
+ *
+ *  A scope target can ALSO arrive as a live instance: when a module-level
+ *  resource shares the scoped name, Phase 5 injection resolves the ref against it
+ *  and substitutes the instance. The name is still the right answer — the scope
+ *  resolves it scope-locally, shadowing the module-level resource that was
+ *  injected — and the kernel stamps the identity at injection, so recover it from
+ *  there rather than treating the instance as an unrecognized shape. */
 function scopeTargetName(target: unknown): string {
   if (target && typeof target === "object") {
     const ref = target as { name?: unknown; source?: unknown };
@@ -14,8 +24,25 @@ function scopeTargetName(target: unknown): string {
       const dot = ref.source.lastIndexOf(".");
       return dot >= 0 ? ref.source.slice(dot + 1) : ref.source;
     }
+    const identity = getRefIdentity(target);
+    if (identity) return identity.name;
   }
-  throw new Error(`Run.Sequence target is not a resource reference: ${JSON.stringify(target)}`);
+  // Never JSON.stringify the value: a live instance holds sockets, pools and
+  // parent back-references, so serializing it throws a cyclic-structure error
+  // from inside the error path and buries the real problem.
+  throw new Error(
+    `Run.Sequence target is not a resource reference (got ${describeTarget(target)}). ` +
+      `Use \`!ref <name>\` naming a resource declared in this sequence's \`with:\`.`,
+  );
+}
+
+/** A short, allocation-free description of a bad target — enough to identify it
+ *  without walking a structure that may be cyclic. */
+function describeTarget(target: unknown): string {
+  if (target === null) return "null";
+  if (typeof target !== "object") return typeof target;
+  const ctor = (target as { constructor?: { name?: string } }).constructor?.name;
+  return ctor && ctor !== "Object" ? `an instance of ${ctor}` : "an object with no 'name'";
 }
 
 /** Layer the scope's `resources` over the CEL extras so steps can read a

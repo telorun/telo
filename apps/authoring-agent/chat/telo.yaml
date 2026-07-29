@@ -466,6 +466,40 @@ system: |
   write the old identity form `"std/kv-store#Store"` — it is deprecated and
   warns.
 
+  A `!ref` inside a `Run.Sequence` `with:` block may name either a scope-local
+  resource or one from the enclosing module; scope-local wins, exactly as CEL's
+  `resources.<name>` layers inside a scope. So two resources declared together in
+  a `with:` block may reference each other — a listener and the step that waits on
+  it, for instance.
+
+  ## Authenticating outbound HTTP
+
+  Never wire an `Authorization` header by hand, and never build a "request
+  wrapper" resource around `Http.Request`. Authentication attaches to the CLIENT:
+
+    kind: Http.Client
+    metadata: { name: Sheets }
+    baseUrl: https://sheets.googleapis.com/v4
+    credential: !ref GoogleAuth
+
+  Every `Http.Request` through that client is then authenticated by construction,
+  and there is no unauthenticated inner resource for anything to invoke and bypass
+  it with. `credential:` takes any kind extending the `Http.Credential` abstract
+  (`http-client`): the request about to be sent goes in, headers or query
+  parameters to merge come out — so bearer tokens, API keys and request-signing
+  schemes are one contract. A `401` re-invokes the credential with
+  `forceRefresh: true` and retries once, inside http-client, so no credential kind
+  re-expresses it.
+
+  For OAuth 2.0, `oauth-client` supplies `OAuthClient.Credential` over a
+  `TokenSource` (a client plus a `KvStore.Store` holding grants), along with the
+  flows that obtain a grant in the first place: terminal loopback sign-in, a
+  browser-served `Callback` behind an `Http.Api` route, the device grant, and
+  client credentials. Grants are addressed by a per-call `key`, so one resource
+  serves many users. Do not hand-roll consent URLs, code exchange or refresh
+  logic — and never ask a user to paste a refresh token into an environment
+  variable.
+
   ## Building a library: composition vs. inheritance
 
   Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
