@@ -1,0 +1,255 @@
+# A stand-in authorization server, so every flow runs unattended against
+# something that behaves like a provider without reaching one.
+#
+# Included as a partial, so the port and issuer come from the including
+# application's `variables:` and each test file can pick its own port.
+#
+# Deliberately stateless: the device grant encodes its own outcome in the
+# device_code (`approve:<epochMs>`, `deny`, `slow`, `expire`) rather than counting
+# polls, so a poll sequence is reproducible without the fake keeping a tally.
+kind: JS.Script
+metadata: { name: TokenEndpoint }
+code: |
+  async function main({ body }) {
+    const p = new URLSearchParams(body ?? "");
+    const grant = p.get("grant_type");
+
+    if (grant === "authorization_code") {
+      if (p.get("code") !== "good-code") return { error: "invalid_grant" };
+      if (p.get("code_verifier") == null) return { error: "invalid_request" };
+      return {
+        access_token: "at-code", token_type: "Bearer", expires_in: 3600,
+        refresh_token: "rt-1", scope: "read write",
+      };
+    }
+
+    if (grant === "refresh_token") {
+      if (p.get("refresh_token") !== "rt-1") return { error: "invalid_grant" };
+      // Rotates: the stored refresh token must be replaced by this one.
+      return {
+        access_token: "at-fresh", token_type: "Bearer", expires_in: 3600,
+        refresh_token: "rt-2", scope: "read write",
+      };
+    }
+
+    if (grant === "client_credentials") {
+      return { access_token: "at-machine", token_type: "Bearer", expires_in: 3600, scope: "api" };
+    }
+
+    if (grant === "urn:ietf:params:oauth:grant-type:device_code") {
+      const code = p.get("device_code") ?? "";
+      if (code === "deny") return { error: "access_denied" };
+      if (code === "expire") return { error: "expired_token" };
+      if (code === "slow") return { error: "slow_down" };
+      if (code.startsWith("approve:")) {
+        const at = Number(code.slice("approve:".length));
+        if (Date.now() < at) return { error: "authorization_pending" };
+        return {
+          access_token: "at-device", token_type: "Bearer", expires_in: 3600, scope: "read",
+        };
+      }
+      return { error: "invalid_grant" };
+    }
+
+    return { error: "unsupported_grant_type" };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      body: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+---
+kind: JS.Script
+metadata: { name: DeviceEndpoint }
+code: |
+  async function main({ body }) {
+    const p = new URLSearchParams(body ?? "");
+    // The scope carries which outcome this test wants, so one fake endpoint
+    // serves the approve / deny / expire cases.
+    const scope = p.get("scope") ?? "";
+    const deviceCode =
+      scope.includes("deny") ? "deny"
+      : scope.includes("expire") ? "expire"
+      : "approve:" + (Date.now() + 700);
+    return {
+      device_code: deviceCode,
+      user_code: "WDJB-MJHT",
+      verification_uri: "https://example.test/device",
+      verification_uri_complete: "https://example.test/device?user_code=WDJB-MJHT",
+      expires_in: 30,
+      interval: 1,
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      body: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+---
+# A protected resource: 200 only for the token a refresh produces, so a call
+# carrying a stale token exercises the 401 refresh-and-retry-once path in
+# http-client's request controller.
+kind: JS.Script
+metadata: { name: ProtectedResource }
+code: |
+  async function main({ authorization }) {
+    return { authorized: authorization === "Bearer at-fresh", seen: authorization ?? "" };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      authorization: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [authorized, seen]
+    properties:
+      authorized: { type: boolean }
+      seen: { type: string }
+---
+# Echoes what the request actually carried, so a credentialed POST can assert that
+# attaching a credential did not strip the content-type derived from the body.
+kind: JS.Script
+metadata: { name: EchoRequest }
+code: |
+  async function main({ contentType, body }) {
+    return { contentType: contentType ?? "", parsedBody: body ?? null };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      contentType: { type: string }
+      body: {}
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [contentType, parsedBody]
+    properties:
+      contentType: { type: string }
+      parsedBody: {}
+---
+kind: JS.Script
+metadata: { name: DiscoveryDocument }
+code: |
+  async function main({ issuer }) {
+    return {
+      issuer,
+      authorization_endpoint: issuer + "/authorize",
+      token_endpoint: issuer + "/token",
+      device_authorization_endpoint: issuer + "/device",
+      // Advertised, so a response arriving without `iss` must be REFUSED rather
+      // than waved through — the case the module has to get right.
+      authorization_response_iss_parameter_supported: true,
+    };
+  }
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    properties:
+      issuer: { type: string }
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+---
+kind: Http.Api
+metadata: { name: FakeServerApi }
+routes:
+  - operationId: discovery
+    request:
+      method: GET
+      path: /.well-known/openid-configuration
+    inputs:
+      issuer: !cel "variables.issuer"
+    handler: !ref DiscoveryDocument
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - operationId: token
+    request:
+      method: POST
+      path: /token
+      schema:
+        body: { type: string }
+    inputs:
+      body: !cel "request.body"
+    handler: !ref TokenEndpoint
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - operationId: device
+    request:
+      method: POST
+      path: /device
+      schema:
+        body: { type: string }
+    inputs:
+      body: !cel "request.body"
+    handler: !ref DeviceEndpoint
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - operationId: echoRequest
+    request:
+      method: POST
+      path: /echo
+      schema:
+        body:
+          type: object
+          properties:
+            hello: { type: string }
+    inputs:
+      contentType: !cel "request.headers['content-type']"
+      body: !cel "request.body"
+    handler: !ref EchoRequest
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - operationId: protectedResource
+    request:
+      method: GET
+      path: /resource
+    inputs:
+      authorization: !cel "request.headers.authorization"
+    handler: !ref ProtectedResource
+    returns:
+      - when: !cel "result.authorized"
+        status: 200
+        content:
+          application/json:
+            body: { ok: true }
+      - when: !cel "!result.authorized"
+        status: 401
+        content:
+          application/json:
+            body: { error: "invalid_token" }

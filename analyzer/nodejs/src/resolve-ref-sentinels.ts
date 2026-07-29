@@ -1,7 +1,21 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
+import {
+  isScopeEntry,
+  resolveFieldEntries,
+  type ReferenceFieldMap,
+} from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+
+/** The slice of the definition registry this pass needs: a kind's field map, from
+ *  which the `x-telo-scope` slots are read. */
+export interface ScopeFieldMapSource {
+  getFieldMapForKind(
+    kind: string,
+    aliases?: { resolveKind(k: string): string | undefined },
+  ): ReferenceFieldMap | undefined;
+}
 
 /** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
  *  cross-module references (resolved into an imported library's exported instance). */
@@ -52,6 +66,10 @@ export function resolveRefSentinels(
   // pass — which loads the entry module only — can still resolve `!ref Alias.name` against
   // imported libraries' exported instances.
   crossModuleTargets: ResourceManifest[] = [],
+  /** Supplies each kind's `x-telo-scope` slots. Without it a scoped name cannot be
+   *  told from a module-level one, and a shadowed `!ref` resolves to the resource
+   *  it shadows — so both call sites pass it. */
+  defs?: ScopeFieldMapSource,
 ): void {
   const moduleOf = (r: ResourceManifest): string | undefined =>
     (r.metadata as { module?: string } | undefined)?.module;
@@ -109,21 +127,67 @@ export function resolveRefSentinels(
     return undefined;
   };
 
+  /** Names a resource declares in its own execution scopes, read from the kind's
+   *  `x-telo-scope` slots — the analyzer's single definition of "scope", shared
+   *  with `manifest-visitor`. Inferring it structurally instead (any array of
+   *  named inline manifests) would give scope-local shadowing to the first kind
+   *  that happens to carry such an array without asking for it, and this pass is
+   *  shared with the kernel, so the guess would be baked into the runtime tree
+   *  rather than merely reported. */
+  const declaredInScopes = (
+    resource: ResourceManifest,
+  ): Map<string, ResourceManifest> | undefined => {
+    const fieldMap = defs?.getFieldMapForKind(resource.kind, aliases);
+    if (!fieldMap) return undefined;
+    let declared: Map<string, ResourceManifest> | undefined;
+    for (const [fieldPath, entry] of fieldMap) {
+      if (!isScopeEntry(entry)) continue;
+      for (const { value } of resolveFieldEntries(resource, fieldPath)) {
+        for (const element of Array.isArray(value) ? value : [value]) {
+          if (!element || typeof element !== "object" || Array.isArray(element)) continue;
+          const manifest = element as ResourceManifest;
+          const name = (manifest.metadata as { name?: string } | undefined)?.name;
+          if (typeof manifest.kind === "string" && typeof name === "string") {
+            (declared ??= new Map()).set(name, manifest);
+          }
+        }
+      }
+    }
+    return declared;
+  };
+
   // Resolve every `!ref` sentinel in the tree; leave opaque tagged / precompiled
   // nodes (e.g. `!cel`) untouched and don't descend into them.
-  const walk = (value: unknown): unknown => {
+  //
+  // `scoped` carries the names the enclosing resource declares in its `x-telo-scope`
+  // slots, and they SHADOW the module-level ones — the order the runtime resolves
+  // in. Baking the module-level kind into a shadowed reference would label traces
+  // and `getRefIdentity` with a resource that never runs.
+  const walk = (value: unknown, scoped?: Map<string, ResourceManifest>): unknown => {
     if (isRefSentinel(value)) {
-      return resolveTarget(value.source) ?? value;
+      const source = value.source;
+      const bare = source.indexOf(".") === -1;
+      const shadow = bare ? scoped?.get(source) : undefined;
+      if (shadow) return { kind: shadow.kind as string, name: source };
+      return resolveTarget(source) ?? value;
     }
     if (value === null || typeof value !== "object") return value;
     if (isTaggedSentinel(value)) return value;
     if ((value as { __compiled?: unknown }).__compiled) return value;
     if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) value[i] = walk(value[i]);
+      for (let i = 0; i < value.length; i++) value[i] = walk(value[i], scoped);
       return value;
     }
     const obj = value as Record<string, unknown>;
-    for (const key of Object.keys(obj)) obj[key] = walk(obj[key]);
+    // A nested inline resource may declare scopes of its own (a `Run.Sequence`
+    // inside another sequence's `with:`). Collected before descending, so the
+    // declarations are visible to every region of the resource that declares
+    // them — a sequence's `with:` names resolve in its `targets:` and `steps:`
+    // alike, not only inside `with:` itself.
+    const declared =
+      typeof obj.kind === "string" ? declaredInScopes(obj as ResourceManifest) : undefined;
+    const inner = declared ? new Map([...(scoped ?? new Map()), ...declared]) : scoped;
+    for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner);
     return value;
   };
 

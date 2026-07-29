@@ -323,16 +323,35 @@ export function resolveContextAnnotations(
       typeof ref.name === "string" &&
       subpath
     ) {
+      const segments = subpath.split("/");
       const refManifest = allManifests.find(
         (m) => m.kind === ref.kind && (m.metadata as any)?.name === ref.name,
       ) as Record<string, any> | undefined;
       if (refManifest) {
         const resolved = resolveTypeFieldToSchema(
-          navigatePath(refManifest, subpath.split("/")) as unknown,
+          navigatePath(refManifest, segments) as unknown,
           allManifests,
         );
         if (resolved && typeof resolved === "object") {
           return resolved;
+        }
+      }
+      // The instance declares nothing, so fall back to its KIND's declaration —
+      // the same layering `buildStepContextSchema` applies to `steps.<name>.result`,
+      // so a kind with one fixed output shape (declared once on its Telo.Definition)
+      // types the context, while a kind that exposes the field for per-instance
+      // narrowing keeps winning above.
+      if (defs) {
+        const canonical = aliases?.resolveKind(ref.kind) ?? ref.kind;
+        const def = defs.resolve(canonical) as Record<string, unknown> | undefined;
+        if (def) {
+          const resolved = resolveTypeFieldToSchema(
+            navigatePath(def, segments) as unknown,
+            allManifests,
+          );
+          if (resolved && typeof resolved === "object") {
+            return resolved;
+          }
         }
       }
     }

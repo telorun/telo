@@ -818,13 +818,23 @@ export class EvaluationContext implements IEvaluationContext {
           child.preInitHook = (resource, childGetInstance, childIsPending) => {
             parentHook(
               resource,
-              (name, alias) =>
-                alias && alias !== "Self"
-                  ? parent.resolveImportedInstance(alias, name)
-                  : childGetInstance(name) ?? parent.resourceInstances.get(name)?.instance,
-              // A scoped ref resolves against the scope's own resources or an already-inited
-              // outer one; only a scope-local dependency can still be pending. The outer is
-              // live by the time a scope opens, so the child's own predicate suffices.
+              (name, alias) => {
+                if (alias && alias !== "Self") return parent.resolveImportedInstance(alias, name);
+                const scoped = childGetInstance(name);
+                if (scoped) return scoped;
+                // A name the scope DECLARES resolves to the scope's instance and to
+                // nothing else. Falling through to the enclosing module while the
+                // scoped one is merely not initialized yet would inject the resource
+                // it shadows — an init-order-dependent wrong answer, and a silent
+                // one: the ref binds an instance that is never started, so the
+                // failure surfaces later as a timeout somewhere else entirely.
+                // Returning nothing leaves it pending, which is what makes the init
+                // loop come back to it.
+                if (child.hasManifest(name)) return undefined;
+                return parent.resourceInstances.get(name)?.instance;
+              },
+              // Only a scope-local dependency can still be pending — an outer resource
+              // is live by the time a scope opens — so the child's own predicate suffices.
               childIsPending,
             );
           };

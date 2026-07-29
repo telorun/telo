@@ -14,7 +14,76 @@ metadata:
 exports:
   kinds:
     - Client
+    - Credential
     - Request
+---
+# Http.Credential — how a client authenticates the requests made through it.
+#
+# The request about to be sent goes IN, so one abstract covers schemes that sign
+# or key off the request itself (HMAC, SigV4, a key in a query parameter), not
+# bearer tokens alone. What comes back is merged into the outgoing request.
+#
+# Invalidation is an INPUT, not a second operation: `forceRefresh: true` is what
+# distinguishes the retry after a 401 from the first attempt. Each implementation
+# decides what forcing means — a token credential bypasses its cache and
+# refreshes, a static API key returns the same header unchanged. That keeps this
+# a plain Telo.Invocable with one declared inputType, statically checkable and
+# implementable in any language.
+kind: Telo.Abstract
+metadata:
+  name: Credential
+  description: >-
+    Authenticates outbound HTTP requests: given the request about to be sent, it
+    returns the headers or query parameters to merge into it. Covers bearer tokens,
+    API keys and request-signing schemes alike, and can be asked to re-acquire a
+    credential the server has just rejected.
+capability: Telo.Invocable
+inputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [request]
+    properties:
+      request:
+        type: object
+        additionalProperties: false
+        required: [method, url]
+        description: The request about to be sent, before this credential is applied.
+        properties:
+          method: { type: string }
+          url: { type: string }
+          headers:
+            type: object
+            additionalProperties: { type: string }
+          query:
+            type: object
+            additionalProperties: { type: string }
+      forceRefresh:
+        type: boolean
+        default: false
+        description: >-
+          Re-acquire rather than reuse anything cached. Set on the single retry
+          after a request was rejected as unauthenticated; the credential decides
+          what re-acquiring means.
+outputType:
+  kind: Type.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    description: What to merge into the outgoing request. Both members are optional.
+    properties:
+      headers:
+        type: object
+        additionalProperties: { type: string }
+        description: >-
+          Headers to apply. They override the client's default headers, and are
+          overridden in turn by a header the individual request sets, so an
+          explicit per-call value is never silently replaced.
+      query:
+        type: object
+        additionalProperties: { type: string }
+        description: Query parameters to apply, under the request's own by the same rule.
 ---
 kind: "Telo.Definition"
 metadata:
@@ -57,6 +126,15 @@ schema:
       type: "boolean"
       default: true
       description: "Whether redirects should be followed automatically."
+    credential:
+      title: Credential
+      x-telo-ref: Self.Credential
+      description: >-
+        Authenticates every request made through this client. The credential is
+        consulted once per request; what it returns overrides the client's own
+        default headers but not a header the individual request sets, so an
+        explicit per-call value always wins. A response rejecting the request as
+        unauthenticated re-consults it with forceRefresh and retries once.
 ---
 kind: "Telo.Definition"
 metadata:

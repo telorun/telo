@@ -7,6 +7,7 @@ import {
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
+import type { CredentialApplier } from "./http-client-controller.js";
 import { PassThrough, Readable } from "stream";
 
 const MAX_REDIRECTS = 5;
@@ -223,6 +224,7 @@ interface HttpRequestInputs {
 }
 
 interface HttpRequestManifest extends HttpRequestInputs {
+  metadata?: { name?: string };
   // `client` is an x-telo-ref slot, so its runtime shape depends on where the
   // Http.Request sits. See resolveClientConfig for the forms it can take.
   client?: unknown;
@@ -235,10 +237,19 @@ interface HttpRequestManifest extends HttpRequestInputs {
 
 interface ClientSnapshotInstance {
   snapshot: () => Record<string, unknown>;
+  /** Present on a live Http.Client; absent on the raw-manifest fallback. */
+  credential?: () => CredentialApplier | undefined;
 }
 
 function hasSnapshot(value: unknown): value is ClientSnapshotInstance {
   return !!value && typeof (value as { snapshot?: unknown }).snapshot === "function";
+}
+
+/** The client's config plus the credential it applies, already resolved by the
+ *  client itself — the request never sees the slot's raw shape. */
+interface ResolvedClient {
+  config: Record<string, unknown>;
+  credential: CredentialApplier | undefined;
 }
 
 /**
@@ -274,13 +285,18 @@ function normalizeClientRef(
   );
 }
 
+function clientOf(instance: ClientSnapshotInstance): ResolvedClient {
+  return { config: instance.snapshot(), credential: instance.credential?.() };
+}
+
 /**
- * Resolve the `client` x-telo-ref slot to its config (baseUrl / headers / timeout).
- * The returned config may still carry `${{ }}` expressions; the caller expands them.
+ * Resolve the `client` x-telo-ref slot to its config (baseUrl / headers / timeout)
+ * and its `credential` slot. The returned config may still carry `${{ }}`
+ * expressions; the caller expands them.
  */
-function resolveClientConfig(client: unknown, ctx: ResourceContext): Record<string, unknown> {
+function resolveClient(client: unknown, ctx: ResourceContext): ResolvedClient {
   // Top-level Http.Request: the kernel injects the live Http.Client instance at Phase 5.
-  if (hasSnapshot(client)) return client.snapshot();
+  if (hasSnapshot(client)) return clientOf(client);
 
   const { name, alias } = normalizeClientRef(client, ctx);
 
@@ -292,7 +308,7 @@ function resolveClientConfig(client: unknown, ctx: ResourceContext): Record<stri
         `Http.Request: client reference '${alias}.${name}' did not resolve to an imported Http.Client instance.`,
       );
     }
-    return instance.snapshot();
+    return clientOf(instance);
   }
 
   // Local reference. Prefer the live instance: a kind that inherits Http.Client
@@ -302,12 +318,24 @@ function resolveClientConfig(client: unknown, ctx: ResourceContext): Record<stri
   // raw manifest for a genuine Http.Client at a scope site where no live instance
   // is registered.
   const live = ctx.moduleContext.resourceInstances.get(name)?.instance;
-  if (hasSnapshot(live)) return live.snapshot();
+  if (hasSnapshot(live)) return clientOf(live);
   const resource = ctx.getResourcesByName("Client", name);
   if (!resource) {
     throw new Error(`Http.Request: Http.Client "${name}" not found.`);
   }
-  return resource as unknown as Record<string, unknown>;
+  // Raw-manifest fallback: no live client exists at this scope site, so there is
+  // no owning context to resolve the credential in. Config still applies; a
+  // credential declared on such a client is not reachable from here, and silently
+  // resolving it against the REQUEST's imports would bind the wrong resource.
+  const manifest = resource as unknown as Record<string, unknown>;
+  if (manifest.credential !== undefined) {
+    throw new Error(
+      `Http.Request: Http.Client "${name}" declares a 'credential' but is not initialized at this ` +
+        `site, so the credential cannot be resolved in the client's own context. ` +
+        `Declare the client at module level rather than inside a scope.`,
+    );
+  }
+  return { config: manifest, credential: undefined };
 }
 
 class HttpRequestResource implements ResourceInstance {
@@ -328,8 +356,11 @@ class HttpRequestResource implements ResourceInstance {
     let clientHeaders: Record<string, string> = {};
     let clientTimeout = DEFAULT_TIMEOUT;
 
+    let applyCredential: CredentialApplier | undefined;
+
     if (m.client) {
-      const clientConfig = resolveClientConfig(m.client, ctx);
+      const { config: clientConfig, credential } = resolveClient(m.client, ctx);
+      applyCredential = credential;
 
       const resolvedBaseUrl = ctx.expandValue(clientConfig.baseUrl ?? "", input ?? {});
       clientBaseUrl = typeof resolvedBaseUrl === "string" ? resolvedBaseUrl : "";
@@ -370,48 +401,95 @@ class HttpRequestResource implements ResourceInstance {
     const throwOnHttpError = m.throwOnHttpError ?? false;
 
     // Build URL
-    let fullUrl = rawUrl.startsWith("http") ? rawUrl : `${clientBaseUrl}${rawUrl}`;
+    const baseUrl = rawUrl.startsWith("http") ? rawUrl : `${clientBaseUrl}${rawUrl}`;
 
-    // Append query params
-    const queryEntries = Object.entries(query);
-    if (queryEntries.length > 0) {
-      const params = new URLSearchParams(queryEntries);
-      fullUrl = `${fullUrl}${fullUrl.includes("?") ? "&" : "?"}${params.toString()}`;
-    }
+    // Append query params — the credential may contribute more (an API key in a
+    // query parameter), so the URL is assembled per attempt rather than once.
+    const buildUrl = (extraQuery?: Record<string, string>): string => {
+      // Same precedence as headers: the request's own query wins over the credential's.
+      const entries = Object.entries({ ...(extraQuery ?? {}), ...query });
+      if (entries.length === 0) return baseUrl;
+      const params = new URLSearchParams(entries);
+      return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${params.toString()}`;
+    };
 
     // Merge headers: client defaults < request-specific
     const mergedHeaders: Record<string, string> = { ...clientHeaders, ...requestHeaders };
+
+    // Headers DERIVED from the body rather than declared by anyone. Kept in their
+    // own map and filled in last, only where nothing else set the key: the
+    // credential path rebuilds the header set from the client/request maps, so a
+    // value mutated into `mergedHeaders` here would be silently dropped from every
+    // authenticated request that carries a body.
+    const derivedHeaders: Record<string, string> = {};
 
     // Serialize body
     let serializedBody: string | undefined;
     if (body !== undefined) {
       if (typeof body === "object" && body !== null) {
-        const contentType = mergedHeaders["content-type"] ?? "application/json";
-        if (!mergedHeaders["content-type"]) {
-          mergedHeaders["content-type"] = "application/json";
-        }
-        if (contentType.includes("application/x-www-form-urlencoded")) {
-          serializedBody = new URLSearchParams(body as Record<string, string>).toString();
-        } else {
-          // Default to JSON
-          mergedHeaders["content-type"] = mergedHeaders["content-type"] ?? "application/json";
-          serializedBody = JSON.stringify(body);
-        }
+        const declared = mergedHeaders["content-type"];
+        const contentType = declared ?? "application/json";
+        if (!declared) derivedHeaders["content-type"] = contentType;
+        serializedBody = contentType.includes("application/x-www-form-urlencoded")
+          ? new URLSearchParams(body as Record<string, string>).toString()
+          : JSON.stringify(body);
       } else {
         serializedBody = String(body);
       }
     }
 
-    const response = await executeWithRetry(
-      fullUrl,
-      method,
-      mergedHeaders,
-      serializedBody,
-      effectiveTimeout,
-      retries,
-      m.mode === "stream",
-      invokeCtx?.cancellation.signal,
-    );
+    /** Fill in derived headers wherever the key is still unset. */
+    const withDerived = (headers: Record<string, string>): Record<string, string> => {
+      const out = { ...headers };
+      for (const [key, value] of Object.entries(derivedHeaders)) {
+        if (out[key] === undefined) out[key] = value;
+      }
+      return out;
+    };
+
+    const attempt = async (forceRefresh: boolean): Promise<{ response: TeloResponse; url: string }> => {
+      let headers = withDerived(mergedHeaders);
+      let url = buildUrl();
+      if (applyCredential) {
+        const applied = (await applyCredential(
+          { request: { method, url, headers, query }, forceRefresh },
+          invokeCtx,
+        )) as { headers?: Record<string, string>; query?: Record<string, string> } | undefined;
+        // Client defaults < credential < this request's own. An explicit per-call
+        // header is the most specific statement of intent there is, so it must not
+        // be silently replaced by the credential; the client's defaults are the
+        // ones the credential is there to supersede. Derived headers fill in last,
+        // and only where nothing above set the key.
+        headers = withDerived({
+          ...clientHeaders,
+          ...normalizeHeaders(applied?.headers ?? {}),
+          ...requestHeaders,
+        });
+        url = buildUrl(applied?.query);
+      }
+      const response = await executeWithRetry(
+        url,
+        method,
+        headers,
+        serializedBody,
+        effectiveTimeout,
+        retries,
+        m.mode === "stream",
+        invokeCtx?.cancellation.signal,
+      );
+      return { response, url };
+    };
+
+    let { response, url: fullUrl } = await attempt(false);
+
+    // A header is computed before the call, so it cannot react to a token the
+    // server has just rejected. Asking the credential to re-acquire and retrying
+    // once lives here rather than in each credential kind, so every scheme
+    // inherits it. Exactly one retry — a second rejection propagates.
+    if (response.status === 401 && applyCredential) {
+      if (m.mode === "stream") (response.body as PassThrough | undefined)?.destroy();
+      ({ response, url: fullUrl } = await attempt(true));
+    }
 
     if (throwOnHttpError && response.status >= 400) {
       throw new Error(`HTTP ${response.status} error from ${fullUrl}`);

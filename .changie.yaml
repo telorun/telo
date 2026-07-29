@@ -252,6 +252,13 @@ projects:
       - path: modules/ndjson-codec/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: {{.VersionNoPrefix}}'
+  - label: oauth-client
+    key: oauth-client
+    changelog: modules/oauth-client/CHANGELOG.md
+    replacements:
+      - path: modules/oauth-client/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: octet-codec
     key: octet-codec
     changelog: modules/octet-codec/CHANGELOG.md
