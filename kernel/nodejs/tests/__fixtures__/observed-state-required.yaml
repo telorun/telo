@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateRequired
+  version: 1.0.0
+targets:
+  - !ref probe
+---
+# `required:` inside `status:`. Every declared field is mandatory once the
+# resource has run, so the list is either redundant or a lie — a sometimes-absent
+# field is declared with a nullable type instead.
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./observed-state/nodejs/listener.mjs#startupConsumer
+schema:
+  type: object
+  additionalProperties: false
+status:
+  type: object
+  properties:
+    endpoint:
+      type: string
+  required:
+    - endpoint
+---
+kind: Probe
+metadata:
+  name: probe

@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateTypo
+  version: 1.0.0
+imports:
+  Observed: ./observed-state/telo.yaml
+  Assert: ../../../../modules/assert
+  Run: ../../../../modules/run
+targets:
+  - !ref bound
+  - !ref reads
+---
+kind: Observed.Listener
+metadata:
+  name: bound
+---
+kind: Run.Sequence
+metadata:
+  name: reads
+steps:
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      # `redirectUri` is not what this kind reports — the typo fails where it is
+      # written instead of resolving to nothing.
+      actual: !cel "resources.bound.status.redirectUri"
+      expected: "x"

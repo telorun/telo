@@ -146,6 +146,15 @@ export interface EvaluationContext {
   initializeResources(): Promise<void>;
   withManifests<T>(manifests: any[], fn: () => T): T;
   createScopeHandle(manifests: ResourceManifest[]): ScopeHandle;
+  /** Re-read a resource's `snapshot()` and republish it, joined with whatever
+   *  observed state the resource has reported. The publication path the
+   *  post-init capture, the post-run publication, the post-invoke refresh and
+   *  every `setStatus()` all share. */
+  publishSnapshot(name: string): Promise<void>;
+  /** Record what a resource observed (`ResourceContext.setStatus`) and
+   *  republish. Validated against the kind's `status:`; replaces rather than
+   *  merges; an error before the resource has started. */
+  setResourceStatus(name: string, status: Record<string, unknown>): Promise<void>;
   teardownResources(): Promise<void>;
   transientChild(context: Record<string, any>): EvaluationContext;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, ctx?: InvokeContext): Promise<any>;

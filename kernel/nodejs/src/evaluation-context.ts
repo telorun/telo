@@ -26,6 +26,11 @@ import {
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { evalPathCovers } from "@telorun/analyzer";
+import {
+  acceptReportedStatus,
+  buildPublishedProps,
+  diagnoseObservedStateAccess,
+} from "./observed-state.js";
 
 export { resourceKey };
 
@@ -166,6 +171,70 @@ export function buildResolvedProperties(
 const cancellationStore = new AsyncLocalStorage<InvokeContext>();
 
 /**
+ * Instances whose `run()` has been dispatched. Reporting observed state before
+ * this is an error (see observed-state.ts).
+ *
+ * Keyed on the instance rather than on `(context, name)` because the context
+ * that STARTS a resource is not always the one that OWNS it: an importer's
+ * `targets:` can name a library's exported instance, and the library's own
+ * `ctx.setStatus()` — publishing into the context where its name lives — has to
+ * see that it started.
+ */
+const startedInstances = new WeakSet<object>();
+
+/**
+ * The last observed state each instance reported. Sticky: it stays until the
+ * resource is torn down, so a dispatch that reports nothing leaves the previous
+ * reading in place — a listener's bound address does not stop being true between
+ * calls. Keyed by instance for the same reason as `startedInstances`, and
+ * because a scope's per-run instances are distinct by construction, which is
+ * what keeps two concurrent runs from observing each other's readings.
+ */
+const reportedStatus = new WeakMap<object, Record<string, unknown>>();
+
+/**
+ * Instances whose `run()` has RETURNED. A long-lived Service never appears here
+ * — its `run()` stays pending for the process lifetime — which is exactly the
+ * distinction the reader needs: a Runnable that finished and reported nothing
+ * for a field it declares is a producer defect, while a Service that is still
+ * coming up is ordering, and telling those apart is not something the reader
+ * can do from the manifest.
+ */
+const completedInstances = new WeakSet<object>();
+
+/**
+ * The published value for an instance the caller resolved itself, rather than
+ * one reached by name through a context's own `resourceInstances`. The
+ * cross-module export path uses it: an importer surfaces a library's exported
+ * instances under `resources.<Alias>.<name>`, which crosses the boundary
+ * without passing through the owner's `resources` map — and must still carry the
+ * reading the instance reported, under the same rules.
+ *
+ * `kind` is already canonical (`<module>.<Kind>`) on that path, so the resolver
+ * needs no alias table.
+ */
+export async function publishedPropsOf(
+  kind: string,
+  name: string,
+  instance: ResourceInstance,
+  getDefinition: ((kind: string) => ResourceDefinition | undefined) | undefined,
+): Promise<Record<string, unknown>> {
+  const snap =
+    typeof instance.snapshot === "function"
+      ? ((await Promise.resolve(instance.snapshot())) as Record<string, unknown> | undefined)
+      : undefined;
+  return buildPublishedProps(snap, {
+    kind,
+    name,
+    module: kind.split(".")[0],
+    statusSchema: getDefinition?.(kind)?.status,
+    status: reportedStatus.get(instance),
+    started: startedInstances.has(instance),
+    completed: completedInstances.has(instance),
+  });
+}
+
+/**
  * The ambient dispatch context, for §7.2's automatic trace correlation: a record
  * emitted inside an active span carries that span's ids without the controller
  * passing anything.
@@ -194,6 +263,14 @@ function compileWalker(value: unknown): Walker {
       } catch (error) {
         const expr = compiled.source ? `\${{ ${compiled.source} }}` : "unknown expression";
         const msg = error instanceof Error ? error.message : String(error);
+        // Reading observed state that was never reported is its own failure with
+        // its own remedy, so it does not degrade into a bare "No such key".
+        const observed = compiled.source
+          ? describeObservedStateFailure(compiled.source, ctx, msg)
+          : null;
+        if (observed) {
+          throw new RuntimeError("ERR_OBSERVED_STATE_UNAVAILABLE", `${expr}: ${observed}`);
+        }
         const hint = compiled.source ? describeFailedAccess(compiled.source, ctx, msg) : null;
         const suffix = hint ? `\n  ${hint}` : "";
         throw new Error(`Expression ${expr} failed: ${msg}${suffix}`);
@@ -334,8 +411,87 @@ export class EvaluationContext implements IEvaluationContext {
     return this._createInstance;
   }
 
-  /** Called after init() when a resource snapshot is available. Overridden by ModuleContext. */
-  protected onResourceSnapshotted(_name: string, _snap: Record<string, unknown>): void {}
+  /** Called after init() when a resource snapshot is available. Overridden by
+   *  ModuleContext, and by a scope child (which keeps its own per-run map). */
+  protected onResourceSnapshotted(name: string, snap: Record<string, unknown>): void {
+    this.snapshotSink?.(name, snap);
+  }
+
+  /** Where published snapshots go for a context that has no `resources` map of
+   *  its own — set by `createScopeHandle` on the per-run child so scope-local
+   *  resources publish like any other. */
+  protected snapshotSink: ((name: string, snap: Record<string, unknown>) => void) | undefined;
+
+  /** Record that an instance has started. Republished so a read that arrives
+   *  before the resource reports gets the "still running" message rather than
+   *  the "never started" one. */
+  private async markStarted(name: string, instance: ResourceInstance): Promise<void> {
+    if (startedInstances.has(instance)) return;
+    startedInstances.add(instance);
+    await this.publishSnapshot(name);
+  }
+
+  /**
+   * Record what a resource observed and republish. Validated against the kind's
+   * `status:` here, at the point the claim is made, so an invalid report names
+   * the call that made it rather than surfacing at some later publication.
+   *
+   * Replaces rather than merges: this is the resource's observed state now. A
+   * declared field this call omits reads as missing, which is the truth — a
+   * sometimes-absent field is declared nullable and reported as `null`.
+   */
+  async setResourceStatus(name: string, status: Record<string, unknown>): Promise<void> {
+    const entry = this.resourceInstances.get(name) ?? this.createdInstances.get(name);
+    if (!entry) return;
+    const kind = entry.resource.kind as string;
+    if (!startedInstances.has(entry.instance)) {
+      throw new RuntimeError(
+        "ERR_OBSERVED_STATE_BEFORE_START",
+        `${kind} '${name}' reported observed state before it started. init() performs no I/O, so there is nothing observed to report there — call setStatus() from run(), or from a handler it reaches.`,
+      );
+    }
+    reportedStatus.set(
+      entry.instance,
+      acceptReportedStatus(status, { kind, name, statusSchema: this.statusSchemaOf(kind) }),
+    );
+    await this.publishSnapshot(name);
+  }
+
+  /** The kind's effective `status:` — already folded through `extends` and
+   *  stamped onto the definition at registration, in the scope that DECLARED it
+   *  (`resource-definition-controller`). Only the kind's own alias is resolved
+   *  here, in the reading module's scope, which is where it was written. */
+  private statusSchemaOf(kind: string): Record<string, any> | undefined {
+    const def = this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind);
+    return def?.status;
+  }
+
+  /**
+   * Re-read a resource's `snapshot()` and republish it, joined with whatever
+   * observed state the resource has reported. The single publication path — the
+   * post-init capture, the post-run publication, the post-invoke refresh and
+   * every `setStatus()` all land here.
+   */
+  async publishSnapshot(name: string): Promise<void> {
+    const entry = this.resourceInstances.get(name) ?? this.createdInstances.get(name);
+    if (!entry?.instance.snapshot) return;
+    const snap = (await Promise.resolve(entry.instance.snapshot())) as
+      | Record<string, unknown>
+      | undefined;
+    const kind = entry.resource.kind as string;
+    this.onResourceSnapshotted(
+      name,
+      buildPublishedProps(snap, {
+        kind,
+        name,
+        module: entry.resource.metadata?.module as string | undefined,
+        statusSchema: this.statusSchemaOf(kind),
+        status: reportedStatus.get(entry.instance),
+        started: startedInstances.has(entry.instance),
+        completed: completedInstances.has(entry.instance),
+      }),
+    );
+  }
 
   get context(): Record<string, unknown> {
     return this._context;
@@ -425,6 +581,7 @@ export class EvaluationContext implements IEvaluationContext {
       this.emit,
     );
     child.resolveImportedInstance = (alias, name) => this.resolveImportedInstance(alias, name);
+    child.kindResolver = (kind) => this.resolveKindSafe(kind);
     return this.spawnChild(child);
   }
 
@@ -528,10 +685,13 @@ export class EvaluationContext implements IEvaluationContext {
             );
           }
           if (instance.init) await instance.init(ctx);
-          if (instance.snapshot) {
-            const snap = await Promise.resolve(instance.snapshot());
-            this.onResourceSnapshotted(name, (snap as Record<string, unknown>) ?? {});
-          }
+          // Publish BEFORE registering: publication can fail (a kind returning
+          // the reserved `status` key without declaring it, a report that does
+          // not match `status:`), and a resource that failed must not be left
+          // reachable through `getInstance` / Phase 5 injection / teardown.
+          // `publishSnapshot` looks the instance up in `createdInstances` too,
+          // so it resolves fine from here.
+          await this.publishSnapshot(name);
           this.resourceInstances.set(name, { resource, instance });
           this.createdInstances.delete(name);
           errors.delete(name);
@@ -639,6 +799,18 @@ export class EvaluationContext implements IEvaluationContext {
             parent.emit,
           ),
         );
+        child.kindResolver = (kind) => parent.resolveKindSafe(kind);
+
+        // Per-run map of the scope's OWN resources. Fresh per run, so two
+        // concurrent runs of the same sequence never observe each other's.
+        // The enclosing module's map is layered in at read time, not copied
+        // here: `setResource` replaces `_resources` wholesale on every publish,
+        // so a snapshot taken at scope entry would go stale the moment an outer
+        // resource republished (a post-invoke refresh, a later boot target).
+        const scopeLocal = new Map<string, Record<string, unknown>>();
+        child.snapshotSink = (name, snap) => {
+          scopeLocal.set(name, snap);
+        };
 
         // Propagate injection hook: extend getInstance to also resolve parent singleton instances.
         if (parent.preInitHook) {
@@ -684,6 +856,22 @@ export class EvaluationContext implements IEvaluationContext {
                 `Resource '${name}' not found in scope or outer context. Available scoped: ${[...child.resourceInstances.keys()].join(", ")}`,
               );
             },
+            async run(name: string): Promise<void> {
+              // Through the child context's chokepoint, so a scope target is
+              // traced, records that it started, and publishes its snapshot —
+              // exactly like a boot target. A scope target is always a
+              // with-resource, so it lives in the child.
+              await child.run(name);
+            },
+            get resources(): Record<string, unknown> {
+              // Merged on read so the outer half stays live; scope-local names
+              // win, matching `getInstance`'s order so CEL and `!ref` agree.
+              const merged: Record<string, unknown> = {
+                ...((parent._context.resources as Record<string, unknown> | undefined) ?? {}),
+              };
+              for (const [name, snap] of scopeLocal) merged[name] = snap;
+              return merged;
+            },
           };
           return await fn(scope);
         } finally {
@@ -716,6 +904,13 @@ export class EvaluationContext implements IEvaluationContext {
 
     for (const [key, { resource, instance }] of this.teardownOrder()) {
       const label = `${resource.kind}.${resource.metadata.name}`;
+      // A reading belongs to the run that produced it. The WeakMap would drop it
+      // with the instance anyway; clearing here also covers an instance something
+      // else still holds, so a torn-down resource can never keep publishing what
+      // it observed in a previous life.
+      reportedStatus.delete(instance);
+      startedInstances.delete(instance);
+      completedInstances.delete(instance);
       try {
         if (instance.teardown) await instance.teardown();
       } catch (err) {
@@ -979,6 +1174,10 @@ export class EvaluationContext implements IEvaluationContext {
       // `run()` — side effects only, no outputs. Prefer `invoke()` when both
       // exist so a dual-capability instance (e.g. Run.Sequence) keeps invoke
       // semantics and returns its `steps`/`outputs`.
+      // A pure Runnable reached through an `invoke:` slot runs exactly as it
+      // would from a `targets:` list, so it starts here too — its observed state
+      // must not stay withheld just because the dispatch slot was a different one.
+      if (typeof instance.invoke !== "function") await this.markStarted(name, instance);
       const call = () =>
         typeof instance.invoke === "function"
           ? (instance.invoke as (i: any, c?: InvokeContext) => any)(inputs as any, invokeCtx)
@@ -986,6 +1185,7 @@ export class EvaluationContext implements IEvaluationContext {
       const outputs = await (invokeCtx === ambient
         ? call()
         : cancellationStore.run(invokeCtx, call));
+      if (typeof instance.invoke !== "function") completedInstances.add(instance);
       await this.emit(`${name}.Invoked`, span("end", "ok", { inputs, outputs }));
       return outputs;
     } catch (err) {
@@ -1047,8 +1247,14 @@ export class EvaluationContext implements IEvaluationContext {
    *  kind unchanged. A typed seam (overridden in `ModuleContext`), matching the
    *  `traceRootScope()` pattern, rather than reaching across the boundary. */
   protected resolveKindSafe(kind: string): string {
-    return kind;
+    return this.kindResolver?.(kind) ?? kind;
   }
+
+  /** Alias-kind resolver inherited from the context that spawned this one. A
+   *  scope / template child holds no import table of its own, but its resources
+   *  are written with the declaring module's aliases (`Observed.Listener`), so
+   *  definition lookups there have to go through the parent's table. */
+  kindResolver: ((kind: string) => string) | undefined;
 
   private capabilityOf(kind: string): string | undefined {
     const resolved = this.resolveKindSafe(kind);
@@ -1224,6 +1430,12 @@ export class EvaluationContext implements IEvaluationContext {
 
     if (tracing) await this.emit(`${name}.Running`, span("start", undefined, {}));
 
+    // Marked before the call, not after: a Service's `run()` stays pending for
+    // the process lifetime, and reporting what it discovered while listening is
+    // the whole point — `ctx.setStatus()` is an error until the resource counts
+    // as started, so this has to happen first.
+    await this.markStarted(name, instance);
+
     try {
       // Runnable: run inside the ALS scope so nested invokes inherit the token and
       // trace id (skip the redundant `run` when the token is already ambient).
@@ -1231,6 +1443,10 @@ export class EvaluationContext implements IEvaluationContext {
       // its long-lived async work does not capture this scope.
       const call = () => (instance.run as (c?: InvokeContext) => Promise<void>)(invokeCtx);
       await (isService || invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call));
+      // A one-shot Runnable that discovered something during run() publishes it
+      // without an explicit call; a Service never reaches this until teardown.
+      completedInstances.add(instance);
+      await this.publishSnapshot(name);
       await this.emit(`${name}.Run`, span("end", "ok", {}));
     } catch (err) {
       if (isCancellationError(err)) {
@@ -1438,6 +1654,35 @@ export function describeFailedAccess(
   ctx: unknown,
   msg: string,
 ): string | null {
+  const failure = locateFailedAccess(source, ctx, msg);
+  if (!failure) return null;
+  return `at ${failure.walked}: ${describeMissingAccess(failure.container, failure.missingKey)}`;
+}
+
+/**
+ * The observed-state message for a failed access, or null when the failure has
+ * nothing to do with observed state (the caller then falls back to the generic
+ * enrichment above). See `observed-state.ts` for why "has not started" and
+ * "started but reported nothing" are two different messages.
+ */
+export function describeObservedStateFailure(
+  source: string,
+  ctx: unknown,
+  msg: string,
+): string | null {
+  const failure = locateFailedAccess(source, ctx, msg);
+  if (!failure) return null;
+  return diagnoseObservedStateAccess(failure.container, failure.missingKey);
+}
+
+/** Walk a dotted CEL access path against the activation and stop at the node
+ *  whose key was missing. Null when the error isn't a key-access failure, the
+ *  source isn't a plain access path, or the path doesn't match the activation. */
+function locateFailedAccess(
+  source: string,
+  ctx: unknown,
+  msg: string,
+): { container: unknown; missingKey: string; walked: string } | null {
   const m = /^No such key:\s*(\S+)/.exec(msg);
   if (!m) return null;
   const missingKey = m[1];
@@ -1463,7 +1708,7 @@ export function describeFailedAccess(
         !(tok.name in (current as Record<string, unknown>))
       ) {
         if (tok.name !== missingKey) return null;
-        return `at ${walked.join("")}: ${describeMissingAccess(current, missingKey)}`;
+        return { container: current, missingKey, walked: walked.join("") };
       }
       current = (current as Record<string, unknown>)[tok.name];
       walked.push("." + tok.name);

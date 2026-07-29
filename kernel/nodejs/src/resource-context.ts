@@ -104,6 +104,23 @@ export class ResourceContextImpl implements ResourceContext {
     stderr?: NodeJS.WritableStream,
     args?: ParsedArgs,
     ownerPrefix = "",
+    /**
+     * The context that OWNS this instance — the module context for a top-level
+     * resource, the per-run scope child for a `with:`-scoped one.
+     *
+     * Everything resource-scoped goes through here: registering a manifest,
+     * resolving a sibling by name, expanding CEL, spawning a child context,
+     * dispatching, publishing. `moduleContext` is reserved for what genuinely
+     * belongs to the MODULE rather than to this resource's context — imports
+     * (`registerImport` / `resolveImported*`), the controller policy, and the
+     * logging scope, all of which a scope child inherits rather than owns.
+     *
+     * Getting this wrong is not cosmetic: a scoped resource that registers an
+     * inline definition into the module lands it in a pending queue the module's
+     * init loop has already drained, so the resource is never created and the
+     * dispatch fails.
+     */
+    private readonly owningContext: IEvaluationContext = moduleContext,
   ) {
     // `ctx.env` is the sanctioned host-env channel for controllers — always the
     // real environment (kernel passes its snapshot), never the locked Proxy.
@@ -113,6 +130,22 @@ export class ResourceContextImpl implements ResourceContext {
     this.stderr = stderr ?? process.stderr;
     this.args = args ?? { _: [] };
     this.ownerPrefix = ownerPrefix;
+  }
+
+  /**
+   * Where a NAME resolves from: the owning context first, then the enclosing
+   * module. Same order as `ScopeContext.getInstance` and the CEL `resources`
+   * layering — scope-local wins, outer is the fallback — so a `with:`-scoped
+   * resource can still dispatch a module-level one by name (an `Http.Server`
+   * whose `notFoundHandler` targets a module-level invocable).
+   *
+   * Registration deliberately does NOT use this: a new manifest belongs to the
+   * context that owns the resource creating it, never to the module.
+   */
+  private contextForName(name: string): IEvaluationContext {
+    return this.owningContext.resourceInstances.has(name)
+      ? this.owningContext
+      : this.moduleContext;
   }
 
   createSchemaValidator(schema: any) {
@@ -228,7 +261,7 @@ export class ResourceContextImpl implements ResourceContext {
     // failure to the EventBus rather than letting it go unhandled. We track the
     // error-handled chain (not the raw promise) so teardown drains a task whose
     // settlement is already observed here.
-    const tracked = this.moduleContext
+    const tracked = this.owningContext
       .runDetached(fn) // bare scope-detach primitive
       .catch(async (err: unknown) => {
         const detail =
@@ -266,11 +299,11 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {
-    return this.moduleContext.openSpan(base, opts);
+    return this.owningContext.openSpan(base, opts);
   }
 
   invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
-    return this.moduleContext.invoke(kind, name, inputs);
+    return this.contextForName(name).invoke(kind, name, inputs);
   }
 
   invokeResolved<TInputs>(
@@ -280,7 +313,7 @@ export class ResourceContextImpl implements ResourceContext {
     inputs: TInputs,
     ctx?: InvokeContext,
   ): Promise<any> {
-    return this.moduleContext.invokeResolved(kind, name, instance, inputs, ctx);
+    return this.owningContext.invokeResolved(kind, name, instance, inputs, ctx);
   }
 
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
@@ -297,11 +330,22 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   async run(name: string) {
-    await this.moduleContext.run(name);
+    await this.contextForName(name).run(name);
+  }
+
+  /** Report what this resource has observed. Configured state stays on
+   *  `snapshot()`, which the kernel pulls; only what the resource LEARNS is
+   *  pushed, because nothing but the controller knows when it learned it. */
+  async setStatus(status: Record<string, unknown>): Promise<void> {
+    // `metadata` is the resource's `metadata` block, not the resource — every
+    // other member here reads `this.metadata.name`.
+    const name = this.metadata?.name as string | undefined;
+    if (!name) return;
+    await this.owningContext.setResourceStatus(name, status);
   }
 
   registerManifest(resource: any): void {
-    this.moduleContext.registerManifest(resource);
+    this.owningContext.registerManifest(resource);
   }
 
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
@@ -392,7 +436,7 @@ export class ResourceContextImpl implements ResourceContext {
       // initialized yet when this resolves, and scope-local resources never enter
       // `resourceInstances`).
       const kind =
-        (this.moduleContext.resourceInstances.get(refName)?.resource.kind as string | undefined) ??
+        (this.contextForName(refName).resourceInstances.get(refName)?.resource.kind as string | undefined) ??
         this.kernel.resourceKindByName(refName) ??
         "";
       return { kind, name: refName };
@@ -451,7 +495,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   getResourcesByName(_kind: string, name: string): RuntimeResource | null {
-    const entry = this.moduleContext.resourceInstances.get(name);
+    const entry = this.contextForName(name).resourceInstances.get(name);
     return (entry?.resource ?? null) as RuntimeResource | null;
   }
 
@@ -526,7 +570,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   expandValue(value: any, context: Record<string, any>) {
-    return this.moduleContext.expandWith(value, context);
+    return this.owningContext.expandWith(value, context);
   }
 
   async emitEvent(event: string, payload?: any) {
@@ -549,11 +593,11 @@ export class ResourceContextImpl implements ResourceContext {
     // spawnChildContext(). Rooted on this resource's module context (the
     // consumer scope); a templated definition that needs library-scoped
     // resolution calls the defining library's context directly instead.
-    return this.moduleContext.spawnChildContext();
+    return this.owningContext.spawnChildContext();
   }
 
   transientChild(context: Record<string, any>): IEvaluationContext {
-    return this.moduleContext.transientChild(context);
+    return this.owningContext.transientChild(context);
   }
 
   /**

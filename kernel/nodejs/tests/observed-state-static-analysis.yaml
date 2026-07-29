@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateStaticAnalysis
+  version: 1.0.0
+  description: |
+    Pins the static half of declared observed state: a `.status` read is
+    rejected in a field that resolves at startup, rejected when nothing can
+    start the producing resource, and type-checked against the kind's `status:`
+    so a typo fails where it is written.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref StartupRead
+  - !ref NeverRun
+  - !ref Typo
+  - !ref RequiredForbidden
+  - !ref CrossModuleTypo
+---
+kind: Assert.Manifest
+metadata:
+  name: StartupRead
+source: ./__fixtures__/observed-state-startup-read.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_IN_STARTUP_FIELD
+      message: "resolved once at startup"
+---
+kind: Assert.Manifest
+metadata:
+  name: NeverRun
+source: ./__fixtures__/observed-state-never-run.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_NEVER_RUN
+      message: "nothing starts it"
+---
+kind: Assert.Manifest
+metadata:
+  name: Typo
+source: ./__fixtures__/observed-state-typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "available: endpoint, port"
+---
+kind: Assert.Manifest
+metadata:
+  name: RequiredForbidden
+source: ./__fixtures__/observed-state-required.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_REQUIRED_FORBIDDEN
+      message: "mandatory once the resource has run"
+---
+# A typo in a cross-module read fails exactly where a local one does — the
+# import's exported instances are typed under `resources.<Alias>.<name>`.
+kind: Assert.Manifest
+metadata:
+  name: CrossModuleTypo
+source: ./__fixtures__/observed-state-cross-module-typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "available: endpoint, port"

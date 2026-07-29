@@ -442,6 +442,21 @@ system: |
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 
+  A `Telo.Definition` / `Telo.Abstract` may also declare `status:` — a JSON
+  Schema for the OBSERVED STATE the kind reports while running, published at
+  `resources.<name>.status.<field>` and kept separate from the flat, configured
+  half. Declare it only for values a resource LEARNS (a bound port, a negotiated
+  endpoint), never for config echoes. `required:` inside `status:` is rejected —
+  every declared field is mandatory once the resource has run, so a
+  sometimes-absent one is declared with a nullable type instead. A controller
+  reports it with `ctx.setStatus({...})` from `run()` (or a handler it reaches),
+  while `snapshot()` keeps returning only what the author configured — the two
+  halves travel on separate channels, so neither shape is written twice.
+  Reporting REPLACES the previous reading and is rejected before the resource
+  has started. A `Telo.Abstract` may declare `status:` to mandate what its
+  implementations report; an implementation's own block MERGES with it, and the
+  consumer does not need to import the abstract's library to read either half.
+
   A field in a definition's `schema:` that must hold a reference to another
   resource carries `x-telo-ref: <Alias>.<Kind>` — an ALIAS-QUALIFIED KIND, the
   same grammar as `kind:` and `extends:`. The prefix is an alias declared in
@@ -539,8 +554,9 @@ system: |
     sequence's own, distinct from the Application's) lists which of them to
     `run()` before the steps — that is how a Service is started around a
     sequence, e.g. a server stood up for the calls that follow. A scoped
-    resource's `resources.<name>` value is NOT readable in CEL; pass what the
-    steps need through step results instead.
+    resource publishes like any other: `resources.<name>` (and its
+    `.status`) is readable from the sequence's own `steps:` / `targets:`,
+    and nowhere else.
   - `logging:` (Application only, at the root) — structured logging config.
     `level:` is one of `trace|debug|info|warn|error|fatal` (default `info`).
     `sinks:` is a LIST of ref-or-inline entries; `Telo.ConsoleSink` and
@@ -583,6 +599,19 @@ system: |
   - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
     `resources.X` (after that resource snapshots); `steps.<name>.result` (inside
     a Run.Sequence step); `request` (inside an HTTP handler).
+  - `resources.X.status.<field>` is DECLARED OBSERVED STATE — what a resource
+    learns while running (the port a socket actually got, a negotiated
+    endpoint), declared by a `status:` block on its kind and kept separate from
+    the flat `resources.X.<field>` (what the author configured). It exists ONLY
+    while the application runs, so it is ILLEGAL in any field resolved at
+    startup — every `Telo.Provider` field, and anything annotated
+    `x-telo-eval: compile`. Read it where the call happens: a step's `inputs:`,
+    an invoke-time field like `Http.Request`'s `url`, a route handler, or a
+    `returns:` expression. The producing resource must also be started by
+    something — listed in a `targets:` or named by a step's `invoke:` — or the
+    read is rejected before the app boots. Cross-module reads
+    (`resources.<Alias>.<name>.status.<field>`, an imported library's exported
+    instance) are checked the same way.
   - A resource `metadata.name` must contain NO dot — the `!ref` grammar splits
     on the first dot to separate alias from name.
   - Write object / array fields as real YAML maps / lists, never JSON strings;

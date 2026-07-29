@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: ObservedContract
+  version: 1.0.0
+  description: >-
+    Contract library for the observed-state fixtures: an abstract that mandates
+    what its implementations report while running.
+exports:
+  kinds:
+    - Bindable
+---
+# A contract with no default implementation that MANDATES what implementations
+# report. Its `extends` alias belongs to the implementing library's file, never
+# to whoever consumes the implementation.
+kind: Telo.Abstract
+metadata:
+  name: Bindable
+capability: Telo.Service
+status:
+  type: object
+  properties:
+    endpoint:
+      type: string
+      description: The address the implementation actually bound.

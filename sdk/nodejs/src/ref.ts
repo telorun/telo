@@ -30,6 +30,17 @@ export interface ScopeContext {
    *  this is always a programming error; all scope members are statically
    *  validated in Phase 3 before the kernel ever reaches runtime. */
   getInstance(name: string, alias?: string): ResourceInstance;
+  /** `run()` a scope-local resource through the kernel's dispatch chokepoint, so
+   *  it is traced, records that it started, and publishes its snapshot — a bare
+   *  `getInstance(name).run()` does none of that. Throws if the name was not
+   *  declared in the scope or the instance is not runnable. */
+  run(name: string): Promise<void>;
+  /** The CEL `resources` map as seen from inside this scope: the enclosing
+   *  module's published resources with the scope-local ones layered on top
+   *  (scope-local names win, matching {@link getInstance}'s resolution order).
+   *  Rebuilt per `ScopeHandle.run()`, so two concurrent runs of the same
+   *  sequence never observe each other's scoped resources. */
+  readonly resources: Record<string, unknown>;
 }
 
 /** Returned by Phase 5 injection in place of an x-telo-scope manifest array.

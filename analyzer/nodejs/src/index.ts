@@ -25,9 +25,22 @@ export {
 } from "./flatten-for-analyzer.js";
 export { buildEvalPaths, evalPathCovers } from "./eval-paths.js";
 export {
+  applyObservedStateNode,
+  buildObservedStateIndex,
+  buildObservedStateResourcesSchema,
+  collectRunReachableNames,
+  observedStateRead,
+  validateObservedStateDeclarations,
+  OBSERVED_STATE_SCHEMA,
+} from "./validate-observed-state.js";
+export type { AnalyzedResource, ObservedStateRead } from "./validate-observed-state.js";
+export { moduleScopedDefResolver, scopeResolverForModule } from "./alias-resolver.js";
+export type { ModuleScopes } from "./alias-resolver.js";
+export {
   ancestorChain,
   controllerBearingAncestor,
   effectiveAuthorSchema,
+  effectiveStatusSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   isInheritedDelegation,

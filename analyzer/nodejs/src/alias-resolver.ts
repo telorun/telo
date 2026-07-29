@@ -121,3 +121,61 @@ export function scopeResolverForModule(
     ? aliasesByModule.get(ownModule)
     : undefined;
 }
+
+/** Per-declaring-module alias tables plus the set of root (consumer-owned)
+ *  modules. The shape `StaticAnalyzer.analyze` already threads through its
+ *  passes, and what {@link moduleScopedDefResolver} needs to re-scope. */
+export interface ModuleScopes {
+  aliasesByModule: ReadonlyMap<string, { resolveKind(kind: string): string | undefined }>;
+  rootModules: ReadonlySet<string>;
+}
+
+/** Minimal view of the definition registry a kind lookup needs. */
+export interface DefinitionLookup {
+  resolve(kind: string): unknown;
+}
+
+/**
+ * Resolve a kind to its definition **in the scope that declared it**.
+ *
+ * An `extends` alias belongs to the file it was written in, not to whoever is
+ * reading it: a consumer that imports only a backend (the sanctioned "one import
+ * instead of two") has no alias for the abstract's library, so folding an
+ * inheritance chain with the consumer's table silently stops at the first hop
+ * and yields an un-merged schema. `from` — the definition the kind was read off —
+ * carries `metadata.module`, which is the scope to resolve in; a chain crossing
+ * several modules re-scopes at every hop.
+ *
+ * `resolveIn` takes the module explicitly, for the top-level lookup where there
+ * is no `from` yet (an exported instance's `kind: Self.X` is written in the
+ * exporting library's scope, which the consumer's table cannot resolve either).
+ *
+ * The runtime counterpart is `resource-definition-controller`, which resolves
+ * against the defining module context and stamps the result; keeping both on the
+ * same rule is what stops `telo check` and the kernel from disagreeing about
+ * which inherited fields a child kind may set.
+ */
+export function moduleScopedDefResolver<T>(
+  defs: { resolve(kind: string): T | undefined },
+  aliases?: { resolveKind(kind: string): string | undefined },
+  scopes?: ModuleScopes,
+): {
+  (kind: string, from?: { metadata?: { module?: string } }): T | undefined;
+  in(kind: string, module?: string): T | undefined;
+} {
+  const resolveIn = (kind: string, module?: string): T | undefined => {
+    const scoped =
+      module && scopes && !scopes.rootModules.has(module)
+        ? scopes.aliasesByModule.get(module)
+        : undefined;
+    return (
+      (scoped ? defs.resolve(scoped.resolveKind(kind) ?? kind) : undefined) ??
+      defs.resolve(aliases?.resolveKind(kind) ?? kind) ??
+      defs.resolve(kind)
+    );
+  };
+  const resolver = ((kind: string, from?: { metadata?: { module?: string } }) =>
+    resolveIn(kind, from?.metadata?.module)) as ReturnType<typeof moduleScopedDefResolver<T>>;
+  resolver.in = resolveIn;
+  return resolver;
+}

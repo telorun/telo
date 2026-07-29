@@ -18,6 +18,23 @@ function scopeTargetName(target: unknown): string {
   throw new Error(`Run.Sequence target is not a resource reference: ${JSON.stringify(target)}`);
 }
 
+/** Layer the scope's `resources` over the CEL extras so steps can read a
+ *  with-resource's published snapshot (`resources.<scopedName>.status.port`).
+ *  A live getter, not a copy: the map grows as scope targets start and report,
+ *  and each step re-spreads these extras at evaluation time. Outside the scope
+ *  the name does not resolve at all, which is already the rule for `!ref`. */
+function scopeCel(
+  scope: ScopeContext,
+  extraCtx: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...extraCtx,
+    get resources() {
+      return scope.resources;
+    },
+  };
+}
+
 interface RunSequenceManifest {
   metadata: Record<string, string | number | boolean>;
   with?: ScopeHandle;
@@ -45,7 +62,12 @@ class RunSequence {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
         await this.runScopeTargets(scope);
-        await this.engine.executeSteps(this.resource.steps, {}, scope, { inputs: {} });
+        await this.engine.executeSteps(
+          this.resource.steps,
+          {},
+          scope,
+          scopeCel(scope, { inputs: {} }),
+        );
       });
     } else {
       await this.engine.executeSteps(this.resource.steps, {}, undefined, { inputs: {} });
@@ -62,7 +84,7 @@ class RunSequence {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
         await this.runScopeTargets(scope);
-        await this.engine.executeSteps(this.resource.steps, steps, scope, extraCtx);
+        await this.engine.executeSteps(this.resource.steps, steps, scope, scopeCel(scope, extraCtx));
       });
     } else {
       await this.engine.executeSteps(this.resource.steps, steps, undefined, extraCtx);
@@ -77,14 +99,7 @@ class RunSequence {
   private async runScopeTargets(scope: ScopeContext): Promise<void> {
     if (!this.resource.targets?.length) return;
     await Promise.all(
-      this.resource.targets.map((target) => {
-        const name = scopeTargetName(target);
-        const instance = scope.getInstance(name);
-        if (typeof instance.run !== "function") {
-          throw new Error(`Scope target '${name}' does not have a run() method`);
-        }
-        return instance.run();
-      }),
+      this.resource.targets.map((target) => scope.run(scopeTargetName(target))),
     );
   }
 

@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateNeverRun
+  version: 1.0.0
+imports:
+  Observed: ./observed-state/telo.yaml
+  Assert: ../../../../modules/assert
+  Run: ../../../../modules/run
+targets:
+  - !ref reads
+---
+# In no `targets:` list and named by no step's `invoke:` — nothing can start it,
+# so it can never report anything.
+kind: Observed.Listener
+metadata:
+  name: bound
+---
+kind: Run.Sequence
+metadata:
+  name: reads
+steps:
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.bound.status.port"
+      expected: 51000
