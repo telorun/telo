@@ -1,5 +1,7 @@
 # Changelog
-## 0.13.0 - 2026-07-27
+## 0.14.0 - 2026-07-29
+### Added
+* Update controller @telorun/http-client to 0.10.0.## 0.13.0 - 2026-07-27
 ### Added
 * Reference slots name their target as an alias-qualified kind (`<Alias>.<Kind>`, `Self.<Kind>`, `Telo.<Kind>`) instead of the `<namespace>/<module>#<Kind>` identity string, so a constraint resolves through this module's own `imports:` map and stays pinned to the version it imports. `metadata.namespace` is dropped — a module's location is the ref it is published under, never anything it declares about itself.## 0.12.1 - 2026-07-27
 ### Fixed

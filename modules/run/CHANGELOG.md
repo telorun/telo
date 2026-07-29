@@ -1,5 +1,7 @@
 # Changelog
-## 0.16.0 - 2026-07-29
+## 0.17.0 - 2026-07-29
+### Added
+* Update controller @telorun/run to 0.12.0.## 0.16.0 - 2026-07-29
 ### Added
 * Update controller @telorun/run to 0.11.0.## 0.15.0 - 2026-07-27
 ### Added
