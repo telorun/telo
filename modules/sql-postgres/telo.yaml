@@ -28,6 +28,7 @@ controllers:
   - pkg:npm/@telorun/sql-postgres@0.2.1?local_path=./nodejs#connection
 schema:
   type: object
+  additionalProperties: false
   required:
     - connectionString
   examples:
@@ -48,6 +49,7 @@ schema:
       title: Pool
       description: Database connection pool configuration.
       type: object
+      additionalProperties: false
       properties:
         min:
           title: Min
@@ -67,3 +69,23 @@ schema:
           title: Connection Timeout Ms
           description: Milliseconds to wait for a new connection.
           type: integer
+        maxLifetimeMs:
+          title: Max Lifetime Ms
+          description: >-
+            Milliseconds before a connection is retired and replaced, however
+            healthy it looks. Bounds how long any single connection can have been
+            broken without anyone noticing. Unset leaves connections unlimited.
+          type: integer
+          minimum: 0
+        healthCheckMs:
+          title: Health Check Ms
+          description: >-
+            Milliseconds between liveness probes of idle connections. A peer that
+            disappears without closing the socket — an evicted NAT mapping, a
+            blackholed route — reports nothing, so it is only discovered by
+            sending something; the probe discards dead connections before a
+            request picks one up, and tops the pool back up to `min`. `0`
+            disables probing.
+          type: integer
+          minimum: 0
+          default: 60000

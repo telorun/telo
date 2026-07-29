@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: CanBuildSelections
+  version: 1.0.0
+imports:
+  Sql: ../
+  SqlSqlite: ../../sql-sqlite
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestSelectionBuilder
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: Db
+file: ":memory:"
+---
+# Every clause here goes through the connection's SqlDialect: identifiers are
+# quoted by it, and `in` renders per-dialect (SQLite expands one placeholder per
+# element, PostgreSQL binds the whole array).
+kind: Sql.Selection
+metadata:
+  name: SelectMembers
+from: users
+columns:
+  - id
+  - { column: name, as: label }
+where:
+  - { column: status, op: in, value: [active, trialing] }
+  - { column: deleted_at, op: is_null }
+orderBy:
+  - { column: id, direction: desc }
+limit: 10
+connection: !ref Db
+---
+kind: Run.Sequence
+metadata:
+  name: TestSelectionBuilder
+steps:
+  - name: CreateTable
+    inputs:
+      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, deleted_at TEXT)"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: SeedRows
+    inputs:
+      sql: >-
+        INSERT INTO users (id, name, status, deleted_at) VALUES
+        (1, 'Alice', 'active', NULL),
+        (2, 'Bob', 'trialing', NULL),
+        (3, 'Carol', 'cancelled', NULL),
+        (4, 'Dave', 'active', '2026-01-01')
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: SelectMembers
+    invoke: !ref SelectMembers
+
+  - name: AssertRows
+    inputs:
+      actual: !cel "steps.SelectMembers.result.rows"
+      expected:
+        - { id: 2, label: Bob }
+        - { id: 1, label: Alice }
+    invoke:
+      kind: Assert.Equals

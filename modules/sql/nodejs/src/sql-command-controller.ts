@@ -1,5 +1,5 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlResult } from "./sql-query-controller.js";
 import { runSql } from "./sql-run.js";
@@ -7,7 +7,7 @@ import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 interface SqlCommandManifest {
   metadata: { name: string; module: string };
-  connection?: SqlConnectionResource;
+  connection?: SqlConnection;
   transaction?: SqlTransactionResource;
   inputs: {
     sql: string;

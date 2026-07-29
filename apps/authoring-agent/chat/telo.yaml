@@ -497,7 +497,10 @@ system: |
 
   ## Application / Library fields
 
-  `metadata.name` is kebab-case and becomes the module's kind prefix.
+  `metadata.name` becomes the module's canonical kind prefix. It is not a
+  locator (imports resolve by `source`), so write it as a name, not a slug —
+  prefer PascalCase (`OAuthClient`); older stdlib modules still carry the
+  historical kebab-case form (`http-server`). It must contain no dot.
   `metadata.version` is a semver string, required on the root doc.
 
   `metadata` also carries optional DESCRIPTIVE provenance — `description`,
@@ -530,6 +533,14 @@ system: |
     that must not race it. Every inbound source works this way — `Http.Server`,
     `Mcp.StdioServer`, and both `scheduler` kinds. A Service is never
     self-starting; a schedule left out of `targets:` never ticks.
+  - `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
+    declarations whose lifetime is that one sequence run: created when it starts,
+    torn down when it ends, referenced by `!ref` from its steps. `targets:` (the
+    sequence's own, distinct from the Application's) lists which of them to
+    `run()` before the steps — that is how a Service is started around a
+    sequence, e.g. a server stood up for the calls that follow. A scoped
+    resource's `resources.<name>` value is NOT readable in CEL; pass what the
+    steps need through step results instead.
   - `logging:` (Application only, at the root) — structured logging config.
     `level:` is one of `trace|debug|info|warn|error|fatal` (default `info`).
     `sinks:` is a LIST of ref-or-inline entries; `Telo.ConsoleSink` and

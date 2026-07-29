@@ -1,11 +1,11 @@
 import type { Invocable, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import { currentTxId } from "./transaction-store.js";
 
 interface SqlTransactionManifest {
   metadata: { name: string; module: string };
-  connection: SqlConnectionResource;
+  connection: SqlConnection;
   steps: Invocable;
   inputs?: Record<string, unknown>;
 }
@@ -16,7 +16,7 @@ export class SqlTransactionResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  getConnection(): SqlConnectionResource {
+  getConnection(): SqlConnection {
     return (
       resolveSqlConnection(
         this.manifest.connection,

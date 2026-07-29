@@ -1,8 +1,8 @@
+export { SqlConnectionBase } from "./sql-connection-base.js";
 export {
-  SqlConnectionResource,
-  createSqlConnection,
-  type SqlDriver,
+  quoteAnsiIdentifier,
   type PlaceholderStyle,
-} from "./sql-connection-controller.js";
+  type SqlConnection,
+  type SqlDialect,
+} from "./sql-connection.js";
 export { isSqlConnection, resolveSqlConnection } from "./sql-connection-ref.js";
-export type { SqliteDb, SqliteStatement } from "./sqlite-driver-interface.js";

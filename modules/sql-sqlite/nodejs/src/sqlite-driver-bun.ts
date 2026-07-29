@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { SqliteDb } from "@telorun/sql";
+import type { SqliteDb } from "./sqlite-driver-interface.js";
 
 export function openDatabase(file: string): SqliteDb {
   const db = new Database(file);

@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
  *  module ships a bundled controller, so it depends on no runtime package. */
 interface SqlConnection {
   execute<T>(sql: string, params?: unknown[]): Promise<{ rows: T[]; numAffectedRows?: unknown }>;
-  readonly placeholderStyle: "numbered" | "qmark";
+  readonly dialect: { readonly placeholderStyle: "numbered" | "qmark" };
 }
 
 interface StoreResource {
@@ -97,7 +97,7 @@ class SqlKvStore implements ResourceInstance, KvStore {
   /** `$1, $2, …` on Postgres, `?` on SQLite — taken from the connection so the
    *  store stays dialect-neutral. */
   private ph(index: number): string {
-    return this.conn().placeholderStyle === "numbered" ? `$${index}` : "?";
+    return this.conn().dialect.placeholderStyle === "numbered" ? `$${index}` : "?";
   }
 
   async init(): Promise<void> {

@@ -1,9 +1,9 @@
 import type { KindRef, ResourceContext } from "@telorun/sdk";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection } from "./sql-connection.js";
 
 /** True when a value already exposes the connection contract (Phase-5 injected). */
-export function isSqlConnection(value: unknown): value is SqlConnectionResource {
-  return typeof (value as SqlConnectionResource | undefined)?.execute === "function";
+export function isSqlConnection(value: unknown): value is SqlConnection {
+  return typeof (value as SqlConnection | undefined)?.execute === "function";
 }
 
 /**
@@ -13,10 +13,10 @@ export function isSqlConnection(value: unknown): value is SqlConnectionResource 
  * slot, so the failure points at a concrete manifest location.
  */
 export function resolveSqlConnection(
-  value: SqlConnectionResource | KindRef<SqlConnectionResource> | undefined,
+  value: SqlConnection | KindRef<SqlConnection> | undefined,
   ctx: ResourceContext,
   describe: () => string,
-): SqlConnectionResource | undefined {
+): SqlConnection | undefined {
   if (!value) return undefined;
   return ctx.resolveRef(value, isSqlConnection, describe, "std/sql#Connection");
 }

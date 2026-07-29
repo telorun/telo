@@ -9,7 +9,12 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 - **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
 - **Implicit transactions** — `Sql.Transaction` propagates the active transaction through `AsyncLocalStorage`; nested invocations pick it up automatically.
 - **Idempotent migrations** — `Sql.Migrations` applies its keyed migration entries in lexicographic key order and tracks applied versions in a metadata table.
-- **Tunable pooling** — Postgres pool `min`, `max`, and timeout knobs exposed on `SqlPostgres.Connection`.
+- **Tunable pooling** — each backend exposes its own connection and pool settings; see [`sql-postgres`](../sql-postgres/README.md).
+
+## Docs
+
+- [Writing a SQL backend](docs/writing-a-backend.md) — what a backend owes in any language: the kind, the connection behaviours, the dialect, the lifecycle.
+- [Node backends](docs/nodejs-backend.md) — the `@telorun/sql` helper library (`SqlConnection` / `SqlDialect` / `SqlConnectionBase`) for backends written in TypeScript.
 
 ## Kinds
 

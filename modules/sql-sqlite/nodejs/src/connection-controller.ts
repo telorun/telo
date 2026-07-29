@@ -1,11 +1,37 @@
 import type { ResourceContext } from "@telorun/sdk";
-import { createSqlConnection, type SqlConnectionResource, type SqliteDb } from "@telorun/sql";
+import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
 import { Kysely, SqliteAdapter, SqliteDialect } from "kysely";
+import type { SqliteDb } from "./sqlite-driver-interface.js";
 
 interface SqliteConnectionManifest {
   metadata: { name: string; module: string };
   /** File path, or omitted / `:memory:` for an in-memory database. */
   file?: string;
+}
+
+const sqliteDialect: SqlDialect = {
+  placeholderStyle: "qmark",
+  quoteIdentifier: quoteAnsiIdentifier,
+  // SQLite has no array type, so set membership expands to one placeholder per
+  // element.
+  renderIn(column, values, addParam) {
+    return `${column} IN (${values.map((value) => addParam(value)).join(", ")})`;
+  },
+};
+
+class SqliteConnection extends SqlConnectionBase {
+  constructor(
+    db: Kysely<any>,
+    private readonly sqlite: SqliteDb,
+  ) {
+    super(db, sqliteDialect);
+  }
+
+  /** The driver's native multi-statement entry point — kysely binds one
+   *  statement per call. */
+  override async executeScript(sql: string): Promise<void> {
+    this.sqlite.exec(sql);
+  }
 }
 
 // Kysely's stock SQLite adapter reports `supportsTransactionalDdl = false`, so
@@ -53,10 +79,10 @@ export function register(): void {}
 export async function create(
   resource: SqliteConnectionManifest,
   _ctx: ResourceContext,
-): Promise<SqlConnectionResource> {
+): Promise<SqliteConnection> {
   const sqlite = await openSqliteDatabase(resource.file ?? ":memory:");
   const db = new Kysely<any>({
     dialect: new TransactionalSqliteDialect({ database: sqlite }),
   });
-  return createSqlConnection("sqlite", db, sqlite);
+  return new SqliteConnection(db, sqlite);
 }

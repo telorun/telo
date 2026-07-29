@@ -1,37 +1,32 @@
-import type { ResourceInstance } from "@telorun/sdk";
 import { randomUUID } from "crypto";
-import { CompiledQuery, Kysely, type QueryResult, type Transaction } from "kysely";
+import { CompiledQuery, type Kysely, type QueryResult, type Transaction } from "kysely";
+import type { SqlConnection, SqlDialect } from "./sql-connection.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
-import type { SqliteDb } from "./sqlite-driver-interface.js";
 import { currentTxId, deleteTx, getTx, setTx, txStorage } from "./transaction-store.js";
 
-export type SqlDriver = "postgres" | "sqlite";
-
-/** Native bind-placeholder syntax per driver: SQLite binds anonymous `?`,
- *  PostgreSQL binds numbered `$1`, `$2`, … */
-export type PlaceholderStyle = "qmark" | "numbered";
-
 /**
- * Driver-agnostic SQL connection. The kysely instance (and, for SQLite, the
- * underlying database handle used by `executeScript`) is built by the driver
- * backend (`sql-postgres`, `sql-sqlite`) and handed in via
- * {@link createSqlConnection}. Everything here — execution, transactions,
- * placeholder style, row-count normalization — is transport-neutral.
+ * The dialect-neutral half of a connection: statement execution, transaction
+ * scoping, template binding and row-count normalization over a kysely instance.
+ *
+ * Backends extend it, supply their {@link SqlDialect}, and override only what is
+ * genuinely theirs — `teardown` for resources kysely does not own, `executeScript`
+ * where the driver has a native multi-statement path.
  */
-export class SqlConnectionResource implements ResourceInstance {
-  private readonly db: Kysely<any>;
-  private readonly sqlite?: SqliteDb;
+export abstract class SqlConnectionBase implements SqlConnection {
+  protected readonly db: Kysely<any>;
 
   constructor(
-    readonly driver: SqlDriver,
     db: Kysely<any>,
-    sqlite?: SqliteDb,
+    readonly dialect: SqlDialect,
   ) {
     this.db = db;
-    this.sqlite = sqlite;
   }
 
-  async init() {
+  get kysely(): Kysely<any> {
+    return this.db;
+  }
+
+  async init(): Promise<void> {
     await this.db.connection().execute(async () => {
       // just checking
     });
@@ -63,13 +58,6 @@ export class SqlConnectionResource implements ResourceInstance {
     return executor.executeQuery<T>(CompiledQuery.raw(sql, params));
   }
 
-  get placeholderStyle(): PlaceholderStyle {
-    return this.driver === "postgres" ? "numbered" : "qmark";
-  }
-
-  /** Assemble SQL from literal fragments by interleaving driver-native
-   *  placeholders, then bind `values` positionally. `fragments.length` must
-   *  equal `values.length + 1`. */
   async executeTemplate<T>(
     fragments: string[],
     values: unknown[],
@@ -82,16 +70,9 @@ export class SqlConnectionResource implements ResourceInstance {
     return this.execute<T>(sql, values, transaction);
   }
 
-  private placeholder(index: number): string {
-    return this.placeholderStyle === "numbered" ? `$${index}` : "?";
-  }
-
+  /** Hand the whole script to the driver as one statement. Backends whose driver
+   *  needs a dedicated multi-statement entry point override this. */
   async executeScript(sql: string): Promise<void> {
-    if (this.driver === "sqlite") {
-      this.sqlite?.exec(sql);
-      return;
-    }
-
     await this.execute(sql);
   }
 
@@ -103,12 +84,12 @@ export class SqlConnectionResource implements ResourceInstance {
     return result.rows.length;
   }
 
-  get kysely(): Kysely<any> {
-    return this.db;
-  }
-
   snapshot(): Record<string, unknown> {
     return {};
+  }
+
+  private placeholder(index: number): string {
+    return this.dialect.placeholderStyle === "numbered" ? `$${index}` : "?";
   }
 
   private resolveExecutor(transaction?: SqlTransactionResource): Kysely<any> {
@@ -126,18 +107,4 @@ export class SqlConnectionResource implements ResourceInstance {
 
     return this.db;
   }
-}
-
-/**
- * Build a connection from a driver-constructed kysely instance. Driver backends
- * (`sql-postgres`, `sql-sqlite`) own dialect construction and call this; the
- * `sqlite` handle is required only for SQLite (its `executeScript` runs through
- * the native handle).
- */
-export function createSqlConnection(
-  driver: SqlDriver,
-  db: Kysely<any>,
-  sqlite?: SqliteDb,
-): SqlConnectionResource {
-  return new SqlConnectionResource(driver, db, sqlite);
 }
