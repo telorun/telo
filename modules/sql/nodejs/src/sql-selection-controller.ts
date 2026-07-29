@@ -1,5 +1,5 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection, SqlDialect } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlResult } from "./sql-query-controller.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
@@ -59,7 +59,7 @@ interface OrderByItem {
 
 interface SelectManifest {
   metadata: { name: string; module: string };
-  connection?: SqlConnectionResource;
+  connection?: SqlConnection;
   transaction?: SqlTransactionResource;
   from: string;
   columns?: ColumnDef[];
@@ -103,7 +103,7 @@ class SqlSelectionResource implements ResourceInstance {
       throw new Error("Sql.Selection: either 'connection' or 'transaction' must be set");
     }
 
-    const { sql, params } = buildSelect(m, where, having, limit, offset, connection.driver);
+    const { sql, params } = buildSelect(m, where, having, limit, offset, connection.dialect);
     const result = await connection.execute<Record<string, unknown>>(sql, params, m.transaction);
     return { rows: result.rows, rowCount: result.rows.length };
   }
@@ -111,21 +111,20 @@ class SqlSelectionResource implements ResourceInstance {
 
 // ── SQL building ──────────────────────────────────────────────────────────────
 
-type Driver = "postgres" | "sqlite";
-
 function buildSelect(
   m: SelectManifest,
   where: WhereNode[],
   having: WhereNode[],
   limit: unknown,
   offset: unknown,
-  driver: Driver,
+  dialect: SqlDialect,
 ): { sql: string; params: unknown[] } {
   const params: unknown[] = [];
   const addParam = (value: unknown): string => {
     params.push(value);
-    return `$${params.length}`;
+    return dialect.placeholderStyle === "numbered" ? `$${params.length}` : "?";
   };
+  const quoteIdent = (name: string): string => dialect.quoteIdentifier(name);
 
   const parts: string[] = [];
 
@@ -136,14 +135,14 @@ function buildSelect(
   } else if (m.distinctOn && m.distinctOn.length > 0) {
     selectClause += ` DISTINCT ON (${m.distinctOn.map(quoteIdent).join(", ")})`;
   }
-  const colList = m.columns && m.columns.length > 0 ? buildColumns(m.columns) : "*";
+  const colList = m.columns && m.columns.length > 0 ? buildColumns(m.columns, dialect) : "*";
   parts.push(`${selectClause} ${colList}`);
 
   // FROM
   parts.push(`FROM ${quoteIdent(m.from)}`);
 
   // WHERE
-  const whereStr = buildClauses(where, "AND", driver, addParam);
+  const whereStr = buildClauses(where, "AND", dialect, addParam);
   if (whereStr) parts.push(`WHERE ${whereStr}`);
 
   // GROUP BY
@@ -152,7 +151,7 @@ function buildSelect(
   }
 
   // HAVING
-  const havingStr = buildClauses(having, "AND", driver, addParam);
+  const havingStr = buildClauses(having, "AND", dialect, addParam);
   if (havingStr) parts.push(`HAVING ${havingStr}`);
 
   // ORDER BY
@@ -170,7 +169,8 @@ function buildSelect(
   return { sql: parts.join("\n"), params };
 }
 
-function buildColumns(columns: ColumnDef[]): string {
+function buildColumns(columns: ColumnDef[], dialect: SqlDialect): string {
+  const quoteIdent = (name: string): string => dialect.quoteIdentifier(name);
   return columns
     .map((c) => {
       if (typeof c === "string") return quoteIdent(c);
@@ -183,13 +183,13 @@ function buildColumns(columns: ColumnDef[]): string {
 function buildClauses(
   clauses: WhereNode[],
   join: "AND" | "OR",
-  driver: Driver,
+  dialect: SqlDialect,
   addParam: (v: unknown) => string,
 ): string | null {
   const parts: string[] = [];
   for (const clause of clauses) {
     if (clause.when === false) continue;
-    const built = buildClause(clause, driver, addParam);
+    const built = buildClause(clause, dialect, addParam);
     if (built !== null) parts.push(built);
   }
   if (parts.length === 0) return null;
@@ -199,46 +199,45 @@ function buildClauses(
 
 function buildClause(
   node: WhereNode,
-  driver: Driver,
+  dialect: SqlDialect,
   addParam: (v: unknown) => string,
 ): string | null {
   if ("not" in node) {
-    const inner = buildClause(node.not, driver, addParam);
+    const inner = buildClause(node.not, dialect, addParam);
     return inner ? `NOT (${inner})` : null;
   }
   if ("or" in node) {
-    const inner = buildClauses(node.or, "OR", driver, addParam);
+    const inner = buildClauses(node.or, "OR", dialect, addParam);
     return inner ? `(${inner})` : null;
   }
   if ("and" in node) {
-    const inner = buildClauses(node.and, "AND", driver, addParam);
+    const inner = buildClauses(node.and, "AND", dialect, addParam);
     return inner ? `(${inner})` : null;
   }
   if ("sql" in node) {
     return renumberFragment(node.sql, node.bindings ?? [], addParam);
   }
   if ("column" in node) {
-    return buildCondition(node, driver, addParam);
+    return buildCondition(node, dialect, addParam);
   }
   return null;
 }
 
-function buildCondition(c: Condition, driver: Driver, addParam: (v: unknown) => string): string {
-  const col = quoteIdent(c.column);
+function buildCondition(
+  c: Condition,
+  dialect: SqlDialect,
+  addParam: (v: unknown) => string,
+): string {
+  const col = dialect.quoteIdentifier(c.column);
   switch (c.op) {
     case "is_null":
       return `${col} IS NULL`;
     case "is_not_null":
       return `${col} IS NOT NULL`;
-    case "in": {
-      if (driver === "postgres") {
-        return `${col} = ANY(${addParam(c.value)})`;
-      }
-      const placeholders = (c.value as unknown[]).map((v) => addParam(v)).join(", ");
-      return `${col} IN (${placeholders})`;
-    }
+    case "in":
+      return dialect.renderIn(col, c.value as unknown[], addParam);
     default: {
-      const rhs = c.ref !== undefined ? quoteIdent(c.ref) : addParam(c.value);
+      const rhs = c.ref !== undefined ? dialect.quoteIdentifier(c.ref) : addParam(c.value);
       return `${col} ${opToSql(c.op)} ${rhs}`;
     }
   }
@@ -250,10 +249,6 @@ function renumberFragment(
   addParam: (v: unknown) => string,
 ): string {
   return sql.replace(/\$(\d+)/g, (_, idx) => addParam(bindings[Number(idx) - 1]));
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
 
 function opToSql(op: Op): string {

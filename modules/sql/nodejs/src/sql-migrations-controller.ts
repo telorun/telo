@@ -6,7 +6,7 @@ import {
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 
 // A migration entry is one statement or an ordered list of statements; both
@@ -18,7 +18,7 @@ interface MigrationEntry {
 
 interface SqlMigrationsManifest {
   metadata: { name: string; module: string };
-  connection: SqlConnectionResource;
+  connection: SqlConnection;
   migrations?: Record<string, MigrationEntry>;
 }
 
@@ -80,6 +80,14 @@ class SqlMigrationsResource implements ResourceInstance {
         );
       }
       migrations[name] = statements;
+    }
+
+    if (!conn.kysely) {
+      throw new Error(
+        `Sql.Migrations '${this.manifest.metadata.name}': the referenced connection is not ` +
+          `built on kysely, which this kind's migration runner requires. Use a backend that ` +
+          `extends SqlConnectionBase, or run the statements through Sql.Command.`,
+      );
     }
 
     const migrator = new Migrator({

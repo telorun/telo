@@ -1,5 +1,5 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { type SqlConnectionResource, resolveSqlConnection } from "@telorun/sql";
+import { type SqlConnection, resolveSqlConnection } from "@telorun/sql";
 import type {
   MetadataFilter,
   QueryOptions,
@@ -49,12 +49,12 @@ function parseVectorLiteral(raw: string): number[] {
  * configured metric; higher `score` is always better.
  */
 class PgvectorStore implements ResourceInstance, VectorStoreHandle {
-  private readonly connection: SqlConnectionResource;
+  private readonly connection: SqlConnection;
   private readonly metric: Metric;
   private readonly table: string;
   readonly dimensions: number;
 
-  constructor(resource: StoreResource, connection: SqlConnectionResource) {
+  constructor(resource: StoreResource, connection: SqlConnection) {
     this.connection = connection;
     this.metric = resource.metric ?? "cosine";
     this.dimensions = resource.dimensions;

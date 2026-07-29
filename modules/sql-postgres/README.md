@@ -32,5 +32,11 @@ inputs:
 | `pool.max` | integer | no | Maximum pooled connections (default 10). |
 | `pool.idleTimeoutMs` | integer | no | Milliseconds before idle connections close. |
 | `pool.connectionTimeoutMs` | integer | no | Milliseconds to wait for a new connection. |
+| `pool.maxLifetimeMs` | integer | no | Milliseconds before a connection is retired and replaced. Unlimited when unset. |
+| `pool.healthCheckMs` | integer | no | Milliseconds between liveness probes of idle connections (default 60000; `0` disables). |
 
 The connection's bind-placeholder style is fixed to PostgreSQL numbered (`$1`, `$2`, …), so inline `${{ }}` parameters stay dialect-neutral.
+
+## Docs
+
+- [Connection lifetime](docs/connection-lifetime.md) — how a lost connection is detected and replaced, and the contract any non-Node implementation of this module must meet.

@@ -1,6 +1,6 @@
 import { InvokeError, isParameterizedSql, type ResourceContext } from "@telorun/sdk";
 import type { QueryResult } from "kysely";
-import type { SqlConnectionResource } from "./sql-connection-controller.js";
+import type { SqlConnection } from "./sql-connection.js";
 import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 /** Execute the `sql` input of a Query/Exec resource against `connection`.
@@ -15,7 +15,7 @@ import type { SqlTransactionResource } from "./sql-transaction-controller.js";
  *  Mixing a `!sql` template with `bindings` is rejected. A plain string `sql`
  *  with neither is executed verbatim. */
 export async function runSql(
-  connection: SqlConnectionResource,
+  connection: SqlConnection,
   transaction: SqlTransactionResource | undefined,
   input: unknown,
   ctx: ResourceContext,

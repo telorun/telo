@@ -30,11 +30,6 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
-    "./connection": {
-      "types": "./dist/sql-connection-controller.d.ts",
-      "bun": "./src/sql-connection-controller.ts",
-      "import": "./dist/sql-connection-controller.js"
-    },
     "./sql-query": {
       "bun": "./src/sql-query-controller.ts",
       "import": "./dist/sql-query-controller.js"

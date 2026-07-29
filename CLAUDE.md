@@ -107,7 +107,7 @@ Every module file must start with exactly one `Telo.Application` OR `Telo.Librar
 
 A runnable entry point. Loaded via `Kernel.loadFromConfig` (directly, or by the test suite spawning a fresh kernel). **Never** imported — importing an Application is rejected at load time.
 
-- `metadata.name` — kebab-case; becomes the kind prefix (e.g. `MyModule.*`)
+- `metadata.name` — free-form; becomes the canonical kind prefix (e.g. `MyModule.*`) that the registry keys on and diagnostics print. It is **not** a locator — imports resolve by `source`, and `x-telo-ref` targets are named by import alias — so it is a name, not a slug: prefer PascalCase (`OAuthClient`), and note that older stdlib modules still carry the historical kebab-case form (`http-server`). No pattern is enforced; the only hard rule is that it must contain no dot (the `!ref` grammar splits on the first one). Directory and npm package names stay kebab-case regardless (filesystem path; npm forbids uppercase).
 - `lifecycle` — `"shared"` (default) | `"isolated"`
 - `include` — array of file paths/globs to load as partial files into the same module scope; partial files must not contain `Telo.Application`, `Telo.Library`, `Telo.Import`, or `Telo.Definition`
 - `imports` — name-keyed map declaring the module's dependencies. Each key is the PascalCase alias; each value is either a bare **source string** (`Console: std/console@0.9.0`, shorthand for `{ source }`) or the object form `{ source, variables?, secrets?, runtime? }`. The shared loader expands each entry into an internal import before resolution (gated by the `desugarImports` `LoadOptions` flag — on for the kernel's analysis + runtime loads, the import-controller's child load, the analyzer, and `telo check`; off for the editor's round-trip view, which reads the raw map). An alias declared twice in one module scope is a hard `DUPLICATE_IMPORT_ALIAS` diagnostic, not a silent shadow.
@@ -166,6 +166,20 @@ Defined as `Telo.Abstract` entries in `builtins.ts`.
 
 **`Telo.Abstract`** is the **non-instantiable** flavor of a base kind: it uniquely means *no default implementation — must be extended* (load-bearing for `Sql.Connection`, `Codec.Encoder`, `Ai.Model`, …). Since general `extends` now specializes concrete kinds too, an abstract's only remaining special behavior is that instantiating one is an error and it has no `base:`/controller to inherit. Reach for a `Telo.Abstract` when you want a contract with no default implementation; use plain `extends` of a concrete kind (with `base:`) when you want to reuse an existing controller under a friendlier schema.
 
+## Lifecycle, scopes & value flow
+
+**Capability governs *wiring*, not dispatch.** The kernel calls `init()`, `snapshot()` and `teardown()` on any instance that has them, with no capability check (`if (instance.teardown) await instance.teardown()`), so a `Telo.Runnable` may implement `teardown()` — `Run.Sequence` does. What the declared capability *does* govern is which `x-telo-ref` slots accept the kind, statically: a `Run.Sequence` step's `invoke:` takes `Telo.Invocable | Telo.Runnable`, its `targets:` takes `Telo.Runnable | Telo.Service`. A resource that must be both started and invoked therefore has to be **two kinds** — no single declared capability satisfies both slots.
+
+**Side effects belong in `run()`, never `init()`.** `init()` builds the instance and nothing observable; `run()` performs the effect. `Http.Server` is the reference: `init()` registers plugins and routes, `run()` calls `listen()` and acquires a kernel hold, `teardown()` closes and releases it.
+
+**Snapshots are taken after `init()`, refreshed after `invoke()`, and never after `run()`** — but the props object is stored **by reference** (`setResource` spreads only the containing map; nothing clones or freezes it), so a controller that keeps the object it returned from `snapshot()` and mutates it publishes live state to every **runtime** CEL read. Compile-time (`x-telo-eval: compile`) fields expand once and never see later mutations. This is how a service reports an address it only learns when it runs.
+
+**`Run.Sequence` scopes (`with:` / `targets:`).** `with:` is an array of full resource declarations (`kind` + `metadata.name`) whose lifetime is the sequence — created on entry, torn down on exit — annotated `x-telo-scope: ["/steps", "/targets"]` so `!ref`s in either resolve against them. `targets:` lists with-resources to `run()` before the steps. Standing a server up around a test is exactly this shape (`modules/crud/tests/crud-over-http.yaml`). **Known gap:** a scoped resource's snapshot does not reach CEL — `createScopeHandle` spawns a plain `EvaluationContext`, whose `onResourceSnapshotted` is a no-op (only `ModuleContext` overrides it) — so `resources.<scopedName>` resolves to nothing.
+
+**Kernel holds decide when an app exits.** `waitForIdle()` resolves at zero holds; a running `Http.Server` holds one, so an app with a service in it stays up until SIGINT. Anything that must let a one-shot app finish has to release its hold.
+
+**One import instead of two.** An app that configures a backend itself imports both the abstract and the implementation (`sql` + `sql-sqlite`) — that is normal and ~25 manifests do it. When a consumer should need only one import, the sanctioned collapse is a library that owns the wiring and exports **instances** via `exports.resources` (`tests/__fixtures__/re-export/`), not a module re-exporting another module's kinds.
+
 ## x-telo-\* Schema Annotations
 
 Inside `Telo.Definition` schema blocks:
@@ -194,9 +208,13 @@ Available in `${{ }}`:
 
 - `variables`, `secrets` — always available (module inputs)
 - `ports.<name>` — root Application only; resolved inbound port integers (Application `ports` block)
-- `resources.<name>` — after that resource's `snapshot()`
+- `resources.<name>` — after that resource's `snapshot()`; live for runtime evals if the controller mutates the object it returned (see Lifecycle). Not available for `with:`-scoped resources.
 - `steps.<step>.result` — inside `Run.Sequence` steps
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)
+
+**How `steps.<name>.result` gets its type** (`buildStepContextSchema`), in order: (1) the **invoked resource manifest's own `outputType` field**, (2) the kind's `Telo.Definition` `outputType`, (3) permissive `{type: object, additionalProperties: true}`. Layer 1 is what makes **per-instance response narrowing** work: a kind that declares an `outputType` property in its schema (`x-telo-ref: Telo.Type`, as `JS.Script` does) lets an author narrow one call site's result and have CEL type-check against it — no analyzer change needed. Nothing verifies the narrowing is a *subtype* of what the kind returns, so a wrong declaration type-checks against a lie; enforce it at runtime in the controller. A type field resolves from any of four forms (`resolveTypeFieldToSchema`): a bare type name, a `!ref`, an inline `{kind, schema}`, or raw JSON Schema.
+
+**Resource-doc validation injects only `kind` and `metadata`** into a definition's `additionalProperties: false` schema. Every other top-level field an author may write — including `outputType` — must be declared as a property in the kind's own `schema`, or validation rejects it.
 
 **Null-safety:** dereferencing a value whose schema admits `null` (e.g. `error` inside a `finally` block, typed `["object","null"]`) without a null-guard is a static error (`CEL_NULLABLE_ACCESS`). The analyzer recognises guards through `?:` ternaries and `&&` / `||` short-circuits — `error != null && error.code`, `error == null ? … : error.code`. General: applies to any nullable value in any CEL context (`templating/nodejs/src/cel/analyze.ts` `findNullableAccessIssues`, wired in `engines/cel.ts`).
 
@@ -245,6 +263,24 @@ Module docs live **with the module** and are surfaced through the Telo **hub** (
 
 The **derived** grouping axis needs no declaration: a kind's `extends` target is the contract it implements. The hub resolves the alias prefix through the declaring manifest's own `imports:` map into `(owning module ref, kind suffix)` at ingest (`resource_kinds.extends_ref` / `extends_kind`); the editor does the same against the declaring library's imports (`resolveContract`). That is what groups every backend of one abstract together across module boundaries, and what nests `CacheRedis.Store` under `cache.Store` in the resource picker.
 
+## Controller delivery — bundle, don't publish to npm
+
+A `Telo.Definition` names its controller with a PURL, and there are two delivery modes:
+
+- `pkg:telo/local/js?path=./nodejs/<file>.mjs#<export>` — **bundled**: the controller ships inside the module's own artifact. **This is the direction Telo is moving — new modules bundle.** Live examples: `kv-store-memory`, `kv-store-sql`, `kv-store-redis`.
+- `pkg:npm/@telorun/<pkg>@<ver>?local_path=./nodejs#<export>` — a published npm package. What most of the older standard library still uses. Don't add new ones; migrating an existing module is a separate, deliberate change.
+
+**PURL anatomy** (`kernel/nodejs/src/controller-loaders/bundle-loader.ts`) — every segment carries meaning: type `telo` = Telo-delivered rather than fetched from an ecosystem registry; namespace `local` = bundled in the artifact (reserving `pkg:telo/registry/…` for a controller fetched as its own artifact later); **name = the artifact format** (`js` is all the Node kernel hosts today; `napi`/`wasm` raise `ControllerEnvMissingError` so a candidate list like `[pkg:telo/local/napi …, pkg:telo/local/js …]` falls through to one this — or another runtime's — kernel can load); `?path=` is the file relative to `telo.yaml`; the `#fragment` is the named export. Format is explicit because bundling is the one delivery mode not tied to an ecosystem's runtime (npm ⇒ JS, cargo ⇒ Rust; a bundle is just files).
+
+**Mechanics of bundling:**
+
+1. **Sources** live in `modules/<name>/nodejs/src/*.ts`. `modules/<name>/nodejs/package.json` is `"private": true`, named `@telorun/<name>-build`, and is **never published**. It exists for two reasons only: to declare the dependencies esbuild inlines, and to **type-check** the sources (esbuild does not).
+2. **Build** = `tsc -p tsconfig.lib.json && esbuild src/<x>.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --outdir=. --out-extension:.js=.mjs`. The emitted `nodejs/<x>.mjs` is a build artifact, gitignored via `modules/*/nodejs/*.mjs` — never commit it.
+3. **`@telorun/sdk` stays external, never inlined.** The bundle has no `node_modules`, so `BundleControllerLoader` symlinks every name in `REALM_COLLAPSE_NAMES` (`controller-loaders/realm.ts` — `@telorun/sdk` today) into a `node_modules/` beside the bundle, pointing at the kernel's own copy. Standard resolution then finds it on both Node and Bun (ESM resolve hooks aren't honoured by Bun; Bun's plugins don't intercept runtime imports — a symlink is the one portable mechanism). That collapses *identity* as well as resolution, so `Stream` / `InvokeError` `instanceof` checks hold across the kernel/controller boundary. Authors write a plain `import { … } from "@telorun/sdk"`.
+4. **`files:`** on the `Telo.Library` doc (e.g. `files: [nodejs/*.mjs]`) is the gitignore-style allowlist selecting the payload that ships in the artifact (`cli/nodejs/src/bundle/select-files.ts`; symlinks never enter a bundle). The payload is pinned by the `filesIntegrity` digest embedded in `telo.yaml`, which the import hash covers — `import hash → telo.yaml → filesIntegrity → payload`.
+5. **Loading is local-only.** A remote `baseUri` is `ControllerEnvMissingError`, so bundles load from the extracted/cached module directory, never over HTTP. Missing file, unparseable PURL, non-`local` namespace and unhostable format are all env-missing (fall through to the next candidate); a bundle that imports but is malformed is a hard `ERR_CONTROLLER_INVALID` — a real user-code failure is never masked as env-missing.
+6. **Releases:** a bundled module publishes nothing to npm, so it takes **no changeset**. `metadata.version` under changie is its only version, and its fragment is written by hand (nothing auto-generates one — that path exists only for npm-backed controllers).
+
 ## Versioning & releases — MANDATORY
 
 **The whole repo is intentionally pre-1.0, and staying pre-1.0 is the goal.** Breaking changes are released as **minor** bumps on purpose — both `@telorun/*` npm packages and Telo modules. A documented breaking change shipped as a minor (or a module's `Added` fragment for a breaking change) is the convention working as designed, **never** a versioning defect. Do not flag "breaking change shipped as minor" in reviews. The CI guards (`check-no-major-module-bump`, the changeset major-bump guard) exist to *enforce* this — anything that would bump to 1.0.0 is the error, not the minor.
@@ -252,7 +288,7 @@ The **derived** grouping axis needs no declaration: a kind's `extends` target is
 Two release tracks, split by artifact:
 
 - **npm packages → changesets.** Every change to a published `@telorun/*` package MUST ship a changeset — CI gates on `pnpm changeset status --since=origin/main`. Add one file under `.changeset/` (one per logical change, listing every affected package) and `git add` it. Use `pnpm changeset add --empty` when a change genuinely needs no release.
-- **Telo module manifests → changie.** A module's published version is `metadata.version` in `modules/<name>/telo.yaml`, owned by **changie** — language-agnostic, so Node, Rust, and manifest-only modules version identically. Bump a module by adding a changie fragment: `changie new --project <module>` (writes `.changes/unreleased/<id>.yaml`). The `.changes/` ledger is the source of truth — never hand-edit `metadata.version`. Modules are pre-1.0 — use `Added` (minor) / `Fixed` (patch); `Changed`/`Removed` auto-bump to 1.0.0 and are rejected by CI (`scripts/check-no-major-module-bump.mjs`), mirroring the changeset major-bump guard. A controller npm bump auto-generates its module's fragment (`scripts/version-packages.mjs`), so a Node controller change needs only the changeset. `.changie.yaml` is generated by `scripts/gen-changie-config.mjs` (re-run after adding/removing a module; CI checks it's committed). Registry publish is gated on `metadata.version` movement (`scripts/publish-packages.mjs`).
+- **Telo module manifests → changie.** A module's published version is `metadata.version` in `modules/<name>/telo.yaml`, owned by **changie** — language-agnostic, so Node, Rust, and manifest-only modules version identically. Bump a module by adding a changie fragment: `changie new --project <module>` (writes `.changes/unreleased/<id>.yaml`). The `.changes/` ledger is the source of truth — never hand-edit `metadata.version`. Modules are pre-1.0 — use `Added` (minor) / `Fixed` (patch); `Changed`/`Removed` auto-bump to 1.0.0 and are rejected by CI (`scripts/check-no-major-module-bump.mjs`), mirroring the changeset major-bump guard. A controller npm bump auto-generates its module's fragment (`scripts/version-packages.mjs`), so a Node controller change needs only the changeset — **npm-backed controllers only**; a bundled controller (see Controller delivery) has no npm package, takes no changeset, and needs its fragment written by hand. `.changie.yaml` is generated by `scripts/gen-changie-config.mjs` (re-run after adding/removing a module; CI checks it's committed). Registry publish is gated on `metadata.version` movement (`scripts/publish-packages.mjs`).
 
 ## Keep CLAUDE.md up to date
 
