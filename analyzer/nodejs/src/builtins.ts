@@ -1,4 +1,5 @@
 import type { ResourceDefinition } from "@telorun/sdk";
+import { OBSERVED_STATE_SCHEMA } from "./validate-observed-state.js";
 
 /** Descriptive provenance a module declares about itself, shared by
  *  `Telo.Application` and `Telo.Library`.
@@ -186,6 +187,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         },
         capability: { type: "string" },
         schema: { type: "object", additionalProperties: true },
+        status: OBSERVED_STATE_SCHEMA,
       },
       required: ["metadata"],
       // Telo.Abstract is an extension point by design — it must accept forward-compatible
@@ -214,6 +216,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
       type: "object",
       additionalProperties: true,
       properties: {
+        status: OBSERVED_STATE_SCHEMA,
         resources: {
           type: "array",
           items: {

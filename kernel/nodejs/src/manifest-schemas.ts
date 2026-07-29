@@ -1,5 +1,8 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
+// One definition of the `status:` block's shape, shared with `telo check` — the
+// `required:` restriction is reported by the analyzer, which can name the fix.
+import { OBSERVED_STATE_SCHEMA } from "@telorun/analyzer";
 const Ajv = AjvModule.default ?? AjvModule;
 
 // Re-export the shared ResourceRef fragment from the templating package
@@ -74,6 +77,7 @@ const baseDefinition = {
     capability: { type: "string" },
     extends: { type: "string", pattern: EXTENDS_ALIAS_PATTERN },
     schema: { type: "object", additionalProperties: true },
+    status: OBSERVED_STATE_SCHEMA,
     controllers: { type: "array", items: { type: "string" } },
     throws: throwsSchema,
   },
@@ -157,6 +161,8 @@ export const ResourceAbstractSchema = {
     metadata: metadataSchema,
     capability: { type: "string" },
     schema: { type: "object", additionalProperties: true },
+    // A contract may mandate what its implementations report.
+    status: OBSERVED_STATE_SCHEMA,
   },
   not: {
     anyOf: [{ required: ["controllers"] }, { required: ["throws"] }],

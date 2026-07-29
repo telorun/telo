@@ -1,0 +1,104 @@
+kind: Telo.Library
+metadata:
+  name: ObservedState
+  version: 1.0.0
+  description: >-
+    Test fixture for declared observed state: a service that learns its bound
+    address only while running and reports it under status:, plus a kind that
+    returns the reserved key without declaring it.
+exports:
+  kinds:
+    - Listener
+    - StartupConsumer
+    - InheritedOnly
+    - UndeclaredReporter
+  # An exported instance the IMPORTER starts. Its observed state has to cross
+  # the boundary under the same rules — withheld until it runs, validated
+  # against `status:` — even though the context that starts it is not the one
+  # that owns it.
+  resources:
+    - exportedListener
+imports:
+  # The abstract's library. The CONSUMER of `Listener` never imports this — the
+  # sanctioned "one import instead of two" — so folding the contract's `status:`
+  # has to resolve `Contract` in THIS file's scope.
+  Contract: ../observed-contract/telo.yaml
+files:
+  - "nodejs/*.mjs"
+---
+# A Telo.Service whose `port` is what the author asked for and whose
+# `status.port` is what the socket got — the segment keeps them apart, so
+# neither needs renaming.
+kind: Telo.Definition
+metadata:
+  name: Listener
+capability: Telo.Service
+# `endpoint` comes from the contract; `port` is this implementation's own. Both
+# have to be readable from a consumer that imports only this library.
+extends: Contract.Bindable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/listener.mjs#listener
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    port:
+      type: integer
+      description: Pin a port; omit to let the host choose one.
+status:
+  type: object
+  properties:
+    port:
+      type: integer
+      description: The port actually bound.
+---
+# A kind whose `endpoint` resolves once at startup — the slot where observed
+# state can never exist, since the resource is created before anything runs.
+kind: Telo.Definition
+metadata:
+  name: StartupConsumer
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/listener.mjs#startupConsumer
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    endpoint:
+      type: string
+      x-telo-eval: compile
+---
+# Returns a `status` key from snapshot() while declaring no `status:` block.
+# The kernel must refuse it rather than silently reinterpret a config echo as
+# observed state.
+kind: Telo.Definition
+metadata:
+  name: UndeclaredReporter
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/listener.mjs#undeclaredReporter
+schema:
+  type: object
+  additionalProperties: false
+---
+# The exported singleton. Declared with `Self.Listener` so it exists regardless
+# of whether an importer constructs its own.
+kind: Self.Listener
+metadata:
+  name: exportedListener
+port: 456
+---
+# Declares no `status:` of its own: everything it reports is mandated by the
+# contract it extends. Folding that chain anywhere but this library scope leaves
+# the kind looking like it declares nothing, and the reserved-key check then
+# rejects a correct manifest.
+kind: Telo.Definition
+metadata:
+  name: InheritedOnly
+capability: Telo.Runnable
+extends: Contract.Bindable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/listener.mjs#inheritedOnly
+schema:
+  type: object
+  additionalProperties: false

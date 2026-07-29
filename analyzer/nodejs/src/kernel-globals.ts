@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { residualEntrySchemaMap } from "./residual-schema.js";
+import { applyObservedStateNode } from "./validate-observed-state.js";
 
 /**
  * Kernel global names available in every CEL evaluation context at runtime.
@@ -36,6 +37,11 @@ const SYSTEM_KINDS = new Set([
  */
 export function buildKernelGlobalsSchema(
   manifests: ResourceManifest[],
+  /** Every resource a CEL read can name, including scope-declared ones (see
+   *  `buildObservedStateIndex`). Kinds that declare a `status:` get a typed,
+   *  closed `status` node; every other resource node stays open, so no flat read
+   *  that passes today can start failing. */
+  resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
 ): Record<string, any> {
   const moduleManifest =
     (manifests.find((m) => m.kind === "Telo.Application") as
@@ -54,6 +60,20 @@ export function buildKernelGlobalsSchema(
     if (!SYSTEM_KINDS.has(m.kind)) {
       resourceProps[name] = { type: "object", additionalProperties: true };
     }
+  }
+  // Scope-declared resources (a `Run.Sequence`'s `with:`) publish like any other
+  // now, so their names resolve too — inside the scope's regions, which is where
+  // the only expressions that can name them live.
+  for (const [key, entry] of resources ?? []) {
+    if (key.includes(".")) continue;
+    resourceProps[key] ??= { type: "object", additionalProperties: true };
+    if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
+  }
+  // Imports' exported instances publish two levels deep (`resources.<Alias>.<name>`);
+  // the alias node stays open so its other keys keep resolving.
+  for (const [key, entry] of resources ?? []) {
+    if (!key.includes(".") || !entry.status) continue;
+    applyObservedStateNode(resourceProps, key, entry.status);
   }
 
   return {

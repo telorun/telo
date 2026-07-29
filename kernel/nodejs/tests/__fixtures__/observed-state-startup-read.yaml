@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateStartupRead
+  version: 1.0.0
+imports:
+  Observed: ./observed-state/telo.yaml
+targets:
+  - !ref bound
+---
+kind: Observed.Listener
+metadata:
+  name: bound
+---
+# `endpoint` is resolved once at startup, so the value does not exist yet.
+kind: Observed.StartupConsumer
+metadata:
+  name: browser
+endpoint: !cel "resources.bound.status.endpoint"

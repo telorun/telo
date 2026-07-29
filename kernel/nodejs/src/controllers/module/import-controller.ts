@@ -1,6 +1,7 @@
 import { AnalysisRegistry, DiagnosticSeverity, foldIntegrity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+import { publishedPropsOf } from "../../evaluation-context.js";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { ModuleContext } from "../../module-context.js";
@@ -301,9 +302,17 @@ export async function create(
     snapshot: async () => {
       const exported: Record<string, unknown> = {};
       for (const name of exportedResourceNames) {
-        const inst = childCtx.getExported(name)?.instance;
-        if (inst && typeof inst.snapshot === "function") {
-          exported[name] = await Promise.resolve(inst.snapshot());
+        // Through the shared publication policy, not the raw snapshot: an
+        // exported instance's observed state stays withheld until it starts and
+        // is validated against its `status:` on this side of the boundary too.
+        const target = childCtx.getExported(name);
+        if (target?.instance) {
+          exported[name] = await publishedPropsOf(
+            target.kind,
+            name,
+            target.instance,
+            childCtx.getDefinition,
+          );
         }
       }
       return {

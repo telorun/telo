@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: ScopedInlineRegistration
+  version: 1.0.0
+  description: |
+    A `with:`-scoped resource that registers an inline definition during init().
+    It must land in the per-run scope context, whose init loop is still running —
+    not in the module, whose loop drained at boot and would leave the inline
+    resource pending forever, failing at dispatch with "Resource not found for
+    invocation".
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref scoped
+---
+kind: Run.Sequence
+metadata:
+  name: scoped
+with:
+  # Created fresh when the scope opens. Its init() resolves the inline `invoke:`
+  # below into a resource registered under a generated name — which only
+  # dispatches if it was registered into the scope, not the module.
+  - kind: Run.Sequence
+    metadata:
+      name: innerSeq
+    steps:
+      - name: step
+        invoke:
+          kind: Run.Value
+          value: !cel "41 + 1"
+targets:
+  - !ref innerSeq
+steps:
+  - name: reachedTheEnd
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "'reached'"
+      expected: reached

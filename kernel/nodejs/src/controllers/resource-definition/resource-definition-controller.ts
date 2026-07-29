@@ -9,6 +9,7 @@ import { RuntimeError } from "@telorun/sdk";
 import {
   controllerBearingAncestor,
   effectiveAuthorSchema,
+  effectiveStatusSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   type DefResolver,
@@ -26,6 +27,7 @@ type ResourceDefinitionResource = RuntimeResource & {
     module?: string;
   };
   schema: Record<string, any>;
+  status?: Record<string, any>;
   capability?: string;
   extends?: string;
   base?: Record<string, any>;
@@ -74,6 +76,18 @@ class ResourceDefinition implements ResourceInstance {
         );
       }
       this.resource.schema = effectiveAuthorSchema(
+        this.resource as ResourceDefinitionManifest,
+        resolveDef,
+      );
+      // Same for the observed-state contract: a child without `base:` merges its
+      // parent's `status:`, one with `base:` publishes the parent's unchanged.
+      // Stamped here, in the DEFINING library's scope, because an `extends` alias
+      // belongs to the file that declared it — a consumer that imports only the
+      // backend (the sanctioned "one import instead of two") has no alias for the
+      // abstract's library and would resolve the parent to nothing. Stamping also
+      // makes the folded schema a stable object, so the publication path's AJV
+      // validator cache hits instead of recompiling on every snapshot.
+      this.resource.status = effectiveStatusSchema(
         this.resource as ResourceDefinitionManifest,
         resolveDef,
       );

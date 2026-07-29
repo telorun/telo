@@ -1,5 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { canonicalTypeSchemaId } from "@telorun/sdk";
+import { canonicalTypeSchemaId, OBSERVED_STATE_KEY } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import { defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { AliasResolver, scopeResolverForModule } from "./alias-resolver.js";
@@ -14,6 +14,13 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import { effectiveAuthorSchema } from "./extends-resolution.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
+import {
+  buildObservedStateIndex,
+  buildObservedStateResourcesSchema,
+  collectRunReachableNames,
+  observedStateRead,
+  validateObservedStateDeclarations,
+} from "./validate-observed-state.js";
 import { computeSuggestKind } from "./kind-suggest.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { isModuleKind } from "./module-kinds.js";
@@ -33,6 +40,7 @@ import {
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
+  extractAccessChains,
   extractCelRegionScopes,
   extractContextsFromSchema,
   getManifestItem,
@@ -717,6 +725,16 @@ function errorContextForPath(
   return best?.schema;
 }
 
+/** Member-access chains in a CEL expression, or none when it doesn't parse.
+ *  Best-effort: a syntax error is reported by the engine pass, not here. */
+function celAccessChains(env: Environment, expr: string): string[][] {
+  try {
+    return extractAccessChains(env.parse(expr).ast);
+  } catch {
+    return [];
+  }
+}
+
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
 
@@ -1280,9 +1298,38 @@ export class StaticAnalyzer {
       }
     }
 
+    // What each resource reports while running (`status:`), and which resources
+    // some slot can actually start. Both feed the observed-state checks below.
+    // A RESOURCE's kind is written in the module that declares it and is never
+    // canonicalized (unlike a definition's `extends`, normalized at registration
+    // above), so an exported instance's `kind: Self.X` only resolves in its own
+    // library's scope.
+    const moduleScopes = { aliasesByModule, rootModules };
+
+    const observedState = buildObservedStateIndex(allManifests, defs, aliases, moduleScopes);
+    const reportsObservedState = [...observedState.values()].some((r) => r.status);
+    const runReachable = reportsObservedState
+      ? collectRunReachableNames(allManifests, defs, aliases)
+      : new Set<string>();
+
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
-    const kernelGlobals = buildKernelGlobalsSchema(allManifests);
+    const kernelGlobals = buildKernelGlobalsSchema(allManifests, observedState);
+
+    // Fallback context for CEL in a slot with no `x-telo-context` annotation:
+    // everything stays open except the typed `.status` nodes, so unknown-field
+    // checking reaches observed state everywhere without newly rejecting any
+    // read that passes today.
+    const observedStateContext: Record<string, any> | null =
+      reportsObservedState
+        ? {
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              resources: buildObservedStateResourcesSchema(observedState, true),
+            },
+          }
+        : null;
 
     // The module doc (Application/Library) carries the Application-only `ports`
     // namespace; threaded into per-resource CEL typing so `${{ ports.X }}`
@@ -1600,6 +1647,9 @@ export class StaticAnalyzer {
     // `x-telo-step-context` / `x-telo-error-context` scopes. A `!cel` outside
     // every region is read as a literal — the runtime never evaluates it.
     let celEvalPaths: string[] = [];
+    // The compile half alone: a field that resolves at startup, where observed
+    // state cannot exist yet.
+    let celCompilePaths: string[] = [];
     let celRegionScopes: string[] = [];
     let celRuleApplies = false;
 
@@ -1639,9 +1689,14 @@ export class StaticAnalyzer {
               ? buildEvalPaths(capabilityDef.schema as Record<string, any>)
               : { compile: [], runtime: [] };
             celEvalPaths = [...own.compile, ...own.runtime, ...parent.compile, ...parent.runtime];
+            // A `Telo.Provider`'s fields are implicitly compile-eval — the
+            // capability abstract carries the root annotation — so its reads are
+            // covered here without the provider restating anything.
+            celCompilePaths = [...own.compile, ...parent.compile];
             celRegionScopes = extractCelRegionScopes(ownSchema);
           } else {
             celEvalPaths = [];
+            celCompilePaths = [];
             celRegionScopes = [];
           }
         },
@@ -1672,6 +1727,44 @@ export class StaticAnalyzer {
               data: { resource, filePath, path },
             });
             return;
+          }
+
+          // Observed state exists only while the application runs, so a path
+          // through `.status` is illegal in a field that resolves at startup —
+          // and a resource nothing can start reports nothing, ever. Both are
+          // decided from the expression and the manifest alone.
+          if (reportsObservedState && engineName === "cel" && expr.includes(OBSERVED_STATE_KEY)) {
+            for (const chain of celAccessChains(this.celEnv, expr)) {
+              const read = observedStateRead(chain);
+              if (!read) continue;
+              // An import's exported instance is indexed under `<Alias>.<name>`,
+              // the two-level shape it publishes under, so a cross-module read
+              // is checked exactly like a local one.
+              const reported = observedState.get(
+                read.alias ? `${read.alias}.${read.name}` : read.name,
+              );
+
+              if (celRuleApplies && evalPathsCover(celCompilePaths, path)) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "OBSERVED_STATE_IN_STARTUP_FIELD",
+                  source: SOURCE,
+                  message: `${m.kind}/${resource.name}: '${path}' is resolved once at startup, so '${chain.join(".")}' does not exist yet — '${read.name}' reports it only while the application is running. Read reported values where the call happens: a step's inputs:, a request's url, a route handler, or a returns: expression.`,
+                  data: { resource, filePath, path },
+                });
+                continue;
+              }
+
+              if (reported && !runReachable.has(read.name)) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "OBSERVED_STATE_NEVER_RUN",
+                  source: SOURCE,
+                  message: `${m.kind}/${resource.name}: '${read.name}' reports '${read.field ?? OBSERVED_STATE_KEY}' only while it is running, and nothing starts it. Add '!ref ${read.name}' to a targets: list, or invoke it from a step.`,
+                  data: { resource, filePath, path },
+                });
+              }
+            }
           }
 
           let matchedContext: Record<string, any> | undefined =
@@ -1723,6 +1816,12 @@ export class StaticAnalyzer {
               allManifests: allManifests as Record<string, any>[],
             });
             effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
+          } else if (observedStateContext) {
+            // No `x-telo-context` matched, so nothing was chain-validated here
+            // before. Validate the observed-state segment alone rather than
+            // merging the kernel globals, whose closed `variables` / `ports`
+            // nodes would newly reject reads that pass today.
+            effectiveContext = observedStateContext;
           }
 
           const engine = defaultRegistry().get(engineName);
@@ -1791,6 +1890,23 @@ export class StaticAnalyzer {
     // deliberately skips (behind the step `$ref`), so a missing instance or a
     // kind-instead-of-instance ref there is caught statically, not at runtime.
     diagnostics.push(...validateStepInvokeReferences(allManifests, defs, aliases));
+
+    // `required:` inside a `status:` block — reported here rather than by the
+    // AJV shape, which could only say "must NOT be valid" without naming the
+    // rule or the fix.
+    for (const issue of validateObservedStateDeclarations(allManifests)) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "OBSERVED_STATE_REQUIRED_FORBIDDEN",
+        source: SOURCE,
+        message: issue.message,
+        data: {
+          resource: { kind: issue.kind, name: issue.name },
+          filePath: issue.filePath,
+          path: "status.required",
+        },
+      });
+    }
 
     // Validate `extends` fields and flag legacy `capability: <UserAbstract>` overload.
     diagnostics.push(...validateExtends(allManifests, defs, aliases));

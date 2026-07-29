@@ -46,6 +46,14 @@ export interface ResourceDefinition {
   };
   /** JSON Schema for the resource's compile-time configuration fields. */
   schema?: Record<string, any>;
+  /** JSON Schema for the observed state the resource reports while running —
+   *  what it learns, not what it was configured with. Surfaces as its own CEL
+   *  segment, `resources.<name>.status.<field>`, readable only from fields that
+   *  resolve while the application runs. Declaring the block (even empty) opts
+   *  the kind into typed `.status` reads. `required:` is rejected: every
+   *  declared field is mandatory once the resource has run, and a genuinely
+   *  sometimes-absent one is declared with a nullable type instead. */
+  status?: Record<string, any>;
   capability?: string;
   /** Alias-form reference to a Telo.Abstract this definition implements, e.g. "Ai.Model".
    *  Resolved against the declaring file's `Telo.Import` declarations — same pattern as

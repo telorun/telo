@@ -54,6 +54,27 @@ export interface ResourceContext extends ControllerContext {
    *  collide and the children nest under their parent in a debug view. */
   readonly ownerPrefix: string;
   acquireHold(reason?: string): () => void;
+  /**
+   * Report this resource's **observed state** — what it has learned while
+   * running — publishing it at `resources.<name>.status.<field>`.
+   *
+   * Pushed rather than pulled because nothing but the controller knows when the
+   * value was learned. Configured state stays on `snapshot()`, which the kernel
+   * pulls whenever it needs it; the two never share a payload, so neither shape
+   * is described twice.
+   *
+   * - **Replaces**, never merges: this is the resource's observed state now. A
+   *   field the kind declares but this call omits reads as missing, which is the
+   *   truth — declare a sometimes-absent field with a nullable type and report
+   *   it as `null`.
+   * - **Validated** against the kind's `status:` on every call.
+   * - **Illegal before the resource has started** (`ERR_OBSERVED_STATE_BEFORE_START`).
+   *   `init()` performs no I/O, so there is nothing observed to report there.
+   * - **Sticky**: the last value reported stays published until the resource is
+   *   torn down. A dispatch that reports nothing leaves the previous reading in
+   *   place — a listener's bound address does not stop being true between calls.
+   */
+  setStatus(status: Record<string, unknown>): Promise<void>;
   emitEvent(event: string, payload?: any): Promise<void>;
   /** Mint a writable cancellation source for a trigger to own (HTTP request,
    *  lambda budget). Pass `source.context` into `invokeResolved` to scope an

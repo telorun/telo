@@ -220,6 +220,21 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   /**
+   * A cross-module exported instance has no entry of its own here — it surfaces
+   * under `resources.<alias>.<name>`, published by the `Telo.Import` that owns
+   * it. So republishing such a name means republishing that import, which is
+   * what makes an exported service's observed state readable once the IMPORTER's
+   * `targets:` starts it.
+   */
+  override async publishSnapshot(name: string): Promise<void> {
+    await super.publishSnapshot(name);
+    if (this.resourceInstances.has(name)) return;
+    for (const [alias, scope] of this.importedScopes) {
+      if (scope.names.has(name)) await super.publishSnapshot(alias);
+    }
+  }
+
+  /**
    * Register an imported module under the given alias, gated to the kind names it
    * exports (its `exports.kinds`). Only listed kinds resolve; an empty list exports
    * nothing.
@@ -493,11 +508,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     ctx?: InvokeContext,
   ): Promise<any> {
     const result = await super.invoke(kind, name, inputs, ctx);
-    const entry = this.resourceInstances.get(name);
-    if (entry && typeof (entry.instance as any).snapshot === "function") {
-      const snap = await Promise.resolve((entry.instance as any).snapshot());
-      this.setResource(name, snap as Record<string, unknown>);
-    }
+    // Same publication path as the post-init capture and `setStatus()`:
+    // one shape, one target, so a declared `status:` is a guarantee on every
+    // path rather than on some of them.
+    await this.publishSnapshot(name);
     return result;
   }
 

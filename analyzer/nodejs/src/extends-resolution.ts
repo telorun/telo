@@ -2,8 +2,17 @@ import type { ResourceDefinition } from "@telorun/sdk";
 import { mergeTypeSchemas } from "@telorun/sdk";
 
 /** Resolves a kind string (canonical or alias form, depending on the caller's
- *  registry) to its `Telo.Definition` / `Telo.Abstract`, or undefined. */
-export type DefResolver = (kind: string) => ResourceDefinition | undefined;
+ *  registry) to its `Telo.Definition` / `Telo.Abstract`, or undefined.
+ *
+ *  `from` is the definition the kind was read off. An `extends` alias belongs to
+ *  the file that DECLARES the definition, not to whoever is reading it, so a
+ *  resolver that walks an inheritance chain across module boundaries must
+ *  re-scope at each hop — `from.metadata.module` is what it scopes to. Resolvers
+ *  that operate in a single scope ignore the parameter. */
+export type DefResolver = (
+  kind: string,
+  from?: ResourceDefinition,
+) => ResourceDefinition | undefined;
 
 /** The template-body / controller fields a definition may carry. Kept local
  *  because `ResourceDefinition` intentionally types only the stable surface;
@@ -19,6 +28,7 @@ interface DefinitionBody {
   resources?: unknown[];
   base?: Record<string, unknown>;
   schema?: Record<string, any>;
+  status?: Record<string, any>;
 }
 
 const body = (def: ResourceDefinition | undefined): DefinitionBody =>
@@ -32,7 +42,7 @@ export function resolveParent(
 ): ResourceDefinition | undefined {
   const ext = body(def).extends;
   if (typeof ext !== "string" || ext.length === 0) return undefined;
-  return resolve(ext);
+  return resolve(ext, def);
 }
 
 /** The `extends` ancestor chain, nearest-first, excluding `def` itself.
@@ -121,4 +131,28 @@ export function effectiveAuthorSchema(
   if (body(def).base) return own;
   const parentSchema = effectiveAuthorSchema(parent, resolve);
   return mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
+}
+
+/** The observed state a kind reports (`status:`), folded through `extends`:
+ *  - with `base:` present → the **parent's** effective status unchanged; the
+ *    child delegates to the parent's controller and *is* a parent instance, so
+ *    it publishes exactly what the parent publishes.
+ *  - without `base:` but with `extends` → `merge(parent-effective, own)`, so a
+ *    contract can mandate what its implementations report and an implementation
+ *    can add to it.
+ *  - no `extends` → the own block unchanged.
+ *  Undefined when nothing in the chain declares one — the signal that the kind
+ *  has not opted into typed `.status` reads. */
+export function effectiveStatusSchema(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+): Record<string, any> | undefined {
+  const own = body(def).status;
+  const parent = resolveParent(def, resolve);
+  if (!parent) return own;
+  const parentStatus = effectiveStatusSchema(parent, resolve);
+  if (body(def).base) return parentStatus;
+  if (!parentStatus) return own;
+  if (!own) return parentStatus;
+  return mergeTypeSchemas([parentStatus, own]) as Record<string, any>;
 }

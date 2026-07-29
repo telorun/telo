@@ -24,6 +24,7 @@ export * from "./log-sink.js";
 export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";
+export * from "./observed-state.js";
 export * from "./runtime-error.js";
 export * from "./runtime-event.js";
 export * from "./runtime-resource.js";

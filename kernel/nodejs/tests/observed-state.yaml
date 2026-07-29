@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateReads
+  version: 1.0.0
+  description: |
+    End-to-end check of declared observed state (`status:`). A Telo.Service
+    discovers its bound address only while running and reports it through
+    ctx.setStatus(); a boot target then reads it as
+    `resources.<name>.status.<field>`. Also covers a `with:`-scoped resource,
+    whose snapshot now reaches CEL inside the scope's regions.
+imports:
+  Observed: ./__fixtures__/observed-state/telo.yaml
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+targets:
+  # The service must be started before anything reads its observed state — the
+  # segment does not exist until then.
+  - !ref bound
+  # An instance the imported library owns, started from here: the context that
+  # starts it is not the one that owns it.
+  - !ref Observed.exportedListener
+  - !ref inheritedOnly
+  - !ref readsTopLevel
+  - !ref readsScoped
+---
+kind: Observed.Listener
+metadata:
+  name: bound
+port: 234
+---
+# Declares no `status:` of its own — everything it reports is mandated by the
+# contract it extends, which the consumer never imports.
+kind: Observed.InheritedOnly
+metadata:
+  name: inheritedOnly
+---
+# Reading observed state at a call site: a step's `inputs:` resolves while the
+# application runs, which is exactly where reported values are legal.
+kind: Run.Sequence
+metadata:
+  name: readsTopLevel
+steps:
+  - name: checkPort
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.bound.status.port"
+      expected: 51234
+  - name: checkEndpoint
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.bound.status.endpoint"
+      expected: "http://127.0.0.1:51234/callback"
+  # The flat half keeps its existing meaning — what the author configured.
+  - name: checkConfigured
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.bound.port"
+      expected: 234
+  # A kind that declares no status: of its own — everything it reports comes
+  # from the contract it extends.
+  - name: checkInherited
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.inheritedOnly.status.endpoint"
+      expected: "http://127.0.0.1:9/inherited"
+  # Across a module boundary: the library owns the instance, this application
+  # starts it, and the value crosses under the same rules.
+  - name: checkExported
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.Observed.exportedListener.status.port"
+      expected: 51456
+---
+# A `with:`-scoped resource publishes like any other, and its name resolves
+# inside the scope's regions only.
+kind: Run.Sequence
+metadata:
+  name: readsScoped
+with:
+  - kind: Observed.Listener
+    metadata:
+      name: scopedListener
+    port: 345
+targets:
+  - !ref scopedListener
+steps:
+  - name: checkScoped
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.scopedListener.status.port"
+      expected: 51345
+  # `inputs` must be in scope on the boot-target path through a `with:` scope
+  # too — the non-scoped branch has always passed it.
+  - name: checkInputs
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "inputs"
+      expected: {}
