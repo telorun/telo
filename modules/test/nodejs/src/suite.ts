@@ -202,10 +202,18 @@ export async function create(
 
   return {
     run: async () => {
-      const sourceUrl = ctx.moduleContext.source;
-      const baseDir = sourceUrl.startsWith("file://")
-        ? path.dirname(fileURLToPath(sourceUrl))
-        : process.cwd();
+      // The suite discovers test manifests by walking the declaring module's own
+      // directory. `resolveModuleFile` is what knows where that is (an artifact
+      // directory for a published module, the manifest's directory locally), so
+      // discovery never silently falls back to the process working directory.
+      const baseUri = await ctx.resolveModuleFile("./");
+      if (!baseUri.startsWith("file://")) {
+        throw new Error(
+          `Test.Suite cannot discover tests: the declaring module resolved to '${baseUri}', ` +
+            `which is not a local directory.`,
+        );
+      }
+      const baseDir = path.resolve(fileURLToPath(baseUri));
 
       const include = manifest.include ?? ["**/tests/*.yaml"];
       const exclude = manifest.exclude ?? ["**/__fixtures__/**"];

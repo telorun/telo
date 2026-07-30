@@ -49,8 +49,16 @@ import {
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
 import {
+  cachePathForCanonical,
   resolveCacheRoot,
+  resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
+import { readOwnerManifest } from "./bundle/module-manifest.js";
+import {
+  moduleArtifactFor,
+  moduleDirectoryFor,
+  type ModuleArtifact,
+} from "./bundle/module-artifact.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
@@ -131,6 +139,9 @@ export class Kernel implements IKernel {
   /** The `.telo` cache root for this load, resolved once in `load()` and
    *  threaded to the validator, analysis stamp, and npm install root. */
   private _cacheRoot?: string | null;
+  /** Per-module artifact handles, keyed by canonical manifest source. Rebuilt on
+   *  every `load()`; empty for a graph of purely local / manifest-only modules. */
+  private readonly moduleArtifacts = new Map<string, ModuleArtifact>();
   private _loadedGraph?: LoadedGraph;
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
@@ -425,6 +436,7 @@ export class Kernel implements IKernel {
       );
     }
     this._loadedGraph = analysisGraph;
+    this.buildModuleArtifacts(analysisGraph, manifestsDir);
     // Version reconciliation: an incompatible major mismatch is fatal (the
     // hoist override would silently run the wrong major); a same-major hoist is
     // advisory — the override already redirects every importer to the winner.
@@ -916,6 +928,60 @@ export class Kernel implements IKernel {
    *  controller loader so it doesn't re-derive it from the entry URL. */
   getInstallRoot(): string | undefined {
     return this._cacheRoot ? `${this._cacheRoot}/npm` : undefined;
+  }
+
+  /**
+   * Build one {@link ModuleArtifact} per loaded module that ships a payload.
+   *
+   * Here, and not inside a controller loader, because this is the only point
+   * where both halves are in hand: the **pinned** ref the importer wrote
+   * (`requestedUrl`, integrity fragment included) and the manifest text that has
+   * already been verified against it. A loader sees only the canonical base URI,
+   * which carries no `#sha256-`, so a loader that fetched for itself would have
+   * to re-read the index off the cache directory — verification downgraded from
+   * "anchored at the importer's pin" to "trust whatever is on disk".
+   *
+   * Keyed by canonical `source`, which is what a definition's `metadata.source`
+   * carries, so a controller resolution can find its module's artifact.
+   *
+   * The trigger is "this manifest carries a `layers:` index", never "its source
+   * maps to a cache path". Those differ the moment the cache is warm:
+   * `LocalManifestCacheSource` serves a hit as a `file://` URL into
+   * `.telo/manifests/`, which no transport claims, so deriving the directory from
+   * `source` yields nothing and every OCI module would silently lose its artifact
+   * on the second and every later run — taking lazy asset materialization with it.
+   * The **pinned** `requestedUrl` survives a cache hit, so placement is derived
+   * from that, with a local `source` resolving to its own directory.
+   */
+  private buildModuleArtifacts(graph: LoadedGraph, manifestsDir: string | undefined): void {
+    this.moduleArtifacts.clear();
+    const transports = defaultTransportRegistry(this.registryUrl);
+    const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
+    for (const [, module] of graph.modules) {
+      const file = module.owner;
+      if (this.moduleArtifacts.has(file.source)) continue;
+      const artifact = moduleArtifactFor({
+        pinnedRef: file.requestedUrl,
+        layers: readOwnerManifest(file.text).layers,
+        moduleDir: moduleDirectoryFor(
+          file.requestedUrl,
+          file.source,
+          entryDir,
+          this.registryUrl,
+          manifestsDir,
+        ),
+        transports,
+        log: this.logging.kernelLogger(),
+      });
+      if (artifact) this.moduleArtifacts.set(file.source, artifact);
+    }
+  }
+
+  /** The artifact of the module whose manifest resolved from `source`, or
+   *  `undefined` for a module with no fetchable payload (already on disk,
+   *  manifest-only, or not cacheable). */
+  getModuleArtifact(source: string | undefined): ModuleArtifact | undefined {
+    return source ? this.moduleArtifacts.get(source) : undefined;
   }
 
   /** Authored `kind` of a declared resource by name, from the static manifest

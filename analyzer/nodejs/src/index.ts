@@ -120,6 +120,31 @@ export {
   urlManifestCacheCoords,
 } from "./sources/manifest-cache.js";
 export type { ManifestCacheCoords } from "./sources/manifest-cache.js";
+export {
+  LAYER_ROLES,
+  PLATFORM_AXES,
+  ArtifactSelectorError,
+  describeSelector,
+  isLayerRole,
+  normalizeSelector,
+  selectorFromQualifiers,
+  selectorKey,
+  selectorMatches,
+} from "./artifact-selector.js";
+export type {
+  ArtifactSelector,
+  LayerRole,
+  PlatformAxis,
+  PlatformTarget,
+} from "./artifact-selector.js";
+export {
+  LayerIndexError,
+  matchControllerLayers,
+  parseLayerIndex,
+  singletonLayer,
+} from "./artifact-layer-index.js";
+export type { ArtifactLayer } from "./artifact-layer-index.js";
+export { validateModuleArtifact } from "./validate-module-artifact.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { documentToAst, parseToAst } from "./yaml-ast.js";
 export type { AstDocument, AstMap, AstNode, AstPair, AstScalar, AstSeq } from "./yaml-ast.js";

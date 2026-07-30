@@ -27,30 +27,35 @@ the API. Mount order does not matter — each mount owns its path prefix.
 
 ## Where `root` resolves
 
-A relative `root` resolves against the **manifest file that declares the
-resource**, not the process working directory. This is what lets the frontend
-ship co-located with the application: point `root` at the directory your build
-emits (`./public`, `./dist`, `./web/build`) and the assets travel with the app.
-An absolute path is used as-is.
+A relative `root` resolves against the **module that declares the resource** —
+its own directory, never the process working directory. This is what lets the
+frontend ship co-located with the application: point `root` at the directory your
+build emits (`./public`, `./dist`, `./web/build`) and the assets travel with the
+app, resolving identically whether the module is a local directory or a published
+artifact. An absolute path is used as-is.
 
-## Shipping the assets to the registry
+## Shipping the assets
 
-For `root: ./public` to work after `telo publish`, the app must declare those
-files in a top-level `files:` list so they are bundled into the published
-`module.tar.gz` (the registry artifact) — otherwise only `telo.yaml` is
-published and `root` resolves to an empty directory on the consumer:
+For `root: ./public` to work after `telo publish`, declare those files in a
+top-level `files:` list so they ship in the published artifact — otherwise only
+`telo.yaml` is published and `root` resolves to an empty directory:
 
 ```yaml
 kind: Telo.Application
 metadata: { name: todo-app, version: 1.0.0 }
 files:
   - public/**
+assets:
+  - public/**
 # … Http.Static with root: ./public
 ```
 
-`telo install` / `telo run` extract the bundle next to the cached manifest, so
-`root` resolves the same way it does locally. See the CLI `telo publish` docs
-for the full `files:` pattern semantics.
+The optional `assets:` list marks those files as the artifact's **asset layer**,
+which is fetched on first access rather than up front — so a consumer that
+imports the module for its API alone never downloads the frontend. It is purely an
+optimization: without it the files still ship and still resolve, they are just
+fetched alongside the module's controllers. See the CLI `telo publish` docs for
+the full pattern semantics.
 
 ## Fields
 

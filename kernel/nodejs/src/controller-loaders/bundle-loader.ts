@@ -1,3 +1,4 @@
+import { describeSelector, selectorFromQualifiers, selectorMatches } from "@telorun/analyzer";
 import { ControllerInstance, RuntimeError } from "@telorun/sdk";
 import { existsSync, readFileSync } from "fs";
 import * as fs from "fs/promises";
@@ -5,9 +6,17 @@ import { createRequire } from "module";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
+import { hostPlatformTarget, type ModuleArtifact } from "../bundle/module-artifact.js";
 import type { ControllerResolveSource } from "../controller-loader.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+
+/** A base URI whose files are already on disk: a `file://` URL or a bare
+ *  absolute path. Everything else (`oci://`, `http(s)://`, `memory://`) names a
+ *  module whose payload only exists inside an artifact. */
+function isLocalBase(baseUri: string): boolean {
+  return baseUri.startsWith("file://") || path.isAbsolute(baseUri);
+}
 
 async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -140,20 +149,23 @@ export class BundleControllerLoader {
   async load(
     purl: string,
     baseUri: string,
+    artifact?: ModuleArtifact,
   ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
-    const { source, importInstance } = await this.resolve(purl, baseUri);
+    const { source, importInstance } = await this.resolve(purl, baseUri, artifact);
     return { instance: await importInstance(), source };
   }
 
   /**
-   * Resolve without importing: parse + validate the PURL, confirm the bundle
-   * file exists and its format is hostable, and ensure the realm symlinks — all
-   * cheap, fail-fast checks — but defer the bundle `import()` (the eval cost)
-   * into the returned `importInstance` thunk. Used by lazy controller loading.
+   * Resolve without importing: parse + validate the PURL, reject a candidate this
+   * host cannot run, materialize the layer that carries it, confirm the file
+   * exists, and ensure the realm symlinks — all fail-fast checks — but defer the
+   * bundle `import()` (the eval cost) into the returned `importInstance` thunk.
+   * Used by lazy controller loading.
    */
   async resolve(
     purl: string,
     baseUri: string,
+    artifact?: ModuleArtifact,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let parsed: PackageURL;
     try {
@@ -190,16 +202,50 @@ export class BundleControllerLoader {
       );
     }
 
-    // Bundles are local files next to the manifest. A remote (http) baseUri
-    // can't host one, so defer to the next candidate.
-    if (baseUri.startsWith("http://") || baseUri.startsWith("https://")) {
+    // Platform gate, BEFORE any materialization. A candidate list names one
+    // binary per platform, so checking the host first is what keeps a fallthrough
+    // from downloading every platform's layer on the way to the right one.
+    const selector = selectorFromQualifiers(format, parsed.qualifiers, `controller "${purl}"`);
+    const host = hostPlatformTarget();
+    if (!selectorMatches(selector, host)) {
       throw new ControllerEnvMissingError(
-        `pkg:telo controller "${purl}" requires a local manifest; baseUri is remote (${baseUri})`,
+        `pkg:telo controller "${purl}" targets ${describeSelector(selector)}, which does not ` +
+          `match this host (${host.os ?? "unknown os"}/${host.arch ?? "unknown arch"}` +
+          `${host.libc ? `/${host.libc}` : ""})`,
       );
     }
 
-    const basePath = baseUri.startsWith("file://") ? fileURLToPath(baseUri) : baseUri;
-    const absFile = path.resolve(path.dirname(basePath), relPath);
+    // A published module's payload lives in its artifact, so materialize the one
+    // layer carrying this candidate and resolve `path=` inside it. Nothing is
+    // fetched here: the artifact handle owns the pinned ref and the verified
+    // layer index, so an `oci://` module ref never reaches this loader as a path.
+    let bundleDir: string;
+    if (artifact) {
+      // By its own selector, not by re-matching the host: this candidate IS one
+      // selector, and it is exactly the key of the layer that carries it.
+      const layer = await artifact.materializeController(selector);
+      if (!layer) {
+        throw new ControllerEnvMissingError(
+          `pkg:telo controller "${purl}": the module artifact ships no layer for ` +
+            `${describeSelector(selector)} (has: ${artifact.describeLayers()})`,
+        );
+      }
+      bundleDir = layer.dir;
+    } else {
+      // No artifact: a module already on disk (local development, or a manifest
+      // served from the on-disk cache). Its files sit next to the manifest.
+      if (!isLocalBase(baseUri)) {
+        throw new ControllerEnvMissingError(
+          `pkg:telo controller "${purl}" cannot be located: the declaring module resolved from ` +
+            `"${baseUri}", which is neither a local path nor an artifact with a layer index. ` +
+            `A bundled controller ships in its module's artifact — republish the module, or ` +
+            `import it from a local path during development.`,
+        );
+      }
+      bundleDir = path.dirname(baseUri.startsWith("file://") ? fileURLToPath(baseUri) : baseUri);
+    }
+
+    const absFile = path.resolve(bundleDir, relPath);
     if (!(await pathExists(absFile))) {
       throw new ControllerEnvMissingError(
         `pkg:telo controller bundle not found at "${absFile}" (from "${purl}")`,

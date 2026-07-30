@@ -1,9 +1,9 @@
 import type { ManifestCacheCoords, ManifestSource } from "@telorun/analyzer";
 
+import type { PayloadFile } from "../bundle/files-integrity.js";
 import { OciTransport } from "./oci/oci-transport.js";
 import { RegistryTransport } from "./registry-transport.js";
 import type {
-  FetchedArtifact,
   PublishBundle,
   PublishOptions,
   PublishResult,
@@ -41,10 +41,10 @@ export class TransportRegistry {
     return this.require(ref).listVersions(ref);
   }
 
-  /** Full artifact for `ref` via its owning transport. Throws when no transport
-   *  owns the ref. */
-  fetchArtifact(ref: string): Promise<FetchedArtifact> {
-    return this.require(ref).fetchArtifact(ref);
+  /** One payload layer of `ref`, addressed by the `blob` digest its pinned index
+   *  entry carries. Throws when no transport owns the ref. */
+  fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]> {
+    return this.require(ref).fetchLayer(ref, blobDigest);
   }
 
   /** Cheap content-identity digest for `ref` via its owning transport; `null`

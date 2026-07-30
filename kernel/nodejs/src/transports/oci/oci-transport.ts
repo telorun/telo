@@ -1,17 +1,23 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
+  selectorKey,
   sha256Base64Url,
   verifyIntegrity,
+  type ArtifactLayer,
   type ManifestCacheCoords,
   type ManifestSource,
 } from "@telorun/analyzer";
+import { createHash } from "node:crypto";
 
-import { computeFilesIntegrity, injectFilesIntegrity } from "../../bundle/files-integrity.js";
+import {
+  computeFilesIntegrity,
+  injectLayerIndex,
+  type PayloadFile,
+} from "../../bundle/files-integrity.js";
 import { readOwnerManifest, type OwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
 import type {
-  FetchedArtifact,
   PublishBundle,
   PublishOptions,
   PublishResult,
@@ -20,7 +26,12 @@ import type {
 import {
   OciClient,
   OCI_MANIFEST_MEDIA_TYPE,
-  TELO_LAYER_MEDIA_TYPE,
+  TELO_LAYER_ROLE_ANNOTATION,
+  TELO_LEGACY_LAYER_MEDIA_TYPE,
+  TELO_LAYER_SELECTOR_ANNOTATION,
+  TELO_MANIFEST_LAYER_MEDIA_TYPE,
+  TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+  type OciDescriptor,
   type OciManifest,
 } from "./oci-client.js";
 import {
@@ -31,23 +42,44 @@ import {
   withRefVersion,
 } from "./oci-ref.js";
 
-/** Pull the module blob, returning its extracted entries and the `telo.yaml`
- *  bytes, verified against the ref's inline hash and its own `filesIntegrity`. */
-async function pullVerified(ref: string): Promise<FetchedArtifact> {
+/**
+ * Pull only the **manifest layer** and return its verified `telo.yaml` text.
+ *
+ * This is the one place the OCI manifest is load-bearing: it is fetched by a
+ * reference that is usually a mutable tag and Telo never hashes it, so it is used
+ * solely to locate the blob carrying `telo.yaml`. Those bytes are then checked
+ * against the import's inline pin, which is what makes the rest of the artifact
+ * safe to address from the `layers:` index inside them — tampering with the OCI
+ * manifest can only change *which* blob is offered as the manifest, and a
+ * substituted one fails the pin here.
+ *
+ * Payload layers are never pulled on this path, so reading a manifest no longer
+ * downloads a payload it discards.
+ *
+ * A pre-layers single-blob artifact is still read here: it contains `telo.yaml`
+ * too, which is all this path wants, so every already-published module keeps
+ * resolving. What it cannot offer is a `layers:` index — so a module that ships a
+ * payload gets a clear "republish" failure at the controller instead, while the
+ * npm-backed majority, which ships none, is unaffected.
+ */
+async function pullManifestLayer(ref: string): Promise<string> {
   const { host, repo, reference, integrity } = parseOciRef(ref);
   const client = new OciClient(host, repo);
   const manifest = await client.pullManifest(reference);
   const layer =
-    manifest.layers.find((l) => l.mediaType === TELO_LAYER_MEDIA_TYPE) ?? manifest.layers[0];
+    manifest.layers.find((l) => l.mediaType === TELO_MANIFEST_LAYER_MEDIA_TYPE) ??
+    manifest.layers.find((l) => l.mediaType === TELO_LEGACY_LAYER_MEDIA_TYPE) ??
+    manifest.layers[0];
   if (!layer) {
     throw new Error(`OCI artifact ${ref} has no layers`);
   }
-  const tar = await client.pullBlob(layer.digest);
-  const entries = await readTarGz(tar);
+  const entries = await readTarGz(await client.pullBlob(layer.digest));
 
   const teloEntry = entries.find((e) => e.name === DEFAULT_MANIFEST_FILENAME);
   if (!teloEntry) {
-    throw new Error(`OCI artifact ${ref} blob does not contain ${DEFAULT_MANIFEST_FILENAME}`);
+    throw new Error(
+      `OCI artifact ${ref} manifest layer does not contain ${DEFAULT_MANIFEST_FILENAME}`,
+    );
   }
   const manifestText =
     typeof teloEntry.content === "string" ? teloEntry.content : teloEntry.content.toString("utf-8");
@@ -56,28 +88,18 @@ async function pullVerified(ref: string): Promise<FetchedArtifact> {
   if (integrity) {
     await verifyIntegrity(new TextEncoder().encode(manifestText), integrity, ref);
   }
-
-  const files = toPayloadFiles(entries);
-
-  const { filesIntegrity } = readOwnerManifest(manifestText);
-  if (filesIntegrity) {
-    const actual = await computeFilesIntegrity(files);
-    if (actual !== filesIntegrity) {
-      throw new IntegrityError(
-        `Integrity check failed for ${ref}: filesIntegrity expected ${filesIntegrity}, ` +
-          `got ${actual}. The payload does not match the recorded hash.`,
-      );
-    }
-  }
-
-  return { manifest: manifestText, files };
+  return manifestText;
 }
 
 /**
  * OCI transport: `oci://host/repo@reference` modules on any OCI distribution
  * registry (GHCR / ECR / Docker Hub / Harbor), over a hand-rolled minimal
- * client. A module is a single artifact — one tar blob carrying `telo.yaml`
- * and the `files:` payload — pushed under a standard OCI artifact manifest.
+ * client. A module is one OCI artifact whose layers are the module's layers —
+ * `telo.yaml` in its own blob, then one blob per controller selector, plus the
+ * `assets` and `common` blobs — so a client fetches only what it needs. A flat
+ * layer list, not an image index: the manifest and asset layers are
+ * platform-neutral, so a manifest list would duplicate them per platform entry
+ * and add a round trip for a selection made from the pinned index anyway.
  *
  * Not browser-reachable (token handshake, Docker credentials, tar extraction),
  * so its resolution `source` is Node-only; the editor resolves `oci://` imports
@@ -90,7 +112,7 @@ export class OciTransport implements Transport {
     this.source = {
       supports: (url) => this.supports(url),
       read: async (url) => {
-        const { manifest } = await pullVerified(url);
+        const manifest = await pullManifestLayer(url);
         const { host, repo, reference } = parseOciRef(url);
         return { text: manifest, source: `${OCI_SCHEME}${host}/${repo}@${reference}` };
       },
@@ -159,24 +181,38 @@ export class OciTransport implements Transport {
     return new OciClient(host, repo).headManifest(reference);
   }
 
-  async fetchArtifact(ref: string): Promise<FetchedArtifact> {
-    return pullVerified(ref);
+  /** Pull one payload layer by the `blob` digest the pinned index supplies. The
+   *  OCI layer list is not consulted — a digest addresses a blob directly, so a
+   *  republish that reorders layers is simply invisible here rather than a
+   *  failure. Content verification is the artifact handle's, which holds the
+   *  expected `integrity`. */
+  async fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]> {
+    const { host, repo } = parseOciRef(ref);
+    const tar = await new OciClient(host, repo).pullBlob(blobDigest);
+    // Verify the transfer against the digest that addressed it. A registry is
+    // not trusted to return the blob that was asked for, and this is the only
+    // place the pushed bytes exist — the content digest checked after extraction
+    // covers the file set, not the archive that carried it.
+    const actual = `sha256:${createHash("sha256").update(tar).digest("hex")}`;
+    if (actual !== blobDigest) {
+      throw new IntegrityError(
+        `Blob digest mismatch fetching a layer of ${ref}: requested ${blobDigest}, ` +
+          `received ${actual}. The registry returned different bytes than were addressed.`,
+      );
+    }
+    return toPayloadFiles(await readTarGz(tar));
   }
 
   /** Hashes the **UTF-8 encoding of the extracted `telo.yaml`**, which is what
-   *  `pullVerified` checks an inline `#sha256-…` pin against on the read path.
+   *  `pullManifestLayer` checks an inline `#sha256-…` pin against on the read
+   *  path.
    *
-   *  Cost note: a module is one tar blob, so there is no way to read `telo.yaml`
-   *  without pulling the whole artifact — including any `files:` payload — and
-   *  this path is deliberately uncached (a pin must hash what is published
-   *  *now*, not a cached copy). Two consequences for callers: pinning N imports
-   *  costs N full artifact pulls, and `pullVerified` also re-checks the
-   *  dependency's `filesIntegrity`, so a corrupt *payload* upstream surfaces
-   *  here as a pinning failure rather than a payload error. Both are acceptable
-   *  for publish-time pinning, where correctness beats latency and refusing to
-   *  pin against a corrupt dependency is the right outcome. */
+   *  Deliberately uncached — a pin must hash what is published *now*, not a
+   *  cached copy — but since `telo.yaml` is its own layer this costs one small
+   *  blob per import rather than a full artifact pull, and a corrupt payload
+   *  upstream no longer surfaces here as a pinning failure. */
   async manifestHash(ref: string): Promise<string> {
-    const { manifest } = await pullVerified(ref);
+    const manifest = await pullManifestLayer(ref);
     return `sha256-${await sha256Base64Url(new TextEncoder().encode(manifest))}`;
   }
 
@@ -221,27 +257,62 @@ export class OciTransport implements Transport {
       );
     }
     const tag = identity.version;
-
-    // Pin the payload, then pack telo.yaml + files into the single module blob.
-    let manifestText = bundle.manifest;
-    if (bundle.files.length > 0) {
-      manifestText = injectFilesIntegrity(manifestText, await computeFilesIntegrity(bundle.files));
-    }
-    const tar = await makeTarGz([
-      { name: DEFAULT_MANIFEST_FILENAME, content: manifestText },
-      ...bundle.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
-    ]);
-
     const client = new OciClient(host, repo);
-    const layerDigest = await client.pushBlob(tar);
+
+    // Push every payload layer first, collecting the digests that address them.
+    // This ordering is what keeps the index non-circular: the manifest layer is
+    // pushed last and names only the layers pushed before it, never itself.
+    const payloadDescriptors: OciDescriptor[] = [];
+    const index: ArtifactLayer[] = [];
+    for (const layer of bundle.layers) {
+      if (layer.files.length === 0) continue;
+      const tar = await makeTarGz(
+        layer.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
+      );
+      const blob = await client.pushBlob(tar);
+      payloadDescriptors.push({
+        mediaType: TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+        digest: blob,
+        size: tar.length,
+        annotations: {
+          [TELO_LAYER_ROLE_ANNOTATION]: layer.role,
+          ...(layer.selector
+            ? { [TELO_LAYER_SELECTOR_ANNOTATION]: selectorKey(layer.selector) }
+            : {}),
+        },
+      });
+      index.push({
+        role: layer.role,
+        ...(layer.selector ? { selector: layer.selector } : {}),
+        blob,
+        integrity: await computeFilesIntegrity(layer.files),
+      });
+    }
+
+    // Inject the index, then push telo.yaml as its own layer so a manifest read
+    // never has to pull a payload.
+    const manifestText =
+      index.length > 0 ? injectLayerIndex(bundle.manifest, index) : bundle.manifest;
+    const manifestTar = await makeTarGz([
+      { name: DEFAULT_MANIFEST_FILENAME, content: manifestText },
+    ]);
+    const manifestBlob = await client.pushBlob(manifestTar);
+
     const config = await client.pushEmptyConfig();
     const annotations = OciTransport.annotationsFor(identity);
     const manifest: OciManifest = {
       schemaVersion: 2,
       mediaType: OCI_MANIFEST_MEDIA_TYPE,
-      artifactType: TELO_LAYER_MEDIA_TYPE,
+      artifactType: TELO_MANIFEST_LAYER_MEDIA_TYPE,
       config,
-      layers: [{ mediaType: TELO_LAYER_MEDIA_TYPE, digest: layerDigest, size: tar.length }],
+      layers: [
+        {
+          mediaType: TELO_MANIFEST_LAYER_MEDIA_TYPE,
+          digest: manifestBlob,
+          size: manifestTar.length,
+        },
+        ...payloadDescriptors,
+      ],
       ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
     };
     await client.pushManifest(tag, manifest);

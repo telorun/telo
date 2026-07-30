@@ -175,6 +175,28 @@ export interface ResourceContext extends ControllerContext {
    *  loader re-deriving the root from the entry URL. `undefined` mirrors
    *  `getEntryUrl()` (callers that bypass `Kernel.load()`). */
   getInstallRoot(): string | undefined;
+  /**
+   * Resolve a module-relative reference — an `Http.Static` root, a template
+   * directory, a seed-data file — against the directory of the module that
+   * declared this resource, and return it as a **URI**.
+   *
+   * This is the sanctioned way to reach a file that ships with a module. Never
+   * derive one from `moduleContext.source` by hand: for a published module the
+   * manifest's own URL is not where its payload lives, and a `dirname` of it
+   * silently resolves against the process working directory instead — serving
+   * the wrong files rather than failing.
+   *
+   * A URI rather than a filesystem path because the SDK is cross-runtime: a path
+   * is only what a Node kernel happens to return for a module whose files are
+   * local. Callers that need a path convert with `fileURLToPath` after checking
+   * the scheme. A reference that already names its own location is not rebased: a
+   * URI with a scheme is returned unchanged, and a bare absolute filesystem path
+   * comes back as a `file://` URI.
+   *
+   * Asynchronous because a published module's assets are fetched on first
+   * access — a module whose files are never read never downloads them.
+   */
+  resolveModuleFile(relative: string): Promise<string>;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

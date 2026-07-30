@@ -609,6 +609,15 @@ system: |
     load on the Node.js runtime. In a controller, emit through `ctx.log`
     (`ctx.log.info(msg, attrs)`), never `console.*` or `process.stderr`.
   - `include:` — array of partial-file globs merged into this module's scope.
+  - `files:` — array of `.gitignore`-style globs naming the files that ship in
+    the module's published artifact beside `telo.yaml`: bundled controllers,
+    static assets, templates, seed data. Paths are relative to the manifest.
+  - `assets:` — OPTIONAL subset of `files:` naming what belongs in the
+    artifact's lazily fetched asset layer, so an app that never reads them never
+    downloads them. Purely an optimization: an unclaimed file still ships (in the
+    artifact's `common` layer) and is still on disk when a controller runs, so
+    omitting `assets:` costs bandwidth, never correctness. NEVER hand-write a
+    `layers:` block — `telo publish` generates it.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
     `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
     the library into a gate: ONLY the listed kinds are importable, and using an

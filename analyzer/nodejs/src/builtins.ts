@@ -23,6 +23,53 @@ const PROVENANCE_METADATA = {
   documentation: { type: "string" },
 };
 
+/** Author-declared subset of `files:` that ships in the artifact's lazily
+ *  materialized `assets` layer. Optional: an unclaimed file joins the `common`
+ *  layer, which is pulled alongside any controller layer, so omitting this costs
+ *  laziness rather than correctness. See kernel/specs/module-artifact.md. */
+const ASSETS_FILES_SCHEMA = {
+  type: "array",
+  items: { type: "string" },
+};
+
+/** The published layer index, written by `telo publish` (never hand-authored).
+ *  One entry per layer except the manifest layer, which cannot list its own hash
+ *  inside itself and is pinned by the importer's `#sha256-...` instead. Shape and
+ *  matching rules are normative in kernel/specs/module-artifact.md; the parser
+ *  that enforces them is `artifact-layer-index.ts`. */
+const LAYER_INDEX_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    required: ["role", "blob", "integrity"],
+    properties: {
+      role: { type: "string", enum: ["controller", "assets", "common"] },
+      selector: {
+        type: "object",
+        required: ["format"],
+        properties: {
+          format: { type: "string" },
+          os: { type: "string" },
+          arch: { type: "string" },
+          libc: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      blob: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" },
+      integrity: { type: "string", pattern: "^sha256-[A-Za-z0-9_-]{43}$" },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** The pre-layers payload digest, superseded by the per-layer `integrity` values
+ *  in `layers:`. Accepted and ignored, for one reason only: a module published in
+ *  the old single-blob shape must reach the *actionable* failure — the controller
+ *  loader's "republish the module" error — instead of dying earlier on
+ *  `must NOT have additional properties`, which tells an author nothing. Nothing
+ *  reads this field. */
+const LEGACY_FILES_INTEGRITY_SCHEMA = { type: "string" };
+
 /** The six named levels of `kernel/specs/logging.md` §5.1. The full 1–24 OTel
  *  range stays valid on the wire; only these are nameable in a manifest. */
 const LOG_LEVEL_ENUM = ["trace", "debug", "info", "warn", "error", "fatal"];
@@ -529,21 +576,18 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
-        // Files bundled alongside `telo.yaml` into the module's registry
-        // artifact (`module.tar.gz`) — static assets served by Http.Static,
-        // templates, etc. Ordered `.gitignore`-style patterns resolved against
-        // the manifest dir at publish time. Analyzer-only role: accept the
-        // field (the schema is additionalProperties:false); the analyzer never
-        // reads the assets. See kernel/nodejs/plans/bundle-controllers.md.
+        // Files bundled alongside `telo.yaml` into the module's artifact —
+        // controller bundles, static assets served by Http.Static, templates,
+        // etc. Ordered `.gitignore`-style patterns resolved against the manifest
+        // dir at publish time. Analyzer-only role: accept the field (the schema
+        // is additionalProperties:false); the analyzer never reads the payload.
         files: {
           type: "array",
           items: { type: "string" },
         },
-        // Integrity hash of the decompressed payload tar (`module.tar.gz`,
-        // telo.yaml excluded), written by `telo publish`. Pinned transitively
-        // by the importer's `#sha256-...` hash over this telo.yaml; verified at
-        // extract time. See plans/federated-registries.md.
-        filesIntegrity: { type: "string" },
+        assets: ASSETS_FILES_SCHEMA,
+        layers: LAYER_INDEX_SCHEMA,
+        filesIntegrity: LEGACY_FILES_INTEGRITY_SCHEMA,
         // Inline imports — name-keyed map sugar for separate `Telo.Import`
         // documents. The key is the PascalCase alias (the import's
         // `metadata.name`). Each value is either a bare source string
@@ -680,18 +724,16 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           type: "array",
           items: { type: "string" },
         },
-        // Files bundled into the module's registry artifact — same semantics as
-        // the Telo.Application `files` field above (a library may ship bundled
-        // templates, migrations, seed data).
+        // Files bundled into the module's artifact — same semantics as the
+        // Telo.Application `files` field above (a library may ship bundled
+        // controllers, templates, migrations, seed data).
         files: {
           type: "array",
           items: { type: "string" },
         },
-        // Integrity hash of the decompressed payload tar (`module.tar.gz`,
-        // telo.yaml excluded), written by `telo publish`. Pinned transitively
-        // by the importer's `#sha256-...` hash over this telo.yaml; verified at
-        // extract time. See plans/federated-registries.md.
-        filesIntegrity: { type: "string" },
+        assets: ASSETS_FILES_SCHEMA,
+        layers: LAYER_INDEX_SCHEMA,
+        filesIntegrity: LEGACY_FILES_INTEGRITY_SCHEMA,
         // Inline imports — same name-keyed map sugar as Telo.Application; the
         // loader desugars each entry into a synthetic Telo.Import. See the
         // Application schema above and analyzer/nodejs/src/inline-imports.ts.

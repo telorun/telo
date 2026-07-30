@@ -1,24 +1,31 @@
-import type { ManifestCacheCoords, ManifestSource } from "@telorun/analyzer";
+import type {
+  ArtifactSelector,
+  LayerRole,
+  ManifestCacheCoords,
+  ManifestSource,
+} from "@telorun/analyzer";
 
 import type { PayloadFile } from "../bundle/files-integrity.js";
 
-/** The full module artifact a transport delivers: the `telo.yaml` bytes plus
- *  the decompressed `files:` payload (empty for a manifest-only module). The
- *  manifest is already verified against the import's inline hash; the payload
- *  against the manifest-embedded `filesIntegrity`. */
-export interface FetchedArtifact {
-  manifest: string;
+/** One layer of a module artifact as the CLI partitioned it, before publish
+ *  assigns digests. `role` / `selector` become the layer's entry in the
+ *  published `layers:` index. */
+export interface PayloadLayer {
+  role: LayerRole;
+  /** Present on `controller` layers only. */
+  selector?: ArtifactSelector;
   files: PayloadFile[];
 }
 
 /** The module bundle handed to a transport for publishing: the final,
- *  already-analyzed / pinned / canonicalized `telo.yaml` bytes plus the `files:`
- *  payload (empty for a manifest-only module). The transport is responsible for
- *  pinning the payload (`filesIntegrity`) and for the artifact shape it writes
- *  (HTTP: `telo.yaml` + `module.tar.gz`; OCI: a single blob). */
+ *  already-analyzed / pinned / canonicalized `telo.yaml` bytes plus the payload
+ *  partitioned into layers (empty for a manifest-only module). The transport
+ *  pushes each layer as its own blob, injects the resulting `layers:` index into
+ *  the manifest, and only then pushes the manifest layer — the order that keeps
+ *  the index non-circular. */
 export interface PublishBundle {
   manifest: string;
-  files: PayloadFile[];
+  layers: PayloadLayer[];
 }
 
 export interface PublishResult {
@@ -52,8 +59,8 @@ export interface PublishOptions {
  *  `ManifestSource` is the browser-safe resolution primitive (also implemented
  *  by the cache / local / memory sources, which have no versions and nothing to
  *  publish), so it stays in `analyzer`, while the Node-only management methods
- *  (`cacheCoords` and, in later phases, `listVersions` / `fetchArtifact` /
- *  `publish`) live on the Transport here in `kernel`. */
+ *  (`cacheCoords`, `listVersions`, `fetchLayer`, `publish`) live on the Transport
+ *  here in `kernel`. */
 export interface Transport {
   /** True when this transport owns the given ref (or publish destination). */
   supports(ref: string): boolean;
@@ -102,11 +109,17 @@ export interface Transport {
    *  ref. Used by `telo upgrade`. */
   withVersion(ref: string, version: string): string;
 
-  /** Retrieve the full artifact for `ref` — the `telo.yaml` and its `files:`
-   *  payload — verifying the manifest against the inline hash and the payload
-   *  against the manifest's `filesIntegrity`. Used by `telo install`; subsumes
-   *  the out-of-band bundle fetch that used to sit outside the source chain. */
-  fetchArtifact(ref: string): Promise<FetchedArtifact>;
+  /** Pull **one** layer of `ref`'s artifact, addressed by the `blob` digest its
+   *  entry in the pinned `layers:` index carries, and return its decompressed
+   *  files. Addressing by digest is what keeps the untrusted OCI manifest out of
+   *  the path: only the *manifest* layer is located through it, and those bytes
+   *  are then checked against the import pin, so tampering is caught before any
+   *  index is read. Content verification against the entry's `integrity` is the
+   *  caller's (the artifact handle's), since only it knows the expected value.
+   *
+   *  Throws when the transport cannot deliver payload layers at all — a module
+   *  with a payload is an OCI artifact, and no other transport publishes one. */
+  fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]>;
 
   /** Cheap content-identity digest of what `ref` currently resolves to — no
    *  payload download. Opaque and transport-specific (OCI: the image manifest's

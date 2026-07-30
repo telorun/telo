@@ -1,7 +1,6 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   HttpSource,
-  IntegrityError,
   RegistrySource,
   isRegistryRef,
   parseModuleRef,
@@ -15,12 +14,9 @@ import {
 import { fetchOrThrow } from "@telorun/sdk";
 import { createHash } from "crypto";
 
-import { computeFilesIntegrity } from "../bundle/files-integrity.js";
-import { readOwnerManifest } from "../bundle/module-manifest.js";
-import { readTarGz, toPayloadFiles } from "../bundle/tar.js";
+import type { PayloadFile } from "../bundle/files-integrity.js";
 import { assertPublicEgress } from "./egress-guard.js";
 import type {
-  FetchedArtifact,
   PublishBundle,
   PublishOptions,
   PublishResult,
@@ -272,39 +268,15 @@ export class RegistryTransport implements Transport {
     return `sha256-${await sha256Base64Url(bytes)}`;
   }
 
-  async fetchArtifact(ref: string): Promise<FetchedArtifact> {
-    // `read` verifies the manifest bytes against the inline `#sha256-...` hash.
-    const { text: manifest, source } = await this.source.read(ref);
-    const meta = readOwnerManifest(manifest);
-    if (!meta.declaresFiles) return { manifest, files: [] };
-
-    // The payload rides beside the manifest as `module.tar.gz`.
-    const tarUrl = source.replace(/\/telo\.yaml$/, "/module.tar.gz");
-    await assertPublicEgress(tarUrl);
-    const res = await fetchOrThrow(tarUrl, undefined, {
-      operation: "Module payload download",
-      setting: "--registry / TELO_REGISTRY",
-    });
-    if (!res.ok) {
-      throw new Error(`could not fetch bundle ${tarUrl}: ${res.status} ${res.statusText}`);
-    }
-    const files = toPayloadFiles(await readTarGz(Buffer.from(await res.arrayBuffer())));
-
-    // Verify the payload against the manifest's `filesIntegrity` before handing
-    // it back — a mismatch is terminal (a tampered bundle must never be used).
-    // The manifest that carries the hash is itself pinned by the inline hash.
-    if (meta.filesIntegrity) {
-      const actual = await computeFilesIntegrity(files);
-      if (actual !== meta.filesIntegrity) {
-        throw new IntegrityError(
-          `Integrity check failed for bundle ${tarUrl}: filesIntegrity expected ` +
-            `${meta.filesIntegrity}, got ${actual}. The payload does not match the recorded ` +
-            `hash — the module may have been tampered with or republished.`,
-        );
-      }
-    }
-
-    return { manifest, files };
+  /** Layered artifacts are an OCI concept, and the registry origin is read-only
+   *  — nothing has ever published a payload here, so there is no layer to pull.
+   *  A module reached over the registry is manifest-only, and its controllers
+   *  come from npm. */
+  async fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]> {
+    throw new Error(
+      `Cannot fetch layer ${blobDigest} of ${ref}: the Telo registry serves manifests only. ` +
+        `A module with a bundled payload is published as an OCI artifact (oci://host/repo).`,
+    );
   }
 
   async publish(

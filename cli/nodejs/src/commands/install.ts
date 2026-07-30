@@ -1,4 +1,4 @@
-import { Loader, flattenForAnalyzer } from "@telorun/analyzer";
+import { Loader, flattenForAnalyzer, type PlatformTarget } from "@telorun/analyzer";
 import {
   ControllerLoader,
   Kernel,
@@ -13,7 +13,11 @@ import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
-import { extractModuleBundles } from "../bundle/extract.js";
+import {
+  describePlatformTarget,
+  parsePlatformTarget,
+  warmModuleLayers,
+} from "../bundle/warm-layers.js";
 import { createLogger, type Logger } from "../logger.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
@@ -107,6 +111,7 @@ async function warmAnalysisCache(
 async function installOne(
   inputPath: string,
   registryUrl: string,
+  platform: PlatformTarget,
   log: Logger,
 ): Promise<boolean> {
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
@@ -157,16 +162,20 @@ async function installOne(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
         );
       }
-      const extracted = await extractModuleBundles(
+      // Warm every layer this target could need. `run` fetches lazily, so this
+      // is purely so a later run (or a baked image) needs no network.
+      const warmed = await warmModuleLayers(
         graph,
         entryDir,
         registryUrl,
         manifestsDir,
+        platform,
         (msg) => console.error(`  ${log.warn("⚠")}  ${msg}`),
       );
-      if (extracted > 0) {
+      if (warmed > 0) {
         console.log(
-          `  ${log.ok("✓")}  extracted ${extracted} file bundle${extracted !== 1 ? "s" : ""}`,
+          `  ${log.ok("✓")}  materialized ${warmed} module layer${warmed !== 1 ? "s" : ""} ` +
+            `for ${log.dim(describePlatformTarget(platform))}`,
         );
       }
     } catch (err) {
@@ -237,8 +246,19 @@ async function installOne(
 export async function install(argv: {
   paths: string[];
   registryUrl?: string;
+  platform?: string;
 }): Promise<void> {
   const log = createLogger(false);
+
+  // The platform whose layers get warmed. Explicit so a baked image can be built
+  // from a machine of a different architecture; the host otherwise.
+  let platform: PlatformTarget;
+  try {
+    platform = parsePlatformTarget(argv.platform);
+  } catch (err) {
+    console.error(log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 
   // Same fallback chain as `telo run`: --registry-url > TELO_REGISTRY_URL >
   // built-in default. The configured URL drives both the network fetches and
@@ -250,7 +270,7 @@ export async function install(argv: {
 
   let failed = false;
   for (const p of argv.paths) {
-    const ok = await installOne(p, registryUrl, log);
+    const ok = await installOne(p, registryUrl, platform, log);
     if (!ok) failed = true;
   }
 
@@ -273,6 +293,13 @@ export function installCommand(yargs: Argv): Argv {
           type: "string",
           describe:
             "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
+        })
+        .option("platform", {
+          type: "string",
+          describe:
+            "Platform whose module layers to pre-fetch, as os/arch[/libc] " +
+            "(e.g. linux/amd64, linux/arm64/musl). Defaults to the host — set it " +
+            "when baking an image for a different architecture.",
         }),
     async (argv) => {
       await install(argv as any);
