@@ -17,6 +17,9 @@ importers:
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   analyzer/nodejs:
     dependencies:
