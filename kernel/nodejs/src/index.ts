@@ -47,6 +47,7 @@ export { ModuleContext } from "./module-context.js";
 export { ManifestRegistry as Registry } from "./registry.js";
 export { ResourceURI } from "./resource-uri.js";
 export type { RuntimeDiagnostic } from "@telorun/sdk";
+export { describeBlockedGroup, groupBlockedResources } from "./init-failure-diagnostics.js";
 
 // Structured logging — the runtime half of kernel/specs/logging.md. The record
 // model, severity scale, and `Logger` surface live in `@telorun/sdk`; these are

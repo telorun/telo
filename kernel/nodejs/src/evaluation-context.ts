@@ -27,6 +27,12 @@ import {
 import { RuntimeError } from "@telorun/sdk";
 import { evalPathCovers } from "@telorun/analyzer";
 import {
+  classifyInitFailures,
+  renderInitFailureText,
+  summarizeInitFailures,
+  type FailedResource,
+} from "./init-failure-diagnostics.js";
+import {
   acceptReportedStatus,
   buildPublishedProps,
   diagnoseObservedStateAccess,
@@ -91,6 +97,16 @@ function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
     visit(v);
   }
   return [...found.values()];
+}
+
+/**
+ * Project resource refs onto the names they depend on IN THIS CONTEXT. A local
+ * ref is its own name; a cross-module `Alias.name` ref depends on the local
+ * `Telo.Import` resource named by the alias, since that is the resource whose
+ * failure would strand it. Used to attribute an init failure to its cause.
+ */
+function localDependencyNames(refs: ResourceRef[]): string[] {
+  return refs.map((r) => (r.alias && r.alias !== "Self" ? r.alias : r.name));
 }
 
 /**
@@ -342,6 +358,12 @@ export class EvaluationContext implements IEvaluationContext {
 
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
+
+  /** Per-resource dependency names, captured at create() time — BEFORE Phase-5
+   *  injection swaps refs for live instances, so the walk sees plain objects and
+   *  cannot wander into a controller's (possibly cyclic) object graph. Read only
+   *  when init fails, to attribute each failure to its cause. */
+  private readonly resourceDependencies = new Map<string, string[]>();
 
   /**
    * Optional hook called between create() and init() for each resource.
@@ -616,7 +638,10 @@ export class EvaluationContext implements IEvaluationContext {
    */
   async initializeResources(): Promise<void> {
     const MAX_PASSES = 10;
-    const errors = new Map<string, { message: string; code?: string; details?: string }>();
+    const errors = new Map<
+      string,
+      { message: string; code?: string; details?: string; children?: RuntimeDiagnostic[] }
+    >();
 
     let pass = 1;
     do {
@@ -641,6 +666,8 @@ export class EvaluationContext implements IEvaluationContext {
             errors.delete(name);
             progress = true;
             const createdRes = created.resource;
+            const refs = collectResourceRefs(createdRes);
+            this.resourceDependencies.set(name, localDependencyNames(refs));
             const payload: Record<string, unknown> = {
               resource: {
                 kind: createdRes.kind,
@@ -649,7 +676,7 @@ export class EvaluationContext implements IEvaluationContext {
                 id: this.resourceId(createdRes.kind, createdRes.metadata.name),
               },
               ...(this.owner ? { owner: this.owner } : {}),
-              dependencies: this.qualifyDeps(collectResourceRefs(createdRes)),
+              dependencies: this.qualifyDeps(refs),
             };
             // `properties` (the resolved config) is a second full config walk plus
             // a secret scrub. Build it lazily: the EventBus short-circuits when
@@ -682,6 +709,7 @@ export class EvaluationContext implements IEvaluationContext {
                   ? this.resolveImportedInstance(alias, n)
                   : this.resourceInstances.get(n)?.instance,
               (n) => this.hasManifest(n) && !this.resourceInstances.has(n),
+              this,
             );
           }
           if (instance.init) await instance.init(ctx);
@@ -694,6 +722,9 @@ export class EvaluationContext implements IEvaluationContext {
           await this.publishSnapshot(name);
           this.resourceInstances.set(name, { resource, instance });
           this.createdInstances.delete(name);
+          // Read only on failure, and this one succeeded — drop it rather than
+          // holding a dep-name array per resource for the context's lifetime.
+          this.resourceDependencies.delete(name);
           errors.delete(name);
           progress = true;
           await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
@@ -715,38 +746,33 @@ export class EvaluationContext implements IEvaluationContext {
     } while (pass <= MAX_PASSES);
 
     if (this.pendingResources.length > 0 || this.createdInstances.size > 0) {
-      const diagnostics: RuntimeDiagnostic[] = [
-        ...this.pendingResources.map((r) => {
-          const info = errors.get(r.metadata.name) ?? { message: "Unknown error" };
-          return {
-            resource: r.metadata.name,
-            kind: r.kind,
-            message: info.message,
-            details: info.details,
-            code: info.code,
-          };
-        }),
-        ...[...this.createdInstances].map(([name, { resource }]) => {
-          const info = errors.get(name) ?? { message: "Unknown error" };
-          return {
-            resource: name,
-            kind: resource.kind,
-            message: info.message,
-            details: info.details,
-            code: info.code,
-          };
-        }),
+      const toFailure = (name: string, kind: string, deps: string[]): FailedResource => {
+        const info = errors.get(name) ?? { message: "Unknown error" };
+        return {
+          resource: name,
+          kind,
+          message: info.message,
+          details: info.details,
+          code: info.code,
+          children: info.children,
+          deps,
+        };
+      };
+      const failures: FailedResource[] = [
+        // A resource that never got created was never injected either, so its
+        // manifest still carries plain `{kind, name}` refs — walk it here rather
+        // than relying on the create-time capture it never reached.
+        ...this.pendingResources.map((r) =>
+          toFailure(r.metadata.name, r.kind, localDependencyNames(collectResourceRefs(r))),
+        ),
+        ...[...this.createdInstances].map(([name, { resource }]) =>
+          toFailure(name, resource.kind, this.resourceDependencies.get(name) ?? []),
+        ),
       ];
-      const textDetails = diagnostics
-        .map((d) => {
-          const head = `  ${d.kind ? `${d.kind} ` : ""}${d.resource}: ${d.message}${d.code ? ` [${d.code}]` : ""}`;
-          const extra = d.details ? "\n" + d.details.split("\n").map((l) => `    ${l}`).join("\n") : "";
-          return head + extra;
-        })
-        .join("\n");
+      const diagnostics = classifyInitFailures(failures);
       throw new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
-        `Unable to process resources:\n${textDetails}`,
+        `${summarizeInitFailures(diagnostics)}:\n${renderInitFailureText(diagnostics)}`,
         diagnostics,
       );
     }
@@ -815,7 +841,7 @@ export class EvaluationContext implements IEvaluationContext {
         // Propagate injection hook: extend getInstance to also resolve parent singleton instances.
         if (parent.preInitHook) {
           const parentHook = parent.preInitHook;
-          child.preInitHook = (resource, childGetInstance, childIsPending) => {
+          child.preInitHook = (resource, childGetInstance, childIsPending, owner) => {
             parentHook(
               resource,
               (name, alias) => {
@@ -836,6 +862,9 @@ export class EvaluationContext implements IEvaluationContext {
               // Only a scope-local dependency can still be pending — an outer resource
               // is live by the time a scope opens — so the child's own predicate suffices.
               childIsPending,
+              // Forwarded, not replaced by `child`: a `with:` nested inside a scoped
+              // resource must still resolve kinds against the scope it opened in.
+              owner,
             );
           };
         }
@@ -1761,9 +1790,29 @@ function formatErrorForDiagnostic(err: unknown): {
   message: string;
   code?: string;
   details?: string;
+  children?: RuntimeDiagnostic[];
 } {
   if (!(err instanceof Error)) {
     return { message: String(err) };
+  }
+
+  // A nested context's aggregate (an import initializing its library's
+  // resources) already carries a classified diagnostic list. Keep it structured
+  // instead of letting the cause-chain walk flatten it into this entry's
+  // message: the child's root causes stay distinguishable from the child's own
+  // cascade, and the error count sees the real leaves rather than one import.
+  // The headline is re-derived from the diagnostics, never recovered by parsing
+  // the message the child already rendered from them.
+  if (
+    err instanceof RuntimeError &&
+    err.code === "ERR_RESOURCE_INITIALIZATION_FAILED" &&
+    err.diagnostics?.length
+  ) {
+    return {
+      message: summarizeInitFailures(err.diagnostics),
+      code: err.code,
+      children: err.diagnostics,
+    };
   }
 
   const detailLines: string[] = [];

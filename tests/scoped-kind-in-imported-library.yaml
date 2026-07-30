@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: ScopedKindInImportedLibrary
+  version: 1.0.0
+  description: |
+    Regression test for `with:`-scope kind resolution across the import boundary.
+    The imported library's exported sequence opens a scope declaring
+    `kind: Http.Client` — an alias only the LIBRARY imports. Phase 5 built the
+    scope handle on the root context unconditionally, so the scope resolved its
+    kinds against the application's aliases and failed with "no module imported
+    with alias 'Http'". The handle now hangs off the context that owns the
+    resource. Hermetic — the client is never called.
+imports:
+  Scoped: ./__fixtures__/scoped-kind-lib
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref Test
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Run
+    invoke: !ref Scoped.Work
+  - name: AssertScopeStoodUp
+    invoke:
+      kind: Assert.Equals
+    inputs:
+      actual: !cel "steps.Run.result"
+      expected:
+        baseUrl: https://scoped.example
