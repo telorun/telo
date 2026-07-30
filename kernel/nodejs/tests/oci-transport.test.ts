@@ -1,9 +1,18 @@
-import { IntegrityError } from "@telorun/analyzer";
+import { IntegrityError, selectorKey } from "@telorun/analyzer";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OciTransport } from "../src/transports/oci/oci-transport.js";
 import { parseOciRef, isOciRef } from "../src/transports/oci/oci-ref.js";
+import {
+  OciClient,
+  TELO_LEGACY_LAYER_MEDIA_TYPE,
+  TELO_MANIFEST_LAYER_MEDIA_TYPE,
+  TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+} from "../src/transports/oci/oci-client.js";
+import { makeTarGz } from "../src/bundle/tar.js";
+import { computeFilesIntegrity } from "../src/bundle/files-integrity.js";
+import { readOwnerManifest } from "../src/bundle/module-manifest.js";
 
 async function toBytes(body: unknown): Promise<Buffer> {
   if (!body) return Buffer.alloc(0);
@@ -183,20 +192,132 @@ describe("OciTransport round-trip against a mock registry", () => {
 
     const result = await t.publish("oci://reg.test/aws/telo-s3", {
       manifest: MANIFEST,
-      files: [{ name: "public/x.txt", content: Buffer.from("hi") }],
+      layers: [
+        { role: "assets", files: [{ name: "public/x.txt", content: Buffer.from("hi") }] },
+      ],
     });
     expect(result.url).toBe("oci://reg.test/aws/telo-s3@1.2.0");
 
+    // Reading a manifest pulls the manifest layer alone — the payload is a
+    // separate blob, so nothing downloads it here.
     const read = await t.source.read("oci://reg.test/aws/telo-s3@1.2.0");
     expect(read.text).toContain("name: s3");
-    expect(read.text).toContain("filesIntegrity:");
     expect(read.source).toBe("oci://reg.test/aws/telo-s3@1.2.0");
 
-    const artifact = await t.fetchArtifact("oci://reg.test/aws/telo-s3@1.2.0");
-    const payload = artifact.files.find((f) => f.name === "public/x.txt");
-    expect(payload?.content.toString()).toBe("hi");
+    // The index in the manifest is what addresses the payload.
+    const layers = readOwnerManifest(read.text).layers!;
+    expect(layers).toHaveLength(1);
+    expect(layers[0].role).toBe("assets");
+    expect(layers[0].blob).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(layers[0].integrity).toMatch(/^sha256-[A-Za-z0-9_-]{43}$/);
+
+    const files = await t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", layers[0].blob);
+    expect(files.find((f) => f.name === "public/x.txt")?.content.toString()).toBe("hi");
+    // The layer's own content digest re-derives from what was extracted.
+    expect(await computeFilesIntegrity(files)).toBe(layers[0].integrity);
 
     expect(await t.listVersions("oci://reg.test/aws/telo-s3@1.2.0")).toEqual(["1.2.0"]);
+  });
+
+  it("gives each controller selector its own layer and leaves telo.yaml alone in its own", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    await t.publish("oci://reg.test/aws/telo-s3", {
+      manifest: MANIFEST,
+      layers: [
+        {
+          role: "controller",
+          selector: { format: "js" },
+          files: [{ name: "nodejs/c.mjs", content: Buffer.from("export const x=1") }],
+        },
+        {
+          role: "controller",
+          selector: { format: "napi", os: "linux", arch: "amd64", libc: "gnu" },
+          files: [{ name: "rust/c.node", content: Buffer.from("binary") }],
+        },
+        { role: "common", files: [{ name: "rust/lib.so", content: Buffer.from("sidecar") }] },
+      ],
+    });
+
+    const ociManifest = reg.manifestJson("aws/telo-s3", "1.2.0");
+    // The manifest layer comes first and is the only one located by media type.
+    expect(ociManifest.layers[0].mediaType).toBe(TELO_MANIFEST_LAYER_MEDIA_TYPE);
+    expect(ociManifest.layers).toHaveLength(4);
+    expect(ociManifest.layers.slice(1).map((l: any) => l.mediaType)).toEqual([
+      TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+      TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+      TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+    ]);
+
+    const index = readOwnerManifest((await t.source.read("oci://reg.test/aws/telo-s3@1.2.0")).text)
+      .layers!;
+    expect(index.map((l) => (l.selector ? selectorKey(l.selector) : l.role))).toEqual([
+      "format=js",
+      "arch=amd64;format=napi;libc=gnu;os=linux",
+      "common",
+    ]);
+
+    // A host fetches exactly one controller layer: the js one carries only its
+    // own file, so the napi binary is never transferred.
+    const js = await t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", index[0].blob);
+    expect(js.map((f) => f.name)).toEqual(["nodejs/c.mjs"]);
+  });
+
+  // Every module published before layers existed is one blob carrying telo.yaml
+  // plus its whole payload. The read path only ever wants telo.yaml, which that
+  // blob has — so an already-published module keeps resolving, and the npm-backed
+  // majority (no payload at all) is entirely unaffected by the format change.
+  it("still reads telo.yaml out of a pre-layers single-blob artifact", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    // Hand-build the legacy shape: one layer, telo.yaml inside it.
+    const tar = await makeTarGz([{ name: "telo.yaml", content: MANIFEST }]);
+    const client = new OciClient("reg.test", "aws/telo-s3");
+    const digest = await client.pushBlob(tar);
+    await client.pushManifest("1.2.0", {
+      schemaVersion: 2,
+      mediaType: "application/vnd.oci.image.manifest.v1+json",
+      config: await client.pushEmptyConfig(),
+      layers: [
+        { mediaType: TELO_LEGACY_LAYER_MEDIA_TYPE, digest, size: tar.length },
+      ],
+    });
+
+    const read = await t.source.read("oci://reg.test/aws/telo-s3@1.2.0");
+    expect(read.text).toContain("name: s3");
+    // No index, so nothing claims a payload — a bundled controller in such a
+    // module fails at the loader with an actionable "republish" error instead.
+    expect(readOwnerManifest(read.text).layers).toBeUndefined();
+  });
+
+  it("rejects a layer fetch whose bytes do not match the digest that addressed it", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    await t.publish("oci://reg.test/aws/telo-s3", {
+      manifest: MANIFEST,
+      layers: [{ role: "assets", files: [{ name: "a.txt", content: Buffer.from("a") }] }],
+    });
+    const index = readOwnerManifest((await t.source.read("oci://reg.test/aws/telo-s3@1.2.0")).text)
+      .layers!;
+
+    // Ask for a digest the registry will answer with different bytes for.
+    const wrong = `sha256:${"0".repeat(64)}`;
+    await expect(
+      t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", wrong),
+    ).rejects.toThrow();
+    // The honest digest still works, so the rejection was the check and not the mock.
+    await expect(
+      t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", index[0].blob),
+    ).resolves.toHaveLength(1);
   });
 
   it("projects declared provenance onto org.opencontainers.image.* annotations", async () => {
@@ -209,7 +330,7 @@ describe("OciTransport round-trip against a mock registry", () => {
       "kind: Telo.Library\nmetadata:\n  name: s3\n  version: 1.2.0\n" +
       "  description: Object storage\n  repository: https://github.com/aws/telo-s3\n" +
       "  license: Apache-2.0\n  documentation: https://example.test/docs\n";
-    await t.publish("oci://reg.test/aws/telo-s3", { manifest, files: [] });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest, layers: [] });
 
     expect(reg.manifestJson("aws/telo-s3", "1.2.0").annotations).toEqual({
       "org.opencontainers.image.title": "s3",
@@ -228,7 +349,7 @@ describe("OciTransport round-trip against a mock registry", () => {
     const t = new OciTransport();
 
     // MANIFEST declares only name/namespace/version — no provenance fields.
-    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] });
 
     expect(reg.manifestJson("aws/telo-s3", "1.2.0").annotations).toEqual({
       "org.opencontainers.image.title": "s3",
@@ -244,7 +365,7 @@ describe("OciTransport round-trip against a mock registry", () => {
 
     // MANIFEST declares namespace/name, which the old default would have turned
     // into `reg.test/aws/s3` — a namespace the publisher may not own.
-    await expect(t.publish("oci://reg.test", { manifest: MANIFEST, files: [] })).rejects.toThrow(
+    await expect(t.publish("oci://reg.test", { manifest: MANIFEST, layers: [] })).rejects.toThrow(
       /host-only/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -256,7 +377,7 @@ describe("OciTransport round-trip against a mock registry", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] });
     const read = await t.source.read("oci://reg.test/aws/telo-s3@1.2.0");
     expect(read.text).toContain("name: s3");
     expect(reg.tokenRequests()).toBeGreaterThan(0);
@@ -268,7 +389,7 @@ describe("OciTransport round-trip against a mock registry", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] });
     const digest = await t.digest("oci://reg.test/aws/telo-s3@1.2.0");
     expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     // Stable across reads — the tracker compares it for equality on every track.
@@ -303,7 +424,7 @@ describe("OciTransport round-trip against a mock registry", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, files: [] });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] });
     await expect(
       t.source.read("oci://reg.test/aws/telo-s3@1.2.0#sha256-deadbeefdeadbeefdeadbeefdeadbeef"),
     ).rejects.toBeInstanceOf(IntegrityError);

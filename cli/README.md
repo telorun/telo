@@ -35,8 +35,8 @@ Publish one or more module manifests to the Telo registry. For each manifest, th
 4. Publishes each controller package to its registry (currently npm). If the version already exists, the publish step is skipped — the command is idempotent.
 5. Rewrites the PURL version specs in the manifest to exact static versions.
 6. Bumps `metadata.version` in the manifest when `--bump` is given.
-7. Pushes the artifact to the Telo registry — a plain `telo.yaml` (`text/yaml`),
-   or, when the manifest declares `files:`, a `module.tar.gz` bundle (see below).
+7. Pushes the artifact to an OCI registry — `telo.yaml` in its own layer, plus
+   one layer per group of files the manifest declares (see below).
 
 ```bash
 telo publish ./modules/my-module/telo.yaml
@@ -46,13 +46,12 @@ telo publish ./modules/my-module/telo.yaml --dry-run
 telo publish ./modules/my-module/telo.yaml --skip-controllers
 ```
 
-**Bundling files with `files:`**
+**Shipping files with `files:`**
 
-A `Telo.Application` or `Telo.Library` may declare a `files:` list to ship
-static assets alongside `telo.yaml` — a built SPA served by `Http.Static`,
-templates, seed data, etc. Without it, only the manifest reaches the registry
-and a relative `Http.Static` `root:` resolves to an empty directory on the
-consumer.
+A `Telo.Application` or `Telo.Library` may declare a `files:` list to ship files
+alongside `telo.yaml` — bundled controllers, a built SPA served by `Http.Static`,
+templates, seed data. Without it, only the manifest reaches the registry and a
+relative `Http.Static` `root:` resolves to an empty directory on the consumer.
 
 ```yaml
 kind: Telo.Application
@@ -68,12 +67,31 @@ engine git uses): positive patterns opt files in, `!` patterns carve them out,
 always-on set is never shipped regardless of patterns: `node_modules/`,
 `.git/`, `.telo/`, `.telobundle.*`.
 
-When `files:` selects anything, `telo publish` packs `telo.yaml` plus the
-selected files into `module.tar.gz` and PUTs it to
-`…/<namespace>/<name>/<version>/module.tar.gz`. `telo install` (and `telo run`)
-download and extract that archive into the local cache next to the cached
-`telo.yaml`, so a relative `Http.Static` `root:` resolves on the consumer
-exactly as it does in development.
+When `files:` selects anything, `telo publish` **partitions** the selection into
+layers and pushes each as its own blob: one layer per bundled-controller platform,
+one for whatever the optional `assets:` list claims, and one for everything else.
+It prints the partition so you can see where each file landed. The consumer then
+fetches only what it needs — a Node host skips a Rust controller's binary, a
+`linux/amd64` host skips the `darwin/arm64` one, and the asset layer is fetched
+only if something actually reads a file from it.
+
+Declaring `assets:` (a subset of `files:`) is what makes those files lazy:
+
+```yaml
+files:
+  - nodejs/*.mjs
+  - public/**
+assets:
+  - public/**
+```
+
+Omitting it is safe — the files still ship and still resolve, they are just
+fetched alongside the module's controllers instead of on demand.
+
+`telo run` materializes layers on demand, so nothing has to be pre-fetched.
+`telo install` pre-fetches everything for one platform so a later run needs no
+network; pass `--platform os/arch[/libc]` (e.g. `linux/arm64/musl`) when baking an
+image for an architecture other than the build machine's.
 
 **Options:**
 

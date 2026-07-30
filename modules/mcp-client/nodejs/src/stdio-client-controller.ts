@@ -5,7 +5,7 @@ import {
   type ControllerContext,
   type ResourceContext,
 } from "@telorun/sdk";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -70,8 +70,10 @@ export class McpStdioClient {
     // declaring manifest's directory rather than process.cwd(). Lets a test
     // manifest at modules/X/tests/foo.yaml reference a fixture at
     // ./__fixtures__/server.mjs without the test runner needing to chdir.
-    const command = this.resolvePathArg(this.manifest.command);
-    const args = (this.manifest.args ?? []).map((a) => this.resolvePathArg(a));
+    const command = await this.resolvePathArg(this.manifest.command);
+    const args = await Promise.all(
+      (this.manifest.args ?? []).map((a) => this.resolvePathArg(a)),
+    );
 
     const transport = new StdioClientTransport({
       command,
@@ -152,13 +154,17 @@ export class McpStdioClient {
     }
   }
 
-  private resolvePathArg(value: string): string {
+  /** Resolve a relative `./` / `../` entry against the declaring module's own
+   *  directory. `ctx.resolveModuleFile` is what knows where that is — for a
+   *  published module it is the artifact directory, not the manifest URL — and it
+   *  materializes the module's asset layer on first use, so a bundled helper
+   *  script is on disk before it is spawned. A value that resolves to a non-file
+   *  URI is passed through unchanged: it is a command name, not a path. */
+  private async resolvePathArg(value: string): Promise<string> {
     if (!value.startsWith("./") && !value.startsWith("../")) return value;
     if (isAbsolute(value)) return value;
-    const source = this.ctx.moduleContext.source;
-    if (!source.startsWith("file://")) return value;
-    const baseDir = dirname(fileURLToPath(source));
-    return resolve(baseDir, value);
+    const uri = await this.ctx.resolveModuleFile(value);
+    return uri.startsWith("file://") ? resolve(fileURLToPath(uri)) : value;
   }
 
   snapshot(): Record<string, unknown> {

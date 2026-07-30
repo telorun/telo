@@ -4,7 +4,34 @@ import { createHash } from "node:crypto";
 import { assertPublicEgress } from "../egress-guard.js";
 import { resolveDockerCredential } from "./docker-credentials.js";
 
-export const TELO_LAYER_MEDIA_TYPE = "application/vnd.telo.module.v1+tar";
+/** The **manifest layer**: the blob carrying `telo.yaml`. The only layer located
+ *  through the OCI manifest — its bytes are then verified against the import
+ *  pin, and every other layer is addressed by a digest the pinned `layers:` index
+ *  supplies. */
+export const TELO_MANIFEST_LAYER_MEDIA_TYPE = "application/vnd.telo.module.manifest.v1+tar";
+
+/**
+ * The pre-layers single-blob artifact: `telo.yaml` and the whole `files:` payload
+ * in one layer.
+ *
+ * Still read, because every module published so far carries it and the ones with
+ * no payload — the npm-backed majority — are perfectly usable from it: the read
+ * path only ever wanted `telo.yaml`, and this blob contains it. What such an
+ * artifact cannot supply is a `layers:` index, so a module that *does* ship a
+ * payload resolves its manifest and then fails at the controller with an
+ * actionable "republish" error. That is the intended, narrow break.
+ */
+export const TELO_LEGACY_LAYER_MEDIA_TYPE = "application/vnd.telo.module.v1+tar";
+
+/** A **payload layer**: one controller selector's files, the `assets` layer, or
+ *  the `common` layer. Which is which is read from the pinned index, never from
+ *  the descriptor — the annotations below are for `docker manifest inspect`
+ *  legibility only and are never read back. */
+export const TELO_PAYLOAD_LAYER_MEDIA_TYPE = "application/vnd.telo.module.layer.v1+tar";
+
+export const TELO_LAYER_ROLE_ANNOTATION = "run.telo.layer.role";
+export const TELO_LAYER_SELECTOR_ANNOTATION = "run.telo.layer.selector";
+
 export const OCI_MANIFEST_MEDIA_TYPE = "application/vnd.oci.image.manifest.v1+json";
 export const OCI_EMPTY_CONFIG_MEDIA_TYPE = "application/vnd.oci.empty.v1+json";
 
@@ -25,6 +52,10 @@ export interface OciDescriptor {
   size: number;
   data?: string;
   artifactType?: string;
+  /** Descriptive per-layer metadata (`run.telo.layer.*`). Written so native
+   *  tooling can read the artifact's shape; never consumed by Telo, which takes
+   *  role and selector from the pinned index instead. */
+  annotations?: Record<string, string>;
 }
 
 export interface OciManifest {

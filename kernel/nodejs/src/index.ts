@@ -23,11 +23,19 @@ export {
 export { makeTarGz, readTarGz, type BundleEntry } from "./bundle/tar.js";
 export {
   computeFilesIntegrity,
-  injectFilesIntegrity,
+  injectLayerIndex,
   type PayloadFile,
 } from "./bundle/files-integrity.js";
+export {
+  ModuleArtifact,
+  moduleArtifactFor,
+  moduleDirectoryFor,
+  hostPlatformTarget,
+  type MaterializedLayer,
+} from "./bundle/module-artifact.js";
+export { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
 export type {
-  FetchedArtifact,
+  PayloadLayer,
   PublishBundle,
   PublishResult,
   PublishOptions,

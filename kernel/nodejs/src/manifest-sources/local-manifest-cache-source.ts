@@ -133,7 +133,7 @@ export class LocalManifestCacheSource implements ManifestSource {
 export function cachePathForCanonical(
   canonicalSource: string,
   entryDir: string,
-  registryUrl: string,
+  registryUrl: string | undefined = DEFAULT_REGISTRY_URL,
   manifestsDir?: string,
 ): string | null {
   const cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);

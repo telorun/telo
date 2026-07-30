@@ -14,6 +14,7 @@ import {
   inheritedCapability,
   type DefResolver,
 } from "@telorun/analyzer";
+import type { ModuleArtifact } from "../../bundle/module-artifact.js";
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { createTemplateController } from "./resource-template-controller.js";
@@ -162,10 +163,18 @@ class ResourceDefinition implements ResourceInstance {
     // `controllers:` candidate fails fast at boot), but defer the expensive
     // import/eval and the controller's `register()` to the kind's first
     // instantiation. Definitions whose kind is never instantiated never import.
+    // The artifact of the module that DECLARED this kind — a bundled controller
+    // ships in its own module's payload, not the consumer's. It owns the pinned
+    // ref and the verified layer index, so the loader picks a candidate and asks
+    // it for that selector's directory rather than fetching anything itself.
+    const artifact = (ctx as unknown as ModuleArtifactHost).getModuleArtifact?.(
+      this.resource.metadata.source,
+    );
     const resolved = await loader.resolve(
       this.resource.controllers,
       this.resource.metadata.source,
       ctx.getControllerPolicy(),
+      artifact,
     );
     ctx.registerDefinition(this.resource);
 
@@ -196,6 +205,16 @@ class ResourceDefinition implements ResourceInstance {
       },
     );
   }
+}
+
+/**
+ * Kernel-internal hook for reaching a module's artifact handle. Off the SDK
+ * surface deliberately: it hands back a kernel class, and only controller
+ * resolution needs it — module authors reach a module's files through
+ * `ctx.resolveModuleFile`, which returns a plain URI.
+ */
+interface ModuleArtifactHost {
+  getModuleArtifact?(source: string | undefined): ModuleArtifact | undefined;
 }
 
 /**

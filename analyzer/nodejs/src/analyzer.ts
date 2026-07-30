@@ -51,6 +51,7 @@ import {
 import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
+import { validateModuleArtifact } from "./validate-module-artifact.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -1202,6 +1203,11 @@ export class StaticAnalyzer {
       // §14.1 / §10.3: redaction paths and `on_full: block` are statically
       // detectable, so they fail `telo check` rather than only at boot.
       diagnostics.push(...validateLogging(allManifests, defs, aliases, aliasesByModule));
+      // Module-artifact surface: bundled-controller selector qualifiers and the
+      // published `layers:` index. Every case is decidable from the manifest and
+      // would otherwise fail on a consumer's machine — or, for a mistyped platform
+      // axis, silently offer one platform's binary to every host.
+      diagnostics.push(...validateModuleArtifact(allManifests));
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
 

@@ -3,9 +3,15 @@ import * as os from "os";
 import * as path from "path";
 import { NOOP_LOGGER, type Logger } from "@telorun/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { __testing__ } from "../src/controller-loaders/npm-loader.js";
+import { __testing__, withDirectoryLock } from "../src/directory-lock.js";
 
-const { withInstallLock, reclaimIfStale, LOCK_STALE_MS, LOCK_HEARTBEAT_MS } = __testing__;
+const { reclaimIfStale, LOCK_STALE_MS, LOCK_HEARTBEAT_MS } = __testing__;
+
+/** The lock is directory-scoped and label-parameterised; every call here uses
+ *  the install label the npm loader passes, so the notice/timeout text under
+ *  test is exactly what that caller produces. */
+const withInstallLock = <T,>(dir: string, fn: () => Promise<T>, log?: Logger) =>
+  withDirectoryLock(dir, "controller install", fn, log);
 
 let root: string;
 
@@ -209,7 +215,7 @@ describe("same-process queuing", () => {
 
       const notice = records.find((r) => r.message === "waiting for controller install lock");
       expect(notice).toBeDefined();
-      expect(notice!.attributes).toHaveProperty("telo.install.lock_path");
+      expect(notice!.attributes).toHaveProperty("telo.lock.path");
     } finally {
       clearInterval(beat);
     }

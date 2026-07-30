@@ -8,6 +8,7 @@ import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
+import { describePartition, partitionLayers } from "../bundle/partition-layers.js";
 import { selectFiles } from "../bundle/select-files.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
@@ -165,10 +166,21 @@ export function expandAndInlineIncludes(content: string, manifestDir: string): s
 
 /** Read the first doc's `files:` glob patterns (empty when none declared). */
 export function readFilesPatterns(content: string): string[] {
+  return readPatternField(content, "files");
+}
+
+/** Read the first doc's `assets:` glob patterns — the author-claimed subset of
+ *  `files:` that ships in the lazily materialized asset layer. */
+export function readAssetPatterns(content: string): string[] {
+  return readPatternField(content, "assets");
+}
+
+function readPatternField(content: string, field: "files" | "assets"): string[] {
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
   const first = docs[0]?.toJSON();
-  if (!first || !Array.isArray(first.files)) return [];
-  return first.files.filter((p: unknown): p is string => typeof p === "string");
+  const value = first?.[field];
+  if (!Array.isArray(value)) return [];
+  return value.filter((p: unknown): p is string => typeof p === "string");
 }
 
 // ---------------------------------------------------------------------------
@@ -544,8 +556,8 @@ async function publishOne(
   // Expand include globs and inline partial file contents before pushing
   content = expandAndInlineIncludes(content, manifestDir);
 
-  // Resolve the `files:` asset set. When present, the artifact is a
-  // `module.tar.gz` (telo.yaml + assets) instead of a bare YAML body.
+  // Resolve the `files:` payload set. When non-empty the artifact carries payload
+  // layers beside its manifest layer.
   let bundledFiles: string[];
   try {
     bundledFiles = selectFiles(manifestDir, readFilesPatterns(content));
@@ -556,29 +568,35 @@ async function publishOne(
     return false;
   }
 
+  // Partition the payload into the layers the artifact ships: one per bundled
+  // controller selector, the author-claimed `assets:` layer, and `common` for
+  // everything unclaimed. Printed so an author can see where each file landed —
+  // a sidecar that fell into `common` is not wrong, just not skippable.
+  const partition = partitionLayers(content, bundledFiles, readAssetPatterns(content));
+
   if (dryRun) {
-    if (bundledFiles.length > 0) {
-      stepDry(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml → module.tar.gz`);
-    }
+    for (const line of describePartition(partition)) stepDry(log, "layer", line);
     stepDry(log, "push", destination);
     return true;
   }
 
-  const payload = bundledFiles.map((rel) => ({
-    name: rel,
-    content: fs.readFileSync(path.resolve(manifestDir, rel)),
+  const layers = partition.layers.map((layer) => ({
+    role: layer.role,
+    ...(layer.selector ? { selector: layer.selector } : {}),
+    files: layer.files.map((rel) => ({
+      name: rel,
+      content: fs.readFileSync(path.resolve(manifestDir, rel)),
+    })),
   }));
-  if (bundledFiles.length > 0) {
-    stepOk(log, "bundle", `${bundledFiles.length} file(s) + telo.yaml`);
-  }
+  for (const line of describePartition(partition)) stepOk(log, "layer", line);
 
-  // The transport its scheme selects owns the artifact shape (HTTP: telo.yaml +
-  // module.tar.gz; OCI: one blob), payload pinning, and retry.
+  // The transport pushes each layer as its own blob, injects the resulting
+  // `layers:` index into the manifest, and pushes the manifest layer last.
   let result;
   try {
     result = await defaultTransportRegistry(registry).publish(
       destination,
-      { manifest: content, files: payload },
+      { manifest: content, layers },
       {
         token: process.env.TELO_REGISTRY_TOKEN,
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>

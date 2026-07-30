@@ -81,7 +81,11 @@ export async function create(
       const loader = new Loader([new LocalFileSource(), ...defaultSources()]);
       const analyzer = new StaticAnalyzer();
 
-      const resolvedUrl = new URL(manifest.source, ctx.moduleContext.source).toString();
+      // `resolveModuleFile` knows where the declaring module's files actually
+      // live — for a published module that is its artifact directory, not the
+      // manifest URL — and materializes its asset layer on first access, so a
+      // bundled fixture manifest is on disk before it is loaded.
+      const resolvedUrl = await ctx.resolveModuleFile(manifest.source);
       let manifests;
       try {
         // `desugarImports` mirrors how the kernel loads: inline `imports:` maps
