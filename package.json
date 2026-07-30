@@ -33,11 +33,13 @@
     "test:docker": "pnpm run build:bundles && docker build --target rust-slim -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/workspace -w /workspace telo:ci ./test-suite.yaml",
     "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*/telo.yaml && pnpm run check apps/*/telo.yaml && pnpm run check templates/apps/*/telo.yaml && pnpm run check templates/libs/*/telo.yaml && pnpm run check benchmarks/*/api.yaml && pnpm run check benchmarks/*/benchmark.yaml && pnpm run test && pnpm -r --if-present build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
     "version-packages": "node scripts/version-packages.mjs",
-    "release": "node scripts/publish-packages.mjs"
+    "release": "node scripts/publish-packages.mjs",
+    "check:changie": "node scripts/check-changie-fragments.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
     "bun": "^1.3.9",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "yaml": "^2.8.3"
   }
 }

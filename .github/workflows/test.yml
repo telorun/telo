@@ -62,6 +62,11 @@ jobs:
           done
           exit $failed
 
+      # Not PR-only: a malformed fragment breaks the release batch whenever it is reached, so it
+      # must never sit on main either.
+      - name: Validate changie fragments
+        run: node scripts/check-changie-fragments.mjs
+
       - name: Disallow major version bumps in changie fragments
         if: github.event_name == 'pull_request'
         run: node scripts/check-no-major-module-bump.mjs
