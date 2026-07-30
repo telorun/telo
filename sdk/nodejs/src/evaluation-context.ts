@@ -67,11 +67,18 @@ export type InstanceFactory = (
  *                   registered in this context but not yet initialized. Injection uses it
  *                   to defer a resource whose dependency exists but hasn't inited yet —
  *                   rather than leaving the slot unresolved — so the init loop retries it.
+ * @param owner  The context that OWNS this resource — the module context for a top-level
+ *               resource, the per-run scope child for a `with:`-scoped one. Anything the
+ *               hook builds on the resource's behalf (notably a scope handle for an
+ *               `x-telo-scope` field) must hang off this, not off the root: the inline
+ *               declarations inside a scope name kinds through the import aliases of the
+ *               module that DECLARED them, which the root context has never heard of.
  */
 export type PreInitHook = (
   resource: ResourceManifest,
   getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
-  isPending?: (name: string) => boolean,
+  isPending: ((name: string) => boolean) | undefined,
+  owner: EvaluationContext,
 ) => void;
 
 /** Canonical key for a resource instance: "<module>.<kind>.<name>" */

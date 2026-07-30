@@ -65,27 +65,67 @@ function collectSchemaProperties(
  *  Template strings were compiled from YAML at load time; this restores a shape
  *  that AJV can validate without evaluating expressions. When no schema is
  *  supplied every compiled value collapses to `""` (the `default` branch of
- *  `placeholderForSchema`), matching the schema-unaware strip. */
+ *  `placeholderForSchema`), matching the schema-unaware strip.
+ *
+ *  The walk stops short of anything that is not plain config, mirroring
+ *  `buildResolvedProperties`: by the time a resource reaches validation its ref
+ *  slots may already hold LIVE resource instances (a template passing the
+ *  caller's client down with `client: !cel "self.client"` hands the child the
+ *  injected instance, not a ref), and a controller's object graph is
+ *  arbitrarily deep and routinely cyclic — walking one overflows the stack
+ *  instead of producing a diagnostic, and there is nothing inside it to strip. */
 export function stripCompiledValues(
   v: unknown,
   schema: Record<string, unknown> = {},
   rootSchema?: Record<string, unknown>,
 ): unknown {
   const root = rootSchema ?? schema;
-  const resolved = resolveSchemaRef(schema, root);
+  // Ancestors on the current path, so a genuine cycle stops while a sub-object
+  // that merely appears twice is still stripped both times.
+  const ancestors = new Set<object>();
 
-  if (isCompiledValue(v)) return placeholderForSchema(resolved);
-  if (Array.isArray(v)) {
-    const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
-    return v.map((item) => stripCompiledValues(item, itemSchema, root));
-  }
-  if (v !== null && typeof v === "object") {
-    const props = collectSchemaProperties(resolved);
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = stripCompiledValues(val, props[k] ?? {}, root);
+  const walk = (value: unknown, nodeSchema: Record<string, unknown>): unknown => {
+    const resolved = resolveSchemaRef(nodeSchema, root);
+
+    if (isCompiledValue(value)) return placeholderForSchema(resolved);
+    // A slot the schema declares as a reference is never config: it holds a
+    // `{kind, name}` ref or the live instance Phase 5 replaced it with, and the
+    // schema declares no shape to validate against either way.
+    if (resolved["x-telo-ref"] !== undefined) return value;
+
+    if (Array.isArray(value)) {
+      const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
+      return walkGuarded(value, () => value.map((item) => walk(item, itemSchema)));
     }
-    return out;
-  }
-  return v;
+    if (value !== null && typeof value === "object") {
+      // A class instance (a client, a pool, a stream) carries no CompiledValues
+      // and is not described by the schema — copying it is pure risk.
+      const proto = Object.getPrototypeOf(value);
+      if (proto !== Object.prototype && proto !== null) return value;
+
+      const props = collectSchemaProperties(resolved);
+      return walkGuarded(value, () => {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(value as Record<string, unknown>)) {
+          out[k] = walk(val, props[k] ?? {});
+        }
+        return out;
+      });
+    }
+    return value;
+  };
+
+  /** Runs `fn` with `node` marked as an ancestor; a node already on the path is
+   *  a cycle and is returned as-is rather than recursed into. */
+  const walkGuarded = (node: object, fn: () => unknown): unknown => {
+    if (ancestors.has(node)) return node;
+    ancestors.add(node);
+    try {
+      return fn();
+    } finally {
+      ancestors.delete(node);
+    }
+  };
+
+  return walk(v, schema);
 }

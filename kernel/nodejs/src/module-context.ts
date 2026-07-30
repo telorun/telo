@@ -404,6 +404,33 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   getInstance(name: string): unknown {
     const entry = this.resourceInstances.get(name);
     if (!entry) {
+      // A name this module DID declare but that has no instance is never an
+      // unknown name — reporting it as "not found ... available resources:
+      // <imports>" reads as a typo in a name declared right there. Which of the
+      // two real situations it is depends on whether this context is still
+      // initializing:
+      //
+      //  - mid-init: a dependency-ordering deferral. Defer exactly as Phase-5
+      //    injection does, so the multi-pass loop retries and the failure is
+      //    attributed to the dependency.
+      //  - after init: no later pass is coming (a resource registered into the
+      //    module after the loop drained its queue stays pending forever), so
+      //    promising one would send the developer after a retry that will never
+      //    happen. Say what is actually true.
+      if (this.hasManifest(name)) {
+        if (this.state !== "Initialized") {
+          throw new RuntimeError(
+            "ERR_LOCAL_REF_PENDING",
+            `Local reference '${name}' is registered but not initialized yet (deferring to a later init pass)`,
+          );
+        }
+        throw new RuntimeError(
+          "ERR_RESOURCE_NOT_FOUND",
+          `Resource '${name}' is declared in this module but was never initialized, so it cannot be dispatched. ` +
+            `A resource registered after the module's init loop finished is never created — declare it at module scope, ` +
+            `or inside the '${name}'-owning scope's own resource list.`,
+        );
+      }
       throw new Error(
         `Resource '${name}' not found in module context. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
       );

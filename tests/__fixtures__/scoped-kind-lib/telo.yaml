@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: scoped-kind-lib
+  version: 1.0.0
+  description: >-
+    A library whose exported sequence opens a `with:` scope declaring a resource
+    of a kind reached through an alias only THIS library imports. The importing
+    application never imports `Http`, so the scope's kinds can only resolve if
+    the scope handle is built on the declaring library's context.
+imports:
+  Http: ../../../modules/http-client
+  Run: ../../../modules/run
+exports:
+  resources:
+    - Work
+---
+kind: Run.Sequence
+metadata: { name: Work }
+outputs:
+  baseUrl: !cel "steps.read.result.baseUrl"
+with:
+  - kind: Http.Client
+    metadata: { name: Scoped }
+    baseUrl: https://scoped.example
+steps:
+  - name: read
+    invoke: !ref Echo
+    inputs:
+      baseUrl: !cel "resources.Scoped.baseUrl"
+---
+# Hands the scoped resource's published config back out, so the test asserts the
+# scope actually stood the resource up rather than merely resolving its kind.
+kind: Run.Sequence
+metadata: { name: Echo }
+inputs:
+  baseUrl: { type: string }
+outputs:
+  baseUrl: !cel "inputs.baseUrl"
+steps: []

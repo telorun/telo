@@ -405,8 +405,8 @@ export class Kernel implements IKernel {
     await this.loadBuiltinDefinitions();
 
     // Phase 5: attach injection hook — fires between create() and init() for every resource
-    this.rootContext.preInitHook = (resource, getInstance, isPending) =>
-      this._injectDependencies(resource, getInstance, isPending);
+    this.rootContext.preInitHook = (resource, getInstance, isPending, owner) =>
+      this._injectDependencies(resource, getInstance, isPending, owner);
 
     // Expose definition lookup so invoke()/invokeResolved() can check thrown
     // InvokeError.code against the declared throw union (rule 9). Propagates
@@ -1314,11 +1314,18 @@ export class Kernel implements IKernel {
    * field map and replaces each {kind, name} reference value (outside scope visibility
    * paths) with the live ResourceInstance returned by getInstance(name). Fields within
    * scope paths are left as {kind, name} — the controller resolves them at runtime.
+   *
+   * `owner` is the context the resource belongs to, and the scope handle built for an
+   * `x-telo-scope` field hangs off it rather than off the root: a `with:` block's inline
+   * declarations name their kinds through the import aliases of the module that DECLARED
+   * the resource, so a library's scoped `kind: OAuth.RedirectListener` resolves against
+   * that library's imports — the root has never heard of the alias.
    */
   private _injectDependencies(
     resource: ResourceManifest,
     getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
-    isPending?: (name: string) => boolean,
+    isPending: ((name: string) => boolean) | undefined,
+    owner: IEvaluationContext,
   ): void {
     this.registry.iterateFieldEntries(
       resource,
@@ -1349,7 +1356,7 @@ export class Kernel implements IKernel {
               );
             }
           }
-          (resource as Record<string, unknown>)[fieldPath] = this.rootContext.createScopeHandle(
+          (resource as Record<string, unknown>)[fieldPath] = owner.createScopeHandle(
             val as ResourceManifest[],
           );
         }

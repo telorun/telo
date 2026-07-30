@@ -400,6 +400,24 @@ async function persistManifestCache(
   }
 }
 
+/** Count the errors a reader actually has to act on: entries the kernel marked
+ *  `derived` are shadows of another failure, and an entry that only wraps a
+ *  nested context (an import) counts as whatever failed inside it. Never
+ *  reports zero for a real failure — a wrapper whose children are all derived
+ *  still counts as one. */
+function countRootErrors(diagnostics: RuntimeDiagnostic[]): number {
+  let count = 0;
+  for (const d of diagnostics) {
+    if (d.severity === "warning") continue;
+    const fromChildren = d.children?.length ? countRootErrors(d.children) : 0;
+    // A collapsed entry contributes nothing itself, but a nested context it
+    // wraps still carries its own root causes.
+    if (d.derived) count += fromChildren;
+    else count += fromChildren || 1;
+  }
+  return count;
+}
+
 /** Format an error as diagnostics on the terminal. Returns the non-warning
  *  count so the single-shot path can pick an exit code while watch keeps going. */
 function reportError(argv: RunArgv, error: unknown, log: Logger): number {
@@ -417,7 +435,7 @@ function reportError(argv: RunArgv, error: unknown, log: Logger): number {
         },
       ];
   formatDiagnostics(diags, log, displayPath);
-  const errorCount = diags.filter((d) => d.severity !== "warning").length;
+  const errorCount = countRootErrors(diags);
   const warnCount = diags.filter((d) => d.severity === "warning").length;
   const parts: string[] = [];
   if (errorCount > 0) parts.push(log.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));

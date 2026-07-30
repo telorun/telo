@@ -1,7 +1,12 @@
 import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
 import { DiagnosticSeverity } from "@telorun/analyzer";
 import { findPositions } from "@telorun/ide-support";
-import { decideColor, type RuntimeDiagnostic } from "@telorun/kernel";
+import {
+  decideColor,
+  describeBlockedGroup,
+  groupBlockedResources,
+  type RuntimeDiagnostic,
+} from "@telorun/kernel";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -42,37 +47,66 @@ export function createLogger(verbose: boolean) {
 
 export type Logger = ReturnType<typeof createLogger>;
 
+/**
+ * Render runtime diagnostics. Entries the kernel classified as `derived` (they
+ * failed only because a dependency did) collapse into one line per blocked
+ * chain — a ten-resource chain is one real error and nine shadows of it, and
+ * printing them flat buries the only line a reader can act on. `--verbose`
+ * prints every entry in full.
+ */
 export function formatDiagnostics(
   diagnostics: RuntimeDiagnostic[],
   log: Logger,
   displayPath: string,
 ): void {
-  for (const d of diagnostics) {
-    const severityLabel = d.severity === "warning" ? log.warn("warning") : log.error("error");
-    const code = d.code ? `  ${log.dim(d.code)}` : "";
+  // Column the `error`/`warning` label occupies, so a collapsed group line sits
+  // under the resource names it summarizes rather than under the label.
+  const NAME_COLUMN = " ".repeat("  error  ".length);
 
-    if (d.resource) {
-      // Runtime diagnostic — the failure is pinned to a resource, so the entry
-      // manifest path adds no information. Show kind + name + message and any
-      // structured details indented below.
-      const who = `${d.kind ? `${log.dim(d.kind)} ` : ""}${d.resource}`;
-      console.error(`  ${severityLabel}  ${who}: ${d.message}${code}`);
-      if (d.details) {
-        for (const line of d.details.split("\n")) {
-          console.error(`           ${log.dim(line)}`);
+  const render = (entries: RuntimeDiagnostic[], indent: string): void => {
+    for (const d of entries) {
+      const skip = d.derived && !log.verbose;
+      if (!skip) {
+        const severityLabel = d.severity === "warning" ? log.warn("warning") : log.error("error");
+        const code = d.code ? `  ${log.dim(d.code)}` : "";
+
+        if (d.resource) {
+          // Runtime diagnostic — the failure is pinned to a resource, so the
+          // entry manifest path adds no information. Show kind + name + message
+          // and any structured details indented below.
+          const who = `${d.kind ? `${log.dim(d.kind)} ` : ""}${d.resource}`;
+          console.error(`${indent}  ${severityLabel}  ${who}: ${d.message}${code}`);
+          if (d.details) {
+            for (const line of d.details.split("\n")) {
+              console.error(`${indent}${NAME_COLUMN}  ${log.dim(line)}`);
+            }
+          }
+        } else {
+          // Non-resource diagnostic (e.g. loader/parse failure) — keep the file
+          // path since it is the only location cue we have.
+          console.error(`${indent}${displayPath}  ${severityLabel}  ${d.message}${code}`);
+          if (d.details) {
+            for (const line of d.details.split("\n")) {
+              console.error(`${indent}  ${log.dim(line)}`);
+            }
+          }
         }
       }
-    } else {
-      // Non-resource diagnostic (e.g. loader/parse failure) — keep the file path
-      // since it is the only location cue we have.
-      console.error(`${displayPath}  ${severityLabel}  ${d.message}${code}`);
-      if (d.details) {
-        for (const line of d.details.split("\n")) {
-          console.error(`  ${log.dim(line)}`);
-        }
+
+      // A nested context's failures (an import initializing its library) render
+      // one level in — for a collapsed parent too, since a child context's root
+      // causes are not shadows of THIS context's failure.
+      if (d.children?.length) render(d.children, `${indent}    `);
+    }
+
+    if (!log.verbose) {
+      for (const [blockedBy, names] of groupBlockedResources(entries)) {
+        console.error(`${indent}${NAME_COLUMN}${log.dim(describeBlockedGroup(blockedBy, names))}`);
       }
     }
-  }
+  };
+
+  render(diagnostics, "");
 }
 
 /** Format analysis diagnostics with file:line:col locations resolved via

@@ -33,6 +33,20 @@ This event signifies that a resource has successfully allocated its underlying s
 
 _(Note on Fast-Fail Execution: Telo does not utilize a continuous `Ready` state. Because the `Execution Context` is highly ephemeral and deep copying is prohibited for performance, resources must handle connection drops during the Dispatches phase by failing the specific execution instantly.)_
 
+#### 2.2.1. Reporting a Failed Initialization
+
+The init loop retries until no pass makes progress, so when it gives up, every resource downstream of a failure is also unfinished. Reporting them flat means one actionable line buried under N shadows of itself, and the shadows come first (a resource that never got created is listed before one whose `init()` threw). The kernel therefore **classifies** the failure set before raising `ERR_RESOURCE_INITIALIZATION_FAILED`.
+
+**What makes an entry derived is its error CODE, never its edges.** An entry is derived when it carries `ERR_LOCAL_REF_PENDING` or `ERR_CROSS_MODULE_REF_PENDING` — a deferral, which says the resource never ran and so has nothing of its own to report. Everything else is a **root cause**, including a resource that references a failed dependency *and* fails its own validation: an edge proves an edge exists, not that this entry's failure came from it, and collapsing on that basis would swallow a real error the author has to fix. (The edge is not trustworthy on its own terms either — `collectResourceRefs` walks `with:`-scoped inline declarations, whose names resolve scope-locally, so a scoped `!ref Db` can collide with a failed module-level `Db`.)
+
+Reference edges are used for **attribution only**: they name which failure a deferred entry is waiting on. `blockedBy` is the **root** of the chain, not the immediate blocker, since that is the name a reader has to go fix; the walk stops at the first entry that is not itself derived. A deferral with no visible edge (a `${{ resources.X }}` read) is still derived, just unattributed. Edges are captured at `create()` time, before Phase-5 injection replaces refs with live instances, so the walk never descends into a controller's object graph.
+
+Classification never hides everything: if no entry survives as a root (every failure is a deferral), the whole set is reported unclassified.
+
+The diagnostics of a **nested** context — an import initializing its library's resources — are attached to the importing entry as `children` rather than flattened into its message, so the child's own root causes stay distinguishable from the child's own cascade and the error count sees the real leaves rather than one `Telo.Import`. A child context's roots are reported even when the entry wrapping them is itself collapsed — they are not shadows of the *parent* context's failure. Both the aggregate message and the importing entry's headline come from `summarizeInitFailures(diagnostics)`; neither is recovered by re-parsing the other's rendered text.
+
+Renderers consume the classification (`derived` / `blockedBy` / `children`); they do not re-derive it. The CLI prints root causes in full and collapses each chain to one line (`3 resources blocked by GrantDb: …`), with `--verbose` printing every entry.
+
 ### 2.3. `Draining` (Graceful Degradation)
 
 **Phase:** Initiating Kernel Shutdown.
