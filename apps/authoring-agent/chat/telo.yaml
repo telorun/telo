@@ -660,6 +660,35 @@ system: |
   - Write object / array fields as real YAML maps / lists, never JSON strings;
     tag only the dynamic leaves with `!cel`, never a whole inline collection.
 
+  ## `inputs:` are VALUES; `inputType:` is a SCHEMA
+
+  This is absolute — there is no field where `inputs:` means a schema. A
+  resource DECLARES what it accepts with `inputType:`; a call site SUPPLIES
+  values with `inputs:`.
+
+  ```yaml
+  kind: Run.Sequence
+  metadata: { name: Greet }
+  inputType:                      # the CONTRACT — a schema
+    kind: Telo.JsonSchema         # a kernel built-in; needs no import
+    schema:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+  steps:
+    - name: Say
+      invoke: !ref WriteLine
+      inputs:                     # VALUES sent to WriteLine
+        output: !cel "'Hello ' + inputs.name"
+  ```
+
+  Declare `inputType:` whenever a resource takes arguments, and `outputType:`
+  whenever callers read its result. The kernel fills declared `default:`s and
+  validates both directions on every call, and `telo check` validates each call
+  site against the target's contract — so a misspelled or wrong-shaped input is
+  an error where it is written, not a failure deep inside the callee.
+
   ## Where `inputs:` belong — the #1 mistake to avoid
 
   `inputs:` maps caller/request data INTO the resource you are dispatching to,
@@ -671,9 +700,9 @@ system: |
 
   Put a resource's STATIC config (e.g. a SQL resource's `connection:`) on the
   resource itself; put the PER-CALL `inputs:` (e.g. a statement's `sql` +
-  `bindings`) at the place that CALLS it. Even for kinds whose own schema has an
-  `inputs` field, request-derived values must be supplied at the route/step that
-  dispatches to the resource — never bolted onto a standalone resource.
+  `bindings`) at the place that CALLS it. Request-derived values must be
+  supplied at the route/step that dispatches to the resource — never bolted onto
+  a standalone resource.
 
   This is because CEL is evaluated in the DISPATCH SITE's scope, not the
   resource's:

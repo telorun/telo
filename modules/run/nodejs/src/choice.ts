@@ -1,4 +1,4 @@
-import { InvokeError, type DataValidator, type ResourceContext } from "@telorun/sdk";
+import { InvokeError, type ResourceContext } from "@telorun/sdk";
 
 interface ChoiceRow {
   when: unknown;
@@ -23,7 +23,6 @@ class RunChoice {
   constructor(
     private readonly ctx: ResourceContext,
     private readonly resource: RunChoiceManifest,
-    private readonly outputValidator: DataValidator,
   ) {}
 
   async invoke(inputs: Record<string, unknown>): Promise<unknown> {
@@ -32,11 +31,11 @@ class RunChoice {
     for (let i = 0; i < this.resource.choices.length; i++) {
       const row = this.resource.choices[i]!;
       if (!this.matches(row.when, i, scope)) continue;
-      return this.produce(row.value, scope, `choices[${i}].value`);
+      return this.produce(row.value, scope);
     }
 
     if (this.resource.default) {
-      return this.produce(this.resource.default.value, scope, "default.value");
+      return this.produce(this.resource.default.value, scope);
     }
 
     throw new InvokeError(
@@ -60,23 +59,13 @@ class RunChoice {
     return verdict;
   }
 
-  /** `origin` is the manifest path of the row that won, so a contract violation
-   *  names the branch to fix rather than the resource as a whole — the rows are
-   *  what disagree, and only one of them produced this value. */
-  private produce(value: unknown, scope: Record<string, unknown>, origin: string): unknown {
-    const produced = this.ctx.expandValue(value, scope);
-    try {
-      this.outputValidator.validate(produced);
-    } catch (err) {
-      throw new InvokeError(
-        "ERR_OUTPUT_INVALID",
-        `Run.Choice "${this.resource.metadata.name}": \`${origin}\` does not satisfy the declared ` +
-          `\`outputType\`. ${err instanceof Error ? err.message : String(err)}`,
-        undefined,
-        { cause: err },
-      );
-    }
-    return produced;
+  /** The produced value is checked against `outputType` by the kernel's contract
+   *  binding, once, where every kind's is — and statically for EVERY row by
+   *  `x-telo-value-schema-from`, including rows no input selects, which a
+   *  controller-side check could never reach. Per-row attribution moved with it:
+   *  the static check names the row, which is where the mistake is written. */
+  private produce(value: unknown, scope: Record<string, unknown>): unknown {
+    return this.ctx.expandValue(value, scope);
   }
 }
 
@@ -86,5 +75,5 @@ export async function create(
   resource: RunChoiceManifest,
   ctx: ResourceContext,
 ): Promise<RunChoice> {
-  return new RunChoice(ctx, resource, ctx.createTypeValidator(resource.outputType));
+  return new RunChoice(ctx, resource);
 }

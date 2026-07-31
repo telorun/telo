@@ -122,7 +122,8 @@ steps:
         inputs:
           data: "${{ steps.Fixture.result.data }}"
           fields:
-            - { name: neg, type: text, page: 1, x: -10, y: 64, width: 100, height: 40 }
+            # Deliberately invalid, routed through CEL — see blank-smoke.yaml.
+            - { name: neg, type: text, page: 1, x: !cel "-10", y: 64, width: 100, height: 40 }
         invoke: !ref AddFields
     catch:
       - name: Caught
@@ -133,7 +134,7 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]
 ---
 kind: Run.Sequence

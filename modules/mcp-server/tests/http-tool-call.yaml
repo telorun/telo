@@ -10,8 +10,12 @@ targets: [ !ref TestRun ]
 ---
 kind: Run.Value
 metadata: { name: GetWeatherImpl }
-inputs:
-  city: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      city: { type: string }
 value:
   summary: !cel "'Sunny in ' + inputs.city"
 ---

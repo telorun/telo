@@ -34,7 +34,7 @@ schema:
   type: object
   additionalProperties: false
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -44,7 +44,7 @@ inputType:
     required: [text]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

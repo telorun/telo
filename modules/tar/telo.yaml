@@ -28,7 +28,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/tar@0.2.1?local_path=./nodejs#pack
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -49,7 +49,7 @@ inputType:
     required: [ entries ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -84,7 +84,7 @@ throws:
     ERR_INVALID_INPUT:
       description: input is not a byte stream, or path is missing/empty.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -97,7 +97,7 @@ inputType:
     required: [ input, path ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

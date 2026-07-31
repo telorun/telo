@@ -1,5 +1,6 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
 import { mergeTypeSchemas } from "@telorun/sdk";
+import { KERNEL_BUILTINS } from "./builtins.js";
 
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
@@ -23,6 +24,42 @@ export interface ContextResolveOpts {
  * - Object with `kind` + `schema`: inline type definition → return the `schema`
  * - Object with `type` or `properties`: raw JSON Schema, return as-is
  */
+/**
+ * Kind names that DECLARE `capability: Telo.Type` — the kernel built-ins plus
+ * every definition in scope.
+ *
+ * Derived from the declared capability, never from the kind's spelling: which
+ * kinds are data shapes is a topology fact the analyzer must read off
+ * `Telo.Definition` docs, not guess from a name. A name test would silently miss
+ * any third-party type kind and would have to be edited every time one is added.
+ *
+ * Names, not fully-qualified kinds, because a resource writes its kind through
+ * whatever alias its file declares (`Type.JsonSchema`, `Telo.JsonSchema`,
+ * `Shapes.JsonSchema`) while the definition knows only its own module and name.
+ * Memoized per manifest list — this runs on every type-field resolution.
+ */
+const typeKindNames = new WeakMap<object, Set<string>>();
+
+function typeCapableNames(allManifests: Record<string, any>[]): Set<string> {
+  const cached = typeKindNames.get(allManifests);
+  if (cached) return cached;
+  const names = new Set<string>();
+  for (const def of [...KERNEL_BUILTINS, ...allManifests] as Record<string, any>[]) {
+    if (def?.kind !== "Telo.Definition" && def?.kind !== "Telo.Abstract") continue;
+    if (def.capability !== "Telo.Type") continue;
+    const name = def.metadata?.name;
+    if (typeof name === "string") names.add(name);
+  }
+  typeKindNames.set(allManifests, names);
+  return names;
+}
+
+function isTypeKind(kind: unknown, allManifests: Record<string, any>[]): boolean {
+  if (typeof kind !== "string") return false;
+  const suffix = kind.slice(kind.lastIndexOf(".") + 1);
+  return typeCapableNames(allManifests).has(suffix);
+}
+
 export function resolveTypeFieldToSchema(
   value: unknown,
   allManifests: Record<string, any>[],
@@ -37,8 +74,7 @@ export function resolveTypeFieldToSchema(
     const typeManifest = allManifests.find(
       (m) =>
         (m.metadata as any)?.name === value &&
-        typeof m.kind === "string" &&
-        /\bType\b/.test(m.kind) &&
+        isTypeKind(m.kind, allManifests) &&
         typeof m.schema === "object" &&
         m.schema !== null,
     );
@@ -248,11 +284,20 @@ export function resolveContextAnnotations(
 
   const from = schema["x-telo-context-from"] as string | undefined;
   if (from) {
-    const resolved = navigatePath(manifestItem, from.split("/")) as Record<string, any> | undefined;
-    // `resolved` is a map of property names → sub-schemas (e.g. { query: {...}, body: {...} })
+    const navigated = navigatePath(manifestItem, from.split("/")) as Record<string, any> | undefined;
+    // The navigated value is either a plain map of property names → sub-schemas
+    // (a transport scope's `request/schema` → `{ query, body, params }`), or a
+    // `telo#Type` field naming one contract (`inputType:`). The second form has
+    // to be resolved first: the standard library writes it as the inline
+    // `{ kind: Type.JsonSchema, schema: … }` wrapper, so merging it verbatim
+    // would type the variable as `{ kind, schema }` instead of its properties.
+    const asType = resolveTypeFieldToSchema(navigated, allManifests ?? []);
+    const resolved = asType?.properties ?? navigated;
+    const required = Array.isArray(asType?.required) ? asType.required : undefined;
     return {
       ...schema,
       properties: { ...(schema.properties ?? {}), ...(resolved ?? {}) },
+      ...(required ? { required } : {}),
       additionalProperties: false,
     };
   }

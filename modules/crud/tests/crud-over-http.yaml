@@ -13,7 +13,6 @@ imports:
   SqlSqlite: ../../sql-sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -37,7 +36,7 @@ migrations:
         due_date TEXT
       )
 ---
-kind: Type.JsonSchema
+kind: Telo.JsonSchema
 metadata: { name: TodoModel }
 schema:
   type: object

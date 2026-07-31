@@ -54,13 +54,13 @@ code: |
     return { error: "unsupported_grant_type" };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       body: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
@@ -87,13 +87,13 @@ code: |
     };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       body: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
@@ -108,13 +108,13 @@ code: |
     return { authorized: authorization === "Bearer at-fresh", seen: authorization ?? "" };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       authorization: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -132,14 +132,14 @@ code: |
     return { contentType: contentType ?? "", parsedBody: body ?? null };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       contentType: { type: string }
       body: {}
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -163,13 +163,13 @@ code: |
     };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       issuer: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true

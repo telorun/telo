@@ -29,7 +29,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/timer@0.1.1?local_path=./nodejs#delay
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -46,7 +46,7 @@ inputType:
     required: [ duration ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

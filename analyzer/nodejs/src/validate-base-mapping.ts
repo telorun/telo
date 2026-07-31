@@ -92,6 +92,16 @@ interface CheckCtx {
   filePath: string | undefined;
 }
 
+/** Keys the inherited controller supplies itself when it builds the parent
+ *  manifest (`{ kind, metadata, ...base }`), so `base:` neither has to set them
+ *  nor may. Without this exclusion a parent whose schema lists `metadata` in
+ *  `required` — `JS.Script` does, the most natural parent for a remapping child —
+ *  is unusable: omitting it is BASE_MISSING_REQUIRED and setting it is
+ *  BASE_UNKNOWN_FIELD, since `metadata` is required but never a declared
+ *  property. Only at the top level; a nested `metadata` field is the parent's
+ *  own and is checked normally. */
+const CONTROLLER_SUPPLIED_KEYS = new Set(["kind", "metadata"]);
+
 function checkObject(
   value: Record<string, unknown>,
   schema: Record<string, any>,
@@ -99,7 +109,10 @@ function checkObject(
   ctx: CheckCtx,
 ): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, any>>;
-  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  const isRoot = path === "base";
+  const required = (Array.isArray(schema.required) ? (schema.required as string[]) : []).filter(
+    (name) => !(isRoot && CONTROLLER_SUPPLIED_KEYS.has(name)),
+  );
   const additionalFalse = schema.additionalProperties === false;
 
   for (const req of required) {

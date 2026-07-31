@@ -17,7 +17,6 @@ files:
 imports:
   Http: ../http-client
   KvStore: ../kv-store
-  Type: ../type
 exports:
   kinds:
     - AccessToken
@@ -45,7 +44,7 @@ exports:
 #
 # `expiresAt` is ABSOLUTE (epoch milliseconds), not the lifetime the server
 # reports: a duration stops being meaningful the moment the value is stored.
-kind: Type.JsonSchema
+kind: Telo.JsonSchema
 metadata:
   name: TokenSet
   description: >-
@@ -94,16 +93,28 @@ capability: Telo.Provider
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#authorizationServer
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    required: [issuer, authorizationEndpoint, tokenEndpoint]
+    required:
+      [issuer, authorizationEndpoint, tokenEndpoint, issuerParameterSupported, timeoutMs]
     properties:
       issuer: { type: string }
       authorizationEndpoint: { type: string }
       tokenEndpoint: { type: string }
       deviceAuthorizationEndpoint: { type: [string, "null"] }
+      issuerParameterSupported:
+        type: boolean
+        description: >-
+          Whether the server echoes `iss` on the authorization response, read from
+          its metadata document. Consumers verify the parameter only when it does.
+      timeoutMs:
+        type: integer
+        description: >-
+          The resolved per-request deadline in milliseconds, from `timeout`. Read by
+          every flow that talks to this server, so it is part of what the provider
+          returns rather than something each caller re-derives.
 schema:
   type: object
   additionalProperties: false
@@ -286,7 +297,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#authorization
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -310,7 +321,7 @@ inputType:
         additionalProperties: { type: string }
         description: Extra consent-URL parameters merged over the client's.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -424,7 +435,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#redirectAwait
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -434,7 +445,7 @@ inputType:
         type: string
         description: The value from the authorization this call is waiting for. A callback carrying anything else is ignored.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -494,7 +505,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#callback
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -515,7 +526,7 @@ inputType:
           declared issuer — the defence against being handed a code minted by a
           different server.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -563,7 +574,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#tokenExchange
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -584,7 +595,7 @@ inputType:
           omitting it there is refused rather than silently skipped, since a
           missing `iss` is exactly what a mix-up attack produces.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     $ref: "telo://Self/TokenSet"
 schema:
@@ -608,14 +619,14 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#tokenRefresh
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     properties:
       key: { type: string, description: Which stored grant to refresh. Defaults to the source's key. }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -651,7 +662,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#clientCredentials
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -662,7 +673,7 @@ inputType:
         items: { type: string }
         description: Overrides the client's scopes for this request only.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -694,7 +705,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#deviceAuthorization
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -704,7 +715,7 @@ inputType:
         items: { type: string }
         description: Overrides the client's scopes for this request only.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -749,7 +760,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#deviceToken
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -760,7 +771,7 @@ inputType:
       expiresAt: { type: integer, description: Give up at this epoch-millisecond instant. Defaults to the server's deadline. }
       key: { type: string, description: Grant key to store the result under. Defaults to the source's. }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -800,7 +811,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#accessToken
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -811,7 +822,7 @@ inputType:
         default: false
         description: Refresh even when the stored token still looks valid, for a token the server has just rejected.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -842,14 +853,14 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantRead
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     properties:
       key: { type: string, description: Which stored grant to read. Defaults to the source's key. }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -886,7 +897,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantWrite
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -899,7 +910,7 @@ inputType:
         $ref: "telo://Self/TokenSet"
         description: The token set to store, as an exchange or refresh returned it.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -927,14 +938,14 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/controllers.mjs#grantClear
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     properties:
       key: { type: string, description: Which grant to remove. Defaults to the source's key. }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

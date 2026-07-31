@@ -32,6 +32,7 @@ Focus on:
 - check if code was added to a file that suffers from a large number of responsibilities and should be split into smaller files.
 - check if new kind keeps the schema open with `additionalProperties: true` for no reason which allows arbitrary properties to be added to the manifest, making it impossible to validate statically.
 - check if file was added to cross-language space, for example `.js` file not wrapped in `nodejs` directory (where applicable) or documentation explaining single language implementation inside `modules/*/docs` which should live in `modules/*/nodejs/docs`.
+- check if kernel or analyzer makes kind name heuristics, eg. checks for alias by name or resource name suffix - those are forbidden and fragile.
 
 Ignore any deviations from the implementation plan or spec, as long as the implementation is sound and meets the core goals. EXCEPTION: never ignore a gap in static analysis — see the Static analysis goal above. A missing/deferred static check is always a blocking finding even if the plan sanctioned it.
 

@@ -18,8 +18,12 @@ Routing rules, pricing tiers, authorization policies, and status mappings are al
 ```yaml
 kind: Run.Value
 metadata: { name: ShippingTier }
-inputs:
-  order: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      order: {}
 value:
   tier: !cel "inputs.order.total >= 100 ? 'free' : (inputs.order.weight > 20 ? 'freight' : 'standard')"
   cost: !cel "inputs.order.total >= 100 ? 0.0 : (inputs.order.weight > 20 ? inputs.order.weight * 2.0 : 10.0)"
@@ -30,8 +34,12 @@ The same decision as a table — one legible row per outcome, and the predicate 
 ```yaml
 kind: Run.Choice
 metadata: { name: ShippingTier }
-inputs:
-  order: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      order: {}
 choices:
   - when: !cel "inputs.order.total >= 100"
     value:
@@ -51,7 +59,7 @@ default:
 
 | Field | Purpose |
 | --- | --- |
-| `inputs` | The input **contract**: a JSON Schema property map (name → schema), NOT values. `{}` declares an untyped (dyn) input. Rows read them as `!cel "inputs.<name>"`. |
+| `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Rows read the values as `!cel "inputs.<name>"`. The kernel fills declared defaults and validates every call against it. |
 | `choices` | Ordered decision rows, each `{ when, value }`. The first row whose `when` is true wins; no later row is evaluated. At least one row is required. |
 | `default` | `{ value }` produced when no row matches. Omit it to make a non-exhaustive table an error. |
 | `outputType` | Optional named or inline type every row's `value` must satisfy. |
@@ -76,8 +84,12 @@ choices:
 ```yaml
 kind: Run.Choice
 metadata: { name: ShippingTier }
-inputs:
-  order: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      order: {}
 outputType:
   kind: Type.JsonSchema
   schema:

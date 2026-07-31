@@ -66,31 +66,87 @@ function resolveRefSlot(value: unknown, ctx: ResourceContext): ResourceInstance 
   return instance ?? undefined;
 }
 
-/** Expand a `base:` node against `self`. Self-only CEL resolves to literals now;
- *  a pure `self.<path>` access is navigated directly so live instances pass
- *  through. */
-function expandBaseNode(value: unknown, self: Record<string, unknown>, ctx: EvaluationContext): unknown {
+/** Expand a mapping node against a CEL scope. `self`-only CEL resolves to
+ *  literals now; a pure `self.<path>` access is navigated directly so live
+ *  instances pass through (CEL's output type checker rejects them). Shared by
+ *  `base:` (construction, scope `{ self }`) and the dispatch mappings
+ *  `inputs:` / `result:` (scope `{ self, inputs }` / `{ self, result }`). */
+function expandMappingNode(
+  value: unknown,
+  scope: Record<string, unknown>,
+  ctx: EvaluationContext,
+): unknown {
   if (isCompiledValue(value)) {
     const src = typeof value.source === "string" ? value.source.trim() : "";
     const m = src.match(SELF_PATH);
     if (m) {
-      let cur: unknown = self;
+      let cur: unknown = scope.self;
       for (const key of m[1].split(".").slice(1)) {
         cur = (cur as Record<string, unknown> | undefined)?.[key];
       }
       return cur;
     }
-    return ctx.expandWith(value, { self });
+    return ctx.expandWith(value, scope);
   }
-  if (Array.isArray(value)) return value.map((v) => expandBaseNode(v, self, ctx));
+  if (Array.isArray(value)) return value.map((v) => expandMappingNode(v, scope, ctx));
   if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = expandBaseNode(v, self, ctx);
+      out[k] = expandMappingNode(v, scope, ctx);
     }
     return out;
   }
   return value;
+}
+
+/**
+ * Bind the dispatch mappings of a child that REPLACED its inherited contract.
+ *
+ * A contract resolves to the nearest declaration along `extends` and never
+ * merges, so a child declaring `inputType` presents a signature the inherited
+ * controller has never heard of. `inputs:` is the adapter that turns the child's
+ * signature into the parent's call, and `result:` turns the parent's result back
+ * into the child's declared output — the same top-level-sibling factoring a
+ * template definition uses for `invoke:`.
+ *
+ * Bound onto the parent instance rather than wrapping it, so the child still IS
+ * a parent instance: `init`, `snapshot`, `teardown` and status plumbing are
+ * untouched, and nothing new appears in a declared ref slot. It composes with
+ * the kernel's contract binding by position — the parent's contract was bound
+ * when the parent instance was produced, this mapping goes on next, and the
+ * child's own contract is bound outermost by the caller. One dispatch therefore
+ * checks the child's inputs, maps, checks the parent's inputs, runs, checks the
+ * parent's result, maps back, and checks the child's result.
+ */
+function bindDispatchMapping(
+  instance: ResourceInstance,
+  definition: ResourceDefinition,
+  self: Record<string, unknown>,
+  ctx: EvaluationContext,
+): void {
+  const body = definition as unknown as { inputs?: unknown; result?: unknown };
+  const inputsMapping = body.inputs;
+  const resultMapping = body.result;
+  if (inputsMapping == null && resultMapping == null) return;
+  if (typeof instance.invoke !== "function") return;
+
+  // Every argument is forwarded — the mapping rewrites `inputs`, while the
+  // InvokeContext (cancellation, tracing) in later parameters belongs to the
+  // caller and must reach the inherited controller untouched.
+  const original = instance.invoke.bind(instance) as (
+    inputs: any,
+    ...rest: unknown[]
+  ) => Promise<unknown>;
+  instance.invoke = async (inputs: any, ...rest: unknown[]) => {
+    const mappedInputs =
+      inputsMapping != null
+        ? (expandMappingNode(inputsMapping, { self, inputs }, ctx) as Record<string, unknown>)
+        : inputs;
+    const result = await original(mappedInputs, ...rest);
+    return resultMapping != null
+      ? expandMappingNode(resultMapping, { self, result }, ctx)
+      : result;
+  };
 }
 
 /**
@@ -143,7 +199,7 @@ export function createInheritedController(
       // instances in `self`), minus the reserved keys.
       let parentConfig: Record<string, unknown>;
       if (base != null) {
-        parentConfig = expandBaseNode(base, self, definingContext) as Record<string, unknown>;
+        parentConfig = expandMappingNode(base, { self }, definingContext) as Record<string, unknown>;
       } else {
         const { kind: _kind, metadata: _metadata, name: _name, ...config } = self;
         parentConfig = config;
@@ -159,7 +215,10 @@ export function createInheritedController(
           `Telo.Definition '${definition.metadata.name}': inherited controller requires a ResourceContext host that implements createInheritedInstance().`,
         );
       }
-      return host.createInheritedInstance(definingContext, parentResource);
+      const instance = await host.createInheritedInstance(definingContext, parentResource);
+      if (!instance) return null;
+      bindDispatchMapping(instance, definition, self, definingContext);
+      return instance;
     },
   };
 }

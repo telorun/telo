@@ -15,8 +15,12 @@ targets:
 kind: Run.Iteration
 metadata:
   name: BadIteration
-inputs:
-  thing: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      thing: {}
 collection: !cel "inputs.thing"
 steps:
   - name: noop
@@ -28,8 +32,12 @@ steps:
 kind: Run.Projection
 metadata:
   name: BadProjection
-inputs:
-  thing: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      thing: {}
 collection: !cel "inputs.thing"
 steps:
   - name: noop

@@ -140,7 +140,9 @@ steps:
       - name: Render
         inputs:
           data: "${{ steps.Fixture.result.data }}"
-          page: 0
+          # Deliberately invalid, routed through CEL: a literal is rejected by
+          # `telo check`, and this test is about the RUNTIME contract boundary.
+          page: !cel "0"
         invoke: !ref Render
     catch:
       - name: Caught
@@ -151,5 +153,5 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]

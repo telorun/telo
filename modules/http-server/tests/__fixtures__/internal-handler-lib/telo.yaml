@@ -18,8 +18,12 @@ exports:
 ---
 kind: Run.Value
 metadata: { name: Greet }
-inputs:
-  name: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
 value:
   message: !cel "'Hello ' + inputs.name + '!'"
 ---

@@ -41,14 +41,16 @@ controllers:
   - pkg:telo/local/js?path=./nodejs/once.mjs#once
 throws:
   codes:
-    ERR_INVALID_KEY:
-      description: '`key` was absent or empty — it identifies the operation, so it cannot be blank.'
+    # An absent or empty `key` is rejected by `inputType` below, as the kernel's
+    # ambient ERR_INPUT_INVALID. It is not declared here: this kind's union lists
+    # what the kind itself raises, and a contract violation is raised for every
+    # kind alike.
     ERR_CLAIM_LOST:
       description: >-
         The body ran but its claim had lapsed, so the result could not be
         recorded and a later call may run it again. Raise `claimTtl`.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [key]
@@ -68,7 +70,7 @@ inputType:
         additionalProperties: true
         description: Inputs forwarded to the wrapped body when this call claims the key.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [executed, state]

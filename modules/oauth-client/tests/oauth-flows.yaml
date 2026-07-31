@@ -13,7 +13,6 @@ imports:
   HttpClient: ../../http-client
   Store: ../../kv-store-memory
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 include:

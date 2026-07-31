@@ -1,5 +1,18 @@
 # Type
 
+> **Deprecated — use the kernel built-in `Telo.JsonSchema` instead.**
+>
+> `kind: Telo.JsonSchema` accepts the same fields, behaves identically, and needs
+> no import. Declaring a data shape stopped being optional once any kind can
+> carry an invocation contract: writing `inputType:` should not require an
+> import, and a library declaring its own contract should not import a module
+> purely to describe itself — the same reasoning that keeps the mandatory log
+> sinks in the kernel.
+>
+> This module is unchanged and still resolves, so manifests importing it keep
+> working. To migrate, replace `kind: Type.JsonSchema` with
+> `kind: Telo.JsonSchema` and drop the `Type:` import.
+
 Named, reusable data types for Telo manifests, built on JSON Schema with optional inheritance and CEL-based business rules.
 
 ## Why use this
@@ -100,7 +113,7 @@ rules:
 
 Inside `condition`, `this` is bound to the value being validated. Rules fire after the JSON Schema check passes — so you can assume structural correctness.
 
-Rule codes are invocation error codes (see [Run.Sequence structured errors](../run/docs/structured-errors.md)) — any catch block that matches the code can react to a specific business-rule failure.
+Rule codes are invocation error codes (see [Run.Sequence structured errors](../run/docs/structured-errors.md)) — any catch block that matches the code can react to a specific business-rule failure. The kernel raises them as structured errors so `error.code` inside a `catch` is the code you declared, not a generic one.
 
 ## Referencing a type from another schema (`$ref`)
 

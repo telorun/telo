@@ -30,7 +30,7 @@ metadata:
     consumer that sends the bytes decides how they are labelled.
 capability: Telo.Invocable
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -40,7 +40,7 @@ inputType:
     required: [input]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -65,7 +65,7 @@ metadata:
     value for simple formats, another stream for framed ones.
 capability: Telo.Invocable
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

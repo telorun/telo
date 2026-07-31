@@ -59,13 +59,11 @@ class PdfRasterizer implements ResourceInstance<RasterizerInputs, RasterizerOutp
         `Pdf.Rasterizer "${name}": 'data' must be a Uint8Array of PDF bytes; got ${typeof data}.`,
       );
     }
+    // `page` is declared on `inputType` as an integer with `minimum: 1` and
+    // enforced by the kernel's contract binding, so only the range check the
+    // schema cannot express — page vs. the document's actual page count — is
+    // still this controller's to make (below).
     const pageNumber = inputs.page ?? 1;
-    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
-      throw new InvokeError(
-        "ERR_INVALID_INPUT",
-        `Pdf.Rasterizer "${name}": 'page' must be a positive integer; got ${pageNumber}.`,
-      );
-    }
 
     const task = loadPdf(data);
     try {

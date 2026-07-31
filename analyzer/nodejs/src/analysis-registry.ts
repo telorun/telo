@@ -4,9 +4,10 @@ import { KERNEL_BUILTINS } from "./builtins.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
+import type { ContractDirection, DefResolver } from "./extends-resolution.js";
+import { resolveContract } from "./invocation-contract.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import type { AnalysisContext } from "./types.js";
-import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 
 /** One reference field declared by a resource's definition, derived purely from
  *  the schema field map (independent of whether the manifest fills it). Editor
@@ -133,46 +134,44 @@ export class AnalysisRegistry {
   }
 
   /** Resolves the JSON Schema for a kind's `invoke()` inputs, for editor hosts
-   *  that render a typed inputs form. Two-layer fallback mirroring the analyzer's
-   *  template inputs typing: the definition's own `inputType`, then the
-   *  `extends`-declared abstract's `inputType`. Resolves the inline
-   *  (`{ kind: Type.JsonSchema, schema }`) and raw-schema forms; a bare named
-   *  type reference is left unresolved (returns undefined) so the caller can fall
-   *  back to a freeform map. Undefined when the kind declares no input contract. */
+   *  that render a typed inputs form. A thin wrapper over the shared contract
+   *  resolver, so the form an editor renders is the contract `telo check` and the
+   *  kernel enforce — nearest declaration along `extends`, replacing rather than
+   *  merging. A bare named type reference is left unresolved (returns undefined,
+   *  no manifests are in scope here) so the caller can fall back to a freeform
+   *  map. Undefined when the kind declares no input contract. */
   inputTypeForKind(kind: string): Record<string, unknown> | undefined {
-    const def = this.resolveDefinition(kind);
-    if (!def) return undefined;
-    const own = resolveTypeFieldToSchema(def.inputType, []);
-    if (own) return own;
-    if (def.extends) {
-      const abstractDef = this.resolveDefinition(def.extends);
-      if (abstractDef) {
-        const inherited = resolveTypeFieldToSchema(abstractDef.inputType, []);
-        if (inherited) return inherited;
-      }
-    }
-    return undefined;
+    return this.contractForKind(kind, "inputType");
   }
 
-  /** Resolves the JSON Schema for a kind's `invoke()` / `run()` output, for
+  /** Resolves the JSON Schema for a kind's `invoke()` / `provide()` output, for
    *  editor hosts that render a typed output signature. Mirrors
-   *  {@link inputTypeForKind}: the definition's own `outputType`, then the
-   *  `extends`-declared abstract's `outputType`. Resolves the inline and
-   *  raw-schema forms; a bare named type reference is left unresolved. Undefined
-   *  when the kind declares no output contract. */
+   *  {@link inputTypeForKind}. Undefined when the kind declares no output
+   *  contract. */
   outputTypeForKind(kind: string): Record<string, unknown> | undefined {
+    return this.contractForKind(kind, "outputType");
+  }
+
+  private contractForKind(
+    kind: string,
+    direction: ContractDirection,
+  ): Record<string, unknown> | undefined {
     const def = this.resolveDefinition(kind);
     if (!def) return undefined;
-    const own = resolveTypeFieldToSchema(def.outputType, []);
-    if (own) return own;
-    if (def.extends) {
-      const abstractDef = this.resolveDefinition(def.extends);
-      if (abstractDef) {
-        const inherited = resolveTypeFieldToSchema(abstractDef.outputType, []);
-        if (inherited) return inherited;
-      }
-    }
-    return undefined;
+    return resolveContract(direction, undefined, def, {
+      resolveDefinition: this.scopedDefResolver(),
+      typeManifestsFor: () => [],
+    })?.schema;
+  }
+
+  /** A resolver that re-scopes at every hop of an `extends` chain: each kind is
+   *  resolved in the module that DECLARED the definition it was read off, since
+   *  `extends` aliases are lexical. `resolveParent` always passes that definition
+   *  as `from`, so one resolver serves a chain of any depth crossing any number
+   *  of modules. */
+  private scopedDefResolver(): DefResolver {
+    return (kind, from) =>
+      this.resolveDefinitionIn(kind, (from?.metadata as { module?: string } | undefined)?.module);
   }
 
   private capabilitiesForRefs(refs: string[]): string[] {
@@ -216,6 +215,17 @@ export class AnalysisRegistry {
     const ctx = this._context();
     const resolved = ctx.aliases?.resolveKind(kind);
     return ctx.definitions?.resolve(kind) ?? (resolved ? ctx.definitions?.resolve(resolved) : undefined);
+  }
+
+  /** Resolve a kind in a named module's scope. The entry point for walking an
+   *  `extends` chain from outside it (the kernel's contract binding): aliases are
+   *  lexical, so each hop must resolve in the module that declared the definition
+   *  the kind was read off. Falls back to the global table when the module is
+   *  unknown or is a root. */
+  resolveDefinitionIn(kind: string, module?: string): ResourceDefinition | undefined {
+    const scope = (module ? this.aliasesByModule.get(module) : undefined) ?? this.aliases;
+    const canonical = scope.resolveKind(kind);
+    return this.defs.resolve(kind) ?? (canonical ? this.defs.resolve(canonical) : undefined);
   }
 
   /** A resolver scoped to `def`'s OWN module, for resolving that definition's

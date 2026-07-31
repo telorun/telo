@@ -33,7 +33,7 @@ throws:
         recognized CSS color, format is not png/jpeg/webp, or quality is not
         an integer between 1 and 100.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -65,7 +65,7 @@ inputType:
     required: [ width, height ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -127,7 +127,7 @@ throws:
         non-finite coordinates or non-positive width/height, format is not
         png/jpeg/webp, or quality is not an integer between 1 and 100.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -174,7 +174,7 @@ inputType:
     required: [ image, shapes ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

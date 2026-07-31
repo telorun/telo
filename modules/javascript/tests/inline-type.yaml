@@ -4,28 +4,27 @@ metadata:
   version: 1.0.0
 imports:
   JavaScript: ..
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestInlineInputOutputType
 ---
 # Inline {kind, schema} for both inputType and outputType — the analyzer
-# normalizes these into synthesized Type.JsonSchema resources. The kernel
+# normalizes these into synthesized Telo.JsonSchema resources. The kernel
 # must resolve the resulting {kind, name} ref to the registered schema
 # instead of trying to compile it as a JSON Schema literal.
 kind: JavaScript.Script
 metadata:
   name: Greet
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [ name ]
     properties:
       name: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [ message ]

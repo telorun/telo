@@ -33,7 +33,7 @@ schema:
       singular: todo
       plural: todos
       model:
-        kind: Type.JsonSchema
+        kind: Telo.JsonSchema
         schema:
           type: object
           required: [text]
@@ -74,7 +74,7 @@ schema:
     model:
       title: Model
       description: >-
-        The resource's data shape — a `Type.JsonSchema` (inline or `!ref`)
+        The resource's data shape — a `Telo.JsonSchema` (inline or `!ref`)
         describing the writable columns; exclude `id` (it is the auto-increment
         primary key and the `{id}` path parameter). Validates create / update
         request bodies (POST against the full schema, PUT against a partial where

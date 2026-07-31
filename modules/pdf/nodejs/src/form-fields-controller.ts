@@ -41,13 +41,10 @@ class PdfFormFields implements ResourceInstance<FormFieldsInputs, FormFieldsOutp
 
   async invoke(inputs: FormFieldsInputs): Promise<FormFieldsOutputs> {
     const label = `Pdf.FormFields "${this.resource.metadata.name}"`;
+    // An `inputs.scale` is declared on `inputType` with `exclusiveMinimum: 0` and
+    // enforced by the kernel's contract binding; the resource-level fallback is
+    // checked by the config schema. Neither needs re-checking here.
     const scale = inputs?.scale ?? this.resource.scale ?? 1;
-    if (typeof scale !== "number" || !(scale > 0)) {
-      throw new InvokeError(
-        "ERR_INVALID_INPUT",
-        `${label}: 'scale' must be a positive number; got ${scale}.`,
-      );
-    }
     const data = inputs?.data;
     if (!(data instanceof Uint8Array)) {
       throw new InvokeError(

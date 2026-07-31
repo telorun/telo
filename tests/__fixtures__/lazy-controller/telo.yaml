@@ -16,7 +16,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./echo.mjs#echo
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -24,7 +24,7 @@ inputType:
     required: [ text ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -46,12 +46,12 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./boom.mjs#boom
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true

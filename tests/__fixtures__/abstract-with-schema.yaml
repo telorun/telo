@@ -19,7 +19,7 @@ schema:
   properties:
     tag: { type: string }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

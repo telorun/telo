@@ -47,8 +47,12 @@ routes:
 kind: Run.Value
 metadata:
   name: SayHello
-inputs:
-  name: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
 value:
   message: !cel "'Hello ' + inputs.name + '!'"
 ---

@@ -10,8 +10,6 @@ metadata:
     query for the nearest neighbours of a vector with scores, and delete by id or by a
     metadata filter. The retrieval half of a RAG pipeline — the embedding itself
     happens upstream.
-imports:
-  Type: ../type
 exports:
   kinds:
     - Store
@@ -24,7 +22,7 @@ exports:
 # keys are ANDed; a bare scalar is `$eq`; `$and`/`$or` take filter arrays, `$not`
 # negates a filter (recursion via `$ref: "#"`). No operator outside this set is
 # allowed, so an unsupported filter is a static error rather than per-backend drift.
-kind: Type.JsonSchema
+kind: Telo.JsonSchema
 metadata:
   name: MetadataFilter
   description: >-
@@ -86,7 +84,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#record
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [items]
@@ -104,7 +102,7 @@ inputType:
             vector: { type: array, items: { type: number } }
             metadata: { type: object, additionalProperties: true }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [ids]
@@ -141,7 +139,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#match
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [vector]
@@ -152,7 +150,7 @@ inputType:
         description: MongoDB-style metadata filter.
         $ref: "telo://Self/MetadataFilter"
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [matches]
@@ -204,7 +202,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#removal
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -218,7 +216,7 @@ inputType:
         description: MongoDB-style metadata filter.
         $ref: "telo://Self/MetadataFilter"
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [removed]

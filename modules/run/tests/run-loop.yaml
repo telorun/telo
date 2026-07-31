@@ -32,8 +32,12 @@ outputs:
 kind: Run.Loop
 metadata:
   name: BadCap
-inputs:
-  cap: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      cap: {}
 maxIterations: !cel "inputs.cap"
 steps:
   - name: Tick

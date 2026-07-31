@@ -58,7 +58,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -96,7 +96,7 @@ inputType:
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -160,7 +160,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text-stream
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -198,7 +198,7 @@ inputType:
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -358,7 +358,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -396,7 +396,7 @@ inputType:
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -513,7 +513,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent-stream
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -551,7 +551,7 @@ inputType:
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

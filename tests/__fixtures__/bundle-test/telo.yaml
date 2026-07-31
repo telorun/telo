@@ -18,7 +18,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./producer.mjs#producer
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -26,7 +26,7 @@ inputType:
     required: [ text ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -50,7 +50,7 @@ controllers:
   - pkg:telo/local/js?path=./does-not-exist.mjs#producer
   - pkg:telo/local/js?path=./producer.mjs#producer
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -58,7 +58,7 @@ inputType:
     required: [ text ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -83,7 +83,7 @@ controllers:
   - pkg:telo/local/napi?path=./producer.mjs#producer
   - pkg:telo/local/js?path=./producer.mjs#producer
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -91,7 +91,7 @@ inputType:
     required: [ text ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

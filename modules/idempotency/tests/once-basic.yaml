@@ -42,8 +42,12 @@ store: !ref Counters
 kind: Run.Sequence
 metadata:
   name: Charge
-inputs:
-  amount: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      amount: { type: integer }
 steps:
   - name: read
     invoke: !ref GetCount

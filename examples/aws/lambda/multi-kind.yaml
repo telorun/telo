@@ -21,7 +21,6 @@ metadata:
 imports:
   Lambda: aws/lambda@0.6.0
   JS: std/javascript@0.5.0
-  Type: std/type@0.6.0
   Run: std/run@0.11.1
 targets:
   - !ref Main
@@ -35,14 +34,14 @@ value:
 kind: JS.Script
 metadata: { name: ProcessEvents }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [ records ]
     properties:
       records: { type: array }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

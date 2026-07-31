@@ -16,7 +16,7 @@ sidebar_label: Run.Iteration
 | `collection` | CEL expression resolving to the array iterated over. |
 | `steps` | The body run once per element. |
 | `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
-| `inputs` | Input contract (JSON Schema property map); the body reads them as `!cel "inputs.x"`. |
+| `inputType` | Input contract — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. The body reads the values as `!cel "inputs.x"`. |
 | `catches` | Whole-operation error contract — see [Error handling](#error-handling). |
 
 ## Body scope

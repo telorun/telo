@@ -18,6 +18,7 @@ export * from "./module-context.js";
 export * from "./resource-context.js";
 export * from "./resource-instance.js";
 export * from "./resource-manifest.js";
+export * from "./contract-errors.js";
 export * from "./invoke-error.js";
 export * from "./log-record.js";
 export * from "./log-sink.js";

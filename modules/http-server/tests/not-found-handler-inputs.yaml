@@ -14,7 +14,6 @@ imports:
   HttpClient: ../../http-client
   Run: ../../run
   Assert: ../../assert
-  Type: ../../type
 targets:
   - !ref Test
 ---
@@ -23,9 +22,13 @@ targets:
 # the test can assert that `inputs:` actually reached the handler.
 kind: Run.Value
 metadata: { name: EchoPath }
-inputs:
-  path: { type: string }
-  method: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
+      method: { type: string }
 value:
   path: !cel "inputs.path"
   method: !cel "inputs.method"
@@ -44,14 +47,14 @@ code: |
     return { status: r.status, body };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       url: { type: string }
     required: [ url ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

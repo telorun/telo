@@ -35,8 +35,12 @@ store: !ref Counters
 kind: Run.Sequence
 metadata:
   name: Bump
-inputs:
-  slot: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      slot: { type: string }
 steps:
   - name: read
     invoke: !ref Get

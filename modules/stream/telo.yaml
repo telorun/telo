@@ -47,7 +47,7 @@ schema:
       type: array
   additionalProperties: false
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -57,7 +57,7 @@ inputType:
         type: array
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -84,7 +84,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#collect
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -94,7 +94,7 @@ inputType:
     required: [ input ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

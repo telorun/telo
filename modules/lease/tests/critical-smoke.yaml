@@ -29,7 +29,6 @@ invoke: !ref Body
 # the outer holder still owns it, the re-entry is refused and reports the holder.
 kind: Run.Sequence
 metadata: { name: Body }
-inputs: {}
 steps:
   - name: Reenter
     invoke: !ref Lock

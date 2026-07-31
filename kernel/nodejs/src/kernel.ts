@@ -6,9 +6,15 @@ import {
   isModuleKind,
   Loader,
   StaticAnalyzer,
+  type DefResolver,
   type LoadedGraph,
   type ManifestSource,
 } from "@telorun/analyzer";
+import {
+  bindContract,
+  type ContractValidatorFactory,
+  resolveBoundContract,
+} from "./invocation-contract-binding.js";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -347,6 +353,13 @@ export class Kernel implements IKernel {
     this.controllers.registerController(
       "Telo.FileSink",
       await import("./controllers/logging/file-sink-controller.js"),
+    );
+    // Data shapes are a kernel concern for the same reason: every kind with an
+    // invocation contract declares one, so `inputType:` must be writable without
+    // first importing a module.
+    this.controllers.registerController(
+      "Telo.JsonSchema",
+      await import("./controllers/type/json-schema-controller.js"),
     );
   }
 
@@ -1264,6 +1277,19 @@ export class Kernel implements IKernel {
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
 
+    // Bind the resolved invocation contract to the instance, here at the kernel's
+    // single instance-production site — so every consumer holds an already
+    // enforcing instance, including the majority that read a Phase-5-injected ref
+    // straight off their own config and never reach a dispatch chokepoint.
+    //
+    // For a `base:` child this composes without a special case: the parent's
+    // instance was produced by a nested `_createInstance` (so it is already bound
+    // to the parent's contract), the inherited controller bound the `inputs:` /
+    // `result:` mapping onto it, and this call binds the child's own contract
+    // outermost. One dispatch then checks, in order: child inputs → mapping →
+    // parent inputs → controller → parent result → mapping → child result.
+    this.bindInvocationContract(instance, processedResource, resolvedKind, ctx);
+
     // Fold the resource's fire-and-forget drain into its own teardown: tearing
     // the resource down drains the background tasks it spawned (the kernel just
     // calls teardown() — it tracks no tasks itself). A drain with no pending
@@ -1282,12 +1308,56 @@ export class Kernel implements IKernel {
     // init() on the wrapper would be invisible to the original invoke(), which still
     // runs with `this === instance`. Mutating in place also preserves the prototype
     // chain — class-declared methods remain reachable.
+    // Every argument is forwarded: `invoke(inputs, ctx)` carries the
+    // InvokeContext (cancellation, tracing) as its second parameter, and a
+    // wrapper that declares only `inputs` silently drops it.
     const originalInvoke = instance.invoke!.bind(instance);
-    instance.invoke = async (inputs: any) => {
+    instance.invoke = async (inputs: any, ...rest: unknown[]) => {
       const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
-      return originalInvoke(expanded);
+      return (originalInvoke as (i: any, ...r: unknown[]) => Promise<unknown>)(expanded, ...rest);
     };
     return { instance, ctx, resource: processedResource };
+  }
+
+  /**
+   * Resolve and bind both directions of a resource's invocation contract.
+   *
+   * The declaration is layered instance-manifest → nearest along `extends`;
+   * contracts never merge (a call signature is not additive the way construction
+   * config is), so a definition that declares one fully replaces its ancestor's.
+   * Resolution runs in the scope that DECLARED each definition — an `extends`
+   * alias is lexical, and a `telo#Type` reference goes through import aliases, so
+   * a chain crossing module boundaries re-scopes at every hop.
+   */
+  private bindInvocationContract(
+    instance: ResourceInstance,
+    resource: ResourceManifest,
+    resolvedKind: string,
+    ctx: ResourceContext,
+  ): void {
+    const definition = this.controllers.getDefinition(resolvedKind);
+    if (!definition) return;
+
+    const impl = ctx as ResourceContextImpl;
+    const factory = Object.assign((typeRef: unknown) => impl.createTypeValidator(typeRef as any), {
+      schemaOf: (typeRef: unknown) => impl.resolveTypeSchema(typeRef),
+      resolveRef: (ref: string) => impl.lookupSchema(ref) as Record<string, any> | undefined,
+      withRules: (name: string | undefined, schema: Record<string, any>) =>
+        impl.createTypeValidatorWithRules(name, schema),
+    }) as ContractValidatorFactory;
+
+    const resolveDef: DefResolver = (kind, from) =>
+      this.registry.resolveDefinitionIn(kind, from?.metadata?.module);
+
+    const input = resolveBoundContract("inputType", resource, definition, resolveDef, factory);
+    const output = resolveBoundContract("outputType", resource, definition, resolveDef, factory);
+    if (!input && !output) return;
+
+    bindContract(instance, {
+      input,
+      output,
+      describeTarget: () => `${resolvedKind}/${resource.metadata?.name ?? "<unnamed>"}`,
+    });
   }
 
   /**

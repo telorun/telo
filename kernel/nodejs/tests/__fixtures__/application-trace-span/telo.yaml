@@ -18,7 +18,11 @@ steps:
 kind: Run.Value
 metadata:
   name: Echo
-inputs:
-  value: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      value: { type: integer }
 value:
   echoed: !cel "inputs.value"

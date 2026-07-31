@@ -2,7 +2,12 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, OBSERVED_STATE_KEY } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import { defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
-import { AliasResolver, scopeResolverForModule } from "./alias-resolver.js";
+import {
+  AliasResolver,
+  moduleScopedDefResolver,
+  type ModuleScopes,
+  scopeResolverForModule,
+} from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import {
   buildCelEnvironment,
@@ -11,7 +16,12 @@ import {
   type CelHandlers,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
-import { effectiveAuthorSchema } from "./extends-resolution.js";
+import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
+import {
+  type ContractScope,
+  PERMISSIVE_CONTRACT,
+  resolveContract,
+} from "./invocation-contract.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
 import {
@@ -53,6 +63,8 @@ import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
+import { validateInvocationContract } from "./validate-invocation-contract.js";
+import { collectStepInputIssues } from "./validate-step-inputs.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
@@ -110,22 +122,24 @@ function resolveSelfOrAlias(
   return scopeResolver.resolveKind(value);
 }
 
-/** Look up a top-level field (`outputType`, `inputType`) on a kind's
- *  `Telo.Definition`. Used as a fallback by `buildStepContextSchema` when the
- *  invoked resource manifest doesn't carry the field inline — most kinds
- *  declare result shape on the definition, not the resource. */
-function lookupDefinitionTypeField(
-  invokedKind: string,
-  fieldName: string,
+/** The {@link ContractScope} the analyzer resolves invocation contracts in: kinds
+ *  resolve in the module that declared the definition they were read off (so an
+ *  `extends` chain crossing module boundaries re-scopes at every hop), and named
+ *  `telo#Type` references resolve against the flattened manifest list. `resolveIn`
+ *  is the top-level entry point, where the kind was written by the READING
+ *  module and there is no declaring definition yet. */
+export function analyzerContractScope(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
+  scopes: ModuleScopes,
   allManifests: Record<string, any>[],
-): Record<string, any> | undefined {
-  const canonical = aliases.resolveKind(invokedKind) ?? invokedKind;
-  const def = defs.resolve(canonical);
-  if (!def) return undefined;
-  const value = (def as unknown as Record<string, unknown>)[fieldName];
-  return resolveTypeFieldToSchema(value, allManifests);
+): ContractScope & { resolveIn(kind: string, module?: string): ResourceDefinition | undefined } {
+  const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
+  return {
+    resolveDefinition: resolve,
+    resolveIn: resolve.in,
+    typeManifestsFor: () => allManifests,
+  };
 }
 
 const SOURCE = "telo-analyzer";
@@ -170,42 +184,37 @@ function buildSelfSchema(
 }
 
 /** Build the JSON Schema for the `inputs` CEL variable available inside an
- *  invocable template body. Three-layer fallback mirroring the runtime's
- *  caller-supplied inputs:
- *    1. The definition's own `inputType:` field (preferred).
- *    2. The `extends:`-declared abstract's `inputType:` (so a concrete
- *       definition inheriting a contract gets typed inputs without
- *       redeclaring them).
- *    3. Undefined — caller signals opaque `map<string, dyn>` upstream. */
+ *  invocable template body — the shared contract resolver applied to the
+ *  definition itself, so a body is typed against the exact signature callers are
+ *  checked against and dispatch enforces. Walks the whole `extends` chain rather
+ *  than one hop, so a definition two levels below the declaration still gets
+ *  typed inputs. Undefined when nothing in the chain declares a contract —
+ *  the caller signals opaque `map<string, dyn>` upstream. */
 function lookupTemplateInputsSchema(
   definition: Record<string, any>,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   allManifests: Record<string, any>[],
+  scopes: ModuleScopes,
 ): Record<string, any> | undefined {
-  const own = resolveTypeFieldToSchema(definition.inputType, allManifests);
-  if (own) return own;
-  const ext = definition.extends as string | undefined;
-  if (typeof ext === "string" && ext.length > 0) {
-    const canonical = aliases.resolveKind(ext) ?? ext;
-    const abstractDef = defs.resolve(canonical);
-    if (abstractDef) {
-      const inherited = resolveTypeFieldToSchema(
-        (abstractDef as unknown as Record<string, unknown>).inputType,
-        allManifests,
-      );
-      if (inherited) return inherited;
-    }
-  }
-  return undefined;
+  return resolveContract(
+    "inputType",
+    undefined,
+    definition as unknown as ResourceDefinition,
+    analyzerContractScope(defs, aliases, scopes, allManifests),
+  )?.schema;
 }
 
 /** Returns a "resolver-facing" view of the manifest where the fields used as
  *  navigation roots by Telo.Definition's `x-telo-context-from-root` annotations
  *  have been pre-augmented:
  *    - `schema`     → augmented `self` schema (synthetic `name`/`kind`/metadata).
- *    - `inputType`  → resolved with extends fallback when the field isn't
- *                     declared directly on the definition.
+ *    - `inputType`  → resolved through the shared contract resolver, so
+ *                     `x-telo-context-from-root: inputType` substitutes the
+ *                     real signature. Without it the annotation would replace
+ *                     the node verbatim with the inline `{kind, schema}` wrapper
+ *                     the standard library writes everywhere, typing `inputs` as
+ *                     `{kind, schema}` instead of the declared properties.
  *
  *  For non-definition manifests the original object is returned. */
 function manifestRootForResolver(
@@ -213,9 +222,10 @@ function manifestRootForResolver(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   allManifests: Record<string, any>[],
+  scopes: ModuleScopes,
 ): Record<string, any> {
   if (m.kind !== "Telo.Definition") return m;
-  const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests);
+  const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests, scopes);
   return {
     ...m,
     schema: buildSelfSchema(m, defs, aliases),
@@ -223,9 +233,42 @@ function manifestRootForResolver(
   };
 }
 
+/** True when an issue reports a property that is absent — its path points at a
+ *  node the manifest does not contain. */
+export const missingRequired = (issue: { message: string }): boolean =>
+  /is missing required property/.test(issue.message);
+
+/** The path minus its last segment: the node that should have contained the
+ *  missing property. Empty for a top-level miss, which anchors on the map. */
+export function containerOf(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return dot === -1 ? "" : path.slice(0, dot);
+}
+
+/** How to name the owner of a resolved contract in a diagnostic. When the
+ *  contract came from the definition's direct parent, echo the author's own
+ *  spelling (`extends: Mcp.SessionProvider`) — that is the text they can find in
+ *  their file. A contract inherited from further up the chain isn't written
+ *  anywhere in this file, so the canonical `module.Kind` is what locates it. */
+function contractOwnerLabel(
+  definition: Record<string, any>,
+  contract: { declaredBy?: ResourceDefinition },
+): string {
+  const declaredBy = contract.declaredBy;
+  if (!declaredBy || declaredBy === (definition as unknown as ResourceDefinition)) {
+    return String(definition.metadata?.name ?? definition.kind);
+  }
+  const parentSpelling = definition.extends as string | undefined;
+  const canonical = `${declaredBy.metadata.module}.${declaredBy.metadata.name}`;
+  if (typeof parentSpelling === "string" && parentSpelling.endsWith(`.${declaredBy.metadata.name}`)) {
+    return parentSpelling;
+  }
+  return canonical;
+}
+
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
-function resolveLocalRef(
+export function resolveLocalRef(
   schema: Record<string, any> | undefined,
   root: Record<string, any>,
 ): Record<string, any> | undefined {
@@ -241,7 +284,7 @@ function resolveLocalRef(
 
 /** Gather property schemas from a (possibly variant-bearing) object schema:
  *  top-level `properties` plus every `oneOf` / `anyOf` / `allOf` branch. */
-function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Record<string, any>]> {
+export function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Record<string, any>]> {
   const out: Array<[string, Record<string, any>]> = [];
   if (schema.properties && typeof schema.properties === "object") {
     for (const [k, v] of Object.entries(schema.properties as Record<string, any>)) {
@@ -272,7 +315,7 @@ function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Reco
  * role or nesting form updates both consumers at once. No resource kind is
  * hardcoded; recursion is driven entirely by the schema annotations.
  */
-function walkStepArray(
+export function walkStepArray(
   steps: unknown[],
   stepItemSchema: Record<string, any> | undefined,
   rootSchema: Record<string, any>,
@@ -331,20 +374,18 @@ function walkStepArray(
 
 /**
  * Build a `steps` context schema from `x-telo-step-context` annotation.
- * Walks each step in the manifest array, resolves the invoked resource's outputType,
- * and builds `steps.<name>.result` context entries.
+ * Walks each step in the manifest array, resolves the invoked resource's output
+ * contract, and builds `steps.<name>.result` context entries.
  *
- * outputType resolution falls through three layers:
- *   1. The invoked resource manifest's own `outputType` field (rare — most
- *      resources don't declare outputType inline).
- *   2. The kind's `Telo.Definition` outputType (the common case for kinds that
- *      declare a stable result shape, e.g. `Ai.TextStream` ↦ `{output: stream}`).
- *   3. Permissive `{type: object, additionalProperties: true}` if neither
- *      yields a schema.
+ * Resolution is the shared {@link resolveContract} — the invoked resource
+ * manifest's own declaration, then the kind's, resolved to the nearest
+ * declaration along `extends`, then permissive. Sharing it with the kernel is
+ * what stops `telo check` from typing `steps.X.result` against one contract
+ * while dispatch validates against another.
  *
- * Layer 2 is what makes `x-telo-stream` properties on definitions actually
- * govern step-result chain validation — without it, the validator falls back
- * to permissive and the stream-opacity rule never fires.
+ * The kind layer is what makes `x-telo-stream` properties on definitions
+ * actually govern step-result chain validation — without it, the validator falls
+ * back to permissive and the stream-opacity rule never fires.
  *
  * Recursion into nested step arrays is annotation-driven via
  * `x-telo-topology-role`. The analyzer recognises three role values:
@@ -361,9 +402,13 @@ function buildStepContextSchema(
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
+  scopes: ModuleScopes,
 ): Record<string, any> | undefined {
   const props = defSchema.properties as Record<string, any> | undefined;
   if (!props) return undefined;
+
+  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
+  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
     const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
@@ -391,36 +436,30 @@ function buildStepContextSchema(
       // not shadow real entries with a permissive `additionalProperties: true`,
       // or unknown step references slip through chain validation.
       if (typeof name !== "string" || !invoke || typeof invoke !== "object") return;
-      let outputSchema: Record<string, any> | undefined;
       const invokedKind = invoke.kind as string | undefined;
       const invokedName = invoke.name as string | undefined;
-      if (invokedName) {
-        const invokedManifest = allManifests.find(
-          (m) =>
-            (m.metadata as any)?.name === invokedName &&
-            (!invokedKind || m.kind === invokedKind),
-        ) as Record<string, any> | undefined;
-        if (invokedManifest) {
-          outputSchema = resolveTypeFieldToSchema(invokedManifest[outputTypeField], allManifests);
-        }
-      } else {
-        outputSchema = resolveTypeFieldToSchema(invoke[outputTypeField], allManifests);
-      }
-      // Fallback: pull outputType from the kind's Telo.Definition. The
-      // resource manifest typically doesn't carry outputType; the def does.
-      if (!outputSchema && invokedKind) {
-        outputSchema = lookupDefinitionTypeField(
-          invokedKind,
-          outputTypeField,
-          defs,
-          aliases,
-          allManifests,
-        );
-      }
+      // A named `!ref` carries the target's own manifest (which may narrow the
+      // contract for this one instance); an inline `{ kind, ... }` step IS the
+      // manifest. Either way the kind layer resolves through `extends`.
+      const invokedManifest = invokedName
+        ? (allManifests.find(
+            (m) =>
+              (m.metadata as any)?.name === invokedName && (!invokedKind || m.kind === invokedKind),
+          ) as Record<string, any> | undefined)
+        : (invoke as Record<string, any>);
+      const invokedDef = invokedKind
+        ? contractScope.resolveIn(invokedKind, readingModule)
+        : undefined;
+      const outputSchema = resolveContract(
+        outputTypeField as ContractDirection,
+        invokedManifest,
+        invokedDef,
+        contractScope,
+      )?.schema;
       stepProperties[name] = {
         type: "object",
         properties: {
-          result: outputSchema ?? { type: "object", additionalProperties: true },
+          result: outputSchema ?? PERMISSIVE_CONTRACT,
         },
       };
     });
@@ -1549,6 +1588,13 @@ export class StaticAnalyzer {
     // the abstract this definition `extends`. CEL fields inside the templated
     // values are replaced with type-appropriate placeholders before AJV runs —
     // same pattern as the per-resource schema validation above.
+    const contractScope = analyzerContractScope(
+      defs,
+      aliases,
+      { aliasesByModule, rootModules },
+      allManifests as Record<string, any>[],
+    );
+
     for (const m of allManifests) {
       if (m.kind !== "Telo.Definition") continue;
       const filePath = (m.metadata as { source?: string } | undefined)?.source;
@@ -1598,20 +1644,20 @@ export class StaticAnalyzer {
       // values passed to the dispatch target's invoke(). Validate against the
       // target's declared `inputType` when both sides have one.
       if (dispatchKind && md.inputs && typeof md.inputs === "object") {
-        const targetSchema = lookupDefinitionTypeField(
-          dispatchKind,
+        const targetSchema = resolveContract(
           "inputType",
-          defs,
-          aliases,
-          allManifests as Record<string, any>[],
-        );
+          undefined,
+          contractScope.resolveIn(dispatchKind, (md.metadata as any)?.module),
+          contractScope,
+        )?.schema;
         if (targetSchema) {
           emitTargetMismatch(dispatchKind, targetSchema, md.inputs, "inputs");
         }
       }
 
-      // Top-level `result:` is a post-call mapping that must satisfy the abstract
-      // this definition `extends` (`outputType`). It's a sibling of whichever
+      // Top-level `result:` is a post-call mapping that must satisfy THIS
+      // definition's output contract — its own `outputType` when it declares
+      // one, otherwise the nearest ancestor's. It's a sibling of whichever
       // dispatch entry-point declared a kind-typed target (`provide:` or
       // `invoke:`). The target's outputType lives on the dispatcher's `kind`
       // and is what `result` is typed against *inside* CEL — separate role.
@@ -1619,18 +1665,14 @@ export class StaticAnalyzer {
         (provide && typeof provide === "object" && !Array.isArray(provide)) ||
         (invoke && typeof invoke === "object" && !Array.isArray(invoke));
       if (hasDispatchObject && md.result && typeof md.result === "object") {
-        const extendsValue = md.extends as string | undefined;
-        if (typeof extendsValue === "string" && extendsValue.length > 0) {
-          const abstractSchema = lookupDefinitionTypeField(
-            extendsValue,
-            "outputType",
-            defs,
-            aliases,
-            allManifests as Record<string, any>[],
-          );
-          if (abstractSchema) {
-            emitTargetMismatch(extendsValue, abstractSchema, md.result, "result");
-          }
+        const contract = resolveContract(
+          "outputType",
+          undefined,
+          md as unknown as ResourceDefinition,
+          contractScope,
+        );
+        if (contract) {
+          emitTargetMismatch(contractOwnerLabel(md, contract), contract.schema, md.result, "result");
         }
       }
     }
@@ -1675,8 +1717,33 @@ export class StaticAnalyzer {
                 allManifests as Record<string, any>[],
                 defs,
                 aliases,
+                { aliasesByModule, rootModules },
               )
             : undefined;
+          if (e.definition?.schema) {
+            const stepName = (m.metadata as any)?.name as string | undefined;
+            const stepFile = (m.metadata as { source?: string } | undefined)?.source;
+            for (const issue of collectStepInputIssues(
+              m as Record<string, any>,
+              e.definition.schema as Record<string, any>,
+              allManifests as Record<string, any>[],
+              defs,
+              aliases,
+              { aliasesByModule, rootModules },
+            )) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "CONTRACT_INPUTS_MISMATCH",
+                source: SOURCE,
+                message: `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+                data: {
+                  resource: { kind: m.kind, name: stepName ?? "" },
+                  filePath: stepFile,
+                  path: issue.path,
+                },
+              });
+            }
+          }
           celErrorScopes = collectErrorContextScopes(
             e.definition?.schema as Record<string, any> | undefined,
           );
@@ -1814,6 +1881,7 @@ export class StaticAnalyzer {
               defs,
               aliases,
               allManifests as Record<string, any>[],
+              { aliasesByModule, rootModules },
             );
             const resolvedContext = resolveContextAnnotations(matchedContext, manifestItem, {
               manifestRoot: rootForResolver,
@@ -1918,6 +1986,9 @@ export class StaticAnalyzer {
     diagnostics.push(...validateExtends(allManifests, defs, aliases));
 
     diagnostics.push(...validateBaseMapping(allManifests, defs, aliases));
+    diagnostics.push(
+      ...validateInvocationContract(allManifests, defs, aliases, aliasesByModule),
+    );
 
     // Validate provider coherence rules for `provide:` template-target definitions.
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));

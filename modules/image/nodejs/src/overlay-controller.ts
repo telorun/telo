@@ -56,20 +56,11 @@ class ImageOverlay implements ResourceInstance<OverlayInputs, OverlayOutputs> {
         `${label}: 'image' must be a Uint8Array of image bytes; got ${typeof data}.`,
       );
     }
-    for (const shape of inputs.shapes) {
-      const finite =
-        Number.isFinite(shape.x) &&
-        Number.isFinite(shape.y) &&
-        Number.isFinite(shape.width) &&
-        Number.isFinite(shape.height);
-      if (!finite || !(shape.width > 0) || !(shape.height > 0)) {
-        throw new InvokeError(
-          "ERR_INVALID_INPUT",
-          `${label}: shape (${shape.x}, ${shape.y}, ${shape.width}×${shape.height}) is invalid — ` +
-            `coordinates must be finite and width/height > 0.`,
-        );
-      }
-    }
+    // Shape geometry is declared on `inputType` (numbers, `exclusiveMinimum: 0`
+    // on width/height) and enforced by the kernel's contract binding before this
+    // runs, so the guard that re-checked it here is gone. The `image` check above
+    // stays: "is a Uint8Array" is a runtime value identity JSON Schema cannot
+    // express, as is decodability below.
 
     let source;
     try {

@@ -16,7 +16,6 @@ imports:
   Sse: ../../sse-codec
   PlainText: ../../plain-text-codec
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -60,7 +59,7 @@ code: |
     };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -69,7 +68,7 @@ inputType:
       accept: { type: string }
     required: [ url, prompt ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

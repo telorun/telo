@@ -39,7 +39,7 @@ metadata:
     credential the server has just rejected.
 capability: Telo.Invocable
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -67,7 +67,7 @@ inputType:
           after a request was rejected as unauthenticated; the credential decides
           what re-acquiring means.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -149,7 +149,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/http-client@0.10.0?local_path=./nodejs#http-request
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

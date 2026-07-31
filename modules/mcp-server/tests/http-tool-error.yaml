@@ -4,7 +4,6 @@ imports:
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
@@ -15,7 +14,7 @@ targets: [ !ref TestRun ]
 kind: JS.Script
 metadata: { name: McpFetch }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -24,7 +23,7 @@ inputType:
       params: { type: object, additionalProperties: true }
     required: [ url, method ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

@@ -108,7 +108,9 @@ steps:
         inputs:
           image: "${{ steps.Fixture.result.image }}"
           shapes:
-            - { x: 10, y: 10, width: 0, height: 10 }
+            # Deliberately invalid, routed through CEL: a literal is rejected
+            # by `telo check`; this test is about the RUNTIME boundary.
+            - { x: 10, y: 10, width: !cel "0", height: 10 }
         invoke: !ref Draw
     catch:
       - name: Caught
@@ -119,7 +121,7 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]
 ---
 kind: Run.Sequence

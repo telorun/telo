@@ -12,7 +12,6 @@ metadata:
 imports:
   Http: ../
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -29,14 +28,14 @@ code: |
     return { length: buf.length, text: buf.toString("utf8") };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       body: { x-telo-stream: true }
     required: [ body ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -59,7 +58,7 @@ code: |
     return { status: r.status, length: json.length, text: json.text };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -67,7 +66,7 @@ inputType:
       payload: { type: string }
     required: [ url, payload ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

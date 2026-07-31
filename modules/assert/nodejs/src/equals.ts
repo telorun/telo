@@ -16,6 +16,17 @@ interface EqualsInput {
   expected: unknown;
 }
 
+/** Render a value for output without throwing. CEL evaluates an integer to a
+ *  BigInt, which `JSON.stringify` refuses — so reporting a result that contained
+ *  one replaced the assertion's own message (pass or fail) with a TypeError. */
+function render(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? `${v}` : v)) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export async function create(manifest: AssertManifest, ctx: ResourceContext) {
   const { bold, red, green, dim } = createColors(ctx);
   const name = manifest.metadata.name;
@@ -27,11 +38,11 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
         ctx.stdout.write(
           bold(green(`Assert.Equals.${name}: assertion passed`)) +
             "\n" +
-            `  ${green("✓")} ${dim(JSON.stringify(actual))}\n`,
+            `  ${green("✓")} ${dim(render(actual))}\n`,
         );
         return true;
       }
-      const message = `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`;
+      const message = `expected ${render(expected)}, got ${render(actual)}`;
       ctx.stderr.write(
         bold(red(`Assert.Equals.${name}: assertion failed`)) +
           "\n" +

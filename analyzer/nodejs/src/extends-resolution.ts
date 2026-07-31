@@ -29,6 +29,10 @@ interface DefinitionBody {
   base?: Record<string, unknown>;
   schema?: Record<string, any>;
   status?: Record<string, any>;
+  inputType?: unknown;
+  outputType?: unknown;
+  inputs?: unknown;
+  result?: unknown;
 }
 
 const body = (def: ResourceDefinition | undefined): DefinitionBody =>
@@ -131,6 +135,88 @@ export function effectiveAuthorSchema(
   if (body(def).base) return own;
   const parentSchema = effectiveAuthorSchema(parent, resolve);
   return mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
+}
+
+/** The two directions of a kind's invocation contract. `inputType` is what a
+ *  caller sends to `invoke()`; `outputType` is what `invoke()` / `provide()`
+ *  returns. */
+export type ContractDirection = "inputType" | "outputType";
+
+/**
+ * The **nearest declaration** of an invocation contract along the `extends`
+ * chain, self first — the raw type-field value, still to be resolved to a schema
+ * by the caller (which is what keeps this module free of manifest lookup).
+ *
+ * Contracts RESOLVE, they never merge. A definition that declares one fully
+ * replaces its ancestor's; one that declares none inherits its ancestor's
+ * verbatim, at any depth. This is deliberately unlike {@link
+ * effectiveAuthorSchema} and {@link effectiveStatusSchema}: construction config
+ * and observed state are additive, a call signature is not. Folding a child's
+ * required fields into its parent's yields a union no caller can satisfy, and it
+ * would reject the very remapping `base:` + `inputs:` exists for — the point of
+ * a child declaring a signature is that it accepts something *different*.
+ *
+ * Substitutability is not weakened by that, because `extends` never carried the
+ * dispatch contract: it decides which slots accept a resource. Whether a
+ * particular slot may hold a resource whose contract differs from the slot's
+ * declared kind is a wiring question, answered per slot by
+ * `validate-invocation-contract`'s wiring rule.
+ */
+export function effectiveContractField(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+  direction: ContractDirection,
+): unknown {
+  const own = body(def)[direction];
+  if (own !== undefined && own !== null) return own;
+  for (const a of ancestorChain(def, resolve)) {
+    const inherited = body(a)[direction];
+    if (inherited !== undefined && inherited !== null) return inherited;
+  }
+  return undefined;
+}
+
+/** The definition in the `extends` chain (self first) that actually DECLARES the
+ *  contract for `direction` — the one whose scope its `telo#Type` references
+ *  resolve in, and the one a diagnostic should name. Undefined when nothing in
+ *  the chain declares it. */
+export function contractDeclarer(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+  direction: ContractDirection,
+): ResourceDefinition | undefined {
+  if (!def) return undefined;
+  const own = body(def)[direction];
+  if (own !== undefined && own !== null) return def;
+  for (const a of ancestorChain(def, resolve)) {
+    const inherited = body(a)[direction];
+    if (inherited !== undefined && inherited !== null) return a;
+  }
+  return undefined;
+}
+
+/** True when this definition declares its own contract for `direction` while
+ *  inheriting the controller that will execute it — the case that REQUIRES a
+ *  bridging mapping (`inputs:` for inputs, `result:` for outputs), because the
+ *  inherited controller only understands the ancestor's shape. A definition with
+ *  its own controller or template body is exempt: its controller *is* the
+ *  implementation of whatever it declares. */
+export function needsContractMapping(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+  direction: ContractDirection,
+): boolean {
+  const own = body(def)[direction];
+  if (own === undefined || own === null) return false;
+  if (hasOwnControllerOrTemplate(def)) return false;
+  return controllerBearingAncestor(def, resolve) !== undefined;
+}
+
+/** The mapping field that bridges a replaced contract back to the inherited
+ *  controller: `inputs:` maps the child's signature onto the parent's call,
+ *  `result:` maps the parent's result back to the child's declared output. */
+export function mappingFieldFor(direction: ContractDirection): "inputs" | "result" {
+  return direction === "inputType" ? "inputs" : "result";
 }
 
 /** The observed state a kind reports (`status:`), folded through `extends`:

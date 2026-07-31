@@ -207,7 +207,7 @@ capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.8.0?local_path=./nodejs#equals
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -241,7 +241,7 @@ capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.8.0?local_path=./nodejs#matches
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -278,7 +278,7 @@ capability: Telo.Runnable
 controllers:
   - pkg:npm/@telorun/assert@0.8.0?local_path=./nodejs#contains
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:

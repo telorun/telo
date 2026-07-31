@@ -36,7 +36,7 @@ throws:
         range, format is not png/jpeg/webp, or quality is not an integer
         between 1 and 100.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -60,7 +60,7 @@ inputType:
     required: [ data ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -143,7 +143,7 @@ throws:
         out of range, a field name collides (within the input or with an
         existing document field), or a box falls outside the page bounds.
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -197,7 +197,7 @@ inputType:
     required: [ data, fields ]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

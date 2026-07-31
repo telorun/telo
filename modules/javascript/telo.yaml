@@ -52,14 +52,14 @@ schema:
           return { sum: input.a + input.b }
         }
     - "inputType":
-        "kind": "Type.JsonSchema"
+        "kind": "Telo.JsonSchema"
         "schema":
           "type": "object"
           "required": ["name"]
           "properties":
             "name": { "type": "string" }
       "outputType":
-        "kind": "Type.JsonSchema"
+        "kind": "Telo.JsonSchema"
         "schema":
           "type": "object"
           "required": ["message"]

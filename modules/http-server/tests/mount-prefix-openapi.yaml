@@ -14,7 +14,6 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-  Type: ../../type
 targets:
   - !ref Test
 ---
@@ -57,13 +56,13 @@ code: |
     return { status: r.status, body: await r.json() };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties: { url: { type: string } }
     required: [ url ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -87,13 +86,13 @@ code: |
     };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties: { url: { type: string } }
     required: [ url ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

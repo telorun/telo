@@ -12,8 +12,12 @@ variables:
 kind: Run.Value
 metadata:
   name: Handler
-inputs:
-  key: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      key: { type: string }
 value: { ok: true }
 ---
 kind: Http.Api

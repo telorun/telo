@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: ContractRemapTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+  Remap: ./__fixtures__/contract-remap
+  Run: ../modules/run
+targets:
+  - !ref Main
+---
+# A child that inherits a concrete controller and REPLACES its invocation
+# contract, bridged by `inputs:` / `result:` mappings.
+#
+# Before the invocation contract landed, the child's `inputType` and its whole
+# mapping were inert: the kernel returned the parent instance verbatim, so
+# nothing intercepted invoke() and `{ value: 21 }` reached JS.Script's `main`
+# unchanged. Now the kernel binds the contract at creation, so one dispatch
+# checks the child's inputs, maps them onto the parent's call, checks those
+# against the parent, runs, and maps the result back.
+kind: Remap.Doubler
+metadata:
+  name: Double
+---
+kind: Run.Sequence
+metadata:
+  name: Main
+steps:
+  - name: doubled
+    invoke: !ref Double
+    inputs:
+      value: 21
+  - name: check
+    invoke: !ref CheckResult
+    inputs:
+      actual: !cel "steps.doubled.result"
+      expected:
+        doubled: 42
+---
+kind: Assert.Equals
+metadata:
+  name: CheckResult

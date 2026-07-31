@@ -306,7 +306,71 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
 }
 
 /** Return a literal placeholder value of the correct schema type for AJV. */
-export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
+/** A number inside the schema's declared bounds. The placeholder stands in for a
+ *  value only known at runtime, so its single job is to be ACCEPTABLE — a bare 0
+ *  into an `exclusiveMinimum: 0` field (a scale, a positive dimension) would
+ *  report a violation against a value the author never wrote. Bounds are read in
+ *  the order that pins the value: an inclusive minimum is usable as-is, an
+ *  exclusive one needs a step past it, and a wholly-negative range needs the
+ *  maximum end instead. */
+function numericPlaceholder(schema: Record<string, any>): number {
+  const isInteger = schema.type === "integer";
+  // One step past an exclusive bound. Integral for both `integer` and `number`:
+  // any value inside the band will do, and a whole number is inside it whenever
+  // a fractional one is (the narrow-band case below handles when it is not).
+  const step = 1;
+  if (typeof schema.minimum === "number") return schema.minimum;
+  if (typeof schema.exclusiveMinimum === "number") {
+    const candidate = schema.exclusiveMinimum + step;
+    if (typeof schema.maximum === "number" && candidate > schema.maximum) {
+      // A narrow band (0 < x <= 0.5) has no integral step; take the midpoint,
+      // which the band's own definition guarantees is inside it.
+      return isInteger ? schema.maximum : (schema.exclusiveMinimum + schema.maximum) / 2;
+    }
+    return candidate;
+  }
+  if (typeof schema.maximum === "number" && schema.maximum < 0) return schema.maximum;
+  if (typeof schema.exclusiveMaximum === "number" && schema.exclusiveMaximum <= 0) {
+    return schema.exclusiveMaximum - step;
+  }
+  return 0;
+}
+
+/** The constraints a placeholder must satisfy, folded across `allOf` branches.
+ *  Inheritance between types is expressed by intersecting `allOf`, so a bound a
+ *  parent declared lives in a branch rather than on the property itself — a
+ *  placeholder that reads only the top level would violate it and report against
+ *  a value the author never wrote. The tightest bound wins, which is what the
+ *  intersection means. */
+function foldedConstraints(schema: Record<string, any>): Record<string, any> {
+  const branches = Array.isArray(schema.allOf) ? (schema.allOf as Record<string, any>[]) : [];
+  if (branches.length === 0) return schema;
+  const out: Record<string, any> = { ...schema };
+  for (const branch of branches) {
+    const folded = foldedConstraints(branch);
+    for (const key of ["minimum", "exclusiveMinimum", "minLength", "minItems"] as const) {
+      if (typeof folded[key] === "number" && (typeof out[key] !== "number" || folded[key] > out[key])) {
+        out[key] = folded[key];
+      }
+    }
+    for (const key of ["maximum", "exclusiveMaximum"] as const) {
+      if (typeof folded[key] === "number" && (typeof out[key] !== "number" || folded[key] < out[key])) {
+        out[key] = folded[key];
+      }
+    }
+    if (out.type === undefined && folded.type !== undefined) out.type = folded.type;
+    if (out.enum === undefined && folded.enum !== undefined) out.enum = folded.enum;
+    if (out.default === undefined && folded.default !== undefined) out.default = folded.default;
+    if (folded.required) {
+      out.required = [...new Set([...(out.required ?? []), ...folded.required])];
+    }
+    if (folded.properties) out.properties = { ...folded.properties, ...(out.properties ?? {}) };
+  }
+  return out;
+}
+
+export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown {
+  const schema = foldedConstraints(rawSchema);
   if (schema.default !== undefined) return schema.default;
   // An enum-constrained field needs a placeholder drawn from the enum: the
   // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`
@@ -318,18 +382,47 @@ export function celPlaceholderForSchema(schema: Record<string, any>): unknown {
   switch (schema.type) {
     case "integer":
     case "number":
-      return schema.minimum ?? 0;
+      return numericPlaceholder(schema);
     case "string":
-      return "";
+      // `minLength` is the string analogue of `minimum`: a bare "" into a
+      // `minLength: 1` field would report a violation against a value the author
+      // never wrote. Any string of the right length will do.
+      return typeof schema.minLength === "number" && schema.minLength > 0
+        ? "x".repeat(schema.minLength)
+        : "";
     case "boolean":
       return false;
     case "array":
-      return [];
+      // `minItems` is the array analogue of `minimum` / `minLength`: an empty
+      // array into a `minItems: 1` field would report a violation against a
+      // value the author never wrote.
+      return typeof schema.minItems === "number" && schema.minItems > 0
+        ? Array.from({ length: schema.minItems }, () =>
+            celPlaceholderForSchema((schema.items ?? {}) as Record<string, any>),
+          )
+        : [];
     case "object":
-      return {};
+      return objectPlaceholder(schema);
     default:
       return null;
   }
+}
+
+/** An object satisfying the schema's `required` list. A bare `{}` would report
+ *  every required property as missing against a value the author never wrote —
+ *  the case where a whole map is produced by one expression (`inputs: !cel
+ *  "buildRequest(...)"`), which is exactly when the analyzer knows least and
+ *  should say least. Members are filled recursively by the same rule, so a
+ *  required nested object is satisfied too. */
+function objectPlaceholder(schema: Record<string, any>): Record<string, unknown> {
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  if (required.length === 0) return {};
+  const properties = (schema.properties ?? {}) as Record<string, Record<string, any>>;
+  const out: Record<string, unknown> = {};
+  for (const key of required) {
+    out[key] = celPlaceholderForSchema(properties[key] ?? {});
+  }
+  return out;
 }
 
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
@@ -345,8 +438,76 @@ export function resolveRef(schema: Record<string, any>, root: Record<string, any
 }
 
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
+/**
+ * The `oneOf` / `anyOf` branch a value is written against, when exactly one fits.
+ *
+ * A union carries no `type` / `properties` / `items` of its own, so a walker that
+ * ignores it descends with an empty schema and hands every CEL leaf underneath a
+ * `null` placeholder — which then fails every branch and reports a pile of
+ * violations against a value that is perfectly valid. Picking the branch first
+ * is what lets the leaves be typed.
+ *
+ * Selection is structural and conservative: a branch must agree with the data's
+ * kind, and for an object every `required` key must be present (which is what
+ * separates a `{type, text}` part from a `{type, data, mediaType}` one). If that
+ * leaves anything other than exactly one branch, the union is returned unchanged
+ * — an ambiguous union is one the analyzer should not resolve on the author's
+ * behalf.
+ */
+function selectUnionBranch(
+  schema: Record<string, any>,
+  data: unknown,
+  root: Record<string, any>,
+): Record<string, any> {
+  const branches = (schema.oneOf ?? schema.anyOf) as Record<string, any>[] | undefined;
+  if (!Array.isArray(branches) || branches.length === 0) return schema;
+  if (schema.type !== undefined || schema.properties !== undefined) return schema;
+
+  const kind = Array.isArray(data)
+    ? "array"
+    : data === null
+      ? "null"
+      : typeof data === "object"
+        ? "object"
+        : typeof data === "string"
+          ? "string"
+          : typeof data === "number"
+            ? "number"
+            : typeof data === "boolean"
+              ? "boolean"
+              : undefined;
+  if (!kind) return schema;
+
+  const fits = branches
+    .map((b) => resolveRef(b, root))
+    .filter((b) => {
+      const types = Array.isArray(b.type) ? b.type : b.type ? [b.type] : [];
+      if (types.length > 0 && !types.includes(kind)) return false;
+      if (kind === "object" && Array.isArray(b.required)) {
+        const keys = Object.keys(data as Record<string, unknown>);
+        if (!(b.required as string[]).every((r) => keys.includes(r))) return false;
+      }
+      return true;
+    });
+  return fits.length === 1 ? fits[0]! : schema;
+}
+
 export function collectProperties(schema: Record<string, any>): Record<string, any> {
   const props: Record<string, any> = { ...(schema.properties ?? {}) };
+  // `allOf` INTERSECTS, so a branch constraining a property constrains the
+  // property itself — type inheritance expresses an inherited bound exactly this
+  // way (`allOf: [{ properties: { score: { minimum: 10 } } }]`). Merging the
+  // branch's constraints into the property is what lets a placeholder for that
+  // property be built from the bound the value must actually satisfy; reading
+  // only the top level would produce one that violates it.
+  for (const sub of (schema.allOf ?? []) as Record<string, any>[]) {
+    if (!sub || typeof sub !== "object" || !sub.properties) continue;
+    for (const [k, v] of Object.entries(sub.properties as Record<string, any>)) {
+      props[k] = k in props ? { ...(props[k] as object), ...(v as object) } : v;
+    }
+  }
+  // `oneOf` / `anyOf` are alternatives, not constraints: a property seen in one
+  // branch is contributed only when no branch already declared it.
   for (const sub of schema.oneOf ?? schema.anyOf ?? []) {
     if (sub && typeof sub === "object" && sub.properties) {
       for (const [k, v] of Object.entries(sub.properties as Record<string, any>)) {
@@ -363,11 +524,24 @@ export function substituteCelFields(
   data: unknown,
   schema: Record<string, any>,
   rootSchema?: Record<string, any>,
+  /** Called with the dotted path of every value replaced by a placeholder.
+   *
+   *  A placeholder is a stand-in for something only known at runtime, so its
+   *  VALUE says nothing: a caller that judges constraints at these paths reports
+   *  against a value no author wrote. Some constraints cannot be satisfied by
+   *  construction at all (`pattern`, `format`, a `oneOf` of unrelated shapes),
+   *  so making every placeholder acceptable is not achievable in general —
+   *  knowing where not to look is. Structural findings survive because they are
+   *  located at the CONTAINER, not at the substituted leaf. */
+  onSubstitute?: (path: string) => void,
+  path = "",
 ): unknown {
   const root = rootSchema ?? schema;
-  const resolved = resolveRef(schema, root);
+  const resolved = selectUnionBranch(resolveRef(schema, root), data, root);
+  const mark = () => onSubstitute?.(path);
 
   if (typeof data === "string" && CEL_PURE_RE.test(data)) {
+    mark();
     return celPlaceholderForSchema(resolved);
   }
   // `!ref <name>` sentinels are identity markers, not runtime values —
@@ -381,11 +555,14 @@ export function substituteCelFields(
     return data;
   }
   if (isTaggedSentinel(data)) {
+    mark();
     return celPlaceholderForSchema(resolved);
   }
   if (Array.isArray(data)) {
     const itemSchema = resolveRef((resolved.items ?? {}) as Record<string, any>, root);
-    return data.map((item) => substituteCelFields(item, itemSchema, root));
+    return data.map((item, i) =>
+      substituteCelFields(item, itemSchema, root, onSubstitute, `${path}[${i}]`),
+    );
   }
   if (data !== null && typeof data === "object") {
     const props = collectProperties(resolved);
@@ -395,7 +572,13 @@ export function substituteCelFields(
         : undefined;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>, root);
+      result[k] = substituteCelFields(
+        v,
+        (props[k] ?? addlProps ?? {}) as Record<string, any>,
+        root,
+        onSubstitute,
+        path ? `${path}.${k}` : k,
+      );
     }
     return result;
   }

@@ -9,15 +9,18 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../../
-  Type: ../../../type
 ---
 kind: Run.Choice
 metadata:
   name: BadRow
-inputs:
-  order: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      order: {}
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [tier, cost]
