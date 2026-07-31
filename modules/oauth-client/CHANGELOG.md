@@ -1,5 +1,7 @@
 # Changelog
-## 0.2.0 - 2026-07-30
+## 0.2.1 - 2026-07-31
+### Fixed
+* `AuthorizationServer`'s declared `outputType` now includes `issuerParameterSupported` and `timeoutMs`, which it has always returned. The contract forbade them under `additionalProperties: false`; nothing enforced it, so the drift went unseen until the kernel began validating provider results.## 0.2.0 - 2026-07-30
 ### Added
 * Publish as a layered artifact: `telo.yaml` in its own blob, one blob per bundled-controller platform selector, one for author-claimed `assets:`, and one for everything else. A consumer fetches only the layers it needs, and a bundled controller now materializes at resolve time — so a cold `telo run` works on the first try instead of failing until a second run had populated the cache.## 0.1.0 - 2026-07-29
 ### Added

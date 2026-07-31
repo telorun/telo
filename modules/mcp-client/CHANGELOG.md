@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-07-30
+## 0.10.0 - 2026-07-31
+### Added
+* Data shapes are declared with the kernel built-in `Telo.JsonSchema` instead of `Type.JsonSchema`, so the module no longer imports `std/type` to describe its own contracts. Identical behaviour; `Type.JsonSchema` still resolves for anyone who prefers it, though the `type` module is now deprecated.## 0.9.0 - 2026-07-30
 ### Added
 * Update controller @telorun/mcp-client to 0.6.0.## 0.8.0 - 2026-07-27
 ### Added

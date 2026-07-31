@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-07-27
+## 0.10.0 - 2026-07-31
+### Deprecated
+* Superseded by the kernel built-in `Telo.JsonSchema`, which needs no import. Declaring a data shape stopped being optional once any kind can carry an invocation contract: writing `inputType:` should not require an import, and a library declaring its own contract should not import a module purely to describe itself. This module is unchanged and `Type.JsonSchema` still resolves and behaves identically, so published manifests importing it keep working — but the standard library, examples and templates have moved to the built-in, and new manifests should too.## 0.9.0 - 2026-07-27
 ### Added
 * Drop `metadata.namespace`. A module's location is the ref it is published under, never anything it declares about itself, and nothing reads the field any more.## 0.8.1 - 2026-07-27
 ### Fixed

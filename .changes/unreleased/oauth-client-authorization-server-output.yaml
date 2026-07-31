@@ -1,8 +1,0 @@
-project: oauth-client
-kind: Fixed
-body: >-
-  `AuthorizationServer`'s declared `outputType` now includes
-  `issuerParameterSupported` and `timeoutMs`, which it has always returned. The
-  contract forbade them under `additionalProperties: false`; nothing enforced it,
-  so the drift went unseen until the kernel began validating provider results.
-time: 2026-07-31T00:00:00.000000000+00:00

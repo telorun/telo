@@ -1,5 +1,15 @@
 # @telorun/test
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [bf324d2]
+- Updated dependencies [2ee3598]
+- Updated dependencies [bf324d2]
+- Updated dependencies [bf324d2]
+  - @telorun/kernel@0.61.0
+
 ## 0.5.0
 
 ### Minor Changes

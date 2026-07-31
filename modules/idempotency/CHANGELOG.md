@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-07-30
+## 0.5.0 - 2026-07-31
+### Added
+* `Once` relies on its declared `inputType` to reject a missing or empty `key` instead of re-checking it in the controller. The schema already said so (`required: [key]`, `minLength: 1`) and the kernel now enforces it on every call, so the failure is the ambient `ERR_INPUT_INVALID` — which names the target and the offending value — rather than `ERR_INVALID_KEY`, now removed from the declared union as unreachable.## 0.4.0 - 2026-07-30
 ### Added
 * Publish as a layered artifact: `telo.yaml` in its own blob, one blob per bundled-controller platform selector, one for author-claimed `assets:`, and one for everything else. A consumer fetches only the layers it needs, and a bundled controller now materializes at resolve time — so a cold `telo run` works on the first try instead of failing until a second run had populated the cache.## 0.3.0 - 2026-07-27
 ### Added
