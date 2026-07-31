@@ -18,7 +18,13 @@ const ZERO_RANGE: Range = {
  *       instead of spreading across every line of the surrounding map.
  *    4. Whole-line span at `sourceLine` when known.
  *    5. `(0,0)-(0,0)` as a last resort. Never undefined. */
-export function resolveRange(d: AnalysisDiagnostic, ctx: DiagnosticContext): Range {
+export function resolveRange(
+  d: AnalysisDiagnostic,
+  // Only the position half of a `DiagnosticContext` — a full one still
+  // satisfies this, and a caller holding just a located file (the CLI) does not
+  // have to invent a registry to reuse the one resolution rule.
+  ctx: Pick<DiagnosticContext, "positionIndex" | "sourceLine">,
+): Range {
   if (d.range) return d.range;
 
   const fieldPath = (d.data as { path?: string } | undefined)?.path;

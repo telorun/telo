@@ -1,3 +1,22 @@
+/** The manifest site a statically-raised diagnostic was reported at, carried
+ *  through verbatim from the analyzer's `data` so a renderer resolves
+ *  `file:line:col` against the `LoadedGraph` exactly as `telo check` does —
+ *  never by re-parsing the rendered message. */
+export interface DiagnosticOrigin {
+  filePath?: string;
+  /** Field path within the manifest doc, as keyed by its position index. */
+  path?: string;
+  resource?: { kind?: string; name?: string };
+  /** The diagnostic's own position, for one that has no field path to look up:
+   *  a YAML parse failure knows where the syntax broke but has no parsed tree
+   *  to index. Structurally the analyzer's LSP `Range` (0-based), so a renderer
+   *  can hand it back to the shared range resolver unchanged. */
+  range?: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+}
+
 export interface RuntimeDiagnostic {
   severity?: "error" | "warning";
   message: string;
@@ -5,6 +24,9 @@ export interface RuntimeDiagnostic {
   kind?: string;
   details?: string;
   code?: string;
+  /** Set when the failure came from static analysis rather than a running
+   *  resource; lets the renderer point at the offending line. */
+  origin?: DiagnosticOrigin;
   /** Set when this entry failed ONLY because another resource in the same
    *  failure set did — it carries no independent cause. Renderers collapse
    *  these into one line rather than repeating one failure per dependent. */

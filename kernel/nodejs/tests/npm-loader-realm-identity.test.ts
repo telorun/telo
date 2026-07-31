@@ -92,6 +92,102 @@ describe("NpmControllerLoader single-realm install", () => {
     { timeout: 60_000 },
   );
 
+  // Regression: the root's package.json used to be rewritten from scratch with
+  // only the realm deps, so the `--save`d controller aliases vanished from it
+  // and the install below pruned their folders. Any realm change — a globally
+  // installed CLI and a repo checkout addressing the same app, which resolve
+  // `@telorun/sdk` to different paths — therefore evicted every controller and
+  // reinstalled the lot, on every switch between the two.
+  it(
+    "keeps installed controllers when the realm dep changes",
+    async () => {
+      const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
+      const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
+      await loader.load(
+        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        fakeBaseUri,
+      );
+
+      const installRoot = path.join(workDir, ".telo", "npm");
+      const pkgJsonPath = path.join(installRoot, "package.json");
+      const before = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
+      const aliases = Object.keys(before.dependencies).filter((d) => d !== "@telorun/sdk");
+      expect(aliases.length).toBeGreaterThan(0);
+
+      // Simulate the other kernel: a realm identity this root was not built for.
+      await fs.writeFile(
+        path.join(installRoot, ".telo-state.json"),
+        JSON.stringify({ rootHash: "a-different-realm" }),
+      );
+
+      // A fresh loader re-materializes the root, since the recorded identity no
+      // longer matches what it would write. The controller must survive that:
+      // `cache` is the loader saying it found the package already installed —
+      // any other source means the root install evicted it and it was fetched
+      // again, which is the whole defect.
+      const second = await new NpmControllerLoader({ entryUrl: manifestUrl }).resolve(
+        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        fakeBaseUri,
+      );
+      expect(second.source).toBe("cache");
+
+      const after = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
+      for (const alias of aliases) {
+        expect(after.dependencies[alias]).toBe(before.dependencies[alias]);
+        await expect(
+          fs.stat(path.join(installRoot, "node_modules", alias)),
+        ).resolves.toBeDefined();
+      }
+      expect(after.dependencies["@telorun/sdk"]).toMatch(/^file:/);
+    },
+    { timeout: 120_000 },
+  );
+
+  // The other half of preserving aliases: a recorded `file:` controller whose
+  // target has since moved must not be carried into the rewrite. The package
+  // manager resolves every entry, so one dead record fails the whole root
+  // install — and because the state file is written only after a successful
+  // install, every later run would repeat it and no controller would load.
+  it(
+    "drops a controller whose file: target no longer exists instead of failing the root install",
+    async () => {
+      const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
+      const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
+      await loader.load(
+        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        fakeBaseUri,
+      );
+
+      const installRoot = path.join(workDir, ".telo", "npm");
+      const pkgJsonPath = path.join(installRoot, "package.json");
+      const pkg = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
+      // A dead alias of the shape `--save` records for a local controller.
+      pkg.dependencies["telorun__ghost__1.0.0__deadbeef"] =
+        `file:${path.join(workDir, "gone", "nodejs")}`;
+      await fs.writeFile(pkgJsonPath, JSON.stringify(pkg, null, 2));
+      await fs.writeFile(
+        path.join(installRoot, ".telo-state.json"),
+        JSON.stringify({ rootHash: "a-different-realm" }),
+      );
+
+      // Must not throw: the dead entry is dropped, the live ones are kept.
+      const second = await new NpmControllerLoader({ entryUrl: manifestUrl }).resolve(
+        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        fakeBaseUri,
+      );
+      expect(second.source).toBe("cache");
+
+      const after = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
+      expect(after.dependencies["telorun__ghost__1.0.0__deadbeef"]).toBeUndefined();
+      // The install completed, so the identity is recorded and the next run
+      // takes the fast path rather than repeating this.
+      expect(
+        JSON.parse(await fs.readFile(path.join(installRoot, ".telo-state.json"), "utf8")).rootHash,
+      ).not.toBe("a-different-realm");
+    },
+    { timeout: 120_000 },
+  );
+
   it(
     "anchors http(s) entry URLs to a hash-keyed cache directory and materializes a working install root",
     async () => {

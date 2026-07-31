@@ -8,10 +8,13 @@ import { ControllerPolicy, DEFAULT_POLICY, POLICY_WILDCARD } from "./runtime-reg
 export type { ControllerPolicy } from "./runtime-registry.js";
 
 /**
- * Which branch the per-scheme loader actually took. Cache/local hits resolve
- * in milliseconds; `npm-install` and `cargo-build` are the only branches that
- * do real (network or compile) work. The CLI uses this to decide whether a
- * "downloading…" line was honest or should be erased.
+ * Which branch the per-scheme loader actually took. Cache/local hits resolve in
+ * milliseconds; `npm-install`, `cargo-build` and `bundle` are the branches that
+ * do real (network or compile) work — `bundle` is reported only when the resolve
+ * fetched the module's controller layer, never when it found it already
+ * extracted. The CLI uses this to decide whether a "downloading…" line was
+ * honest or should be erased, so a source that names work no one waited for
+ * turns every warm start into noise.
  */
 export type ControllerResolveSource =
   | "local"
