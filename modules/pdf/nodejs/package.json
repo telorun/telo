@@ -1,6 +1,6 @@
 {
   "name": "@telorun/pdf",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "PDF primitives — rasterize pages to PNG images and author editable AcroForm fields.",
   "keywords": [
     "telo",

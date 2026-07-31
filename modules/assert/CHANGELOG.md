@@ -1,5 +1,9 @@
 # Changelog
-## 0.12.0 - 2026-07-30
+## 0.13.0 - 2026-07-31
+### Added
+* Data shapes are declared with the kernel built-in `Telo.JsonSchema` instead of `Type.JsonSchema`, so the module no longer imports `std/type` to describe its own contracts. Identical behaviour; `Type.JsonSchema` still resolves for anyone who prefers it, though the `type` module is now deprecated.
+### Fixed
+* Update controller @telorun/assert to 0.8.1.## 0.12.0 - 2026-07-30
 ### Added
 * Update controller @telorun/assert to 0.8.0.## 0.11.3 - 2026-07-29
 ### Fixed

@@ -1,5 +1,8 @@
 # Changelog
-## 0.5.0 - 2026-07-27
+## 0.6.0 - 2026-07-31
+### Added
+* Update controller @telorun/pdf to 0.3.0.
+* Data shapes are declared with the kernel built-in `Telo.JsonSchema` instead of `Type.JsonSchema`, so the module no longer imports `std/type` to describe its own contracts. Identical behaviour; `Type.JsonSchema` still resolves for anyone who prefers it, though the `type` module is now deprecated.## 0.5.0 - 2026-07-27
 ### Added
 * Drop `metadata.namespace`. A module's location is the ref it is published under, never anything it declares about itself, and nothing reads the field any more.## 0.4.1 - 2026-07-27
 ### Fixed

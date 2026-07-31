@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  version: 0.9.0
+  version: 0.10.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Compute]
@@ -24,7 +24,7 @@ metadata:
     policy logic.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/starlark@0.4.1?local_path=./nodejs#script
+  - pkg:npm/@telorun/starlark@0.5.0?local_path=./nodejs#script
   - pkg:cargo/telorun-starlark?local_path=./rust
 schema:
   type: object
