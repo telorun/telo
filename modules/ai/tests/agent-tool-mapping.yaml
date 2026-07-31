@@ -22,8 +22,12 @@ emitToolCall:
 kind: Run.Value
 metadata:
   name: Greeter
-inputs:
-  target: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      target: { type: string }
 value:
   greeting: "${{ 'Hello, ' + inputs.target + '!' }}"
 ---

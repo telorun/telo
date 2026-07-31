@@ -4,7 +4,6 @@ imports:
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
@@ -12,7 +11,7 @@ targets: [ !ref TestRun ]
 kind: JS.Script
 metadata: { name: McpFetch }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -21,7 +20,7 @@ inputType:
       params: { type: object, additionalProperties: true }
     required: [ url, method ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -74,15 +73,23 @@ code: |
 ---
 kind: Run.Value
 metadata: { name: WeatherImpl }
-inputs:
-  city: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      city: { type: string }
 value:
   summary: !cel "'Sunny in ' + inputs.city"
 ---
 kind: Run.Value
 metadata: { name: DbImpl }
-inputs:
-  table: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      table: { type: string }
 value:
   rows: !cel "inputs.table.size()"
 ---

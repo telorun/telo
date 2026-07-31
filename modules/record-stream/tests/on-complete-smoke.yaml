@@ -68,9 +68,13 @@ code: |
 # persist a row. This is the record→store projection the OnComplete kind delegates.
 kind: Run.Sequence
 metadata: { name: PersistTurn }
-inputs:
-  records: {}
-  context: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      records: {}
+      context: {}
 steps:
   - name: Insert
     inputs:

@@ -17,7 +17,6 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Type: std/type@0.8.0#sha256-z56gxs4HbdWHlUWWvLRFFHPy5wX52SU5A1Fo61s20-g
   Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
   Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
   Postgres: std/sql-postgres@0.4.0#sha256-l0R480mxguUeQ6ACoefbGfHbGpchcpuodAy5-7tQ5PA

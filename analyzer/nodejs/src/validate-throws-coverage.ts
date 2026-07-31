@@ -1,6 +1,10 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import { isTaggedSentinel } from "@telorun/templating";
-import type { ResourceManifest } from "@telorun/sdk";
+import {
+  AMBIENT_CONTRACT_ERROR_CODES,
+  isAmbientContractErrorCode,
+  type ResourceManifest,
+} from "@telorun/sdk";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -250,12 +254,18 @@ function checkCatchesCoverage(
     const { proven, codes } = extractCoveredCodes(e.when, env);
     if (proven) {
       for (const c of codes) {
+        // An ambient kernel code (contract violations) is raised by the kernel,
+        // not declared by the kind, so naming it is legal and still typo-checked
+        // — but it is NOT part of the declared union, so it never counts toward
+        // coverage. Folding these into every union would make every bounded
+        // catches: block in the standard library incomplete overnight.
+        if (isAmbientContractErrorCode(c)) continue;
         if (!declaredCodes.has(c)) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "UNDECLARED_THROW_CODE",
             source: SOURCE,
-            message: `catches[${i}] references code '${c}' which is not in the handler's declared throw union {${[...declaredCodes].sort().join(", ") || "∅"}}${union.unbounded ? " (union is unbounded — a catch-all is required)" : ""}.`,
+            message: `catches[${i}] references code '${c}' which is not in the handler's declared throw union {${[...declaredCodes].sort().join(", ") || "∅"}} (ambient kernel codes ${AMBIENT_CONTRACT_ERROR_CODES.join(", ")} may also be named)${union.unbounded ? "; the union is unbounded, so a catch-all is required" : ""}.`,
             data: { resource, filePath, path: `${arrayPath}[${i}].when` },
           });
         } else {

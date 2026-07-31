@@ -92,7 +92,11 @@ steps:
   - name: TryBlank
     try:
       - name: Blank
-        inputs: { width: 0, height: 80 }
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
+        # RUNTIME boundary — which is how a real violation arrives anyway, from a
+        # computed value rather than something visible in the manifest.
+        inputs: { width: !cel "0", height: 80 }
         invoke: !ref Canvas
     catch:
       - name: Caught
@@ -103,7 +107,7 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -132,7 +136,11 @@ steps:
   - name: TryBlank
     try:
       - name: Blank
-        inputs: { width: 8, height: 8, format: tiff }
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
+        # RUNTIME boundary — which is how a real violation arrives anyway, from a
+        # computed value rather than something visible in the manifest.
+        inputs: { width: 8, height: 8, format: !cel "'tiff'" }
         invoke: !ref Canvas
     catch:
       - name: Caught
@@ -143,7 +151,7 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -153,7 +161,11 @@ steps:
     try:
       # Library would silently clamp 150 → 100; the controller rejects it.
       - name: Blank
-        inputs: { width: 8, height: 8, format: jpeg, quality: 150 }
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
+        # RUNTIME boundary — which is how a real violation arrives anyway, from a
+        # computed value rather than something visible in the manifest.
+        inputs: { width: 8, height: 8, format: jpeg, quality: !cel "150" }
         invoke: !ref Canvas
     catch:
       - name: Caught
@@ -164,5 +176,5 @@ steps:
           schema:
             type: object
             properties:
-              code: { const: ERR_INVALID_INPUT }
+              code: { const: ERR_INPUT_INVALID }
             required: [ code ]

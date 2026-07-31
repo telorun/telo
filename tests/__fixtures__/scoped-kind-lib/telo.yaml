@@ -32,8 +32,12 @@ steps:
 # scope actually stood the resource up rather than merely resolving its kind.
 kind: Run.Sequence
 metadata: { name: Echo }
-inputs:
-  baseUrl: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      baseUrl: { type: string }
 outputs:
   baseUrl: !cel "inputs.baseUrl"
 steps: []

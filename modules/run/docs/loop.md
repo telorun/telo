@@ -19,7 +19,7 @@ The body is the same step grammar as `Run.Sequence` minus the `while` block (the
 | `maxIterations` | CEL integer cap on the number of iterations. |
 | `steps` | The body run each iteration. |
 | `outputs` | A CEL map evaluated after the loop; its value becomes the result. Omit to return the last iteration's step map. |
-| `inputs` | Input contract (JSON Schema property map). |
+| `inputType` | Input contract — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. |
 | `catches` | Whole-operation error contract (`{ when, value }` over `error` and `inputs`). |
 
 **At least one of `condition` or `maxIterations` is required**; the loop stops at whichever trips first.

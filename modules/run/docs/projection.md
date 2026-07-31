@@ -19,7 +19,7 @@ The body is the same step grammar as [`Run.Sequence`](../README.md) minus the `w
 | `steps` | The body run once per element. |
 | `outputs` | A CEL map evaluated per element; its value is collected into the result array. Omit to collect the raw step map. |
 | `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
-| `inputs` | Input contract (JSON Schema property map). |
+| `inputType` | Input contract — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. |
 | `catches` | Whole-operation error contract — see [Error handling](#error-handling). |
 
 ## Body scope

@@ -33,14 +33,14 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#group-by
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: >-
       Values read inside collection / key / aggregate CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -142,13 +142,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#summarize
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Values read inside collection / aggregate CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -202,13 +202,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#sort
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Values read inside collection / order CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -274,13 +274,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#distinct
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Values read inside collection / key CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -331,13 +331,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#chunk
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Values read inside collection / size CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -384,13 +384,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/collection@0.1.0?local_path=./nodejs#join
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Values read inside left / right / on / select CEL as `inputs.<name>`.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

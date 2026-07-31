@@ -48,7 +48,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/shell@0.3.1?local_path=./nodejs#shell-command
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -89,7 +89,7 @@ inputType:
         type: integer
         minimum: 1
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -128,7 +128,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/shell@0.3.1?local_path=./nodejs#shell-command-stream
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -166,7 +166,7 @@ inputType:
         type: integer
         minimum: 1
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

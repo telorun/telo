@@ -30,7 +30,6 @@ invoke: !ref Slow
 # Long enough that the body can only end via cancellation within the test run.
 kind: Run.Sequence
 metadata: { name: Slow }
-inputs: {}
 steps:
   - name: Wait
     invoke: !ref Pause

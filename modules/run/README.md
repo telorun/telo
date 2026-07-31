@@ -50,7 +50,7 @@ steps:
 A `Run.Sequence` is a `Telo.Runnable`, so it can be a route handler. The data flow has three seams:
 
 1. The route's `inputs:` is a CEL map over the request — its result is passed to the handler's `invoke()`.
-2. The sequence's top-level `inputs:` **declares the input contract** (a JSON Schema property map, `{}` = untyped/dyn). Steps read the values as `${{ inputs.<name> }}`.
+2. The sequence's `inputType:` **declares the input contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Steps read the values as `!cel "inputs.<name>"`, and the kernel fills declared defaults and validates every call against it.
 3. The sequence's `outputs:` is a CEL map producing the `result`; the route's `returns:` reads it as `${{ result }}`.
 
 ```yaml
@@ -76,8 +76,12 @@ routes:
 ---
 kind: Run.Sequence
 metadata: { name: GetUser }
-inputs:
-  userId: {}                               # input contract: untyped (dyn)
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      userId: {}                               # input contract: untyped (dyn)
 steps:
   - name: fetch
     invoke: !ref SelectUser
@@ -89,7 +93,7 @@ outputs:
   user: !cel "steps.fetch.result.rows[0]"  # becomes `result` the route sees
 ```
 
-`inputs:` on the sequence (the contract) and `inputs:` on a step (the values passed to that step's `invoke()`) are different fields that share a name.
+`inputs:` always means **values** — what a call site sends. The contract is `inputType:`, a schema. The two used to share the name `inputs:`, which is why a declared default never applied and a misspelled input went unnoticed: nothing read the contract at dispatch.
 
 ## Bringing up dependencies (`with:` / `targets:`)
 

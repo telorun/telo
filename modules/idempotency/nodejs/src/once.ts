@@ -62,20 +62,14 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
     this.ttlMs = parseDurationMs(resource.ttl);
   }
 
+  // A missing or empty `key` is rejected by the declared `inputType`
+  // (`required: [key]`, `minLength: 1`) before this runs — the kernel binds the
+  // contract to this instance and validates every call. The guard used to live
+  // here because nothing enforced the contract; keeping it now would double-check
+  // the same condition and shadow the kernel's message, which names the target
+  // and the offending value.
   async invoke(inputs: OnceInputs): Promise<OnceResult> {
     const name = this.resource.metadata.name;
-    if (!inputs || typeof inputs.key !== "string" || inputs.key.length === 0) {
-      // An empty key must not collapse every caller onto one key, which would
-      // suppress unrelated operations as "already done". Reporting `in-flight`
-      // would be a lie the caller cannot act on — nothing holds the key, so it
-      // would retry forever against a condition that never clears.
-      throw new InvokeError(
-        "ERR_INVALID_KEY",
-        `Idempotency.Once "${name}": \`key\` must be a non-empty string. It identifies the ` +
-          `operation, so an empty key would merge unrelated calls onto one record. Supply a ` +
-          `deterministic id (a request id, an order id).`,
-      );
-    }
 
     const store = this.ctx.resolveRef(
       this.resource.store,

@@ -15,7 +15,6 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-  Type: ../../type
 targets:
   - !ref Test
 ---
@@ -32,7 +31,7 @@ code: |
     return { status: r.status, serverUrl, path };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -40,7 +39,7 @@ inputType:
       headers: { type: object, additionalProperties: { type: string } }
     required: [ url ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

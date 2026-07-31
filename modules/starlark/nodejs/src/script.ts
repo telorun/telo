@@ -61,25 +61,23 @@ export async function register(ctx: ControllerContext): Promise<void> {
   }
 }
 
+/** `inputType` / `outputType` are declared but never read here: the kernel binds
+ *  the resolved contract to this instance at creation and validates both
+ *  directions around `invoke()`. Validating again would double-check every call
+ *  and let this controller's wording pre-empt the kernel's, which names the
+ *  target and the side that supplied the bad value. */
 class StarlarkScript implements ResourceInstance {
   private code: string;
-  private inputValidator: DataValidator;
-  private outputValidator: DataValidator;
 
   constructor(
     readonly ctx: ResourceContext,
     readonly manifest: ResourceManifest,
   ) {
     this.code = manifest.code || "";
-    this.inputValidator = ctx.createTypeValidator(manifest.inputType);
-    this.outputValidator = ctx.createTypeValidator(manifest.outputType);
   }
 
   async invoke(input: Record<string, any>): Promise<any> {
-    this.inputValidator.validate(input);
-    const result = await executeStarlark(this.code, input);
-    this.outputValidator.validate(result);
-    return result;
+    return executeStarlark(this.code, input);
   }
 }
 

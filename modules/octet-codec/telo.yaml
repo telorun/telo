@@ -43,7 +43,7 @@ extends: Codec.Decoder
 controllers:
   - pkg:npm/@telorun/octet-codec@0.4.2?local_path=./nodejs#decoder
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

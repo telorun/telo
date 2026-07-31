@@ -34,7 +34,7 @@ metadata:
     negotiation, so callers issue the same request whatever the connection is.
 capability: Telo.Invocable
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -55,7 +55,7 @@ inputType:
         type: object
         additionalProperties: true
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     # The JSON-RPC success `result` payload, verbatim. Each MCP RPC has its
     # own result shape (tools/call vs tools/list vs resources/read), so the
@@ -82,7 +82,7 @@ metadata:
     exchange. When one is supplied the connection never performs its own handshake.
 capability: Telo.Provider
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -241,7 +241,7 @@ schema:
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
       x-telo-ref: Self.Client
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -257,7 +257,7 @@ inputType:
         type: object
         additionalProperties: true
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -342,13 +342,13 @@ schema:
       description: Reference to any Mcp.Client implementation.
       x-telo-ref: Self.Client
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     properties: {}
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

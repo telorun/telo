@@ -219,6 +219,66 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     },
   },
   {
+    // Telo.JsonSchema — the concrete data-shape kind, in the kernel rather than
+    // in an installable module for the same reason the mandatory sinks are:
+    // declaring a shape is not optional. Every kind with an invocation contract
+    // needs one, so requiring an import to write `inputType:` would put a tax on
+    // the one thing the contract wants authors to do more of — and a library
+    // declaring a contract would have to import a module purely to describe
+    // itself. `type.JsonSchema` remains as a deprecated alias of this kind.
+    kind: "Telo.Definition",
+    metadata: { name: "JsonSchema", module: "Telo" },
+    capability: "Telo.Type",
+    // Declared so the kind reads as controller-BEARING, which is what lets
+    // another definition inherit it by delegation (`extends: Telo.JsonSchema`
+    // with no controller of its own). The entry is never loaded from — the
+    // kernel registers this controller directly at boot, before any lazy
+    // resolution — it states truthfully who provides it.
+    controllers: [{ runtime: "kernel", entry: "Telo.JsonSchema" }],
+    schema: {
+      type: "object",
+      properties: {
+        schema: {
+          title: "Schema",
+          description: "JSON Schema definition for the declared data type.",
+          type: "object",
+        },
+        extends: {
+          title: "Extends",
+          description: "Parent type name or list of parent type names to inherit from.",
+          oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+        },
+        rules: {
+          title: "Rules",
+          description:
+            "CEL-based business invariant rules. Each rule's condition must return true for valid data.",
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              condition: {
+                type: "string",
+                description:
+                  "CEL expression evaluated with 'this' bound to the data. Must return true for valid data.",
+              },
+              code: {
+                type: "string",
+                description: "Machine-readable error code surfaced on validation failure.",
+              },
+              message: {
+                type: "string",
+                description: "Optional human-readable hint for the validation failure.",
+              },
+            },
+            required: ["condition", "code"],
+          },
+        },
+      },
+      required: ["schema"],
+      additionalProperties: false,
+    },
+  },
+  {
     kind: "Telo.Definition",
     metadata: { name: "Abstract", module: "Telo" },
     capability: "Telo.Template",
@@ -491,6 +551,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           default: "shared",
         },
         targets: {
+          // Boot targets form a step list: a later target reads an earlier one's
+          // result as `steps.<name>.result`, exactly as a sequence step does, so
+          // the same annotation types that context and drives the call-site
+          // contract check.
+          "x-telo-step-context": { invoke: "invoke", outputType: "outputType" },
           type: "array",
           items: {
             anyOf: [
@@ -564,7 +629,15 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                       { "x-telo-ref": "Telo.Runnable" },
                     ],
                   },
-                  inputs: { type: "object", additionalProperties: true },
+                  inputs: {
+                    // Same annotation Run.Sequence steps carry: it is what makes
+                    // a boot target's inputs visible to the call-site contract
+                    // check and to the wiring rule. Without it the kernel would
+                    // validate these at dispatch and nothing before it.
+                    "x-telo-topology-role": "inputs",
+                    type: "object",
+                    additionalProperties: true,
+                  },
                   when: { type: "string" },
                 },
                 additionalProperties: false,

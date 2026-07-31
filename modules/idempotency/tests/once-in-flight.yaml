@@ -12,8 +12,8 @@ metadata:
     report `in-flight`, carry the first caller's holder token, and — the decisive
     part — must NOT have run the body.
 
-    Also covers the two input guards: an empty key is ERR_INVALID_KEY rather than
-    a fabricated `in-flight` that no caller could ever act on.
+    Also covers the input guard: an empty key is rejected by the declared
+    inputType rather than fabricating an `in-flight` no caller could act on.
 imports:
   Idempotency: ../
   KvStoreMemory: ../../kv-store-memory
@@ -125,10 +125,17 @@ steps:
     try:
       - name: go
         invoke: !ref SlowOnce
-        inputs: { key: "" }
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
+        # RUNTIME boundary — which is how a real violation arrives anyway, from a
+        # computed value rather than something visible in the manifest.
+        inputs: { key: !cel "''" }
     catch:
       - name: verify
         inputs:
           actual: !cel "error.code"
-          expected: ERR_INVALID_KEY
+          # `minLength: 1` on the declared inputType is what rejects an empty
+          # key, so the failure is the kernel's ambient contract code rather
+          # than one this kind raises itself.
+          expected: ERR_INPUT_INVALID
         invoke: { kind: Assert.Equals }

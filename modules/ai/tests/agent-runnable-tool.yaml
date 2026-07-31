@@ -20,8 +20,12 @@ emitToolCall:
 kind: Run.Value
 metadata:
   name: Doubler
-inputs:
-  n: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: { type: integer }
 value:
   doubled: "${{ double(inputs.n) * 2.0 }}"
 ---
@@ -31,8 +35,12 @@ value:
 kind: Run.Sequence
 metadata:
   name: ComputePipeline
-inputs:
-  n: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: { type: integer }
 steps:
   - name: Double
     invoke: !ref Doubler

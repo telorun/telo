@@ -174,6 +174,87 @@ export class ResourceContextImpl implements ResourceContext {
     return this.validator.getTypeRules(name);
   }
 
+  /** The JSON Schema behind a type field, resolved the same four ways
+   *  {@link createTypeValidator} resolves it (named ref, `{kind, name}` ref
+   *  object, inline `{kind, schema}`, raw schema), and then followed through a
+   *  bare `telo://<module>/<Type>` `$ref` to the schema that type registered.
+   *
+   *  Following the `$ref` matters because AJV resolves cross-schema references
+   *  against its own registry at compile time, while the kernel's registry is
+   *  what actually holds these — a `Type.JsonSchema` registers under the
+   *  canonical URI as a *key*, which AJV does not treat as a resolvable id. A
+   *  definition whose whole contract is `{ $ref: "telo://Self/TokenSet" }` (the
+   *  sanctioned way to declare a shape once and reference it from several kinds)
+   *  would otherwise be uncompilable at dispatch. Resolving here means AJV is
+   *  handed the real schema and never has to resolve the reference at all.
+   *
+   *  Contract binding needs the schema rather than just a compiled validator
+   *  anyway, for the decisions a validator cannot answer: which properties carry
+   *  `x-telo-stream` and must be exempt from the walk, and which paths a
+   *  `default:` can be written to. Returns undefined when the reference resolves
+   *  to nothing. */
+  resolveTypeSchema(typeRef: unknown): Record<string, any> | undefined {
+    return this.followTypeAlias(this.readTypeSchema(typeRef), new Set());
+  }
+
+  private readTypeSchema(typeRef: unknown): Record<string, any> | undefined {
+    if (!typeRef) return undefined;
+    if (typeof typeRef === "string") return this.validator.getSchema(typeRef) as any;
+    if (typeof typeRef !== "object") return undefined;
+    const ref = typeRef as Record<string, any>;
+    if (ref.schema && typeof ref.schema === "object") return ref.schema;
+    if (typeof ref.name === "string") return this.validator.getSchema(ref.name) as any;
+    if (ref.type || ref.properties || ref.$ref) return ref;
+    return undefined;
+  }
+
+  /**
+   * Follow a schema that is nothing but a `$ref` to a registered type, so the
+   * schema-level questions (which properties are streams, which paths carry a
+   * default) are asked of the real shape rather than of an alias.
+   *
+   * Only the whole-document alias form is followed, and only to READ it — the
+   * schema handed to AJV keeps its `$ref`s intact, because AJV resolves them
+   * itself against the registered ids and each type stays its own document with
+   * its own `$defs`. Inlining instead would move a `$ref: "#/$defs/X"` out of the
+   * document that defines `$defs.X`.
+   *
+   * `seen` guards a cycle two mutually-referencing types would otherwise spin on.
+   * A `$ref` alongside other keywords is left alone: that is a composition, not
+   * an alias.
+   */
+  private followTypeAlias(
+    schema: Record<string, any> | undefined,
+    seen: Set<string>,
+  ): Record<string, any> | undefined {
+    let current = schema;
+    while (
+      current &&
+      typeof current.$ref === "string" &&
+      Object.keys(current).length === 1 &&
+      !seen.has(current.$ref)
+    ) {
+      seen.add(current.$ref);
+      const target = this.validator.getSchema(current.$ref) as Record<string, any> | undefined;
+      if (!target) return current;
+      current = target;
+    }
+    return current;
+  }
+
+  /** Compile `schema` but compose the CEL `rules:` registered under `name`.
+   *
+   *  A named type's rules are its business invariants, and they are reachable
+   *  only through the name. {@link createTypeValidator} composes them when it is
+   *  handed a bare name, but a caller that must adjust the schema first — the
+   *  contract binding, which strips `x-telo-stream` properties before validating
+   *  — would otherwise have to choose between the adjustment and the rules. */
+  createTypeValidatorWithRules(name: string | undefined, schema: Record<string, any>) {
+    const base = this.validator.compile(schema);
+    const rules = name ? this.validator.getTypeRules(name) : undefined;
+    return rules && rules.length > 0 ? this.validator.composeWithRules(base, name!, rules) : base;
+  }
+
   createTypeValidator(typeRef: string | Record<string, any> | undefined) {
     if (!typeRef) return new NoopValidator();
 

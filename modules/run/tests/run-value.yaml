@@ -14,10 +14,14 @@ targets:
 kind: Run.Value
 metadata:
   name: Shape
-inputs:
-  name: { type: string }
-  a: { type: number }
-  b: { type: number }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
+      a: { type: number }
+      b: { type: number }
 value:
   greeting: "${{ 'Hello, ' + inputs.name + '!' }}"
   product: "${{ inputs.a * inputs.b }}"
@@ -34,8 +38,12 @@ value:
 kind: Run.Value
 metadata:
   name: Answer
-inputs:
-  n: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: { type: integer }
 value: "${{ double(inputs.n) * 2.0 }}"
 ---
 kind: Run.Sequence

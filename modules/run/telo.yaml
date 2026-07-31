@@ -280,17 +280,22 @@ schema:
           - type: string
             x-telo-ref: Telo.Service
           - $ref: "telo://manifest#/$defs/ResourceRef"
-    inputs:
-      title: Inputs
-      type: object
+    inputType:
+      title: Input Type
       description: >-
-        The sequence's input contract: a JSON Schema property map (name →
-        schema), NOT values. Each key declares one input the sequence accepts;
-        an empty schema `{}` declares an untyped (dyn) input. Callers supply
-        actual values at invoke time (e.g. an `Http.Api` route's `inputs:`
-        CEL map, or a parent step's `inputs:`), and steps read them as
-        `!cel "inputs.<name>"`.
-      additionalProperties: true
+        The sequence's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type definition. Declaring it types
+        `steps.<name>.result` for callers, has every result slot checked
+        statically by `x-telo-value-schema-from`, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
     outputs:
       title: Outputs
       type: object
@@ -304,6 +309,7 @@ schema:
         type: object
         properties:
           inputs: {}
+      x-telo-value-schema-from: outputType
     steps:
       title: Steps
       description: Ordered sequence of steps to execute.
@@ -317,9 +323,14 @@ schema:
   required:
     - steps
   examples:
-    - inputs:
-        userId: {}
-        limit: { type: integer }
+    - inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [userId]
+          properties:
+            userId: {}
+            limit: { type: integer }
       steps:
         - name: fetchUser
           invoke: !ref GetUser
@@ -346,16 +357,22 @@ controllers:
 schema:
   type: object
   properties:
-    inputs:
-      title: Inputs
+    inputType:
+      title: Input Type
       description: >-
-        The value's input contract: a JSON Schema property map (name → schema),
-        NOT values. Each key declares one input the resource accepts; an empty
-        schema `{}` declares an untyped (dyn) input. Callers supply actual
-        values at invoke time (an `Ai.Tools` entry, a parent `Run.Sequence`
-        step, an `Http.Api` route), and `value` reads them as `!cel "inputs.x"`.
-      type: object
-      additionalProperties: true
+        The value's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type definition. Declaring it types
+        `steps.<name>.result` for callers, has every result slot checked
+        statically by `x-telo-value-schema-from`, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
     value:
       title: Value
       description: >-
@@ -369,13 +386,19 @@ schema:
         properties:
           inputs:
             type: object
-            x-telo-context-from: "inputs"
+            x-telo-context-from: "inputType"
+      x-telo-value-schema-from: outputType
   required:
     - value
   examples:
-    - inputs:
-        a: { type: number }
-        b: { type: number }
+    - inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [a, b]
+          properties:
+            a: { type: number }
+            b: { type: number }
       value:
         product: !cel "inputs.a * inputs.b"
     - value:
@@ -402,23 +425,24 @@ throws:
       description: No choice matched and no `default` is declared.
     ERR_INVALID_PREDICATE:
       description: A choice's `when` evaluated to something other than a boolean.
-    ERR_OUTPUT_INVALID:
-      description: The winning row's `value` does not satisfy the declared `outputType`.
+    # A row whose `value` does not satisfy `outputType` raises the kernel's
+    # ambient ERR_OUTPUT_INVALID — the contract is enforced once, where every
+    # kind's is. It stays catchable by name; it is simply not this kind's to
+    # declare.
 schema:
   type: object
   additionalProperties: false
   required:
     - choices
   properties:
-    inputs:
-      title: Inputs
+    inputType:
+      title: Input Type
       description: >-
-        The decision's input contract: a JSON Schema property map (name →
-        schema), NOT values. Each key declares one input the resource accepts;
-        an empty schema `{}` declares an untyped (dyn) input. Callers supply
-        actual values at invoke time, and rows read them as `!cel "inputs.x"`.
-      type: object
-      additionalProperties: true
+        The decision table's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
     outputType:
       title: Output Type
       description: >-
@@ -440,7 +464,7 @@ schema:
         properties:
           inputs:
             type: object
-            x-telo-context-from: "inputs"
+            x-telo-context-from: "inputType"
       items:
         title: Choice
         type: object
@@ -479,15 +503,20 @@ schema:
         properties:
           inputs:
             type: object
-            x-telo-context-from: "inputs"
+            x-telo-context-from: "inputType"
       properties:
         value:
           title: Value
           description: The fallback value, evaluated over `inputs` like a row's `value`.
           x-telo-value-schema-from: outputType
   examples:
-    - inputs:
-        order: {}
+    - inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [order]
+          properties:
+            order: {}
       choices:
         - when: !cel "inputs.order.total >= 100"
           value:
@@ -708,14 +737,22 @@ schema:
       required:
         - name
   properties:
-    inputs:
-      title: Inputs
+    inputType:
+      title: Input Type
       description: >-
-        The iteration's input contract: a JSON Schema property map (name →
-        schema), NOT values. Callers supply values at invoke time; the body
-        reads them as `!cel "inputs.<name>"`.
-      type: object
-      additionalProperties: true
+        The iteration's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type definition. Declaring it types
+        `steps.<name>.result` for callers, has every result slot checked
+        statically by `x-telo-value-schema-from`, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
     collection:
       title: Collection
       description: CEL expression resolving to the array iterated over.
@@ -997,13 +1034,22 @@ schema:
       required:
         - name
   properties:
-    inputs:
-      title: Inputs
+    inputType:
+      title: Input Type
       description: >-
-        The projection's input contract: a JSON Schema property map (name →
-        schema), NOT values. The body reads them as `!cel "inputs.<name>"`.
-      type: object
-      additionalProperties: true
+        The projection's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type definition. Declaring it types
+        `steps.<name>.result` for callers, has every result slot checked
+        statically by `x-telo-value-schema-from`, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
     collection:
       title: Collection
       description: CEL expression resolving to the array projected over.
@@ -1082,6 +1128,7 @@ schema:
           item: { x-telo-context-element-from: "collection" }
           index: { type: integer }
           items: { type: array }
+      x-telo-value-schema-from: outputType
   required:
     - collection
     - steps
@@ -1303,13 +1350,22 @@ schema:
       required:
         - name
   properties:
-    inputs:
-      title: Inputs
+    inputType:
+      title: Input Type
       description: >-
-        The loop's input contract: a JSON Schema property map (name → schema),
-        NOT values. The body reads them as `!cel "inputs.<name>"`.
-      type: object
-      additionalProperties: true
+        The loop's input contract — a named type reference or an inline type definition. Callers supply values at invoke
+        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
+        this contract to the resource: declared defaults are filled and every
+        call is validated against it before dispatch.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type definition. Declaring it types
+        `steps.<name>.result` for callers, has every result slot checked
+        statically by `x-telo-value-schema-from`, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
     condition:
       title: Condition
       description: >-
@@ -1387,6 +1443,7 @@ schema:
           inputs: {}
           iteration: { type: integer }
           previous: {}
+      x-telo-value-schema-from: outputType
   required:
     - steps
   examples:
@@ -1410,13 +1467,13 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/run@0.12.0?local_path=./nodejs#detach
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true
     description: Inputs passed through to the wrapped target at dispatch time.
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

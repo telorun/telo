@@ -1,3 +1,16 @@
+# DEPRECATED — use the kernel built-in `Telo.JsonSchema` instead.
+#
+# Declaring a data shape stopped being optional once every kind could carry an
+# invocation contract: an author writing `inputType:` should not have to import a
+# module first, and a library declaring its own contract should not have to
+# import one purely to describe itself. So `JsonSchema` moved into the kernel
+# alongside the mandatory log sinks, on the same reasoning — a capability every
+# conforming runtime must provide does not belong in an installable module.
+#
+# This module remains, unchanged in behaviour, so published manifests that import
+# it keep resolving. `kind: Type.JsonSchema` and `kind: Telo.JsonSchema` accept
+# the same fields and produce the same registrations; new manifests should write
+# the built-in and drop the import.
 kind: Telo.Library
 metadata:
   name: type
@@ -6,71 +19,27 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Data]
   description: >-
-    Reusable data shapes declared once and referenced anywhere a type is expected — a
-    call's inputs or results, a request body, a model's output. Shapes inherit from
-    one another, and CEL rules express invariants that JSON Schema alone cannot, each
-    failing with its own error code.
+    DEPRECATED — superseded by the kernel built-in `Telo.JsonSchema`, which needs no
+    import. Reusable data shapes declared once and referenced anywhere a type is
+    expected: a call's inputs or results, a request body, a model's output. Shapes
+    inherit from one another, and CEL rules express invariants that JSON Schema alone
+    cannot, each failing with its own error code.
 exports:
   kinds:
     - JsonSchema
 ---
+# DEPRECATED — use `kind: Telo.JsonSchema`, which is identical and built in.
+#
+# This is now a pure ALIAS: it inherits the built-in's controller by delegation
+# and declares no implementation of its own. Two copies of the same controller
+# would have had to be kept identical by hand forever, in a module nobody has a
+# reason to open again.
 kind: Telo.Definition
 metadata:
   name: JsonSchema
   description: >-
-    Declares a named data shape as JSON Schema, optionally inheriting from other named
-    shapes, with CEL rules for the invariants schema cannot state. Each rule carries
-    an error code reported when data violates it.
-capability: Telo.Type
-controllers:
-  - pkg:npm/@telorun/type@0.5.0?local_path=./nodejs#type
-schema:
-  type: object
-  properties:
-    schema:
-      title: Schema
-      description: JSON Schema definition for the declared data type.
-      type: object
-    extends:
-      title: Extends
-      description: Parent type name or list of parent type names to inherit from.
-      oneOf:
-        - type: string
-        - type: array
-          items:
-            type: string
-    rules:
-      title: Rules
-      description: CEL-based business invariant rules. Each rule's condition must return true for valid data.
-      type: array
-      items:
-        type: object
-        properties:
-          condition:
-            type: string
-            description: CEL expression evaluated with 'this' bound to the data. Must return true for valid data.
-          code:
-            type: string
-            description: Machine-readable error code surfaced on validation failure.
-          message:
-            type: string
-            description: Optional human-readable hint for the validation failure.
-        required: ["condition", "code"]
-  required: ["schema"]
-  additionalProperties: false
-  examples:
-    - schema:
-        type: object
-        required: [id]
-        properties:
-          id: { type: string }
-    - extends: Entity
-      schema:
-        type: object
-        required: [amount]
-        properties:
-          amount: { type: number }
-      rules:
-        - condition: "this.amount > 0"
-          code: "ERR_NON_POSITIVE"
-          message: "Amount must be positive"
+    DEPRECATED — use the built-in `Telo.JsonSchema` instead. Declares a named data
+    shape as JSON Schema, optionally inheriting from other named shapes, with CEL
+    rules for the invariants schema cannot state. Each rule carries an error code
+    reported when data violates it.
+extends: Telo.JsonSchema

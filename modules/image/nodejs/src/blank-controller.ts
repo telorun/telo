@@ -37,17 +37,12 @@ interface BlankOutputs {
 class ImageBlank implements ResourceInstance<BlankInputs, BlankOutputs> {
   constructor(private readonly resource: BlankResource) {}
 
+  // `width` / `height` bounds are declared on `inputType` (integer, 1..16384)
+  // and enforced by the kernel's contract binding before this runs, so the guard
+  // that used to re-check them here is gone. `color` stays: "is a recognized CSS
+  // color" is not something JSON Schema can express, so the kind still owns it.
   async invoke(inputs: BlankInputs): Promise<BlankOutputs> {
     const label = `Image.Blank "${this.resource.metadata.name}"`;
-    for (const side of ["width", "height"] as const) {
-      const value = inputs?.[side];
-      if (!Number.isInteger(value) || value < 1 || value > MAX_DIMENSION) {
-        throw new InvokeError(
-          "ERR_INVALID_INPUT",
-          `${label}: '${side}' must be an integer between 1 and ${MAX_DIMENSION}; got ${value}.`,
-        );
-      }
-    }
     const color = inputs.color ?? this.resource.color ?? "#FFFFFF";
 
     const canvas = createCanvas(inputs.width, inputs.height);

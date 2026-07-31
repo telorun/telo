@@ -17,9 +17,13 @@ targets:
 kind: Run.Value
 metadata:
   name: ComputeSum
-inputs:
-  a: { type: number }
-  b: { type: number }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: number }
+      b: { type: number }
 value:
   value: !cel "inputs.a + inputs.b"
 ---

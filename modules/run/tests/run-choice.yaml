@@ -11,7 +11,6 @@ metadata:
     declared `outputType`, and a `when` that isn't a boolean.
 imports:
   Run: ../
-  Type: ../../type
   Assert: ../../assert
 targets:
   - !ref TestFirstMatch
@@ -26,10 +25,14 @@ targets:
 kind: Run.Choice
 metadata:
   name: ShippingTier
-inputs:
-  order: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      order: {}
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [tier, cost]
@@ -59,10 +62,14 @@ default:
 kind: Run.Choice
 metadata:
   name: BadShape
-inputs:
-  n: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: {}
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     required: [tier]
@@ -81,8 +88,12 @@ choices:
 kind: Run.Choice
 metadata:
   name: BadPredicate
-inputs:
-  n: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: {}
 choices:
   - when: !cel "inputs.n"
     value: nope
@@ -91,8 +102,12 @@ choices:
 kind: Run.Choice
 metadata:
   name: Exhaustive
-inputs:
-  n: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: { type: integer }
 choices:
   - when: !cel "inputs.n > 0"
     value: positive

@@ -1,0 +1,57 @@
+kind: Telo.Library
+metadata:
+  name: contract-remap
+  version: 0.1.0
+  description: >-
+    A kind that inherits a concrete controller and presents its own invocation
+    signature, bridged onto the parent's call by inputs:/result: mappings.
+imports:
+  JS: ../../../modules/javascript
+exports:
+  kinds:
+    - Doubler
+---
+# A child that REPLACES its inherited contract.
+#
+# Contracts resolve to the nearest declaration along `extends` and never merge,
+# so `Doubler` presents `{ value }` — not `{ value }` unioned with whatever
+# JS.Script accepts. The `inputs:` mapping is what makes the replacement legal:
+# it turns the child's signature into the parent's call. `result:` maps back.
+#
+# Four boundaries are checked per dispatch where zero were before: the child's
+# inputs, the mapped inputs against the parent, the parent's result, and the
+# mapped result against the child's outputType.
+kind: Telo.Definition
+metadata:
+  name: Doubler
+  description: Doubles an integer, reusing the JavaScript controller under its own signature.
+extends: JS.Script
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+base:
+  code: |
+    function main({ n }) {
+      return { out: n * 2 };
+    }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [value]
+    additionalProperties: false
+    properties:
+      value: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [doubled]
+    additionalProperties: false
+    properties:
+      doubled: { type: integer }
+inputs:
+  n: !cel "inputs.value"
+result:
+  doubled: !cel "result.out"

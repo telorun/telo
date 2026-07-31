@@ -13,9 +13,24 @@
 
 export const TELO_TYPE_SCHEME = "telo://";
 
-/** The canonical, alias-resolved `$id` a named type schema is registered under. */
+/**
+ * The canonical, alias-resolved id a named type schema is registered under.
+ *
+ * Authority-free (`telo:<module>/<type>`, not `telo://<module>/<type>`) because
+ * a JSON Schema validator has to RESOLVE it: AJV parses a `$ref` as a
+ * URI-reference against the document base, and a non-standard scheme carrying an
+ * authority resolves to nothing — a schema registered under `telo://M/T` cannot
+ * be referenced by `$ref: "telo://M/T"` no matter how it is registered, while the
+ * authority-free form resolves natively. Nothing enforced this before because no
+ * runtime path ever compiled a `$ref`-bearing contract; the invocation contract
+ * does, on every declaring kind.
+ *
+ * This is the INTERNAL id only. Authors keep writing the readable authority form
+ * (`telo://Self/<type>`, `telo://<Alias>/<type>`) — see {@link parseTeloTypeRef} —
+ * and the loader rewrites it to this. Published manifests are unaffected.
+ */
 export function canonicalTypeSchemaId(moduleName: string, typeName: string): string {
-  return `${TELO_TYPE_SCHEME}${moduleName}/${typeName}`;
+  return `telo:${moduleName}/${typeName}`;
 }
 
 /** Top-level keywords merged structurally rather than copied wholesale when

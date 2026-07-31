@@ -48,7 +48,7 @@ extends: Codec.Decoder
 controllers:
   - pkg:npm/@telorun/gzip@0.2.1?local_path=./nodejs#decoder
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

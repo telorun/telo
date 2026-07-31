@@ -36,7 +36,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -54,7 +54,7 @@ inputType:
         enum: [utf8, base64]
         default: utf8
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -98,7 +98,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-write
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -125,7 +125,7 @@ inputType:
         type: boolean
         default: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -166,7 +166,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-edit
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -192,7 +192,7 @@ inputType:
         type: boolean
         default: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -233,7 +233,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-listing
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -249,7 +249,7 @@ inputType:
         type: boolean
         default: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -307,7 +307,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-creation
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -324,7 +324,7 @@ inputType:
         type: boolean
         default: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -366,7 +366,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-snapshot
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -384,7 +384,7 @@ inputType:
         type: array
         items: { type: string }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -437,7 +437,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-sync
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -469,7 +469,7 @@ inputType:
         type: array
         items: { type: string, minLength: 1 }
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -511,7 +511,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-removal
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
@@ -528,7 +528,7 @@ inputType:
         type: boolean
         default: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false

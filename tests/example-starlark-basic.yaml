@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
   description: Test for starlark-basic example
 imports:
-  Type: ../modules/type
   Run: ../modules/run
   Starlark: ../modules/starlark
   Console: ../modules/console
@@ -13,7 +12,7 @@ targets:
   - !ref RunScriptOnEvent
   - !ref VerifyStarlarkBasicEvents
 ---
-kind: Type.JsonSchema
+kind: Telo.JsonSchema
 metadata:
   name: ScriptInput
 schema:
@@ -23,7 +22,7 @@ schema:
       type: number
   required: [ value ]
 ---
-kind: Type.JsonSchema
+kind: Telo.JsonSchema
 metadata:
   name: ScriptOutput
 schema:

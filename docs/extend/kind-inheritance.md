@@ -35,10 +35,70 @@ template body inherits, by delegation:
   `base:`, so the child genuinely narrows. Without `base:`, the child's schema is
   `merge(parent, own)` — a pure additive extension exposing the parent's config
   fields plus its own.
+- **The invocation contract — by replacement, not merge.** `inputType` /
+  `outputType` resolve to the **nearest declaration** along the chain: declare
+  neither and the child presents its ancestor's signature unchanged; declare one
+  and it *fully replaces* the ancestor's. Config merges because construction is
+  additive; a call signature is not — merging a child's required inputs into its
+  parent's would produce a union no caller could satisfy.
 
 A child is **Liskov-substitutable** for every ancestor at any `!ref` slot,
 transitively — a `GithubClient` satisfies any slot typed
-`x-telo-ref: Http.Client`.
+`x-telo-ref: Http.Client`. Replacing the contract does not change that: `extends`
+decides which slots accept a resource, and never carried the dispatch contract.
+What a replaced contract does affect is *wiring*, per slot — see
+[Presenting your own signature](#presenting-your-own-signature).
+
+## Presenting your own signature
+
+A child that inherits a controller may present a different call signature by
+declaring its own contract **plus the mapping that bridges it back**:
+
+| declared     | required mapping | what it does                                   |
+| ------------ | ---------------- | ---------------------------------------------- |
+| `inputType`  | `inputs:`        | turns the child's signature into the parent's call |
+| `outputType` | `result:`        | turns the parent's result into the child's        |
+
+The mapping is not optional. The inherited controller understands only the shape
+it was written for, so a declaration without one would never be applied —
+`telo check` reports `CONTRACT_MISSING_MAPPING`.
+
+```yaml
+kind: Telo.Definition
+metadata: { name: Doubler }
+extends: JS.Script
+schema: { type: object, additionalProperties: false, properties: {} }
+base:
+  code: |
+    function main({ n }) { return { out: n * 2 }; }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [value]
+    properties: { value: { type: integer } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [doubled]
+    properties: { doubled: { type: integer } }
+inputs:
+  n: !cel "inputs.value"
+result:
+  doubled: !cel "result.out"
+```
+
+One dispatch now checks four boundaries where none were checked before: the
+child's inputs, the mapped values against the parent's contract, the parent's
+result, and the mapped result against the child's `outputType`.
+
+`Doubler` stays wired wherever `JS.Script` is. Where the wiring rule bites is a
+slot whose consumer builds the arguments itself from the slot's declared kind
+alone — it would send the parent's shape to something that accepts the child's,
+so `telo check` rejects it (`CONTRACT_SLOT_INPUTS_UNSATISFIABLE`). At a slot that
+takes a paired author `inputs:` — a `Run.Sequence` step, an inline target step —
+the author supplies the arguments and the call site is checked instead.
 
 ## `base:` — the super mapping
 

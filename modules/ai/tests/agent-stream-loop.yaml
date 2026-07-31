@@ -15,7 +15,6 @@ imports:
   Http: ../../http-server
   Ndjson: ../../ndjson-codec
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -29,9 +28,13 @@ emitToolCall:
 ---
 kind: Run.Value
 metadata: { name: Multiplier }
-inputs:
-  a: { type: number }
-  b: { type: number }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: number }
+      b: { type: number }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
@@ -114,7 +117,7 @@ code: |
     };
   }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -122,7 +125,7 @@ inputType:
       prompt: { type: string }
     required: [ url, prompt ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: true

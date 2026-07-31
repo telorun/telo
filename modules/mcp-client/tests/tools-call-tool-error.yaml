@@ -14,8 +14,12 @@ targets: [ !ref TestRun ]
 # Run.Sequence try/catch then observes.
 kind: Run.Value
 metadata: { name: WeatherImpl }
-inputs:
-  city: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      city: { type: string }
 value:
   summary: !cel "'unreachable ' + inputs.city"
 ---

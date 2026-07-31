@@ -28,9 +28,13 @@ client: !ref McpServer
 kind: Run.Value
 metadata:
   name: Multiplier
-inputs:
-  a: { type: number }
-  b: { type: number }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: number }
+      b: { type: number }
 value:
   product: !cel "inputs.a * inputs.b"
 ---

@@ -8,6 +8,20 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { formatAjvErrors } from "./manifest-schemas.js";
+
+/** Render a value for an error message without ever throwing.
+ *
+ *  `JSON.stringify` refuses BigInt, and CEL evaluates an integer literal to one —
+ *  so serializing the offending data threw from inside the message template and
+ *  the thrown stringify error REPLACED the validation failure. The author was
+ *  told "cannot serialize BigInt" instead of which field was wrong. */
+function describeValue(data: unknown): string {
+  try {
+    return JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? `${v}` : v)) ?? String(data);
+  } catch {
+    return String(data);
+  }
+}
 import {
   EXACT_TEMPLATE_REGEX,
   isTaggedSentinel,
@@ -297,7 +311,7 @@ export class SchemaValidator {
         if (!isValid) {
           throw new RuntimeError(
             "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
-            `Invalid value passed: ${JSON.stringify(data)}. Error: ${formatAjvErrors(validate.errors)}`,
+            `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors)}`,
           );
         }
       },

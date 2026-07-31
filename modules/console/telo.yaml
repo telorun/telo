@@ -31,7 +31,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writeline
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -60,7 +60,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#readline
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     examples:
@@ -95,7 +95,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writestream
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -124,7 +124,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#streamwait
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -134,7 +134,7 @@ inputType:
     required: [input]
     additionalProperties: false
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:

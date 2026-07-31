@@ -27,8 +27,12 @@ code: |
 ```yaml
 kind: Run.Value
 metadata: { name: MakeId }
-inputs:
-  seed: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      seed: { type: string }
 value:
   documentId: "${{ 'drawings/' + inputs.seed + '.png' }}"
 ```
@@ -37,7 +41,7 @@ value:
 
 | Field | Purpose |
 | --- | --- |
-| `inputs` | The input **contract**: a JSON Schema property map (name → schema), NOT values. `{}` declares an untyped (dyn) input. The `value` expression reads them as `${{ inputs.<name> }}`. Optional — a constant needs no inputs. |
+| `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. The `value` expression reads the values as `!cel "inputs.<name>"`. Optional — a constant needs none. |
 | `value` | A CEL expression, a structure (map / array) with CEL leaves, or a plain literal. Evaluated at invoke time over `inputs`; the result is what callers receive and may be any shape (object, array, scalar). |
 
 Like `Run.Sequence`, the `inputs:` field is the contract (what the resource accepts), distinct from the `inputs:` a caller passes at invoke time (the values).
@@ -47,9 +51,13 @@ Like `Run.Sequence`, the `inputs:` field is the contract (what the resource acce
 ```yaml
 kind: Run.Value
 metadata: { name: Multiplier }
-inputs:
-  a: { type: number }
-  b: { type: number }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: number }
+      b: { type: number }
 value:
   product: "${{ inputs.a * inputs.b }}"
 ```
@@ -87,8 +95,12 @@ tools:
 ---
 kind: Run.Value
 metadata: { name: Greeter }
-inputs:
-  target: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      target: { type: string }
 value:
   greeting: "${{ 'Hello, ' + inputs.target + '!' }}"
 ```

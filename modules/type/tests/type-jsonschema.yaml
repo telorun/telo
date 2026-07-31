@@ -132,8 +132,10 @@ steps:
   - name: BadInput
     try:
       - name: CallWithString
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check`, and this test is about the RUNTIME contract boundary.
         inputs:
-          a: "not a number"
+          a: !cel "'not a number'"
           b: 5
         invoke: !ref AddNumbers
     catch:
@@ -179,8 +181,12 @@ steps:
   - name: MissingParentField
     try:
       - name: CallWithoutId
-        inputs:
-          name: "Bob"
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check`, and this test is about the RUNTIME contract boundary.
+        # The whole map comes from one expression so the omission is only
+        # visible at runtime — a statically-absent required input is a
+        # `telo check` error, and this test is about the runtime boundary.
+        inputs: !cel "{'name': 'Bob'}"
         invoke: !ref Identity
     catch:
       - name: VerifyInheritanceError
@@ -234,7 +240,7 @@ steps:
             properties:
               msg:
                 type: string
-                const: "Amount must be positive"
+                pattern: "Amount must be positive$"
 ---
 # ─── Additional type definitions ──────────────────────────────────────────────
 
@@ -364,7 +370,7 @@ steps:
             properties:
               msg:
                 type: string
-                const: "Amount must not be negative"
+                pattern: "Amount must not be negative$"
   # Invalid: 2000 passes first rule but fails second
   - name: OverLimit
     try:
@@ -383,7 +389,7 @@ steps:
             properties:
               msg:
                 type: string
-                const: "Amount exceeds limit of 1000"
+                pattern: "Amount exceeds limit of 1000$"
 ---
 # ─── Test 7: multiple extends ────────────────────────────────────────────────
 
@@ -417,9 +423,9 @@ steps:
   - name: MissingTimestamp
     try:
       - name: CallWithoutTimestamp
-        inputs:
-          id: "x-2"
-          label: "Oops"
+        # Whole map from one expression: the omission is only visible at
+        # runtime, which is the boundary this test is about.
+        inputs: !cel "{'id': 'x-2', 'label': 'Oops'}"
         invoke: !ref FullIdentity
     catch:
       - name: VerifyTimestampError
@@ -482,9 +488,11 @@ steps:
   - name: LowScore
     try:
       - name: CallLowScore
+        # Deliberately invalid, routed through CEL: a literal is rejected by
+        # `telo check`, and this test is about the RUNTIME contract boundary.
         inputs:
           id: "x"
-          score: 5
+          score: !cel "5"
         invoke: !ref UseScored
     catch:
       - name: VerifyCompositionError

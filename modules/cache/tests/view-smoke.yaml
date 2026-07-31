@@ -20,8 +20,12 @@ metadata: { name: Mem }
 # Wrapped source-of-truth: echoes a value derived from the cache key.
 kind: Run.Value
 metadata: { name: Loader }
-inputs:
-  key: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      key: { type: string }
 value:
   source: !cel "'value-for-' + inputs.key"
 ---

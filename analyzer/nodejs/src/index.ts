@@ -38,15 +38,27 @@ export { moduleScopedDefResolver, scopeResolverForModule } from "./alias-resolve
 export type { ModuleScopes } from "./alias-resolver.js";
 export {
   ancestorChain,
+  contractDeclarer,
   controllerBearingAncestor,
   effectiveAuthorSchema,
+  effectiveContractField,
   effectiveStatusSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   isInheritedDelegation,
+  mappingFieldFor,
+  needsContractMapping,
   resolveParent,
 } from "./extends-resolution.js";
-export type { DefResolver } from "./extends-resolution.js";
+export type { ContractDirection, DefResolver } from "./extends-resolution.js";
+export {
+  defaultBearingPaths,
+  PERMISSIVE_CONTRACT,
+  resolveContract,
+  resolveContractSchema,
+  withStreamPropertiesSkipped,
+} from "./invocation-contract.js";
+export type { ContractOrigin, ContractScope, ResolvedContract } from "./invocation-contract.js";
 export {
   hasIntermediateWildcard,
   parseRedactionPath,

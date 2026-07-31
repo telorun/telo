@@ -4,7 +4,6 @@ imports:
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Type: ../../type
   Run: ../../run
   Assert: ../../assert
 targets: [ !ref TestRun ]
@@ -15,14 +14,14 @@ targets: [ !ref TestRun ]
 kind: JS.Script
 metadata: { name: McpStatefulProbe }
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       url: { type: string }
     required: [ url ]
 outputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
