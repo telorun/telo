@@ -1,5 +1,12 @@
 # @telorun/lease
 
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies [e52a2bf]
+  - @telorun/kv-store@0.3.0
+
 ## 0.4.1
 
 ### Patch Changes
