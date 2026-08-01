@@ -1,13 +1,12 @@
+import { isModuleKind } from "@telorun/analyzer";
 import { type Document, isMap, isScalar } from "yaml";
-
-const MODULE_KINDS = new Set(["Telo.Application", "Telo.Library"]);
 
 /** The module doc (`Telo.Application` / `Telo.Library`) within a parsed file,
  *  if any. Imports live as an `imports:` map on this doc. */
 export function findModuleDoc(docs: Document[]): Document | undefined {
   return docs.find((d) => {
     const kind = d.get("kind");
-    return typeof kind === "string" && MODULE_KINDS.has(kind);
+    return typeof kind === "string" && isModuleKind(kind);
   });
 }
 

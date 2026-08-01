@@ -89,3 +89,40 @@ export function isNewerModuleVersion(candidate: string, current: string): boolea
 export function isSameModuleVersion(a: string, b: string): boolean {
   return a === b || compareModuleVersions(a, b) === 0;
 }
+
+/** The highest-precedence version in `versions`, or `undefined` when none is
+ *  eligible — the counterpart to {@link isNewerModuleVersion}, and the answer to
+ *  "what would this import be upgraded TO".
+ *
+ *  Both halves of an upgrade check have to come from the same rule. A host that
+ *  decides "behind" here but reads "latest" off the head of a version list is
+ *  answering with whatever order its index happened to return: for a module
+ *  whose newest tag is a prerelease, list-order says the import is behind and
+ *  this says it is current — the same manifest against the same index, two
+ *  answers.
+ *
+ *  Unparseable tags (an OCI digest, a moving `latest`) are dropped rather than
+ *  ordered, matching this module's refusal to guess elsewhere: keeping one as
+ *  the running maximum would silence every comparable candidate after it.
+ *
+ *  Prereleases are excluded unless `includePrerelease` — an upgrade offered
+ *  without being asked for must not walk a caller onto an `-rc` build. A
+ *  release still outranks a prerelease pin, so `1.0.0-rc.1` → `1.0.0` is found
+ *  either way. */
+export function newestModuleVersion(
+  versions: readonly string[],
+  options: { includePrerelease?: boolean } = {},
+): string | undefined {
+  let best: string | undefined;
+  let bestParsed: ParsedModuleVersion | undefined;
+  for (const version of versions) {
+    const parsed = parseModuleVersion(version);
+    if (parsed === null) continue;
+    if (parsed.pre !== null && !options.includePrerelease) continue;
+    if (bestParsed === undefined || compareParsedModuleVersions(parsed, bestParsed) > 0) {
+      best = version;
+      bestParsed = parsed;
+    }
+  }
+  return best;
+}

@@ -21,6 +21,12 @@ import { TeloAnalysisCache } from "./analysis-cache.js";
 import { TeloCompletionProvider } from "./completion.js";
 import { TeloDefinitionProvider } from "./definition.js";
 import { TeloHoverProvider } from "./hover.js";
+import {
+  REFRESH_IMPORT_UPGRADES_COMMAND,
+  TeloImportUpgradeLensProvider,
+  UPGRADE_ALL_IMPORTS_COMMAND,
+  UPGRADE_IMPORT_COMMAND,
+} from "./import-upgrade-lens.js";
 import { TeloSemanticTokensProvider, TELO_SEMANTIC_LEGEND } from "./semantic-tokens.js";
 
 const TELO_KIND_RE = /^kind:\s+Telo\./m;
@@ -80,6 +86,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const hoverProvider = new TeloHoverProvider(cache);
   const semanticTokensProvider = new TeloSemanticTokensProvider(cache);
   const definitionProvider = new TeloDefinitionProvider(cache);
+  // Background failures that no squiggle can carry — a hub the editor could not
+  // reach while checking import versions. `console` is not a channel an author
+  // ever opens; this one is reachable from the failure notification.
+  const output = vscode.window.createOutputChannel("Telo");
+  context.subscriptions.push(output);
+  const importUpgradeProvider = new TeloImportUpgradeLensProvider(cache, output);
 
   const teloSelector: vscode.DocumentSelector = [{ language: "telo" }, { language: "yaml" }];
 
@@ -96,6 +108,24 @@ export function activate(context: vscode.ExtensionContext): void {
       TELO_SEMANTIC_LEGEND,
     ),
     vscode.languages.registerDefinitionProvider(teloSelector, definitionProvider),
+    vscode.languages.registerCodeLensProvider(teloSelector, importUpgradeProvider),
+    importUpgradeProvider,
+    vscode.commands.registerCommand(UPGRADE_IMPORT_COMMAND, (args) =>
+      importUpgradeProvider.apply(args),
+    ),
+    vscode.commands.registerCommand(UPGRADE_ALL_IMPORTS_COMMAND, (args) =>
+      importUpgradeProvider.apply(args),
+    ),
+    vscode.commands.registerCommand(REFRESH_IMPORT_UPGRADES_COMMAND, () =>
+      importUpgradeProvider.refresh(),
+    ),
+    // The hub URL decides what the version lookups answer, and the enable flag
+    // decides whether they run at all — either moving invalidates the cache.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("telo.hubUrl") || e.affectsConfiguration("telo.importUpgrades")) {
+        importUpgradeProvider.refresh();
+      }
+    }),
   );
 
   // Promote a yaml document to the `telo` language id when its content looks

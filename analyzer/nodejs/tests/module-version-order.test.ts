@@ -4,6 +4,7 @@ import {
   compareModuleVersions,
   isNewerModuleVersion,
   isSameModuleVersion,
+  newestModuleVersion,
 } from "../src/module-version-order.js";
 
 describe("compareModuleVersions", () => {
@@ -61,5 +62,39 @@ describe("isSameModuleVersion", () => {
     expect(isSameModuleVersion("v1.2.3", "1.2.3")).toBe(true);
     expect(isSameModuleVersion("sha256:abc", "sha256:abc")).toBe(true);
     expect(isSameModuleVersion("1.2.3", "1.2.4")).toBe(false);
+  });
+});
+
+describe("newestModuleVersion", () => {
+  it("is independent of the list's own order", () => {
+    expect(newestModuleVersion(["0.9.0", "1.0.0", "0.8.0"])).toBe("1.0.0");
+    expect(newestModuleVersion(["1.0.0", "0.9.0"])).toBe("1.0.0");
+  });
+
+  it("excludes prereleases by default and includes them on request", () => {
+    expect(newestModuleVersion(["1.1.0-rc.1", "1.0.0"])).toBe("1.0.0");
+    expect(newestModuleVersion(["1.1.0-rc.1", "1.0.0"], { includePrerelease: true })).toBe(
+      "1.1.0-rc.1",
+    );
+  });
+
+  it("still finds the release that supersedes a prerelease", () => {
+    expect(newestModuleVersion(["1.0.0-rc.1", "1.0.0"])).toBe("1.0.0");
+  });
+
+  it("drops unparseable tags instead of ordering them", () => {
+    // A moving tag at the head of the list must not become the running maximum
+    // and silence every comparable candidate after it.
+    expect(newestModuleVersion(["latest", "0.9.0", "1.0.0"])).toBe("1.0.0");
+    expect(newestModuleVersion(["sha256:deadbeef"])).toBeUndefined();
+  });
+
+  it("preserves the tag as written", () => {
+    expect(newestModuleVersion(["v1.2.3", "1.0.0"])).toBe("v1.2.3");
+  });
+
+  it("is undefined for an empty or wholly ineligible list", () => {
+    expect(newestModuleVersion([])).toBeUndefined();
+    expect(newestModuleVersion(["1.0.0-rc.1"])).toBeUndefined();
   });
 });

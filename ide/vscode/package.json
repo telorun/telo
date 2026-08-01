@@ -55,9 +55,43 @@
         "path": "./syntaxes/telo.tmLanguage.json"
       }
     ],
+    "commands": [
+      {
+        "command": "telo.upgradeImport",
+        "title": "Upgrade Import",
+        "category": "Telo"
+      },
+      {
+        "command": "telo.upgradeAllImports",
+        "title": "Upgrade All Imports",
+        "category": "Telo"
+      },
+      {
+        "command": "telo.refreshImportUpgrades",
+        "title": "Check Imports for Updates",
+        "category": "Telo"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "telo.upgradeImport",
+          "when": "false"
+        },
+        {
+          "command": "telo.upgradeAllImports",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Telo",
       "properties": {
+        "telo.importUpgrades.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeLenses over `imports:` when a module has a newer version on the hub. Disable to stop the editor contacting the hub for version lists."
+        },
         "telo.registryUrl": {
           "type": "string",
           "default": "https://registry.telo.run",

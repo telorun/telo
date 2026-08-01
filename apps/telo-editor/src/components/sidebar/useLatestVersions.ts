@@ -1,4 +1,4 @@
-import { parseVersionedRef } from "@telorun/analyzer";
+import { newestModuleVersion, parseVersionedRef } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
 import { fetchHubVersions } from "../../hub-search";
 import type { ParsedImport } from "../../model";
@@ -29,9 +29,14 @@ export function useLatestVersions(
     Promise.all(
       baseRefs.map(async (baseRef) => {
         try {
-          // The hub returns versions newest-first, so index 0 is the latest.
+          // Derived through the shared ordering rather than read off the head
+          // of the list: `isNewerModuleVersion` decides whether the badge
+          // appears, so the same rule has to decide what it upgrades TO. Taking
+          // index 0 also surfaced prereleases as automatic upgrade targets,
+          // which neither `telo upgrade` nor the VS Code lenses do — the
+          // per-import dropdown still lists every version for a deliberate pick.
           const versions = await fetchHubVersions(hubUrl, baseRef);
-          return [baseRef, versions[0] ?? null] as const;
+          return [baseRef, newestModuleVersion(versions) ?? null] as const;
         } catch (err) {
           // Best-effort: the badge is background information, and an
           // unreachable hub must not blank the whole Imports view. The
