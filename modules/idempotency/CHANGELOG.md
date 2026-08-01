@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-07-31
+## 0.6.0 - 2026-08-01
+### Added
+* The controller PURL now carries a `local_path` qualifier naming the TypeScript source its bundle was built from. The kernel builds from that source while the module is a working copy, so a checkout runs with no build step; the qualifier is inert in a published artifact, which ships no sources. Drop the now-redundant `files:` block. A bundled controller joins the artifact payload because `controllers:` names it, so restating it in `files:` was duplication — and a glob over build output at that, which would silently ship a stale `.mjs` left behind by a renamed controller.## 0.5.0 - 2026-07-31
 ### Added
 * `Once` relies on its declared `inputType` to reject a missing or empty `key` instead of re-checking it in the controller. The schema already said so (`required: [key]`, `minLength: 1`) and the kernel now enforces it on every call, so the failure is the ambient `ERR_INPUT_INVALID` — which names the target and the offending value — rather than `ERR_INVALID_KEY`, now removed from the declared union as unreachable.## 0.4.0 - 2026-07-30
 ### Added

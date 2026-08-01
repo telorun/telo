@@ -1,5 +1,12 @@
 # @telorun/sql-postgres
 
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies [e52a2bf]
+  - @telorun/sql@0.11.0
+
 ## 0.3.0
 
 ### Minor Changes

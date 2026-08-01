@@ -1,5 +1,7 @@
 # Changelog
-## 0.16.0 - 2026-07-29
+## 0.17.0 - 2026-08-01
+### Added
+* The controller now ships inside the module artifact as a bundle (pkg:telo/local/js) instead of being fetched from npm at load. Importing this module needs no npm registry at run time, and its version is a single number again: metadata.version. The kernel builds the controller from source while the module is a working copy, so a checkout needs no build step.## 0.16.0 - 2026-07-29
 ### Added
 * Update controller @telorun/sql to 0.10.0.## 0.15.0 - 2026-07-27
 ### Added

@@ -1,5 +1,12 @@
 # @telorun/embedding-openai
 
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies [e52a2bf]
+  - @telorun/embedding@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
