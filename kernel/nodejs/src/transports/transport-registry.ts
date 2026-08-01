@@ -82,10 +82,12 @@ export function defaultTransports(registryUrl?: string): Transport[] {
 const defaultRegistryCache = new Map<string, TransportRegistry>();
 
 /** A `TransportRegistry` seeded with {@link defaultTransports}, memoized per
- *  `registryUrl`. The default transports are stateless config (a fresh
- *  `OciClient` with its own token cache is created per OCI operation), so one
- *  shared instance per registry URL is safe — and avoids re-instantiating the
- *  whole set on hot paths like `cachePathForCanonical`. */
+ *  `registryUrl`. The default transports hold no per-call state, so one shared
+ *  instance per registry URL is safe — and avoids re-instantiating the whole set
+ *  on hot paths like `cachePathForCanonical`. It is also what gives
+ *  `OciTransport`'s per-instance read-client pool a process-wide lifetime here,
+ *  so the bearer-token cache survives across operations without the pool having
+ *  to be global. */
 export function defaultTransportRegistry(registryUrl?: string): TransportRegistry {
   const key = registryUrl ?? "";
   let cached = defaultRegistryCache.get(key);

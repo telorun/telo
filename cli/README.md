@@ -122,6 +122,15 @@ telo check https://example.com/manifest.yaml
 
 Accepts local paths, directories containing a `telo.yaml`, or HTTP(S) URLs.
 
+Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
+
+- **Pinned** (`…@1.2.3#sha256-…`, or an `@sha256:` reference) — verified against the hash on read, so a repeat check of a fully pinned manifest needs no network at all.
+- **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
+- **Registry ref** (`<namespace>/<name>@<version>`) — served from cache without revalidation; a published version is immutable by convention.
+- **HTTP(S) URL** — never read from the cache by `check`, since its key carries no version segment and a hit would be served indefinitely. Always re-fetched (one request, the same cost revalidating would have).
+
+One loader serves every path in a single invocation, so `telo check a b c` resolves a module shared between them once.
+
 **Example output:**
 
 ```
@@ -165,8 +174,9 @@ The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
 - `.telo/manifests/registry/<host>/<path…>/<version>/telo.yaml` — registry-served manifests.
 - `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry.
 - `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference; a pinned import needs no entry, since its bytes are verified against the ref's own hash.
 
-Every entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
+Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
 discovery hub uses for its cached manifests.
 
 Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` the manifest dir into your image and both caches travel with it; no environment variable is required.

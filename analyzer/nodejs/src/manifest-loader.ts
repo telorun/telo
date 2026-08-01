@@ -117,6 +117,26 @@ export class Loader {
     return this.urlToSource.get(url);
   }
 
+  /** Drop every memo for `url` so the next `loadFile` reads it from the source
+   *  chain again — the parsed file in each variant, plus every request URL that
+   *  canonicalised to it (a module reached under several refs must not stay
+   *  reachable through one of them).
+   *
+   *  `loadFile`'s fast path assumes a file's contents do not change under a
+   *  single Loader, which holds until something invalidates one deliberately:
+   *  `telo check` dropping a manifest whose upstream tag has moved, and watch
+   *  mode when it returns. Without this the only way to un-cache one file is to
+   *  discard the whole Loader, taking every unrelated file's memo with it. */
+  forget(url: string): void {
+    const source = this.urlToSource.get(url) ?? url;
+    for (const [requestUrl, canonical] of this.urlToSource) {
+      if (canonical === source) this.urlToSource.delete(requestUrl);
+    }
+    for (const variant of CACHE_VARIANTS) {
+      this.fileCache.delete(`${variant}:${source}`);
+    }
+  }
+
   // --- New API: returns LoadedFile / LoadedModule / LoadedGraph ----------
 
   /** Read one file via the source chain and parse it into a LoadedFile.

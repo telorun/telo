@@ -62,9 +62,8 @@ import {
  * payload gets a clear "republish" failure at the controller instead, while the
  * npm-backed majority, which ships none, is unaffected.
  */
-async function pullManifestLayer(ref: string): Promise<string> {
-  const { host, repo, reference, integrity } = parseOciRef(ref);
-  const client = new OciClient(host, repo);
+async function pullManifestLayer(ref: string, client: OciClient): Promise<string> {
+  const { reference, integrity } = parseOciRef(ref);
   const manifest = await client.pullManifest(reference);
   const layer =
     manifest.layers.find((l) => l.mediaType === TELO_MANIFEST_LAYER_MEDIA_TYPE) ??
@@ -108,16 +107,42 @@ async function pullManifestLayer(ref: string): Promise<string> {
 export class OciTransport implements Transport {
   readonly source: ManifestSource;
 
+  /** One read-side `OciClient` per `(host, repo)`, for this transport's lifetime.
+   *
+   *  The client caches bearer tokens per scope, but a client built per operation
+   *  discards that cache immediately — so every manifest and every blob paid its
+   *  own 401→challenge→token round trip, and with it a `~/.docker/config.json`
+   *  read and possibly a credential-helper subprocess. Pooling collapses those
+   *  to one handshake per repository. An expired token still self-heals:
+   *  `authedFetch` re-runs the challenge on a 401 and replaces the entry.
+   *
+   *  Owned by the instance rather than the module, so a second transport — a
+   *  test, or a second in-process kernel — never inherits another's credentials.
+   *  `defaultTransportRegistry` memoizes per registry URL, so the production
+   *  lifetime is unchanged. Publishing keeps its own client: it already reuses
+   *  one across the whole push, and a push-scoped token has no reason to
+   *  outlive the command. */
+  private readonly readClients = new Map<string, OciClient>();
+
   constructor() {
     this.source = {
       supports: (url) => this.supports(url),
       read: async (url) => {
-        const manifest = await pullManifestLayer(url);
         const { host, repo, reference } = parseOciRef(url);
+        const manifest = await pullManifestLayer(url, this.readClient(host, repo));
         return { text: manifest, source: `${OCI_SCHEME}${host}/${repo}@${reference}` };
       },
       resolveRelative: (base, relative) => this.resolveRelative(base, relative),
     };
+  }
+
+  private readClient(host: string, repo: string): OciClient {
+    const key = `${host}/${repo}`;
+    const existing = this.readClients.get(key);
+    if (existing) return existing;
+    const client = new OciClient(host, repo);
+    this.readClients.set(key, client);
+    return client;
   }
 
   supports(ref: string): boolean {
@@ -159,7 +184,7 @@ export class OciTransport implements Transport {
 
   async listVersions(ref: string): Promise<string[] | null> {
     const { host, repo } = parseOciRef(ref);
-    const tags = await new OciClient(host, repo).listTags();
+    const tags = await this.readClient(host, repo).listTags();
     return tags;
   }
 
@@ -178,7 +203,7 @@ export class OciTransport implements Transport {
 
   async digest(ref: string): Promise<string | null> {
     const { host, repo, reference } = parseOciRef(ref);
-    return new OciClient(host, repo).headManifest(reference);
+    return this.readClient(host, repo).headManifest(reference);
   }
 
   /** Pull one payload layer by the `blob` digest the pinned index supplies. The
@@ -188,7 +213,7 @@ export class OciTransport implements Transport {
    *  expected `integrity`. */
   async fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]> {
     const { host, repo } = parseOciRef(ref);
-    const tar = await new OciClient(host, repo).pullBlob(blobDigest);
+    const tar = await this.readClient(host, repo).pullBlob(blobDigest);
     // Verify the transfer against the digest that addressed it. A registry is
     // not trusted to return the blob that was asked for, and this is the only
     // place the pushed bytes exist — the content digest checked after extraction
@@ -212,7 +237,8 @@ export class OciTransport implements Transport {
    *  blob per import rather than a full artifact pull, and a corrupt payload
    *  upstream no longer surfaces here as a pinning failure. */
   async manifestHash(ref: string): Promise<string> {
-    const manifest = await pullManifestLayer(ref);
+    const { host, repo } = parseOciRef(ref);
+    const manifest = await pullManifestLayer(ref, this.readClient(host, repo));
     return `sha256-${await sha256Base64Url(new TextEncoder().encode(manifest))}`;
   }
 
