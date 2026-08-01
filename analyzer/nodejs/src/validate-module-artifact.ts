@@ -42,7 +42,11 @@ export function validateModuleArtifact(manifests: ResourceManifest[]): AnalysisD
   return out;
 }
 
-const KNOWN_QUALIFIERS = new Set<string>(["path", "siblings", ...PLATFORM_AXES]);
+/** `local_path` names the source `path=` was built from, so a working copy runs
+ *  with no build step. It is inert in a published artifact — which ships no
+ *  `src/` — and contributes nothing to the selector, so it never affects which
+ *  layer a host fetches. */
+const KNOWN_QUALIFIERS = new Set<string>(["path", "local_path", "siblings", ...PLATFORM_AXES]);
 
 /** `pkg:telo/local/<format>?…` — the bundled-controller delivery mode. Parsed by
  *  hand rather than with a PURL library: the analyzer must stay browser-safe and

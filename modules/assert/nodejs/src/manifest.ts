@@ -1,7 +1,4 @@
-import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, defaultSources, flattenForAnalyzer, type AnalysisDiagnostic, type ManifestSource } from "@telorun/analyzer";
-import type { ResourceContext, Runnable } from "@telorun/sdk";
-import * as fs from "fs/promises";
-import * as path from "path";
+import type { CheckDiagnostic, ResourceContext, Runnable } from "@telorun/sdk";
 
 interface ExpectError {
   code?: string;
@@ -18,47 +15,7 @@ interface ManifestAssertManifest {
   };
 }
 
-class LocalFileSource implements ManifestSource {
-  supports(p: string): boolean {
-    return (
-      p.startsWith("file://") ||
-      p.startsWith("/") ||
-      p.startsWith("./") ||
-      p.startsWith("../") ||
-      (!p.includes("://") && !p.includes("@"))
-    );
-  }
-
-  async read(p: string): Promise<{ text: string; source: string }> {
-    const norm = p.startsWith("file://") ? new URL(p).pathname : p;
-    const resolved = path.resolve(norm);
-    const stat = await fs.stat(resolved);
-    const filePath = stat.isDirectory() ? path.join(resolved, DEFAULT_MANIFEST_FILENAME) : resolved;
-    const text = await fs.readFile(filePath, "utf-8");
-    return { text, source: `file://${filePath}` };
-  }
-
-  async readAll(p: string): Promise<string[]> {
-    const norm = p.startsWith("file://") ? new URL(p).pathname : p;
-    const resolved = path.resolve(norm);
-    const stat = await fs.stat(resolved);
-    if (stat.isDirectory()) {
-      const entries = await fs.readdir(resolved);
-      return entries
-        .filter((e) => e.endsWith(".yaml") || e.endsWith(".yml"))
-        .map((e) => `file://${path.join(resolved, e)}`);
-    }
-    return [`file://${resolved}`];
-  }
-
-  resolveRelative(base: string, relative: string): string {
-    const basePath = base.startsWith("file://") ? new URL(base).pathname : base;
-    const baseDir = basePath.endsWith("/") ? basePath : path.dirname(basePath);
-    return `file://${path.resolve(baseDir, relative)}`;
-  }
-}
-
-function matchesDiagnostic(diag: AnalysisDiagnostic, expected: ExpectError): boolean {
+function matchesDiagnostic(diag: CheckDiagnostic, expected: ExpectError): boolean {
   if (expected.code && diag.code !== expected.code) return false;
   if (expected.message && !diag.message.includes(expected.message)) return false;
   return true;
@@ -78,27 +35,23 @@ export async function create(
       const dim = (t: string) => c("2", t);
 
       const name = manifest.metadata.name;
-      const loader = new Loader([new LocalFileSource(), ...defaultSources()]);
-      const analyzer = new StaticAnalyzer();
 
       // `resolveModuleFile` knows where the declaring module's files actually
       // live — for a published module that is its artifact directory, not the
       // manifest URL — and materializes its asset layer on first access, so a
       // bundled fixture manifest is on disk before it is loaded.
       const resolvedUrl = await ctx.resolveModuleFile(manifest.source);
-      let manifests;
-      try {
-        // `desugarImports` mirrors how the kernel loads: inline `imports:` maps
-        // are expanded into synthetic Telo.Import manifests before analysis, so
-        // a manifest using inline imports analyzes (alias resolution, !ref) the
-        // same way it runs. Without it, `!ref Alias.x` against an inline import
-        // would surface a false UNRESOLVED_REFERENCE here, and a duplicate alias
-        // across the two forms would go undetected.
-        const graph = await loader.loadGraph(resolvedUrl, { desugarImports: true });
-        if (graph.errors.length > 0) throw graph.errors[0].error;
-        manifests = flattenForAnalyzer(graph);
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+      // The host's own analysis pass, reached through the SDK rather than by
+      // importing the analyzer — so what this asserts about is the analyzer the
+      // kernel running it actually uses, not a copy frozen into this module's
+      // bundle. `desugarImports` mirrors how the kernel loads: inline `imports:`
+      // maps expand into synthetic Telo.Import manifests before analysis, so a
+      // manifest using inline imports analyzes (alias resolution, `!ref`) the
+      // same way it runs.
+      const checked = await ctx.runtime.check(resolvedUrl, { desugarImports: true });
+
+      if (checked.loadError !== undefined) {
+        const errMsg = checked.loadError;
         if (manifest.expect.loadError) {
           if (errMsg.includes(manifest.expect.loadError)) {
             ctx.stdout.write(
@@ -132,9 +85,9 @@ export async function create(
         return;
       }
 
-      const diagnostics = analyzer.analyze(manifests);
-      const errors = diagnostics.filter((d) => d.severity === 1); // DiagnosticSeverity.Error = 1
-      const warnings = diagnostics.filter((d) => d.severity === 2); // DiagnosticSeverity.Warning = 2
+      const { diagnostics } = checked;
+      const errors = diagnostics.filter((d) => d.severity === "error");
+      const warnings = diagnostics.filter((d) => d.severity === "warning");
       const expectedErrors = manifest.expect.errors ?? [];
       const expectedWarnings = manifest.expect.warnings ?? [];
       const failures: string[] = [];

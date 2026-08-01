@@ -1,26 +1,11 @@
 import { selectByPatterns } from "@telorun/glob";
-import { Kernel, LocalFileSource } from "@telorun/kernel";
-import type { ResourceContext, Runnable } from "@telorun/sdk";
+import type { ResourceContext, RuntimeRun, Runnable, Stream } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import * as fs from "fs";
 import * as path from "path";
-import { Writable } from "stream";
 import { fileURLToPath } from "url";
 
 const DEFAULT_CONCURRENCY = 3;
-
-class BufferedWritable extends Writable {
-  private chunks: Buffer[] = [];
-
-  _write(chunk: Buffer | string, _encoding: string, cb: () => void) {
-    this.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    cb();
-  }
-
-  get content(): string {
-    return Buffer.concat(this.chunks).toString("utf8");
-  }
-}
 
 export const args = {
   filter: { type: "string" as const, alias: "f", description: "Filter tests by name substring" },
@@ -156,32 +141,44 @@ function buildEnvForManifest(
   return { ...base, ...local, ...hostEnv };
 }
 
+/**
+ * Drain one of a run's output streams, optionally forwarding each chunk on as it
+ * arrives.
+ *
+ * Both at once is the point: with several tests in flight their output has to be
+ * withheld until the test finishes, or two workers interleave mid-line; with a
+ * single test there is nothing to interleave with and the author wants to watch
+ * it happen. The seam returns streams rather than captured text precisely so this
+ * is the caller's choice.
+ */
+async function collect(
+  stream: Stream<string>,
+  forwardTo: NodeJS.WritableStream | undefined,
+): Promise<string> {
+  let text = "";
+  for await (const chunk of stream) {
+    if (forwardTo) forwardTo.write(chunk);
+    else text += chunk;
+  }
+  return text;
+}
+
 async function runOneTest(
   testPath: string,
   captureOutput: boolean,
   parentStdout: NodeJS.WritableStream,
   parentStderr: NodeJS.WritableStream,
   hostEnv: Record<string, string | undefined>,
+  runtime: ResourceContext["runtime"],
 ): Promise<TestResult> {
   const start = Date.now();
-  const stdout = captureOutput ? new BufferedWritable() : parentStdout;
-  const stderr = captureOutput ? new BufferedWritable() : parentStderr;
+  let run: RuntimeRun;
   try {
-    const kernel = new Kernel({
-      env: buildEnvForManifest(testPath, hostEnv),
-      stdout,
-      stderr,
-      sources: [new LocalFileSource()],
-    });
-    await kernel.load(testPath);
-    await kernel.start();
-    return {
-      path: testPath,
-      label: "",
-      passed: kernel.exitCode === 0,
-      durationMs: Date.now() - start,
-      output: captureOutput ? (stdout as BufferedWritable).content + (stderr as BufferedWritable).content : undefined,
-    };
+    // The host's own manifest machinery, reached through the SDK rather than by
+    // importing the kernel — so a published `test` module binds to a versioned
+    // contract instead of to whatever kernel happens to load it. Isolation is the
+    // kernel's to choose; this side only says "run this manifest".
+    run = await runtime.run(testPath, { env: buildEnvForManifest(testPath, hostEnv) });
   } catch (err) {
     return {
       path: testPath,
@@ -189,9 +186,25 @@ async function runOneTest(
       passed: false,
       durationMs: Date.now() - start,
       error: err instanceof Error ? err.message : String(err),
-      output: captureOutput ? (stdout as BufferedWritable).content + (stderr as BufferedWritable).content : undefined,
     };
   }
+
+  // Drain both streams concurrently with waiting for the exit code. A stream
+  // left unread stalls the child once its channel fills — the same backpressure
+  // a pipe has — so neither may be skipped.
+  const [stdout, stderr, exitCode] = await Promise.all([
+    collect(run.stdout, captureOutput ? undefined : parentStdout),
+    collect(run.stderr, captureOutput ? undefined : parentStderr),
+    run.exitCode,
+  ]);
+
+  return {
+    path: testPath,
+    label: "",
+    passed: exitCode === 0,
+    durationMs: Date.now() - start,
+    output: captureOutput ? stdout + stderr : undefined,
+  };
 }
 
 export async function create(
@@ -239,7 +252,14 @@ export async function create(
           if (i >= tests.length) return;
           const testPath = tests[i];
           const label = labelFor(testPath, baseDir);
-          const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr, ctx.env);
+          const result = await runOneTest(
+            testPath,
+            !singleTest,
+            ctx.stdout,
+            ctx.stderr,
+            ctx.env,
+            ctx.runtime,
+          );
           result.label = label;
           results.push(result);
 

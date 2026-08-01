@@ -74,7 +74,7 @@ metadata:
     vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/embedding@0.4.0?local_path=./nodejs#query
+  - pkg:telo/local/js?path=./nodejs/query-controller.mjs&local_path=./nodejs/src/query-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -139,7 +139,7 @@ metadata:
     vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/embedding@0.4.0?local_path=./nodejs#passage
+  - pkg:telo/local/js?path=./nodejs/passage-controller.mjs&local_path=./nodejs/src/passage-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

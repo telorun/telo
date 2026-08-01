@@ -47,6 +47,12 @@ singletons and MUST NOT carry one.
 
 ### 1.1 The sink rule
 
+A controller candidate's entry point is part of the payload because
+`controllers:` names it. A publisher MUST include it whether or not `files:`
+selects it — the manifest already declares it, and requiring both would mean
+every module restates in `files:` what `controllers:` says. `files:` governs
+what the manifest cannot otherwise name: assets, static files, sidecars.
+
 A file that `files:` selected and that neither a controller candidate nor
 `assets:` claimed MUST be placed in the `common` layer.
 

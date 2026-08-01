@@ -25,7 +25,7 @@ metadata:
     parser's position.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/yaml@0.4.2?local_path=./nodejs#parse
+  - pkg:telo/local/js?path=./nodejs/parse.mjs&local_path=./nodejs/src/parse.ts
 throws:
   codes:
     ERR_PARSE_FAILED:

@@ -56,7 +56,7 @@ metadata:
     prompt and per-call option overrides.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text
+  - pkg:telo/local/js?path=./nodejs/ai-text-controller.mjs&local_path=./nodejs/src/ai-text-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -158,7 +158,7 @@ metadata:
     completion; encoding the stream is the consumer's job.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#text-stream
+  - pkg:telo/local/js?path=./nodejs/ai-text-stream-controller.mjs&local_path=./nodejs/src/ai-text-stream-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -262,7 +262,7 @@ metadata:
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
-  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#tools
+  - pkg:telo/local/js?path=./nodejs/ai-tools-controller.mjs&local_path=./nodejs/src/ai-tools-controller.ts
 schema:
   type: object
   properties:
@@ -356,7 +356,7 @@ metadata:
     the final text with accumulated usage and a per-step trace.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent
+  - pkg:telo/local/js?path=./nodejs/ai-agent-controller.mjs&local_path=./nodejs/src/ai-agent-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -511,7 +511,7 @@ metadata:
     buffered loop, shaped for serving live output.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@0.7.1?local_path=./nodejs#agent-stream
+  - pkg:telo/local/js?path=./nodejs/ai-agent-stream-controller.mjs&local_path=./nodejs/src/ai-agent-stream-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -11,8 +11,6 @@ metadata:
     retries, concurrent callers and process restarts; later calls replay the stored
     result instead of repeating it, and a caller that dies frees the key rather than
     wedging it.
-files:
-  - nodejs/*.mjs
 imports:
   KvStore: ../kv-store
 exports:
@@ -38,7 +36,7 @@ metadata:
     time-bounded and renewed, so a crash frees the key.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/once.mjs#once
+  - pkg:telo/local/js?path=./nodejs/once.mjs&local_path=./nodejs/src/once.ts#once
 throws:
   codes:
     # An absent or empty `key` is rejected by `inputType` below, as the kernel's

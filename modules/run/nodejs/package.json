@@ -1,68 +1,16 @@
 {
-  "name": "@telorun/run",
-  "version": "0.13.0",
-  "description": "Telo Run module - Sequence execution for Telo manifests.",
-  "keywords": [
-    "telo",
-    "run",
-    "sequence",
-    "pipeline"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/run/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/run-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/run module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "main": "./src/sequence.ts",
-  "module": "./src/sequence.ts",
-  "exports": {
-    "./sequence": {
-      "bun": "./src/sequence.ts",
-      "import": "./dist/sequence.js"
-    },
-    "./value": {
-      "bun": "./src/value.ts",
-      "import": "./dist/value.js"
-    },
-    "./choice": {
-      "bun": "./src/choice.ts",
-      "import": "./dist/choice.js"
-    },
-    "./loop": {
-      "bun": "./src/loop.ts",
-      "import": "./dist/loop.js"
-    },
-    "./iteration": {
-      "bun": "./src/iteration.ts",
-      "import": "./dist/iteration.js"
-    },
-    "./projection": {
-      "bun": "./src/projection.ts",
-      "import": "./dist/projection.js"
-    },
-    "./detach": {
-      "bun": "./src/detach.ts",
-      "import": "./dist/detach.js"
-    }
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/choice.ts src/detach.ts src/iteration.ts src/loop.ts src/projection.ts src/sequence.ts src/value.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
   }
 }

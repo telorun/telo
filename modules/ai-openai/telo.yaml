@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai-openai@0.9.0?local_path=./nodejs#openai-model
+  - pkg:telo/local/js?path=./nodejs/openai-model-controller.mjs&local_path=./nodejs/src/openai-model-controller.ts
 schema:
   type: object
   properties:

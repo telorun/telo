@@ -27,56 +27,25 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
-    "./text": {
-      "types": "./dist/ai-text-controller.d.ts",
-      "bun": "./src/ai-text-controller.ts",
-      "import": "./dist/ai-text-controller.js"
-    },
-    "./text-stream": {
-      "types": "./dist/ai-text-stream-controller.d.ts",
-      "bun": "./src/ai-text-stream-controller.ts",
-      "import": "./dist/ai-text-stream-controller.js"
-    },
-    "./echo-model": {
-      "types": "./dist/ai-echo-controller.d.ts",
-      "bun": "./src/ai-echo-controller.ts",
-      "import": "./dist/ai-echo-controller.js"
-    },
-    "./stream-collector": {
-      "types": "./dist/stream-collector-controller.d.ts",
-      "bun": "./src/stream-collector-controller.ts",
-      "import": "./dist/stream-collector-controller.js"
-    },
-    "./tools": {
-      "types": "./dist/ai-tools-controller.d.ts",
-      "bun": "./src/ai-tools-controller.ts",
-      "import": "./dist/ai-tools-controller.js"
-    },
-    "./agent": {
-      "types": "./dist/ai-agent-controller.d.ts",
-      "bun": "./src/ai-agent-controller.ts",
-      "import": "./dist/ai-agent-controller.js"
-    },
-    "./agent-stream": {
-      "types": "./dist/ai-agent-stream-controller.d.ts",
-      "bun": "./src/ai-agent-stream-controller.ts",
-      "import": "./dist/ai-agent-stream-controller.js"
-    },
     "./redact": {
+      "source": "./src/redact.ts",
       "types": "./dist/redact.d.ts",
       "bun": "./src/redact.ts",
       "import": "./dist/redact.js"
     },
     "./types": {
+      "source": "./src/types.ts",
       "types": "./dist/types.d.ts",
       "bun": "./src/types.ts",
       "import": "./dist/types.js"
     },
     "./content": {
+      "source": "./src/content.ts",
       "types": "./dist/content.d.ts",
       "bun": "./src/content.ts",
       "import": "./dist/content.js"
@@ -87,13 +56,14 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
+    "build": "tsc -p tsconfig.lib.json && esbuild src/ai-agent-controller.ts src/ai-agent-stream-controller.ts src/ai-echo-controller.ts src/ai-text-controller.ts src/ai-text-stream-controller.ts src/ai-tools-controller.ts src/stream-collector-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {

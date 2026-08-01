@@ -21,7 +21,7 @@ metadata:
     substring filter, and runs them with a bounded number in flight at once.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.5.2?local_path=./nodejs#suite
+  - pkg:telo/local/js?path=./nodejs/suite.mjs&local_path=./nodejs/src/suite.ts
 schema:
   type: object
   properties:

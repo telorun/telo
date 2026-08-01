@@ -1,50 +1,16 @@
 {
-  "name": "@telorun/http-client",
-  "version": "0.10.0",
-  "description": "Telo HTTP Client module - HTTP client resource kinds for Telo manifests.",
-  "keywords": [
-    "telo",
-    "http",
-    "client",
-    "request"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/http-client/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/http-client-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/http-client module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "exports": {
-    "./http-client": {
-      "bun": "./src/http-client-controller.ts",
-      "import": "./dist/http-client-controller.js"
-    },
-    "./http-request": {
-      "bun": "./src/http-request-controller.ts",
-      "import": "./dist/http-request-controller.js"
-    }
-  },
-  "files": [
-    "dist",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/http-client-controller.ts src/http-request-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
   }
 }

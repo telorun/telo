@@ -21,7 +21,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai@1.0.0?local_path=../../nodejs#echo-model
+  - pkg:telo/local/js?path=../../nodejs/ai-echo-controller.mjs&local_path=../../nodejs/src/ai-echo-controller.ts
 schema:
   type: object
   properties:
@@ -64,7 +64,7 @@ metadata:
   name: StreamCollector
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/ai@1.0.0?local_path=../../nodejs#stream-collector
+  - pkg:telo/local/js?path=../../nodejs/stream-collector-controller.mjs&local_path=../../nodejs/src/stream-collector-controller.ts
 schema:
   type: object
   properties:

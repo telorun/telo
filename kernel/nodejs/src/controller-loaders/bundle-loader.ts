@@ -10,6 +10,7 @@ import { hostPlatformTarget, type ModuleArtifact } from "../bundle/module-artifa
 import type { ControllerResolveSource } from "../controller-loader.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import { buildControllerFromSource, canBuildFromSource } from "./source-bundle-builder.js";
 
 /** A base URI whose files are already on disk: a `file://` URL or a bare
  *  absolute path. Everything else (`oci://`, `http(s)://`, `memory://`) names a
@@ -130,7 +131,16 @@ function findPackageRoot(entryFile: string, name: string): string | null {
  *    (or `[pkg:telo …, pkg:npm …]`) falls through to a candidate this — or
  *    another runtime's — kernel can load.
  *  - `path` — the file in the bundle; `#export` — the named export.
+ *  - `local_path` — the TypeScript source `path=` was built from. Present only
+ *    while the module is a working copy; a published artifact ships no `src/`.
+ *    When the module arrives with **no artifact handle** and the source resolves
+ *    on disk, the loader builds it (see `source-bundle-builder.ts`) rather than
+ *    importing `path=`, so editing a controller and re-running picks the edit up
+ *    with no build step. The guard is the absence of an artifact, not the shape
+ *    of the base URI: a published module served from the on-disk manifest cache
+ *    has a local base too, and its payload is the layer regardless.
  *
+
  * Two separate concerns for `js` bundles importing `@telorun/sdk`:
  *  - *Resolution* — the bare specifier must point at a real file. The bundle has
  *    no node_modules, so `ensureRealmSymlinks()` symlinks the realm-collapse
@@ -146,6 +156,11 @@ function findPackageRoot(entryFile: string, name: string): string | null {
  * through); a bundle that loads but is malformed is a hard `ERR_CONTROLLER_INVALID`.
  */
 export class BundleControllerLoader {
+  /** Where a dev build from `local_path` is cached (`<cache-root>/controller-src`).
+   *  Absent for callers that resolved no cache root, which simply disables the
+   *  source path — a prebuilt `path=` still loads. */
+  constructor(private readonly cacheRoot?: string) {}
+
   async load(
     purl: string,
     baseUri: string,
@@ -215,6 +230,55 @@ export class BundleControllerLoader {
       );
     }
 
+    const fragment = parsed.subpath;
+
+    // Dev path: a module that is a working copy — no artifact behind it — with a
+    // `local_path` source on disk is built from that source, because the source
+    // is what is authoritative there. An artifact means the payload IS the layer,
+    // so this never fires for a published module, including one served from the
+    // on-disk manifest cache (whose base is local but whose payload is a layer).
+    //
+    // esbuild is probed HERE rather than inside the build. It is an optional
+    // dependency so that an install skipping optionals still runs published
+    // artifacts — and a working copy that has run its build script has the same
+    // prebuilt file on disk. Deciding it lazily would turn "no bundler" into a
+    // hard failure standing next to a perfectly good bundle, and the candidate
+    // list could not rescue it: the fallback belongs to this same PURL, not to a
+    // sibling candidate.
+    const cacheRoot = this.cacheRoot;
+    const sourceFile = artifact ? undefined : this.localSourceFile(parsed, baseUri);
+    const buildFromSource =
+      sourceFile !== undefined &&
+      cacheRoot !== undefined &&
+      (await pathExists(sourceFile)) &&
+      (await canBuildFromSource());
+    if (buildFromSource) {
+      // The same file the prebuilt branch would import, kept as the fallback for
+      // an environment that stops being able to build between resolve and first
+      // instantiation.
+      const prebuilt = path.resolve(this.moduleDir(baseUri), relPath);
+      return {
+        source: "local",
+        // Deferred like every other branch: the build is paid on the kind's
+        // first instantiation, so a manifest pays only for the kinds it uses.
+        // A build FAILURE is user code and propagates unchanged; only a missing
+        // *environment* falls back, and only to a file that is actually there.
+        importInstance: async () => {
+          let built: string;
+          try {
+            built = await buildControllerFromSource(sourceFile!, cacheRoot!);
+          } catch (err) {
+            if (!(err instanceof ControllerEnvMissingError)) throw err;
+            if (!(await pathExists(prebuilt))) throw err;
+            await ensureRealmSymlinks(path.dirname(prebuilt));
+            return importControllerModule(prebuilt, purl, fragment);
+          }
+          await ensureRealmSymlinks(path.dirname(built));
+          return importControllerModule(built, purl, fragment);
+        },
+      };
+    }
+
     // A published module's payload lives in its artifact, so materialize the one
     // layer carrying this candidate and resolve `path=` inside it. Nothing is
     // fetched here: the artifact handle owns the pinned ref and the verified
@@ -261,31 +325,52 @@ export class BundleControllerLoader {
     // importing the bundle, so authors write normal imports.
     await ensureRealmSymlinks(path.dirname(absFile));
 
-    const fragment = parsed.subpath;
     return {
       source,
-      importInstance: async () => {
-        // A broken bundle (syntax / failed import) is a real user-code failure —
-        // let it propagate rather than masking it as env-missing.
-        const mod = (await import(pathToFileURL(absFile).href)) as Record<string, ControllerInstance>;
-        // Distinguish "no such export" from "export isn't a controller" so the
-        // error points at the actual problem (mirrors the napi loader's project()).
-        if (fragment && !(fragment in mod)) {
-          throw new RuntimeError(
-            "ERR_CONTROLLER_INVALID",
-            `Bundled controller "${purl}": module "${absFile}" has no export named "${fragment}"`,
-          );
-        }
-        const instance = fragment ? mod[fragment] : (mod as unknown as ControllerInstance);
-        if (!instance || (!instance.create && !instance.register)) {
-          throw new RuntimeError(
-            "ERR_CONTROLLER_INVALID",
-            `Bundled controller "${purl}" exports neither create() nor register()` +
-              (fragment ? ` at fragment "#${fragment}"` : ""),
-          );
-        }
-        return instance;
-      },
+      importInstance: () => importControllerModule(absFile, purl, fragment),
     };
   }
+
+  /** The `local_path` source this candidate names, resolved against the declaring
+   *  module's directory — or `undefined` when the candidate declares none, or the
+   *  module is not on disk to resolve it against. */
+  private localSourceFile(parsed: PackageURL, baseUri: string): string | undefined {
+    const localPath = parsed.qualifiers?.local_path;
+    if (!localPath || !isLocalBase(baseUri)) return undefined;
+    return path.resolve(this.moduleDir(baseUri), localPath);
+  }
+
+  /** Directory of the declaring module's manifest. Only meaningful for a local
+   *  base; callers gate on {@link isLocalBase} first. */
+  private moduleDir(baseUri: string): string {
+    return path.dirname(baseUri.startsWith("file://") ? fileURLToPath(baseUri) : baseUri);
+  }
+}
+
+/** Import a built bundle and project out the controller the fragment names. A
+ *  broken bundle (syntax error, failed import) is a real user-code failure and
+ *  propagates; it is never masked as env-missing. */
+async function importControllerModule(
+  absFile: string,
+  purl: string,
+  fragment: string | undefined,
+): Promise<ControllerInstance> {
+  const mod = (await import(pathToFileURL(absFile).href)) as Record<string, ControllerInstance>;
+  // Distinguish "no such export" from "export isn't a controller" so the error
+  // points at the actual problem (mirrors the napi loader's project()).
+  if (fragment && !(fragment in mod)) {
+    throw new RuntimeError(
+      "ERR_CONTROLLER_INVALID",
+      `Bundled controller "${purl}": module "${absFile}" has no export named "${fragment}"`,
+    );
+  }
+  const instance = fragment ? mod[fragment] : (mod as unknown as ControllerInstance);
+  if (!instance || (!instance.create && !instance.register)) {
+    throw new RuntimeError(
+      "ERR_CONTROLLER_INVALID",
+      `Bundled controller "${purl}" exports neither create() nor register()` +
+        (fragment ? ` at fragment "#${fragment}"` : ""),
+    );
+  }
+  return instance;
 }

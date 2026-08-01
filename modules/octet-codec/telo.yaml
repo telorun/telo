@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:npm/@telorun/octet-codec@0.4.2?local_path=./nodejs#encoder
+  - pkg:telo/local/js?path=./nodejs/encoder-controller.mjs&local_path=./nodejs/src/encoder-controller.ts
 schema:
   type: object
   additionalProperties: false
@@ -41,7 +41,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Decoder
 controllers:
-  - pkg:npm/@telorun/octet-codec@0.4.2?local_path=./nodejs#decoder
+  - pkg:telo/local/js?path=./nodejs/decoder-controller.mjs&local_path=./nodejs/src/decoder-controller.ts
 outputType:
   kind: Telo.JsonSchema
   schema:

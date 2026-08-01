@@ -25,19 +25,10 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
-    },
-    "./query": {
-      "types": "./dist/query-controller.d.ts",
-      "bun": "./src/query-controller.ts",
-      "import": "./dist/query-controller.js"
-    },
-    "./passage": {
-      "types": "./dist/passage-controller.d.ts",
-      "bun": "./src/passage-controller.ts",
-      "import": "./dist/passage-controller.js"
     }
   },
   "files": [
@@ -45,13 +36,14 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
+    "build": "tsc -p tsconfig.lib.json && esbuild src/passage-controller.ts src/query-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {

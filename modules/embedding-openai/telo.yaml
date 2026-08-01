@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:
-  - pkg:npm/@telorun/embedding-openai@0.4.1?local_path=./nodejs#model
+  - pkg:telo/local/js?path=./nodejs/model-controller.mjs&local_path=./nodejs/src/model-controller.ts
 schema:
   type: object
   required: [model, apiKey]

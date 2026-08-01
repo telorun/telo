@@ -1,41 +1,11 @@
 {
-  "name": "@telorun/yaml",
-  "version": "0.4.2",
-  "description": "Telo YAML module — batch YAML parsing for Telo manifests.",
-  "keywords": [
-    "telo",
-    "yaml"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/yaml/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/yaml-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/yaml module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    "./parse": {
-      "types": "./dist/parse.d.ts",
-      "bun": "./src/parse.ts",
-      "import": "./dist/parse.js"
-    }
-  },
-  "files": [
-    "dist/**",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/parse.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "dependencies": {
     "yaml": "^2.8.3"
@@ -43,9 +13,7 @@
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
   }
 }

@@ -3,7 +3,7 @@ import type { LogRecord } from "@telorun/sdk";
 import { encodeJsonLine, type BytesEncoder } from "./encode-json.js";
 import { encodePrettyLine } from "./encode-pretty.js";
 import { DEFAULT_BUFFER_POLICY, type LogSinkInstance, type SinkBufferPolicy } from "./log-sink.js";
-import { RecordBuffer } from "./record-buffer.js";
+import { RecordBuffer } from "./log-sink.js";
 
 /**
  * `Telo.FileSink` — a kernel built-in (§10.2). Asynchronous, `json` by default.

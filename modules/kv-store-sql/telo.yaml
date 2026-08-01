@@ -10,8 +10,6 @@ metadata:
     database you already run. Every write is a single statement carrying its own
     condition, so the database settles races between processes and hosts with no
     read-then-write window on the client. Speaks PostgreSQL and SQLite.
-files:
-  - nodejs/*.mjs
 imports:
   KvStore: ../kv-store
   Sql: ../sql
@@ -36,7 +34,7 @@ metadata:
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:
-  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+  - pkg:telo/local/js?path=./nodejs/store.mjs&local_path=./nodejs/src/store.ts#store
 schema:
   type: object
   required: [connection]

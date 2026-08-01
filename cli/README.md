@@ -170,7 +170,8 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 
 The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
 
-- `.telo/npm/` — controller node_modules tree (one realm per manifest).
+- `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
+- `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
 - `.telo/manifests/registry/<host>/<path…>/<version>/telo.yaml` — registry-served manifests.
 - `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry.
 - `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
@@ -185,12 +186,16 @@ Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` t
 
 ```
 Installing 20 controllers for apps/my-app/telo.yaml
-  ✓  pkg:npm/@telorun/http-server@<version>?local_path=./nodejs#http-server
-  ✓  pkg:npm/@telorun/http-client@<version>?local_path=./nodejs#http-client
+  ✓  pkg:telo/local/js?path=./nodejs/server.mjs
+  ✓  pkg:telo/local/js?path=./nodejs/request.mjs
   ...
 
 ✓  20 installed in 3.2s
 ```
+
+A bundled controller (`pkg:telo/local/js`) ships inside its module's own artifact, so
+"installing" it is materializing that artifact's controller layer — nothing is fetched
+from npm. A `pkg:npm` candidate still resolves through the npm cache above.
 
 **Typical Dockerfile usage:**
 

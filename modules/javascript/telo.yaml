@@ -26,7 +26,7 @@ metadata:
     exists.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/javascript@0.5.0?local_path=./nodejs#script
+  - pkg:telo/local/js?path=./nodejs/script.mjs&local_path=./nodejs/src/script.ts
 schema:
   type: "object"
   properties:

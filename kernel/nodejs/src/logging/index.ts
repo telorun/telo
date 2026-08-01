@@ -43,7 +43,7 @@ export {
   redactError,
 } from "./redact-attributes.js";
 export type { CompiledRedactionPath, RedactionPolicy } from "./redact-attributes.js";
-export { RecordBuffer } from "./record-buffer.js";
+export { RecordBuffer } from "./log-sink.js";
 export { Sampler } from "./sampler.js";
 export type { SamplingConfig } from "./sampler.js";
 export {

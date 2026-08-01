@@ -10,8 +10,6 @@ metadata:
     process's memory. The atomicity holds within one process only — records are not
     shared between instances and do not survive a restart — so it fits development,
     tests and single-process runs.
-files:
-  - nodejs/*.mjs
 imports:
   KvStore: ../kv-store
 exports:
@@ -28,7 +26,7 @@ metadata:
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:
-  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+  - pkg:telo/local/js?path=./nodejs/store.mjs&local_path=./nodejs/src/store.ts#store
 schema:
   type: object
   additionalProperties: false

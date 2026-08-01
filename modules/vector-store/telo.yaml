@@ -82,7 +82,7 @@ metadata:
     replacing any entry that already has that id. Returns the ids written, in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#record
+  - pkg:telo/local/js?path=./nodejs/record.mjs&local_path=./nodejs/src/record.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -137,7 +137,7 @@ metadata:
     metadata filter first.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#match
+  - pkg:telo/local/js?path=./nodejs/match.mjs&local_path=./nodejs/src/match.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -200,7 +200,7 @@ metadata:
     how many were removed.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/vector-store@0.3.0?local_path=./nodejs#removal
+  - pkg:telo/local/js?path=./nodejs/removal.mjs&local_path=./nodejs/src/removal.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

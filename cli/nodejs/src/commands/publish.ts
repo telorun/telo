@@ -9,7 +9,8 @@ import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { describePartition, partitionLayers } from "../bundle/partition-layers.js";
-import { selectFiles } from "../bundle/select-files.js";
+import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
+import { assertWithinModule, selectFiles } from "../bundle/select-files.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
@@ -173,6 +174,15 @@ export function readFilesPatterns(content: string): string[] {
  *  `files:` that ships in the lazily materialized asset layer. */
 export function readAssetPatterns(content: string): string[] {
   return readPatternField(content, "assets");
+}
+
+/** The owner doc's `metadata.version` — the tag this artifact publishes under,
+ *  and so the version the payload-drift gate compares against. */
+function readOwnerVersion(content: string): string | undefined {
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const first = docs[0]?.toJSON() as { metadata?: { version?: unknown } } | undefined;
+  const version = first?.metadata?.version;
+  return typeof version === "string" ? version : undefined;
 }
 
 function readPatternField(content: string, field: "files" | "assets"): string[] {
@@ -572,12 +582,22 @@ async function publishOne(
   // controller selector, the author-claimed `assets:` layer, and `common` for
   // everything unclaimed. Printed so an author can see where each file landed —
   // a sidecar that fell into `common` is not wrong, just not skippable.
-  const partition = partitionLayers(content, bundledFiles, readAssetPatterns(content));
-
-  if (dryRun) {
-    for (const line of describePartition(partition)) stepDry(log, "layer", line);
-    stepDry(log, "push", destination);
-    return true;
+  let partition;
+  try {
+    partition = partitionLayers(content, bundledFiles, readAssetPatterns(content));
+    // Every file that will actually ship, including the controller entry points
+    // `controllers:` contributed without `files:` naming them. The guard belongs
+    // on the partition rather than on the pattern match, since the pattern match
+    // is no longer the only way in.
+    assertWithinModule(
+      manifestDir,
+      partition.layers.flatMap((layer) => layer.files),
+    );
+  } catch (err) {
+    console.error(
+      log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
   }
 
   const layers = partition.layers.map((layer) => ({
@@ -588,6 +608,37 @@ async function publishOne(
       content: fs.readFileSync(path.resolve(manifestDir, rel)),
     })),
   }));
+
+  // Bytes, not a ledger: if this version is already published and its payload
+  // differs from what we just built, some dependency changed underneath it and
+  // `metadata.version` has to move. Runs before the push (and on --dry-run) so
+  // the release fails while it is still a fixable working copy.
+  const version = readOwnerVersion(content);
+  if (version) {
+    let drift;
+    try {
+      drift = await findPayloadDrift(destination, version, layers, registry);
+    } catch (err) {
+      // A registry that could not answer is not a pass. Fail the publish and say
+      // why, rather than shipping on the assumption that nothing changed.
+      console.error(
+        log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+    if (drift && drift.length > 0) {
+      console.error(log.error("error") + `  ${describeDrift(destination, version, drift)}`);
+      return false;
+    }
+    if (drift) stepOk(log, "payload", `matches the published ${version}`);
+  }
+
+  if (dryRun) {
+    for (const line of describePartition(partition)) stepDry(log, "layer", line);
+    stepDry(log, "push", destination);
+    return true;
+  }
+
   for (const line of describePartition(partition)) stepOk(log, "layer", line);
 
   // The transport pushes each layer as its own blob, injects the resulting

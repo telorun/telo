@@ -1,62 +1,16 @@
 {
-  "name": "@telorun/config",
-  "version": "0.3.2",
-  "description": "Telo Config module - Configuration and variable providers for Telo manifests.",
-  "keywords": [
-    "telo",
-    "config",
-    "variables",
-    "secrets"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/config/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/config-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/config module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "exports": {
-    "./env-variable-store-controller": {
-      "types": "./dist/env-variable-store-controller.d.ts",
-      "bun": "./src/env-variable-store-controller.ts",
-      "import": "./dist/env-variable-store-controller.js"
-    },
-    "./variables-controller": {
-      "types": "./dist/variables-controller.d.ts",
-      "bun": "./src/variables-controller.ts",
-      "import": "./dist/variables-controller.js"
-    },
-    "./secrets-controller": {
-      "types": "./dist/secrets-controller.d.ts",
-      "bun": "./src/secrets-controller.ts",
-      "import": "./dist/secrets-controller.js"
-    },
-    "./env-controller": {
-      "types": "./dist/env-controller.d.ts",
-      "bun": "./src/env-controller.ts",
-      "import": "./dist/env-controller.js"
-    }
-  },
-  "files": [
-    "dist/**",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/env-controller.ts src/env-variable-store-controller.ts src/secrets-controller.ts src/variables-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
   }
 }

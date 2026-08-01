@@ -120,8 +120,10 @@ export function readControllerClaims(manifestText: string): ControllerClaim[] {
  * are optional and only ever buy laziness.
  *
  * `files` are the manifest-relative paths `selectFiles` produced; `assetPatterns`
- * is the author's `assets:` list. Layers with no files are dropped, so a
- * controller-only module publishes exactly one payload layer.
+ * is the author's `assets:` list. Every bundled controller's `path=` entry joins
+ * the payload whether or not `files:` selected it — the manifest already names
+ * it, so restating it would be pure duplication. Layers with no files are
+ * dropped, so a controller-only module publishes exactly one payload layer.
  */
 export function partitionLayers(
   manifestText: string,
@@ -129,22 +131,17 @@ export function partitionLayers(
   assetPatterns: string[],
 ): Partition {
   const claims = readControllerClaims(manifestText);
-  const selected = new Set(files);
-  const unclaimed = new Set(files);
 
-  // A controller entry point the `files:` list does not select is a broken
-  // artifact, and it is decidable right here: its layer would ship without it (or
-  // be dropped entirely as empty), and the consumer would only find out at load
-  // time as "ships no layer for <selector>". Fail at publish, naming both the PURL
-  // and the path that has to be added.
-  const missing = claims.filter((c) => !selected.has(c.entry));
-  if (missing.length > 0) {
-    throw new Error(
-      `controller entry point${missing.length === 1 ? "" : "s"} not selected by 'files:':\n` +
-        missing.map((c) => `  ${c.entry}  (from ${c.purl})`).join("\n") +
-        `\nAdd the path to 'files:' — a bundled controller must ship in the module's artifact.`,
-    );
-  }
+  // A controller entry point is part of the payload because `controllers:` names
+  // it, not because `files:` restates it. `files:` keeps its role for everything
+  // the manifest cannot otherwise see — assets, static files, sidecars — and a
+  // module whose only payload is its controller declares no `files:` at all.
+  //
+  // Sibling patterns are still matched against `files:` alone: a sibling is a
+  // glob over the payload, so a pattern that selects nothing there means the
+  // author forgot to include the file, which `unmatchedSiblings` reports.
+  const selected = new Set([...files, ...claims.map((claim) => claim.entry)]);
+  const unclaimed = new Set(files);
 
   // Controller layers first: a file an entry point or sibling claims belongs to
   // that selector, never to assets or common, so the layer a kernel skips is

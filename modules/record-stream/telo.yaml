@@ -37,7 +37,7 @@ metadata:
     per record type whether to emit a field, drop it, or fail the stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#extract-text
+  - pkg:telo/local/js?path=./nodejs/extract-text-controller.mjs&local_path=./nodejs/src/extract-text-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -107,7 +107,7 @@ metadata:
   description: Fans one input stream out to two output branches, each receiving every item in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#tee
+  - pkg:telo/local/js?path=./nodejs/tee-controller.mjs&local_path=./nodejs/src/tee-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -151,7 +151,7 @@ metadata:
   description: Forwards a stream live and, once it completes normally, invokes a handler once with all observed records.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#on-complete
+  - pkg:telo/local/js?path=./nodejs/on-complete-controller.mjs&local_path=./nodejs/src/on-complete-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -206,7 +206,7 @@ metadata:
     missed. Held in memory for the life of the process.
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal
+  - pkg:telo/local/js?path=./nodejs/journal-controller.mjs&local_path=./nodejs/src/journal-controller.ts
 schema:
   type: object
   additionalProperties: false
@@ -224,7 +224,7 @@ metadata:
     increasing id and marking the key finished when the stream ends.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal-sink
+  - pkg:telo/local/js?path=./nodejs/journal-sink-controller.mjs&local_path=./nodejs/src/journal-sink-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -272,7 +272,7 @@ metadata:
     exactly where it dropped.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/record-stream@0.8.1?local_path=./nodejs#journal-source
+  - pkg:telo/local/js?path=./nodejs/journal-source-controller.mjs&local_path=./nodejs/src/journal-source-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

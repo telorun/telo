@@ -17,7 +17,7 @@ metadata:
   description: Listed in exports.kinds — importers may reference it.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/javascript@0.9.0?local_path=../../modules/javascript/nodejs#script
+  - pkg:telo/local/js?path=../../modules/javascript/nodejs/script.mjs&local_path=../../modules/javascript/nodejs/src/script.ts
 schema:
   type: object
   additionalProperties: false
@@ -28,7 +28,7 @@ metadata:
   description: Absent from exports.kinds — referencing it must raise KIND_NOT_EXPORTED.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/javascript@0.9.0?local_path=../../modules/javascript/nodejs#script
+  - pkg:telo/local/js?path=../../modules/javascript/nodejs/script.mjs&local_path=../../modules/javascript/nodejs/src/script.ts
 schema:
   type: object
   additionalProperties: false

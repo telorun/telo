@@ -81,7 +81,7 @@ metadata:
   name: WriteLine
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.8.0?local_path=./nodejs#writeline
+  - pkg:telo/local/js?path=./nodejs/writeline-controller.mjs&local_path=./nodejs/src/writeline-controller.ts
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -98,7 +98,7 @@ schema:
 ```
 
 - **`capability`** — the lifecycle role the kernel will drive (`Telo.Invocable` here). See the [capability list](/reference/kernel/capabilities).
-- **`controllers`** — a [Package URL](/reference/kernel/controllers) locating the implementation. `local_path=./nodejs` resolves the package directory during development; `#writeline` selects the package export entry (Step 3). List one PURL per language to ship a polyglot kind.
+- **`controllers`** — a [Package URL](/reference/kernel/controllers) locating the implementation. `pkg:telo/local/js` means the controller **ships inside the module's own artifact** as a bundle: `path=` is the built `.mjs` a published module carries in its controller layer, and `local_path=` is the TypeScript source it was built from, which the kernel builds on demand while the module is a working copy (Step 3). List one PURL per format or platform to ship a polyglot kind.
 - **`inputType` / `outputType`** — the typed contract the analyzer checks CEL against. `schema` validates the resource's own config fields. Both carry [`x-telo-*` annotations](/reference/kernel/resource-definition) (`x-telo-eval`, `x-telo-ref`, `x-telo-stream`, …) that the analyzer and editor resolve generically.
 
 ## Step 2 — implement the controller
@@ -156,25 +156,42 @@ The instance implements the method that matches the declared capability:
 
 Any instance may also implement optional `init()`, `teardown()`, and `snapshot()` (the snapshot is what `resources.<name>` exposes in CEL).
 
-## Step 3 — wire the package export
+## Step 3 — wire the build
 
-The PURL `#writeline` fragment maps to a `"./writeline"` key in the package's export map:
+The controller ships as a bundle inside the module artifact, so the `nodejs/`
+package is **private and never published**. It exists for two reasons only: to
+declare the dependencies esbuild inlines, and to type-check the sources, which
+esbuild does not do.
 
 ```json
 {
-  "name": "@telorun/console",
+  "name": "@telorun/console-build",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "exports": {
-    "./writeline": {
-      "bun": "./src/writeline-controller.ts",
-      "import": "./dist/writeline-controller.js"
-    }
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json && esbuild src/writeline-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --outdir=. --out-extension:.js=.mjs"
   },
-  "peerDependencies": { "@telorun/sdk": "*" }
+  "devDependencies": { "@telorun/sdk": "workspace:*", "esbuild": "^0.25.12" }
 }
 ```
 
-`@telorun/sdk` is a peer dependency — the kernel injects a single shared copy at load time so class identities (e.g. `Stream`) stay consistent across the kernel and every controller.
+`@telorun/sdk` stays **external** rather than inlined: the bundle ships with no
+`node_modules`, so the kernel symlinks the SDK to its own copy beside the bundle
+at load time. That collapses identity as well as resolution, keeping `Stream` /
+`InvokeError` `instanceof` checks true across the kernel/controller boundary.
+Authors write a plain `import { … } from "@telorun/sdk"`.
+
+**There is no build step during development.** `telo run` against a module on
+disk builds the controller from its `local_path` source on first use and caches
+it, so editing `src/*.ts` and re-running picks the edit up. The `build` script
+exists so CI and `telo publish` can materialize what ships, and to type-check.
+
+> **A dependency that resolves a file next to itself cannot be inlined.** If a
+> package reads an asset relative to its own module URL — `${__dirname}/…`, or
+> `import.meta.url` — the flattened bundle looks for that file beside the bundle
+> instead, where it is not. Such a module keeps a `pkg:npm` candidate until it
+> ships the asset in its own layer.
 
 ## Step 4 — export and consume
 
@@ -197,7 +214,11 @@ Throw an `InvokeError` for domain failures that are part of your kind's contract
 
 ## Publish
 
-`telo publish ./modules/<name>/telo.yaml oci://<host>/<repo> --bump=minor` builds and publishes the controller packages, rewrites the PURL versions to exact pins, and pushes the manifest as an OCI artifact to the target registry (e.g. `oci://ghcr.io/acme/telo-console`). Importers then reference it as `oci://<host>/<repo>@<version>`. To make the module discoverable, register its ref with the [hub](https://telo.sh). See the [CLI reference](/learn/installation-and-cli).
+`telo publish ./modules/<name>/telo.yaml oci://<host>/<repo> --bump=minor` partitions the module into layers — `telo.yaml` alone, one controller layer per selector, assets, and everything else — and pushes them as an OCI artifact to the target registry (e.g. `oci://ghcr.io/acme/telo-console`). Importers then reference it as `oci://<host>/<repo>@<version>`; nothing is fetched from npm at load. A controller's `path=` entry joins the payload automatically, so `files:` is only for what the manifest cannot otherwise name.
+
+Publish refuses to ship changed bytes at an unchanged `metadata.version`: it compares each built layer's content digest against the one already published under that version. A bundle inlines its dependencies, so a fix in a shared library changes a module's bytes while touching no file the module owns — bumping the version is what makes that fix reach consumers.
+
+To make the module discoverable, register its ref with the [hub](https://telo.sh). See the [CLI reference](/learn/installation-and-cli).
 
 ## See also
 

@@ -41,7 +41,7 @@ metadata:
     can be cancelled by key.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/lease@0.4.1?local_path=./nodejs#critical
+  - pkg:telo/local/js?path=./nodejs/critical-controller.mjs&local_path=./nodejs/src/critical-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

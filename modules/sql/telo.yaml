@@ -47,7 +47,7 @@ metadata:
     transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-query
+  - pkg:telo/local/js?path=./nodejs/sql-query-controller.mjs&local_path=./nodejs/src/sql-query-controller.ts
 schema:
   type: object
   description: >-
@@ -120,7 +120,7 @@ metadata:
     open transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-command
+  - pkg:telo/local/js?path=./nodejs/sql-command-controller.mjs&local_path=./nodejs/src/sql-command-controller.ts
 schema:
   type: object
   description: >-
@@ -195,7 +195,7 @@ metadata:
     reference, so a group of writes becomes all-or-nothing.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-transaction
+  - pkg:telo/local/js?path=./nodejs/sql-transaction-controller.mjs&local_path=./nodejs/src/sql-transaction-controller.ts
 schema:
   type: object
   required:
@@ -225,7 +225,7 @@ metadata:
     visually editable and injection-safe.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-selection
+  - pkg:telo/local/js?path=./nodejs/sql-selection-controller.mjs&local_path=./nodejs/src/sql-selection-controller.ts
 schema:
   type: object
   required: [from]
@@ -355,7 +355,7 @@ metadata:
     migrations inline in the keyed migrations map instead.
 capability: Telo.Provider
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-migration
+  - pkg:telo/local/js?path=./nodejs/sql-migration-controller.mjs&local_path=./nodejs/src/sql-migration-controller.ts
 schema:
   type: object
   required: [sql]
@@ -397,7 +397,7 @@ metadata:
     tracking table so it runs exactly once. Renaming a key makes it a new migration.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/sql@0.10.0?local_path=./nodejs#sql-migrations
+  - pkg:telo/local/js?path=./nodejs/sql-migrations-controller.mjs&local_path=./nodejs/src/sql-migrations-controller.ts
 schema:
   type: object
   required: [connection]

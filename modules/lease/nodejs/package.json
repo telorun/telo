@@ -1,59 +1,19 @@
 {
-  "name": "@telorun/lease",
-  "version": "0.4.1",
-  "description": "Telo lease module — Lease.Critical, a declarative critical section over a Cache.Store.",
-  "keywords": [
-    "telo",
-    "lease",
-    "lock",
-    "mutex",
-    "critical-section"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/lease/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/lease-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/lease module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
-      "import": "./dist/index.js"
-    },
-    "./critical": {
-      "types": "./dist/critical-controller.d.ts",
-      "bun": "./src/critical-controller.ts",
-      "import": "./dist/critical-controller.js"
-    }
-  },
-  "files": [
-    "dist/**",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/critical-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
+  },
+  "dependencies": {
+    "@telorun/kv-store": "workspace:*"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
-  },
-  "dependencies": {
-    "@telorun/kv-store": "workspace:*"
   }
 }

@@ -22,6 +22,8 @@ export * from "./contract-errors.js";
 export * from "./invoke-error.js";
 export * from "./log-record.js";
 export * from "./log-sink.js";
+export * from "./record-buffer.js";
+export * from "./runtime-seam.js";
 export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";

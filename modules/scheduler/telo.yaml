@@ -10,8 +10,6 @@ metadata:
     in a chosen timezone. Schedules start when the application runs and stop on
     shutdown, so they order against migrations and other start-up work, and each tick
     can be gated on current state rather than firing blindly.
-files:
-  - nodejs/*.mjs
 exports:
   kinds:
     - Interval
@@ -28,7 +26,7 @@ metadata:
     logged without stopping the schedule.
 capability: Telo.Service
 controllers:
-  - pkg:telo/local/js?path=./nodejs/interval.mjs#interval
+  - pkg:telo/local/js?path=./nodejs/interval.mjs&local_path=./nodejs/src/interval.ts#interval
 schema:
   type: object
   required: [every, invoke]
@@ -78,7 +76,7 @@ metadata:
     failing run is logged without stopping the schedule.
 capability: Telo.Service
 controllers:
-  - pkg:telo/local/js?path=./nodejs/cron.mjs#cron
+  - pkg:telo/local/js?path=./nodejs/cron.mjs&local_path=./nodejs/src/cron.ts#cron
 schema:
   type: object
   required: [cron, invoke]

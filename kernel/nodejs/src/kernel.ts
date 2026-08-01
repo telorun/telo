@@ -170,6 +170,11 @@ export class Kernel implements IKernel {
   readonly env: Record<string, string | undefined>;
   readonly argv: string[];
   readonly registryUrl: string | undefined;
+  /** The sources this kernel was constructed with, kept so `ctx.runtime` can
+   *  give a child manifest — or a static check of one — the same resolution
+   *  chain this kernel runs on. The transports come from the registry and are
+   *  rebuilt per loader; these are the host's own additions. */
+  readonly injectedSources: readonly ManifestSource[];
   /** Structured logging for this kernel — the pipeline, its sinks, and the
    *  scoped loggers handed to controllers as `ctx.log`. Live from construction
    *  so loader and parse diagnostics have somewhere to go (§12.3); a nested
@@ -208,6 +213,7 @@ export class Kernel implements IKernel {
     this.loader = new Loader(defaultTransportRegistry(this.registryUrl).sources(), {
       celHandlers: nodeCelHandlers,
     });
+    this.injectedSources = [...options.sources];
     for (const source of options.sources) {
       this.loader.register(source);
     }
@@ -936,6 +942,13 @@ export class Kernel implements IKernel {
    *  controller loader so it doesn't re-derive it from the entry URL. */
   getInstallRoot(): string | undefined {
     return this._cacheRoot ? `${this._cacheRoot}/npm` : undefined;
+  }
+
+  /** The `.telo` cache root resolved for this load. The bundle loader builds a
+   *  local module's controller source under it; `null`/`undefined` when the load
+   *  resolved no cache root (a memory-source manifest, an explicit opt-out). */
+  getCacheRoot(): string | undefined {
+    return this._cacheRoot ?? undefined;
   }
 
   /**
