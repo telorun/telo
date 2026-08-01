@@ -26,6 +26,17 @@ export interface MaterializedLayer {
   files: string[];
 }
 
+/** A materialized controller layer plus whether reaching it cost a transfer.
+ *
+ *  `transferred` is out of band rather than a field on `MaterializedLayer`
+ *  because it describes THIS call, not the layer: the value is memoized and
+ *  shared, so a flag on it would be meaningless to every other caller. Only the
+ *  controller path reports progress, so only it asks. */
+export interface ResolvedControllerLayer {
+  layer: MaterializedLayer;
+  transferred: boolean;
+}
+
 /**
  * Map Node's platform vocabulary onto the canonical OCI/GOOS names selectors are
  * published with. Node says `win32`/`x64`; OCI descriptors say
@@ -123,8 +134,11 @@ export class ModuleArtifact {
   private readonly transports: TransportRegistry;
   private readonly log: Logger;
   /** In-flight / completed materializations, keyed by blob digest. Rejections
-   *  are dropped so a transient fetch failure retries on the next ask. */
-  private readonly inFlight = new Map<string, Promise<MaterializedLayer>>();
+   *  are dropped so a transient fetch failure retries on the next ask. Each
+   *  records whether the work it wraps transferred the layer or read it off
+   *  disk — the memoized entry is shared, so a joining caller reads the flag
+   *  but never claims it. */
+  private readonly inFlight = new Map<string, Promise<ResolvedControllerLayer>>();
 
   constructor(opts: {
     pinnedRef: string;
@@ -165,14 +179,23 @@ export class ModuleArtifact {
    * Returns `undefined` when the artifact ships no layer for this selector, which
    * is how a loader learns to fall through to the next candidate.
    */
-  async materializeController(selector: ArtifactSelector): Promise<MaterializedLayer | undefined> {
+  async materializeController(
+    selector: ArtifactSelector,
+  ): Promise<ResolvedControllerLayer | undefined> {
     const key = selectorKey(selector);
     const layer = this.layers.find(
       (l) => l.role === "controller" && l.selector !== undefined && selectorKey(l.selector) === key,
     );
     if (!layer) return undefined;
-    await this.materializeCommon();
-    return this.materialize(layer);
+    const common = await this.materializeCommonTracked();
+    const controller = await this.materializeTracked(layer);
+    // Either half is a transfer the caller waited on: the common layer's bytes
+    // come down on this call too, so they are as much of a wait as the
+    // controller layer's.
+    return {
+      layer: controller.layer,
+      transferred: controller.transferred || (common?.transferred ?? false),
+    };
   }
 
   /**
@@ -197,8 +220,15 @@ export class ModuleArtifact {
 
   /** Materialize the `common` layer, if the module ships one. */
   async materializeCommon(): Promise<MaterializedLayer | undefined> {
+    return (await this.materializeCommonTracked())?.layer;
+  }
+
+  /** As `materializeCommon`, reporting whether this call transferred it — the
+   *  controller path rides the common layer along and has to count its bytes as
+   *  part of the wait. One lookup, so "common comes too" is encoded once. */
+  private async materializeCommonTracked(): Promise<ResolvedControllerLayer | undefined> {
     const layer = singletonLayer(this.layers, "common");
-    return layer ? this.materialize(layer) : undefined;
+    return layer ? this.materializeTracked(layer) : undefined;
   }
 
   /**
@@ -226,9 +256,21 @@ export class ModuleArtifact {
       .join(", ");
   }
 
-  private materialize(layer: ArtifactLayer): Promise<MaterializedLayer> {
+  private async materialize(layer: ArtifactLayer): Promise<MaterializedLayer> {
+    return (await this.materializeTracked(layer)).layer;
+  }
+
+  /**
+   * As `materialize`, but also reporting whether THIS call transferred the layer.
+   *
+   * A caller that joins work already in flight reports `false`: several
+   * controller candidates of one module share a layer, and attributing the
+   * transfer to all of them would print one progress line per candidate for a
+   * single download. The call that started the work owns the report.
+   */
+  private materializeTracked(layer: ArtifactLayer): Promise<ResolvedControllerLayer> {
     const pending = this.inFlight.get(layer.blob);
-    if (pending) return pending;
+    if (pending) return pending.then((r) => ({ layer: r.layer, transferred: false }));
     const work = this.materializeUncached(layer).catch((err) => {
       // Drop the rejection so a transient fetch failure is retried rather than
       // cached for the lifetime of the module.
@@ -247,10 +289,10 @@ export class ModuleArtifact {
     return path.join(this.dir, `.telo-layer-${layer.role}-${short}`);
   }
 
-  private async materializeUncached(layer: ArtifactLayer): Promise<MaterializedLayer> {
+  private async materializeUncached(layer: ArtifactLayer): Promise<ResolvedControllerLayer> {
     const marker = this.markerPath(layer);
     if (existsSync(marker)) {
-      return { dir: this.dir, files: await readMarker(marker) };
+      return { layer: { dir: this.dir, files: await readMarker(marker) }, transferred: false };
     }
 
     return withDirectoryLock(
@@ -260,7 +302,7 @@ export class ModuleArtifact {
         // Re-check inside the lock: a peer may have extracted this layer between
         // the fast-path miss and our acquisition.
         if (existsSync(marker)) {
-          return { dir: this.dir, files: await readMarker(marker) };
+          return { layer: { dir: this.dir, files: await readMarker(marker) }, transferred: false };
         }
 
         const files = await this.transports.fetchLayer(this.pinnedRef, layer.blob);
@@ -283,7 +325,7 @@ export class ModuleArtifact {
           "telo.layer.role": layer.role,
           "telo.layer.files": written.length,
         });
-        return { dir: this.dir, files: written };
+        return { layer: { dir: this.dir, files: written }, transferred: true };
       },
       this.log,
     );

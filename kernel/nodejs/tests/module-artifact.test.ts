@@ -69,7 +69,7 @@ describe("ModuleArtifact", () => {
     const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js], dir, transports });
     const result = await artifact.materializeController({ format: "js" });
 
-    expect(result?.files).toEqual(["nodejs/c.mjs"]);
+    expect(result?.layer.files).toEqual(["nodejs/c.mjs"]);
     expect(fs.readFileSync(path.join(dir, "nodejs/c.mjs"), "utf-8")).toBe("export const x = 1");
     expect(fetched).toEqual([js.blob]);
   });
@@ -105,7 +105,7 @@ describe("ModuleArtifact", () => {
       arch: "amd64",
     });
 
-    expect(result?.files).toEqual(["nodejs/linux.mjs"]);
+    expect(result?.layer.files).toEqual(["nodejs/linux.mjs"]);
     expect(fetched).toEqual([linux.blob]);
   });
 
@@ -195,6 +195,48 @@ describe("ModuleArtifact", () => {
     expect(fetched).toEqual([js.blob]);
   });
 
+  // What the CLI's progress trail keys on: a warm start does no work, so it must
+  // not report a controller load as a transfer the user waited for.
+  it("reports `transferred` only for the call that fetched the layer", async () => {
+    const files = [file("nodejs/c.mjs", "x")];
+    const js = await layer("controller", "1", files, { format: "js" });
+    const { transports } = fakeTransports({ [js.blob]: files });
+
+    const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js], dir, transports });
+    const cold = await artifact.materializeController({ format: "js" });
+    expect(cold?.transferred).toBe(true);
+    expect(cold?.layer.files).toEqual(["nodejs/c.mjs"]);
+
+    // In-process: joined the memoized transfer, so it fetched nothing itself.
+    expect((await artifact.materializeController({ format: "js" }))?.transferred).toBe(false);
+
+    // A fresh handle over the same directory — the next `telo run` — reads the
+    // on-disk marker.
+    const warm = new ModuleArtifact({ pinnedRef: REF, layers: [js], dir, transports });
+    expect((await warm.materializeController({ format: "js" }))?.transferred).toBe(false);
+  });
+
+  // The controller layer can be warm while the common layer that rides along is
+  // not; the caller is asking whether this resolve cost a transfer at all.
+  it("reports `transferred` when only the common layer had to be fetched", async () => {
+    const jsFiles = [file("nodejs/c.mjs", "x")];
+    const commonFiles = [file("nodejs/side.wasm", "w")];
+    const js = await layer("controller", "1", jsFiles, { format: "js" });
+    const common = await layer("common", "2", commonFiles);
+    const { transports } = fakeTransports({ [js.blob]: jsFiles, [common.blob]: commonFiles });
+
+    const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js], dir, transports });
+    await artifact.materializeController({ format: "js" });
+
+    const withCommon = new ModuleArtifact({
+      pinnedRef: REF,
+      layers: [js, common],
+      dir,
+      transports,
+    });
+    expect((await withCommon.materializeController({ format: "js" }))?.transferred).toBe(true);
+  });
+
   it("hard-fails when a layer's contents do not match its pinned integrity", async () => {
     const declared = [file("nodejs/c.mjs", "the published bytes")];
     const js = await layer("controller", "1", declared, { format: "js" });
@@ -236,7 +278,7 @@ describe("ModuleArtifact", () => {
     const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js], dir, transports });
     await expect(artifact.materializeController({ format: "js" })).rejects.toThrow("network blip");
     await expect(artifact.materializeController({ format: "js" })).resolves.toMatchObject({
-      files: ["nodejs/c.mjs"],
+      layer: { files: ["nodejs/c.mjs"] },
     });
     expect(attempts).toBe(2);
   });

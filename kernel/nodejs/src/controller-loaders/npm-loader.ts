@@ -149,7 +149,7 @@ export class NpmControllerLoader {
    * same spec share one `npm install <spec>` invocation rather than each
    * acquiring the fs-lock and reinstalling.
    */
-  private readonly inFlight = new Map<string, Promise<void>>();
+  private readonly inFlight = new Map<string, Promise<boolean>>();
 
   /**
    * Promise that resolves when the install root has been materialized
@@ -264,15 +264,20 @@ export class NpmControllerLoader {
       dependencies[name] = `file:${resolvedPkgRoot}`;
     }
 
-    const packageJson = {
-      name: "telo-runtime-install",
-      private: true,
-      version: "0.0.0",
-      dependencies,
-    };
     const packageJsonPath = path.join(installRoot, "package.json");
     const stateFile = path.join(installRoot, ".telo-state.json");
-    const newHash = sha256(JSON.stringify(packageJson));
+    // Keyed on the realm deps alone — the only part this function owns. The
+    // controller aliases below join the file but never the identity: they are
+    // added one `--save` at a time, so hashing them would make every controller
+    // install invalidate the root and trigger another root install.
+    const newHash = sha256(
+      JSON.stringify({
+        name: "telo-runtime-install",
+        private: true,
+        version: "0.0.0",
+        dependencies,
+      }),
+    );
 
     await fs.mkdir(installRoot, { recursive: true });
 
@@ -301,7 +306,25 @@ export class NpmControllerLoader {
         return;
       }
 
-      await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+      // Rewrite the root's package.json REALM DEPS ONLY, keeping every
+      // controller alias a previous `installPackage --save` recorded. Writing a
+      // fresh file instead drops them, and the install below then prunes their
+      // `node_modules` folders — so a realm change (a different kernel checkout,
+      // e.g. a globally installed CLI and a repo one addressing the same app)
+      // evicted every controller and reinstalled the lot, on every switch.
+      const existingDeps = (await readPackageDeps(installRoot)) ?? {};
+      const merged: Record<string, string> = {
+        ...(await liveControllerDeps(existingDeps, installRoot)),
+        ...dependencies,
+      };
+      await fs.writeFile(
+        packageJsonPath,
+        JSON.stringify(
+          { name: "telo-runtime-install", private: true, version: "0.0.0", dependencies: merged },
+          null,
+          2,
+        ) + "\n",
+      );
       await runPackageManager(installRoot, [
         "install",
         "--no-audit",
@@ -414,8 +437,11 @@ export class NpmControllerLoader {
       }
     }
 
+    // Resolves to whether the package manager actually ran: the re-check below
+    // routinely wins the race, and reporting an install that never happened
+    // makes the CLI print a "downloading…" line nobody waited for.
     const work = (async () => {
-      await withDirectoryLock(installRoot, "controller install", async () => {
+      return withDirectoryLock(installRoot, "controller install", async () => {
         // Re-check inside the lock: a peer process may have installed the
         // spec between the fast-path miss and our acquisition.
         if (kind === "registry") {
@@ -424,7 +450,7 @@ export class NpmControllerLoader {
             installedVersion !== null &&
             (requestedVersion === null || requestedVersion === installedVersion)
           ) {
-            return;
+            return false;
           }
         } else {
           // Normalize the on-disk record to absolute form before comparing —
@@ -436,7 +462,7 @@ export class NpmControllerLoader {
             (await pathExists(targetPath))
           ) {
             this.rootDeps[alias] = lockedSpec;
-            return;
+            return false;
           }
         }
 
@@ -458,16 +484,21 @@ export class NpmControllerLoader {
         const written = await readDepSpec(installRoot, alias);
         if (written !== undefined) this.rootDeps[alias] = written;
         else this.rootDeps[alias] = spec;
+        return true;
       }, this.log);
     })();
 
     this.inFlight.set(cacheKey, work);
+    let installed: boolean;
     try {
-      await work;
+      installed = await work;
     } finally {
       this.inFlight.delete(cacheKey);
     }
     this.installedSpecs.add(cacheKey);
+    // A peer that won the lock had already put the package there, so nothing
+    // was installed — that is a cache hit, whatever the fast path thought.
+    if (!installed) return "cache";
     // First-touch local installs report `local` (silenced in CLI progress);
     // fresh registry installs report `npm-install` (the only branch a
     // user-facing "downloading…" line should ever surface for).
@@ -693,6 +724,37 @@ function normalizeFileSpec(spec: string, installRoot: string): string {
  * Returns null when the file is missing or unreadable; callers decide whether
  * to seed from a synthesized map instead.
  */
+/**
+ * The subset of a root's recorded dependencies still worth carrying into a
+ * rewrite: the package manager has to resolve every entry, so one dead record
+ * fails the whole install.
+ *
+ * Dropped: a `file:` spec whose target no longer exists (the app was run from a
+ * checkout that has since moved, or the app directory was copied without it),
+ * and an alias with no folder in `node_modules`. Both are free to drop —
+ * `installPackage` reinstalls a controller the moment something asks for it —
+ * and keeping them is not: a dangling `file:` dep makes the root install fail
+ * with an ENOENT that names nothing in the manifest, and since the state file is
+ * only written after a successful install, every later run repeats it. This is
+ * also what stops aliases accumulating forever now that the rewrite preserves
+ * them: a version an app has moved off drops out on the next root install.
+ */
+async function liveControllerDeps(
+  deps: Record<string, string>,
+  installRoot: string,
+): Promise<Record<string, string>> {
+  const live: Record<string, string> = {};
+  for (const [name, spec] of Object.entries(deps)) {
+    if (spec.startsWith("file:")) {
+      const target = normalizeFileSpec(spec, installRoot).slice("file:".length);
+      if (!(await pathExists(target))) continue;
+    }
+    if (!(await pathExists(path.join(installRoot, "node_modules", name)))) continue;
+    live[name] = spec;
+  }
+  return live;
+}
+
 async function readPackageDeps(installRoot: string): Promise<Record<string, string> | null> {
   try {
     const text = await fs.readFile(path.join(installRoot, "package.json"), "utf8");

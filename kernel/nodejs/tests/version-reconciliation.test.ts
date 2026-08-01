@@ -69,4 +69,22 @@ describe("kernel version reconciliation", () => {
     const kernel = new Kernel({ sources: [memory], env: {} });
     await expect(kernel.load("memory://app")).rejects.toThrow(/incompatible major/);
   });
+
+  // The rejection has to name the import that has to change, not just the
+  // module: the diagnostics carry the importing file and the `imports.<alias>`
+  // field so a renderer resolves it to a line.
+  it("attaches the offending import's manifest site to the rejection", async () => {
+    const memory = new MemorySource();
+    diamond(memory, "2.0.0", "1.0.0");
+
+    const kernel = new Kernel({ sources: [memory], env: {} });
+    const thrown = await kernel.load("memory://app").catch((err) => err);
+
+    expect(thrown.diagnostics?.length).toBeGreaterThan(0);
+    expect(thrown.diagnostics[0]).toMatchObject({
+      code: "MODULE_VERSION_CONFLICT",
+      origin: { path: expect.stringMatching(/^imports\./) },
+    });
+    expect(thrown.diagnostics[0].origin.filePath).toContain("memory://");
+  });
 });

@@ -419,8 +419,11 @@ function countRootErrors(diagnostics: RuntimeDiagnostic[]): number {
 }
 
 /** Format an error as diagnostics on the terminal. Returns the non-warning
- *  count so the single-shot path can pick an exit code while watch keeps going. */
-function reportError(argv: RunArgv, error: unknown, log: Logger): number {
+ *  count so the single-shot path can pick an exit code while watch keeps going.
+ *  The kernel's loaded graph is what turns a static failure's `origin` into a
+ *  `file:line:col` — it is present for every failure raised after the graph
+ *  loaded, which is every static one. */
+function reportError(argv: RunArgv, error: unknown, log: Logger, kernel?: Kernel): number {
   const isUrl = argv.path.startsWith("http://") || argv.path.startsWith("https://");
   const displayPath = isUrl
     ? argv.path
@@ -434,7 +437,7 @@ function reportError(argv: RunArgv, error: unknown, log: Logger): number {
           code: (error as any)?.code,
         },
       ];
-  formatDiagnostics(diags, log, displayPath);
+  formatDiagnostics(diags, log, displayPath, kernel?.getLoadedGraph());
   const errorCount = countRootErrors(diags);
   const warnCount = diags.filter((d) => d.severity === "warning").length;
   const parts: string[] = [];
@@ -458,8 +461,12 @@ export async function run(argv: RunArgv): Promise<void> {
       ? await startDebugSession(argv, log, cacheRoot)
       : undefined;
 
+  // Held outside the try so the catch can reach the loaded graph a static
+  // failure's location resolves against.
+  let bootedKernel: Kernel | undefined;
   try {
     const kernel = await buildKernel(argv, log, cacheRoot);
+    bootedKernel = kernel;
     debug?.attach(kernel);
     const shutdown = () => {
       // Cooperatively cancel the boot run first (so honoring targets / in-flight
@@ -506,7 +513,7 @@ export async function run(argv: RunArgv): Promise<void> {
     }
   } catch (error) {
     debug?.stop();
-    reportError(argv, error, log);
+    reportError(argv, error, log, bootedKernel);
     process.exit(1);
   }
 }
@@ -580,14 +587,14 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       // start() resolves on its own only on boot error or one-shot completion
       // without a hold; the hold keeps long-running and completed apps alive,
       // so the cycle advances on a file change. Errors are reported, not thrown.
-      const startPromise = kernel.start().catch((err) => reportError(argv, err, log));
+      const startPromise = kernel.start().catch((err) => reportError(argv, err, log, kernel));
       await changed;
       kernel.cancel("reload");
       kernel.forceIdle();
       await startPromise;
     } catch (error) {
       // Load failed before start(); report and wait for an edit before retrying.
-      reportError(argv, error, log);
+      reportError(argv, error, log, kernel);
       await kernel.teardown();
       await changed;
     }

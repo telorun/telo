@@ -220,17 +220,22 @@ export class BundleControllerLoader {
     // fetched here: the artifact handle owns the pinned ref and the verified
     // layer index, so an `oci://` module ref never reaches this loader as a path.
     let bundleDir: string;
+    // What this resolve actually cost. A module already on disk is `local`; an
+    // artifact layer found extracted is `cache`; only a layer this call pulled
+    // down reports `bundle`, the branch that made the user wait.
+    let source: ControllerResolveSource = "local";
     if (artifact) {
       // By its own selector, not by re-matching the host: this candidate IS one
       // selector, and it is exactly the key of the layer that carries it.
-      const layer = await artifact.materializeController(selector);
-      if (!layer) {
+      const resolved = await artifact.materializeController(selector);
+      if (!resolved) {
         throw new ControllerEnvMissingError(
           `pkg:telo controller "${purl}": the module artifact ships no layer for ` +
             `${describeSelector(selector)} (has: ${artifact.describeLayers()})`,
         );
       }
-      bundleDir = layer.dir;
+      bundleDir = resolved.layer.dir;
+      source = resolved.transferred ? "bundle" : "cache";
     } else {
       // No artifact: a module already on disk (local development, or a manifest
       // served from the on-disk cache). Its files sit next to the manifest.
@@ -258,7 +263,7 @@ export class BundleControllerLoader {
 
     const fragment = parsed.subpath;
     return {
-      source: "bundle",
+      source,
       importInstance: async () => {
         // A broken bundle (syntax / failed import) is a real user-code failure —
         // let it propagate rather than masking it as env-missing.

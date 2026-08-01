@@ -74,6 +74,7 @@ import {
 } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { SchemaValidator } from "./schema-validator.js";
+import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
  *  ModuleContext and returns its controller policy (or undefined). Used to
@@ -435,20 +436,27 @@ export class Kernel implements IKernel {
     if (analysisGraph.errors.length > 0) {
       throw analysisGraph.errors[0].error;
     }
+    // Recorded before the first throw below: the graph is what a renderer
+    // resolves a static failure's `origin` against, and a parse error is
+    // exactly the failure that most needs to name a line.
+    this._loadedGraph = analysisGraph;
     // A YAML parse failure yields a mangled manifest tree — fatal before any
     // controller sees it, and more fundamental than a version conflict.
     if (analysisGraph.parseDiagnostics.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
+        // The message keeps the whole failure for a consumer that only reads
+        // `error.message`; the diagnostics carry the same set structured, so a
+        // renderer can locate each one instead of re-parsing this text.
         analysisGraph.parseDiagnostics
           .map((d) => {
             const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
             return filePath ? `${filePath}: ${d.message}` : d.message;
           })
           .join("\n"),
+        analysisGraph.parseDiagnostics.map(staticDiagnosticToRuntime),
       );
     }
-    this._loadedGraph = analysisGraph;
     this.buildModuleArtifacts(analysisGraph, manifestsDir);
     // Version reconciliation: an incompatible major mismatch is fatal (the
     // hoist override would silently run the wrong major); a same-major hoist is
@@ -460,6 +468,7 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
         versionConflicts.map((d) => d.message).join("\n"),
+        versionConflicts.map(staticDiagnosticToRuntime),
       );
     }
     for (const d of analysisGraph.versionDiagnostics) {
@@ -512,14 +521,7 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
         "Manifest validation failed",
-        errors.map((d) => ({
-          severity: "error" as const,
-          message: d.message,
-          code: d.code !== undefined ? String(d.code) : undefined,
-          resource: (d.data as any)?.resource
-            ? `${(d.data as any).resource.kind}.${(d.data as any).resource.name}`
-            : undefined,
-        })),
+        errors.map(staticDiagnosticToRuntime),
       );
     }
     if (manifestsDir && writeCache && !skipValidation) {
@@ -764,14 +766,7 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
         "Manifest validation failed",
-        refErrors.map((d) => ({
-          severity: "error" as const,
-          message: d.message,
-          code: d.code !== undefined ? String(d.code) : undefined,
-          resource: (d.data as any)?.resource
-            ? `${(d.data as any).resource.kind}.${(d.data as any).resource.name}`
-            : undefined,
-        })),
+        refErrors.map(staticDiagnosticToRuntime),
       );
     }
     if (cycleError) {
