@@ -34,7 +34,7 @@ metadata:
     invoke path resolves against the resource's `cwd` unless it is absolute.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file
+  - pkg:telo/local/js?path=./nodejs/file-controller.mjs&local_path=./nodejs/src/file-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -96,7 +96,7 @@ metadata:
     an existing file, edit it in place instead.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-write
+  - pkg:telo/local/js?path=./nodejs/file-write-controller.mjs&local_path=./nodejs/src/file-write-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -164,7 +164,7 @@ metadata:
     untouched; the path resolves against the resource's `cwd`.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-edit
+  - pkg:telo/local/js?path=./nodejs/file-edit-controller.mjs&local_path=./nodejs/src/file-edit-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -231,7 +231,7 @@ metadata:
     remove call.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-listing
+  - pkg:telo/local/js?path=./nodejs/directory-listing-controller.mjs&local_path=./nodejs/src/directory-listing-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -305,7 +305,7 @@ metadata:
     unless absolute.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#directory-creation
+  - pkg:telo/local/js?path=./nodejs/directory-creation-controller.mjs&local_path=./nodejs/src/directory-creation-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -364,7 +364,7 @@ metadata:
     edits, syncing or caching. Entries can be excluded by base name at any depth.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-snapshot
+  - pkg:telo/local/js?path=./nodejs/tree-snapshot-controller.mjs&local_path=./nodejs/src/tree-snapshot-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -435,7 +435,7 @@ metadata:
     ever deleted implicitly — so the same call serves a full seed or a partial delta.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#tree-sync
+  - pkg:telo/local/js?path=./nodejs/tree-sync-controller.mjs&local_path=./nodejs/src/tree-sync-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -509,7 +509,7 @@ metadata:
     The path resolves against the resource's `cwd` unless absolute.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/fs@0.2.0?local_path=./nodejs#file-removal
+  - pkg:telo/local/js?path=./nodejs/file-removal-controller.mjs&local_path=./nodejs/src/file-removal-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -30,7 +30,7 @@ metadata:
     when the tool is called.
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#tools
+  - pkg:telo/local/js?path=./nodejs/tools-controller.mjs&local_path=./nodejs/src/tools-controller.ts
 schema:
   type: "object"
   additionalProperties: false
@@ -187,7 +187,7 @@ metadata:
     client can list and read, and points at the resource that produces its contents.
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#resources
+  - pkg:telo/local/js?path=./nodejs/resources-controller.mjs&local_path=./nodejs/src/resources-controller.ts
 schema:
   type: "object"
   additionalProperties: false
@@ -276,7 +276,7 @@ metadata:
     messages.
 capability: Telo.Type
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#prompts
+  - pkg:telo/local/js?path=./nodejs/prompts-controller.mjs&local_path=./nodejs/src/prompts-controller.ts
 schema:
   type: "object"
   additionalProperties: false
@@ -366,7 +366,7 @@ metadata:
     launches a server as a child process.
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#stdio-server
+  - pkg:telo/local/js?path=./nodejs/stdio-server-controller.mjs&local_path=./nodejs/src/stdio-server-controller.ts
 schema:
   type: "object"
   additionalProperties: false
@@ -424,7 +424,7 @@ metadata:
     state for stateful clients.
 capability: Telo.Mount
 controllers:
-  - pkg:npm/@telorun/mcp-server@0.8.0?local_path=./nodejs#http-endpoint
+  - pkg:telo/local/js?path=./nodejs/http-endpoint-controller.mjs&local_path=./nodejs/src/http-endpoint-controller.ts
 schema:
   type: "object"
   additionalProperties: false

@@ -29,8 +29,12 @@ import { orderByDependencies } from "./module-publish-order.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 
+// stderr is piped, not inherited: execSync's default lets a child's stderr go
+// straight to the parent and leaves `err.stderr` unset, so a caller that reports
+// a failure can only say "Command failed: node ./cli/...". The payload-drift gate
+// puts the digest that moved on stderr, and that is the whole message.
 function run(cmd) {
-  return execSync(cmd, { encoding: "utf8", cwd: ROOT }).trim();
+  return execSync(cmd, { encoding: "utf8", cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 function runLive(cmd) {
@@ -154,6 +158,46 @@ for (const abs of allManifests) {
     console.log(`  queue ${rel}: ${version} not yet published to OCI (have: ${published.join(", ") || "none"})`);
     queued.add(abs);
   }
+}
+
+// (c) payload-drift gate, over every module NOT queued — i.e. already published
+// at its current version, so neither gate above will re-push it.
+//
+// A bundled module inlines its dependencies, so a fix in a shared TS library, or
+// a transitive bump the lockfile alone moved, changes that module's shipped bytes
+// while touching no file under its own directory and moving no version. Both
+// gates above are blind to it and the fix would ship to nobody. `telo publish
+// --dry-run` builds the payload and compares each layer's `integrity` against the
+// published artifact's `layers:` index — bytes, not a ledger — and fails when
+// they disagree. The fix is a changie fragment for that module, never a re-push:
+// overwriting a published tag changes what an already-pinned import resolves to.
+const driftFailures = [];
+for (const abs of allManifests) {
+  if (queued.has(abs)) continue;
+  const rel = abs.replace(ROOT + "/", "");
+  const destination = `${ociRegistry}/${basename(dirname(abs))}`;
+  try {
+    run(`node ./cli/nodejs/bin/telo.mjs publish --dry-run --skip-controllers ${destination} ${abs}`);
+  } catch (err) {
+    // The gate's own message — which digest moved, and on which layer — is on
+    // the child's stderr; `err.message` is only "Command failed".
+    const detail = [err?.stderr, err?.stdout, err instanceof Error ? err.message : String(err)]
+      .filter((part) => typeof part === "string" && part.trim() !== "")
+      .join("\n")
+      .trim();
+    driftFailures.push({ path: rel, message: detail });
+  }
+}
+if (driftFailures.length > 0) {
+  console.error(
+    `\n${driftFailures.length} already-published module(s) have a changed payload at an unchanged ` +
+      `metadata.version:`,
+  );
+  for (const f of driftFailures) {
+    console.error(`  ${f.path}`);
+    if (f.message) console.error(f.message.split("\n").map((l) => `    ${l}`).join("\n"));
+  }
+  process.exit(1);
 }
 
 const manifests = [...queued];

@@ -76,6 +76,10 @@ export interface ControllerLoaderOptions {
    *  single `resolveCacheRoot`. Overrides the entry-anchored default so a
    *  relocated `TELO_CACHE_DIR` is honoured. */
   installRoot?: string;
+  /** The `.telo` cache root for this load. The bundle loader caches a dev build
+   *  of a local module's controller source under it; absent simply disables that
+   *  path, leaving a prebuilt `path=` to load. */
+  cacheRoot?: string;
   /** Where the sub-loaders' diagnostics go — install-lock waits, bundle skips.
    *  Threaded from `ctx.log` so §13.1 holds (no direct `process.stderr`), and so
    *  the bundle-skip diagnostics that replaced `TELO_BUNDLE_DEBUG` actually reach
@@ -114,7 +118,7 @@ export class ControllerLoader {
     });
     if (options.log) this.npmLoader.setLogger(options.log);
     this.napiLoader = new NapiControllerLoader();
-    this.bundleLoader = new BundleControllerLoader();
+    this.bundleLoader = new BundleControllerLoader(options.cacheRoot);
   }
 
   async load(

@@ -20,3 +20,11 @@ onlyBuiltDependencies:
   - better-sqlite3
   - bun
   - esbuild
+
+# One esbuild for the whole repo. The kernel builds a local module's controller
+# from source and each module's `build` script builds the bundle that ships; those
+# two must produce the same bytes, and matching flags across two different esbuild
+# releases does not give matching output. Declared once here so the version cannot
+# drift between them.
+catalog:
+  esbuild: ^0.25.12

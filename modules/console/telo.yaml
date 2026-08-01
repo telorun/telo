@@ -29,7 +29,7 @@ metadata:
     piped or captured. Takes no configuration.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writeline
+  - pkg:telo/local/js?path=./nodejs/writeline-controller.mjs&local_path=./nodejs/src/writeline-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -58,7 +58,7 @@ metadata:
     `{style content}` markup renders as ANSI on a terminal. Takes no configuration.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#readline
+  - pkg:telo/local/js?path=./nodejs/readline-controller.mjs&local_path=./nodejs/src/readline-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -93,7 +93,7 @@ metadata:
     controls framing.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#writestream
+  - pkg:telo/local/js?path=./nodejs/writestream-controller.mjs&local_path=./nodejs/src/writestream-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -122,7 +122,7 @@ metadata:
     the forwarded stream, so the sink does the writing.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/console@0.9.0?local_path=./nodejs#streamwait
+  - pkg:telo/local/js?path=./nodejs/streamwait-controller.mjs&local_path=./nodejs/src/streamwait-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

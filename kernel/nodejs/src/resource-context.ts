@@ -17,6 +17,7 @@ import {
   type OpenSpan,
   type OpenSpanOptions,
   type ParsedArgs,
+  type RuntimeSeam,
   type TypeRule,
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
@@ -38,6 +39,7 @@ import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { policyFingerprint } from "./runtime-registry.js";
+import { KernelRuntimeSeam } from "./runtime-seam.js";
 import { SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
@@ -90,6 +92,19 @@ export class ResourceContextImpl implements ResourceContext {
    *  reach for it; every other controller uses {@link log}. */
   get logging(): LoggingHost {
     return this.kernel.logging.host;
+  }
+
+  /** Built lazily and shared per resource: the seam holds no per-call state, and
+   *  most controllers never run or analyze a manifest. */
+  #runtime: RuntimeSeam | undefined;
+
+  /** The host's own manifest machinery — see {@link RuntimeSeam}. Reached
+   *  through the context so a module that needs it (`test` runs a child
+   *  manifest, `assert` analyzes one) binds to a versioned contract instead of
+   *  importing the kernel. */
+  get runtime(): RuntimeSeam {
+    if (!this.#runtime) this.#runtime = new KernelRuntimeSeam(this.kernel);
+    return this.#runtime;
   }
 
   kernelLoggingRootScope(): ScopeConfig {
@@ -655,6 +670,14 @@ export class ResourceContextImpl implements ResourceContext {
 
   getInstallRoot(): string | undefined {
     return this.kernel.getInstallRoot();
+  }
+
+  /** The `.telo` cache root for this load. Kernel-only — the SDK surface has no
+   *  business naming a cache directory — reached by the resource-definition
+   *  controller through {@link ControllerCacheHost} so the bundle loader can
+   *  cache a dev build of a local module's controller source. */
+  getCacheRoot(): string | undefined {
+    return this.kernel.getCacheRoot();
   }
 
   /** The artifact of the module whose manifest resolved from `source`. Kernel-only

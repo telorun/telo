@@ -87,7 +87,7 @@
     "vitest": "^2.1.8"
   },
   "optionalDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "catalog:"
   },
   "peerDependencies": {
     "@telorun/sdk": "*"

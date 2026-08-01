@@ -120,7 +120,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:npm/@telorun/ai-<provider>@1.0.0?local_path=./nodejs#<provider>-model
+  - pkg:telo/local/js?path=./nodejs/model-controller.mjs&local_path=./nodejs/src/model-controller.ts
 schema:
   type: object
   properties:

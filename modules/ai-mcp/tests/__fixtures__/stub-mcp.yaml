@@ -17,7 +17,7 @@ metadata:
 capability: Telo.Invocable
 extends: Mcp.Client
 controllers:
-  - pkg:npm/@telorun/ai-mcp@0.3.1?local_path=../../nodejs#stub-mcp-client
+  - pkg:telo/local/js?path=../../nodejs/stub-mcp-client-controller.mjs&local_path=../../nodejs/src/stub-mcp-client-controller.ts
 schema:
   type: object
   additionalProperties: false

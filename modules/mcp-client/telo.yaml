@@ -111,7 +111,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.6.0?local_path=./nodejs#http-client
+  - pkg:telo/local/js?path=./nodejs/http-client-controller.mjs&local_path=./nodejs/src/http-client-controller.ts
 schema:
   type: object
   additionalProperties: false
@@ -173,7 +173,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Client
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.6.0?local_path=./nodejs#stdio-client
+  - pkg:telo/local/js?path=./nodejs/stdio-client-controller.mjs&local_path=./nodejs/src/stdio-client-controller.ts
 schema:
   type: object
   additionalProperties: false
@@ -230,7 +230,7 @@ metadata:
     that reports failure raises instead of returning.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.6.0?local_path=./nodejs#tools-call
+  - pkg:telo/local/js?path=./nodejs/tools-call-controller.mjs&local_path=./nodejs/src/tools-call-controller.ts
 schema:
   type: object
   additionalProperties: false
@@ -331,7 +331,7 @@ metadata:
     and the JSON Schema of the arguments it accepts.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/mcp-client@0.6.0?local_path=./nodejs#tools-list
+  - pkg:telo/local/js?path=./nodejs/tools-list-controller.mjs&local_path=./nodejs/src/tools-list-controller.ts
 schema:
   type: object
   additionalProperties: false

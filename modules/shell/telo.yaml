@@ -46,7 +46,7 @@ metadata:
     means.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.3.1?local_path=./nodejs#shell-command
+  - pkg:telo/local/js?path=./nodejs/shell-command-controller.mjs&local_path=./nodejs/src/shell-command-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -126,7 +126,7 @@ metadata:
     flow, run the command to completion instead.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/shell@0.3.1?local_path=./nodejs#shell-command-stream
+  - pkg:telo/local/js?path=./nodejs/shell-command-stream-controller.mjs&local_path=./nodejs/src/shell-command-stream-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -204,7 +204,7 @@ metadata:
 capability: Telo.Provider
 extends: Self.Host
 controllers:
-  - pkg:npm/@telorun/shell@0.3.1?local_path=./nodejs#local-host
+  - pkg:telo/local/js?path=./nodejs/local-host-controller.mjs&local_path=./nodejs/src/local-host-controller.ts
 schema:
   type: object
   additionalProperties: false

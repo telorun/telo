@@ -1,20 +1,18 @@
-import {
-  DEFAULT_BUFFER_POLICY,
-  RecordBuffer,
-  type LogSinkInstance,
-  type SinkBufferPolicy,
-} from "@telorun/kernel";
 import { toOtlpPayload } from "./encode-otlp.js";
 import {
+  DEFAULT_BUFFER_POLICY,
   parseDurationMs,
   parseLevelName,
+  RecordBuffer,
   RuntimeError,
   SEVERITY,
   TEARDOWN_LAST,
   type ControllerContext,
   type LogRecord,
+  type LogSinkInstance,
   type ResourceContext,
   type ResourceInstance,
+  type SinkBufferPolicy,
 } from "@telorun/sdk";
 
 /**

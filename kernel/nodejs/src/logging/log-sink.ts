@@ -8,6 +8,7 @@ export {
   BLOCK_UNSUPPORTED,
   blockUnsupportedMessage,
   DEFAULT_BUFFER_POLICY,
+  RecordBuffer,
 } from "@telorun/sdk";
 export type {
   DropCause,

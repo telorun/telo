@@ -43,7 +43,7 @@ metadata:
     along with the stored value and how long ago it was written.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#lookup
+  - pkg:telo/local/js?path=./nodejs/lookup-controller.mjs&local_path=./nodejs/src/lookup-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -90,7 +90,7 @@ metadata:
     long it may still be served as stale afterwards.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#entry
+  - pkg:telo/local/js?path=./nodejs/entry-controller.mjs&local_path=./nodejs/src/entry-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -148,7 +148,7 @@ metadata:
     fails.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/cache@0.4.0?local_path=./nodejs#view
+  - pkg:telo/local/js?path=./nodejs/view-controller.mjs&local_path=./nodejs/src/view-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

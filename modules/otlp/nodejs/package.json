@@ -1,52 +1,17 @@
 {
-  "name": "@telorun/otlp",
-  "version": "0.1.0",
-  "description": "Telo OTLP module - export structured log records to an OpenTelemetry collector.",
-  "keywords": [
-    "telo",
-    "otlp",
-    "opentelemetry",
-    "logging",
-    "observability"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/otlp/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/otlp-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/otlp module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "exports": {
-    "./sink": {
-      "bun": "./src/otlp-sink-controller.ts",
-      "import": "./dist/otlp-sink-controller.js"
-    }
-  },
-  "files": [
-    "dist",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/otlp-sink-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "devDependencies": {
-    "@telorun/kernel": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
-  },
-  "peerDependencies": {
-    "@telorun/kernel": "*",
-    "@telorun/sdk": "*"
   }
 }

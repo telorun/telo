@@ -49,22 +49,69 @@ controllers:
 
 Only one candidate is loaded per initialization — the first one the runtime can handle.
 
+### 1.1 `pkg:telo/local/<format>` — bundled delivery
+
+A controller may instead ship **inside its own module's artifact** rather than being
+fetched from an ecosystem registry. This is the direction the standard library has
+taken; `pkg:npm` remains supported for third-party modules and for modules whose
+dependencies cannot be inlined.
+
+```
+pkg:telo/local/<format>?path=<file>[&local_path=<source>][&siblings=<globs>][&os=…&arch=…&libc=…][#<export>]
+```
+
+| Segment            | Meaning                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `type=telo`        | Telo-delivered, not fetched from an ecosystem registry                                      |
+| `namespace=local`  | Bundled in the module artifact (reserving `pkg:telo/registry/…` for a fetched controller)   |
+| `name=<format>`    | The artifact format the loader dispatches on: `js`, `napi`, `wasm`                          |
+| `path`             | The file in the module's payload, relative to `telo.yaml`                                   |
+| `#export`          | Named export within it; omit to use the whole module as the controller                      |
+
+Format is explicit because bundling is the one delivery mode not tied to an
+ecosystem's runtime (npm ⇒ JS, cargo ⇒ Rust; a bundle is just files). A format
+this runtime cannot host is env-missing, so a candidate list falls through to one
+it — or another runtime's kernel — can load.
+
+The `path=` entry point is part of the module's payload **because `controllers:`
+names it**; it does not have to be restated in `files:`. See the
+[module artifact spec](./specs/module-artifact.md) for how candidates partition
+into layers, and for the `os`/`arch`/`libc` selector axes.
+
 ---
 
 ## 2. Qualifiers
 
 ### `local_path`
 
-A relative path from the **definition file** (`Telo.Definition` YAML) to the local
-package directory.
+The controller's **source**, relative to the definition file (`Telo.Definition` YAML).
+Its meaning is per delivery mode, but the principle is the same in all of them: while
+the declaring module is a working copy on disk, the source is what is authoritative,
+so the runtime builds from it rather than loading a possibly stale prebuilt artifact.
 
-```
-pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
-```
+- **`pkg:npm`** — the local package directory. Resolution stops there; no registry or
+  cache is consulted.
 
-`local_path` is only honoured when the definition file was loaded from a **local file path**
-(not an HTTP/HTTPS URL). When it is honoured and the path exists, resolution stops — no
-registry or cache is consulted.
+  ```
+  pkg:npm/@telorun/http-server@>=0.1.0?local_path=./nodejs#http-server
+  ```
+
+- **`pkg:cargo`** — the crate directory. The loader runs `cargo build` and loads the
+  resulting native addon.
+
+- **`pkg:telo/local/js`** — the TypeScript entry point `path=` was built from. The
+  loader bundles it and imports the result, so editing a controller and re-running
+  picks the edit up with no build step.
+
+  ```
+  pkg:telo/local/js?path=./nodejs/server.mjs&local_path=./nodejs/src/server.ts
+  ```
+
+For the bundled mode the gate is the **absence of a module artifact**, not the shape
+of the base URI: a published module served from the on-disk manifest cache also has a
+local base, and its payload is still its layer. `local_path` is inert in a published
+artifact, which ships no sources. It contributes nothing to the layer selector, so it
+never affects which layer a host fetches.
 
 ---
 
@@ -83,6 +130,38 @@ is given, the package's default export (`.`) is used.
 ---
 
 ## 4. Resolution
+
+### 4.1 Bundled (`pkg:telo/local/<format>`)
+
+Nothing is fetched. The loader picks the candidate this host can run — rejecting a
+format it cannot host, and a platform selector it does not match, **before** any
+transfer, so a candidate list never downloads every platform on the way to the right
+one — and then asks the declaring module's artifact for that selector's layer
+directory. A module already on disk resolves `path=` beside its own manifest.
+
+The bundle imports `@telorun/sdk` as a plain bare specifier, but it lives in an
+extract directory with no `node_modules` path to it. The loader symlinks the
+realm-collapse names into a `node_modules/` beside the bundle, pointing at the
+kernel's own copy; standard resolution then finds them on every runtime. That
+collapses *identity* as well as resolution, so `Stream` / `InvokeError`
+`instanceof` checks hold across the kernel/controller boundary.
+
+When the module is a working copy and `local_path` resolves on disk, the loader
+builds the bundle from source instead, caching it under
+`<entry-manifest-dir>/.telo/controller-src/`. Each cache entry is named by a digest
+covering **every input the build read** plus the build options — so an edit anywhere
+in the source graph produces a new entry rather than invalidating one, and two
+concurrent kernel processes that race produce identical bytes at identical paths.
+Bundles are written through a private temp file and renamed into place, so a reader
+sees a whole bundle or none.
+
+A missing file, an unparseable PURL, a non-`local` namespace, an unhostable format
+and a non-matching platform are all **env-missing** (fall through to the next
+candidate). A bundle that imports but is malformed is a hard `ERR_CONTROLLER_INVALID`,
+and a source that fails to build is `ERR_CONTROLLER_BUILD_FAILED` — a real user-code
+failure is never masked as env-missing.
+
+### 4.2 npm (`pkg:npm`)
 
 Every controller — registry tag, `file:`, and `local_path` alike — is installed
 into a single per-manifest tree rooted at `<entry-manifest-dir>/.telo/npm/`.

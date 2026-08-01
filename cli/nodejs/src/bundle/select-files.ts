@@ -37,16 +37,40 @@ export function selectFiles(
     applyDefaultIgnore: opts.applyDefaultIgnore,
   });
 
+  assertWithinModule(manifestDir, selected);
+  return selected;
+}
+
+/**
+ * Reject any path that resolves — via a symlink — outside `manifestDir`.
+ *
+ * Separate from {@link selectFiles} because a `files:` pattern is no longer the
+ * only route into the payload: a bundled controller's `path=` entry joins it
+ * from `controllers:`, and the guard has to cover what actually ships rather
+ * than what a pattern happened to match. Applied to the whole partition, so
+ * every file in every layer passes it.
+ *
+ * A missing file is reported here too — publish is about to read it, and
+ * "declared but absent" is the same class of mistake as "declared but outside".
+ */
+export function assertWithinModule(manifestDir: string, rels: Iterable<string>): void {
   const realManifestDir = fs.realpathSync(manifestDir) + path.sep;
-  for (const rel of selected) {
-    const real = fs.realpathSync(path.resolve(manifestDir, rel));
+  for (const rel of rels) {
+    let real: string;
+    try {
+      real = fs.realpathSync(path.resolve(manifestDir, rel));
+    } catch {
+      throw new Error(
+        `'${rel}' is declared as part of this module's payload but does not exist. ` +
+          `A bundled controller's entry point is built from its source — run the module's ` +
+          `build before publishing.`,
+      );
+    }
     if (!real.startsWith(realManifestDir)) {
       throw new Error(
-        `files pattern selected '${rel}', which resolves outside the module directory. ` +
+        `'${rel}' resolves outside the module directory. ` +
           `Bundling files from outside the module root is not allowed.`,
       );
     }
   }
-
-  return selected;
 }

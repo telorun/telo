@@ -154,9 +154,11 @@ class ResourceDefinition implements ResourceInstance {
       );
       return;
     }
+    const host = kernelContext(ctx);
     const loader = new ControllerLoader({
       entryUrl: ctx.getEntryUrl(),
       installRoot: ctx.getInstallRoot(),
+      cacheRoot: host.getCacheRoot?.(),
       log: ctx.log,
     });
     // Eager resolve — verify the controller is hostable now (so a broken
@@ -167,9 +169,7 @@ class ResourceDefinition implements ResourceInstance {
     // ships in its own module's payload, not the consumer's. It owns the pinned
     // ref and the verified layer index, so the loader picks a candidate and asks
     // it for that selector's directory rather than fetching anything itself.
-    const artifact = (ctx as unknown as ModuleArtifactHost).getModuleArtifact?.(
-      this.resource.metadata.source,
-    );
+    const artifact = host.getModuleArtifact?.(this.resource.metadata.source);
     const resolved = await loader.resolve(
       this.resource.controllers,
       this.resource.metadata.source,
@@ -183,7 +183,7 @@ class ResourceDefinition implements ResourceInstance {
     // Emitted here (not in the loader) so ControllerLoading / ControllerLoaded /
     // ControllerLoadFailed — and the import duration — surface when the load
     // actually happens (first instantiation), with the resolved PURL + source.
-    (ctx as unknown as LazyControllerHost).registerLazyController(
+    host.registerLazyController(
       moduleName,
       kindName,
       async () => {
@@ -208,26 +208,32 @@ class ResourceDefinition implements ResourceInstance {
 }
 
 /**
- * Kernel-internal hook for reaching a module's artifact handle. Off the SDK
- * surface deliberately: it hands back a kernel class, and only controller
- * resolution needs it — module authors reach a module's files through
- * `ctx.resolveModuleFile`, which returns a plain URI.
+ * What the concrete `ResourceContextImpl` offers this controller **beyond** the
+ * public SDK `ResourceContext`.
+ *
+ * One interface rather than one per need, and narrowed once at the top of
+ * `init()` rather than at each call site. Each of these is deliberately off the
+ * SDK surface — `getModuleArtifact` hands back a kernel class, `getCacheRoot`
+ * names a cache directory, `registerLazyController` is a scheduling detail — but
+ * "off the SDK surface" is a property of the members, not a reason to grow a
+ * fresh interface and a fresh double cast for every one of them. Module authors
+ * reach a module's files through `ctx.resolveModuleFile`, which returns a plain
+ * URI, and never see any of this.
  */
-interface ModuleArtifactHost {
+interface KernelResourceContext {
   getModuleArtifact?(source: string | undefined): ModuleArtifact | undefined;
-}
-
-/**
- * Kernel-internal hook the concrete `ResourceContextImpl` exposes for lazy
- * controller loading — deliberately off the public SDK `ResourceContext`
- * surface, since only this controller uses it.
- */
-interface LazyControllerHost {
+  getCacheRoot?(): string | undefined;
   registerLazyController(
     moduleName: string,
     kindName: string,
     load: () => Promise<void>,
   ): void;
+}
+
+/** Narrow a `ResourceContext` to the kernel-internal surface its concrete
+ *  implementation carries. The cast is the seam; it lives here once. */
+function kernelContext(ctx: ResourceContext): KernelResourceContext {
+  return ctx as unknown as KernelResourceContext;
 }
 
 export function register(ctx: ControllerContext): void {

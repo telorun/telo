@@ -67,7 +67,7 @@ schema:
     address: { type: string }
     namespace: { type: string }
 controllers:
-  - pkg:npm/@telorun/workflow-temporal@>=0.1.0?local_path=./nodejs#backend
+  - pkg:telo/local/js?path=./nodejs/backend.mjs&local_path=./nodejs/src/backend.ts
 ```
 
 **Analyzer behavior:** For every reference typed `x-telo-ref: Workflow.Backend`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `workflow.Backend` (the canonical form after alias resolution). `extendedBy` is populated from both `extends` and `capability` so both the canonical and legacy patterns coexist.

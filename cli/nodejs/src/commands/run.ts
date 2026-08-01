@@ -1,4 +1,4 @@
-import type { ManifestSource } from "@telorun/analyzer";
+import type { LoadedModule, ManifestSource } from "@telorun/analyzer";
 import {
   Kernel,
   LocalFileSource,
@@ -7,9 +7,11 @@ import {
   resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
+  lastBuildInputs,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
+import { PackageURL } from "packageurl-js";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -53,31 +55,95 @@ function tryReadFile(filePath: string): string {
 
 type WatchHandle = { cleanup: () => void };
 
+/** An on-disk path for a loader source URL, or `null` when the source is remote
+ *  and therefore not watchable. */
+function localPathOf(source: string | undefined): string | null {
+  if (!source) return null;
+  if (source.startsWith("file://")) return fileURLToPath(source);
+  // No URL scheme → an absolute local path (the loader's canonical form for
+  // local files). A scheme like `https://` is remote.
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ? null : source;
+}
+
 /** The local manifest files a loaded graph was built from — entry, every
- *  `include:` partial, and every transitively-imported library + its partials.
- *  Remote (`http(s)://`) sources are skipped; only on-disk files are watchable.
- *  Empty until `load()` succeeds (the graph is dropped again on teardown), so
- *  callers must snapshot the set before `start()`. */
-function collectWatchFiles(kernel: Kernel): Set<string> {
+ *  `include:` partial, and every transitively-imported library + its partials —
+ *  plus each local module's controller sources. Remote (`http(s)://`) sources are
+ *  skipped; only on-disk files are watchable. Empty until `load()` succeeds (the
+ *  graph is dropped again on teardown), so callers must snapshot the set before
+ *  `start()`.
+ *
+ *  Controller sources are in the set because a local module's controller is now
+ *  built from them: an edit under `src/` changes what the next run loads exactly
+ *  as an edit to `telo.yaml` does, so it has to trigger the same restart. */
+async function collectWatchFiles(kernel: Kernel): Promise<Set<string>> {
   const files = new Set<string>();
   const add = (source: string | undefined): void => {
-    if (!source) return;
-    if (source.startsWith("file://")) {
-      files.add(fileURLToPath(source));
-    } else if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
-      // No URL scheme → an absolute local path (the loader's canonical form
-      // for local files). A scheme like `https://` is remote, skip it.
-      files.add(source);
-    }
+    const local = localPathOf(source);
+    if (local) files.add(local);
   };
   const graph = kernel.getLoadedGraph();
   if (graph) {
     for (const mod of graph.modules.values()) {
       add(mod.owner.source);
       for (const partial of mod.partials) add(partial.source);
+      await addControllerSources(mod, kernel.getCacheRoot(), files);
     }
   }
   return files;
+}
+
+/** Every `local_path` a module's `Telo.Definition` docs declare, read from the
+ *  manifests the loader already parsed rather than re-scanned out of the text —
+ *  a PURL wrapped across lines is invisible to a line regex, and watch mode would
+ *  silently stop reacting to controller edits with no diagnostic. */
+function controllerSources(mod: LoadedModule): string[] {
+  const moduleDir = path.dirname(localPathOf(mod.owner.source) ?? "");
+  if (moduleDir === "") return [];
+  const sources: string[] = [];
+  for (const file of [mod.owner, ...mod.partials]) {
+    for (const manifest of file.manifests) {
+      const candidates = (manifest as { controllers?: unknown } | null)?.controllers;
+      if (!Array.isArray(candidates)) continue;
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") continue;
+        let parsed: PackageURL;
+        try {
+          parsed = PackageURL.fromString(candidate);
+        } catch {
+          continue; // the analyzer and the loader both report a bad PURL better
+        }
+        const localPath = parsed.qualifiers?.local_path;
+        if (parsed.type !== "telo" || !localPath) continue;
+        sources.push(path.resolve(moduleDir, localPath));
+      }
+    }
+  }
+  return sources;
+}
+
+/**
+ * Watch what a controller is actually built from.
+ *
+ * The exact set is esbuild's own input list, which `source-bundle-builder`
+ * persists per entry point when it builds — so it covers the module's sources,
+ * the shared TS libraries it inlines, and its dependency tree. Deriving it from
+ * the entry point's directory instead would be wrong in both directions: it
+ * would miss a shared library one directory over, and sweep in `dist/` and the
+ * emitted `.mjs` beside it.
+ *
+ * Before the first build there is no index yet, so the entry point alone stands
+ * in — enough to notice the edit that triggers that first build.
+ */
+async function addControllerSources(
+  mod: LoadedModule,
+  cacheRoot: string | undefined,
+  files: Set<string>,
+): Promise<void> {
+  for (const entry of controllerSources(mod)) {
+    files.add(entry);
+    if (!cacheRoot) continue;
+    for (const input of await lastBuildInputs(entry, cacheRoot)) files.add(input);
+  }
 }
 
 /** Best-effort entry file for the load-failed case, where no graph exists to
@@ -627,7 +693,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       });
       await persistManifestCache(argv, kernel, log, cacheRoot);
       debug?.markReady(kernel);
-      const count = watchers.sync(collectWatchFiles(kernel));
+      const count = watchers.sync(await collectWatchFiles(kernel));
       log.info(`[watch] watching ${count} file(s)`);
 
       // start() resolves on its own only on boot error or one-shot completion

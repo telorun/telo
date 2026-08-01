@@ -25,7 +25,7 @@ metadata:
 capability: Telo.Sink
 extends: Telo.LogSink
 controllers:
-  - pkg:npm/@telorun/otlp@0.1.0?local_path=./nodejs#sink
+  - pkg:telo/local/js?path=./nodejs/otlp-sink-controller.mjs&local_path=./nodejs/src/otlp-sink-controller.ts
 schema:
   type: object
   properties:

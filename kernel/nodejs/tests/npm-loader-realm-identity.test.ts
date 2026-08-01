@@ -47,9 +47,12 @@ describe("NpmControllerLoader single-realm install", () => {
       // The first controller load forces the install root to be materialized.
       // We use a workspace-local module via local_path so the test doesn't
       // hit the public registry; the load itself is incidental — we only
-      // need it to drive `ensureInstallRoot()` exactly once.
+      // need it to drive `ensureInstallRoot()` exactly once. `http-server` is
+      // the subject because it is one of the modules that still DELIVERS its
+      // controller from npm; a bundled module has no npm package for this
+      // loader to install.
       const javascriptPurl =
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script";
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static";
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       const result = await loader.load(javascriptPurl, fakeBaseUri);
       expect(result.instance).toBeDefined();
@@ -74,7 +77,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       await loader.load(
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
         fakeBaseUri,
       );
 
@@ -104,7 +107,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       await loader.load(
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
         fakeBaseUri,
       );
 
@@ -126,7 +129,7 @@ describe("NpmControllerLoader single-realm install", () => {
       // any other source means the root install evicted it and it was fetched
       // again, which is the whole defect.
       const second = await new NpmControllerLoader({ entryUrl: manifestUrl }).resolve(
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
         fakeBaseUri,
       );
       expect(second.source).toBe("cache");
@@ -154,7 +157,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       await loader.load(
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
         fakeBaseUri,
       );
 
@@ -172,7 +175,7 @@ describe("NpmControllerLoader single-realm install", () => {
 
       // Must not throw: the dead entry is dropped, the live ones are kept.
       const second = await new NpmControllerLoader({ entryUrl: manifestUrl }).resolve(
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
         fakeBaseUri,
       );
       expect(second.source).toBe("cache");
@@ -209,7 +212,7 @@ describe("NpmControllerLoader single-realm install", () => {
         // keeps the test off the public npm registry.
         const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
         const result = await loader.load(
-          "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+          "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
           fakeBaseUri,
         );
         expect(result.instance).toBeDefined();
@@ -253,7 +256,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       try {
         await loader.load(
-          "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script",
+          "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static",
           fakeBaseUri,
         );
         expect.fail("expected load() to throw");
@@ -270,7 +273,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const loader = new NpmControllerLoader({ entryUrl: manifestUrl });
       const fakeBaseUri = pathToFileURL(path.join(repoRoot, "fake-manifest.yaml")).toString();
       const purl =
-        "pkg:npm/@telorun/javascript@latest?local_path=./modules/javascript/nodejs#script";
+        "pkg:npm/@telorun/http-server@latest?local_path=./modules/http-server/nodejs#http-static";
 
       const r1 = await loader.load(purl, fakeBaseUri);
       const r2 = await loader.load(purl, fakeBaseUri);

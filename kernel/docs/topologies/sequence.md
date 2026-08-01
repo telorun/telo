@@ -242,7 +242,7 @@ metadata: { name: Sequence, module: Run }
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:npm/@telorun/run@<version>#sequence
+  - pkg:telo/local/js?path=./nodejs/sequence.mjs&local_path=./nodejs/src/sequence.ts
 schema:
   type: object
   $defs:

@@ -11,8 +11,6 @@ metadata:
     at the server in a single step, so two callers racing for the same key can never
     both win. When Redis is unreachable, operations fail loudly rather than falling
     back. Run the server with eviction disabled.
-files:
-  - nodejs/*.mjs
 imports:
   KvStore: ../kv-store
 exports:
@@ -29,7 +27,7 @@ metadata:
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:
-  - pkg:telo/local/js?path=./nodejs/store.mjs#store
+  - pkg:telo/local/js?path=./nodejs/store.mjs&local_path=./nodejs/src/store.ts#store
 schema:
   type: object
   required: [url]

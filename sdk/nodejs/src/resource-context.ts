@@ -9,6 +9,7 @@ import type { KindRef } from "./ref.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
+import type { RuntimeSeam } from "./runtime-seam.js";
 
 export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
@@ -227,6 +228,13 @@ export interface ResourceContext extends ControllerContext {
    * {@link log}.
    */
   readonly logging: LoggingHost;
+  /**
+   * The host's own manifest machinery — run a manifest, analyze a manifest.
+   * See {@link RuntimeSeam}. A controller that needs either reaches it here
+   * rather than importing the kernel or the analyzer, so a published module
+   * binds to a versioned contract instead of to whatever kernel loads it.
+   */
+  readonly runtime: RuntimeSeam;
   readonly moduleContext: ModuleContext;
   readonly env: Record<string, string | undefined>;
   readonly stdin: NodeJS.ReadableStream;

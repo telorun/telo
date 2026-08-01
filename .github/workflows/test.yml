@@ -44,9 +44,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Wraps `changeset status`: private `-build` packages are versionable (which is
+      # what propagates a shared-library bump into the modules that inline it), so a
+      # module-only PR would otherwise fail a check it should pass. Only a changed
+      # PUBLISHED package with no changeset fails here; a changed module is gated by
+      # its changie fragment instead.
       - name: Check changeset status
         if: github.event_name == 'pull_request'
-        run: pnpm changeset status --since=origin/${{ github.base_ref }}
+        run: node scripts/check-changeset-status.mjs origin/${{ github.base_ref }}
 
       - name: Disallow major version bumps in changesets
         if: github.event_name == 'pull_request'
@@ -63,8 +68,11 @@ jobs:
           exit $failed
 
       # Not PR-only: a malformed fragment breaks the release batch whenever it is reached, so it
-      # must never sit on main either.
+      # must never sit on main either. The module-change half of the gate only has a base ref to
+      # diff against on a PR; on main it finds no changed modules and passes.
       - name: Validate changie fragments
+        env:
+          CHANGED_SINCE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
         run: node scripts/check-changie-fragments.mjs
 
       - name: Disallow major version bumps in changie fragments

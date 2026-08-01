@@ -4,10 +4,23 @@
 //   - records each module's npm controller version BEFORE the bump
 //   - runs `changeset version` (bumps workspace package.json files, writes npm CHANGELOGs)
 //   - for each modules/<name>/nodejs/package.json whose version changed, rewrites the
-//     pkg:npm PURL in modules/<name>/telo.yaml to match AND queues a changie fragment so the
-//     module's own metadata.version bumps by the same level
+//     pkg:npm PURL in modules/<name>/telo.yaml to match
 //   - runs changie (batch + merge) so module manifest versions + CHANGELOGs are updated in
 //     the SAME Version PR as the npm bumps.
+//
+// PURL-sync applies to the modules that still deliver their controller from npm.
+// Without it a controller bump leaves the manifest pinned to the previous version,
+// so the module publishes new and loads old — a case no author can see. It matches
+// nothing in a bundled manifest, so it retires itself as the remaining npm-backed
+// modules migrate.
+//
+// It does NOT queue a changie fragment. That step used to answer "did this
+// module's shipped bytes change?" by proxy — from whether its npm package version
+// moved — which misses a lockfile-only bump and fires on a version move that
+// changed no emitted byte. `telo publish` now answers the same question from the
+// bytes themselves, comparing each built layer's `integrity` against the published
+// artifact's `layers:` index (see cli/nodejs/src/bundle/payload-drift.ts), so the
+// inference has nothing left to add.
 //
 // changie owns telo module manifest versions (metadata.version, published to the telo
 // registry); changesets owns the npm controller packages. See plans/changesets-to-changie.md.
@@ -46,26 +59,12 @@ function diffLevel(before, after) {
   return null;
 }
 
-// changie kind whose `auto:` level matches an npm bump level (see .changie.yaml kinds).
-const KIND_FOR_LEVEL = { major: "Changed", minor: "Added", patch: "Fixed" };
-
 function rewritePurls(content, packageName, newVersion) {
   const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return content.replace(
     new RegExp(`(pkg:[^/]+/${escaped}@)[^?#\\s]+(\\?[^#\\s]*)?(#[^\\s]*)?`, "g"),
     (_, prefix, qs, frag) => `${prefix}${newVersion}${qs ?? ""}${frag ?? ""}`,
   );
-}
-
-/** Queue a changie fragment so `changie batch auto` bumps the module's metadata.version. */
-function queueChangieFragment(moduleName, level, pkgName, pkgVersion) {
-  const projectDir = join(ROOT, ".changes", moduleName);
-  if (!existsSync(projectDir)) return false; // not a changie project (no metadata.version)
-  const kind = KIND_FOR_LEVEL[level];
-  const body = `Update controller ${pkgName} to ${pkgVersion}.`;
-  const file = join(ROOT, ".changes", "unreleased", `auto-${moduleName}-${pkgVersion}.yaml`);
-  writeFileSync(file, `project: ${moduleName}\nkind: ${kind}\nbody: ${body}\n`, "utf8");
-  return true;
 }
 
 // Snapshot module controller npm versions before changeset consumes the .md files.
@@ -83,13 +82,12 @@ for (const { name, pkgPath } of moduleDirs) {
 // Standard changesets version step (npm packages).
 runLive("pnpm changeset version");
 
-// For each module whose npm controller version moved: sync its telo.yaml pkg:npm PURL and
-// queue a changie fragment so its manifest version bumps by the same level.
-let queued = 0;
+// For each module whose npm controller version moved: sync its telo.yaml pkg:npm PURL.
+// A bundled module has no pkg:npm PURL to match, so this is a no-op there.
+let synced = 0;
 for (const { name, pkgPath } of moduleDirs) {
   const after = readPkgVersion(pkgPath);
-  const level = diffLevel(before.get(name), after);
-  if (!level) continue;
+  if (!diffLevel(before.get(name), after)) continue;
 
   const manifestPath = join(ROOT, "modules", name, "telo.yaml");
   if (!existsSync(manifestPath)) {
@@ -98,17 +96,15 @@ for (const { name, pkgPath } of moduleDirs) {
   }
 
   const pkgName = JSON.parse(readFileSync(pkgPath, "utf8")).name;
-  writeFileSync(manifestPath, rewritePurls(readFileSync(manifestPath, "utf8"), pkgName, after));
-
-  if (queueChangieFragment(name, level, pkgName, after)) {
-    queued++;
-    console.log(`  ${name}: PURL ${pkgName}@* → @${after}, queued ${level} changie fragment`);
-  } else {
-    console.warn(`  ${name}: PURL synced but no changie project — manifest version not bumped`);
-  }
+  const content = readFileSync(manifestPath, "utf8");
+  const rewritten = rewritePurls(content, pkgName, after);
+  if (rewritten === content) continue;
+  writeFileSync(manifestPath, rewritten);
+  synced++;
+  console.log(`  ${name}: PURL ${pkgName}@* → @${after}`);
 }
 
-console.log(`\nversion-packages: synced ${queued} module manifest(s) to their npm controller.`);
+console.log(`\nversion-packages: synced ${synced} module manifest(s) to their npm controller.`);
 
 // Bump module manifest versions + CHANGELOGs from all pending changie fragments (the
 // auto-queued ones above plus any hand-written module fragments) in this same Version PR.

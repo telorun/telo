@@ -1,57 +1,16 @@
 {
-  "name": "@telorun/console",
-  "version": "0.9.0",
-  "description": "Telo Console module - Console I/O resource kinds for Telo manifests.",
-  "keywords": [
-    "telo",
-    "console",
-    "io"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/console/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "name": "@telorun/console-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the std/console module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "exports": {
-    "./writeline": {
-      "bun": "./src/writeline-controller.ts",
-      "import": "./dist/writeline-controller.js"
-    },
-    "./readline": {
-      "bun": "./src/readline-controller.ts",
-      "import": "./dist/readline-controller.js"
-    },
-    "./writestream": {
-      "bun": "./src/writestream-controller.ts",
-      "import": "./dist/writestream-controller.js"
-    },
-    "./streamwait": {
-      "bun": "./src/streamwait-controller.ts",
-      "import": "./dist/streamwait-controller.js"
-    }
-  },
-  "files": [
-    "dist",
-    "src/**"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json && esbuild src/readline-controller.ts src/streamwait-controller.ts src/writeline-controller.ts src/writestream-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
   }
 }

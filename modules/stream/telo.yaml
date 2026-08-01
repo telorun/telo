@@ -37,7 +37,7 @@ metadata:
     replayed into a streaming consumer.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#of
+  - pkg:telo/local/js?path=./nodejs/of-controller.mjs&local_path=./nodejs/src/of-controller.ts
 schema:
   type: object
   properties:
@@ -82,7 +82,7 @@ metadata:
     inspected or aggregated. Buffered, so it needs a finite stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/stream@0.4.1?local_path=./nodejs#collect
+  - pkg:telo/local/js?path=./nodejs/collect-controller.mjs&local_path=./nodejs/src/collect-controller.ts
 inputType:
   kind: Telo.JsonSchema
   schema:

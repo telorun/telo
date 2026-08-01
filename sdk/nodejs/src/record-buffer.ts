@@ -1,9 +1,14 @@
-import type { LogRecord } from "@telorun/sdk";
+import type { LogRecord } from "./log-record.js";
 import type { SinkBufferPolicy } from "./log-sink.js";
 
 /**
  * The bounded buffer every asynchronous sink composes — `kernel/specs/logging.md`
  * §10.3.
+ *
+ * It lives beside the sink contract for the same reason that contract does: a
+ * third-party sink is an ordinary module, so the piece it composes to honour
+ * `on_full` must be on the module-author surface rather than behind a
+ * kernel-internal import.
  *
  * The ecosystems disagree by default: Rust's `tracing-appender` drops, zap
  * buffers 256 kB / 30 s, and pino has no bound at all. Telo therefore makes the

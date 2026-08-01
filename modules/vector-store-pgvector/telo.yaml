@@ -27,7 +27,7 @@ metadata:
 capability: Telo.Provider
 extends: VectorStore.Store
 controllers:
-  - pkg:npm/@telorun/vector-store-pgvector@0.4.0?local_path=./nodejs#store
+  - pkg:telo/local/js?path=./nodejs/store.mjs&local_path=./nodejs/src/store.ts
 schema:
   type: object
   required: [connection, dimensions]

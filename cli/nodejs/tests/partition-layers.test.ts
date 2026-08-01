@@ -103,12 +103,27 @@ describe("partitionLayers", () => {
     expect(partitionLayers(manifest(), [], []).layers).toEqual([]);
   });
 
-  // Decidable at publish: the layer would ship without its entry point (or be
-  // dropped as empty), and the consumer would only learn at load time.
-  it("hard-fails when a controller entry point is not selected by files:", () => {
-    expect(() =>
-      partitionLayers(manifest("pkg:telo/local/js?path=./nodejs/c.mjs"), ["public/x.html"], []),
-    ).toThrow(/not selected by 'files:'[\s\S]*nodejs\/c\.mjs/);
+  // `controllers:` already names the entry point, so `files:` restating it would
+  // be pure duplication. It joins the payload from the PURL, and `files:` keeps
+  // its role for what the manifest cannot otherwise see.
+  it("adds a controller entry point that files: does not select", () => {
+    const p = partitionLayers(
+      manifest("pkg:telo/local/js?path=./nodejs/c.mjs"),
+      ["public/x.html"],
+      [],
+    );
+    expect(p.layers).toEqual([
+      { role: "controller", selector: { format: "js" }, files: ["nodejs/c.mjs"] },
+      { role: "common", files: ["public/x.html"] },
+    ]);
+  });
+
+  // A module whose only payload is its controller declares no `files:` at all.
+  it("builds a controller layer from a manifest with no files: block", () => {
+    const p = partitionLayers(manifest("pkg:telo/local/js?path=./nodejs/c.mjs"), [], []);
+    expect(p.layers).toEqual([
+      { role: "controller", selector: { format: "js" }, files: ["nodejs/c.mjs"] },
+    ]);
   });
 
   // A file two candidates both declare is copied into both layers. Taking it for
