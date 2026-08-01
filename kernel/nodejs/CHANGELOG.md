@@ -1,5 +1,63 @@
 # @telorun/kernel
 
+## 0.62.0
+
+### Patch Changes
+
+- 15acf14: `telo check` no longer re-downloads every import on every run.
+
+  It built its `Loader` from `[LocalFileSource, ...transports]` — `LocalManifestCacheSource` was absent, and nothing wrote the cache afterwards. So every `oci://` and registry import was pulled from the origin on every invocation, including fully digest-pinned ones whose bytes cannot change. The loader was also constructed per input path, so one `telo check a b c` re-fetched a module shared between them once per file. Checking the repo's examples took 41s of which 35s was network, with `http-server` and `console` each fetched six times inside a single process.
+
+  `check` now registers the same manifest cache `run` reads and write-throughs after a successful load, and shares one loader across every input path (its `urlToSource` / `fileCache` dedupe by canonical URL, so the resolution result never depended on which entry asked). A cache source is registered per input path's cache root; entries are content-addressed, so a hit under any root is as good as a hit under the one that path would write to.
+
+  Freshness is kept honest rather than assumed, per cache-key shape:
+
+  - A **pinned** import — what `telo install` writes and what every published manifest carries — is verified against its inline `sha256-` hash on read, so it needs no network at all.
+  - An import naming a **mutable OCI tag** is revalidated with one `HEAD` per reference (once per invocation, not once per input path) against the digest that produced the cached copy, recorded in `.telo/manifests/.origins.json`. A tag that has moved, or was never recorded — e.g. a cache written by `telo run` — drops that one entry and reloads it.
+  - A **registry** ref is always version-segmented, and a published version is immutable by the same convention npm relies on, so it is served without revalidation. This is a deliberate call: the registry origin has no cheap freshness probe (`digest()` downloads the manifest to hash it), so revalidating would cost exactly what re-fetching costs.
+  - An arbitrary **HTTP(S) URL** import is never read from the cache by `check`. Its key carries no version segment — one URL is one path forever — so a hit would be served for the lifetime of the directory regardless of what the server now returns. Re-fetching costs one request, which is exactly what revalidating would cost, so the honest option is also the cheap one. `check` still writes these entries, since `telo run` reads them.
+
+  So `check` cannot report a clean bill of health against a manifest that has changed upstream.
+
+  On the kernel side, read-side `OciClient`s are pooled per `(host, repo)` on the `OciTransport` instance instead of built per operation. The client caches bearer tokens per scope, but a per-operation client discarded that cache immediately, so every manifest and every blob paid its own 401→challenge→token round trip plus a `~/.docker/config.json` read and possibly a credential-helper subprocess. An expired token still self-heals through the existing 401 retry. The pool belongs to the instance rather than the module so a second transport — a test, or a second in-process kernel — never inherits another's credentials; `defaultTransportRegistry` is memoized per registry URL, so the production lifetime is unchanged. Publishing keeps its own client.
+
+  `Loader.forget(url)` drops one file's memo (every parse variant, plus every request URL that canonicalised to it) so a single stale manifest can be re-resolved without discarding the whole loader and every unrelated file's cached resolution with it. The loader already documented needing this for watch mode.
+
+  Checking the examples now takes 1.2s warm; a single pinned manifest resolves with no network at all.
+
+- 89ffea7: The npm install root no longer evicts every controller when the kernel's realm changes.
+
+  `materializeInstallRoot` wrote the root's `package.json` from scratch, containing only the realm-collapse deps (`@telorun/sdk` as a `file:` ref). Every controller alias a previous `installPackage --save` had recorded was dropped from that file, so the `npm install` that followed pruned their `node_modules` folders — and each controller then reinstalled itself, one `--save` at a time.
+
+  That install runs whenever the recorded root identity does not match, and the identity is a hash of the realm deps — which include the SDK's absolute path. Two kernels addressing the same app legitimately resolve `@telorun/sdk` to different paths: a globally installed `@telorun/cli` and a repo checkout. Alternating between them flipped the hash on every run, so every run reinstalled every controller and the cache never appeared to take effect.
+
+  The rewrite now merges: existing dependencies are preserved and the realm deps written over them, so the install relinks the SDK and leaves the controllers alone. The recorded identity still hashes the realm deps only — hashing the aliases too would make each controller install invalidate the root and trigger another root install.
+
+  Preserved entries are pruned first: a `file:` spec whose target no longer exists (the app was run from a checkout that has since moved, or its `.telo/` was copied without it) and an alias with no folder in `node_modules` are both dropped. Dropping them is free — `installPackage` reinstalls a controller the moment something asks for it — and carrying them is not: the package manager resolves every recorded entry, so under pnpm one dead `file:` record fails the whole root install with an error that names nothing in the manifest, and the state file is written only after a successful install, so every later run would repeat it. The prune is also what stops aliases accumulating now that the rewrite preserves them: a controller version an app has moved off drops out at the next root install.
+
+- 89ffea7: A controller that was already on disk no longer reports itself as work.
+
+  The bundle loader reported `source: "bundle"` for every resolve, whether it had just pulled the module's controller layer down or found it extracted from a previous run. The CLI's progress trail silences the sources that mean "nothing happened" (`cache`, `local`) and prints the rest, so an app with a dozen bundled controllers printed a dozen `✓ … (bundle, 0ms)` lines on every warm start — a download report for a transfer nobody waited for.
+
+  `materializeController` now returns `{ layer, transferred }`, with `transferred` set by the branch that actually did the transfer: the on-disk marker fast path and the in-lock re-check report `false`, and a caller that joined a transfer already in flight reports `false` too, so several controller candidates sharing one layer produce one line rather than one each. It is out of band rather than a field on `MaterializedLayer` because it describes the call, not the layer — the layer value is memoized and shared, so the flag would be meaningless to every other caller. The bundle loader maps it to a source — `local` for a module sitting beside its manifest, `cache` for an extracted layer, `bundle` only for a fetch — and `materializeController` folds in the `common` layer it pulls along, since either half fetching is a wait.
+
+  The npm loader had the same mislabel in a narrower spot: when the re-check inside the install lock found a peer had already installed the package, it still reported `npm-install`. It now reports `cache`, because nothing was installed.
+
+- 89ffea7: `telo run` points a manifest error at its line again, exactly as `telo check` does.
+
+  A failure the kernel raises from static analysis converted the analyzer's diagnostics into `RuntimeDiagnostic`s while dropping their `data` — the file, the field path within it, and the owning resource. That is precisely what `findPositions` resolves a position from, so the CLI had nothing left to locate and printed the message alone. The same manifest checked with `telo check` still named the line, which made the two commands disagree about the same error.
+
+  `RuntimeDiagnostic` gains `origin` (`DiagnosticOrigin`: `filePath`, field `path`, `resource`, and the diagnostic's own `range`), carried through verbatim so a renderer resolves `file:line:col` against the loaded graph rather than re-parsing a rendered message. `range` is what locates a failure with no field path to look up: a YAML parse error knows where the syntax broke but has no parsed tree to index.
+
+  All four raise sites now go through one mapper (`static-analysis-diagnostics.ts`, sibling of the init-failure one): the pre-flight validation pass, Phase-3 reference resolution, YAML parse failures, and major-version conflicts. The last two used to flatten their diagnostics into a joined message string, so a syntax error and a bad `imports:` pin were the two failures `run` could not locate at all. Their `error.message` is unchanged for consumers that only read it. The loaded graph is now recorded before the parse-failure throw, since that is the failure that most needs to name a line.
+
+  The position itself comes from `resolveRange`, the rule the VS Code extension already uses, rather than a third copy of it in the CLI: it walks parent paths when the exact field path is absent from the index (an `imports.<alias>` conflict lands on the import entry) and prefers an entry's key over its value. `resolveRange` now takes just the position half of a `DiagnosticContext`, so a caller holding only a located file does not have to invent an `AnalysisRegistry` to reuse it. A located static failure renders byte-identically under `run` and `check`. A diagnostic nothing can locate falls back to naming the resource rather than pointing at line 1 — a wrong line sends the reader somewhere the error is not. Runtime failures are unchanged: they are pinned to a resource, not to a spot in the YAML, and keep the kind + name form.
+
+- Updated dependencies [15acf14]
+- Updated dependencies [89ffea7]
+  - @telorun/analyzer@0.49.1
+  - @telorun/templating@0.11.1
+
 ## 0.61.0
 
 ### Minor Changes

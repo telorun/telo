@@ -1,5 +1,61 @@
 # @telorun/cli
 
+## 0.62.0
+
+### Minor Changes
+
+- 15acf14: `telo check` no longer re-downloads every import on every run.
+
+  It built its `Loader` from `[LocalFileSource, ...transports]` — `LocalManifestCacheSource` was absent, and nothing wrote the cache afterwards. So every `oci://` and registry import was pulled from the origin on every invocation, including fully digest-pinned ones whose bytes cannot change. The loader was also constructed per input path, so one `telo check a b c` re-fetched a module shared between them once per file. Checking the repo's examples took 41s of which 35s was network, with `http-server` and `console` each fetched six times inside a single process.
+
+  `check` now registers the same manifest cache `run` reads and write-throughs after a successful load, and shares one loader across every input path (its `urlToSource` / `fileCache` dedupe by canonical URL, so the resolution result never depended on which entry asked). A cache source is registered per input path's cache root; entries are content-addressed, so a hit under any root is as good as a hit under the one that path would write to.
+
+  Freshness is kept honest rather than assumed, per cache-key shape:
+
+  - A **pinned** import — what `telo install` writes and what every published manifest carries — is verified against its inline `sha256-` hash on read, so it needs no network at all.
+  - An import naming a **mutable OCI tag** is revalidated with one `HEAD` per reference (once per invocation, not once per input path) against the digest that produced the cached copy, recorded in `.telo/manifests/.origins.json`. A tag that has moved, or was never recorded — e.g. a cache written by `telo run` — drops that one entry and reloads it.
+  - A **registry** ref is always version-segmented, and a published version is immutable by the same convention npm relies on, so it is served without revalidation. This is a deliberate call: the registry origin has no cheap freshness probe (`digest()` downloads the manifest to hash it), so revalidating would cost exactly what re-fetching costs.
+  - An arbitrary **HTTP(S) URL** import is never read from the cache by `check`. Its key carries no version segment — one URL is one path forever — so a hit would be served for the lifetime of the directory regardless of what the server now returns. Re-fetching costs one request, which is exactly what revalidating would cost, so the honest option is also the cheap one. `check` still writes these entries, since `telo run` reads them.
+
+  So `check` cannot report a clean bill of health against a manifest that has changed upstream.
+
+  On the kernel side, read-side `OciClient`s are pooled per `(host, repo)` on the `OciTransport` instance instead of built per operation. The client caches bearer tokens per scope, but a per-operation client discarded that cache immediately, so every manifest and every blob paid its own 401→challenge→token round trip plus a `~/.docker/config.json` read and possibly a credential-helper subprocess. An expired token still self-heals through the existing 401 retry. The pool belongs to the instance rather than the module so a second transport — a test, or a second in-process kernel — never inherits another's credentials; `defaultTransportRegistry` is memoized per registry URL, so the production lifetime is unchanged. Publishing keeps its own client.
+
+  `Loader.forget(url)` drops one file's memo (every parse variant, plus every request URL that canonicalised to it) so a single stale manifest can be re-resolved without discarding the whole loader and every unrelated file's cached resolution with it. The loader already documented needing this for watch mode.
+
+  Checking the examples now takes 1.2s warm; a single pinned manifest resolves with no network at all.
+
+### Patch Changes
+
+- 89ffea7: `telo run` points a manifest error at its line again, exactly as `telo check` does.
+
+  A failure the kernel raises from static analysis converted the analyzer's diagnostics into `RuntimeDiagnostic`s while dropping their `data` — the file, the field path within it, and the owning resource. That is precisely what `findPositions` resolves a position from, so the CLI had nothing left to locate and printed the message alone. The same manifest checked with `telo check` still named the line, which made the two commands disagree about the same error.
+
+  `RuntimeDiagnostic` gains `origin` (`DiagnosticOrigin`: `filePath`, field `path`, `resource`, and the diagnostic's own `range`), carried through verbatim so a renderer resolves `file:line:col` against the loaded graph rather than re-parsing a rendered message. `range` is what locates a failure with no field path to look up: a YAML parse error knows where the syntax broke but has no parsed tree to index.
+
+  All four raise sites now go through one mapper (`static-analysis-diagnostics.ts`, sibling of the init-failure one): the pre-flight validation pass, Phase-3 reference resolution, YAML parse failures, and major-version conflicts. The last two used to flatten their diagnostics into a joined message string, so a syntax error and a bad `imports:` pin were the two failures `run` could not locate at all. Their `error.message` is unchanged for consumers that only read it. The loaded graph is now recorded before the parse-failure throw, since that is the failure that most needs to name a line.
+
+  The position itself comes from `resolveRange`, the rule the VS Code extension already uses, rather than a third copy of it in the CLI: it walks parent paths when the exact field path is absent from the index (an `imports.<alias>` conflict lands on the import entry) and prefers an entry's key over its value. `resolveRange` now takes just the position half of a `DiagnosticContext`, so a caller holding only a located file does not have to invent an `AnalysisRegistry` to reuse it. A located static failure renders byte-identically under `run` and `check`. A diagnostic nothing can locate falls back to naming the resource rather than pointing at line 1 — a wrong line sends the reader somewhere the error is not. Runtime failures are unchanged: they are pinned to a resource, not to a spot in the YAML, and keep the kind + name form.
+
+- 0bbfa77: `telo run --watch` keeps reloading after an editor's atomic save.
+
+  Watch mode reloaded a few times and then went permanently silent. `fs.watch` binds to the file's **inode**, not to its path, so the save style most editors and formatters use — write a temp file, then rename it over the target — leaves the watcher attached to the replaced inode. It never fires again, and it emits no `error` event, so the re-establish handler never ran and `sync` skipped the path as already watched. Every file died on its first atomic save, which is why the session survived exactly as many reloads as it happened to get in-place writes.
+
+  The watcher now records the inode it is bound to and re-binds when it changes. The event that accompanies the replacement is the dying watcher's last gasp, which is enough to notice and re-arm — the strategy chokidar uses. The check is keyed on the inode rather than on a `rename` event type, because bun reports the replacement as `change`, so a rename-keyed variant would do nothing under the runtime the CLI actually runs on.
+
+  A change arriving while no cycle was waiting on its gate — during teardown and the next load, which take seconds — is no longer dropped. It was resolving an already-settled promise; it is now held and consumed by the next cycle, so an edit made while the app is restarting still triggers the reload it should.
+
+- Updated dependencies [15acf14]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+  - @telorun/kernel@0.62.0
+  - @telorun/analyzer@0.49.1
+  - @telorun/sdk@0.62.0
+  - @telorun/ide-support@0.7.10
+  - @telorun/templating@0.11.1
+
 ## 0.61.0
 
 ### Minor Changes
