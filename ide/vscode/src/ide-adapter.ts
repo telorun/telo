@@ -27,6 +27,28 @@ export function getHubUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
+/** Every version the hub tracks for a location ref, newest first
+ *  (`GET /module/versions?ref=`). Standalone rather than a method so a caller
+ *  needing only versions doesn't have to build a directory-scoped adapter, and
+ *  so failures stay visible: this rejects, and each caller picks its own policy.
+ *  Returns `[]` for a module the hub does not track (404). */
+export async function fetchHubVersions(ref: string): Promise<string[]> {
+  const base = getHubUrl();
+  const url = `${base}/module/versions?ref=${encodeURIComponent(ref)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { accept: "application/json" } });
+  } catch (err) {
+    throw new Error(`could not reach the telo hub at ${base}: ${errText(err)}`);
+  }
+  if (res.status === 404) return [];
+  if (!res.ok) {
+    throw new Error(`hub returned HTTP ${res.status} ${res.statusText} for ${url}`);
+  }
+  const data = (await res.json()) as VersionsResponse;
+  return (data.versions ?? []).filter((v): v is string => typeof v === "string");
+}
+
 /** Bridge between ide-support's host-agnostic completion code and the VSCode
  *  workspace API. Scoped to a single document — the manifest's directory is
  *  the base for all relative-path resolution. Federated ref / version lookups
@@ -78,17 +100,14 @@ export class VsCodeIdeAdapter implements IdeEnvironmentAdapter {
     }
   }
 
-  async listVersionsForRef(ref: string): Promise<string[]> {
-    const url = `${getHubUrl()}/module/versions?ref=${encodeURIComponent(ref)}`;
-    try {
-      const res = await fetch(url, { headers: { accept: "application/json" } });
-      if (!res.ok) return [];
-      const data = (await res.json()) as VersionsResponse;
-      return (data.versions ?? []).filter((v): v is string => typeof v === "string");
-    } catch (err) {
-      console.warn(`telo: hub version lookup failed (${url}): ${errText(err)}`);
+  listVersionsForRef(ref: string): Promise<string[]> {
+    return fetchHubVersions(ref).catch((err) => {
+      // Completion is best-effort: an unreachable hub must not throw into the
+      // popover. Callers that want to report the failure (the import-upgrade
+      // lenses) call `fetchHubVersions` directly.
+      console.warn(`telo: hub version lookup failed for ${ref}: ${errText(err)}`);
       return [];
-    }
+    });
   }
 
   private resolveRel(relPath: string): vscode.Uri {

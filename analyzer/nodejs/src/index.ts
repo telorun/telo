@@ -90,6 +90,7 @@ export {
   compareParsedModuleVersions,
   isNewerModuleVersion,
   isSameModuleVersion,
+  newestModuleVersion,
   parseModuleVersion,
 } from "./module-version-order.js";
 export type { ParsedModuleVersion } from "./module-version-order.js";
