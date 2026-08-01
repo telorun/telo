@@ -13,7 +13,6 @@ import {
   type NormalizedDiagnostic,
   DiagnosticSeverity,
 } from "@telorun/ide-support";
-import { getRegistryUrl } from "./ide-adapter.js";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -164,7 +163,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // so it speaks OCI directly and never routes through the hub cache.
     const loader = new Loader([
       new NodeAdapter(path.dirname(filePath)),
-      ...defaultTransportRegistry(getRegistryUrl()).sources(),
+      ...defaultTransportRegistry().sources(),
     ]);
 
     let result: Awaited<ReturnType<typeof loader.loadGraphForFile>>;

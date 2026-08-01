@@ -95,6 +95,13 @@ jobs:
       - name: Check example manifests
         run: pnpm run check examples/*/telo.yaml
 
+      # Packaging is picky in ways a build is not — `@types/vscode` outranking
+      # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
+      # per-PR keeps that failure off `vscode-release.yml`, which packages the
+      # same way on a version bump and has no PR to fail instead.
+      - name: Check the VS Code extension packages
+        run: pnpm --filter "./ide/vscode" vsix
+
   bun:
     name: Run telo manifest tests (Bun)
     runs-on: ubuntu-latest

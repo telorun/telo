@@ -9,16 +9,6 @@ interface VersionsResponse {
   versions?: string[];
 }
 
-/** Reads `telo.registryUrl` once per call so config changes apply without
- *  restarting the language host. Trailing slashes are normalized off. Drives
- *  the kernel transport registry that resolves imports during analysis — a
- *  separate concern from federated import autocomplete (`getHubUrl`). */
-export function getRegistryUrl(): string {
-  const cfg = vscode.workspace.getConfiguration("telo");
-  const raw = cfg.get<string>("registryUrl") ?? "https://registry.telo.run";
-  return raw.replace(/\/+$/, "");
-}
-
 /** Reads `telo.hubUrl` once per call. Mirrors the CLI's `TELO_HUB_URL`
  *  default (`https://telo.sh`); a self-hosted setup overrides it. */
 export function getHubUrl(): string {

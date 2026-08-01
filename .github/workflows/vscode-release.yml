@@ -1,0 +1,116 @@
+name: Release VS Code Extension
+
+# Packages the Telo VS Code extension and publishes the `.vsix` as a GitHub
+# Release on this repo. Nothing is pushed to the VS Code Marketplace or Open
+# VSX — the release asset is the deliverable, installed with
+# `code --install-extension`.
+#
+# `telo-vscode` is a private workspace member, so changesets versions it but
+# never publishes it and it never lands in `publishedPackages`. The release
+# signal is therefore its `package.json` version field actually moving on main,
+# which happens when a Version PR merges (including the automatic
+# `updateInternalDependencies` patch bumps that follow an analyzer/kernel
+# release). `workflow_dispatch` forces a (re)build of the current version.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ide/vscode/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vscode-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check extension version
+        id: check
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r .version ide/vscode/package.json)
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No baseline commit -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OLD=$(git show "$BEFORE:ide/vscode/package.json" 2>/dev/null | jq -r .version || echo "")
+          if [ "$NEW" != "$OLD" ]; then
+            echo "Extension version changed: ${OLD:-<none>} -> $NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Extension version unchanged ($NEW); skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup pnpm
+        if: steps.check.outputs.release == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.check.outputs.release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.check.outputs.release == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # The `vsix` script builds its own workspace dependencies (analyzer,
+      # ide-support, kernel) before esbuild, so no separate workspace build is
+      # needed. It writes a fixed-name file that the CI packaging smoke check in
+      # test.yml also relies on; the release asset is renamed rather than the
+      # script changed, so both callers keep one code path.
+      - name: Package the extension
+        if: steps.check.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          pnpm --filter "./ide/vscode" vsix
+          mv ide/vscode/telo-vscode.vsix \
+             "ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix"
+
+      # softprops creates the tag/release if absent and reuses it (replacing
+      # assets) on a re-run of the same version.
+      - name: Publish GitHub Release
+        if: steps.check.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: vscode-v${{ steps.check.outputs.version }}
+          name: Telo VS Code Extension v${{ steps.check.outputs.version }}
+          files: ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix
+          fail_on_unmatched_files: true
+          body: |
+            YAML diagnostics, completions and import upgrades for Telo manifests.
+
+            Install the attached `.vsix`:
+
+            ```
+            code --install-extension telo-vscode-${{ steps.check.outputs.version }}.vsix
+            ```
+
+            Or in VS Code: **Extensions → … → Install from VSIX…**
