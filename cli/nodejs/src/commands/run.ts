@@ -92,26 +92,55 @@ function entryFilePath(manifestPath: string): string {
 
 type WatcherSet = {
   /** Add a watcher for any path not already watched; returns the live count.
-   *  Persistent across reload cycles — paths are never re-watched, because
-   *  closing then re-`fs.watch`-ing the same path is silently dropped under
-   *  bun (it never fires again), whereas one long-lived watcher fires on every
-   *  change. So the set only ever grows as new files enter the graph. */
+   *  Persistent across reload cycles — the set only ever grows as new files
+   *  enter the graph. A path is re-watched only when the file behind it is
+   *  replaced (see `rebindIfReplaced`). */
   sync: (files: Set<string>) => number;
 };
 
 /** One watcher set for the whole watch session. `onChange` is called, debounced
  *  per file, on every change to any watched path. */
 function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & WatchHandle {
-  const watchers = new Map<string, fs.FSWatcher>();
+  /** A watcher plus the inode it is bound to — `fs.watch` follows the inode, not
+   *  the path, so the pair is what lets us notice the file being swapped out. */
+  type Watched = { watcher: fs.FSWatcher; inode: bigint | null };
+
+  const watchers = new Map<string, Watched>();
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let active = true;
 
+  function inodeOf(fsPath: string): bigint | null {
+    try {
+      return fs.statSync(fsPath, { bigint: true }).ino;
+    } catch {
+      return null;
+    }
+  }
+
+  /** An editor's atomic save (write a temp file, then rename it over the path)
+   *  puts a NEW inode behind the path. The watcher stays bound to the replaced
+   *  one, so it never fires again — and emits no `error`, so the handler below
+   *  never runs and `sync` skips the path as already watched. The event we are
+   *  handling is that watcher's last gasp, so rebind on it. Keyed on the inode
+   *  rather than on a `rename` event type, which bun does not deliver. */
+  function rebindIfReplaced(fsPath: string): void {
+    const entry = watchers.get(fsPath);
+    if (!entry) return;
+    const inode = inodeOf(fsPath);
+    if (inode === null || inode === entry.inode) return;
+    entry.watcher.close();
+    watchers.delete(fsPath);
+    watchFile(fsPath);
+  }
+
   function watchFile(fsPath: string): void {
     if (!active || watchers.has(fsPath)) return;
+    const inode = inodeOf(fsPath);
     let watcher: fs.FSWatcher;
     try {
       watcher = fs.watch(fsPath, () => {
         if (!active) return;
+        rebindIfReplaced(fsPath);
         const existing = debounceTimers.get(fsPath);
         if (existing) clearTimeout(existing);
         debounceTimers.set(
@@ -129,14 +158,14 @@ function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & Watch
     }
     watcher.on("error", () => {
       // OS invalidated the watch (e.g. file deleted). Remove and re-establish.
-      if (watchers.get(fsPath) === watcher) {
+      if (watchers.get(fsPath)?.watcher === watcher) {
         watchers.delete(fsPath);
         setTimeout(() => {
           if (active) watchFile(fsPath);
         }, 50);
       }
     });
-    watchers.set(fsPath, watcher);
+    watchers.set(fsPath, { watcher, inode });
   }
 
   return {
@@ -148,7 +177,7 @@ function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & Watch
       active = false;
       for (const t of debounceTimers.values()) clearTimeout(t);
       debounceTimers.clear();
-      for (const w of watchers.values()) w.close();
+      for (const { watcher } of watchers.values()) watcher.close();
       watchers.clear();
     },
   };
@@ -539,11 +568,19 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   let stopping = false;
   let signalChange: (() => void) | null = null;
   let currentKernel: Kernel | null = null;
+  /** A change that arrived while no cycle was waiting on a gate — teardown and
+   *  the next load take seconds, and resolving an already-settled promise is a
+   *  no-op, so the edit would be lost. The next cycle consumes it instead. */
+  let pendingChange = false;
 
   // One watcher set for the whole session — see createWatcherSet. A change
   // resolves the current cycle's `changed` gate; cycles re-read `signalChange`
   // so the same watcher drives every reload.
-  const watchers = createWatcherSet(log, () => signalChange?.());
+  const notifyChange = () => {
+    if (signalChange) signalChange();
+    else pendingChange = true;
+  };
+  const watchers = createWatcherSet(log, notifyChange);
 
   const requestStop = () => {
     stopping = true;
@@ -552,7 +589,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
     debug?.stop(currentKernel ?? undefined);
     currentKernel?.cancel("interrupted");
     currentKernel?.forceIdle();
-    signalChange?.();
+    notifyChange();
   };
   process.once("SIGINT", requestStop);
   process.once("SIGTERM", requestStop);
@@ -571,8 +608,17 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
     kernel.acquireHold("watch-mode");
 
     const changed = new Promise<void>((resolve) => {
-      signalChange = resolve;
+      // Clearing the slot on resolve is what routes a later change into
+      // `pendingChange` instead of onto this already-settled gate.
+      signalChange = () => {
+        signalChange = null;
+        resolve();
+      };
     });
+    if (pendingChange) {
+      pendingChange = false;
+      notifyChange();
+    }
 
     try {
       await kernel.load(argv.path, {
