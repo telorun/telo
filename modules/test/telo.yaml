@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: test
-  version: 0.8.1
+  version: 0.8.2
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Testing]
@@ -21,7 +21,7 @@ metadata:
     substring filter, and runs them with a bounded number in flight at once.
 capability: Telo.Runnable
 controllers:
-  - pkg:npm/@telorun/test@0.5.1?local_path=./nodejs#suite
+  - pkg:npm/@telorun/test@0.5.2?local_path=./nodejs#suite
 schema:
   type: object
   properties:
