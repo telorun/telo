@@ -12,13 +12,13 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
-  SqlRepository: std/sql-repository@0.7.0#sha256-5jnAV6XJKdXanEluUa4C740UTsBedEi_e5rtQzuq6GA
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
-  Cache: std/cache@0.5.0#sha256-ZNSVvqZiLRTHFy0iy6CRGddWO8jO23PC5drb256lSiA
-  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
-  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
+  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.8.0#sha256-PHjCP1cA2L0uBHPhmWeaF6JhlcUA-FhB1bGHKliGeVM
+  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Cache: oci://ghcr.io/telorun/cache@0.9.0#sha256-gEBi-fkYFWUtYmkukwD6bfaAiPRPjD0InHZyM1k2xfQ
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.7.0#sha256-RPFdTN1BPz0WtfjLsUF8JeRK_ilI6hnHny6wwrmsoAw
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.9.0#sha256-qel_0gu1Ok2n_KBslLlGKUGn-zkoet-XAp7GdafOFOk
   Database:
     source: ../database
     variables:
@@ -49,7 +49,7 @@ ttl: "300s"
 staleTtl: "3600s"
 revalidate: background
 ---
-kind: Sql.Exec
+kind: Sql.Command
 metadata: { name: InsertLink }
 connection: !ref Database.connection
 ---
@@ -64,10 +64,14 @@ invoke: !ref InsertClick
 ---
 kind: Run.Sequence
 metadata: { name: CreateLink }
-inputs:
-  code: { type: string }
-  url: { type: string }
-  ip: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      code: { type: string }
+      url: { type: string }
+      ip: { type: string }
 steps:
   - name: guard
     invoke: !ref Limit
@@ -90,9 +94,13 @@ outputs:
 ---
 kind: Run.Sequence
 metadata: { name: ResolveAndRedirect }
-inputs:
-  code: { type: string }
-  ip: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      code: { type: string }
+      ip: { type: string }
 steps:
   - name: guard
     invoke: !ref Limit

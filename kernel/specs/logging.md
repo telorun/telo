@@ -350,7 +350,7 @@ distinguishes two instances of the same templated kind.
 
 The runtime MUST also attach `scope` — the dotted import-alias path of the module
 context that emitted the record (§12.2) — whenever the emitter sits inside an
-import. `module` alone is ambiguous: two imports of `std/sql` produce records
+import. `module` alone is ambiguous: two imports of `oci://ghcr.io/telorun/sql` produce records
 that are otherwise identical. `scope` closes the loop between reading and
 configuring: the path on a log line is exactly the path you write in the manifest
 to change that instance's level.
@@ -975,7 +975,7 @@ logging:
   level: info          # app-wide default; governs the root's own resources
 imports:
   Db:
-    source: std/sql@1.2.0
+    source: oci://ghcr.io/telorun/sql@1.2.0
     logging:
       level: debug     # this import's subtree only
   Api:
@@ -985,7 +985,7 @@ imports:
 **Why not a map keyed by module name.** Module names are not unique, so such a
 map cannot address an instance:
 
-- `std/sql` and `acme/sql` share `metadata.name: sql` — one key, two modules.
+- `ghcr.io/telorun/sql` and `ghcr.io/acme/sql` share `metadata.name: sql` — one key, two modules.
 - The same module imported twice (two `http-server` instances with different
   variables) is two subsystems sharing one name.
 - A library's transitive `sql` import is indistinguishable from the application's

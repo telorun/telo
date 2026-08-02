@@ -21,9 +21,9 @@ Raw-bytes codec — `Uint8Array` stream ↔ `Uint8Array`. The encoder passes byt
 kind: Telo.Application
 metadata: { name: octet-uploads, version: 1.0.0 }
 imports:
-  Octet: std/octet-codec@0.6.0
-  Stream: std/stream@0.5.0
-  Run: std/run@0.13.0
+  Octet: oci://ghcr.io/telorun/octet-codec@0.6.0
+  Stream: oci://ghcr.io/telorun/stream@0.5.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref Collect ]
 ---
 kind: Stream.Of

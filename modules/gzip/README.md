@@ -27,10 +27,10 @@ in, a `Stream<Uint8Array>` out.
 kind: Telo.Application
 metadata: { name: gunzip-upload, version: 1.0.0 }
 imports:
-  Gzip: std/gzip@0.4.0
-  Tar: std/tar@0.4.0
-  PlainText: std/plain-text-codec@0.6.0
-  Run: std/run@0.13.0
+  Gzip: oci://ghcr.io/telorun/gzip@0.4.0
+  Tar: oci://ghcr.io/telorun/tar@0.4.0
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.6.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref ReadManifest ]
 ---
 kind: Gzip.Decoder

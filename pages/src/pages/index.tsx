@@ -71,6 +71,12 @@ export default function Home() {
       </header>
 
       <main className="container margin-vert--xl">
+        <div className="alert alert--warning margin-bottom--xl" role="note">
+          <strong>Telo is under heavy development.</strong> While pre-1.0, breaking changes ship in
+          minor releases — pin your imports and expect to update manifests when you upgrade. 1.0
+          lands when the Rust kernel reaches feature parity with the Node.js implementation.
+        </div>
+
         <p className="text--center" style={{ fontSize: "1.25rem", maxWidth: 720, margin: "0 auto" }}>
           Instead of writing code, you define what your app needs — its data, its rules, what happens
           when something comes in — and Telo turns that into a working system and runs it.

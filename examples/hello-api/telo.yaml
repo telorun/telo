@@ -11,8 +11,8 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
-  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
 targets:
   - !ref ExampleServer
 ports:
@@ -69,7 +69,11 @@ routes:
 kind: Run.Value
 metadata:
   name: SayHello
-inputs:
-  name: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
 value:
   message: !cel "'Hello ' + inputs.name + '!'"

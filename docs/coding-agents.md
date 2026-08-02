@@ -27,7 +27,7 @@ On `initialize`, the server publishes two tools and an instructions primer:
   capability and description, and the owning module's exact location ref +
   version.
 - **`get_module_manifest(ref, version?)`** — returns the raw `telo.yaml` for a
-  tracked module by its location ref (e.g. `std/console` or
+  tracked module by its location ref (e.g. `oci://ghcr.io/telorun/console` or
   `oci://ghcr.io/acme/telo-s3`). `version` defaults to `latest`. This is the
   agent's source of truth for `Telo.Definition` schemas, capability types, and
   CEL context shapes.

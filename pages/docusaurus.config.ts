@@ -38,6 +38,7 @@ const config: Config = {
   url: "https://telo.run",
   baseUrl: process.env.BASE_URL ?? "/",
   trailingSlash: false,
+  favicon: "favicon.png",
 
   onBrokenLinks: "warn",
 

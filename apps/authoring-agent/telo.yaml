@@ -18,8 +18,8 @@ imports:
       dbFile: ./tmp/authoring-agent.sqlite
       model: gpt-5.2
       budgetLimit: !cel "variables.budgetLimit"
-  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
-  Sse: std/sse-codec@0.7.0#sha256-Bk0DLJ-fkKRiIAdsx1B7yJki53XLeAIW0NSlzXWP7ac
+  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
+  Sse: oci://ghcr.io/telorun/sse-codec@0.9.0#sha256-DsUnNCAZOGSn8l3LeUXGgFhk4__-Dag-1lQROhPGdx0
 ports:
   http:
     env: PORT

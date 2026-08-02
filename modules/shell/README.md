@@ -1,6 +1,6 @@
 # @telorun/shell
 
-`std/shell` — run shell commands behind a transport-neutral host abstraction.
+`shell` — run shell commands behind a transport-neutral host abstraction.
 The same command runs on the local host today and over SSH / in a container
 later (drivers ship as their own modules and extend `Shell.Host`, mirroring the
 `sql` / `sql-sqlite` family).
@@ -71,7 +71,7 @@ host: !ref Local
 
 ```yaml
 imports:
-  Shell: std/shell@0.1.0
+  Shell: oci://ghcr.io/telorun/shell@0.1.0
 
 kind: Shell.LocalHost
 metadata: { name: Local }

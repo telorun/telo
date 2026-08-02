@@ -19,9 +19,9 @@ metadata:
     `Lambda.Direct` handler based on the event shape. See
     `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
 imports:
-  Lambda: aws/lambda@0.6.0
-  JS: std/javascript@0.5.0
-  Run: std/run@0.11.1
+  Lambda: oci://ghcr.io/telorun/lambda@0.9.0#sha256-wQ-vDZupLmsrhBHrimFfJMIwlzwMHwxAH8nfrQ_P3QE
+  JS: oci://ghcr.io/telorun/javascript@0.10.0#sha256-ilo-aCnvVbrXDsj68GBMNmYbWEzr2SRuWaK1gT4GrRw
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
 targets:
   - !ref Main
 ---
@@ -56,8 +56,12 @@ code: |
 ---
 kind: Run.Value
 metadata: { name: AdminPing }
-inputs:
-  caller: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      caller: { type: string }
 value:
   pong: !cel "'caller' in inputs && inputs.caller != null ? inputs.caller : 'anonymous'"
 ---

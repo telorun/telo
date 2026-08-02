@@ -109,7 +109,7 @@ metadata:
   version: 1.0.0
 imports:
   # Pull in the abstract so `Ai` is an alias for `extends:` below.
-  Ai: std/ai@0.10.0
+  Ai: oci://ghcr.io/telorun/ai@0.10.0
 exports:
   kinds:
     - <Provider>Model

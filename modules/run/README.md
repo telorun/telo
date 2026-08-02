@@ -23,9 +23,9 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 kind: Telo.Application
 metadata: { name: pipeline, version: 1.0.0 }
 imports:
-  Run: std/run@0.13.0
-  Http: std/http-client@0.11.0
-  Console: std/console@0.12.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
+  Http: oci://ghcr.io/telorun/http-client@0.11.0
+  Console: oci://ghcr.io/telorun/console@0.12.0
 targets:
   - !ref Pipeline
 ---

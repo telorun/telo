@@ -452,11 +452,11 @@ metadata:
   name: rag-index
   version: 0.1.0
 imports:
-  Embedding: std/embedding@0.1.0
-  EmbeddingOpenai: std/embedding-openai@0.1.0
-  VectorStore: std/vector-store@0.1.0
-  VectorStoreMemory: std/vector-store-memory@0.1.0
-  Run: std/run@0.9.0
+  Embedding: oci://ghcr.io/telorun/embedding@0.1.0
+  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.1.0
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.1.0
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.1.0
+  Run: oci://ghcr.io/telorun/run@0.9.0
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string }
 variables:

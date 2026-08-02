@@ -24,8 +24,8 @@ metadata:
   name: api-load
   version: 1.0.0
 imports:
-  Benchmark: std/benchmark@0.6.0
-  HttpClient: std/http-client@0.11.0
+  Benchmark: oci://ghcr.io/telorun/benchmark@0.6.0
+  HttpClient: oci://ghcr.io/telorun/http-client@0.11.0
 ---
 kind: HttpClient.Client
 metadata:

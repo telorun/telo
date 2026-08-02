@@ -242,9 +242,8 @@ jobs:
       # just-built CLI. Pulls the example over raw.githubusercontent.com at
       # the workflow's commit SHA, so the test exercises the https-anchored
       # install root path (~/.cache/telo/...) end-to-end. The manifest itself
-      # imports `std/run` and `std/console` from the live registry, so this
-      # also verifies the registry round-trip on top of HTTP-rooted
-      # controller installs.
+      # imports the console module from ghcr.io, so this also verifies the OCI
+      # round-trip on top of HTTP-rooted controller installs.
       - name: Run remote manifest over raw.githubusercontent.com
         run: |
           set -euo pipefail

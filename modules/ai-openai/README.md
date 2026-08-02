@@ -22,8 +22,8 @@ OpenAI-compatible provider for the `Ai.Model` abstract from `@telorun/ai`. Calls
 kind: Telo.Application
 metadata: { name: example, version: 1.0.0 }
 imports:
-  Ai: std/ai@0.10.0
-  AiOpenai: std/ai-openai@0.12.0
+  Ai: oci://ghcr.io/telorun/ai@0.10.0
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.12.0
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY

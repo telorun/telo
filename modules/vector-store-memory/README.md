@@ -40,8 +40,8 @@ An unsupported operator throws rather than silently matching.
 
 ```yaml
 imports:
-  VectorStore: std/vector-store@0.4.0
-  VectorStoreMemory: std/vector-store-memory@0.4.0
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.4.0
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.4.0
 ---
 kind: VectorStoreMemory.Store
 metadata: { name: Index }

@@ -6,7 +6,7 @@ Pure, CEL-driven reshaping of a collection of records — grouping, aggregation,
 
 - **Declarative, type-checked reshaping** — fold, dedupe, sort, batch, and join records with CEL only. No `JavaScript.Script`; the operations stay visually editable and statically analyzable.
 - **Transport-neutral** — operates over any array of records, wherever it came from (an HTTP body, a SQL result, a stream drained to a list).
-- **Composes with `std/run`** — where `Run.Projection` / `Run.Iteration` loop invocable step bodies (control flow), `Collection` reshapes data with CEL only. Same subject, different layer.
+- **Composes with the `run` module** — where `Run.Projection` / `Run.Iteration` loop invocable step bodies (control flow), `Collection` reshapes data with CEL only. Same subject, different layer.
 
 ## Kinds
 

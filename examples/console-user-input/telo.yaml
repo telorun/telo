@@ -7,7 +7,7 @@ metadata:
     Each step's result.value is wired into a later step's inputs via a
     steps.<name>.result.value CEL expression. Designed for interactive use.
 imports:
-  Console: oci://ghcr.io/telorun/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
 targets:
   - name: ReadUsername
     invoke: !ref Console.readLine

@@ -161,8 +161,8 @@ async function refSearchCompletions(
 
 /** The `org/name` tail of a location ref: its last two path segments, with the
  *  transport scheme (`oci://`, `https://`, …) and registry host dropped.
- *  `oci://ghcr.io/telorun/telo-console` → `telorun/telo-console`; `std/console`
- *  → `std/console`. Falls back to fewer segments (or the whole ref) when there
+ *  `oci://ghcr.io/telorun/telo-console` → `telorun/telo-console`; `acme/console`
+ *  → `acme/console`. Falls back to fewer segments (or the whole ref) when there
  *  aren't two. */
 function refDisplayName(ref: string): string {
   const withoutScheme = ref.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");

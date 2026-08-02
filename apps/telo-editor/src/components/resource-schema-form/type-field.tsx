@@ -89,7 +89,7 @@ export function TypeField({
         />
       ) : typeKinds.length === 0 ? (
         <span className="text-xs text-amber-600 dark:text-amber-400">
-          No type kinds imported. Import a type system (e.g. <code>std/type</code>) to define an
+          No type kinds imported. Import a type system (e.g. <code>oci://ghcr.io/telorun/type</code>) to define an
           inline type.
         </span>
       ) : (

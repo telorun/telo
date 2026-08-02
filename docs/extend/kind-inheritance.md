@@ -12,7 +12,7 @@ the child reuses the parent's controller and behavior while presenting a
 friendlier schema and preset config.
 
 The motivating case: an API client that *is*, for every runtime and type purpose,
-a preconfigured `std/http-client` `Client` — so it drops into anything that
+a preconfigured `http-client` `Client` — so it drops into anything that
 expects a `Client`, and any operation that expects one can point at it.
 
 ## What a child inherits
@@ -148,7 +148,7 @@ metadata:
   namespace: acme
   version: 0.1.0
 imports:
-  Http: std/http-client@0.7.0
+  Http: oci://ghcr.io/telorun/http-client@0.7.0
 exports:
   kinds:
     - GithubClient
@@ -198,7 +198,7 @@ metadata:
   version: 1.0.0
 imports:
   Gh: acme/github@0.1.0
-  Http: std/http-client@0.7.0
+  Http: oci://ghcr.io/telorun/http-client@0.7.0
 secrets:
   ghToken: { env: GITHUB_TOKEN, type: string }
 targets:

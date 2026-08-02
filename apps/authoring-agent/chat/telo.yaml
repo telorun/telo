@@ -17,19 +17,20 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: std/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
-  AiOpenai: std/ai-openai@0.12.0#sha256-CZjanhurq4AOKTEQGC0H4shmOdLly7ad9o6-V6bERBs
-  AiMcp: std/ai-mcp@0.7.0#sha256-rCm2tkWbdZEfOfwOdHDzAYl_SP8hWBSl2VAHRkYqbkU
-  Mcp: std/mcp-client@0.7.0#sha256-TXtryrk_BpZ6Smdy8NIYfZhKqMpZhxBoDoXSbhdQf_s
-  Fs: std/fs@0.4.0#sha256-qJNOOd_plVEzqbmkNsT7SGhwszU5q_iHC_LWTkxa0dE
-  Shell: std/shell@0.4.0#sha256-Xwt_rwCRjZVVXWTNmI0wM5RmdcRNpu88Q1o8hhskTM4
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  SqlSqlite: std/sql-sqlite@0.4.0#sha256-FisczE66geWlyRA9s-x2L8Qv32kv_INZNmfmufpZVPM
-  RecordStream: std/record-stream@0.9.0#sha256-HBO4_mOMh4GTQ1ojjmuQvfvMfStSA7XCtXmyDGYQj8k
-  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
-  Lease: std/lease@0.5.0#sha256-qsxfAY5ZLXI9j4vswQQbkGNrO1shkTbDvbcBLPHFzUI
-  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
-  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
+  Ai: oci://ghcr.io/telorun/ai@0.13.0#sha256-LDNwi5X9AjcanUEKe497WJHR0Zt3xO-monL-r_hfIZE
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.14.0#sha256-jQIFsa0DnwEN9nwtx8ByryM3S3rPpaZsPv_jArPIOuk
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.9.0#sha256-1flm6KPzWD4W2OGkiPp3Ws0svD9LrS7-d3nZaqDoESc
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.11.0#sha256-8AKXBsvSpAz5yqMEx62NpEk8R5uegwcZA0iq4yJx7fc
+  Fs: oci://ghcr.io/telorun/fs@0.7.0#sha256--Pqk8k2YGG7jAhcEP1kayrw_BiIYcSFP50K0R0j5aPc
+  Shell: oci://ghcr.io/telorun/shell@0.8.0#sha256-SWKnaji4u_iarIVnrzsJcRCN1bXx7zdohhd8FWXbD2E
+  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.13.0#sha256-TRAc17F29HyFCRUrQsqMgTszlyuGdCjY1keKmbs7mzA
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Lease: oci://ghcr.io/telorun/lease@0.9.0#sha256-gQn1uIXgFQ0yeBg8l7tvh9Ql9ejRlW2O-2sikSI2NWw
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.5.0#sha256-7CkkCvxVToblwn4vfoPrFROmun4W0xnRvTDOP2peHE0
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.7.0#sha256-RPFdTN1BPz0WtfjLsUF8JeRK_ilI6hnHny6wwrmsoAw
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.9.0#sha256-qel_0gu1Ok2n_KBslLlGKUGn-zkoet-XAp7GdafOFOk
 secrets:
   openaiApiKey:
     type: string
@@ -173,18 +174,22 @@ connection: !ref chatDb
 # ORDER BY id chronological.
 kind: Run.Iteration
 metadata: { name: importMessages }
-inputs:
-  conversationId: { type: string }
-  messages:
-    type: array
-    items:
-      type: object
-      required: [id, role, content, createdAt]
-      properties:
-        id: { type: string }
-        role: { type: string }
-        content: { type: string }
-        createdAt: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      conversationId: { type: string }
+      messages:
+        type: array
+        items:
+          type: object
+          required: [id, role, content, createdAt]
+          properties:
+            id: { type: string }
+            role: { type: string }
+            content: { type: string }
+            createdAt: { type: string }
 collection: !cel "inputs.messages"
 steps:
   - name: Insert
@@ -200,18 +205,25 @@ steps:
       kind: Sql.Command
       connection: !ref chatDb
 ---
-# Shared coordination state (turn lease + spend budget). A CacheMemory.Store for
-# a single instance; swap to a CacheRedis.Store to bound spend and serialize
-# turns across instances — the Cache.Store seam makes it a one-line change.
+# Spend-budget state. A CacheMemory.Store for a single instance; swap to a
+# CacheRedis.Store to bound spend across instances — the Cache.Store seam makes
+# it a one-line change.
 kind: CacheMemory.Store
 metadata: { name: stateStore }
+---
+# Lease state. Separate from stateStore because a lease needs durability and
+# atomic compare-and-set, which Cache.Store does not promise — an evicted claim
+# would hand out a second concurrent turn. Process-local, like stateStore; swap
+# to a KvStoreRedis.Store to serialize turns across instances.
+kind: KvStoreMemory.Store
+metadata: { name: leaseStore }
 ---
 # One in-flight turn per conversation. detach mode: the POST handler acquires and
 # gets { acquired } synchronously (200 vs 409), while the turn runs detached and
 # the lease frees on its terminal. ttl self-heals a conversation if a turn dies.
 kind: Lease.Critical
 metadata: { name: turnLock }
-store: !ref stateStore
+store: !ref leaseStore
 ttl: 10m
 detach: true
 invoke: !ref turnRunner
@@ -251,8 +263,12 @@ host: !ref localHost
 # and execed WITHOUT a shell — so this grants validation, not command access.
 kind: Run.Sequence
 metadata: { name: checkFile }
-inputs:
-  path: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
 steps:
   - name: Check
     invoke: !ref runCommand
@@ -269,9 +285,13 @@ outputs:
 # always sees diagnostics after touching a file — it cannot "forget" to validate.
 kind: Run.Sequence
 metadata: { name: writeFileChecked }
-inputs:
-  path: { type: string }
-  content: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
+      content: { type: string }
 steps:
   - name: Write
     invoke: !ref writeFile
@@ -291,10 +311,14 @@ outputs:
 ---
 kind: Run.Sequence
 metadata: { name: editFileChecked }
-inputs:
-  path: { type: string }
-  oldString: { type: string }
-  newString: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      path: { type: string }
+      oldString: { type: string }
+      newString: { type: string }
 steps:
   - name: Edit
     invoke: !ref editFile
@@ -561,11 +585,13 @@ system: |
   `source`: `source:` already means "where to fetch a dependency from" inside
   the `imports` map.
 
-  - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is a
-    registry ref `namespace/name@VERSION` (the version is EXACT — never
-    `@latest` or a range), an OCI ref `oci://host/repo@VERSION` (a module
-    published to any OCI registry; may carry a `#sha256-…` integrity pin), or
-    a relative path `./lib`. Object form `{ source, variables?, secrets? }`
+  - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is an
+    OCI ref `oci://host/repo@VERSION` (the version is EXACT — never `@latest`
+    or a range; may carry a `#sha256-…` integrity pin) or a relative path
+    `./lib`. Prefer OCI for every published module — the standard library lives
+    at `oci://ghcr.io/telorun/<name>`. The bare `namespace/name@VERSION`
+    registry form still resolves for already-pinned manifests, but never write
+    a new one. Object form `{ source, variables?, secrets? }`
     forwards values into the library. Reference an imported kind as
     `kind: <Alias>.<KindName>`, and an imported instance as
     `!ref <Alias>.<name>`.
@@ -861,9 +887,13 @@ handler: !ref persistAssistant
 ---
 kind: Run.Sequence
 metadata: { name: persistAssistant }
-inputs:
-  records: {}
-  context: {}
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      records: {}
+      context: {}
 steps:
   - name: Insert
     inputs:
@@ -893,10 +923,14 @@ steps:
 # reload can re-attach and resume the pending turn.
 kind: Run.Sequence
 metadata: { name: chatStart }
-inputs:
-  conversationId: { type: string }
-  message: { type: string }
-  clientIp: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+      clientIp: { type: string }
 steps:
   # Per-IP throttle first — a rate-limited client doesn't touch the budget.
   - name: Guard
@@ -962,10 +996,14 @@ outputs:
 # has no outputs.
 kind: Run.Sequence
 metadata: { name: turnRunner }
-inputs:
-  conversationId: { type: string }
-  turnId: { type: string }
-  reserved: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      conversationId: { type: string }
+      turnId: { type: string }
+      reserved: { type: integer }
 steps:
   - name: ReadHistory
     inputs:

@@ -13,7 +13,7 @@ const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 /** The version-independent label for a versioned `source`, for diagnostics —
  *  the ref with its exact `@<rawVersion>` suffix and any integrity fragment
- *  stripped (`std/run`, `oci://ghcr.io/telorun/http-server`). */
+ *  stripped (`oci://ghcr.io/telorun/run`, `acme/lib`). */
 function refLabel(source: string, rawVersion: string): string {
   const base = splitIntegrity(source).base;
   const suffix = `@${rawVersion}`;
@@ -302,7 +302,7 @@ export async function upgradeManifest(args: {
  * crash on weird inputs.
  *
  * Quote style is preserved: if the original scalar was written as
- * `Run: "std/run@0.2.4"` we re-emit `"std/run@0.2.7"`; plain stays plain.
+ * `Run: "oci://ghcr.io/telorun/run@0.2.4"` we re-emit `"oci://ghcr.io/telorun/run@0.2.7"`; plain stays plain.
  */
 function buildSourceEdit(
   // A yaml v2 Scalar node — typed as unknown here to avoid leaking the

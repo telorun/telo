@@ -226,42 +226,32 @@ To utilize an external package, a module declares a dependency as an entry in it
 
 ### 6.1 Source Resolution
 
-The `source` field accepts three forms:
+The `source` field accepts four forms:
 
-| Form               | Example                                   | Resolved as                                       |
-| ------------------ | ----------------------------------------- | ------------------------------------------------- |
-| Registry reference | `acme/user-service@1.0.0`                 | Looked up in the configured module registry       |
-| Relative path      | `./payment/telo.yaml`                   | Resolved relative to the importing manifest's URL |
-| Absolute URL       | `https://cdn.example.com/lib/telo.yaml` | Fetched directly                                  |
+| Form               | Example                                          | Resolved as                                       |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------- |
+| OCI reference      | `oci://ghcr.io/telorun/console@0.15.0`           | Pulled from that OCI host                         |
+| Registry reference | `acme/user-service@1.0.0`                        | Looked up in the configured module registry       |
+| Relative path      | `./payment/telo.yaml`                            | Resolved relative to the importing manifest's URL |
+| Absolute URL       | `https://cdn.example.com/lib/telo.yaml`          | Fetched directly                                  |
+
+`oci://` is the form the standard library and every first-party module publish to; the bare `<namespace>/<name>@<version>` registry form is retained read-only so already-pinned manifests keep resolving.
 
 Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that declares the `imports:` entry, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 
-### 6.2 Namespaces
+### 6.2 Publishing locations
 
-A namespaced reference has the shape `<namespace>/<module-name>@<version>`. The `<namespace>` segment is a **topic**, not a publisher identity. It describes the surface area the module covers — the protocol, vendor, or platform the module is *about* — and never asserts that any particular author owns it. Trust in a specific publisher is signalled out-of-band (a verification badge on the module's [hub](https://telo.sh) listing), not by the namespace string. This keeps the shape stable when a topic gains additional publishers over time.
+An OCI reference has the shape `oci://<host>/<path…>/<module-name>@<version>`. The path segments preceding the module name are the **publisher's** repository namespace on that host — `ghcr.io/telorun` for the Telo-curated standard library, `ghcr.io/acme` for a third party. Trust in a specific publisher is signalled out-of-band (a verification badge on the module's [hub](https://telo.sh) listing), not by the path string.
 
-Three tiers, distinguished by who publishes and how reserved the namespace is:
-
-- **`std/`** — the Telo-curated standard library. Reserved namespace. Reserved for portable, vendor-neutral primitives whose surface is defined by an open protocol or by Telo itself: HTTP transport, SQL, JavaScript execution, config, sequencing, assertions, testing, console I/O. A module is `std/` only if its semantics are not tied to any specific vendor implementation. Telo curates membership.
-- **Topic namespaces** — `aws/`, `gcp/`, `azure/`, `cloudflare/`, `anthropic/`, `openai/`, `postgres/`, and similar. Each names a vendor, platform, or product family whose surface a module adapts. Initially most modules in these namespaces will be Telo-authored adapters (e.g. `aws/lambda`, `gcp/cloud-functions`); the namespace stays open so that the named vendor — or a community maintainer — can publish into it later under a different verification badge without renaming. Alternative implementations live under different module names within the same namespace.
-- **Third-party / community scopes** — for experimental or community-maintained modules that have not been adopted as the canonical entry in a topic namespace. Convention TBD; will likely follow a scoped form (e.g. `@<publisher>/<module>`). Out of scope for v1.0.
-
-**Choosing a namespace for a new module:**
-
-| Question | Answer |
-| --- | --- |
-| Does the module's surface reduce to an open protocol or to a Telo-defined abstraction? | `std/` |
-| Is the module's surface defined by a specific vendor's API, runtime, wire format, or product? | the vendor's topic namespace |
-| Does the module sit on top of an existing topic namespace's primitives but add opinionated workflow? | same topic namespace, distinct module name |
+The standard library covers portable, vendor-neutral primitives whose surface is defined by an open protocol or by Telo itself: HTTP transport, SQL, JavaScript execution, config, sequencing, assertions, testing, console I/O. A module belongs there only if its semantics are not tied to any specific vendor implementation; Telo curates membership. Vendor adapters — `lambda`, `s3`, `cloud-functions` — are published the same way, under whichever repository their publisher owns.
 
 Examples:
 
-- `std/http-server`, `std/http-client` — HTTP is a public protocol; portable across vendors. `std/`.
-- `std/sql` — generic SQL surface area; specific DB drivers live in vendor namespaces (`postgres/`, `mysql/`).
-- `aws/lambda`, `aws/s3`, `aws/dynamodb` — vendor-defined APIs and event shapes. `aws/`.
-- `anthropic/sdk` — vendor-defined SDK surface. `anthropic/`.
+- `oci://ghcr.io/telorun/http-server`, `oci://ghcr.io/telorun/http-client` — HTTP is a public protocol; portable across vendors.
+- `oci://ghcr.io/telorun/sql` — generic SQL surface area; specific DB drivers are separate modules (`sql-postgres`, `sql-sqlite`).
+- `oci://ghcr.io/telorun/lambda` — vendor-defined APIs and event shapes, adapted by a Telo-authored module.
 
-A namespace is a property of the **ref**, not of the library: a module declares nothing about which namespace it is published under, and the same bytes can be published to a registry path, an OCI repo, or a URL without changing. Changing the namespace a module is published under is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
+Where a module is published is a property of the **ref**, not of the library: a module declares nothing about its own location, and the same bytes can be published to an OCI repo, a registry path, or a URL without changing. Moving a module to a different repository is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
 
 **Discovery.** Modules are discovered through the **hub** ([`telo.sh`](https://telo.sh)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
 
@@ -286,12 +276,12 @@ A dependency that needs no `variables` / `secrets` / `runtime` can use the bare 
 
 ```yaml
 imports:
-  Console: std/console@<version>
+  Console: oci://ghcr.io/telorun/console@<version>
 ```
 
 ## 7. Manifest Cache
 
-Resolution is separate from discovery: the [hub](#62-namespaces) indexes *what* modules exist, but the bytes of each `Telo.Library` are fetched from the module's own origin. A bare `<namespace>/<name>@<version>` ref resolves against the read-only registry origin (`registry.telo.run`), an `oci://…` ref against its OCI host, and an `https://…` ref directly. `telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library` from its origin, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls — the cache is the single trust boundary that pins which manifests the runtime will see.
+Resolution is separate from discovery: the [hub](#62-publishing-locations) indexes *what* modules exist, but the bytes of each `Telo.Library` are fetched from the module's own origin. A bare `<namespace>/<name>@<version>` ref resolves against the read-only registry origin (`registry.telo.run`), an `oci://…` ref against its OCI host, and an `https://…` ref directly. `telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library` from its origin, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls — the cache is the single trust boundary that pins which manifests the runtime will see.
 
 ### Layout
 
@@ -306,7 +296,7 @@ Resolution is separate from discovery: the [hub](#62-namespaces) indexes *what* 
 - Every entry is keyed `<transport>/<host>/<path…>/<version>/<file>` — the same grammar the hub's static manifest bucket and the editor's browser-safe read path use, so no two of them can drift on where a module lands. The coordinates come from the transport that owns the ref; `manifestCacheKey` in `@telorun/analyzer` renders them.
 - Registry entries carry the **registry host**: a bare ref says nothing about which registry serves it, so without the host two registries' copies of the same path and version would share one cache entry.
 - Direct URL imports carry no version segment. A URL addresses exactly one file, and the version it declares lives inside bytes the cache maps paths without.
-- An HTTP URL whose host matches the configured registry URL is folded into the registry layout — `source: https://registry.telo.run/std/foo/1.0.0/telo.yaml` and `source: std/foo@1.0.0` hit the same cache file.
+- An HTTP URL whose host matches the configured registry URL is folded into the registry layout — `source: https://registry.telo.run/acme/foo/1.0.0/telo.yaml` and `source: acme/foo@1.0.0` hit the same cache file.
 - URLs with a query string or fragment get a short content-hash inserted before the file extension so two distinct manifests differing only in query never collide.
 - Partials reached through `include:` are written alongside their owning manifest using the same relative paths declared in the owner, so the loader's existing relative-resolution path keeps working unchanged once the owner is served from disk.
 

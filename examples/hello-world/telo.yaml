@@ -3,13 +3,13 @@ metadata:
   name: HelloConsole
   version: 1.0.0
   description: |
-    Smallest possible runnable Telo application: imports `std/console` and
+    Smallest possible runnable Telo application: imports the console module and
     prints a single line via a flat `targets` invoke step. Useful as a "does my setup work?"
     smoke test and as a starting skeleton for larger script-style manifests.
     Reach for `Run.Sequence` when a boot entry needs control flow, scopes, or
     a return value.
 imports:
-  Console: oci://ghcr.io/telorun/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
 targets:
   - invoke: !ref Console.writeLine
     inputs:

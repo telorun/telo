@@ -8,8 +8,8 @@ OpenAI embeddings are **symmetric** — there is no query/passage wire parameter
 
 ```yaml
 imports:
-  Embedding: std/embedding@0.1.0
-  EmbeddingOpenai: std/embedding-openai@0.1.0
+  Embedding: oci://ghcr.io/telorun/embedding@0.1.0
+  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.1.0
 ---
 kind: EmbeddingOpenai.Model
 metadata: { name: textEmbedding }

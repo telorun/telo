@@ -33,8 +33,8 @@ writing uses pdf-lib.
 kind: Telo.Application
 metadata: { name: form-stamper, version: 1.0.0 }
 imports:
-  Pdf: std/pdf@0.4.0
-  Run: std/run@0.13.0
+  Pdf: oci://ghcr.io/telorun/pdf@0.4.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref StampForm ]
 ---
 kind: Pdf.Rasterizer

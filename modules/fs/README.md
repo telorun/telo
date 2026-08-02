@@ -1,6 +1,6 @@
 # @telorun/fs
 
-`std/fs` — local filesystem access for a running Telo app. Read, write, edit,
+`fs` — local filesystem access for a running Telo app. Read, write, edit,
 list, create, and remove files and directories on the host the kernel runs on,
 via Node `fs/promises`. Buffered (small files), UTF-8 text by default with a
 base64 escape hatch for binary.
@@ -68,7 +68,7 @@ rather than silently doing nothing.
 
 ```yaml
 imports:
-  Fs: std/fs@0.1.0
+  Fs: oci://ghcr.io/telorun/fs@0.1.0
 
 kind: Fs.File
 metadata: { name: ReadFile }

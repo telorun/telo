@@ -44,7 +44,7 @@ metadata:
   description: Write lines to stdout and read them back from stdin.
   repository: https://github.com/telorun/telo
   license: Apache-2.0
-  documentation: https://telo.run/reference/std/console
+  documentation: https://telo.sh/?q=Console.WriteLine
 ```
 
 These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.
@@ -199,7 +199,7 @@ List the kind (and any ready-made singleton instances) in `exports`, then import
 
 ```yaml
 imports:
-  Console: std/console@0.9.0
+  Console: oci://ghcr.io/telorun/console@0.9.0
 targets:
   - invoke: !ref Console.writeLine
     inputs:

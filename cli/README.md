@@ -268,11 +268,11 @@ A non-existent pin is always treated as broken and repaired against the registry
 
 ```text
 Upgrading apps/my-app/telo.yaml
-  ↑  std/run  0.2.4 → 0.2.7
+  ↑  oci://ghcr.io/telorun/run  0.2.4 → 0.2.7
   ↑  oci://ghcr.io/telorun/http-server  0.19.1 → 0.20.0
-  =  std/http-server  already at 2.0.0
-  ↓  std/foo  9.9.9 → 0.4.1  (pinned version not in registry)
-  !  std/does-not-exist  no published versions in registry
+  =  acme/lib  already at 2.0.0
+  ↓  oci://ghcr.io/telorun/foo  9.9.9 → 0.4.1  (pinned version not published)
+  !  oci://ghcr.io/telorun/does-not-exist  no published versions
   ·  ../sibling  skipped (local import — use --recursive to follow)
 
 3 upgraded, 1 already current, 2 skipped
@@ -309,8 +309,8 @@ kind: Telo.Application
 metadata:
   name: Example
 imports:
-  HttpServer: std/http-server@<version>
-  JavaScript: std/javascript@<version>
+  HttpServer: oci://ghcr.io/telorun/http-server@<version>
+  JavaScript: oci://ghcr.io/telorun/javascript@<version>
 targets:
   - Server
 ---

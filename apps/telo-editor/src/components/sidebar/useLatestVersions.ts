@@ -7,7 +7,7 @@ import type { ParsedImport } from "../../model";
  *  given imports reference, so the Imports view can flag those that are behind.
  *  Fetches each ref once; imports that name no version (local paths, bare URLs,
  *  untagged OCI refs) are skipped. The map is keyed by the version-independent
- *  base ref (`std/console`, `oci://ghcr.io/telorun/timer`) — the same identity
+ *  base ref (`acme/console`, `oci://ghcr.io/telorun/timer`) — the same identity
  *  the hub registers a module under, so every transport is treated alike. */
 export function useLatestVersions(
   imports: ParsedImport[],

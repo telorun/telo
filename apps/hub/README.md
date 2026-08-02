@@ -62,7 +62,7 @@ search API, and the MCP endpoint are all resources in one manifest.
   **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
   trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest
   version has its kinds embedded (a self-hosted embeddinggemma-300m model via
-  the `std/embedding` stack) into a pgvector index (`std/vector-store-pgvector`,
+  the `embedding` stack) into a pgvector index (the `vector-store-pgvector` module,
   same database); at query the vector arm returns the nearest kind ids and one
   `Sql.Query` RRF-fuses them with the lexical rank. Intent-shaped queries
   ("store files in object storage") resolve even without a substring match.
@@ -152,7 +152,7 @@ Or directly against your own infra:
 ```sh
 DB_CONNECTION=postgres://… MANIFEST_BUCKET_NAME=… MANIFEST_BUCKET_ENDPOINT=… \
 MANIFEST_BUCKET_ACCESS_KEY_ID=… MANIFEST_BUCKET_SECRET_ACCESS_KEY=… \
-SEED_REFS='["std/console","std/timer"]' \
+SEED_REFS='["oci://ghcr.io/telorun/console","oci://ghcr.io/telorun/timer"]' \
 pnpm run telo apps/hub/telo.yaml
 ```
 
@@ -227,11 +227,6 @@ when it moves, so the index and cache never drift from what the URL serves.
   composed from the kind name, capability, and curated descriptions; pulling
   `title`/`description` strings out of each kind's `schema`/`inputType`/
   `outputType` (graceful degradation for thin descriptions) is not yet wired.
-
-> **Interim import.** The hub imports `vector-store-pgvector` by relative path
-> (`../../modules/vector-store-pgvector`) until that module is published to the
-> registry. Flip it to `std/vector-store-pgvector@0.1.0` once it ships — the
-> Docker `telo install` build resolves the registry form.
 
 ## Tests
 

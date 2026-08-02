@@ -50,9 +50,9 @@ The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry
 kind: Telo.Application
 metadata: { name: assert-app, version: 1.0.0 }
 imports:
-  Assert: std/assert@0.10.5
-  Run: std/run@0.13.0
-  JS: std/javascript@0.7.0
+  Assert: oci://ghcr.io/telorun/assert@0.10.5
+  Run: oci://ghcr.io/telorun/run@0.13.0
+  JS: oci://ghcr.io/telorun/javascript@0.7.0
 targets: [ !ref Check ]
 ---
 kind: JS.Script
